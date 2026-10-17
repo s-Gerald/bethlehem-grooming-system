@@ -1139,7 +1139,7 @@
                   </div>
                   <button type="button" @click="cancelOnlinePayment()" :disabled="paymentModal.busy" class="text-sm font-semibold text-red-600 disabled:opacity-50">Cancel Online Payment</button>
                 </section>
-                <p x-show="paymentModal.error" class="text-sm text-red-600" x-text="paymentModal.error"></p>
+                <p x-show="paymentModal.error" role="alert" class="text-sm text-red-600" x-text="paymentModal.error"></p>
               </div>
 
               <!-- Footer -->
@@ -1683,6 +1683,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261016&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2"></script>
   </body>
 </html>

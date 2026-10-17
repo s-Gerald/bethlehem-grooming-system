@@ -3146,7 +3146,7 @@ function adminDashboard() {
     get canSubmitPayment() {
       return (
         !this.paymentModal.busy &&
-        !this.paymentModal.error &&
+        (this.paymentModal.paymentMethod === "online" || !this.paymentModal.error) &&
         !this.paymentModal.onlinePayment &&
         this.paymentModal.petBreakdown.length > 0 &&
         this.paymentTotalDue > 0 &&
@@ -3799,6 +3799,7 @@ function adminDashboard() {
 
     async submitPayment() {
       if (this.paymentModal.busy || this.paymentModal.onlinePayment) return;
+      const modal = this.paymentModal;
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = Number(this.paymentTotalDue.toFixed(2));
       const ap = parseFloat(amountPaid);
@@ -3854,7 +3855,11 @@ function adminDashboard() {
         };
         if (paymentMethod === "online") {
           const response = await API.createGroomingOnlinePayment(booking.id, { ...payload, flow: isEarlyPayment ? "early" : "final" });
-          if (this.paymentModal.open && this.paymentModal.booking?.id === booking.id) await this.applyOnlinePaymentStatus(response);
+          if (this.paymentModal !== modal || !modal.open) return;
+          if (response.success === false || !["pending", "paid"].includes(response.online_payment?.status)) {
+            throw Object.assign(new Error(response.message || "Unable to create online payment. Please try again."), { errors: response.errors });
+          }
+          await this.applyOnlinePaymentStatus(response);
           return;
         }
         const res = isEarlyPayment
@@ -3863,12 +3868,20 @@ function adminDashboard() {
 
         await this.completeGroomingPayment(res);
       } catch (err) {
-        if (paymentMethod === "online" && this.paymentModal.open) {
-          try { await this.applyOnlinePaymentStatus(await API.groomingOnlinePaymentStatus(booking.id)); } catch (_) { /* Keep the original actionable error. */ }
+        if (this.paymentModal !== modal || !modal.open) return;
+        if (paymentMethod === "online") {
+          try {
+            // Creation may have succeeded before its response was interrupted.
+            const response = await API.groomingOnlinePaymentStatus(booking.id);
+            if (this.paymentModal !== modal || !modal.open) return;
+            await this.applyOnlinePaymentStatus(response);
+            if (["pending", "paid"].includes(response.online_payment?.status)) return;
+          } catch (_) { /* Keep the original actionable error. */ }
         }
-        this.paymentModal.error = err.message || "Payment failed. Please try again.";
+        modal.error = (paymentMethod === "online" ? Object.values(err.errors || {}).flat().join(" ") : "")
+          || err.message || "Payment failed. Please try again.";
       } finally {
-        this.paymentModal.busy = false;
+        if (this.paymentModal === modal) modal.busy = false;
       }
     },
 
