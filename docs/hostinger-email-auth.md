@@ -21,8 +21,8 @@ Read-only checks through the authenticated Hostinger connector confirmed:
   crons were removed after collecting their output; the final list was empty.
 
 No Brevo credentials were returned, replaced, or copied. Credential validity,
-the verified sender, and actual inbox delivery remain to be checked during the
-approved rollout. The existing Laravel log contained an earlier `storage:link`
+the verified sender, and actual inbox delivery required separate rollout checks.
+The existing Laravel log contained an earlier `storage:link`
 failure involving a disabled `exec()` function, not evidence of an SMTP failure.
 
 The approved rollout preflight subsequently found no usable SMTP password in the
@@ -32,6 +32,52 @@ preflight crons were removed and the final cron list was empty. The owner must
 privately configure the existing Brevo SMTP key as `MAIL_PASSWORD` on Hostinger
 before the approved rollout can continue. Do not place that key in this document,
 the release archive, source control, or chat.
+
+## Approved test-site rollout — 2026-10-18
+
+After the owner privately configured the SMTP key, Brevo SMTP authentication
+succeeded. The host setting needed correction to `smtp-relay.brevo.com`.
+The 17-file release was installed with server-side backups outside the document
+root. Only the required non-secret environment settings were updated; credentials
+and the owner's `MAIL_FROM_NAME` were preserved. Laravel's cached mailer is now
+`smtp`, its queue is `database`, and the site is out of maintenance.
+
+CLI opcode caching initially retained the previous configuration within the
+deployment process. The safety check rolled back the attempted release. Explicit
+invalidation of the regenerated configuration cache resolved the mismatch before
+the successful rollout. All 17 deployed file checksums matched the release.
+
+One permanent bounded database worker cron is installed every minute. It
+successfully processed a harmless queued closure without sending email or
+changing accounts. Six failed-job records existed before that diagnostic job
+ran; they were preserved and were not automatically retried. Public smoke checks
+confirmed the new frontend assets, private receipt-status endpoint, rejection of
+unknown login challenges without access tokens, and the existing resend throttle.
+
+The owner used an existing customer account and entered credentials directly in
+the deployed UI. The application showed the six-digit code screen, the permanent
+worker completed `ConfirmLoginNotification` through Brevo, and the owner confirmed
+sign-in with the correct OTP. Browser inspection then confirmed the customer
+dashboard redirect. No additional customer account was created, credentials were
+not reset, and no test resend was requested.
+
+Both privileged-account tests also reached the OTP screen. The worker completed
+each login notification through Brevo, and browser inspection confirmed the
+shared staff/admin dashboard redirects after the owner's direct OTP entries.
+The owner then confirmed that all accounts were working. No passwords or OTPs
+were requested in chat or extracted from application storage.
+
+Fresh customer registration and a live resend were not exercised because the
+owner requested existing accounts only and minimum test sends. The focused
+automated verification passed 134 backend tests (1,658 assertions) and three
+frontend regression scripts, including registration, resends, invalid/expired
+codes, attempt limits, throttles, delivery failures, and redirects. These checks
+do not substitute for a fresh registration inbox test on the host.
+
+All temporary deployment/verification files and cron jobs were removed. Only the
+permanent every-minute queue worker remains. Server-side release backups were
+retained outside the document root. SMTP login and worker completion alone do
+not establish inbox receipt; record only the owner's confirmation.
 
 Hostinger limits cron commands to 255 characters including its escaping overhead.
 Use the absolute Artisan path and short commands. For this deployment, a direct
