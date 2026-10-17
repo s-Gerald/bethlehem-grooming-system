@@ -1844,8 +1844,18 @@ var API = (() => {
     return request("POST", `/admin/bookings/${bookingId}/online-payment`, payload, getAdminToken());
   }
 
-  function groomingOnlinePaymentStatus(bookingId) {
-    return request("GET", `/admin/bookings/${bookingId}/online-payment`, null, getAdminToken());
+  function groomingOnlinePaymentStatus(bookingId, attemptId = null) {
+    return request("GET", `/admin/bookings/${bookingId}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
+  }
+
+  function createClinicOnlinePayment(id) {
+    return request("POST", `/admin/clinic-appointments/${id}/online-payment`, {}, getAdminToken());
+  }
+  function clinicOnlinePaymentStatus(id, attemptId = null) {
+    return request("GET", `/admin/clinic-appointments/${id}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
+  }
+  function cancelClinicOnlinePayment(id) {
+    return request("DELETE", `/admin/clinic-appointments/${id}/online-payment`, null, getAdminToken());
   }
 
   function cancelGroomingOnlinePayment(bookingId) {
@@ -1885,11 +1895,12 @@ var API = (() => {
     return request("PATCH", "/customer/notifications/read-all", null, getCustomerToken());
   }
 
-  async function getTransactions({ search = "", period = "day", date = "", week = "", month = "", year = "", transaction_type = "all", page = 1 } = {}) {
+  async function getTransactions({ search = "", period = "day", date = "", week = "", month = "", year = "", transaction_type = "all", page = 1, exclude_test = false } = {}) {
     // GET /api/admin/transactions  (protected — admin token)
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     params.set("transaction_type", transaction_type);
+    if (exclude_test) params.set("exclude_test", "1");
     params.set("page", page);
     if (period) params.set("period", period);
     if (date)   params.set("date",   date);
@@ -2304,6 +2315,9 @@ var API = (() => {
     markAllCustomerNotificationsRead,
     // Payments
     processPayment,
+    createClinicOnlinePayment,
+    clinicOnlinePaymentStatus,
+    cancelClinicOnlinePayment,
     createGroomingOnlinePayment,
     groomingOnlinePaymentStatus,
     cancelGroomingOnlinePayment,

@@ -336,7 +336,7 @@
                           <p class="transaction-reference" x-text="tx.reference"></p>
                         </div>
                         <p class="transaction-pets" :title="transactionDetails(tx)" x-text="transactionDetails(tx)"></p>
-                        <span class="transaction-method" x-text="tx.paymentMethodLabel || tx.paymentMethod || '—'"></span>
+                        <span class="transaction-method" x-text="(tx.paymentMethodLabel || tx.paymentMethod || '—') + (tx.isTest ? ' · Test' : '')"></span>
                         <p class="transaction-total" x-text="formatInvoicePeso(tx.finalPrice)"></p>
                         <button type="button" class="transaction-button transaction-button-secondary transaction-view"
                           :data-transaction-id="tx.key || tx.id" @click="openDetails(tx, $el)" aria-haspopup="dialog" :aria-label="'View Details for ' + tx.reference">View Details</button>
@@ -366,7 +366,7 @@
                   <div class="transaction-dialog-subtitle">
                     <span class="transaction-reference" x-text="selectedTransaction.reference"></span>
                     <span x-text="formatTransactionDate(selectedTransaction)"></span>
-                    <span class="transaction-method" x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></span>
+                    <span class="transaction-method" x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></span>
                   </div>
                 </header>
                 <div x-ref="detailsBody" class="transaction-dialog-body" tabindex="0" aria-label="Transaction details content">
@@ -377,7 +377,7 @@
                       <template x-if="!isProductSale(selectedTransaction)"><div><dt>Pet</dt><dd x-text="petNames(selectedTransaction).join(', ') || '—'"></dd></div></template>
                       <div><dt x-text="isClinicPayment(selectedTransaction) ? 'Clinic Reference' : 'Reference'">Reference</dt><dd x-text="selectedTransaction.reference"></dd></div>
                       <div><dt>Transaction Date</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
-                      <div x-show="!isClinicPayment(selectedTransaction)"><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
+                      <div x-show="!isClinicPayment(selectedTransaction)"><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
                     </dl>
                   </section>
                   <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction)">
@@ -431,10 +431,10 @@
                   <section class="transaction-detail-section" aria-labelledby="transaction-payment-title">
                     <h3 id="transaction-payment-title">Payment Details</h3>
                     <dl class="transaction-line-items transaction-payment">
-                      <div><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
+                      <div><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
                       <div><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
-                      <div x-show="selectedTransaction.paymentMethod !== 'online'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
-                      <div x-show="selectedTransaction.paymentMethod !== 'online'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
+                      <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
+                      <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'online' && selectedTransaction.providerMethod"><dt>Provider Method</dt><dd x-text="selectedTransaction.providerMethod"></dd></div>
                       <div x-show="isClinicPayment(selectedTransaction) || selectedTransaction.processedByName"><dt>Processed By</dt><dd x-text="selectedTransaction.processedByName || '—'"></dd></div>
                       <div><dt>Paid At</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
@@ -464,10 +464,10 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=pos-20261007&auth=session-scope-20261006&clinic=roles-20261010"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=pos-20261007&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared"></script>
     <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016"></script>
-    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
+    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=20261018-shared"></script>
+    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=20261018-shared"></script>
   </body>
 </html>

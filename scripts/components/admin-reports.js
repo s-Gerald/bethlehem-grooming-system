@@ -125,6 +125,7 @@ function adminReports() {
 
       try {
         const data = await API.getTransactions({
+          exclude_test: true,
           period: this.transactionPeriod,
           date: this.transactionPeriod === "day" ? this.transactionSelectedDate : "",
           week: this.transactionPeriod === "week" ? this.transactionSelectedWeek : "",
@@ -771,7 +772,8 @@ function adminReports() {
         .trim()
         .toLowerCase();
       const compact = text.replace(/[\s_-]+/g, "");
-      const knownMethods = ["cash", "gcash", "maya", "card"];
+      if (compact === "paymaya") return "maya";
+      const knownMethods = ["cash", "gcash", "maya", "card", "qrph", "online"];
 
       if (knownMethods.includes(compact)) {
         return compact;
@@ -790,6 +792,8 @@ function adminReports() {
         gcash: "GCash",
         maya: "Maya",
         card: "Card",
+        qrph: "QR Ph",
+        online: "Online Payment",
         unspecified: "Unspecified",
       };
 

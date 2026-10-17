@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\InventoryItem;
+use App\Models\GatewayPayment;
 use App\Models\InventoryTransaction;
 use App\Models\User;
 
@@ -95,11 +96,16 @@ class InventoryStockMovementService
             })
             ->values();
 
+        $items = InventoryItem::whereIn('item_id', $entries->pluck('item_id')->unique())
+            ->where('is_active', 1)->orderBy('item_id')->lockForUpdate()->get()->keyBy('item_id');
+        $reservations = GatewayPayment::reservedQuantities($items->keys());
         foreach ($entries as $entry) {
-            $item = InventoryItem::where('item_id', $entry['item_id'])
-                ->where('is_active', 1)
-                ->lockForUpdate()
-                ->firstOrFail();
+            $item = $items->get($entry['item_id']);
+            abort_unless($item, 404);
+            $reserved = $reservations[$item->item_id] ?? 0;
+            if ($reserved > 0 && (float) $item->quantity_on_hand - $reserved < (float) $entry['quantity']) {
+                abort(422, "Stock for \"{$item->item_name}\" is reserved for an online payment.");
+            }
 
             if ((float) $item->quantity_on_hand < (float) $entry['quantity']) {
                 abort(422, "Insufficient stock for \"{$item->item_name}\". Available: {$item->quantity_on_hand} {$item->unit}.");
@@ -109,7 +115,7 @@ class InventoryStockMovementService
                 && ! in_array($item->category, ['pet_shop', 'miscellaneous'], true)) {
                 $balance = $this->batchBalances->forItem((int) $item->item_id);
 
-                if ((float) $balance['unexpired_quantity'] + 0.00001 < (float) $entry['quantity']) {
+                if ((float) $balance['unexpired_quantity'] - $reserved + 0.00001 < (float) $entry['quantity']) {
                     abort(422, "Insufficient unexpired stock for \"{$item->item_name}\". Unexpired available: {$balance['unexpired_quantity']} {$item->unit}; physical stock: {$item->quantity_on_hand} {$item->unit}.");
                 }
             }

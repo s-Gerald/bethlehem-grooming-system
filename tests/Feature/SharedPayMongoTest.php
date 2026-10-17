@@ -1,0 +1,420 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\GatewayPayment;
+use App\Models\Payment;
+use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class SharedPayMongoTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Schema::create('bookings', function (Blueprint $table) {
+            $table->increments('booking_id');
+            $table->string('booking_reference');
+            $table->string('status');
+            $table->boolean('paid')->default(false);
+            $table->decimal('total_amount', 10, 2)->default(0);
+            $table->timestamp('archived_at')->nullable();
+            $table->timestamp('grooming_finished_at')->nullable();
+        });
+        Schema::create('pets', function (Blueprint $table) {
+            $table->increments('pet_id');
+            $table->string('pet_name');
+            $table->string('species');
+            $table->string('size');
+            $table->text('clinic_verified_fields')->nullable();
+        });
+        Schema::create('booking_pets', function (Blueprint $table) {
+            $table->increments('booking_pet_id');
+            $table->unsignedInteger('booking_id');
+            $table->unsignedInteger('pet_id');
+            $table->string('registered_size');
+            $table->string('confirmed_size')->nullable();
+            $table->string('grooming_state');
+            $table->timestamp('grooming_end_time')->nullable();
+        });
+        Schema::create('services', function (Blueprint $table) {
+            $table->increments('service_id');
+            $table->string('slug');
+            $table->string('service_name');
+        });
+        Schema::create('booking_services', function (Blueprint $table) {
+            $table->increments('booking_service_id');
+            $table->unsignedInteger('booking_id');
+            $table->unsignedInteger('booking_pet_id');
+            $table->unsignedInteger('service_id');
+            $table->decimal('price_at_booking', 8, 2);
+            $table->decimal('price_min_at_booking', 8, 2)->nullable();
+            $table->decimal('price_max_at_booking', 8, 2)->nullable();
+        });
+        Schema::create('payments', function (Blueprint $table) {
+            $table->increments('payment_id');
+            $table->unsignedInteger('booking_id');
+            $table->decimal('total_amount', 10, 2);
+            $table->decimal('amount_tendered', 10, 2);
+            $table->decimal('change_amount', 10, 2);
+            $table->string('payment_method');
+            $table->string('payment_status');
+            $table->text('notes')->nullable();
+            $table->timestamp('paid_at');
+            $table->timestamp('created_at')->nullable();
+        });
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->increments('notification_id');
+            $table->string('type');
+            $table->unsignedInteger('booking_id');
+            $table->text('message');
+            $table->boolean('is_read');
+            $table->timestamp('created_at');
+        });
+        Schema::create('inventory_items', function (Blueprint $table) {
+            $table->increments('item_id');
+            $table->string('item_name');
+            $table->string('category');
+            $table->string('unit');
+            $table->decimal('unit_cost', 8, 2)->default(0);
+            $table->decimal('selling_price', 8, 2)->nullable();
+            $table->decimal('quantity_on_hand', 10, 2);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+        Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->increments('transaction_id');
+            $table->unsignedInteger('item_id');
+            $table->string('type');
+            $table->decimal('quantity', 10, 2);
+            $table->decimal('unit_cost_at_time', 8, 2)->nullable();
+            $table->decimal('selling_price_at_time', 8, 2)->nullable();
+            $table->string('reason');
+            $table->string('reference_type');
+            $table->unsignedInteger('reference_id')->nullable();
+            $table->unsignedInteger('performed_by')->nullable();
+            $table->date('expiry_date')->nullable();
+            $table->string('batch_number')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamp('created_at')->nullable();
+        });
+        Schema::create('grooming_payment_products', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('payment_id');
+            $table->unsignedInteger('item_id');
+            $table->string('item_name');
+            $table->unsignedInteger('quantity');
+            $table->decimal('price_at_sale', 8, 2);
+            $table->decimal('subtotal', 10, 2);
+        });
+        Schema::create('users', function (Blueprint $table) {
+            $table->increments('user_id');
+            $table->string('role');
+            $table->string('first_name')->nullable();
+            $table->string('last_name')->nullable();
+        });
+        (require database_path('migrations/2026_10_16_120000_create_gateway_payments_table.php'))->up();
+        DB::table('users')->insert(['user_id' => 7, 'role' => 'admin']);
+        DB::table('bookings')->insert(['booking_id' => 1, 'booking_reference' => 'TEST-ONLINE', 'status' => 'for_payment']);
+        DB::table('pets')->insert(['pet_id' => 4, 'pet_name' => 'Rigby', 'species' => 'Dog', 'size' => 'large']);
+        DB::table('booking_pets')->insert(['booking_pet_id' => 2, 'booking_id' => 1, 'pet_id' => 4,
+            'registered_size' => 'large', 'confirmed_size' => 'large', 'grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        DB::table('services')->insert(['service_id' => 3, 'slug' => 'regular_dog_grooming', 'service_name' => 'Regular Grooming']);
+        DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
+            'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
+        config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
+            'services.paymongo.payment_methods' => ['qrph', 'gcash', 'paymaya', 'card'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
+        Http::preventStrayRequests();
+        $this->fakeProvider();
+        Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->id(); $table->string('appointment_reference'); $table->string('status');
+            $table->decimal('total_amount', 10, 2)->default(0); $table->boolean('paid')->default(false);
+            $table->string('payment_method')->nullable(); $table->decimal('cash_received', 10, 2)->nullable();
+            $table->unsignedInteger('paid_by_user_id')->nullable(); $table->timestamp('paid_at')->nullable();
+            $table->timestamp('archived_at')->nullable(); $table->timestamps();
+        });
+        Schema::create('clinic_charges', function (Blueprint $table) {
+            $table->id(); $table->unsignedBigInteger('clinic_appointment_id');
+            $table->string('kind'); $table->string('description'); $table->decimal('quantity', 10, 2);
+            $table->decimal('unit_price', 10, 2); $table->decimal('amount', 10, 2); $table->timestamps();
+        });
+        Schema::create('pos_transactions', function (Blueprint $table) {
+            $table->increments('pos_id'); $table->unsignedInteger('cashier_id');
+            $table->decimal('total_amount', 10, 2); $table->decimal('amount_tendered', 10, 2);
+            $table->decimal('change_amount', 10, 2); $table->text('notes')->nullable(); $table->timestamp('created_at')->nullable();
+        });
+        Schema::create('pos_transaction_items', function (Blueprint $table) {
+            $table->id(); $table->unsignedInteger('pos_id'); $table->unsignedInteger('item_id');
+            $table->string('item_name'); $table->string('unit'); $table->decimal('quantity', 10, 2);
+            $table->decimal('price_at_sale', 10, 2); $table->decimal('subtotal', 10, 2);
+        });
+        $migration = database_path('migrations/2026_10_18_000001_extend_shared_gateway_payments.php');
+        (require $migration)->up();
+        DB::table('clinic_appointments')->insert(['id' => 1, 'appointment_reference' => 'CLINIC-TEST', 'status' => 'for_payment', 'total_amount' => 1]);
+        DB::table('clinic_charges')->insert(['clinic_appointment_id' => 1, 'kind' => 'service', 'description' => 'Consultation', 'quantity' => 1, 'unit_price' => 500, 'amount' => 500]);
+        DB::table('inventory_items')->insert(['item_id' => 10, 'item_name' => 'Dog Treats', 'category' => 'pet_shop', 'unit' => 'pack', 'quantity_on_hand' => 3, 'selling_price' => 80]);
+        Sanctum::actingAs(User::findOrFail(7));
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (['gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
+            'notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings', 'users'] as $table) {
+            Schema::dropIfExists($table);
+        }
+        parent::tearDown();
+    }
+
+
+    public function test_clinic_checkout_uses_finalized_database_charges_and_blocks_direct_online_settlement(): void
+    {
+        $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'gcash', 'total_amount' => 500])->assertUnprocessable();
+        $this->postJson('/api/admin/clinic-appointments/1/online-payment', ['total_amount' => 1])->assertOk()->assertJsonPath('online_payment.amount', '500.00');
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => false]);
+        $this->assertDatabaseCount('payments', 0);
+        Http::assertSent(fn ($r) => $r['data']['attributes']['line_items'][0]['amount'] === 50000
+            && str_contains($r['data']['attributes']['success_url'], '/pages/admin/clinic.html?')
+            && str_contains($r['data']['attributes']['success_url'], 'gateway_payment=1'));
+        $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 500, 'amount_paid' => 500])->assertUnprocessable();
+    }
+
+    public function test_clinic_verified_webhook_settles_once_with_actual_method(): void
+    {
+        $this->clinicCheckout();
+        $event = $this->event();
+        $this->webhook($event)->assertOk(); $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => true, 'status' => 'completed', 'payment_method' => 'qrph', 'gateway_payment_id' => 1]);
+        $this->assertDatabaseCount('gateway_payments', 1);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_clinic_checkout_preserves_whole_quantities_and_finalized_fractional_charges(): void
+    {
+        DB::table('clinic_charges')->where('id', 1)->update(['quantity' => 2, 'amount' => 1000]);
+        DB::table('clinic_charges')->insert(['clinic_appointment_id' => 1, 'kind' => 'medicine', 'description' => 'Medicine dose', 'quantity' => 0.5, 'unit_price' => 100, 'amount' => 50]);
+        $this->clinicCheckout();
+        Http::assertSent(fn ($request) => $request['data']['attributes']['line_items'][0]['quantity'] === 2
+            && $request['data']['attributes']['line_items'][0]['amount'] === 50000
+            && $request['data']['attributes']['line_items'][1]['quantity'] === 1
+            && $request['data']['attributes']['line_items'][1]['amount'] === 5000);
+        $this->assertDatabaseHas('gateway_payments', ['amount' => 1050, 'livemode' => false]);
+    }
+
+    public function test_clinic_rejects_wrong_amount_metadata_signature_and_live_webhooks(): void
+    {
+        $this->clinicCheckout();
+        $this->webhook($this->event(1))->assertUnprocessable();
+        $this->webhook($this->event(50000, true))->assertUnprocessable();
+        $this->webhook($this->event(), 'invalid')->assertUnauthorized();
+        $event = $this->event(); $event['data']['attributes']['data']['attributes']['metadata']['clinic_appointment_id'] = '99';
+        $this->webhook($event)->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_appointments', ['paid' => false]);
+    }
+
+    public function test_current_send_webhook_envelope_settles_in_test_mode(): void
+    {
+        $this->clinicCheckout();
+        $this->webhook(['id' => 'evt_current', 'event_type' => 'send.webhook', 'data' => $this->event()['data']['attributes']])->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['paid' => true, 'status' => 'completed']);
+    }
+
+    public function test_pos_qrph_checkout_reserves_stock_and_only_signed_webhook_creates_sale(): void
+    {
+        $this->posCheckout('qrph')->assertOk()->assertJsonPath('online_payment.amount', '160.00');
+        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph']
+            && $r['data']['attributes']['line_items'][0]['quantity'] === 2
+            && $r['data']['attributes']['line_items'][0]['amount'] === 8000);
+        $this->assertDatabaseCount('pos_transactions', 0);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
+        $this->assertDatabaseHas('gateway_stock_reservations', ['item_id' => 10, 'quantity' => 2]);
+        $this->postJson('/api/pos/transactions', ['items' => [['item_id' => 10, 'quantity' => 2]], 'amount_tendered' => 160])->assertUnprocessable();
+        $this->webhook($this->event(16000))->assertOk(); $this->webhook($this->event(16000))->assertOk();
+        $this->assertDatabaseCount('pos_transactions', 1); $this->assertDatabaseCount('inventory_transactions', 1);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'qrph')->assertJsonPath('data.is_test', true);
+    }
+
+    public function test_pos_online_methods_duplicate_requests_and_frozen_prices(): void
+    {
+        $this->posCheckout()->assertOk(); $this->posCheckout()->assertOk();
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['gcash', 'paymaya', 'card']);
+        DB::table('inventory_items')->where('item_id', 10)->update(['selling_price' => 999]);
+        $event = $this->event(16000); $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = 'gcash';
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('pos_transaction_items', ['price_at_sale' => 80, 'subtotal' => 160]);
+        $repeated = $this->posCheckout();
+        $this->assertSame(200, $repeated->status(), $repeated->getContent());
+        $repeated->assertJsonPath('online_payment.status', 'paid');
+        $this->assertDatabaseCount('pos_transactions', 1);
+    }
+
+    public function test_cancellation_does_not_release_stock_until_provider_confirms_expiry(): void
+    {
+        $this->posCheckout()->assertOk();
+        $this->deleteJson('/api/pos/online-payment/1')->assertUnprocessable();
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->fakeProvider('expired');
+        $this->deleteJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'cancelled');
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        $this->assertDatabaseCount('pos_transactions', 0);
+    }
+
+    public function test_return_and_provider_paid_status_cannot_settle_without_webhook(): void
+    {
+        $this->posCheckout()->assertOk();
+        $event = $this->event(16000);
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake(['api.paymongo.com/*' => Http::response(['data' => $event['data']['attributes']['data']])]);
+        $this->getJson('/api/pos/online-payment/1?return=success')->assertOk()->assertJsonPath('online_payment.status', 'pending');
+        $this->assertDatabaseCount('pos_transactions', 0); $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->webhook($event)->assertOk();
+    }
+
+    public function test_pending_stock_is_protected_from_manual_stock_out_and_other_cashiers(): void
+    {
+        $this->posCheckout()->assertOk();
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => 10, 'quantity' => 2, 'reason' => 'damaged']]])->assertUnprocessable();
+        DB::table('users')->insert(['user_id' => 8, 'role' => 'admin']); Sanctum::actingAs(User::findOrFail(8));
+        $this->posCheckout('online', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->assertUnprocessable();
+        $this->getJson('/api/pos/online-payment/1')->assertForbidden();
+        $this->assertDatabaseCount('gateway_payments', 1);
+    }
+
+    public function test_checkout_creation_failure_releases_but_timeout_retains_reservation(): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory); Http::fake(['api.paymongo.com/*' => Http::response([], 422)]);
+        $this->posCheckout()->assertStatus(502);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        Http::swap(new \Illuminate\Http\Client\Factory); Http::fake(['api.paymongo.com/*' => Http::failedConnection()]);
+        $this->posCheckout('online', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->assertStatus(502);
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->posCheckout('online', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')->assertOk()->assertJsonPath('online_payment.status', 'pending');
+    }
+
+    public function test_live_configuration_is_rejected_even_with_live_keys(): void
+    {
+        config(['services.paymongo.livemode' => true, 'services.paymongo.secret_key' => 'sk_live_fixture']);
+        $this->posCheckout()->assertUnprocessable(); Http::assertNothingSent();
+    }
+
+    public function test_test_sales_remain_in_history_but_are_excluded_from_financial_reporting(): void
+    {
+        $this->posCheckout()->assertOk(); $this->webhook($this->event(16000))->assertOk();
+        $this->getJson('/api/admin/transactions?transaction_type=product_sale')->assertOk()
+            ->assertJsonPath('transactions.0.paymentMethod', 'qrph')->assertJsonPath('transactions.0.isTest', true)
+            ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 160);
+        $this->getJson('/api/admin/transactions?transaction_type=product_sale&exclude_test=1')->assertOk()
+            ->assertJsonPath('total', 0)->assertJsonPath('collection_total', 0);
+    }
+
+    public function test_processing_payments_keep_reservations_even_when_session_claims_expired(): void
+    {
+        $this->posCheckout()->assertOk();
+        foreach (['paid', 'pending', 'processing'] as $status) {
+            $session = $this->event(16000)['data']['attributes']['data'];
+            $session['attributes']['status'] = 'expired';
+            $session['attributes']['payments'][0]['attributes']['status'] = $status;
+            Http::swap(new \Illuminate\Http\Client\Factory);
+            Http::fake(['api.paymongo.com/*' => Http::response(['data' => $session])]);
+            $this->deleteJson('/api/pos/online-payment/1')->assertUnprocessable();
+            $this->getJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'pending');
+            $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        }
+        $this->assertDatabaseCount('pos_transactions', 0);
+    }
+
+    public function test_failed_payment_event_is_not_terminal_until_checkout_is_confirmed_expired(): void
+    {
+        $this->posCheckout()->assertOk();
+        $event = $this->event(16000); $event['data']['attributes']['type'] = 'payment.failed';
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending']);
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->fakeProvider('expired');
+        $this->getJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'expired');
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        $this->assertDatabaseCount('pos_transactions', 0);
+    }
+
+    public function test_clinic_cannot_change_billing_or_cancel_a_pending_checkout(): void
+    {
+        $this->clinicCheckout();
+        $this->postJson('/api/admin/clinic-appointments/1/cancel')->assertUnprocessable();
+        $this->patchJson('/api/admin/clinic-cases/1/charges/1', ['unit_price' => 1])->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_charges', ['amount' => 500]);
+        $this->assertDatabaseHas('clinic_appointments', ['status' => 'for_payment', 'paid' => false]);
+    }
+
+    public function test_pos_rejects_changed_prices_invalid_quantities_and_duplicate_idempotency_ownership(): void
+    {
+        $payload = ['payment_method' => 'online', 'request_key' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'];
+        $this->postJson('/api/pos/online-payment', [...$payload, 'items' => [['item_id' => 10, 'quantity' => 1.5]]])->assertUnprocessable();
+        $this->postJson('/api/pos/online-payment', [...$payload, 'items' => [['item_id' => 10, 'quantity' => 1, 'expected_price' => 1]]])->assertUnprocessable()->assertJsonPath('code', 'POS_CART_CHANGED');
+        Http::assertNothingSent();
+        $this->posCheckout()->assertOk();
+        DB::table('users')->insert(['user_id' => 8, 'role' => 'admin']); Sanctum::actingAs(User::findOrFail(8));
+        $this->posCheckout()->assertForbidden();
+        $this->assertDatabaseCount('gateway_payments', 1);
+    }
+
+    public function test_migration_round_trip_preserves_existing_cash_sales(): void
+    {
+        DB::table('pos_transactions')->insert(['cashier_id' => 7, 'total_amount' => 80, 'amount_tendered' => 100, 'change_amount' => 20]);
+        $migration = require database_path('migrations/2026_10_18_000001_extend_shared_gateway_payments.php');
+        $migration->down();
+        $this->assertDatabaseHas('pos_transactions', ['total_amount' => 80, 'change_amount' => 20]);
+        $migration->up();
+        $this->assertDatabaseHas('pos_transactions', ['total_amount' => 80, 'payment_method' => 'cash', 'gateway_payment_id' => null]);
+    }
+
+    private function clinicCheckout(): void
+    {
+        $this->postJson('/api/admin/clinic-appointments/1/online-payment', [])->assertOk();
+    }
+
+    private function posCheckout(string $method = 'online', string $key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    {
+        return $this->postJson('/api/pos/online-payment', ['payment_method' => $method, 'request_key' => $key,
+            'items' => [['item_id' => 10, 'quantity' => 2]], 'total_amount' => 1]);
+    }
+
+    private function fakeProvider(string $status = 'active'): void
+    {
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::preventStrayRequests();
+        Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_fixture', 'type' => 'checkout_session',
+            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_fixture', 'status' => $status, 'livemode' => false]]])]);
+    }
+
+    private function event(int $amount = 50000, bool $live = false): array
+    {
+        $attempt = GatewayPayment::firstOrFail();
+        return ['data' => ['id' => 'evt_fixture', 'type' => 'event', 'attributes' => [
+            'type' => 'checkout_session.payment.paid', 'livemode' => $live,
+            'data' => ['id' => 'cs_fixture', 'type' => 'checkout_session', 'attributes' => [
+                'livemode' => $live, 'metadata' => ['gateway_payment_id' => (string) $attempt->id, ...match ($attempt->context) { 'clinic' => ['clinic_appointment_id' => '1'], 'pos' => ['cashier_id' => '7'], default => ['booking_id' => '1'] }, 'context' => $attempt->context],
+                'payments' => [['id' => 'pay_fixture', 'type' => 'payment', 'attributes' => [
+                    'status' => 'paid', 'amount' => $amount, 'currency' => 'PHP', 'livemode' => $live,
+                    'paid_at' => time(), 'source' => ['type' => 'qrph'],
+                ]]],
+            ]],
+        ]]];
+    }
+
+    private function webhook(array $event, ?string $signature = null)
+    {
+        $body = json_encode($event, JSON_UNESCAPED_SLASHES);
+        $timestamp = time();
+        $signature ??= 't='.$timestamp.',te='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_fixture').',li=';
+        return $this->call('POST', '/api/paymongo/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_PAYMONGO_SIGNATURE' => $signature,
+        ], $body);
+    }
+}

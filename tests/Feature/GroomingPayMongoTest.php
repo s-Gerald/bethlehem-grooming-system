@@ -246,7 +246,7 @@ class GroomingPayMongoTest extends TestCase
         $this->assertSame('pending', GatewayPayment::first()->status);
     }
 
-    public function test_live_signature_uses_li_and_accepts_the_current_envelope(): void
+    public function test_live_signature_is_rejected_even_with_the_current_envelope(): void
     {
         $this->checkout()->assertOk();
         config(['services.paymongo.livemode' => true]);
@@ -254,8 +254,8 @@ class GroomingPayMongoTest extends TestCase
         $event = ['id' => 'evt_current', 'event_type' => 'send.webhook', 'data' => $this->event(live: true)['data']['attributes']];
         $body = json_encode($event, JSON_UNESCAPED_SLASHES);
         $time = time();
-        $this->webhook($event, 't='.$time.',te=,li='.hash_hmac('sha256', $time.'.'.$body, 'whsec_fixture'))->assertOk();
-        $this->assertSame('paid', GatewayPayment::first()->status);
+        $this->webhook($event, 't='.$time.',te=,li='.hash_hmac('sha256', $time.'.'.$body, 'whsec_fixture'))->assertUnauthorized();
+        $this->assertSame('pending', GatewayPayment::first()->status);
     }
 
     public function test_unpaid_provider_payment_cannot_settle(): void

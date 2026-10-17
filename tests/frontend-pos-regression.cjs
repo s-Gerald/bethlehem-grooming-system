@@ -199,10 +199,6 @@ function testPaymentAndScannerIntegration() {
   assert.doesNotMatch(markup, /Refresh stock and prices|refreshCart/);
   assert.match(markup, /min="1" step="1"/);
   assert.match(markup, /x-show="validationFailed"/);
-  for (const label of ['QR Ph', 'Online Payment']) {
-    assert.ok(markup.includes(`disabled aria-label="${label} coming soon"`));
-    assert.ok(markup.includes(`<span>${label}</span><span class="pos-coming-soon">Coming soon</span>`));
-  }
   assert.match(markup, /@click="openScanner\(\)" aria-label="Scan barcode"/);
   assert.match(markup, /phosphor\.svg#barcode/);
   for (const page of ['appointments', 'dashboard']) {

@@ -466,43 +466,23 @@ class PaymentController extends Controller
             ]);
         });
 
-        // Only the request that created the attempt may submit it to PayMongo.
-        if ($attempt->wasRecentlyCreated) {
-            DB::transaction(function () use ($attempt, $provider) {
-                $attempt = GatewayPayment::whereKey($attempt->id)->lockForUpdate()->firstOrFail();
-                $response = $provider->createCheckout([
-                    'line_items' => $attempt->snapshot['line_items'],
-                    'payment_method_types' => array_values(array_filter(array_map('trim', config('services.paymongo.payment_methods')))),
-                    'reference_number' => $attempt->reference, 'pass_on_fees' => false,
-                    'success_url' => config('services.paymongo.return_url'), 'cancel_url' => config('services.paymongo.return_url'),
-                    'show_line_items' => true,
-                    'metadata' => ['gateway_payment_id' => (string) $attempt->id, 'booking_id' => (string) $attempt->payable_id, 'context' => 'grooming'],
-                ]);
-                $session = $response['data'] ?? [];
-                $url = data_get($session, 'attributes.checkout_url');
-                if ($response['ok'] && ! empty($session['id']) && is_string($url)
-                    && parse_url($url, PHP_URL_SCHEME) === 'https' && parse_url($url, PHP_URL_HOST) === 'checkout.paymongo.com'
-                    && data_get($session, 'attributes.livemode') === $attempt->livemode) {
-                    $attempt->update(['checkout_session_id' => $session['id'], 'checkout_url' => $url, 'reconciliation_reason' => null]);
-                } elseif (! $response['ok'] && ! $response['uncertain']) {
-                    $attempt->update(['status' => 'failed', 'reconciliation_reason' => null]);
-                } elseif (! empty($session['id'])) {
-                    $attempt->update(['checkout_session_id' => $session['id']]);
-                }
-            });
-        }
-        $attempt->refresh();
+        $attempt = app(\App\Services\OnlinePaymentService::class)->create($attempt);
         if (! $attempt->checkout_url) {
             return response()->json(['success' => false, 'message' => 'Unable to create online payment. Try again.'], 502);
         }
         return response()->json($this->onlinePaymentResponse($attempt));
     }
 
-    public function onlinePaymentStatus($bookingId)
+    public function onlinePaymentStatus(Request $request, $bookingId)
     {
-        $booking = Booking::findOrFail($bookingId);
-        $attempt = GatewayPayment::forGrooming($booking)->latest('id')->first();
-        return response()->json($attempt ? $this->onlinePaymentResponse($attempt) : ['success' => true, 'online_payment' => null]);
+        return DB::transaction(function () use ($request, $bookingId) {
+            $booking = Booking::whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $query = GatewayPayment::forGrooming($booking);
+            if ($request->filled('gateway_payment')) $query->whereKey($request->integer('gateway_payment'));
+            $attempt = $query->latest('id')->lockForUpdate()->first();
+            if ($attempt) app(\App\Services\OnlinePaymentService::class)->refreshStatus($attempt);
+            return response()->json($attempt ? $this->onlinePaymentResponse($attempt) : ['success' => true, 'online_payment' => null]);
+        });
     }
 
     public function cancelOnlineCheckout($bookingId)
@@ -511,37 +491,26 @@ class PaymentController extends Controller
             $booking = Booking::whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $attempt = GatewayPayment::forGrooming($booking)->latest('id')->lockForUpdate()->first();
             if (! $attempt) return response()->json(['success' => true, 'online_payment' => null]);
-            if ($attempt->status === 'paid' || $this->alreadyPaid($booking)) abort(409, 'This payment has already been completed.');
-            if ($attempt->status !== 'pending') return response()->json($this->onlinePaymentResponse($attempt));
-            if (! $attempt->checkout_session_id) {
-                throw ValidationException::withMessages(['payment' => 'Checkout creation needs reconciliation. Contact an administrator.']);
-            }
-            $provider = app(PayMongoService::class);
-            $result = $provider->expireCheckout($attempt->checkout_session_id);
-            if (! $result['ok']) $result = $provider->retrieveCheckout($attempt->checkout_session_id);
-            $session = $result['data'] ?? [];
-            $hasPayment = collect(data_get($session, 'attributes.payments', []))->contains(fn ($p) =>
-                in_array(data_get($p, 'attributes.status'), ['paid', 'pending', 'processing'], true));
-            if (! $result['ok'] || ($session['id'] ?? null) !== $attempt->checkout_session_id
-                || data_get($session, 'attributes.status') !== 'expired' || $hasPayment) {
-                throw ValidationException::withMessages(['payment' => 'Online payment is still pending.']);
-            }
-            $attempt->update(['status' => 'cancelled', 'reconciliation_reason' => null]);
+            if ($this->alreadyPaid($booking)) abort(409, 'This payment has already been completed.');
+            app(\App\Services\OnlinePaymentService::class)->cancel($attempt);
             return response()->json($this->onlinePaymentResponse($attempt));
         });
     }
 
     private function onlinePaymentResponse(GatewayPayment $attempt): array
     {
-        $response = ['success' => true, 'online_payment' => [
-            'id' => $attempt->id, 'status' => $attempt->status, 'amount' => $attempt->amount,
-            'checkout_url' => $attempt->checkout_url, 'flow' => $attempt->flow,
-            'reconciliation_reason' => $attempt->reconciliation_reason,
-        ]];
+        $response = app(\App\Services\OnlinePaymentService::class)->response($attempt);
+        $booking = Booking::with(['user', 'walkin'])->findOrFail($attempt->payable_id);
+        $response['booking'] = [
+            'id' => $booking->getKey(), 'bookingReference' => $booking->booking_reference, 'status' => $booking->status,
+            'ownerName' => $booking->user ? trim($booking->user->first_name.' '.$booking->user->last_name)
+                : trim(($booking->walkin?->fname ?? '').' '.($booking->walkin?->lname ?? '')),
+            'contactNumber' => $booking->user?->phone ?? $booking->walkin?->phone, 'appointmentDate' => $booking->booking_date,
+            'paymentReady' => true, 'petBreakdown' => $attempt->snapshot['summary']['pets'] ?? [],
+        ];
         if ($attempt->status === 'paid') {
-            $booking = Booking::findOrFail($attempt->payable_id);
             $response['payment'] = [
-                'final_price' => $attempt->amount, 'amount_paid' => null, 'change' => null,
+                'final_price' => $attempt->amount, 'amount_paid' => null, 'change' => null, 'is_test' => ! $attempt->livemode,
                 'payment_method' => 'online', 'payment_method_label' => 'Online Payment',
                 'paid_at' => $attempt->paid_at?->format('M j, Y g:i A'), 'booking_status' => $booking->status,
                 'all_pets_finished' => $booking->status === 'released', 'payment_summary' => $attempt->snapshot['summary'],
@@ -675,28 +644,40 @@ class PaymentController extends Controller
             });
         }
 
+        if ($request->boolean('exclude_test') && Schema::hasTable('gateway_payments')) {
+            foreach ([$query, $posQuery, $clinicQuery] as $financialQuery) {
+                if (Schema::hasColumn($financialQuery->getModel()->getTable(), 'gateway_payment_id')) {
+                    $financialQuery->whereDoesntHave('gatewayPayment', fn ($gateway) => $gateway->where('livemode', false));
+                }
+            }
+        }
+
         // Page common financial fields first, then hydrate only the visible records.
+        $testFlag = fn (string $table) => Schema::hasTable('gateway_payments') && Schema::hasColumn($table, 'gateway_payment_id')
+            ? "CASE WHEN EXISTS (SELECT 1 FROM gateway_payments WHERE gateway_payments.id = {$table}.gateway_payment_id AND gateway_payments.livemode = 0) THEN 1 ELSE 0 END"
+            : '0';
         $paymentKey = (new Payment)->getKeyName();
-        $groomingRows = $query->reorder()->selectRaw("{$paymentKey} as transaction_id, 'grooming_payment' as transaction_type, paid_at, total_amount")
+        $groomingRows = $query->reorder()->selectRaw("{$paymentKey} as transaction_id, 'grooming_payment' as transaction_type, paid_at, total_amount, ".$testFlag('payments')." as is_test")
             ->when(! in_array($type, ['all', 'grooming_payment'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
-        $posRows = $posQuery->selectRaw("pos_id as transaction_id, 'product_sale' as transaction_type, created_at as paid_at, total_amount")
+        $posRows = $posQuery->selectRaw("pos_id as transaction_id, 'product_sale' as transaction_type, created_at as paid_at, total_amount, ".$testFlag('pos_transactions')." as is_test")
             ->when(! in_array($type, ['all', 'product_sale'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
-        $clinicRows = $clinicQuery->selectRaw("id as transaction_id, 'clinic_payment' as transaction_type, paid_at, total_amount")
+        $clinicRows = $clinicQuery->selectRaw("id as transaction_id, 'clinic_payment' as transaction_type, paid_at, total_amount, ".$testFlag('clinic_appointments')." as is_test")
             ->when(! in_array($type, ['all', 'clinic_payment'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
         $combined = DB::query()->fromSub($groomingRows->unionAll($posRows)->unionAll($clinicRows), 'financial_transactions');
-        $collectionTotal = (float) (clone $combined)->sum('total_amount');
+        $collectionTotal = (float) (clone $combined)->where('is_test', 0)->sum('total_amount');
+        $testCollectionTotal = (float) (clone $combined)->where('is_test', 1)->sum('total_amount');
         $page = (clone $combined)->orderByDesc('paid_at')->orderBy('transaction_type')->orderByDesc('transaction_id')
             ->paginate(50, ['*'], 'page', max(1, (int) $request->query('page', 1)));
         $rows = $page->getCollection();
         $dateGroup = "COALESCE(DATE(paid_at), 'unknown')";
         $dateTotals = (clone $combined)->whereIn(DB::raw($dateGroup), $rows->pluck('paid_at')->map(fn ($at) => $at ? substr($at, 0, 10) : 'unknown')->unique())
-            ->selectRaw("{$dateGroup} as date_key, SUM(total_amount) as total")
+            ->selectRaw("{$dateGroup} as date_key, SUM(CASE WHEN is_test = 0 THEN total_amount ELSE 0 END) as total")
             ->groupByRaw($dateGroup)->pluck('total', 'date_key');
         $payments = Payment::with(['booking.user', 'products', 'processedBy', 'gatewayPayment'])
             ->whereKey($rows->where('transaction_type', 'grooming_payment')->pluck('transaction_id'))->get()->keyBy($paymentKey);
-        $sales = PosTransaction::with(['items.item', 'cashier'])
+        $sales = PosTransaction::with(['items.item', 'cashier', 'gatewayPayment'])
             ->whereKey($rows->where('transaction_type', 'product_sale')->pluck('transaction_id'))->get()->keyBy('pos_id');
-        $clinicPayments = ClinicAppointment::with(['user', 'walkin', 'pet.unregisteredCustomer', 'charges', 'paidBy'])
+        $clinicPayments = ClinicAppointment::with(['user', 'walkin', 'pet.unregisteredCustomer', 'charges', 'paidBy', 'gatewayPayment'])
             ->whereKey($rows->where('transaction_type', 'clinic_payment')->pluck('transaction_id'))->get()->keyBy('id');
         $transactions = $rows->map(fn ($row) => match ($row->transaction_type) {
             'product_sale' => $this->formatProductSale($sales->get($row->transaction_id)),
@@ -714,6 +695,7 @@ class PaymentController extends Controller
             'transactions' => $transactions->values(),
             'total' => $page->total(),
             'collection_total' => $collectionTotal,
+            'test_collection_total' => $testCollectionTotal,
             'date_totals' => $dateTotals,
             'page' => $page->currentPage(),
             'last_page' => $page->lastPage(),
@@ -800,6 +782,7 @@ class PaymentController extends Controller
             'paymentMethod' => $payment->payment_method,
             'paymentProvider' => $payment->payment_provider,
             'providerMethod' => $payment->provider_method,
+            'isTest' => $gateway ? ! $gateway->livemode : false,
             'reconciliationReason' => $gateway?->reconciliation_reason,
             'paymentMethodLabel' => $payment->payment_method === 'online' ? 'Online Payment' : ucfirst((string) $payment->payment_method),
             'notes' => $payment->notes,
@@ -836,9 +819,8 @@ class PaymentController extends Controller
             'changeGiven' => $appointment->cash_received !== null
                 ? round((float) $appointment->cash_received - (float) $appointment->total_amount, 2) : null,
             'paymentMethod' => $appointment->payment_method,
-            'paymentMethodLabel' => match ($appointment->payment_method) {
-                'gcash' => 'GCash', 'maya' => 'Maya', default => ucfirst((string) $appointment->payment_method),
-            },
+            'isTest' => $appointment->gatewayPayment ? ! $appointment->gatewayPayment->livemode : false,
+            'paymentMethodLabel' => GatewayPayment::labelFor($appointment->payment_method),
             'processedBy' => $appointment->paid_by_user_id,
             'processedByName' => $appointment->paidBy
                 ? trim($appointment->paidBy->first_name.' '.$appointment->paidBy->last_name) : null,
@@ -864,10 +846,11 @@ class PaymentController extends Controller
             'transactionTypeLabel' => 'Product Sale',
             'reference' => $receipt['reference'],
             'finalPrice' => (float) $pos->total_amount,
-            'amountPaid' => (float) $pos->amount_tendered,
-            'changeGiven' => (float) $pos->change_amount,
-            'paymentMethod' => 'cash',
-            'paymentMethodLabel' => 'Cash',
+            'amountPaid' => $pos->gatewayPayment ? null : (float) $pos->amount_tendered,
+            'changeGiven' => $pos->gatewayPayment ? null : (float) $pos->change_amount,
+            'paymentMethod' => $receipt['payment_method'],
+            'paymentMethodLabel' => $receipt['payment_method_label'],
+            'isTest' => $receipt['is_test'],
             'paidAt' => $receipt['created_at'],
             'dateKey' => $pos->created_at?->toDateString(),
             'processedBy' => $pos->cashier_id,

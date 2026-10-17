@@ -2,15 +2,32 @@ function adminPos() {
   return {
     searchQuery: "", searchResults: [], searching: false, noResults: false,
     _searchTimer: null, _searchVersion: 0,
+    paymentMethod: "cash", onlinePayment: null, verifyingPayment: false, requestKey: null,
     cart: [], amountTendered: "", notes: "",
     submitting: false, validating: false, validationFailed: false, error: "", notice: "",
     receipt: null, receiptOpen: false,
     scannerActive: false, _scanner: null,
 
-    init() {},
+    async init() {
+      const saved = window.OnlinePayment?.get('pos');
+      this.requestKey = saved?.requestKey || null;
+      this.submitting = true; this.verifyingPayment = saved?.outcome === 'success';
+      try {
+        const response = await InventoryAPI.onlinePaymentStatus(saved?.id, this.requestKey);
+        await this.applyPosOnlineStatus(response);
+        if (saved?.outcome === 'cancel' && this.onlinePayment?.status === 'pending') await this.cancelPosOnlinePayment();
+      } catch (error) {
+        if (saved?.id && [403, 404].includes(error.status)) {
+          window.OnlinePayment.clear('pos'); this.requestKey = null;
+          try {await this.applyPosOnlineStatus(await InventoryAPI.onlinePaymentStatus());}
+          catch (retryError) {this.error = retryError.message || 'Could not check online payments.';}
+        } else this.error = error.message || 'Could not restore online payment. Reload to retry.';
+      }
+      finally {this.submitting = false;}
+    },
 
     openScanner() {
-      if (this.submitting || this.validating || this.receiptOpen || this.scannerActive) return;
+      if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen || this.scannerActive) return;
       this.cancelSearch();
       window.ProductForm.openBarcodeScanner(this, "pos-qr-reader", (barcode) => {
         if (!this.scannerActive) return;
@@ -99,7 +116,7 @@ function adminPos() {
     hasProductStock(item) { return this.isRetailProduct(item) && this.productAvailability(item) >= 1; },
 
     addToCart(item) {
-      if (this.submitting || this.validating || this.receiptOpen) return;
+      if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
       if (!this.isRetailProduct(item)) { this.error = "This product is not available for retail sale."; return; }
       const available = this.productAvailability(item);
       if (available <= 0) { this.error = `${item.item_name} is out of stock.`; return; }
@@ -137,9 +154,10 @@ function adminPos() {
     updateLineSubtotal(line) {
       line.subtotal = Math.round((Number(line.quantity) || 0) * line.price * 100) / 100;
     },
-    removeFromCart(idx) { if (!this.submitting && !this.validating) this.cart.splice(idx, 1); },
+    removeFromCart(idx) { if (!this.submitting && !this.validating && !this.onlinePayment) this.cart.splice(idx, 1); },
     clearCart() {
-      if (this.submitting || this.validating) return;
+      if (this.submitting || this.validating || this.onlinePayment) return;
+      this.paymentMethod = "cash"; this.requestKey = null;
       this.cart = []; this.amountTendered = ""; this.notes = ""; this.error = ""; this.notice = ""; this.validationFailed = false;
     },
 
@@ -197,27 +215,39 @@ function adminPos() {
     },
     get canProcess() {
       return !this.validating && !this.validationFailed && this.cart.length > 0 && !this.cart.some(line => this.lineError(line))
-        && this.totalAmount > 0 && this.totalAmount <= 999999.99 && !this.cashError;
+        && !this.onlinePayment && this.totalAmount > 0 && this.totalAmount <= 999999.99 && (this.paymentMethod !== "cash" || !this.cashError);
     },
 
     async processSale() {
-      if (this.submitting || this.validating || this.receiptOpen) return;
+      if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
       this.error = "";
       if (!this.canProcess) { this.error = this.cart.map(line => this.lineError(line)).find(Boolean) || this.cashError || "Review the cart and supported total before completing the sale."; return; }
       this.submitting = true;
       try {
         if (!await this.revalidateCart()) return;
         if (!this.canProcess) { this.error = this.cashError || "Review the updated cart before completing the sale again."; return; }
+        if (this.paymentMethod !== 'cash') {
+          this.requestKey ||= window.crypto.randomUUID();
+          window.OnlinePayment.remember('pos', {request_key: this.requestKey}, null);
+          const response = await InventoryAPI.createOnlinePayment({
+            request_key: this.requestKey, payment_method: this.paymentMethod,
+            items: this.cart.map(line => ({item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock})),
+            notes: this.notes || null,
+          });
+          await this.applyPosOnlineStatus(response);
+          if (response.online_payment?.status === 'pending') this.openPosCheckout();
+          return;
+        }
         const res = await InventoryAPI.processSale({
           items: this.cart.map(line => ({ item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock })),
           amount_tendered: Number(this.amountTendered), notes: this.notes || null,
         });
-        this.receipt = res.data;
-        this.cart = []; this.amountTendered = ""; this.notes = ""; this.notice = "";
-        this.searchQuery = ""; this.cancelSearch();
-        this.receiptOpen = true;
-        this.$nextTick(() => { this.$refs.successDialog.showModal(); });
+        this.completePosSale(res.data);
       } catch (err) {
+        if (this.paymentMethod !== 'cash') {
+          try {await this.applyPosOnlineStatus(await InventoryAPI.onlinePaymentStatus(null, this.requestKey));}
+          catch { /* Keep the original create error. */ }
+        }
         if (err.code === "POS_CART_CHANGED" || err.data?.code === "POS_CART_CHANGED") {
           this.reconcileCart(err.data.data);
           return;
@@ -228,6 +258,61 @@ function adminPos() {
       } finally { this.submitting = false; }
     },
 
+    completePosSale(receipt) {
+      this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
+      this.onlinePayment = null; this.verifyingPayment = false;
+      window.OnlinePayment?.clear('pos'); this.requestKey = null;
+        this.receipt = receipt;
+        this.cart = []; this.amountTendered = ""; this.notes = ""; this.notice = "";
+        this.searchQuery = ""; this.cancelSearch();
+        this.receiptOpen = true;
+        this.$nextTick(() => { this.$refs.successDialog.showModal(); });
+      window.dispatchEvent?.(new CustomEvent('inventory:changed'));
+    },
+    openPosCheckout() {window.OnlinePayment.open('pos', this.onlinePayment, null);},
+    async applyPosOnlineStatus(response) {
+      const attempt = response.online_payment;
+      if (attempt?.status !== 'paid') {
+        if (response.cart) this.cart = response.cart.map(line => ({
+          item_id: line.item_id, item_name: line.name, unit: line.unit, quantity: line.quantity,
+          price: Number(line.price_at_sale), stock: line.quantity, subtotal: Number(line.subtotal), unavailable: false,
+        }));
+        this.notes = response.notes ?? this.notes;
+      }
+      if (attempt?.status === 'paid') {
+        this._posPaymentWatch?.stop();
+        this.onlinePayment = attempt;
+        if (!response.receipt || attempt.reconciliation_reason) {this.error = 'Payment received. Contact an administrator to reconcile stock.'; return;}
+        this.completePosSale(response.receipt);
+      } else if (attempt?.status === 'pending') {
+        this.onlinePayment = attempt; this.paymentMethod = attempt.flow || 'online';
+        window.OnlinePayment.remember('pos', {...attempt, request_key: this.requestKey}, null);
+        this.error = attempt.reconciliation_reason ? 'Checkout creation needs reconciliation. Contact an administrator.' : '';
+        if (!this._posPaymentWatch) {
+          this._posPaymentWatch = window.OnlinePayment.watch({
+            load: () => InventoryAPI.onlinePaymentStatus(this.onlinePayment.id), apply: result => this.applyPosOnlineStatus(result),
+            error: error => {this.error = error.message || 'Could not check payment. Retrying.';},
+            active: () => this.onlinePayment?.status === 'pending',
+          });
+          this._posPaymentWatch.check();
+        }
+      } else {
+        this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
+        this.onlinePayment = null; this.verifyingPayment = false; this.requestKey = null;
+        window.OnlinePayment?.clear('pos');
+      }
+    },
+    async cancelPosOnlinePayment() {
+      if (this._posCancelling) return;
+      this._posCancelling = true; this.submitting = true; this.error = '';
+      this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
+      try {await this.applyPosOnlineStatus(await InventoryAPI.cancelOnlinePayment(this.onlinePayment.id));}
+      catch (error) {this.error = error.message || 'Online payment is still pending.';}
+      finally {
+        this._posCancelling = false; this.submitting = false;
+        if (this.onlinePayment?.status === 'pending') await this.applyPosOnlineStatus({online_payment: this.onlinePayment});
+      }
+    },
     closeSuccess() { this.$refs.successDialog?.close(); this.receiptOpen = false; this.cancelSearch(); },
     newSale() {
       this.closeSuccess(); this.receipt = null; this.clearCart(); this.searchQuery = "";
@@ -238,6 +323,6 @@ function adminPos() {
     saleDate(value) {
       return value ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "";
     },
-    destroy() { if (this.scannerActive) this.closeScanner(); this.closeSuccess(); },
+    destroy() { this._posPaymentWatch?.stop(); if (this.scannerActive) this.closeScanner(); this.closeSuccess(); },
   };
 }

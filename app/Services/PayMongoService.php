@@ -11,8 +11,7 @@ class PayMongoService
     public function assertConfigured(): void
     {
         $key = (string) config('services.paymongo.secret_key');
-        $prefix = $this->livemode() ? 'sk_live_' : 'sk_test_';
-        if (! str_starts_with($key, $prefix) || ! config('services.paymongo.webhook_secret')) {
+        if ($this->livemode() || ! str_starts_with($key, 'sk_test_') || ! config('services.paymongo.webhook_secret')) {
             throw ValidationException::withMessages(['payment' => 'Online payment is not configured.']);
         }
     }
@@ -56,7 +55,7 @@ class PayMongoService
     public function validSignature(string $rawBody, string $header): bool
     {
         $secret = (string) config('services.paymongo.webhook_secret');
-        if ($secret === '') return false;
+        if ($secret === '' || $this->livemode()) return false;
         $parts = [];
         foreach (explode(',', $header) as $part) {
             [$name, $value] = array_pad(explode('=', trim($part), 2), 2, '');

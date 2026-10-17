@@ -72,6 +72,15 @@ class Payment extends Model
         return $this->belongsTo(Booking::class, 'booking_id', 'booking_id');
     }
 
+    public function scopeRealCollections($query)
+    {
+        if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
+            && \Illuminate\Support\Facades\Schema::hasColumn('payments', 'gateway_payment_id')) {
+            $query->whereDoesntHave('gatewayPayment', fn ($gateway) => $gateway->where('livemode', false));
+        }
+        return $query;
+    }
+
     public function gatewayPayment()
     {
         return $this->belongsTo(GatewayPayment::class);

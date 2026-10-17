@@ -648,7 +648,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             DB::table('clinic_appointments')->where('id', $index + 1)->update(['case_type' => 'vaccination']);
             $this->postJson($uri)->assertOk();
             $this->assertDatabaseHas('clinic_appointments', ['id' => $index + 1, 'status' => 'for_payment', 'paid' => false]);
-            $this->postJson('/api/admin/clinic-appointments/'.($index + 1).'/pay', ['total_amount' => 0, 'payment_method' => 'card'])->assertOk();
+            $this->postJson('/api/admin/clinic-appointments/'.($index + 1).'/pay', ['total_amount' => 0, 'payment_method' => 'cash', 'amount_paid' => 0])->assertOk();
         }
     }
 
@@ -2699,6 +2699,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['POST', 'api/admin/clinic-appointments/{id}/start-consultation', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/finish-consultation', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/pay', 'role:admin,staff'],
+            ['POST', 'api/admin/clinic-appointments/{id}/online-payment', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-appointments/{id}/online-payment', 'role:admin,staff'],
+            ['DELETE', 'api/admin/clinic-appointments/{id}/online-payment', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/cancel', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/record', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-appointments/{id}/attachments', 'role:admin,staff'],

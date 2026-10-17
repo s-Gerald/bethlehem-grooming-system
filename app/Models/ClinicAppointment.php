@@ -36,6 +36,7 @@ class ClinicAppointment extends Model
         'total_amount',
         'paid',
         'payment_method',
+        'gateway_payment_id',
         'cash_received',
         'paid_by_user_id',
         'paid_at',
@@ -119,6 +120,11 @@ class ClinicAppointment extends Model
         return $this->hasMany(VaccinationRecord::class, 'clinic_appointment_id', 'id');
     }
 
+    public function gatewayPayment()
+    {
+        return $this->belongsTo(GatewayPayment::class);
+    }
+
     public function charges()
     {
         return $this->hasMany(ClinicCharge::class);
@@ -142,6 +148,8 @@ class ClinicAppointment extends Model
 
     public function clinicalContentEditableFor(User $actor): bool
     {
+        if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
+            && GatewayPayment::forPayable($this, 'clinic')->where('status', 'pending')->exists()) return false;
         return in_array($this->status, self::CLINICAL_CONTENT_EDITABLE_STATUSES, true)
             || ($actor->role === 'admin' && $this->status === 'for_payment');
     }

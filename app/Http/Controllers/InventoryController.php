@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
+use App\Models\GatewayPayment;
 use App\Models\InventoryTransaction;
 use App\Models\PosTransaction;
 use App\Services\InventoryBatchBalanceService;
@@ -41,10 +42,11 @@ class InventoryController extends Controller
 
     // ── Formatters ─────────────────────────────────────────────────────────────
 
-    private function formatItem(InventoryItem $item, ?array $balance = null): array
+    private function formatItem(InventoryItem $item, ?array $balance = null, ?float $reserved = null): array
     {
         $balance ??= $this->batchBalances->forItem((int) $item->item_id);
         $physicalQuantity = (float) $item->quantity_on_hand;
+        $reserved ??= (float) (GatewayPayment::reservedQuantities([$item->item_id])[$item->item_id] ?? 0);
 
         return [
             'item_id'          => $item->item_id,
@@ -63,9 +65,9 @@ class InventoryController extends Controller
             'selling_price'    => $item->selling_price,
             'quantity_on_hand' => $item->quantity_on_hand,
             'unexpired_quantity' => $balance['unexpired_quantity'],
-            'saleable_quantity' => in_array($item->category, ['pet_shop', 'miscellaneous'], true)
-                ? $item->quantity_on_hand
-                : min($item->quantity_on_hand, $balance['unexpired_quantity']),
+            'saleable_quantity' => $reserved === 0.0 && in_array($item->category, ['pet_shop', 'miscellaneous'], true)
+                ? $item->quantity_on_hand : max(0, (in_array($item->category, ['pet_shop', 'miscellaneous'], true)
+                ? $physicalQuantity : min($physicalQuantity, $balance['unexpired_quantity'])) - $reserved),
             'expired_quantity' => $balance['expired_quantity'],
             'expiry_unknown_quantity' => $balance['unknown_expiry_quantity'],
             'historically_unsafe_quantity' => $balance['historically_unsafe_stock_out_quantity'],
@@ -86,10 +88,12 @@ class InventoryController extends Controller
         $items = new \Illuminate\Database\Eloquent\Collection($items);
         $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
         $balances = $this->batchBalances->forItems($items->pluck('item_id'));
+        $reserved = GatewayPayment::reservedQuantities($items->pluck('item_id'));
 
         return $items->map(fn (InventoryItem $item) => $this->formatItem(
             $item,
             $balances[(int) $item->item_id] ?? $this->batchBalances->emptyBalance(),
+            (float) ($reserved[$item->item_id] ?? 0),
         ));
     }
 
@@ -101,9 +105,10 @@ class InventoryController extends Controller
             ->where('quantity_on_hand', '>', 0)
             ->get();
         $balances = $this->batchBalances->forItems($items->pluck('item_id'));
+        $reserved = GatewayPayment::reservedQuantities($items->pluck('item_id'));
 
         $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
-        return $items->map(function (InventoryItem $item) use ($balances, $today, $cutoff) {
+        return $items->map(function (InventoryItem $item) use ($balances, $reserved, $today, $cutoff) {
             $balance = $balances[(int) $item->item_id] ?? $this->batchBalances->emptyBalance();
             $expiringBatches = collect($balance['batches'])
                 ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0
@@ -123,7 +128,7 @@ class InventoryController extends Controller
             $expiryDate = CarbonImmutable::parse($earliest['expiry_date']);
 
             return [
-                ...$this->formatItem($item, $balance),
+                ...$this->formatItem($item, $balance, (float) ($reserved[$item->item_id] ?? 0)),
                 'earliest_expiry' => $earliest['expiry_date'],
                 'is_expired' => $earliest['is_expired'],
                 'days_until_expiry' => (int) $today->diffInDays($expiryDate, false),

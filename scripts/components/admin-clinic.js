@@ -591,8 +591,9 @@ function adminClinicPage() {
       if (new URLSearchParams(window.location.search).get("tab") === "active-cases") this.tab = "active-cases";
       if (new URLSearchParams(window.location.search).get("tab") === "for-payment") this.tab = "for-payment";
       if (new URLSearchParams(window.location.search).get("tab") === "confined") { this.tab = "confined"; this.loadConfinedCases(); }
-      this.loadActiveCases();
+      await this.loadActiveCases();
       this.loadAllRecords();
+      await this.restoreOnlinePayment();
       window.addEventListener("clinic-case-updated", () => {
         this.loadActiveCases();
         if (this.profile.open) this.loadProfileVisit();
@@ -689,14 +690,20 @@ function adminClinicPage() {
       catch (error) { this.$store.clinicFeedback.notify(error.message || "Could not check in this patient.", "error"); }
       finally { this.caseBusyId = null; }
     },
-    reviewPayment(item) {
+    async reviewPayment(item, checkOnline = true) {
       if (!this.permissions.payment || item.status !== "for_payment" || this.payment.open) return;
       this.paymentReturnFocus = document.activeElement;
       this.paymentPageOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       this.receiptModal = null;
-      this.payment = { open: true, case: item, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false };
+      this.payment = { online: null, verifying: false, open: true, case: item, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false };
       this.$nextTick?.(() => document.getElementById('clinic-cash-received')?.focus());
+      if (checkOnline) {
+        this.payment.saving = true;
+        try { await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(item.id)); }
+        catch (error) { this.payment.error = error.message || 'Could not check payment.'; }
+        finally { this.payment.saving = false; }
+      }
     },
     get paymentTotalDue() { return Number(this.payment.case?.total_amount); },
     get paymentCashError() { return window.CashPayment.error(this.payment.amountPaid, this.paymentTotalDue); },
@@ -704,7 +711,9 @@ function adminClinicPage() {
     get paymentChange() { return window.CashPayment.change(this.payment.amountPaid, this.paymentTotalDue); },
     get canConfirmPayment() {
       return this.permissions.payment && this.payment.open && !this.payment.recorded && !this.payment.saving
-        && this.payment.method === 'cash' && Number.isFinite(this.paymentTotalDue) && this.paymentTotalDue >= 0 && !this.paymentCashError;
+        && (!this.payment.case?.status || this.payment.case.status === 'for_payment')
+        && !this.payment.online && Number.isFinite(this.paymentTotalDue) && this.paymentTotalDue >= 0
+        && (this.payment.method === 'online' ? this.paymentTotalDue > 0 : !this.paymentCashError);
     },
     updatePaymentCash() {
       this.payment.amountPaid = window.CashPayment.capInput(this.payment.amountPaid, this.paymentTotalDue);
@@ -735,6 +744,7 @@ function adminClinicPage() {
     },
     closePayment() {
       if (this.payment.saving) return;
+      this._clinicPaymentWatch?.stop(); this._clinicPaymentWatch = null;
       this.payment.open = false;
       document.body.style.overflow = this.paymentPageOverflow ?? '';
       this.$nextTick?.(() => {
@@ -747,11 +757,36 @@ function adminClinicPage() {
       if (!this.canConfirmPayment) return;
       this.payment.saving = true; this.payment.error = "";
       try {
+        if (this.payment.method === 'online') {
+          window.OnlinePayment.remember('clinic', {}, this.payment.case.id);
+          const response = await API.createClinicOnlinePayment(this.payment.case.id);
+          await this.applyClinicOnlineStatus(response);
+          if (response.online_payment?.status === 'pending') this.openClinicCheckout();
+          return;
+        }
         const response = await API.clinicRecordPayment(this.payment.case.id, {
           total_amount: this.payment.case.total_amount, payment_method: 'cash', amount_paid: Number(this.payment.amountPaid),
         });
-        const recorded = response.appointment;
+        this.completeClinicPayment(response.appointment);
+      } catch (error) {
+        if (this.payment.method === 'online') {
+          try { await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(this.payment.case.id)); }
+          catch { /* Preserve the original create error. */ }
+        }
+        this.payment.error = Object.values(error.errors || {}).flat().join(' ') || error.message || "Could not record payment.";
+        if (error.errors?.total_amount) {
+          await this.loadActiveCases();
+          const current = this.activeCases.find((item) => item.id === this.payment.case.id);
+          if (current) this.payment.case = current;
+        }
+      }
+      finally { this.payment.saving = false; }
+    },
+    completeClinicPayment(recorded) {
+      this._clinicPaymentWatch?.stop();
+      window.OnlinePayment?.clear('clinic');
         this.receiptModal = {
+          isTest: recorded.is_test === true,
           caseReference: recorded.appointment_reference,
           ownerName: recorded.ownerName,
           contactNumber: recorded.contactNumber === '—' ? '' : recorded.contactNumber,
@@ -759,7 +794,7 @@ function adminClinicPage() {
           patientInfo: [recorded.pet?.species, recorded.pet?.breed, recorded.pet?.gender].filter(Boolean).join(' · '),
           charges: recorded.charges || [],
           finalPrice: Number(recorded.total_amount),
-          paymentMethod: recorded.payment_method === 'cash' ? 'Cash' : recorded.payment_method,
+          paymentMethod: recorded.payment_method_label || (recorded.payment_method === 'cash' ? 'Cash' : recorded.payment_method),
           amountPaid: recorded.cash_received,
           change: recorded.change,
           paidAt: recorded.paid_at,
@@ -774,15 +809,62 @@ function adminClinicPage() {
         this.activeCases = this.activeCases.filter(item => item.id !== recorded.id);
         if (this.profileVisit?.id === recorded.id) this.profileVisit = null;
         window.dispatchEvent(new CustomEvent("clinic-case-updated"));
-      } catch (error) {
-        this.payment.error = Object.values(error.errors || {}).flat().join(' ') || error.message || "Could not record payment.";
-        if (error.errors?.total_amount) {
-          await this.loadActiveCases();
-          const current = this.activeCases.find((item) => item.id === this.payment.case.id);
-          if (current) this.payment.case = current;
+    },
+    openClinicCheckout() {
+      window.OnlinePayment.open('clinic', this.payment.online, this.payment.case.id);
+    },
+    async applyClinicOnlineStatus(response) {
+      const attempt = response.online_payment;
+      if (response.appointment) this.payment.case = {...this.payment.case, ...response.appointment};
+      if (attempt?.status === 'paid') {
+        this.payment.online = attempt;
+        if (attempt.reconciliation_reason) { this.payment.error = 'Payment received. Contact an administrator to reconcile this case.'; return; }
+        this.completeClinicPayment({...this.payment.case, ...response.appointment});
+      } else if (attempt?.status === 'pending') {
+        this.payment.online = attempt; this.payment.method = 'online';
+        window.OnlinePayment.remember('clinic', attempt, this.payment.case.id);
+        this.payment.error = attempt.reconciliation_reason ? 'Checkout creation needs reconciliation. Contact an administrator.' : '';
+        if (!this._clinicPaymentWatch) {
+          this._clinicPaymentWatch = window.OnlinePayment.watch({
+            load: () => API.clinicOnlinePaymentStatus(this.payment.case.id, this.payment.online?.id),
+            apply: result => this.applyClinicOnlineStatus(result),
+            error: error => {this.payment.error = error.message || 'Could not check payment. Retrying.';},
+            active: () => this.payment.open && this.payment.online?.status === 'pending',
+          });
+          // Start via the watcher once so status requests never overlap.
+          this._clinicPaymentWatch.check();
         }
+      } else {
+        this._clinicPaymentWatch?.stop(); this._clinicPaymentWatch = null;
+        this.payment.online = null; this.payment.verifying = false;
+        window.OnlinePayment?.clear('clinic');
       }
-      finally { this.payment.saving = false; }
+    },
+    async restoreOnlinePayment() {
+      const saved = window.OnlinePayment?.get('clinic');
+      if (!saved?.payable || !this.permissions.payment) return;
+      this.tab = 'for-payment';
+      const item = this.activeCases.find(item => String(item.id) === String(saved.payable)) || {id: saved.payable, status: 'for_payment'};
+      await this.reviewPayment(item, false);
+      this.payment.saving = true; this.payment.verifying = saved.outcome === 'success';
+      try {
+        const response = await API.clinicOnlinePaymentStatus(saved.payable, saved.id);
+        this.payment.case = {...item, ...response.appointment};
+        await this.applyClinicOnlineStatus(response);
+        if (saved.outcome === 'cancel' && this.payment.online?.status === 'pending') await this.cancelClinicOnlinePayment();
+      } catch (error) { this.payment.error = error.message || 'Could not restore payment. Reopen this payment to retry.'; }
+      finally {this.payment.saving = false;}
+    },
+    async cancelClinicOnlinePayment() {
+      if (this._clinicCancelling) return;
+      this._clinicCancelling = true; this.payment.saving = true; this.payment.error = '';
+      this._clinicPaymentWatch?.stop(); this._clinicPaymentWatch = null;
+      try { await this.applyClinicOnlineStatus(await API.cancelClinicOnlinePayment(this.payment.case.id)); }
+      catch (error) { this.payment.error = error.message || 'Online payment is still pending.'; }
+      finally {
+        this._clinicCancelling = false; this.payment.saving = false;
+        if (this.payment.open && this.payment.online?.status === 'pending') await this.applyClinicOnlineStatus({online_payment: this.payment.online});
+      }
     },
     async cancelCase(item) {
       if (!this.permissions.queue) return;

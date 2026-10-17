@@ -128,6 +128,9 @@ var InventoryAPI = (() => {
   }
 
   return {
+    createOnlinePayment: payload => request('POST', '/pos/online-payment', payload),
+    onlinePaymentStatus: (id, key = null) => request('GET', `/pos/online-payment${id ? '/' + id : ''}${key ? '?request_key=' + encodeURIComponent(key) : ''}`),
+    cancelOnlinePayment: id => request('DELETE', `/pos/online-payment/${id}`),
     // items
     getItems, getItem, createItem, updateItem, deactivateItem, reactivateItem,
     // barcode

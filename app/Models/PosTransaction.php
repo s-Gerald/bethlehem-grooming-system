@@ -18,6 +18,8 @@ class PosTransaction extends Model
         'amount_tendered',
         'change_amount',
         'notes',
+        'payment_method',
+        'gateway_payment_id',
     ];
 
     protected $casts = [
@@ -39,6 +41,11 @@ class PosTransaction extends Model
         return $this->belongsTo(User::class, 'cashier_id', 'user_id');
     }
 
+    public function gatewayPayment()
+    {
+        return $this->belongsTo(GatewayPayment::class);
+    }
+
     public function items()
     {
         return $this->hasMany(PosTransactionItem::class, 'pos_id', 'pos_id');
@@ -55,7 +62,9 @@ class PosTransaction extends Model
             'pos_id' => $this->pos_id,
             'reference' => self::referenceFor($this->pos_id),
             'transaction_type' => 'product_sale',
-            'payment_method' => 'cash',
+            'payment_method' => $this->payment_method ?? 'cash',
+            'payment_method_label' => GatewayPayment::labelFor($this->payment_method ?? 'cash'),
+            'is_test' => $this->gatewayPayment ? ! $this->gatewayPayment->livemode : false,
             'cashier_id' => $this->cashier_id,
             'cashier_name' => $this->cashier
                 ? trim($this->cashier->first_name.' '.$this->cashier->last_name) : null,

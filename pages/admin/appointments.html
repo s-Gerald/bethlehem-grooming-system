@@ -1131,10 +1131,10 @@
 
                 </fieldset>
                 <section x-show="paymentModal.onlinePayment" class="space-y-4" aria-live="polite">
-                  <h5 class="font-semibold text-[#2f4b66]">Awaiting online payment</h5>
+                  <h5 class="font-semibold text-[#2f4b66]" x-text="paymentModal.verifying ? 'Verifying payment…' : 'Awaiting online payment'"></h5>
                   <p class="text-2xl font-bold text-[#2f4b66]" x-text="formatPeso(paymentModal.onlinePayment?.amount || 0)"></p>
                   <div class="flex flex-wrap gap-3">
-                    <a x-show="paymentModal.onlinePayment?.checkout_url" :href="paymentModal.onlinePayment?.checkout_url" target="_blank" rel="noopener noreferrer" class="rounded-xl px-4 py-2 text-sm font-semibold text-white btn-confirm-payment">Open Checkout</a>
+                    <a x-show="paymentModal.onlinePayment?.checkout_url" :href="paymentModal.onlinePayment?.checkout_url" @click.prevent="openGroomingCheckout()" class="rounded-xl px-4 py-2 text-sm font-semibold text-white btn-confirm-payment">Open Checkout</a>
                     <button x-show="paymentModal.onlinePayment?.checkout_url" type="button" @click="copyOnlinePaymentLink()" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Copy Link</button>
                   </div>
                   <button type="button" @click="cancelOnlinePayment()" :disabled="paymentModal.busy" class="text-sm font-semibold text-red-600 disabled:opacity-50">Cancel Online Payment</button>
@@ -1194,7 +1194,7 @@
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p x-show="receiptModal.reconciliationMessage" x-text="receiptModal.reconciliationMessage" class="mt-2 text-sm text-red-600" role="status"></p>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
-                <p class="receipt-success-label">Amount paid</p>
+                <p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
                 <div class="receipt-success-reference">
                   <span>Reference</span>
                   <strong x-text="receiptModal.bookingReference"></strong>
@@ -1664,8 +1664,8 @@
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010"></script>
-    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926"></script>
+    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared"></script>
+    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
@@ -1680,9 +1680,10 @@
     </script>
 
     <!-- Shared dashboard content script -->
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016"></script>
+    <script src="../../scripts/components/online-payment.js?v=20261018"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared"></script>
   </body>
 </html>

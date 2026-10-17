@@ -223,7 +223,6 @@ async function main() {
   const html = fs.readFileSync(`${__dirname}/../pages/admin/appointments.html`, 'utf8');
   const modal = html.slice(html.indexOf('<!-- Payment Modal -->'), html.indexOf('<!-- Grooming product barcode scanner -->'));
   assert.doesNotMatch(modal, /QR Ph|Coming soon|iframe/i);
-  assert.match(modal, /target="_blank" rel="noopener noreferrer"/);
   assert.match(modal, /Create Online Payment/);
   assert.match(modal, /Confirm Cash Payment/);
   assert.match(modal, /:disabled="paymentModal.busy \|\| !!paymentModal.onlinePayment"/);

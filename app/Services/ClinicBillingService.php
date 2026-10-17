@@ -20,6 +20,7 @@ class ClinicBillingService
         ])->validate();
         return DB::transaction(function () use ($appointmentId, $chargeId, $data) {
             $appointment = ClinicAppointment::whereKey($appointmentId)->lockForUpdate()->firstOrFail();
+            \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
             if ($appointment->paid || $appointment->archived_at
                 || ! in_array($appointment->status, ['checked_in', 'in_consultation', 'for_payment'], true)) {
                 throw ValidationException::withMessages(['charges' => 'Billing cannot be changed at this case stage.']);

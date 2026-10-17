@@ -15,7 +15,7 @@ window.ProductSaleInvoice = {
         <img :src="window.ProductSaleInvoice.logoUrl" alt="Bethlehem Animal Clinic logo" class="payment-invoice-logo" />
         <div><strong>BETHLEHEM</strong><span>ANIMAL CLINIC</span></div>
       </div>
-      <div class="payment-invoice-heading"><h1>INVOICE</h1><span class="payment-invoice-status">PAID</span></div>
+      <div class="payment-invoice-heading"><h1>INVOICE</h1><span class="payment-invoice-status" x-text="receipt.is_test ? 'TEST PAYMENT' : 'PAID'"></span></div>
     </header>
     <dl class="payment-invoice-meta">
       <div><dt>Transaction reference</dt><dd x-text="receipt.reference"></dd></div>
@@ -41,9 +41,9 @@ window.ProductSaleInvoice = {
       <div class="payment-invoice-details-summary">
         <h2>Payment Details</h2>
         <dl>
-          <div><dt>Payment Method</dt><dd>Cash</dd></div>
-          <div><dt>Cash Received</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.amount_tendered)"></dd></div>
-          <div><dt>Change</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.change_amount)"></dd></div>
+          <div><dt>Payment Method</dt><dd x-text="receipt.payment_method_label || 'Cash'"></dd></div>
+          <div x-show="(receipt.payment_method || 'cash') === 'cash'"><dt>Cash Received</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.amount_tendered)"></dd></div>
+          <div x-show="(receipt.payment_method || 'cash') === 'cash'"><dt>Change</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.change_amount)"></dd></div>
           <div><dt>Processed By</dt><dd x-text="receipt.cashier_name || '—'"></dd></div>
           <div><dt>Paid At</dt><dd x-text="window.ProductSaleInvoice.formatPaidAt(receipt.created_at)"></dd></div>
         </dl>

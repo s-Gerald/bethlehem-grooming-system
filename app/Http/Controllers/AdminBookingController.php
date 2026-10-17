@@ -188,10 +188,10 @@ class AdminBookingController extends Controller
         $weekCount = Booking::whereBetween('booking_date', [$weekStart, $weekEnd])
             ->whereNotIn('status', ['cancelled'])
             ->sum('number_of_pets');
-        $revenueToday = Payment::whereDate('paid_at', $today->toDateString())
+        $revenueToday = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
             ->where('payment_status', 'paid')
             ->sum('total_amount');
-        $revenuePaymentCount = Payment::whereDate('paid_at', $today->toDateString())
+        $revenuePaymentCount = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
             ->where('payment_status', 'paid')
             ->count();
         return response()->json([

@@ -394,7 +394,7 @@ class AdminClinicController extends Controller
     {
         $request->validate([
             'total_amount' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
-            'payment_method' => ['required', 'in:cash,gcash,maya,card'],
+            'payment_method' => ['required', 'in:cash'],
             'amount_paid' => ['required_if:payment_method,cash', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:999999'],
         ]);
 
@@ -404,6 +404,7 @@ class AdminClinicController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
             if ($appointment->status !== 'for_payment') {
                 return null;
             }
@@ -428,19 +429,8 @@ class AdminClinicController extends Controller
                 }
             }
 
-            $appointment->update([
-                'status' => 'completed',
-                'total_amount' => $total,
-                'paid' => true,
-                'payment_method' => $request->payment_method,
-                'cash_received' => $request->payment_method === 'cash' ? $request->amount_paid : null,
-                'paid_by_user_id' => $request->user()->user_id,
-                'paid_at' => now(),
-            ]);
-            Notification::createForClinic(
-                $appointment,
-                Notification::TYPE_CLINIC_PAYMENT_CONFIRMED,
-                "Payment received for clinic appointment {$appointment->appointment_reference}.",
+            app(\App\Services\ClinicPaymentSettlementService::class)->settle(
+                $appointment, number_format($total, 2, '.', ''), 'cash', $request->user()->user_id, (string) $request->amount_paid,
             );
 
             return $appointment;
@@ -467,6 +457,7 @@ class AdminClinicController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
             if (in_array($appointment->status, ['completed', 'cancelled'], true)) {
                 return null;
             }
@@ -571,6 +562,7 @@ class AdminClinicController extends Controller
                 ->whereKey($id)
                 ->lockForUpdate()
                 ->firstOrFail();
+            \App\Models\GatewayPayment::assertClinicUnlocked($appt);
             if (! empty($data['finish_case']) && $appt->status === 'for_payment' && ! $appt->paid && ! $appt->archived_at) {
                 // A lost response must not repeat clinical finalization or overwrite the saved visit.
                 return response()->json(['success' => true, 'record' => $this->formatRecord($appt->record, $appt->id)]);
@@ -787,7 +779,7 @@ class AdminClinicController extends Controller
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private function formatAppointment(ClinicAppointment $a): array
+    public function formatAppointment(ClinicAppointment $a): array
     {
         $a->loadMissing($this->appointmentRelations());
         $user = $a->user;
