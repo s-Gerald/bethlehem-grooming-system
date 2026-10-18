@@ -33,8 +33,12 @@ function jsonResponse(status, data) {
   };
 }
 
-function createIdleBrowser(role) {
-  let now = 1_000_000;
+function createIdleBrowser(role, fixture = {}) {
+  const options = fixture;
+  let now = options.now ?? 1_000_000;
+  const server = options.server || {idleAt: now + 30 * 60000,
+    expiresAt: now + (role === "customer" ? 24 : 12) * 3600000, locked: false};
+  let unlockedRequests = 0;
   let timerSequence = 0;
   const timers = new Map();
   const windowListeners = new Map();
@@ -44,7 +48,7 @@ function createIdleBrowser(role) {
   const requests = [];
   const tokenKey = role === "customer" ? "customer_token" : "admin_token";
   const token = `${role}-token`;
-  const localStorage = new MemoryStorage({
+  const localStorage = options.storage || new MemoryStorage({
     [tokenKey]: token,
     user_role: role,
   });
@@ -79,13 +83,29 @@ function createIdleBrowser(role) {
       timers.delete(id);
       now = timer.at;
       timer.callback();
-      await Promise.resolve();
+      for (let i = 0; i < 20; i++) await Promise.resolve();
     }
 
     now = target;
-    await Promise.resolve();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
   }
 
+  function element() {
+    const handlers = new Map();
+    return {style: {}, attributes: {}, hidden: false, value: "", disabled: false,
+      setAttribute(name, value) { this.attributes[name] = String(value); },
+      removeAttribute(name) { delete this.attributes[name]; },
+      addEventListener(name, handler) { handlers.set(name, handler); },
+      focus() { document.activeElement = this; },
+      querySelector(selector) { return elements.get(selector.replace("#", "")) || null; },
+      querySelectorAll() { return []; },
+      dispatch(name, extra = {}) { return handlers.get(name)?.({preventDefault() {}, ...extra}); },
+      contains(target) { return [...elements.values()].includes(target); },
+    };
+  }
+  for (const id of ["session-password", "session-unlock", "session-error", "session-password-toggle", "session-other-account", "session-lock-form", "session-lock-heading", "session-lock-description"]) elements.set(id, element());
+  const dashboard = element();
+  const root = element();
   const body = {
     appendChild(element) {
       elements.set(element.id, element);
@@ -94,22 +114,16 @@ function createIdleBrowser(role) {
   };
   const document = {
     body,
+    documentElement: root,
+    activeElement: dashboard,
+    head: {appendChild() {}},
+    querySelectorAll: () => [dashboard],
     visibilityState: "visible",
     querySelector: () => null,
     getElementById(id) {
       return elements.get(id) || null;
     },
-    createElement() {
-      return {
-        id: "",
-        style: {},
-        textContent: "",
-        attributes: {},
-        setAttribute(name, value) {
-          this.attributes[name] = String(value);
-        },
-      };
-    },
+    createElement() { return element(); },
     addEventListener(name, handler) {
       addListener(documentListeners, name, handler);
     },
@@ -150,7 +164,25 @@ function createIdleBrowser(role) {
     document,
     fetch: async (url, options) => {
       requests.push({ url, options });
-      return jsonResponse(200, { success: true });
+      if (url.endsWith("/logout") && fixture.failLogout) throw new Error("Offline");
+      if (now >= server.expiresAt || (role === "customer" && now >= server.idleAt)) return jsonResponse(401, {code: "session_expired"});
+      if (now >= server.idleAt) server.locked = true;
+      if (url.endsWith("/logout")) return jsonResponse(200, {success: true});
+      if (url.endsWith("/session/unlock")) {
+        unlockedRequests++;
+        if (fixture.pauseUnlock) await new Promise(resolve => { fixture.releaseUnlock = resolve; });
+        if (JSON.parse(options.body).password !== "correct") return jsonResponse(422, {message: "Incorrect password."});
+        server.locked = false;
+        server.idleAt = now + 30 * 60000;
+      }
+      if (url.endsWith("/session/activity")) {
+        if (server.locked) return jsonResponse(423, {code: "session_locked", locked: true});
+        server.idleAt = now + 30 * 60000;
+      }
+      const response = jsonResponse(200, {success: true, locked: server.locked, server_now: new Date(now).toISOString(),
+        idle_at: new Date(server.idleAt).toISOString(), expires_at: new Date(server.expiresAt).toISOString()});
+      if (url.endsWith("/session") && fixture.pauseStatus) return new Promise(resolve => { fixture.releaseStatus = () => resolve(response); });
+      return response;
     },
     localStorage,
     sessionStorage,
@@ -163,6 +195,17 @@ function createIdleBrowser(role) {
 
   return {
     API: context.API,
+    server,
+    get now() { return now; },
+    sleep(minutes) { now += minutes * 60000; },
+    root,
+    dashboard,
+    elements,
+    get unlockRequests() { return unlockedRequests; },
+    dispatchWindow(name, event = {}) { for (const handler of windowListeners.get(name) || []) handler(event); },
+    dispatchSynthetic(name) { for (const handler of documentListeners.get(name) || []) handler({type:name, isTrusted:false}); },
+    async submit(password) { elements.get("session-password").value = password; await elements.get("session-lock-form").dispatch("submit"); },
+    async settle() { for (let i = 0; i < 30; i++) await Promise.resolve(); },
     localStorage,
     replacements,
     requests,
@@ -173,47 +216,163 @@ function createIdleBrowser(role) {
       await advance(minutes * 60 * 1000);
     },
     dispatchDocument(name) {
-      for (const handler of documentListeners.get(name) || []) handler({ type: name });
+      for (const handler of documentListeners.get(name) || []) handler({ type: name, isTrusted: true });
     },
   };
 }
 
-async function testPrivilegedWarningActivityResetAndLogout(role) {
+async function testPrivilegedLockAndUnlock(role) {
   const browser = createIdleBrowser(role);
   const policy = browser.API.getSessionInactivityPolicy(role);
-  assert.equal(policy.warningMs, 14 * 60 * 1000);
-  assert.equal(policy.timeoutMs, 15 * 60 * 1000);
-
-  await browser.advance(13);
-  assert.equal(browser.warning(), null);
-  assert.deepEqual(browser.replacements, []);
-
-  await browser.advance(1);
-  assert.equal(browser.warning().textContent, "Your session will expire soon due to inactivity.");
-  assert.equal(browser.warning().style.display, "block");
-  assert.match(browser.warning().style.cssText, /#fff7ed/);
-
+  assert.equal(policy.timeoutMs, 30 * 60 * 1000);
+  await browser.settle();
+  await browser.advance(29);
   browser.dispatchDocument("pointerdown");
-  assert.equal(browser.warning().style.display, "none");
-
-  await browser.advance(14);
-  assert.equal(browser.warning().style.display, "block");
-  assert.deepEqual(browser.replacements, []);
-
+  await browser.settle();
+  await browser.advance(29);
+  assert.equal(browser.API.isSessionLocked(), false);
   await browser.advance(1);
+  assert.equal(browser.API.isSessionLocked(), true);
+  assert.equal(browser.localStorage.getItem("admin_token"), `${role}-token`);
+  assert.deepEqual(browser.replacements, []);
+  assert.equal(browser.root.attributes["data-session-gate"], "locked");
+  browser.dispatchDocument("keydown");
+  await browser.advance(1);
+  assert.equal(browser.API.isSessionLocked(), true, "interaction cannot dismiss a lock");
+  const wrongAttempt = browser.submit("wrong");
+  assert.equal(browser.elements.get("session-unlock").disabled, true);
+  assert.equal(browser.elements.get("session-unlock").textContent, "Unlocking…");
+  await wrongAttempt;
+  assert.equal(browser.elements.get("session-unlock").disabled, false);
+  assert.equal(browser.elements.get("session-error").textContent, "Incorrect password.");
+  assert.equal(browser.API.isSessionLocked(), true);
+  await browser.submit("correct");
+  assert.equal(browser.API.isSessionLocked(), false);
+  assert.equal(browser.root.attributes["data-session-gate"], undefined);
+  assert.deepEqual(browser.replacements, [], "unlock preserves the mounted workflow and URL");
+  assert.equal(browser.unlockRequests, 2);
+  assert.equal(browser.requests.filter(request => request.url.endsWith("/logout")).length, 0);
+  browser.elements.get("session-password-toggle").dispatch("click");
+  assert.equal(browser.elements.get("session-password").type, "text");
+}
+
+async function testResumeAndStorageCannotUnlock() {
+  const browser = createIdleBrowser("admin");
+  await browser.settle();
+  await browser.advance(30);
+  browser.localStorage.setItem("bethlehem.auth.last_activity", JSON.stringify({session: "admin:admin-token", at: 9999999999999}));
+  browser.dispatchWindow("storage", {storageArea: browser.localStorage, key: "bethlehem.auth.last_activity", newValue: "changed"});
+  browser.dispatchWindow("focus");
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true);
+  browser.dispatchWindow("storage", {storageArea: browser.localStorage, key: "bethlehem.auth.session_state", newValue: "changed"});
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true, "server must confirm every cross-tab unlock");
+  await browser.advance(12 * 60 - 30);
   assert.equal(browser.localStorage.getItem("admin_token"), null);
-  assert.equal(browser.localStorage.getItem("user_role"), null);
   assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+}
+
+async function testRefreshSleepAndRealCrossTabUnlock() {
+  const first = createIdleBrowser("staff");
+  assert.equal(first.root.attributes["data-session-gate"], "checking");
+  await first.settle();
+  const second = createIdleBrowser("staff", {storage:first.localStorage, server:first.server, now:first.now});
+  await second.settle();
+  first.sleep(30);
+  second.sleep(30);
+  first.dispatchWindow("focus");
+  second.dispatchWindow("focus");
+  await first.settle(); await second.settle();
+  assert.equal(first.API.isSessionLocked(), true, "sleep doesn't reset activity");
+  assert.equal(second.API.isSessionLocked(), true);
+  const refreshed = createIdleBrowser("staff", {storage:first.localStorage, server:first.server, now:first.now});
+  assert.ok(["checking", "locked"].includes(refreshed.root.attributes["data-session-gate"]), "refresh starts concealed");
+  await refreshed.settle();
+  assert.equal(refreshed.API.isSessionLocked(), true, "refresh cannot unlock");
+  await first.submit("correct");
+  const notice = first.localStorage.getItem("bethlehem.auth.session_state");
+  second.dispatchWindow("storage", {storageArea:second.localStorage, key:"bethlehem.auth.session_state", newValue:notice});
+  await second.settle();
+  assert.equal(second.API.isSessionLocked(), false);
+  assert.equal(second.root.attributes["data-session-gate"], undefined);
+  assert.equal(second.unlockRequests, 0, "a tab accepts a server-confirmed unlock from its sibling");
+}
+
+async function testOnlyTrustedInteractionReportsActivity() {
+  const browser = createIdleBrowser("admin");
+  await browser.settle();
+  const reports = () => browser.requests.filter(request => request.url.endsWith("/session/activity")).length;
+  browser.dispatchSynthetic("pointerdown");
+  browser.dispatchDocument("scroll");
+  await browser.advance(10);
+  assert.equal(reports(), 0, "script events, automatic scroll and background status requests cannot extend activity");
+  browser.dispatchDocument("keydown");
+  await browser.settle();
+  assert.equal(reports(), 1);
+  browser.dispatchDocument("pointerdown");
+  await browser.settle();
+  assert.equal(reports(), 1, "reports are throttled");
+}
+
+async function testManualLogoutFromLock() {
+  const browser = createIdleBrowser("admin");
+  await browser.settle();
+  await browser.advance(30);
+  await browser.elements.get("session-other-account").dispatch("click");
+  assert.equal(browser.localStorage.getItem("admin_token"), null);
   assert.equal(browser.requests.at(-1).url, "https://clinic.example/api/logout");
-  assert.equal(browser.requests.at(-1).options.keepalive, true);
-  assert.equal(
-    browser.requests.at(-1).options.headers.Authorization,
-    `Bearer ${role}-token`,
-  );
-  assert.equal(
-    JSON.parse(browser.localStorage.getItem("bethlehem.auth.logout")).reason,
-    "inactivity",
-  );
+  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+}
+
+async function testPausedReadsResumeOnceAndWritesAreNeverReplayed() {
+  const browser = createIdleBrowser("admin");
+  await browser.settle();
+  await browser.advance(30);
+  await assert.rejects(browser.API.adminStopToday(), error => error.status === 423);
+  const first = browser.API.getMe("admin");
+  const second = browser.API.getMe("admin");
+  await browser.settle();
+  assert.equal(browser.requests.filter(request => request.url.endsWith("/me")).length, 0);
+  await browser.submit("correct");
+  await Promise.all([first, second]);
+  assert.equal(browser.requests.filter(request => request.url.endsWith("/me")).length, 1,
+    "repeated polling while locked must not create a burst on unlock");
+  assert.equal(browser.requests.filter(request => request.url.endsWith("/admin/clinic/stop-today")).length, 0,
+    "blocked mutations are never replayed after unlock");
+}
+
+async function testDelayedStatusCannotRelockAfterPasswordUnlock() {
+  const fixture = {};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  await browser.advance(30);
+  fixture.pauseUnlock = true;
+  const pendingUnlock = browser.submit("correct");
+  await browser.settle();
+  fixture.pauseStatus = true;
+  browser.dispatchWindow("focus");
+  await browser.settle();
+  fixture.releaseUnlock();
+  await pendingUnlock;
+  assert.equal(browser.API.isSessionLocked(), false);
+  fixture.releaseStatus();
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), false, "an older status response cannot undo successful password verification");
+}
+
+async function testFailedLogoutRetainsRevocationRetry() {
+  const fixture = {failLogout:true};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  await browser.advance(30);
+  await browser.elements.get("session-other-account").dispatch("click");
+  assert.equal(browser.localStorage.getItem("admin_token"), "admin-token");
+  assert.deepEqual(browser.replacements, []);
+  assert.equal(browser.elements.get("session-error").textContent, "Unable to sign out. Please try again.");
+  fixture.failLogout = false;
+  await browser.elements.get("session-other-account").dispatch("click");
+  assert.equal(browser.localStorage.getItem("admin_token"), null);
 }
 
 async function testCustomerThirtyMinuteTimeout() {
@@ -232,8 +391,15 @@ async function testCustomerThirtyMinuteTimeout() {
 }
 
 (async () => {
-  await testPrivilegedWarningActivityResetAndLogout("admin");
-  await testPrivilegedWarningActivityResetAndLogout("staff");
+  await testPrivilegedLockAndUnlock("admin");
+  await testPrivilegedLockAndUnlock("staff");
+  await testResumeAndStorageCannotUnlock();
+  await testRefreshSleepAndRealCrossTabUnlock();
+  await testOnlyTrustedInteractionReportsActivity();
+  await testManualLogoutFromLock();
+  await testFailedLogoutRetainsRevocationRetry();
+  await testDelayedStatusCannotRelockAfterPasswordUnlock();
+  await testPausedReadsResumeOnceAndWritesAreNeverReplayed();
   await testCustomerThirtyMinuteTimeout();
   console.log("Session inactivity regression tests passed.");
 })().catch((error) => {

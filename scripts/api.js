@@ -57,6 +57,7 @@ var API = (() => {
   const LOGIN_CONFIRMATION_EMAIL_KEY = "pending_login_confirmation_email";
   const AUTH_LOGOUT_EVENT_KEY = "bethlehem.auth.logout";
   const AUTH_LAST_ACTIVITY_KEY = "bethlehem.auth.last_activity";
+  const AUTH_SESSION_STATE_KEY = "bethlehem.auth.session_state";
   const CUSTOMER_PROFILE_NAME_KEY = "bethlehem.customer.profile_name";
   const CUSTOMER_CACHE_KEY = "bethlehem.customer.data.v1";
   const CUSTOMER_CACHE_SESSION_KEY = "bethlehem.customer.cache_session";
@@ -196,8 +197,8 @@ var API = (() => {
   const INACTIVITY_WARNING_ID = "bethlehem-session-inactivity-warning";
   const ACTIVITY_WRITE_THROTTLE_MS = 1000;
   const SESSION_INACTIVITY_POLICIES = Object.freeze({
-    admin: Object.freeze({ timeoutMs: 15 * 60 * 1000, warningMs: 14 * 60 * 1000 }),
-    staff: Object.freeze({ timeoutMs: 15 * 60 * 1000, warningMs: 14 * 60 * 1000 }),
+    admin: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
+    staff: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
     customer: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
   });
   const ADMIN_ONLY_PAGE_NAMES = [
@@ -227,6 +228,17 @@ var API = (() => {
   let inactivityManagerInstalled = false;
   let inactivityLogoutStarted = false;
   let lastActivityWriteAt = 0;
+  let sessionLocked = false;
+  let sessionChecking = false;
+  let serverSession = null;
+  let sessionSync = null;
+  let sessionPollTimer = null;
+  let activityReportTimer = null;
+  let lastActivityReportAt = 0;
+  let sessionRevision = 0;
+  let previousSessionFocus = null;
+  const sessionWaiters = [];
+  const pausedSessionReads = new Map();
 
   // ── Booking session keys to wipe on customer logout / login ──────────────
   const BOOKING_SESSION_KEYS = [
@@ -307,6 +319,14 @@ var API = (() => {
   }
 
   function clearAuthStorage() {
+    sessionRevision += 1;
+    serverSession = null;
+    sessionSync = null;
+    if (sessionPollTimer) clearTimeout(sessionPollTimer);
+    if (activityReportTimer) clearTimeout(activityReportTimer);
+    sessionPollTimer = activityReportTimer = null;
+    sessionWaiters.splice(0).forEach(({ reject }) => reject(new Error("Session ended.")));
+    pausedSessionReads.clear();
     clearCustomerCache();
     safeStorageRemove(localStorage, CUSTOMER_CACHE_SESSION_KEY);
     safeStorageRemove(sessionStorage, CUSTOMER_CACHE_SESSION_KEY);
@@ -680,6 +700,7 @@ var API = (() => {
   }
 
   function showInactivityWarning() {
+    if (isAdminRole(getAuthSession()?.role)) return;
     const toast = ensureInactivityWarningElement();
     if (toast) toast.style.display = "block";
   }
@@ -724,7 +745,16 @@ var API = (() => {
     }
 
     const policy = getSessionInactivityPolicy(session.role);
-    let lastActivityAt = readSessionActivity(session);
+    if (serverSession?.token === session.token && timestamp >= serverSession.expiresAt) {
+      expireSessionForInactivity(session);
+      return { state: "expired", idleMs: 0 };
+    }
+    if (isAdminRole(session.role) && (sessionLocked || sessionChecking)) {
+      return { state: sessionLocked ? "locked" : "checking", idleMs: 0 };
+    }
+    let lastActivityAt = serverSession?.token === session.token
+      ? serverSession.idleAt - policy.timeoutMs
+      : readSessionActivity(session);
     if (lastActivityAt === null) {
       lastActivityAt = timestamp;
       writeSessionActivity(session, lastActivityAt);
@@ -733,6 +763,11 @@ var API = (() => {
 
     const idleMs = Math.max(0, timestamp - lastActivityAt);
     if (idleMs >= policy.timeoutMs) {
+      if (isAdminRole(session.role)) {
+        showSessionLock();
+        void syncSessionState();
+        return { state: "locked", idleMs };
+      }
       expireSessionForInactivity(session);
       return { state: "expired", idleMs };
     }
@@ -750,7 +785,8 @@ var API = (() => {
 
   function recordSessionActivity(force = false) {
     const session = getAuthSession();
-    if (!isManagedProtectedSession(session) || inactivityLogoutStarted) return;
+    if (!isManagedProtectedSession(session) || inactivityLogoutStarted || sessionLocked || sessionChecking) return;
+    if (["expired", "locked"].includes(evaluateSessionInactivity().state)) return;
 
     const timestamp = Date.now();
     if (!force && timestamp - lastActivityWriteAt < ACTIVITY_WRITE_THROTTLE_MS) {
@@ -759,9 +795,221 @@ var API = (() => {
 
     lastActivityWriteAt = timestamp;
     writeSessionActivity(session, timestamp);
+    if (serverSession?.token === session.token) serverSession.idleAt = timestamp + 30 * 60 * 1000;
     hideInactivityWarning();
     const policy = getSessionInactivityPolicy(session.role);
     scheduleInactivityCheck(policy.warningMs);
+    reportSessionActivity();
+  }
+
+  function sessionGate(state) {
+    const root = document.documentElement;
+    if (state) root?.setAttribute("data-session-gate", state);
+    else root?.removeAttribute("data-session-gate");
+    const card = document.getElementById("bethlehem-session-lock");
+    if (card) card.hidden = !state;
+  }
+
+  function ensureSessionLockCard() {
+    let card = document.getElementById("bethlehem-session-lock");
+    if (card || !document.body) return card;
+    card = document.createElement("section");
+    card.id = "bethlehem-session-lock";
+    card.className = "portal-theme session-lock";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-labelledby", "session-lock-heading");
+    card.setAttribute("aria-describedby", "session-lock-description");
+    card.innerHTML = `
+      <div class="session-lock__card">
+        <span class="session-lock__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg></span>
+        <h1 id="session-lock-heading">Session locked</h1>
+        <p id="session-lock-description">Your session was locked due to inactivity.</p>
+        <form id="session-lock-form">
+          <label for="session-password">Password</label>
+          <div class="session-lock__password">
+            <input id="session-password" name="password" type="password" autocomplete="current-password" maxlength="100" required aria-describedby="session-error">
+            <button id="session-password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
+          <p id="session-error" role="alert" hidden></p>
+          <button id="session-unlock" class="session-lock__primary" type="submit">Unlock session</button>
+        </form>
+        <button id="session-other-account" class="session-lock__secondary" type="button">Sign in with another account</button>
+      </div>`;
+    document.body.appendChild(card);
+    const password = card.querySelector("#session-password");
+    const toggle = card.querySelector("#session-password-toggle");
+    toggle.addEventListener("click", () => {
+      const reveal = password.type === "password";
+      password.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? "Hide" : "Show";
+      toggle.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+      toggle.setAttribute("aria-pressed", String(reveal));
+    });
+    card.querySelector("#session-lock-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = card.querySelector("#session-unlock");
+      if (button.disabled) return;
+      const token = getAuthSession()?.token;
+      const revision = ++sessionRevision;
+      button.disabled = true;
+      button.textContent = "Unlocking…";
+      card.setAttribute("aria-busy", "true");
+      sessionLockError("");
+      password.setAttribute("aria-invalid", "false");
+      try {
+        const data = await networkRequest("POST", "/session/unlock", { password: password.value }, token);
+        if (getAuthSession()?.token !== token) return;
+        if (revision === sessionRevision) {
+          // Status requests started during password verification may still
+          // carry the pre-unlock state when their responses arrive later.
+          sessionRevision += 1;
+          applyServerSession(data, token);
+        }
+        broadcastSessionState();
+      } catch (error) {
+        if (getAuthSession()?.token !== token) return;
+        sessionLockError(error.message);
+        password.setAttribute("aria-invalid", String(error.status === 422));
+        password.focus();
+        password.select?.();
+      } finally {
+        button.disabled = false;
+        button.textContent = "Unlock session";
+        card.setAttribute("aria-busy", "false");
+      }
+    });
+    card.querySelector("#session-other-account").addEventListener("click", async () => {
+      const button = card.querySelector("#session-other-account");
+      button.disabled = true;
+      try {
+        await logout(null, { keepalive: true, requireRevocation: true });
+        redirectToSignIn();
+      } catch (error) {
+        // Keep the token available for a revocation retry if the network failed.
+        sessionLockError("Unable to sign out. Please try again.");
+      } finally { button.disabled = false; }
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const controls = [...card.querySelectorAll("input:not(:disabled), button:not(:disabled)")];
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    });
+    return card;
+  }
+
+  function sessionLockError(message) {
+    const error = document.getElementById("session-error");
+    if (error) { error.textContent = message; error.hidden = !message; }
+  }
+
+  function resetSessionPassword() {
+    const password = document.getElementById("session-password");
+    const toggle = document.getElementById("session-password-toggle");
+    if (password) {
+      password.value = "";
+      password.type = "password";
+      password.setAttribute("aria-invalid", "false");
+    }
+    if (toggle) {
+      toggle.textContent = "Show";
+      toggle.setAttribute("aria-label", "Show password");
+      toggle.setAttribute("aria-pressed", "false");
+    }
+    sessionLockError("");
+  }
+
+  function concealSession() {
+    if (!isAdminRole(getAuthSession()?.role) || !isManagedProtectedSession()) return;
+    sessionChecking = true;
+    sessionGate(sessionLocked ? "locked" : "checking");
+  }
+
+  function showSessionLock() {
+    if (!isAdminRole(getAuthSession()?.role) || !isManagedProtectedSession()) return;
+    const wasLocked = sessionLocked;
+    sessionLocked = true;
+    sessionChecking = false;
+    pauseInactivityTracking();
+    if (!wasLocked) previousSessionFocus = document.activeElement;
+    ensureSessionLockCard();
+    if (!wasLocked) resetSessionPassword();
+    sessionGate("locked");
+    if (serverSession) scheduleInactivityCheck(Math.max(0, serverSession.expiresAt - Date.now()));
+    if (!wasLocked) document.getElementById("session-password")?.focus();
+  }
+
+  function broadcastSessionState() {
+    try { localStorage.setItem(AUTH_SESSION_STATE_KEY, JSON.stringify({ session: activitySessionId(getAuthSession()), at: Date.now(), nonce: Math.random() })); }
+    catch { /* Server checks on resume and polling still enforce the lock. */ }
+  }
+
+  function applyServerSession(data, token) {
+    if (getAuthSession()?.token !== token || typeof data.locked !== "boolean") return;
+    const timestamp = Date.now();
+    const serverNow = Date.parse(data.server_now);
+    const idleAt = timestamp + Date.parse(data.idle_at) - serverNow;
+    const expiresAt = timestamp + Date.parse(data.expires_at) - serverNow;
+    if (!Number.isFinite(idleAt) || !Number.isFinite(expiresAt)) return;
+    serverSession = { token, idleAt, expiresAt };
+    if (isAdminRole(getAuthSession()?.role)) {
+      if (data.locked || idleAt <= timestamp) { showSessionLock(); return; }
+      const wasLocked = sessionLocked;
+      sessionLocked = sessionChecking = false;
+      resetSessionPassword();
+      sessionGate(null);
+      if (wasLocked) {
+        previousSessionFocus?.focus?.();
+        previousSessionFocus = null;
+      }
+      sessionWaiters.splice(0).forEach(({ resolve }) => resolve());
+    }
+    evaluateSessionInactivity(timestamp);
+  }
+
+  function syncSessionState() {
+    const session = getAuthSession();
+    if (!isManagedProtectedSession(session)) return Promise.resolve();
+    if (sessionSync) return sessionSync;
+    const revision = sessionRevision;
+    let pending;
+    pending = networkRequest("GET", "/session", null, session.token, { cache: "no-store" })
+      .then((data) => { if (revision === sessionRevision) applyServerSession(data, session.token); })
+      .catch(() => {
+        if (revision === sessionRevision && getAuthSession()?.token === session.token && isAdminRole(session.role)) {
+          showSessionLock();
+          sessionLockError("Unable to check session. Please unlock to continue.");
+        }
+      }).finally(() => {
+        if (sessionSync !== pending) return;
+        sessionSync = null;
+        if (sessionPollTimer) clearTimeout(sessionPollTimer);
+        if (getAuthSession()?.token === session.token) sessionPollTimer = setTimeout(() => {
+          if (document.visibilityState !== "hidden") void syncSessionState();
+        }, 60000);
+      });
+    sessionSync = pending;
+    return pending;
+  }
+
+  function reportSessionActivity() {
+    if (activityReportTimer) return;
+    const token = getAuthSession()?.token;
+    const report = () => {
+      activityReportTimer = null;
+      if (getAuthSession()?.token !== token || sessionLocked || sessionChecking) return;
+      lastActivityReportAt = Date.now();
+      const revision = sessionRevision;
+      void networkRequest("POST", "/session/activity", null, token, { keepalive: true })
+        .then((data) => {
+          if (revision === sessionRevision) { applyServerSession(data, token); broadcastSessionState(); }
+        }).catch(() => { /* Expiration/lock responses use the central handler. */ });
+    };
+    const delay = Math.max(0, 10000 - (Date.now() - lastActivityReportAt));
+    if (delay) activityReportTimer = setTimeout(report, delay);
+    else report();
   }
 
   function startSessionInactivityManager() {
@@ -778,20 +1026,34 @@ var API = (() => {
     inactivityLogoutStarted = false;
 
     if (!inactivityManagerInstalled) {
-      const onActivity = () => recordSessionActivity(false);
+      const onActivity = (event) => {
+        if (event.isTrusted && document.visibilityState !== "hidden") recordSessionActivity(false);
+      };
       document.addEventListener("pointerdown", onActivity, { passive: true });
       document.addEventListener("mousemove", onActivity, { passive: true });
       document.addEventListener("keydown", onActivity);
       document.addEventListener("touchstart", onActivity, { passive: true });
-      document.addEventListener("scroll", onActivity, { passive: true, capture: true });
+      document.addEventListener("wheel", onActivity, { passive: true, capture: true });
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") evaluateSessionInactivity();
+        if (document.visibilityState === "hidden" && isAdminRole(getAuthSession()?.role)) concealSession();
+        if (document.visibilityState === "visible") {
+          evaluateSessionInactivity();
+          concealSession();
+          void syncSessionState();
+        }
       });
-      window.addEventListener("focus", () => evaluateSessionInactivity());
+      window.addEventListener("focus", () => {
+        evaluateSessionInactivity();
+        concealSession();
+        void syncSessionState();
+      });
+      window.addEventListener("pagehide", () => concealSession());
       inactivityManagerInstalled = true;
     }
 
     evaluateSessionInactivity();
+    concealSession();
+    void syncSessionState();
     return true;
   }
 
@@ -803,7 +1065,13 @@ var API = (() => {
       }
 
       if (event.key === AUTH_LAST_ACTIVITY_KEY && event.newValue) {
-        evaluateSessionInactivity();
+        // Local hints never unlock or trigger a request per mouse movement.
+        // Confirmed activity reports use the separately throttled state signal.
+        return;
+      }
+      if (event.key === AUTH_SESSION_STATE_KEY && event.newValue) {
+        concealSession();
+        void syncSessionState();
         return;
       }
 
@@ -833,6 +1101,15 @@ var API = (() => {
   //   error.errors  — Laravel validation errors object (422 only), or null
 
   function request(method, endpoint, body = null, token = null, requestOptions = {}) {
+    if (method === "GET" && token && token === getAdminToken() && isManagedProtectedSession()
+      && (sessionLocked || sessionChecking)) {
+      const key = `${token}:${endpoint}:${requestOptions.responseType || "json"}`;
+      if (pausedSessionReads.has(key)) return pausedSessionReads.get(key);
+      const pending = networkRequest(method, endpoint, body, token, requestOptions)
+        .finally(() => { if (pausedSessionReads.get(key) === pending) pausedSessionReads.delete(key); });
+      pausedSessionReads.set(key, pending);
+      return pending;
+    }
     const customerRequest = !!token && token === getCustomerToken();
     const policy = method === "GET" && customerRequest ? customerCachePolicy(endpoint) : null;
     if (!policy || !ensureCustomerCacheSession()) {
@@ -864,6 +1141,18 @@ var API = (() => {
   }
 
   async function networkRequest(method, endpoint, body = null, token = null, requestOptions = {}) {
+    const sessionControl = endpoint === "/session" || endpoint.startsWith("/session/") || endpoint === "/logout";
+    if (!sessionControl && token && token === getAdminToken() && isManagedProtectedSession()
+      && (sessionLocked || sessionChecking)) {
+      if (method !== "GET") {
+        const error = new Error("Unlock your session to continue.");
+        error.status = 423;
+        throw error;
+      }
+      await new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject }));
+      if (getAuthSession()?.token !== token) throw new Error("Session ended.");
+    }
+    const requestRevision = sessionRevision;
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
     const headers = {
       Accept: "application/json",
@@ -925,6 +1214,17 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    if (response.status === 423 && responseBelongsToCurrentSession && data.code === "session_locked") {
+      if (requestRevision !== sessionRevision && method === "GET" && !sessionControl) {
+        return networkRequest(method, endpoint, body, token, requestOptions);
+      }
+      if (requestRevision === sessionRevision) showSessionLock();
+      if (method === "GET" && !sessionControl) {
+        await new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject }));
+        if (getAuthSession()?.token !== token) throw new Error("Session ended.");
+        return networkRequest(method, endpoint, body, token, requestOptions);
+      }
+    }
     const invalidAccountSession = response.status === 403
       && responseBelongsToCurrentSession
       && INVALID_SESSION_CODES.has(data.code);
@@ -1214,23 +1514,24 @@ var API = (() => {
     const token = currentSession?.token
       ?? (isAdminRole(role) ? rawAdminToken() : rawCustomerToken());
 
+    const revoke = () => request("POST", "/logout", null, token, {
+      suppressAuthRedirect: true, keepalive: logoutOptions.keepalive === true,
+    });
+    if (logoutOptions.requireRevocation && token) {
+      try { await revoke(); }
+      catch (error) { if (error?.status !== 401) throw error; }
+    }
+
     clearAuthStorage();
     if (resolvedRole === "customer") clearBookingDraft();
     notifyLogout(resolvedRole, logoutOptions.reason || "logout", currentSession);
 
+    if (logoutOptions.requireRevocation) return { success: true };
+
     if (!token) return { success: true, local_only: true };
 
     try {
-      return await request(
-        "POST",
-        "/logout",
-        null,
-        token,
-        {
-          suppressAuthRedirect: true,
-          keepalive: logoutOptions.keepalive === true,
-        },
-      );
+      return await revoke();
     } catch (error) {
       // A missing/expired server session is already equivalent to logout.
       if (error?.status === 401) {
@@ -2207,6 +2508,7 @@ var API = (() => {
     getSessionInactivityPolicy,
     recordSessionActivity,
     evaluateSessionInactivity,
+    isSessionLocked: () => sessionLocked,
     startSessionInactivityManager,
     enforceAdminPageAccess,
     enforceProtectedPageAccess,

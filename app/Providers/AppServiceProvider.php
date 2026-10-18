@@ -23,6 +23,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Sanctum rejects expired tokens before route middleware can revoke them.
+        \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(function ($token, bool $valid): bool {
+            if (! $valid) {
+                $token->delete();
+            }
+
+            return $valid;
+        });
+
         RateLimiter::for('email-delivery-status', fn ($request) => Limit::perMinute(60)->by($request->ip()));
 
         foreach (['registration-verify' => [10, 1], 'registration-resend' => [3, 10]] as $name => [$attempts, $minutes]) {

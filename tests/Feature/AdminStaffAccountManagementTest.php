@@ -119,6 +119,7 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->timestamps();
             $table->index(['tokenable_type', 'tokenable_id']);
         });
+        (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
     }
 
     protected function tearDown(): void

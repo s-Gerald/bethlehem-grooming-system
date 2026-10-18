@@ -38,6 +38,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
+        (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         Schema::create('login_email_challenges', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('user_id')->unique();
@@ -138,6 +139,19 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->requestAs($normal, 'GET', '/api/me')->assertUnauthorized();
         $this->requestAs($private, 'GET', '/api/me')->assertOk()->assertJsonPath('user.role', 'admin');
         $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public function test_expired_privileged_session_requires_the_existing_full_email_otp_login(): void
+    {
+        $token = $this->login('admin');
+        $this->travel(12)->hours();
+        $this->requestAs($token, 'GET', '/api/me')->assertUnauthorized();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        // login() asserts password sign-in issues no token until email confirmation.
+        $replacement = $this->login('admin');
+        $this->assertNotSame($token, $replacement);
+        $this->requestAs($replacement, 'GET', '/api/me')->assertOk();
+        Notification::assertSentTimes(ConfirmLoginNotification::class, 2);
     }
 
     public function test_pricing_reads_and_updates_do_not_invalidate_either_session(): void

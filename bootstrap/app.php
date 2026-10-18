@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'account.usable' => EnsureAccountIsUsable::class,
+            'session.active' => \App\Http\Middleware\EnsureSessionIsActive::class,
             'role' => EnsureUserHasRole::class,
             'clinic' => EnsureClinicPermission::class,
             'grooming' => EnsureGroomingPermission::class,

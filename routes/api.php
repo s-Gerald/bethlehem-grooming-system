@@ -74,7 +74,11 @@ Route::get('/system/clock', function () {
 });
 
 // ── PROTECTED ROUTES (token required) ────────────────
-Route::middleware(['auth:sanctum', 'account.usable'])->group(function () {
+Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(function () {
+    Route::get('/session', [\App\Http\Controllers\SessionController::class, 'status'])->name('session.status');
+    Route::post('/session/activity', [\App\Http\Controllers\SessionController::class, 'status'])->name('session.activity');
+    Route::post('/session/unlock', [\App\Http\Controllers\SessionController::class, 'unlock'])
+        ->middleware(['role:admin,staff', 'throttle:10,1'])->name('session.unlock');
     Route::get('/grooming/services', [GroomingPricingController::class, 'index']);
     Route::get('/admin/grooming/services', [GroomingPricingController::class, 'managedIndex'])->middleware('role:admin');
     Route::post('/admin/grooming/services', [GroomingPricingController::class, 'store'])->middleware('role:admin');
@@ -84,7 +88,7 @@ Route::middleware(['auth:sanctum', 'account.usable'])->group(function () {
     Route::patch('/admin/grooming/services/{service}/pricing', [GroomingPricingController::class, 'update'])->middleware('role:admin');
 
     // Auth
-    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
 
