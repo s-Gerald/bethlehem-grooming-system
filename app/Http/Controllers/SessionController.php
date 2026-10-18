@@ -11,7 +11,14 @@ class SessionController extends Controller
 {
     public function status(Request $request)
     {
-        return response()->json(['success' => true, ...$request->attributes->get('auth_session')])
+        $user = $request->user();
+        $navigation = in_array($user->role, ['admin', 'staff'], true) ? [
+            'sidebar_revision' => $user->sidebarRevision(),
+            'user_id' => $user->user_id,
+            'role' => $user->role,
+        ] : [];
+
+        return response()->json(['success' => true, ...$request->attributes->get('auth_session'), ...$navigation])
             ->header('Cache-Control', 'no-store');
     }
 

@@ -45,7 +45,6 @@ function adminArchive() {
       if (context) this.searchQuery = context.searchQuery;
       await this.loadArchive();
       this.restoreHistoryContext(context);
-      this.refreshIcons();
     },
 
     destroy() {
@@ -122,7 +121,7 @@ function adminArchive() {
       } catch (error) {
         if (request === this._historyRequest) this.errorMessage = error.message || "Failed to load history. Please try again.";
       } finally {
-        if (request === this._historyRequest) { this.loading = false; this.refreshIcons(); }
+        if (request === this._historyRequest) { this.loading = false;  }
       }
     },
 
@@ -270,7 +269,6 @@ function adminArchive() {
         dialog.querySelector('[aria-label="Close grooming record"]').focus({ preventScroll: true });
         dialog.querySelector('[aria-label="Grooming record details"]').scrollTop = scrollTop;
       });
-      this.refreshIcons();
     },
 
     closeDetails() {
@@ -436,7 +434,6 @@ function adminArchive() {
         this.$refs.clinicVisitClose.focus({preventScroll: true});
       });
       this.loadClinicCare();
-      this.refreshIcons();
     },
 
     async loadClinicCare() {
@@ -812,12 +809,6 @@ function adminArchive() {
       return Number.isFinite(total) && total >= 0
         ? this.formatPeso(total)
         : "Price unavailable";
-    },
-
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
   };
 }

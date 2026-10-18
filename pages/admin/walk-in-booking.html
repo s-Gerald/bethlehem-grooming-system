@@ -7,7 +7,6 @@
     <title>Walk-in - Owner Information</title>
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
-    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
   </head>
@@ -54,7 +53,7 @@
               <p class="mt-1 text-sm text-slate-500">Search active and unregistered customers by name, mobile number, or email.</p>
 
               <div class="relative mt-4">
-                <i data-lucide="search" class="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+                <svg class="ph-icon pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
                 <input
                   id="existingCustomerSearch"
                   type="search"
@@ -203,7 +202,7 @@
                   class="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-[#315b7e] px-6 py-3 text-sm font-semibold text-white opacity-50 transition hover:bg-[#274864]"
                 >
                   <span id="walkInOwnerNextLabel">Next Step</span>
-                  <i data-lucide="arrow-right" class="h-4 w-4"></i>
+                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-right"></use></svg>
                 </button>
               </div>
             </form>
@@ -221,7 +220,7 @@
     >
       <div class="flex items-start gap-3">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-          <i data-lucide="triangle-alert" class="h-5 w-5"></i>
+          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning"></use></svg>
         </span>
         <div class="min-w-0 flex-1">
           <h2 id="similarOwnerWarningTitle" class="text-base font-semibold text-[#2f4b66]">
@@ -251,10 +250,10 @@
       </div>
     </aside>
 
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018"></script>
     <script
       type="module"
-      src="../../scripts/components/walk-in-owner-step.js?v=entry-context-20261015"
+      src="../../scripts/components/walk-in-owner-step.js?v=entry-context-20261015&icons=20261018"
     ></script>
   </body>
 </html>

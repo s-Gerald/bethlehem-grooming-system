@@ -75,6 +75,59 @@ var API = (() => {
   let adminCacheOwner = null;
   let adminCacheEpoch = 0;
   let staffIdentityRequest = null;
+  const ADMIN_NAVIGATION_KEY = "bethlehem.admin.navigation.v1";
+  let staffIdentity = null;
+  let staffIdentityToken = null;
+  let staffIdentityEpoch = 0;
+  let verifiedSidebarRevision = null;
+
+  function clearStaffIdentity(notify = false) {
+    staffIdentityEpoch++;
+    staffIdentity = staffIdentityToken = staffIdentityRequest = null;
+    safeStorageRemove(sessionStorage, ADMIN_NAVIGATION_KEY);
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('admin-navigation:invalidated', { detail: { reload: notify } }));
+    }
+  }
+
+  function staffIdentityOwner() {
+    const session = getAuthSession();
+    const id = /^(\d+)\|/.exec(session?.token || '')?.[1];
+    return id && isAdminRole(session?.role) ? `${BASE_URL}:${session.role}:${id}` : null;
+  }
+
+  function getCachedStaffIdentity() {
+    const token = getAdminToken(), owner = staffIdentityOwner();
+    if (!token || !owner) return null;
+    if (staffIdentityToken !== token) {
+      staffIdentity = null;
+      staffIdentityToken = token;
+      try { staffIdentity = JSON.parse(safeStorageGet(sessionStorage, ADMIN_NAVIGATION_KEY) || 'null'); }
+      catch { /* Invalid cache is a normal first-load path. */ }
+    }
+    const cached = staffIdentity;
+    if (cached?.version !== 1 || cached.owner !== owner || !Number.isFinite(cached.at)
+      || Date.now() < cached.at || Date.now() - cached.at >= 12 * 60 * 60 * 1000
+      || !cached.data?.sidebar_revision || !cached.data?.user?.user_id
+      || cached.data.user.role !== getUserRole()
+      || (verifiedSidebarRevision && cached.data.sidebar_revision !== verifiedSidebarRevision)) return null;
+    return cached.data;
+  }
+
+  function rememberStaffIdentity(response, token) {
+    const user = response?.user, owner = staffIdentityOwner();
+    if (!owner || token !== getAdminToken() || user?.role !== getUserRole() || !response.sidebar_revision) return;
+    if (verifiedSidebarRevision && verifiedSidebarRevision !== response.sidebar_revision) return;
+    // Navigation presentation only: no contact details, credentials or page data.
+    const data = { sidebar_revision: response.sidebar_revision, user: {
+      user_id: user.user_id, role: user.role, first_name: user.first_name, last_name: user.last_name,
+      staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {},
+    } };
+    staffIdentityToken = token;
+    staffIdentity = { version: 1, owner, at: Date.now(), data };
+    try { sessionStorage.setItem(ADMIN_NAVIGATION_KEY, JSON.stringify(staffIdentity)); }
+    catch { /* Storage restrictions retain same-page request sharing. */ }
+  }
 
   function adminCacheTTL(endpoint) {
     if (/^\/admin\/bookings\?/.test(endpoint)) return 10000;
@@ -90,7 +143,6 @@ var API = (() => {
     adminCache.clear();
     adminRequests.clear();
     adminCacheOwner = null;
-    staffIdentityRequest = null;
     safeStorageRemove(sessionStorage, ADMIN_CACHE_KEY);
   }
 
@@ -100,7 +152,6 @@ var API = (() => {
     adminCacheEpoch++;
     adminCache.clear();
     adminRequests.clear();
-    staffIdentityRequest = null;
     adminCacheOwner = token;
     try {
       const stored = JSON.parse(sessionStorage.getItem(ADMIN_CACHE_KEY));
@@ -394,6 +445,8 @@ var API = (() => {
 
   function clearAuthStorage() {
     clearAdminCache();
+    clearStaffIdentity();
+    verifiedSidebarRevision = null;
     sessionRevision += 1;
     serverSession = null;
     sessionSync = null;
@@ -528,6 +581,7 @@ var API = (() => {
   }
 
   function clearAdminToken() {
+    clearStaffIdentity();
     const role = getUserRole();
     safeStorageRemove(localStorage, ADMIN_TOKEN_KEY);
     safeStorageRemove(sessionStorage, ADMIN_TOKEN_KEY);
@@ -882,6 +936,9 @@ var API = (() => {
     const root = document.documentElement;
     if (state) root?.setAttribute("data-session-gate", state);
     else root?.removeAttribute("data-session-gate");
+    document.querySelectorAll?.('.admin-sidebar-menu [data-admin-navigation]').forEach(region => {
+      region.inert = Boolean(state);
+    });
     const card = document.getElementById("bethlehem-session-lock");
     if (card) card.hidden = !state;
   }
@@ -1024,6 +1081,14 @@ var API = (() => {
 
   function applyServerSession(data, token) {
     if (getAuthSession()?.token !== token || typeof data.locked !== "boolean") return;
+    if (isAdminRole(getAuthSession()?.role) && data.sidebar_revision) {
+      if (data.role !== getUserRole()) { invalidateSession(null, 'permissions_changed'); return; }
+      const cached = getCachedStaffIdentity();
+      verifiedSidebarRevision = data.sidebar_revision;
+      if (cached && (cached.sidebar_revision !== data.sidebar_revision || cached.user.user_id !== data.user_id)) {
+        clearStaffIdentity(true);
+      }
+    }
     const timestamp = Date.now();
     const serverNow = Date.parse(data.server_now);
     const idleAt = timestamp + Date.parse(data.idle_at) - serverNow;
@@ -1143,7 +1208,11 @@ var API = (() => {
       if (event.key === CUSTOMER_TOKEN_KEY || event.key === CUSTOMER_CACHE_SESSION_KEY || event.key === USER_ROLE_KEY) {
         clearCustomerCache();
       }
-      if (event.key === ADMIN_TOKEN_KEY || event.key === USER_ROLE_KEY) clearAdminCache();
+      if (event.key === ADMIN_TOKEN_KEY || event.key === USER_ROLE_KEY) {
+        clearAdminCache();
+        clearStaffIdentity();
+        verifiedSidebarRevision = null;
+      }
       if (event.key === ADMIN_DATA_CHANGED_KEY && event.newValue) {
         try {
           if (JSON.parse(event.newValue).owner === activitySessionId(getAuthSession())) clearAdminCache();
@@ -1647,7 +1716,9 @@ var API = (() => {
     // GET /api/me  (protected)
     const token =
       isAdminRole(role) ? getAdminToken() : getCustomerToken();
+    const identityEpoch = staffIdentityEpoch;
     const response = await request("GET", "/me", null, token, options);
+    if (isAdminRole(role) && token === getAdminToken() && identityEpoch === staffIdentityEpoch) rememberStaffIdentity(response, token);
     if (!isAdminRole(role) && response?.user) {
       rememberCustomerProfileName(response.user.first_name, response.user.last_name);
     }
@@ -1655,12 +1726,23 @@ var API = (() => {
   }
 
   function getStaffIdentity() {
-    ensureAdminCache();
+    const cached = getCachedStaffIdentity();
+    if (cached) return Promise.resolve(cached);
     if (!staffIdentityRequest) {
-      staffIdentityRequest = getMe(getUserRole()).catch((error) => {
-        staffIdentityRequest = null;
-        throw error;
+      const token = getAdminToken(), epoch = staffIdentityEpoch;
+      if (!token) return Promise.reject(new Error('Session ended.'));
+      const pending = getMe(getUserRole()).then(response => {
+        if (token !== getAdminToken() || epoch !== staffIdentityEpoch) throw new Error('Session changed while loading identity.');
+        if (verifiedSidebarRevision && response.sidebar_revision !== verifiedSidebarRevision) throw new Error('Permissions changed while loading identity. Please retry.');
+        if (response?.user?.role !== getUserRole()) {
+          invalidateSession(null, 'permissions_changed');
+          throw new Error('Permissions changed. Please sign in again.');
+        }
+        return response;
+      }).finally(() => {
+        if (staffIdentityRequest === pending) staffIdentityRequest = null;
       });
+      staffIdentityRequest = pending;
     }
     return staffIdentityRequest;
   }
@@ -2599,6 +2681,7 @@ var API = (() => {
     // Role access (used by admin dashboard for staff role-based UI hiding)
     getUserRole,
     getStaffIdentity,
+    getCachedStaffIdentity,
     setUserRole,
     clearUserRole,
     clearAuthState: clearAuthStorage,

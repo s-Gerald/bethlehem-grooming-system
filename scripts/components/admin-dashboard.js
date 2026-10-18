@@ -543,7 +543,6 @@ function adminDashboard() {
       if (this.pageMode === 'dashboard') {
         this.startContentPolling();
         await Promise.all([this.loadDashboardSummary(), this.loadDashboardActivity(), this.loadNotifications(), this.loadClinicStatus()]);
-        this.refreshIcons();
         this.dispatchDashboardEvent('admin-dashboard:ready', { state: this.getState() });
         return;
       }
@@ -554,7 +553,6 @@ function adminDashboard() {
         console.error("Failed to initialize admin dashboard:", error);
       }
 
-      this.refreshIcons();
       this.dispatchDashboardEvent("admin-dashboard:ready", {
         state: this.getState(),
       });
@@ -652,7 +650,6 @@ function adminDashboard() {
             };
             this.detailsModalOpen = true;
             this.$nextTick(() => {
-              if (window.lucide) lucide.createIcons();
               this.$refs.groomingDetailsClose?.focus();
             });
           },
@@ -764,7 +761,6 @@ function adminDashboard() {
 
         this.dashboardSearchCustomers = data.customers || [];
         this.dashboardSearchPets = data.pets || [];
-        this.$nextTick(() => this.refreshIcons());
       } catch (error) {
         if (requestId !== this._dashboardSearchRequestId) return;
 
@@ -811,7 +807,6 @@ function adminDashboard() {
         setData: (payload) => this.applyDashboardData(payload),
         setConfig: (config) => this.mergeConfig(config),
         getState: () => this.getState(),
-        refreshIcons: () => this.refreshIcons(),
         runAction: (actionName, booking) =>
           this.runBookingAction(actionName, booking),
       };
@@ -879,11 +874,9 @@ function adminDashboard() {
       }
     },
 
-    // Switches the active dashboard tab and refreshes icons for the new view.
     setTab(tabName) {
       this.closeGroomingMenu();
       this.activeTab = tabName;
-      this.refreshIcons();
     },
 
     // Handles the walk-in booking button using a URL, handler, or fallback event.
@@ -1468,7 +1461,6 @@ function adminDashboard() {
         if (this.config.enableOptimisticUpdates) {
           this.applyOptimisticTransition(actionName, booking);
         }
-        this.refreshIcons();
         return;
       }
 
@@ -1499,7 +1491,6 @@ function adminDashboard() {
         this.applyOptimisticTransition(actionName, booking);
       }
 
-      this.refreshIcons();
     },
 
     // Replaces a single booking across lists after the backend returns an updated record.
@@ -1519,7 +1510,6 @@ function adminDashboard() {
         this[listKey] = this.insertBookingSorted(this[listKey], normalizedBooking);
       }
 
-      this.refreshIcons();
     },
 
     // Moves a booking locally when optimistic updates are enabled and no payload is returned.
@@ -1527,7 +1517,6 @@ function adminDashboard() {
       const nextStatus = this.getNextStatusForAction(actionName, booking.status);
       if (!nextStatus || nextStatus === "archived") {
         this.removeBookingFromLists(booking.id);
-        this.refreshIcons();
         return;
       }
 
@@ -1627,7 +1616,6 @@ function adminDashboard() {
         }
       }
 
-      this.refreshIcons();
       this.dispatchDashboardEvent("admin-dashboard:data-applied", {
         state: this.getState(),
       });
@@ -2247,7 +2235,6 @@ function adminDashboard() {
         ...this.expandedQueuedBookingIds,
         [String(bookingId)]: Boolean(expanded),
       };
-      this.$nextTick(() => this.refreshIcons());
     },
 
     toggleQueuedBooking(bookingId) {
@@ -2266,7 +2253,6 @@ function adminDashboard() {
         ...this.expandedInProgressBookingIds,
         [String(bookingId)]: Boolean(expanded),
       };
-      this.$nextTick(() => this.refreshIcons());
     },
 
     toggleInProgressBooking(bookingId) {
@@ -3140,14 +3126,6 @@ function adminDashboard() {
       );
     },
 
-    // Re-renders Lucide icons after Alpine updates the DOM.
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      });
-    },
 
     // ── Incoming list grouped by date (today first) ───────────────────────
 
@@ -3295,7 +3273,6 @@ function adminDashboard() {
       } finally {
         this.paymentModal.busy = false;
       }
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     closePaymentModal(force = false) {
@@ -4046,7 +4023,6 @@ function adminDashboard() {
         paidAt:        res.paid_at ?? new Date().toLocaleString("en-PH"),
         isEarlyPayment,
       };
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       await this.loadAdminBookings();
       await this.loadNotifications();
       if (!isEarlyPayment && res?.booking_status === "released") {

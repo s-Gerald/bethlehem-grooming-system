@@ -9,13 +9,12 @@ function adminReports() {
     showAllServices: false, activePoint: null });
   const page = {
     activeSection: 'grooming', sections: { grooming: sectionState(), clinic: sectionState() }, chartWidth: 740,
-    async init() { await this.loadReport(); this.refreshIcons(); },
+    async init() { await this.loadReport();  },
     async selectSection(section) {
       if (section === this.activeSection) return;
       this.activeSection = section;
       this.activePoint = null;
       if (this.requestId === 0) await this.loadReport();
-      this.refreshIcons();
     },
     get sectionLabel() { return this.activeSection === 'clinic' ? 'Clinic' : 'Grooming'; },
     async changePeriod() {
@@ -51,10 +50,9 @@ function adminReports() {
       } catch {
         if (requestId === state.requestId) state.error = 'Unable to load reports. Please try again.';
       } finally {
-        if (requestId === state.requestId) { state.loading = false; if (section === this.activeSection) this.refreshIcons(); }
+        if (requestId === state.requestId) { state.loading = false;  }
       }
     },
-    refreshIcons() { this.$nextTick(() => window.lucide?.createIcons()); },
     observeChart(element) {
       chartObserver?.disconnect();
       chartObserver = new ResizeObserver(entries => {
@@ -88,7 +86,7 @@ function adminReports() {
         { title: 'Average Sale', value: this.formatMoney(overview.averageSale), icon: 'receipt', hint: `Collected ${this.sectionLabel.toLowerCase()} amount per paid session` },
       ];
       if (this.activeSection === 'grooming') cards.push(
-        { title: 'Returning Customers', value: this.formatCount(overview.returningCustomers), icon: 'repeat-2' },
+        { title: 'Returning Customers', value: this.formatCount(overview.returningCustomers), icon: 'repeat' },
       );
       return cards;
     },

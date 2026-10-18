@@ -14,8 +14,10 @@
     />
     <link rel="stylesheet" href="../../css/grooming-estimates.css?v=checkin-layout-20261009-2">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-navigation-20261018-2" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -66,6 +68,7 @@
 
         <!-- Navigation -->
 
+        <div data-session-public data-admin-sidebar-loading role="status" aria-label="Loading navigation"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#spinner-gap"></use></svg></div>
         <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p
@@ -80,7 +83,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="layout-dashboard" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
                 <span>Dashboard</span>
               </a>
 
@@ -89,7 +92,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="users" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
 
@@ -98,7 +101,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="calendar-days" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span
                   x-show="hasIncomingAppointments"
@@ -113,7 +116,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="stethoscope" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                 <span>Clinic</span>
               </a>
 
@@ -122,7 +125,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="box" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
                 <span>Inventory</span>
               </a>
 
@@ -142,7 +145,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="archive" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                 <span>Archive</span>
               </a>
 
@@ -151,7 +154,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="receipt" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
                 <span>Transactions</span>
               </a>
 
@@ -162,7 +165,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="clipboard-list" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                 <span>Reports</span>
               </a>
             </div>
@@ -181,7 +184,7 @@
                 class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40"
                 :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'"
               >
-                <i data-lucide="settings" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
                 <span>Settings</span>
               </a>
             </div>
@@ -209,12 +212,12 @@
           <button
             type="button"
             x-show="isAdmin"
-            @click="handleStopReceivingClick()"
+            @click="handleStopReceivingClick()" disabled :disabled="!clinicStatusLoaded"
             class="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 font-bold transition"
             :class="clinicStopped ? 'btn-clinic-reopen' : 'btn-clinic-stop'"
           >
-            <i data-lucide="door-closed" class="h-4 w-4 shrink-0"></i>
-            <span x-text="clinicStopped ? 'Reopen Today' : 'We\'re Done for Today'"></span>
+            <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#door"></use></svg>
+            <span x-text="clinicStopped ? 'Reopen Today' : 'We\'re Done for Today'">We're Done for Today</span>
           </button>
 
           <button
@@ -222,11 +225,13 @@
             class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30"
             @click="handleLogout()"
           >
-            <i data-lucide="log-out" class="h-4 w-4"></i>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
           </button>
         </div>
       </aside>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3"></script>
 
       <!-- Stop Receiving Confirmation Modal -->
       <div
@@ -277,7 +282,7 @@
             class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm"
             @click="sidebarOpen = true"
           >
-            <i data-lucide="menu" class="h-5 w-5"></i>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button>
         </header>
 
@@ -320,7 +325,7 @@
                       <span
                         class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
                       >
-                        <i data-lucide="search" class="h-5 w-5"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
                       </span>
                       <input
                         type="search"
@@ -412,7 +417,7 @@
 
                   <!-- Date filter -->
                   <div class="flex items-center gap-2 rounded-xl bg-white border border-[#c9d9e8] px-3 py-2">
-                    <i data-lucide="calendar" class="h-4 w-4 text-[#315b7e] shrink-0"></i>
+                    <svg class="ph-icon h-4 w-4 text-[#315b7e] shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar"></use></svg>
                     <input
                       type="date"
                       x-model="selectedDate"
@@ -428,7 +433,7 @@
                     @click="handleWalkInBooking()"
                     class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#284a67]"
                   >
-                    <i data-lucide="plus" class="h-4 w-4"></i>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#plus"></use></svg>
                     <span>Walk-in</span>
                   </button>
 
@@ -436,7 +441,7 @@
                   <div
                     class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white"
                   >
-                    <i data-lucide="users-round" class="h-4 w-4"></i>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
                     <span
                       x-text="'Capacity: ' + currentCapacity + '/' + maxCapacity"
                     ></span>
@@ -449,7 +454,7 @@
                       @click="toggleNotifications()"
                       class="relative flex items-center justify-center rounded-xl bg-[#315b7e] p-3 text-white"
                     >
-                      <i data-lucide="bell" class="h-5 w-5"></i>
+                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#bell"></use></svg>
                       <span
                         x-show="notificationCount > 0"
                         x-text="notificationCount"
@@ -518,7 +523,7 @@
                                 @click="handleMarkOneRead(notif)"
                               >
                                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]" aria-hidden="true">
-                                  <i :data-lucide="notif.icon || 'bell'" class="h-4 w-4"></i>
+                                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (getAdminNotificationIcon(notif.icon))"></use></svg>
                                 </span>
                                 <div class="min-w-0 flex-1">
                                   <p class="text-sm text-slate-700">
@@ -550,7 +555,7 @@
                                 @click="handleMarkOneRead(notif)"
                               >
                                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]" aria-hidden="true">
-                                  <i :data-lucide="notif.icon || 'bell'" class="h-4 w-4"></i>
+                                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (getAdminNotificationIcon(notif.icon))"></use></svg>
                                 </span>
                                 <div class="min-w-0 flex-1">
                                   <p class="text-sm text-slate-700">
@@ -607,7 +612,7 @@
                   </div>
 
                   <div class="text-[#63c7bb]">
-                    <i data-lucide="calendar-check-2" class="h-8 w-8"></i>
+                    <svg class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
                   </div>
                 </div>
               </article>
@@ -627,7 +632,7 @@
                   </div>
 
                   <div class="text-[#b14dff]">
-                    <i data-lucide="trending-up" class="h-8 w-8"></i>
+                    <svg class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#trend-up"></use></svg>
                   </div>
                 </div>
               </article>
@@ -714,7 +719,7 @@
                 <div
                   class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]"
                 >
-                  <i data-lucide="calendar-clock" class="h-8 w-8"></i>
+                  <svg class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 </div>
 
                 <p class="mt-4 text-lg font-bold text-[#2f4b66]">
@@ -844,21 +849,21 @@
                   <template x-if="shouldShowUndoCheckIn(booking) || shouldShowOwnerCancel(booking)">
                     <div class="grooming-overflow" @click.outside="groomingMenuBookingId === booking.id && closeGroomingMenu()" @keydown.escape.window="groomingMenuBookingId === booking.id && closeGroomingMenu(true)">
                       <button type="button" class="grooming-overflow-trigger" :id="'grooming-menu-trigger-' + booking.id" :aria-label="'More actions for ' + booking.ownerName" aria-haspopup="menu" :aria-expanded="groomingMenuBookingId === booking.id" :aria-controls="'grooming-menu-' + booking.id" @click.stop="toggleGroomingMenu(booking, $event)" @keydown.arrow-down.prevent.stop="openGroomingMenu(booking, $event)" @keydown.arrow-up.prevent.stop="openGroomingMenu(booking, $event, true)">
-                        <i data-lucide="ellipsis-vertical" class="h-5 w-5" aria-hidden="true"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three-vertical"></use></svg>
                       </button>
                       <div x-cloak x-show="groomingMenuBookingId === booking.id" class="grooming-overflow-menu" role="menu" :id="'grooming-menu-' + booking.id" :aria-labelledby="'grooming-menu-trigger-' + booking.id" @keydown.stop="handleGroomingMenuKeydown($event)">
                         <template x-if="shouldShowUndoCheckIn(booking)">
-                          <button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item" @click.stop="closeGroomingMenu(); confirmUndoCheckIn(booking)"><i data-lucide="undo-2" class="h-4 w-4" aria-hidden="true"></i>Undo Check-in</button>
+                          <button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item" @click.stop="closeGroomingMenu(); confirmUndoCheckIn(booking)"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg>Undo Check-in</button>
                         </template>
                         <template x-if="shouldShowOwnerCancel(booking)">
-                          <button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item grooming-menu-danger" :class="shouldShowUndoCheckIn(booking) ? 'is-separated' : ''" @click.stop="closeGroomingMenu(); confirmCancelBooking(booking)"><i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>Cancel</button>
+                          <button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item grooming-menu-danger" :class="shouldShowUndoCheckIn(booking) ? 'is-separated' : ''" @click.stop="closeGroomingMenu(); confirmCancelBooking(booking)"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#trash"></use></svg>Cancel</button>
                         </template>
                       </div>
                     </div>
                   </template>
                   <template x-if="(activeTab === 'queued' || activeTab === 'in-progress') && booking.pets?.length">
                     <button type="button" class="grooming-disclosure-button" :aria-label="(isGroomingBookingExpanded(booking) ? 'Collapse' : 'Expand') + ' pets for ' + booking.ownerName" :aria-expanded="isGroomingBookingExpanded(booking)" :aria-controls="'grooming-pets-' + booking.id" @click.stop="toggleGroomingBooking(booking)">
-                      <i data-lucide="chevron-down" aria-hidden="true" :class="isGroomingBookingExpanded(booking) ? 'is-expanded' : ''"></i>
+                      <svg  aria-hidden="true" :class="ph-icon isGroomingBookingExpanded(booking) ? 'is-expanded' : ''" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                     </button>
                   </template>
                 </div>
@@ -901,7 +906,7 @@
                               </template>
                               <template x-if="canCancelPet(booking, pet) || canUndoPetStart(booking, pet)">
                                 <div class="grooming-overflow" x-data="{ menuId: 'pet-' + booking.id + '-' + (pet.bookingPetId ?? pet.id) }" @click.outside="groomingMenuBookingId === menuId && closeGroomingMenu()" @keydown.escape.window="groomingMenuBookingId === menuId && closeGroomingMenu(true)">
-                                  <button type="button" class="grooming-overflow-trigger" :id="'grooming-menu-trigger-' + menuId" :aria-label="'More actions for ' + pet.petName" aria-haspopup="menu" :aria-expanded="groomingMenuBookingId === menuId" :aria-controls="'grooming-menu-' + menuId" @click.stop="toggleGroomingMenu({ id: menuId }, $event)" @keydown.arrow-down.prevent.stop="openGroomingMenu({ id: menuId }, $event)" @keydown.arrow-up.prevent.stop="openGroomingMenu({ id: menuId }, $event, true)"><i data-lucide="ellipsis-vertical" class="h-5 w-5" aria-hidden="true"></i></button>
+                                  <button type="button" class="grooming-overflow-trigger" :id="'grooming-menu-trigger-' + menuId" :aria-label="'More actions for ' + pet.petName" aria-haspopup="menu" :aria-expanded="groomingMenuBookingId === menuId" :aria-controls="'grooming-menu-' + menuId" @click.stop="toggleGroomingMenu({ id: menuId }, $event)" @keydown.arrow-down.prevent.stop="openGroomingMenu({ id: menuId }, $event)" @keydown.arrow-up.prevent.stop="openGroomingMenu({ id: menuId }, $event, true)"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three-vertical"></use></svg></button>
                                   <div x-cloak x-show="groomingMenuBookingId === menuId" class="grooming-overflow-menu" role="menu" :id="'grooming-menu-' + menuId" :aria-labelledby="'grooming-menu-trigger-' + menuId" @keydown.stop="handleGroomingMenuKeydown($event)">
                                     <template x-if="canUndoPetStart(booking, pet)"><button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item" @click.stop="closeGroomingMenu(); confirmUndoPetStart(booking, pet)">Undo Start</button></template>
                                     <template x-if="canCancelPet(booking, pet)"><button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item grooming-menu-danger" @click.stop="closeGroomingMenu(); confirmCancelPet(booking, pet)">Cancel Pet</button></template>
@@ -909,7 +914,7 @@
                                 </div>
                                 </div>
                               </template>
-                              <button type="button" @click="printPetCard(booking, pet, petIndex)" class="admin-queued-pet-print" :aria-label="'Print grooming card for ' + pet.petName"><i data-lucide="printer" class="h-4 w-4"></i>Print</button>
+                              <button type="button" @click="printPetCard(booking, pet, petIndex)" class="admin-queued-pet-print" :aria-label="'Print grooming card for ' + pet.petName"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>Print</button>
                             </div>
                           </div>
                         </article>
@@ -944,7 +949,7 @@
                   <p x-show="paymentModal.isEarlyPayment" class="mt-2 text-sm text-slate-500">Payment is being recorded before grooming is completed.</p>
                 </div>
                 <button type="button" @click="closePaymentModal()" aria-label="Close payment modal" class="text-slate-400 hover:text-[#315b7e]">
-                  <i data-lucide="x" class="h-5 w-5"></i>
+                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                 </button>
               </div>
 
@@ -967,7 +972,7 @@
                         <div class="payment-pet-card__header">
                           <div class="payment-pet-identity">
                             <div class="payment-pet-icon">
-                              <i data-lucide="paw-print" class="h-4 w-4"></i>
+                              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
                             </div>
                             <div class="min-w-0">
                               <h5 class="payment-pet-name" x-text="pet.name || ('Pet ' + (petIndex + 1))"></h5>
@@ -984,7 +989,7 @@
                               <button type="button" @click="pet.isSizeEditing = !pet.isSizeEditing" class="text-xs font-semibold text-[#315b7e] hover:underline" x-text="pet.isSizeEditing ? 'Done' : 'Edit'"></button>
                             </div>
                             <p x-show="pet.verifiedSizeKey && pet.sizeKey === pet.verifiedSizeKey" class="payment-size-verified">
-                              <i data-lucide="check" class="payment-size-verified-icon" aria-hidden="true"></i>
+                              <svg class="ph-icon payment-size-verified-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg>
                               <span>Size verified</span>
                             </p>
                             <select x-show="pet.isSizeEditing" x-model="pet.sizeKey" :value="pet.sizeKey" x-effect="$el.value = pet.sizeKey" @change="updatePaymentPetSize(pet)" :aria-label="'Clinic size for ' + pet.name">
@@ -1050,7 +1055,7 @@
                     <div class="relative">
                       <input type="search" x-model="paymentModal.productQuery" @input="searchPaymentProducts()" placeholder="Search product name or barcode" aria-label="Search products" class="w-full rounded-xl border border-slate-200 py-2 pl-4 pr-12 text-sm outline-none focus:border-[#315b7e]" />
                       <button type="button" @click="openPaymentScanner()" aria-label="Scan product barcode" title="Scan product barcode" class="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-[#eaf4fb] hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]">
-                        <i data-lucide="scan-line" class="h-4 w-4"></i>
+                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#barcode"></use></svg>
                       </button>
                     </div>
                     <p x-show="paymentModal.productSearchError" class="text-xs text-red-600" x-text="paymentModal.productSearchError"></p>
@@ -1181,7 +1186,7 @@
             <div class="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
               <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <h4 class="font-bold text-slate-800">Scan Barcode</h4>
-                <button type="button" @click="closePaymentScanner()" aria-label="Close barcode scanner" class="text-slate-400 transition hover:text-red-500"><i data-lucide="x" class="h-5 w-5"></i></button>
+                <button type="button" @click="closePaymentScanner()" aria-label="Close barcode scanner" class="text-slate-400 transition hover:text-red-500"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
               </div>
               <div class="p-4">
                 <div id="grooming-payment-barcode-reader" class="w-full overflow-hidden rounded-xl"></div>
@@ -1201,7 +1206,7 @@
             <div class="receipt-modal-card w-full bg-white shadow-2xl overflow-hidden">
               <header class="receipt-success-header">
                 <div class="receipt-success-icon">
-                  <i data-lucide="check" class="h-6 w-6"></i>
+                  <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg>
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p x-show="receiptModal.reconciliationMessage" x-text="receiptModal.reconciliationMessage" class="mt-2 text-sm text-red-600" role="status"></p>
@@ -1278,7 +1283,7 @@
                   @click="printReceipt()"
                   class="receipt-print-button flex-1 rounded-xl border bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 flex items-center justify-center gap-2"
                 >
-                  <i data-lucide="printer" class="h-4 w-4"></i>
+                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>
                   Print Invoice
                 </button>
                 <button
@@ -1308,19 +1313,19 @@
                   :class="actionConfirmModal.variant === 'danger' ? 'admin-action-confirm-icon-danger' : (actionConfirmModal.variant === 'warning' ? 'admin-action-confirm-icon-warning' : 'admin-action-confirm-icon-primary')"
                 >
                   <span x-show="actionConfirmModal.icon === 'cancel'">
-                    <i data-lucide="calendar-x" class="h-7 w-7"></i>
+                    <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-x"></use></svg>
                   </span>
                   <span x-show="actionConfirmModal.icon === 'undo'">
-                    <i data-lucide="rotate-ccw" class="h-7 w-7"></i>
+                    <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-counter-clockwise"></use></svg>
                   </span>
                   <span x-show="actionConfirmModal.icon === 'grooming'">
-                    <i data-lucide="scissors" class="h-7 w-7"></i>
+                    <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg>
                   </span>
                   <span x-show="actionConfirmModal.icon === 'finished'">
-                    <i data-lucide="check-circle-2" class="h-7 w-7"></i>
+                    <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check-circle"></use></svg>
                   </span>
                   <span x-show="actionConfirmModal.icon === 'checkIn'">
-                    <i data-lucide="calendar-check-2" class="h-7 w-7"></i>
+                    <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
                   </span>
                 </div>
                 <h4 class="text-lg font-bold text-slate-800" x-text="actionConfirmModal.title"></h4>
@@ -1440,7 +1445,7 @@
                   </div>
                 </div>
                 <button type="button" @click="closeDetailsModal()" x-ref="groomingDetailsClose" aria-label="Close Grooming Details" class="grooming-details-close text-white/70 hover:text-white">
-                  <i data-lucide="x" class="h-5 w-5"></i>
+                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                 </button>
               </div>
 
@@ -1633,7 +1638,7 @@
             <div class="pickup-confirm-card">
               <div style="padding:1.5rem;text-align:center">
                 <div class="pickup-confirm-icon-wrap">
-                  <i data-lucide="package-check" style="width:1.75rem;height:1.75rem;color:#0e7490"></i>
+                  <svg  style="width:1.75rem;height:1.75rem;color:#0e7490" class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#package"></use></svg>
                 </div>
                 <h4 style="font-size:1.125rem;font-weight:700;color:#1e293b">Confirm Pickup</h4>
                 <p style="margin-top:0.5rem;font-size:0.875rem;color:#64748b">
@@ -1674,15 +1679,13 @@
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018&loading-ui=universal-20261018"></script>
+
     <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
-    <!-- Existing sidebar script -->
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018&loading-ui=universal-20261018"></script>
+
 
     <script>
       window.ADMIN_DASHBOARD_CONFIG = {
@@ -1696,6 +1699,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018&icons=20261018"></script>
   </body>
 </html>

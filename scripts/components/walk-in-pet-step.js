@@ -708,9 +708,6 @@ function initWalkInPetStep() {
   renderSelectedPets();
   if (isExistingCustomer()) refreshExistingOwnerPets();
 
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
 }
 
 if (document.readyState === "loading") {

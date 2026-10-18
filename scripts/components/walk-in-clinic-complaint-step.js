@@ -91,5 +91,4 @@ export function renderWalkInClinicComplaintStep({ pet = null } = {}) {
     });
   });
 
-  if (window.lucide) window.lucide.createIcons();
 }

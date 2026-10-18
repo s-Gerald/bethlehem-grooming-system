@@ -519,7 +519,4 @@ document.addEventListener("DOMContentLoaded", () => {
   renderValidationErrors(getFormValues(), { showAll: false });
   syncNextButtonState();
 
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
 });

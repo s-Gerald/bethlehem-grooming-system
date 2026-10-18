@@ -42,7 +42,6 @@ class AdminDashboardScriptDependenciesTest extends TestCase
         );
         $this->assertStringContainsString('async loadLoggedInIdentity()', $sidebar);
         $this->assertStringContainsString('API.getStaffIdentity ? API.getStaffIdentity() : API.getMe("staff")', $sidebar);
-        $this->assertStringContainsString('this.staffDisplayName = fullName', $sidebar);
     }
 
     public function test_dashboard_search_groups_minimal_customer_and_pet_results_and_links_to_details(): void

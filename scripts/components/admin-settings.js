@@ -162,9 +162,6 @@ function adminSettings() {
         this.activeSettingsTab === "security" ? this.selectSettingsTab("security") : Promise.resolve(),
       ]);
 
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
 
     selectSettingsTab(tab) {
@@ -493,7 +490,7 @@ function adminSettings() {
     openAddStaffAccount() {
       this.staffNotice = "";
       this.addStaffModal = this.emptyAddStaffModal(true);
-      this.refreshSecurityIcons();
+
     },
 
     closeAddStaffAccount() {
@@ -508,7 +505,7 @@ function adminSettings() {
         this.addStaffModal.staffType = "";
         this.addStaffModal.staffSubrole = "";
         this.addStaffModal.error = "";
-        this.refreshSecurityIcons();
+
         return;
       }
 
@@ -523,13 +520,13 @@ function adminSettings() {
       if (staffType === "clinic") {
         this.addStaffModal.roleStage = "clinic";
         this.addStaffModal.error = "";
-        this.refreshSecurityIcons();
+
         return;
       }
 
       this.addStaffModal.step = "details";
       this.addStaffModal.error = "";
-      this.refreshSecurityIcons();
+
       this.$nextTick(() => document.getElementById("newStaffFirstName")?.focus());
     },
 
@@ -539,7 +536,7 @@ function adminSettings() {
       this.addStaffModal.staffSubrole = staffSubrole;
       this.addStaffModal.step = "details";
       this.addStaffModal.error = "";
-      this.refreshSecurityIcons();
+
       this.$nextTick(() => document.getElementById("newStaffFirstName")?.focus());
     },
 
@@ -548,7 +545,7 @@ function adminSettings() {
       this.addStaffModal.step = "role";
       this.addStaffModal.roleStage = this.addStaffModal.staffType === "clinic" ? "clinic" : "main";
       this.addStaffModal.error = "";
-      this.refreshSecurityIcons();
+
     },
 
     async requestNewStaffAccount() {
@@ -589,7 +586,7 @@ function adminSettings() {
         });
         this.addStaffModal.step = "success";
         await this.loadSecurityAccounts();
-        this.refreshSecurityIcons();
+
       } catch (error) {
         this.addStaffModal.error = this.firstApiError(error);
       } finally {
@@ -608,7 +605,7 @@ function adminSettings() {
         busy: false,
         error: "",
       };
-      this.refreshSecurityIcons();
+
       this.$nextTick(() => document.getElementById("staffStatusAdminPassword")?.focus());
     },
 
@@ -640,7 +637,7 @@ function adminSettings() {
 
       this.staffDetailsModal = { open: true, staff, selectedRole: "", password: "", showPassword: false, busy: false, error: "" };
       this.staffDetailsModal.selectedRole = this.savedStaffRole;
-      this.refreshSecurityIcons();
+
     },
 
     closeStaffDetails() {
@@ -746,7 +743,7 @@ function adminSettings() {
       if (!staff?.setupRequired) return;
       this.closeStaffDetails();
       this.staffSetupModal = { open: true, staff, password: "", showPassword: false, busy: false, error: "" };
-      this.refreshSecurityIcons();
+
     },
 
     closeStaffSetupModal() {
@@ -807,7 +804,7 @@ function adminSettings() {
 
     openSecurityVerification(challenge) {
       this.securityVerification = this.emptySecurityVerification(true, challenge);
-      this.refreshSecurityIcons();
+
       this.$nextTick(() => document.getElementById("securityCodeDigit0")?.focus());
     },
 
@@ -918,12 +915,6 @@ function adminSettings() {
       } finally {
         this.securityVerification.resending = false;
       }
-    },
-
-    refreshSecurityIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
   };
 }

@@ -40,7 +40,6 @@ function adminInventoryItems() {
 
     async init() {
       await this.load();
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     // ── List ────────────────────────────────────────────────────────────────
@@ -72,7 +71,6 @@ function adminInventoryItems() {
       } finally {
         if (request !== this._listRequest) return;
         this.loading = false;
-        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       }
     },
 
@@ -186,7 +184,6 @@ function adminInventoryItems() {
     openAdd() {
       this.form = ProductForm.empty();
       this.modal = { open: true, busy: false, error: "" };
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     openEdit(item) {
@@ -203,7 +200,6 @@ function adminInventoryItems() {
         reorder_level: ProductForm.normalizeReorderLevel(item.reorder_level),
       });
       this.modal = { open: true, busy: false, error: "" };
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     async submitForm() {

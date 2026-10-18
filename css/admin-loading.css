@@ -23,5 +23,17 @@ html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public] 
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-surface],
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public],
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public] * { visibility: visible !important; pointer-events: none !important; }
+/* Verified presentation stays visible during security validation. The central
+   session gate still blocks all interaction and fully conceals locked sessions. */
+html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu[data-admin-navigation-ready] [data-admin-navigation],
+html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu[data-admin-navigation-ready] [data-admin-navigation] * {
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+[data-admin-sidebar-loading] { display: flex; flex: 1 1 auto; justify-content: center; padding-top: 2rem; color: #5c7690; }
+[data-admin-sidebar-loading] svg { animation: admin-loading-spin 1s linear infinite; }
+.admin-sidebar-menu[data-admin-navigation-ready] [data-admin-sidebar-loading] { display: none; }
+.admin-sidebar-menu button:disabled { cursor: wait; }
+.admin-sidebar-menu a:focus-visible, .admin-sidebar-menu button:focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; }
 @keyframes admin-loading-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { admin-loader > svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { admin-loader > svg, [data-admin-sidebar-loading] svg { animation: none; } }

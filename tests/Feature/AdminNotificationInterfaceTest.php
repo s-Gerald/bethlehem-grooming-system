@@ -13,7 +13,7 @@ class AdminNotificationInterfaceTest extends TestCase
 
             $this->assertStringContainsString('notif.message_parts', $html);
             $this->assertStringContainsString('notif.context_parts', $html);
-            $this->assertStringContainsString(":data-lucide=\"notif.icon || 'bell'\"", $html);
+            $this->assertStringContainsString('getAdminNotificationIcon(notif.icon)', $html);
             $this->assertStringContainsString("part.emphasized ? 'font-semibold' : ''", $html);
             $this->assertStringContainsString('href="./notifications.html"', $html);
             $this->assertStringNotContainsString('x-text="notif.message"></p>', $html);
@@ -35,13 +35,13 @@ class AdminNotificationInterfaceTest extends TestCase
             'Unread',
             'Mark all as read',
             "loadingMore ? 'Loading...' : 'Load More'",
-            ":data-lucide=\"notification.icon || 'bell'\"",
+            'getAdminNotificationIcon(notification.icon)',
             'class="admin-custom-select-trigger"',
             'class="admin-custom-select-options"',
             'role="listbox"',
             'role="option"',
-            'data-lucide="list-filter"',
-            'data-lucide="chevron-down"',
+            'assets/icons/phosphor.svg?v=admin-icons-20261018#funnel',
+            'assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down',
         ] as $requiredText) {
             $this->assertStringContainsString($requiredText, $html);
         }

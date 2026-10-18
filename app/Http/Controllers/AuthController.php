@@ -314,6 +314,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
+            'sidebar_revision' => in_array($user->role, ['admin', 'staff'], true) ? $user->sidebarRevision() : null,
             'user' => [
                 'user_id' => $user->user_id,
                 'first_name' => $user->first_name,

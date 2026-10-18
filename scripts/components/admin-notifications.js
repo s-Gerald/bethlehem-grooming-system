@@ -24,7 +24,6 @@ function adminNotifications() {
     async init() {
       await window.AppClock?.load?.();
       await this.loadNotifications(true);
-      this.refreshIcons();
     },
 
     async setStatus(status) {
@@ -126,7 +125,6 @@ function adminNotifications() {
         if (requestId === this._requestId) {
           this.loading = false;
           this.loadingMore = false;
-          this.refreshIcons();
         }
       }
     },
@@ -234,12 +232,6 @@ function adminNotifications() {
         timeZone: "Asia/Manila",
         hour: "numeric",
         minute: "2-digit",
-      });
-    },
-
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
       });
     },
   };

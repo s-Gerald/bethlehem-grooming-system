@@ -269,7 +269,6 @@ function adminClinicVaccinations() {
       this.clearVaccine();
       this.formErrors = {};
       this.formErrorSummary = "";
-      this.refreshIcons();
     },
 
     openEditForm(record) {
@@ -311,7 +310,6 @@ function adminClinicVaccinations() {
 
       this.formErrors = {};
       this.formErrorSummary = "";
-      this.refreshIcons();
       if (this.inline) this.$nextTick(() => { this.$refs.treatmentForm?.scrollIntoView({block: 'start'}); this.$refs.treatmentForm?.querySelector('button')?.focus(); });
     },
 
@@ -401,14 +399,12 @@ function adminClinicVaccinations() {
       if (!restoring) this.form.inventory_quantity = 1;
       this.formModal.unavailableVaccineName = "";
       delete this.formErrors.inventory_item_id;
-      this.refreshIcons();
     },
 
     clearVaccine() {
       this.selectedVaccine = null;
       this.form.inventory_item_id = "";
       this.vaccineQuery = "";
-      this.refreshIcons();
     },
 
     changeTreatmentType(type) {
@@ -692,7 +688,6 @@ function adminClinicVaccinations() {
         recordId: record.id,
         record: null,
       };
-      this.refreshIcons();
       this.$nextTick(() => this.$refs.treatmentDetailClose?.focus());
 
       try {
@@ -795,12 +790,6 @@ function adminClinicVaccinations() {
 
     showToast(message, variant = 'success') {
       this.$store.clinicFeedback.notify(message, variant);
-    },
-
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
   };
 }

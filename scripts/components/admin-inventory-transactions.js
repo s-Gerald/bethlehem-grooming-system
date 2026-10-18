@@ -17,7 +17,6 @@ function adminInventoryTransactions() {
 
     async init() {
       await this.load();
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     async load(page = 1) {
@@ -46,7 +45,6 @@ function adminInventoryTransactions() {
       } finally {
         if (request !== this._listRequest) return;
         this.loading = false;
-        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       }
     },
 

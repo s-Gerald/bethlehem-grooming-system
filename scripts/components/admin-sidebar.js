@@ -1,37 +1,7 @@
-// Alpine's x-if creates fresh DOM after Lucide's initial page scan. Observe
-// those insertions so conditional and empty-state icons are always converted.
-(function installDynamicLucideIconObserver() {
-  if (window.__bethlehemDynamicLucideObserver || typeof MutationObserver === "undefined") {
-    return;
-  }
-
-  let refreshQueued = false;
-  const containsPendingIcon = (node) => node?.nodeType === Node.ELEMENT_NODE
-    && (node.matches?.("i[data-lucide]") || node.querySelector?.("i[data-lucide]"));
-
-  const queueIconRefresh = () => {
-    if (refreshQueued) return;
-    refreshQueued = true;
-
-    window.requestAnimationFrame(() => {
-      refreshQueued = false;
-      if (window.lucide && document.querySelector("i[data-lucide]")) {
-        window.lucide.createIcons();
-      }
-    });
-  };
-
-  const observer = new MutationObserver((mutations) => {
-    const hasNewIcon = mutations.some((mutation) =>
-      Array.from(mutation.addedNodes).some(containsPendingIcon),
-    );
-    if (hasNewIcon) queueIconRefresh();
-  });
-
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  window.__bethlehemDynamicLucideObserver = observer;
-  queueIconRefresh();
-})();
+function getAdminNotificationIcon(name) {
+  return ({ 'calendar-days': 'calendar-dots', 'circle-check': 'check-circle', 'credit-card': 'credit-card',
+    'circle-x': 'x-circle', history: 'clock-counter-clockwise', stethoscope: 'stethoscope' })[name] || 'bell';
+}
 
 function getAdminSidebarActivePage(pathname = window.location.pathname) {
   const normalizedPath = String(pathname || "")
@@ -63,11 +33,9 @@ function getAdminSidebarActivePage(pathname = window.location.pathname) {
 }
 
 function revealStaffSettingsSidebarLink() {
-  if (!window.API || API.getUserRole() !== "staff") return;
-
   document.querySelectorAll('.admin-sidebar-menu a[href$="settings.html"]').forEach((link) => {
     const adminOnlySection = link.closest('[x-show="isAdmin"]');
-    if (adminOnlySection) adminOnlySection.style.removeProperty("display");
+    if (adminOnlySection) adminOnlySection.setAttribute('x-show', 'sidebarReady');
   });
 }
 
@@ -92,6 +60,7 @@ function installAdminInventoryNavigation() {
   button.setAttribute(":class", link.getAttribute(":class") || "''");
   button.setAttribute("@click", "inventoryExpanded = activePage === 'inventory' || !inventoryExpanded");
   button.setAttribute(":aria-expanded", "inventoryExpanded");
+  button.setAttribute("aria-expanded", String(getAdminSidebarActivePage() === 'inventory'));
   button.setAttribute("aria-controls", "inventory-submenu");
   button.innerHTML = `${link.innerHTML}<span class="ml-auto text-xs" aria-hidden="true" x-text="inventoryExpanded ? '▾' : '▸'"></span>`;
   const submenu = document.createElement("div");
@@ -125,8 +94,74 @@ function installAdminServicesNavigation() {
   services.setAttribute(':class', "activePage === 'services' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'");
   services.setAttribute('x-show', 'isAdmin || clinicPermissions.services_view');
   services.setAttribute('@click', 'sidebarOpen = false');
-  services.innerHTML = '<i data-lucide="tags" class="h-5 w-5"></i><span>Services</span>';
+  services.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#tag"></use></svg><span>Services</span>`;
   clinic.after(services);
+}
+
+function getAdminSidebarIdentityState(user) {
+  if (!user) return {};
+  const first = String(user.first_name || '').trim(), last = String(user.last_name || '').trim();
+  return {
+    sidebarReady: true,
+    isAdmin: user.role === 'admin',
+    clinicPermissions: user.clinic_permissions || {},
+    canAccessGrooming: user.role === 'admin' || (user.staff_type === 'grooming' && user.staff_subrole === 'grooming_receptionist'),
+    staffDisplayName: `${first} ${last}`.trim() || 'Staff',
+    staffInitials: `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'ST',
+    staffRoleLabel: user.staff_type === 'clinic'
+      ? ({ veterinarian: 'Veterinarian', clinic_receptionist: 'Clinic Receptionist' }[user.staff_subrole] || 'Clinic Staff')
+      : user.staff_subrole === 'grooming_receptionist' ? 'Grooming Receptionist' : 'Staff',
+  };
+}
+
+// Paint verified presentation before Alpine or any unrelated API request finishes.
+function renderCachedAdminSidebar() {
+  const user = window.API?.getCachedStaffIdentity?.()?.user;
+  const aside = document.querySelector('.admin-sidebar-menu');
+  if (!user || !aside) return;
+  const state = getAdminSidebarIdentityState(user), activePage = getAdminSidebarActivePage();
+  const visible = {
+    isAdmin: state.isAdmin, sidebarReady: true,
+    'isAdmin || clinicPermissions.access': state.isAdmin || !!state.clinicPermissions.access,
+    'isAdmin || clinicPermissions.services_view': state.isAdmin || !!state.clinicPermissions.services_view,
+    'isAdmin || canAccessGrooming': state.canAccessGrooming,
+  };
+  aside.querySelectorAll('[x-show]').forEach(el => {
+    const condition = el.getAttribute('x-show');
+    if (Object.hasOwn(visible, condition)) el.style.display = visible[condition] ? '' : 'none';
+  });
+  aside.querySelectorAll('[data-admin-navigation]').forEach(el => {
+    el.removeAttribute('x-cloak');
+    el.style.removeProperty('display');
+  });
+  const text = {
+    "isAdmin ? 'AD' : staffInitials": state.isAdmin ? 'AD' : state.staffInitials,
+    "isAdmin ? 'Admin' : staffDisplayName": state.isAdmin ? 'Admin' : state.staffDisplayName,
+    "isAdmin ? 'Clinic Manager' : staffRoleLabel": state.isAdmin ? 'Clinic Manager' : state.staffRoleLabel,
+  };
+  aside.querySelectorAll('[x-text]').forEach(el => {
+    const value = text[el.getAttribute('x-text')];
+    if (value) el.textContent = value;
+  });
+  aside.querySelectorAll('nav a, nav button').forEach(el => {
+    const selected = el.getAttribute(':class')?.includes(`activePage === '${activePage}'`);
+    if (el.closest('.admin-inventory-submenu')) return;
+    el.classList.toggle('text-[#2f4b66]', !selected);
+    for (const name of ['bg-[#315b7e]', 'text-white', 'shadow-sm']) el.classList.toggle(name, !!selected);
+    if (selected && el.tagName === 'A') el.setAttribute('aria-current', 'page');
+  });
+  if (activePage === 'inventory') {
+    const submenu = aside.querySelector('#inventory-submenu');
+    submenu?.removeAttribute('x-cloak');
+    submenu?.style.removeProperty('display');
+    submenu?.querySelectorAll('a').forEach(link => {
+      const selected = new URL(link.href).hash === `#${getAdminInventorySection()}`;
+      link.classList.toggle('is-active', selected);
+      if (selected) link.setAttribute('aria-current', 'page');
+    });
+  }
+  aside.setAttribute('data-admin-navigation-ready', '');
+  aside.closest('[data-admin-shell]')?.setAttribute('data-admin-ready', '');
 }
 
 // Build the shared group before Alpine walks the sidebar. Replacing a live
@@ -134,9 +169,17 @@ function installAdminServicesNavigation() {
 if (typeof document !== "undefined" && document.querySelector) {
   installAdminInventoryNavigation();
   installAdminServicesNavigation();
+  revealStaffSettingsSidebarLink();
+  document.querySelectorAll('.admin-sidebar-menu nav a').forEach(link => {
+    link.setAttribute('@click', 'sidebarOpen = false');
+    if (link.closest('.admin-inventory-submenu')) return;
+    const page = getAdminSidebarActivePage(new URL(link.href).pathname);
+    link.setAttribute(':aria-current', `activePage === '${page}' ? 'page' : null`);
+  });
   document.querySelectorAll('.admin-sidebar-menu a[href$="archive.html"] span').forEach((label) => {
     if (label.textContent.trim() === "Archive") label.textContent = "History";
   });
+  renderCachedAdminSidebar();
 }
 
 function adminSidebar() {
@@ -155,6 +198,7 @@ function adminSidebar() {
     staffRoleLabel: "Staff",
     staffInitials: "ST",
     clinicStopped: false,
+    clinicStatusLoaded: false,
     incomingAppointmentCount: 0,
     _incomingAppointmentRevision: 0,
     _incomingAppointmentInterval: null,
@@ -164,6 +208,7 @@ function adminSidebar() {
     _incomingCountRequest: null,
     _clinicStatusRequest: null,
     _destroyed: false,
+    ...getAdminSidebarIdentityState(window.API?.getCachedStaffIdentity?.()?.user),
     stopModal: {
       open: false,
       title: "",
@@ -202,15 +247,16 @@ function adminSidebar() {
         if (this.activePage === "inventory") this.inventoryExpanded = true;
       };
       window.addEventListener("hashchange", this._inventoryNavigationListener);
-      this.isAdmin = API.getUserRole() === "admin";
       if (API.enforceAdminPageAccess && !API.enforceAdminPageAccess()) return;
 
       this.registerIncomingAppointmentListener();
-
-      this.$nextTick(() => {
-        revealStaffSettingsSidebarLink();
-        if (window.lucide) window.lucide.createIcons();
-      });
+      this._navigationInvalidationListener = (event) => {
+        this.sidebarReady = false;
+        this.$root?.removeAttribute('data-admin-ready');
+        this.$root?.querySelector('.admin-sidebar-menu')?.removeAttribute('data-admin-navigation-ready');
+        if (event.detail?.reload) void this.loadLoggedInIdentity();
+      };
+      window.addEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
 
       const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
       await Promise.all([
@@ -230,6 +276,7 @@ function adminSidebar() {
       this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
       document.addEventListener('visibilitychange', this._visibilityListener);
       this._sidebarSessionListener = () => {
+        void this.loadLoggedInIdentity();
         Promise.allSettled([this._incomingCountRequest, this._clinicStatusRequest]).then(refresh);
       };
       window.addEventListener('admin-session:unlocked', this._sidebarSessionListener);
@@ -241,6 +288,7 @@ function adminSidebar() {
       document.removeEventListener?.('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
+      window.removeEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
       if (this._incomingAppointmentInterval) {
         clearInterval(this._incomingAppointmentInterval);
       }
@@ -264,25 +312,12 @@ function adminSidebar() {
         const response = await (API.getStaffIdentity ? API.getStaffIdentity() : API.getMe("staff"));
         const user = response?.user;
         if (!user || this._destroyed) return;
-        if (user.role) this.isAdmin = user.role === 'admin';
-        this.clinicPermissions = user?.clinic_permissions || {};
-        this.canAccessGrooming = this.isAdmin || (user.staff_type === 'grooming' && user.staff_subrole === 'grooming_receptionist');
-        this.sidebarReady = true;
+        Object.assign(this, getAdminSidebarIdentityState(user));
         this.$nextTick?.(() => {
           this.$root?.setAttribute('data-admin-ready', '');
+          this.$root?.querySelector('.admin-sidebar-menu')?.setAttribute('data-admin-navigation-ready', '');
           document.documentElement?.setAttribute('data-admin-role', this.isAdmin ? 'admin' : 'staff');
         });
-        if (this.isAdmin) return;
-        this.staffRoleLabel = user?.staff_type === "clinic"
-          ? ({ veterinarian: "Veterinarian", clinic_receptionist: "Clinic Receptionist" }[user.staff_subrole] || "Clinic Staff")
-          : user?.staff_subrole === "grooming_receptionist" ? "Grooming Receptionist" : "Staff";
-        const firstName = String(response?.user?.first_name || "").trim();
-        const lastName = String(response?.user?.last_name || "").trim();
-        const fullName = `${firstName} ${lastName}`.trim();
-        if (!fullName) return;
-
-        this.staffDisplayName = fullName;
-        this.staffInitials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
       } catch {
         this.sidebarError = 'Could not verify access.';
       }
@@ -375,6 +410,7 @@ function adminSidebar() {
         const data = await this._clinicStatusRequest;
         if (this._destroyed) return;
         this.clinicStopped = Boolean(data.stopped_today);
+        this.clinicStatusLoaded = true;
         window.dispatchEvent(new CustomEvent('admin-clinic:status', { detail: data }));
       } catch {
         // Non-fatal
@@ -389,7 +425,6 @@ function adminSidebar() {
       this.blockDatesModal.open = true;
       this.clearBlockedDateForm();
       await this.loadBlockedDates();
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     clearBlockedDateForm() {
@@ -416,9 +451,6 @@ function adminSidebar() {
         if (request === this._blockedDatesRequest) this.blockedDatesError = "Could not load blocked dates.";
       } finally {
         if (request === this._blockedDatesRequest) this.blockedDatesLoading = false;
-        this.$nextTick(() => {
-          if (window.lucide) window.lucide.createIcons();
-        });
       }
     },
 
@@ -470,7 +502,7 @@ function adminSidebar() {
     },
 
     handleStopReceivingClick() {
-      if (!this.isAdmin) return;
+      if (!this.isAdmin || !this.clinicStatusLoaded) return;
 
       if (this.clinicStopped) {
         this.stopModal = {

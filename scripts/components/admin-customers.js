@@ -163,7 +163,7 @@ function adminCustomers() {
       } catch (err) {
         if (request === this._customerRequest) this.errorMessage = err.message || "Failed to load customers.";
       } finally {
-        if (request === this._customerRequest) { this.loading = false; this.refreshIcons(); }
+        if (request === this._customerRequest) { this.loading = false;  }
       }
     },
 
@@ -197,7 +197,6 @@ function adminCustomers() {
         },
       };
       this.setCustomerDetailScrollLock(true);
-      this.refreshIcons();
     },
 
     closeAddCustomerModal() {
@@ -265,7 +264,6 @@ function adminCustomers() {
             customers: err.data?.similarCustomers || [],
           };
           this.addCustomerModal.error = "";
-          this.refreshIcons();
           return;
         }
         this.addCustomerModal.errors = err.errors || {};
@@ -316,7 +314,6 @@ function adminCustomers() {
         error:        "",
       };
 
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     closeConfirm() {
@@ -358,7 +355,6 @@ function adminCustomers() {
       if (!this.isAdmin) return;
 
       this.resetModal = { open: true, customer };
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     closeReset() {
@@ -383,7 +379,6 @@ function adminCustomers() {
         medicalRecords: [],
         vaccinations: [],
       };
-      this.refreshIcons();
       await this.loadPetProfile();
     },
 
@@ -408,7 +403,6 @@ function adminCustomers() {
       } finally {
         if (this.petModal.open && String(this.petModal.pet?.id) === String(petId)) {
           this.petModal.profileLoading = false;
-          this.refreshIcons();
         }
       }
     },
@@ -416,7 +410,6 @@ function adminCustomers() {
     selectPetProfileTab(tab) {
       if (!["overview", "grooming", "medical", "vaccinations"].includes(tab)) return;
       this.petModal.activeTab = tab;
-      this.refreshIcons();
     },
 
     async openAddPetForCustomer(customer) {
@@ -471,7 +464,6 @@ function adminCustomers() {
       elements.furType.value = "";
       tools.initializeWeightField(elements.weight);
       elements.weight.value = "";
-      this.refreshIcons();
     },
 
     async openCustomerSearchDestination(customer, petId = "") {
@@ -509,7 +501,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014');
+            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -653,7 +645,6 @@ function adminCustomers() {
 
       this.petModal.editing   = true;
       this.petModal.saveError = "";
-      this.refreshIcons();
     },
 
     cancelEditPet() {
@@ -734,7 +725,6 @@ function adminCustomers() {
           }
         }
 
-        this.refreshIcons();
       } catch (err) {
         if (err.errors?.weight?.[0]) {
           const { tools, elements } = adminCustomerPetFields;
@@ -834,7 +824,6 @@ function adminCustomers() {
         loading:  true,
         error:    "",
       };
-      this.refreshIcons();
 
       try {
         const data = customer.recordType === "unregistered"
@@ -845,7 +834,6 @@ function adminCustomers() {
         this.detailModal.error = err.message || "Failed to load customer details.";
       } finally {
         this.detailModal.loading = false;
-        this.refreshIcons();
       }
     },
 
@@ -895,8 +883,6 @@ function adminCustomers() {
         return dateStr;
       }
     },
-
-    // ── Lucide refresh ────────────────────────────────────
 
     formatMobileNumber(value) {
       const text = String(value ?? "").trim();
@@ -1028,12 +1014,6 @@ function adminCustomers() {
       if (customer?.recordType === "unregistered") return "Unregistered";
       if (customer?.isActive) return "Active";
       return "Inactive";
-    },
-
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
   };
 }

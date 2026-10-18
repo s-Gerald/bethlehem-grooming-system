@@ -40,10 +40,6 @@ function adminStockIn() {
     _scanner: null,
     _scanTarget: "search",
 
-    init() {
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-    },
-
     // ── Search ────────────────────────────────────────────────────────────────
 
     async onSearchInput() {
@@ -96,7 +92,6 @@ function adminStockIn() {
       this.noResults      = false;
       this.showCreateForm = false;
       this.$nextTick(() => {
-        if (window.lucide) lucide.createIcons();
         this.$el.querySelector?.("[data-qty-input]")?.focus();
       });
     },
@@ -121,7 +116,6 @@ function adminStockIn() {
       this.createForm = ProductForm.empty({ item_name: this.searchQuery.trim() });
       this.createError    = "";
       this.showCreateForm = true;
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     cancelCreate() {
@@ -172,7 +166,6 @@ function adminStockIn() {
       this.clearSelected();
       this.noResults      = false;
       this.showCreateForm = false;
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     // Undo after item was added to the pending list
@@ -183,7 +176,6 @@ function adminStockIn() {
         await InventoryAPI.deactivateItem(p.item_id);
       } catch { /* best-effort */ }
       this.pending.splice(idx, 1);
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     // ── Add to pending ────────────────────────────────────────────────────────
@@ -231,7 +223,6 @@ function adminStockIn() {
       }
 
       this.clearSelected();
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     removePending(idx) {
@@ -259,7 +250,6 @@ function adminStockIn() {
         window.showSuccessToast("Stock-in recorded successfully.");
         this.pending    = [];
         this.clearSelected();
-        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       } catch (err) {
         this.error = err.message || "Failed to record stock-in.";
       } finally {

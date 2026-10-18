@@ -50,7 +50,6 @@ function adminTransactions() {
           this.errorMessage = "The linked transaction could not be found.";
         }
       }
-      this.refreshIcons();
     },
 
     async loadTransactions(page = 1) {
@@ -86,7 +85,6 @@ function adminTransactions() {
       } finally {
         if (version === this._loadVersion) {
           this.loading = false;
-          this.refreshIcons();
         }
       }
     },
@@ -363,12 +361,6 @@ function adminTransactions() {
 
     formatPeso(amount) {
       return "₱" + Number(amount).toFixed(2);
-    },
-
-    refreshIcons() {
-      this.$nextTick(() => {
-        if (window.lucide) window.lucide.createIcons();
-      });
     },
   };
 }

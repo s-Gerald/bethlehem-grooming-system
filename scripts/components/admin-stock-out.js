@@ -24,10 +24,6 @@ function adminStockOut() {
     scannerActive: false,
     _scanner: null,
 
-    async init() {
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
-    },
-
     // ── Search ────────────────────────────────────────────────────────────────
 
     async onSearchInput() {
@@ -64,7 +60,6 @@ function adminStockOut() {
       this.searchQuery   = "";
       this.searchResults = [];
       this.$nextTick(() => {
-        if (window.lucide) lucide.createIcons();
         this.$el.querySelector?.("[data-qty-input]")?.focus();
       });
     },
@@ -137,7 +132,6 @@ function adminStockOut() {
       }
 
       this.clearSelected();
-      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
     },
 
     removePending(idx) {
@@ -178,7 +172,6 @@ function adminStockOut() {
         window.showSuccessToast(`Stock-out recorded for ${this.pending.length} item(s).`);
         this.pending    = [];
         this.clearSelected();
-        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       } catch (err) {
         this.error = err.message || "Failed to record stock-out.";
       } finally {

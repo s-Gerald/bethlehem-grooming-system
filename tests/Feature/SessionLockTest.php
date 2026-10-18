@@ -82,6 +82,23 @@ class SessionLockTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 2);
     }
 
+    public function test_session_revision_tracks_navigation_identity_without_exposing_profile_data(): void
+    {
+        $token = $this->token('staff');
+        $identity = $this->api($token, 'GET', '/me')->assertOk()->json();
+        $revision = $identity['sidebar_revision'] ?? null;
+        $this->assertIsString($revision);
+        $session = $this->api($token, 'GET', '/session')->assertOk()
+            ->assertJsonPath('sidebar_revision', $revision)->assertJsonPath('role', 'staff')->json();
+        $this->assertArrayNotHasKey('user', $session);
+        DB::table('users')->update(['first_name' => 'Updated']);
+        $changed = $this->api($token, 'GET', '/session')->assertOk()->json('sidebar_revision');
+        $this->assertNotSame($revision, $changed);
+        DB::table('users')->update(['role' => 'admin']);
+        $this->api($token, 'GET', '/session')->assertOk()->assertJsonPath('role', 'admin');
+        $this->assertNotSame($changed, $this->api($token, 'GET', '/me')->json('sidebar_revision'));
+    }
+
     public function test_status_and_background_requests_never_extend_idle_time_but_explicit_activity_does(): void
     {
         $token = $this->token();

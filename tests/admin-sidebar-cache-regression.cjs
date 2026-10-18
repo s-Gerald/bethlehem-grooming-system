@@ -1,0 +1,191 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+class Storage {
+  values = new Map();
+  getItem(key) { return this.values.get(key) ?? null; }
+  setItem(key, value) { this.values.set(key, String(value)); }
+  removeItem(key) { this.values.delete(key); }
+}
+const identity = (overrides = {}, revision = 'revision-1') => ({
+  sidebar_revision: revision,
+  user: { user_id: 7, role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian',
+    first_name: 'Test', last_name: 'Staff', clinic_permissions: { access: true, clinical: true, services_view: true }, ...overrides },
+});
+function environment() {
+  const localStorage = new Storage(), sessionStorage = new Storage(), calls = [];
+  let response = () => identity(), status = 200;
+  function page() {
+    const listeners = new Map();
+    const c = vm.createContext({ localStorage, sessionStorage, URL, URLSearchParams, Date, console,
+      AbortController, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+      CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
+      document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null,
+        addEventListener() {}, removeEventListener() {} },
+      window: { location: { protocol: 'http:', origin: 'http://127.0.0.1:8000', hostname: '127.0.0.1',
+        port: '8000', pathname: '/pages/admin/clinic.html', hash: '', replace() {} },
+        addEventListener(name, fn) { listeners.set(name, [...(listeners.get(name) || []), fn]); },
+        removeEventListener() {}, dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); } },
+      fetch: async (url, options) => { calls.push({ url, method: options.method }); const data = await response(url, options);
+        return { ok: status >= 200 && status < 300, status, json: async () => data, headers: { get: () => null } }; },
+    });
+    vm.runInContext(read('scripts/api.js'), c);
+    c.window.API = c.API;
+    vm.runInContext(read('scripts/components/admin-sidebar.js'), c);
+    return c;
+  }
+  const c = page(); c.API.setAdminToken('17|test-secret'); c.API.setUserRole('staff');
+  return { c, page, calls, localStorage, sessionStorage, respond: (fn, code = 200) => { response = fn; status = code; } };
+}
+async function reuseAndInvalidate() {
+  const e = environment();
+  await Promise.all([e.c.API.getStaffIdentity(), e.c.API.getStaffIdentity()]);
+  assert.equal(e.calls.length, 1, 'Concurrent consumers share identity');
+  const next = e.page();
+  await next.API.getStaffIdentity();
+  assert.equal(e.calls.length, 1, 'Navigation and hard reload reuse session identity without GET /me');
+  assert.equal(next.API.getCachedStaffIdentity().user.user_id, 7);
+  await next.API.adminCheckIn(1);
+  await next.API.getStaffIdentity();
+  assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 1, 'Unrelated mutations do not expire navigation');
+  next.API.clearAuthState();
+  assert.equal(next.API.getCachedStaffIdentity(), null, 'Logout removes cached navigation synchronously');
+  assert.equal(e.sessionStorage.getItem('bethlehem.admin.navigation.v1'), null);
+}
+async function isolationAndRaces() {
+  const e = environment();
+  let resolve;
+  e.respond(() => new Promise(r => { resolve = r; }));
+  const old = e.c.API.getStaffIdentity();
+  e.c.API.setAdminToken('18|other-secret'); e.c.API.setUserRole('staff');
+  resolve(identity());
+  await assert.rejects(old, /changed|ended|superseded/i);
+  assert.equal(e.c.API.getCachedStaffIdentity(), null);
+  e.respond(() => identity({ user_id: 8, staff_type: 'grooming', staff_subrole: 'grooming_receptionist' }, 'revision-2'));
+  await e.c.API.getStaffIdentity();
+  const sidebar = e.page().adminSidebar();
+  assert.equal(sidebar.sidebarReady, true, 'Cached navigation is ready synchronously');
+  assert.equal(sidebar.canAccessGrooming, true);
+  assert.equal(sidebar.staffRoleLabel, 'Grooming Receptionist');
+  assert.equal(sidebar.isAdmin, false);
+  assert.equal(sidebar.activePage, 'clinic');
+  e.localStorage.setItem('admin_token', '19|third-secret');
+  assert.equal(e.page().API.getCachedStaffIdentity(), null, 'Token switches cannot reuse another account presentation');
+}
+async function independentRendering() {
+  const e = environment();
+  await e.c.API.getStaffIdentity();
+  const c = e.page(), sidebar = c.adminSidebar();
+  let resolveStatus;
+  c.API.getClinicStatus = () => new Promise(resolve => { resolveStatus = resolve; });
+  sidebar.$nextTick = fn => fn();
+  const pending = sidebar.init();
+  assert.equal(sidebar.sidebarReady, true, 'Slow clinic status cannot hide cached navigation');
+  assert.equal(sidebar.staffDisplayName, 'Test Staff');
+  await Promise.resolve();
+  resolveStatus({ stopped_today: false });
+  await pending;
+  assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 1);
+  sidebar.destroy();
+}
+async function rolesAndInvalidCache() {
+  const cases = [
+    [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Staff'],
+    [{ staff_type: 'clinic', staff_subrole: 'veterinarian' }, false, false, 'Veterinarian'],
+    [{ staff_type: 'clinic', staff_subrole: 'clinic_receptionist' }, false, false, 'Clinic Receptionist'],
+    [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {} }, false, true, 'Grooming Receptionist'],
+  ];
+  for (const [user, admin, grooming, label] of cases) {
+    const e = environment();
+    if (admin) e.c.API.setUserRole('admin');
+    e.respond(() => identity(user));
+    await e.c.API.getStaffIdentity();
+    const sidebar = e.page().adminSidebar();
+    assert.equal(sidebar.isAdmin, admin);
+    assert.equal(sidebar.canAccessGrooming, grooming);
+    assert.equal(sidebar.staffRoleLabel, label);
+  }
+  const e = environment();
+  e.sessionStorage.setItem('bethlehem.admin.navigation.v1', '{invalid');
+  let c = e.page();
+  assert.equal(c.adminSidebar().sidebarReady, false);
+  await c.API.getStaffIdentity();
+  const stored = JSON.parse(e.sessionStorage.getItem('bethlehem.admin.navigation.v1'));
+  assert.equal(JSON.stringify(stored).includes('test-secret'), false, 'Cache never persists bearer secrets');
+  stored.at = Date.now() - 12 * 3600000;
+  e.sessionStorage.setItem('bethlehem.admin.navigation.v1', JSON.stringify(stored));
+  assert.equal(e.page().adminSidebar().sidebarReady, false, 'Expired cache cannot expose navigation');
+  e.sessionStorage.getItem = () => { throw new Error('Storage blocked'); };
+  c = e.page();
+  assert.equal(c.adminSidebar().sidebarReady, false);
+  await c.API.getStaffIdentity();
+  assert.equal(c.API.getCachedStaffIdentity().user.user_id, 7, 'Memory presentation works if storage is blocked');
+}
+const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
+function enableSession(c) {
+  const attrs = new Map();
+  c.document.documentElement = { setAttribute: (key, value) => attrs.set(key, value), removeAttribute: key => attrs.delete(key) };
+  c.document.createElement = () => ({});
+  c.document.visibilityState = 'visible';
+  c.API.startSessionInactivityManager();
+  return attrs;
+}
+async function permissionRevalidation() {
+  const e = environment();
+  await e.c.API.getStaffIdentity();
+  let revision = 'revision-1';
+  e.respond(url => url.endsWith('/session') ? {
+    locked: false, server_now: new Date().toISOString(), idle_at: new Date(Date.now() + 1800000).toISOString(),
+    expires_at: new Date(Date.now() + 43200000).toISOString(), sidebar_revision: revision, user_id: 7, role: 'staff',
+  } : identity(revision === 'revision-2' ? { staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {} } : {}, revision));
+  const c = e.page(), sidebar = c.adminSidebar();
+  sidebar.$nextTick = fn => fn();
+  await sidebar.init();
+  const navigation = { inert: false };
+  c.document.querySelectorAll = () => [navigation];
+  const attrs = enableSession(c);
+  assert.equal(navigation.inert, true, 'Cached navigation blocks keyboard and pointer interaction while checking');
+  await settle();
+  assert.equal(attrs.has('data-session-gate'), false, 'Server validation still releases the session gate');
+  assert.equal(navigation.inert, false);
+  assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 1, 'Unchanged /session revision needs no identity refetch');
+  revision = 'revision-2';
+  c.window.dispatchEvent({ type: 'focus' });
+  await settle();
+  assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 2, 'Changed server permissions fetch identity once');
+  assert.equal(sidebar.canAccessGrooming, true);
+  assert.equal(sidebar.clinicPermissions.access, undefined);
+  assert.equal(sidebar.sidebarReady, true);
+  await c.API.logout('staff');
+  assert.equal(sidebar.sidebarReady, false, 'Logout conceals the existing sidebar immediately');
+  assert.equal(c.API.getCachedStaffIdentity(), null);
+  sidebar.destroy();
+}
+async function firstLoginAndExpiration() {
+  const e = environment();
+  e.c.API.setUserRole('admin');
+  let resolveIdentity;
+  e.respond(url => url.endsWith('/me') ? new Promise(resolve => { resolveIdentity = resolve; }) : {});
+  const sidebar = e.c.adminSidebar();
+  sidebar.$nextTick = fn => fn();
+  const pending = sidebar.init();
+  assert.equal(sidebar.sidebarReady, false, 'First login never shows unverified navigation');
+  assert.equal(sidebar.isAdmin, false, 'Stored role alone cannot reveal admin controls');
+  resolveIdentity(identity({ role: 'admin', staff_type: null, staff_subrole: null }));
+  await pending;
+  assert.equal(sidebar.sidebarReady, true);
+  assert.equal(sidebar.isAdmin, true);
+  e.respond(() => ({ message: 'Session expired.' }), 401);
+  await assert.rejects(e.c.API.getAdminBookings('2026-10-18', { force: true }), error => error.status === 401);
+  assert.equal(e.c.API.getCachedStaffIdentity(), null);
+  assert.equal(e.c.API.getAdminToken(), null);
+  assert.equal(sidebar.sidebarReady, false, 'Expiration conceals the existing menu');
+  sidebar.destroy();
+}
+(async () => {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration]) {
+    await test(); console.log(test.name + ' passed');
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -337,7 +337,6 @@ function adminClinicModal() {
       if (this.canEditClinical && !this._clinicalOptionsLoaded && !this.optionsLoading) this.loadClinicalOptions();
       this.$nextTick?.(() => {
         this.$el.querySelector('[aria-label="Close patient record"]')?.focus();
-        window.lucide?.createIcons();
       });
     },
 
@@ -663,7 +662,6 @@ function adminClinicPage() {
       else url.searchParams.delete("tab");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       window.scrollTo(0, 0);
-      this.$nextTick?.(() => { if (window.lucide) window.lucide.createIcons(); });
     },
 
     caseLabel(item) { return ({ online_request: "Online Pre-registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
@@ -823,7 +821,6 @@ function adminClinicPage() {
         this.payment.recorded = true;
         this.$nextTick?.(() => {
           document.getElementById('clinic-payment-recorded-title')?.focus();
-          window.lucide?.createIcons();
         });
         window.dispatchEvent(new CustomEvent('clinic-case-patch', {detail: {id: recorded.id, paid: recorded.paid, status: recorded.status}}));
         this.activeCases = this.activeCases.filter(item => item.id !== recorded.id);
@@ -947,7 +944,6 @@ function adminClinicPage() {
       } finally {
         if (rid === this._reqId) {
           this.searching = false;
-          this.$nextTick?.(() => { if (window.lucide) window.lucide.createIcons(); });
         }
       }
     },
@@ -1071,7 +1067,6 @@ function adminClinicPage() {
       this.$nextTick?.(() => {
         if (this.$refs.profileBody) this.$refs.profileBody.scrollTop = 0;
         this.$refs.profileClose?.focus();
-        if (window.lucide) window.lucide.createIcons();
       });
       try {
         const [data, ownerData, currentCase] = await Promise.all([
@@ -1095,7 +1090,6 @@ function adminClinicPage() {
       } finally {
         if (request === this._profileRequest) {
           this.profile.loading = false;
-          this.$nextTick?.(() => { if (window.lucide) window.lucide.createIcons(); });
         }
       }
     },
@@ -1154,7 +1148,6 @@ function adminClinicPage() {
       if (!row.pets?.length) return;
       this.petPickerReturnFocus = trigger?.querySelector?.('button') || trigger;
       this.petPicker = { open: true, owner: row.owner, pets: row.pets };
-      this.$nextTick?.(() => { if (window.lucide) window.lucide.createIcons(); });
     },
 
     closePetPicker(restoreFocus = true) {
@@ -1309,7 +1302,7 @@ function adminClinicPage() {
         state.page = response.current_page || 1; state.lastPage = response.last_page || 1;
         state.loaded = true;
       } catch (error) { if (request === this._profileRequest) state.error = error.message || 'Could not load patient history.'; }
-      finally { if (request === this._profileRequest) { state.loading = false; this.$nextTick?.(() => window.lucide?.createIcons()); } }
+      finally { if (request === this._profileRequest) { state.loading = false;  } }
     },
     get filteredTreatmentRows() {
       const rows = this.histories.treatment?.rows || [];
@@ -1391,7 +1384,6 @@ function adminClinicPage() {
       this.$nextTick?.(() => {
         if (this.$refs.profileBody) this.$refs.profileBody.scrollTop = 0;
         this.$refs.profileBack?.focus();
-        if (window.lucide) window.lucide.createIcons();
       });
       if (caseId) await this.loadCaseDetail();
     },
@@ -1407,7 +1399,6 @@ function adminClinicPage() {
           services: data.services || [], confinement: data.confinement, loading: false});
         if (detail.confinement) this.loadHistoryObservations();
         this.$nextTick?.(() => {
-          window.lucide?.createIcons();
           this.scrollCaseDetail(detail);
         });
       } catch (error) {
@@ -1480,7 +1471,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014';
+    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

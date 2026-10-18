@@ -702,9 +702,6 @@ export function renderWalkInServicesStep({ pets = [], petSelections = [] } = {})
     loadServicePricing();
   }
 
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -721,7 +718,4 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   renderMissingPetState();
 
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
 });

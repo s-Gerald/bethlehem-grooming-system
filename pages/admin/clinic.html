@@ -27,8 +27,10 @@
       }
     </style>
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-navigation-20261018-2" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
@@ -56,25 +58,26 @@
         </div>
         <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
+        <div data-session-public data-admin-sidebar-loading role="status" aria-label="Loading navigation"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#spinner-gap"></use></svg></div>
         <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
               <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="layout-dashboard" class="h-5 w-5"></i><span>Dashboard</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg><span>Dashboard</span>
               </a>
               <a href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="users" class="h-5 w-5"></i><span>Customers</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg><span>Customers</span>
               </a>
               <a href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="calendar-days" class="h-5 w-5"></i><span>Grooming</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg><span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
               </a>
               <a href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="stethoscope" class="h-5 w-5"></i><span>Clinic</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg><span>Clinic</span>
               </a>
               <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="box" class="h-5 w-5"></i><span>Inventory</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg><span>Inventory</span>
               </a>
             </div>
           </div>
@@ -83,13 +86,13 @@
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
             <div class="space-y-1.5">
               <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="archive" class="h-5 w-5"></i><span>Archive</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg><span>Archive</span>
               </a>
               <a href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="receipt" class="h-5 w-5"></i><span>Transactions</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg><span>Transactions</span>
               </a>
               <a href="./reports.html" x-show="isAdmin" style="display:none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="clipboard-list" class="h-5 w-5"></i><span>Reports</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg><span>Reports</span>
               </a>
             </div>
           </div>
@@ -98,7 +101,7 @@
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
             <div class="space-y-1.5">
               <a href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <i data-lucide="settings" class="h-5 w-5"></i><span>Settings</span>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg><span>Settings</span>
               </a>
             </div>
           </div>
@@ -113,10 +116,12 @@
             </div>
           </div>
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
-            <i data-lucide="log-out" class="h-4 w-4"></i><span>Logout</span>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg><span>Logout</span>
           </button>
         </div>
       </aside>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3"></script>
 
       <!-- Main -->
       <div class="flex min-w-0 flex-1 flex-col lg:ml-[280px]" x-data="adminClinicShell()">
@@ -124,7 +129,7 @@
         <!-- Mobile menu bar -->
         <header class="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-4 lg:hidden">
           <button type="button" aria-label="Open navigation" class="rounded-xl p-2 text-slate-600 hover:bg-slate-100" @click="$dispatch('toggle-sidebar')">
-            <i data-lucide="menu" class="h-5 w-5"></i>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button>
         </header>
 
@@ -177,7 +182,7 @@
                       <button x-show="caseItem.status === 'for_payment' && permissions.access && permissions.payment" type="button" @click="openCase(caseItem)" :disabled="caseBusyId !== null" class="whitespace-nowrap rounded-xl border border-[#d0e4f2] bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-100 disabled:opacity-50">Open Case</button>
                       <button x-show="caseActionLabel(caseItem)" type="button" @click="runCaseAction(caseItem)" :disabled="caseBusyId !== null" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#274864] disabled:opacity-50" x-text="caseBusyId === caseItem.id ? 'Working…' : caseActionLabel(caseItem)"></button>
                       <div x-data="{menuOpen: false}" x-show="permissions.queue && !(caseItem.confinement && !caseItem.confinement.discharged_at)" class="relative" @click.outside="menuOpen = false" @keydown.escape.stop="menuOpen = false; $refs.trigger.focus()">
-                        <button type="button" x-ref="trigger" @click="menuOpen = !menuOpen; if (menuOpen) $nextTick(() => $refs.cancel.focus())" :aria-expanded="menuOpen" :aria-label="'More actions for ' + (caseItem.pet?.name || 'patient')" :disabled="caseBusyId !== null" class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><i data-lucide="ellipsis" class="h-4 w-4"></i></button>
+                        <button type="button" x-ref="trigger" @click="menuOpen = !menuOpen; if (menuOpen) $nextTick(() => $refs.cancel.focus())" :aria-expanded="menuOpen" :aria-label="'More actions for ' + (caseItem.pet?.name || 'patient')" :disabled="caseBusyId !== null" class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three"></use></svg></button>
                         <div x-show="menuOpen" x-cloak class="absolute right-0 z-40 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"><button type="button" x-ref="cancel" @click="menuOpen = false; cancelCase(caseItem)" class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50">Cancel Case</button></div>
                       </div>
                     </div>
@@ -203,7 +208,7 @@
                 <p class="mt-1 text-sm text-slate-500">Find a customer or pet and view their clinic history.</p>
                 <!-- Record count -->
                 <div class="mt-3 flex w-fit items-center gap-2 rounded-xl bg-white/60 px-4 py-2 text-sm font-semibold text-[#1f3850]">
-                  <i data-lucide="stethoscope" class="h-4 w-4 text-[#315b7e]"></i>
+                  <svg class="ph-icon h-4 w-4 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                   <span x-cloak x-show="recordsLoaded" style="display:none"
                     x-text="searchRows.length + ' customer' + (searchRows.length !== 1 ? 's' : '')"></span>
                 </div>
@@ -212,7 +217,7 @@
                 <!-- Search -->
                 <label class="relative block min-w-0 flex-1">
                   <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <i data-lucide="search" class="h-4 w-4"></i>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
                   </span>
                   <input
                     x-model="searchQuery"
@@ -224,14 +229,14 @@
                   />
                   <button x-show="searchQuery" style="display:none" @click="clearSearch()" type="button" aria-label="Clear patient records search"
                     class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600">
-                    <i data-lucide="x" class="h-4 w-4"></i>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                   </button>
                 </label>
 
                 <!-- Walk-in -->
                 <button type="button" x-show="permissions.intake" @click="startWalkIn()"
                   class="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#274b69] sm:w-auto">
-                  <i data-lucide="plus" class="h-4 w-4"></i>
+                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#plus"></use></svg>
                   <span>Walk-in</span>
                 </button>
               </div>
@@ -303,7 +308,7 @@
                           @click.stop="openPetPicker(row, $event.currentTarget)"
                           type="button"
                           class="inline-flex items-center gap-1 rounded-xl border border-[#d0e4f2] bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e] transition hover:bg-[#dceaf5]">
-                          View <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+                          View <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-right"></use></svg>
                         </button>
                       </template>
                       <template x-if="!row.pets?.length">
@@ -383,7 +388,7 @@
             <template x-if="payment.recorded && receiptModal">
               <div class="flex min-h-0 flex-col">
                 <header class="receipt-success-header">
-                  <div class="receipt-success-icon"><i data-lucide="check" class="h-6 w-6" aria-hidden="true"></i></div>
+                  <div class="receipt-success-icon"><svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg></div>
                   <h3 id="clinic-payment-recorded-title" tabindex="-1" class="receipt-success-title">Payment recorded</h3>
                   <p class="receipt-success-amount" x-text="money(receiptModal.finalPrice)"></p><p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
                   <div class="receipt-success-reference"><span>Case reference</span><strong x-text="receiptModal.caseReference"></strong></div>
@@ -408,7 +413,7 @@
                 </div>
                 <div class="receipt-print-source" aria-hidden="true"><div x-html="window.PaymentInvoice.clinicTemplate"></div></div>
                 <footer class="receipt-modal-actions flex gap-3 border-t border-slate-200 px-6 py-4">
-                  <button type="button" @click="printClinicInvoice()" class="receipt-print-button flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"><i data-lucide="printer" class="h-4 w-4" aria-hidden="true"></i>Print Invoice</button>
+                  <button type="button" @click="printClinicInvoice()" class="receipt-print-button flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>Print Invoice</button>
                   <button type="button" @click="closePayment()" class="flex-1 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864]">Done</button>
                 </footer>
               </div>
@@ -433,7 +438,7 @@
                 </button>
                 <div class="flex items-center gap-3">
                   <div x-show="!detail.record" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb]">
-                    <i data-lucide="paw-print" class="h-6 w-6 text-[#315b7e]" aria-hidden="true"></i>
+                    <svg class="ph-icon h-6 w-6 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
                   </div>
                   <div class="min-w-0">
                     <h2 id="patient-profile-title" class="break-words text-lg font-bold text-[#2f4b66]" x-text="detail.record ? profileDetailTitle : profileEditing ? 'Edit Patient' : patientName"></h2>
@@ -450,7 +455,7 @@
               </div>
               <button x-ref="profileClose" @click="closeProfile()" :disabled="profileBusy || profileEditorSaving || profileEditorLoading" type="button" aria-label="Close patient profile"
                 class="clinic-profile-close rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
               </button>
             </div>
 
@@ -522,7 +527,7 @@
                                 <td class="whitespace-nowrap px-4 py-3 font-medium text-slate-700" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td>
                                 <td class="truncate px-4 py-3 text-slate-600" :title="rec.chief_complaint" x-text="rec.chief_complaint || '—'"></td>
                                 <td class="truncate px-4 py-3 text-slate-600" :title="rec.working_diagnosis ?? rec.diagnosis" x-text="(rec.working_diagnosis ?? rec.diagnosis) || '—'"></td>
-                                <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget)" :aria-label="historyViewLabel(rec, 'medical record')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i></button></td>
+                                <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget)" :aria-label="historyViewLabel(rec, 'medical record')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
                               </tr>
                             </template>
                             <tr x-show="!profile.records.length"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No medical records yet.</td></tr>
@@ -549,7 +554,7 @@
                           <tbody class="divide-y divide-slate-100">
                             <template x-for="rec in filteredTreatmentRows" :key="rec.id">
                               <tr tabindex="0" class="cursor-pointer transition hover:bg-[#f0f7fd]" @click="viewDetail(rec, $event.currentTarget, 'treatment')"
-                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'treatment') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'treatment') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="rec.treatment_name || rec.vaccine_name || '—'" x-text="rec.treatment_name || rec.vaccine_name || '—'"></td><td class="px-4 py-3 text-slate-600"><span :class="['vaccine', 'medicine'].includes(rec.treatment_type) ? 'inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold' : ''" x-text="treatmentTypeLabel(rec)"></span></td><td class="truncate px-4 py-3 text-slate-600" :title="treatmentSummary(rec)" x-text="treatmentSummary(rec)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'treatment')" :aria-label="historyViewLabel(rec, 'treatment')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i></button></td></tr>
+                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'treatment') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'treatment') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="rec.treatment_name || rec.vaccine_name || '—'" x-text="rec.treatment_name || rec.vaccine_name || '—'"></td><td class="px-4 py-3 text-slate-600"><span :class="['vaccine', 'medicine'].includes(rec.treatment_type) ? 'inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold' : ''" x-text="treatmentTypeLabel(rec)"></span></td><td class="truncate px-4 py-3 text-slate-600" :title="treatmentSummary(rec)" x-text="treatmentSummary(rec)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'treatment')" :aria-label="historyViewLabel(rec, 'treatment')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td></tr>
                             </template>
                             <tr x-show="histories.treatment.loaded && !histories.treatment.loading && !filteredTreatmentRows.length && !histories.treatment.error"><td colspan="5" class="px-4 py-8 text-center text-sm text-slate-500" x-text="treatmentTypeFilter === 'vaccine' ? 'No vaccine treatments recorded.' : treatmentTypeFilter === 'medicine' ? 'No medicine treatments recorded.' : 'No treatment records yet.'"></td></tr>
                           </tbody>
@@ -569,7 +574,7 @@
                           <tbody class="divide-y divide-slate-100">
                             <template x-for="rec in histories.services.rows" :key="rec.appointment_id">
                               <tr tabindex="0" class="cursor-pointer transition hover:bg-[#f0f7fd]" @click="viewDetail(rec, $event.currentTarget, 'services')"
-                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'services') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'services') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="rec.service_count + (rec.service_count === 1 ? ' service' : ' services')" x-text="rec.service_count + (rec.service_count === 1 ? ' service' : ' services')"></td><td class="truncate px-4 py-3 text-slate-600" :title="historyPrice(rec.service_total)" x-text="historyPrice(rec.service_total)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'services')" :aria-label="historyViewLabel(rec, 'services')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i></button></td></tr>
+                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'services') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'services') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="rec.service_count + (rec.service_count === 1 ? ' service' : ' services')" x-text="rec.service_count + (rec.service_count === 1 ? ' service' : ' services')"></td><td class="truncate px-4 py-3 text-slate-600" :title="historyPrice(rec.service_total)" x-text="historyPrice(rec.service_total)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'services')" :aria-label="historyViewLabel(rec, 'services')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td></tr>
                             </template>
                             <tr x-show="histories.services.loaded && !histories.services.rows.length && !histories.services.error"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No service records yet.</td></tr>
                           </tbody>
@@ -589,7 +594,7 @@
                           <tbody class="divide-y divide-slate-100">
                             <template x-for="rec in histories.confinement.rows" :key="rec.id">
                               <tr tabindex="0" class="cursor-pointer transition hover:bg-[#f0f7fd]" @click="viewDetail(rec, $event.currentTarget, 'confinement')"
-                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'confinement') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'confinement') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="(historyService(rec.case_service).name || 'Confinement') + ' · ' + (rec.discharged_at ? 'Discharged' : 'Confined')" x-text="(historyService(rec.case_service).name || 'Confinement') + ' · ' + (rec.discharged_at ? 'Discharged' : 'Confined')"></td><td class="truncate px-4 py-3 text-slate-600" :title="historyDuration(rec)" x-text="historyDuration(rec)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'confinement')" :aria-label="historyViewLabel(rec, 'confinement')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i></button></td></tr>
+                                @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'confinement') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewDetail(rec, $event.currentTarget, 'confinement') }"><td class="truncate px-4 py-3 text-slate-600" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td><td class="truncate px-4 py-3 text-slate-600" :title="(historyService(rec.case_service).name || 'Confinement') + ' · ' + (rec.discharged_at ? 'Discharged' : 'Confined')" x-text="(historyService(rec.case_service).name || 'Confinement') + ' · ' + (rec.discharged_at ? 'Discharged' : 'Confined')"></td><td class="truncate px-4 py-3 text-slate-600" :title="historyDuration(rec)" x-text="historyDuration(rec)"></td><td class="px-4 py-3 text-right"><button type="button" @click.stop="viewDetail(rec, $event.currentTarget, 'confinement')" :aria-label="historyViewLabel(rec, 'confinement')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td></tr>
                             </template>
                             <tr x-show="histories.confinement.loaded && !histories.confinement.rows.length && !histories.confinement.error"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No confinement records yet.</td></tr>
                           </tbody>
@@ -848,7 +853,7 @@
                 </div>
               </div>
               <button @click="closePetPicker()" type="button" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                <i data-lucide="x" class="h-5 w-5"></i>
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
               </button>
             </div>
 
@@ -860,13 +865,13 @@
                   <button type="button" @click="openProfile({ owner: petPicker.owner, pet }, $event.currentTarget)"
                     class="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left transition hover:border-[#9fb9d1] hover:bg-[#f0f7fd]">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb]">
-                      <i data-lucide="paw-print" class="h-5 w-5 text-[#315b7e]"></i>
+                      <svg class="ph-icon h-5 w-5 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
                     </div>
                     <div class="min-w-0 flex-1">
                       <p class="truncate font-semibold text-slate-800" x-text="pet.petName || pet.name || '—'"></p>
                       <p class="truncate text-xs text-slate-400" x-text="petSummary(pet)"></p>
                     </div>
-                    <i data-lucide="chevron-right" class="h-4 w-4 shrink-0 text-slate-300"></i>
+                    <svg class="ph-icon h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
                   </button>
                 </template>
               </div>
@@ -904,7 +909,7 @@
           <h2 id="patient-record-title" class="min-w-0 break-words text-lg font-bold text-[#2f4b66]" x-text="title">Medical Record</h2>
           <div class="ml-auto flex shrink-0 items-center gap-2">
           <button type="button" @click="closeModal()" aria-label="Close patient record" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-            <i data-lucide="x" class="h-5 w-5"></i>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
           </button>
         </div>
 
@@ -914,17 +919,17 @@
             <button type="button" id="case-medical-tab" role="tab" :tabindex="activeSection === 'medical' ? 0 : -1" :aria-selected="activeSection === 'medical'" aria-controls="medical-record-form" :disabled="workspaceSaving" @click="selectSection('medical')"
               class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition"
               :class="activeSection === 'medical' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">
-              <i data-lucide="stethoscope" class="h-4 w-4"></i> Medical Record
+              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg> Medical Record
             </button>
             <button type="button" id="case-treatment-tab" role="tab" :tabindex="activeSection === 'vaccinations' ? 0 : -1" :aria-selected="activeSection === 'vaccinations'" aria-controls="case-treatment-panel" :disabled="workspaceSaving" @click="selectSection('vaccinations')"
               class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition"
               :class="activeSection === 'vaccinations' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">
-              <i data-lucide="syringe" class="h-4 w-4"></i> Treatment
+              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#syringe"></use></svg> Treatment
             </button>
             <button type="button" id="case-services-tab" role="tab" :tabindex="activeSection === 'services' ? 0 : -1" :aria-selected="activeSection === 'services'" aria-controls="case-services-panel" @click="selectSection('services')" :disabled="workspaceSaving"
               class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
               :class="activeSection === 'services' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">
-              <i data-lucide="clipboard-list" class="h-4 w-4"></i> Billing
+              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg> Billing
             </button>
             <button x-show="currentAppt?.confinement || ($store.clinicAccess.permissions.clinical && currentAppt?.status === 'in_consultation' && !currentAppt?.paid && !currentAppt?.archived_at)" type="button" id="case-confinement-tab" role="tab" :tabindex="activeSection === 'confinement' ? 0 : -1" :aria-selected="activeSection === 'confinement'" aria-controls="case-confinement-panel" @click="selectSection('confinement')" :disabled="workspaceSaving" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-50" :class="activeSection === 'confinement' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Confinement</button>
           </div></div>
@@ -1129,7 +1134,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <h4 id="medical-prescriptions" class="text-sm font-semibold text-slate-700">Prescription</h4>
                   <button x-show="canEditClinical" type="button" @click="addPrescription()" :disabled="saving || optionsLoading" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-[#315b7e] hover:bg-slate-50 disabled:opacity-50">
-                    <i data-lucide="plus" class="h-4 w-4"></i>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#plus"></use></svg>
                     Add Prescription
                   </button>
                 </div>
@@ -1300,7 +1305,7 @@
 
         <div x-show="chargesOpen" x-cloak @click="closeCharges()" aria-hidden="true" class="absolute inset-0 z-10 bg-slate-900/20"></div>
           <section id="case-billing-panel" role="dialog" aria-modal="true" aria-labelledby="case-charges-title" x-show="chargesOpen && $store.clinicAccess.permissions.billing_view" x-cloak class="absolute right-0 top-0 z-20 max-h-full w-full max-w-xl space-y-4 overflow-y-auto rounded-bl-2xl border-l border-slate-200 bg-white p-4 shadow-xl sm:p-6">
-            <div class="flex flex-wrap items-start justify-between gap-3"><h3 id="case-charges-title" class="text-base font-bold text-[#2f4b66]">Charges</h3><button type="button" @click="loadBilling()" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Refresh</button><button type="button" @click="closeCharges()" aria-label="Close charges" class="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><i data-lucide="x" class="h-5 w-5"></i></button></div>
+            <div class="flex flex-wrap items-start justify-between gap-3"><h3 id="case-charges-title" class="text-base font-bold text-[#2f4b66]">Charges</h3><button type="button" @click="loadBilling()" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Refresh</button><button type="button" @click="closeCharges()" aria-label="Close charges" class="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button></div>
             <admin-loader x-cloak x-show="billingLoading"></admin-loader><p x-show="billingError" role="alert" x-text="billingError" class="text-sm text-red-600"></p>
             <p x-show="!billingLoading && !billingError && !chargeRows.length" class="py-6 text-center text-sm text-slate-500">No chargeable items recorded.</p>
             <div x-show="chargeRows.length" class="overflow-hidden rounded-xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Clinic billing breakdown" tabindex="0"><table class="w-full table-fixed text-left text-xs sm:text-sm"><caption class="sr-only">Case charges, including services, medicines and treatments</caption><thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th scope="col" class="w-[45%] px-2 py-3 sm:px-3">Description</th><th scope="col" class="w-1/4 px-2 py-3 sm:px-3">Source</th><th scope="col" class="px-2 py-3 sm:px-3 text-right">Amount</th></tr></thead><tbody class="divide-y divide-slate-100"><template x-for="charge in chargeRows" :key="charge.id"><tr><td class="max-w-xs break-words px-2 py-3 sm:px-3 font-semibold text-[#2f4b66]" x-text="charge.description"></td><td class="break-words px-2 py-3 sm:px-3"><span class="text-slate-600" x-text="charge.clinic_case_service_id ? 'Service' : charge.vaccination_record_id ? 'Treatment' : charge.kind"></span></td><td class="px-2 py-3 sm:px-3 break-words text-right font-semibold tabular-nums" x-text="money(charge.amount)"></td></tr></template></tbody></table></div></div>
@@ -1494,7 +1499,7 @@
                         <label for="vaccination-administered-date" class="mb-1 block text-xs font-semibold text-slate-600">Administration Date <span class="text-red-600" aria-hidden="true">*</span></label>
                         <div x-show="recordKind === 'inventory'" class="relative">
                           <input id="vaccination-administered-date" type="text" readonly tabindex="-1" aria-readonly="true" :value="formatDate(form.administered_date)" class="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 pr-9 text-sm text-slate-600 outline-none" />
-                          <i data-lucide="lock" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
+                          <svg class="ph-icon pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#lock-key"></use></svg>
                         </div>
                         <label x-show="recordKind === 'historical'" for="historical-administered-date" class="sr-only">Actual administration date</label>
                         <input x-show="recordKind === 'historical'" id="historical-administered-date" type="date" x-model="form.administered_date" :max="vaccinationToday()" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :aria-invalid="Boolean(formErrors.administered_date)" :class="formErrors.administered_date ? 'border-red-400' : 'border-slate-300'">
@@ -1598,7 +1603,7 @@
                   <p class="mt-1 text-xs text-slate-500" x-text="pet?.name || 'Selected patient'"></p>
                 </div>
                 <button type="button" x-ref="treatmentDetailClose" @click="closeDetails()" aria-label="Close treatment details" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
-                  <i data-lucide="x" class="h-5 w-5"></i>
+                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                 </button>
               </div>
               <admin-loader x-cloak x-show="detailModal.loading"></admin-loader>
@@ -1645,8 +1650,8 @@
           <div class="px-6 py-5">
             <div class="flex h-12 w-12 items-center justify-center rounded-2xl"
               :class="$store.clinicFeedback.dialog.danger ? 'bg-red-50 text-red-600' : 'bg-[#eef5fb] text-[#315b7e]'">
-              <span x-show="$store.clinicFeedback.dialog.danger"><i data-lucide="circle-alert" class="h-6 w-6"></i></span>
-              <span x-show="!$store.clinicFeedback.dialog.danger"><i data-lucide="info" class="h-6 w-6"></i></span>
+              <span x-show="$store.clinicFeedback.dialog.danger"><svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning-circle"></use></svg></span>
+              <span x-show="!$store.clinicFeedback.dialog.danger"><svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#info"></use></svg></span>
             </div>
             <h3 id="clinic-confirm-title" class="mt-4 text-lg font-bold text-slate-800" x-text="$store.clinicFeedback.dialog.title"></h3>
             <p id="clinic-confirm-message" class="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600" x-text="$store.clinicFeedback.dialog.message"></p>
@@ -1665,10 +1670,10 @@
         :class="{ ['app-toast--' + $store.clinicFeedback.toast.variant]: true, 'is-visible': $store.clinicFeedback.toast.show }"
         role="status" aria-live="polite" aria-atomic="true">
         <span class="app-toast__icon" aria-hidden="true">
-          <i x-show="$store.clinicFeedback.toast.variant === 'success'" data-lucide="check"></i>
-          <i x-show="$store.clinicFeedback.toast.variant === 'error'" data-lucide="circle-alert"></i>
-          <i x-show="$store.clinicFeedback.toast.variant === 'warning'" data-lucide="triangle-alert"></i>
-          <i x-show="$store.clinicFeedback.toast.variant === 'info'" data-lucide="info"></i>
+          <svg x-show="$store.clinicFeedback.toast.variant === 'success'"  class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg>
+          <svg x-show="$store.clinicFeedback.toast.variant === 'error'"  class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning-circle"></use></svg>
+          <svg x-show="$store.clinicFeedback.toast.variant === 'warning'"  class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning"></use></svg>
+          <svg x-show="$store.clinicFeedback.toast.variant === 'info'"  class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#info"></use></svg>
         </span>
         <span class="app-toast__message" x-text="$store.clinicFeedback.toast.message"></span>
         <div class="app-toast__progress" aria-hidden="true">
@@ -1683,18 +1688,17 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/components/online-payment.js?v=20261018"></script>
     <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=clinic-merge-20261007&auth=session-scope-20261006&clinic=billing-20261014-v1&clinic-products=20261010&medical-record=20261015-imaging-v2&patient-history=20261014-case-details&case-lifecycle=20261017&payments=20261018-shared&session=lock-20261018&loading-ui=universal-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=sections-removed-20261010&clinic-services=20261013&case-flow=20261013-v5&unified-cases=20261014&services=20261017&loading-ui=universal-20261018"></script>
+
+
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
-    <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014"></script>
+    <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018"></script>
     <script src="../../scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>
     <script src="../../scripts/components/admin-clinic-shell.js?services=20261017&v=20261015-imaging-v2&case-flow=20261013-v5&unified-cases=20261014&loading-ui=universal-20261018"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>

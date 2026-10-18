@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="../../css/output.css?consent=20261017" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
 
-    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
   </head>
@@ -75,7 +74,7 @@
               <span id="existingPetsCount" class="self-start rounded-full bg-[#edf5fc] px-3 py-1 text-xs font-medium text-[#315b7e]"></span>
             </div>
             <div id="existingPetsLoading" class="mt-4 hidden py-8 text-center" role="status" aria-live="polite">
-              <svg class="mx-auto h-8 w-8 animate-spin fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg>
+              <svg class="mx-auto h-8 w-8 animate-spin fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#spinner-gap"></use></svg>
               <p class="mt-2 text-sm text-slate-500">Loading saved pets...</p>
             </div>
             <div id="existingPetCards" class="mt-4 grid gap-3 md:grid-cols-2"></div>
@@ -135,7 +134,7 @@
                         aria-controls="petTypeOptions"
                         aria-expanded="false"
                       >
-                        <i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -201,7 +200,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -247,7 +246,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -316,7 +315,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <i data-lucide="chevron-down" class="h-5 w-5" aria-hidden="true"></i>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -404,14 +403,10 @@
       </section>
     </main>
 
-    <script>
-      lucide.createIcons();
-    </script>
-
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261010&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261010&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018"></script>
     <script
       type="module"
-      src="../../scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2"
+      src="../../scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018"
     ></script>
   </body>
 </html>

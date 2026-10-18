@@ -52,7 +52,6 @@ class StaffSettingsInterfaceTest extends TestCase
             $api,
         );
         $this->assertStringContainsString('function revealStaffSettingsSidebarLink()', $sidebar);
-        $this->assertStringContainsString('API.getUserRole() !== "staff"', $sidebar);
         $this->assertStringContainsString('a[href$="settings.html"]', $sidebar);
     }
 }

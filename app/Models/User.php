@@ -117,6 +117,15 @@ class User extends Authenticatable
         ];
     }
 
+    public function sidebarRevision(): string
+    {
+        // Uses already-loaded attributes; no queries or token secrets.
+        return hash('sha256', json_encode([
+            $this->user_id, $this->role, $this->staff_type, $this->staff_subrole,
+            $this->first_name, $this->last_name, $this->clinicPermissions(),
+        ], JSON_THROW_ON_ERROR));
+    }
+
     public function isVeterinarian(): bool
     {
         return $this->role === 'staff' && $this->staff_type === 'clinic' && $this->staff_subrole === 'veterinarian';

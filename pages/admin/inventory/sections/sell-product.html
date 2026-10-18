@@ -8,7 +8,7 @@
           @keydown.enter.prevent="searchEnter()" @keydown.arrow-down.prevent="focusResult()" @keydown.escape.prevent="cancelSearch()"
           type="search" placeholder="Product name or barcode" autocomplete="off" aria-controls="pos-search-results" :aria-expanded="searchResults.length > 0" />
         <button type="button" class="pos-scan-button" @click="openScanner()" aria-label="Scan barcode" aria-haspopup="dialog" :aria-expanded="scannerActive">
-          <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg#barcode"></use></svg>
+          <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#barcode"></use></svg>
         </button>
         </div>
         <p class="pos-helper">Medicine and Vaccine are excluded from retail sales.</p>
@@ -37,7 +37,7 @@
             <label class="pos-quantity"><span>Quantity</span><input x-model="line.quantity" @input="updateLineSubtotal(line)" type="number" min="1" step="1" :max="Math.floor(line.stock)" :aria-label="'Quantity for ' + line.item_name" :aria-invalid="Boolean(lineError(line))" :aria-describedby="'pos-line-error-' + line.item_id" /></label>
             <strong class="pos-line-total" x-text="'₱' + fmt(line.subtotal)"></strong>
             <button type="button" class="pos-remove" @click="removeFromCart(index)" :aria-label="'Remove ' + line.item_name">
-              <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg#x"></use></svg>
+              <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
             </button>
             <p x-show="lineError(line)" :id="'pos-line-error-' + line.item_id" class="pos-line-error" x-text="lineError(line)"></p>
           </div>
@@ -94,7 +94,7 @@
   <dialog x-ref="successDialog" class="pos-success-dialog" aria-labelledby="pos-success-title" @cancel.prevent="newSale()">
     <template x-if="receipt">
       <div class="pos-success-content">
-        <svg class="pos-success-icon ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg#check-circle"></use></svg>
+        <svg class="pos-success-icon ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#check-circle"></use></svg>
         <h3 id="pos-success-title" x-text="receipt.is_test ? 'Test sale completed' : 'Sale completed'"></h3>
         <p class="pos-success-total" x-text="'₱' + fmt(receipt.total_amount)"></p>
         <p class="pos-success-reference" x-text="receipt.reference"></p>
