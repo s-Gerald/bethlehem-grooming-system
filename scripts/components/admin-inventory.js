@@ -40,6 +40,7 @@ function adminInventory() {
   const pendingPanels = new Map();
   return {
     activeSection: "",
+    mountedSections: {},
     sectionLoading: false,
     sectionError: "",
     inventoryRevision: 0,
@@ -61,6 +62,11 @@ function adminInventory() {
       window.removeEventListener("inventory:changed", this._changeListener);
     },
 
+    sectionData(section) {
+      const panel = this.mountedSections[section];
+      return panel ? Alpine.$data(panel) : null;
+    },
+
     async mountSection(section) {
       const existing = this.$refs.panels.querySelector(`[data-inventory-section="${section}"]`);
       if (existing) return existing;
@@ -77,7 +83,7 @@ function adminInventory() {
           const panel = document.createElement("section");
           panel.dataset.inventorySection = section;
           panel.setAttribute("x-data", `adminInventorySection('${section}')`);
-          panel.setAttribute("x-show", `activeSection === '${section}'`);
+          panel.setAttribute("x-show", `activeSection === '${section}' && !sectionLoading`);
           panel.style.display = "none";
           if (section === "stock-in" || section === "stock-out") panel.className = "pb-28";
           panel.innerHTML = markup;
@@ -85,6 +91,7 @@ function adminInventory() {
             this.$refs.panels.appendChild(panel);
             Alpine.initTree(panel);
           });
+          this.mountedSections[section] = panel;
           return panel;
         };
         pendingPanels.set(section, mount().finally(() => pendingPanels.delete(section)));
@@ -102,14 +109,14 @@ function adminInventory() {
       if (this.activeSection !== route.section) window.scrollTo(0, 0);
       this.activeSection = route.section;
       this.sectionError = "";
-      this.sectionLoading = !this.$refs.panels.querySelector(`[data-inventory-section="${route.section}"]`);
+      const existing = this.$refs.panels.querySelector(`[data-inventory-section="${route.section}"]`);
+      this.sectionLoading = !existing || Alpine.$data(existing)._loadedRevision < 0;
       document.title = `${({ overview: "Inventory", products: "Products", "sell-product": "Point of Sale", "stock-in": "Stock In", "stock-out": "Stock Out", history: "Stock Movements" })[route.section]} | Bethlehem Animal Clinic`;
       try {
         const panel = await this.mountSection(route.section);
         // A slower first visit must not override a more recent navigation.
         const current = inventoryRoute();
         if (current.section !== route.section || current.filter !== route.filter) return;
-        this.sectionLoading = false;
         await Alpine.$data(panel).activate(route, this.inventoryRevision);
       } catch (err) {
         if (inventoryRoute().section === route.section) {

@@ -221,6 +221,21 @@ function createIdleBrowser(role, fixture = {}) {
   };
 }
 
+async function testInitialPageShowDoesNotRestartVerification() {
+  const browser = createIdleBrowser("admin");
+  await browser.settle();
+  const checks = () => browser.requests.filter(request => request.url.endsWith("/session")).length;
+  const initialChecks = checks();
+  browser.dispatchWindow("pageshow", { persisted: false });
+  assert.equal(browser.root.attributes["data-session-gate"], undefined, "Fresh pageshow must not conceal an already verified shell");
+  await browser.settle();
+  assert.equal(checks(), initialChecks);
+  browser.dispatchWindow("pageshow", { persisted: true });
+  assert.equal(browser.root.attributes["data-session-gate"], "checking", "Restored pages must verify access again");
+  await browser.settle();
+  assert.equal(checks(), initialChecks + 1);
+}
+
 async function testPrivilegedLockAndUnlock(role) {
   const browser = createIdleBrowser(role);
   const policy = browser.API.getSessionInactivityPolicy(role);
@@ -393,6 +408,7 @@ async function testCustomerThirtyMinuteTimeout() {
 }
 
 (async () => {
+  await testInitialPageShowDoesNotRestartVerification();
   await testPrivilegedLockAndUnlock("admin");
   await testPrivilegedLockAndUnlock("staff");
   await testResumeAndStorageCannotUnlock();

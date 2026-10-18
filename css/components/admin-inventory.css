@@ -25,30 +25,10 @@
 .inventory-weight-remove { margin-top: .25rem; }
 .inventory-weight-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .inventory-weight-actions button { white-space: nowrap; }
-.inventory-loader {
-  display: flex;
-  min-height: 160px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  text-align: center;
-  color: #64748b;
-  font-size: .875rem;
-}
-.inventory-loader--main { min-height: calc(100vh - 8rem); }
-.inventory-loader svg { width: 2.25rem; height: 2.25rem; }
-.inventory-loader p { margin-top: .75rem; }
-@media (min-width: 1024px) {
-  .inventory-loader--main { min-height: calc(100vh - 3rem); }
-}
 @media (max-width: 639px) {
   .inventory-weight-row { grid-template-columns: minmax(0, 1fr) 2rem; gap: .75rem; }
   .inventory-weight-badge { justify-self: start; margin-top: 0; }
   .inventory-weight-fields { grid-column: 1; flex-direction: column; }
   .inventory-weight-price { grid-column: 1; }
   .inventory-weight-remove { grid-column: 2; grid-row: 1; margin-top: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .inventory-loader .animate-spin { animation: none; }
 }

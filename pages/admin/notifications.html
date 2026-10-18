@@ -8,9 +8,11 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=admin-notification-filter-20260821&release=20261001" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
-    <div x-data="adminSidebar()" x-cloak class="min-h-screen flex bg-[#f5f8fb]">
+    <div x-data="adminSidebar()" data-admin-shell class="min-h-screen flex bg-[#f5f8fb]">
       <div
         x-cloak
         x-show="sidebarOpen"
@@ -20,10 +22,10 @@
       ></div>
 
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0" data-session-surface
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
       >
-        <div class="px-6 py-6">
+        <div class="px-6 py-6" data-session-public>
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
@@ -39,7 +41,8 @@
           </div>
         </div>
 
-        <nav class="px-4 py-6">
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -96,7 +99,7 @@
           </div>
         </nav>
 
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -138,8 +141,8 @@
       </div>
 
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
-        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
-          <div>
+        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden" data-session-surface>
+          <div data-session-public>
             <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
             <h2 class="text-lg font-extrabold text-[#1f3850]">Notifications</h2>
           </div>
@@ -149,8 +152,8 @@
         </header>
 
         <main x-data="adminNotifications()" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0">
-          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
-            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6">
+          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur" data-session-surface>
+            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6" data-session-public>
               <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Notifications</h2>
               <p class="mt-1 text-xs font-medium text-[#355674] lg:text-sm">Bethlehem Animal Clinic &amp; Grooming</p>
             </div>
@@ -244,11 +247,11 @@
               </div>
             </div>
 
-            <div x-show="error" class="border-b border-[#e8f0f8] px-6 py-4 text-sm text-red-600" x-text="error"></div>
+            <p x-cloak x-show="error" class="admin-load-error px-6" role="alert"><span x-text="error"></span><button type="button" @click="loadNotifications(true)">Retry</button></p>
 
-            <div x-show="loading" class="px-6 py-12 text-center text-sm text-slate-400">Loading...</div>
+            <admin-loader x-cloak x-show="loading && !loaded"></admin-loader>
 
-            <div x-show="!loading">
+            <div x-cloak x-show="loaded" :aria-busy="loading || loadingMore">
               <template x-if="notifications.length === 0">
                 <p class="px-6 py-12 text-center text-sm text-slate-400">No notifications found.</p>
               </template>
@@ -301,9 +304,9 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&session=lock-20261018&loading-ui=universal-20261018"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
-    <script src="../../scripts/components/admin-notifications.js?v=admin-notification-filter-20260821"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-notifications.js?v=admin-notification-filter-20260821&loading-ui=universal-20261018"></script>
   </body>
 </html>

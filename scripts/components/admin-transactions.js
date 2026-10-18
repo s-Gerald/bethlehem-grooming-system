@@ -18,7 +18,9 @@ function adminTransactions() {
     filterDate: "",
     filterMonth: "",
     filterYear: "",
-    loading: false,
+    loading: true,
+    transactionsLoaded: false,
+    _transactionsKey: "",
     errorMessage: "",
     selectedTransaction: null,
     receiptModal: null,
@@ -53,6 +55,8 @@ function adminTransactions() {
 
     async loadTransactions(page = 1) {
       const version = ++this._loadVersion;
+      const key = JSON.stringify([this.searchQuery.trim(), this.transactionPeriod, this.filterDate, this.filterMonth, this.filterYear, this.transactionType, page]);
+      this.transactionsLoaded = this.transactionsLoaded && key === this._transactionsKey;
       this.loading      = true;
       this.errorMessage = "";
 
@@ -68,6 +72,8 @@ function adminTransactions() {
         });
         if (version !== this._loadVersion) return;
         this.transactions = data.transactions || [];
+        this.transactionsLoaded = true;
+        this._transactionsKey = key;
         this.totalCount   = data.total ?? this.transactions.length;
         this.currentPage = data.page ?? 1;
         this.lastPage = data.last_page ?? 1;
@@ -76,9 +82,7 @@ function adminTransactions() {
       } catch (error) {
         if (version !== this._loadVersion) return;
         this.errorMessage = error.message || "Failed to load transactions. Please try again.";
-        this.transactions = [];
-        this.totalCount   = 0;
-        this.serverCollectionTotal = null;
+
       } finally {
         if (version === this._loadVersion) {
           this.loading = false;

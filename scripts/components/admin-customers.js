@@ -29,7 +29,11 @@ function adminCustomers() {
     customers:    [],
     petSearchResults: [],
     totalCount:   0,
-    loading:      false,
+    loading:      true,
+    customersLoaded: false,
+    _customersKey: "",
+    _customerRequest: 0,
+    _customerCache: {},
     errorMessage: "",
     statusFilter: "active",   // active | inactive | archived | unregistered
     tierFilter:   "",          // new | returning | ""
@@ -88,6 +92,7 @@ function adminCustomers() {
       form:      {},
       activeTab: "overview",
       profileLoading: false,
+      profileLoaded: false,
       profileError: "",
       groomingRecords: [],
       medicalRecords: [],
@@ -135,27 +140,30 @@ function adminCustomers() {
 
     // ── Load ─────────────────────────────────────────────
 
-    async loadCustomers() {
-      this.loading      = true;
+    async loadCustomers({ force = true } = {}) {
+      const params = { status: this.statusFilter, tier: this.tierFilter, search: this.searchQuery.trim() };
+      const key = JSON.stringify(params), request = ++this._customerRequest;
+      const epoch = API.getAdminDataRevision?.();
+      const cached = this._customerCache[key];
+      this.customersLoaded = this.customersLoaded && key === this._customersKey;
+      this.loading = true;
       this.errorMessage = "";
-
       try {
-        const data = await API.getCustomers({
-          status: this.statusFilter,
-          tier:   this.tierFilter,
-          search: this.searchQuery.trim(),
-        });
-        this.customers       = data.customers || [];
+        const fromCache = !force && cached && cached.epoch === epoch && Date.now() - cached.at < 15000;
+        const data = fromCache ? cached.data : await API.getCustomers(params);
+        if (request !== this._customerRequest) return;
+        this.customers = data.customers || [];
         this.petSearchResults = data.pets || [];
-        this.totalCount      = data.total ?? this.customers.length;
+        this.totalCount = data.total ?? this.customers.length;
+        this._customersKey = key;
+        this.customersLoaded = true;
+        if (!fromCache) this._customerCache[key] = { data, epoch, at: Date.now() };
+        const keys = Object.keys(this._customerCache);
+        if (keys.length > 12) delete this._customerCache[keys[0]];
       } catch (err) {
-        this.errorMessage = err.message || "Failed to load customers.";
-        this.customers       = [];
-        this.petSearchResults = [];
-        this.totalCount      = 0;
+        if (request === this._customerRequest) this.errorMessage = err.message || "Failed to load customers.";
       } finally {
-        this.loading = false;
-        this.refreshIcons();
+        if (request === this._customerRequest) { this.loading = false; this.refreshIcons(); }
       }
     },
 
@@ -164,12 +172,12 @@ function adminCustomers() {
     setStatus(status) {
       this.statusFilter = status;
       if (status === "unregistered") this.tierFilter = "";
-      this.loadCustomers();
+      this.loadCustomers({ force: false });
     },
 
     setTier(tier) {
       this.tierFilter = tier;
-      this.loadCustomers();
+      this.loadCustomers({ force: false });
     },
 
     // Add unregistered customer
@@ -369,6 +377,7 @@ function adminCustomers() {
         form: {},
         activeTab: "overview",
         profileLoading: true,
+        profileLoaded: false,
         profileError: "",
         groomingRecords: [],
         medicalRecords: [],
@@ -392,6 +401,7 @@ function adminCustomers() {
         this.petModal.groomingRecords = data.grooming_records || [];
         this.petModal.medicalRecords = data.medical_records || [];
         this.petModal.vaccinations = data.vaccinations || [];
+        this.petModal.profileLoaded = true;
       } catch (error) {
         if (!this.petModal.open || String(this.petModal.pet?.id) !== String(petId)) return;
         this.petModal.profileError = error.message || "Pet history could not be loaded.";
@@ -422,6 +432,7 @@ function adminCustomers() {
         saveError: "",
         activeTab: "overview",
         profileLoading: false,
+        profileLoaded: false,
         profileError: "",
         groomingRecords: [],
         medicalRecords: [],

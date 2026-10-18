@@ -1,5 +1,37 @@
 # Admin/staff loading review — 2026-10-18
 
+## Current universal loading UI
+
+Implemented locally on `gerald-frontend`. No push, deployment, production access or migration.
+
+### Findings and changes
+
+- All ten sidebar destinations, plus the Notifications page using the same sidebar, now share `scripts/components/admin-loading.js` and `css/admin-loading.css`. The lightweight native element renders My Pets' local Phosphor `spinner-gap` and `Loading...`, with accessible status semantics and reduced-motion support. No framework, artificial delay or minimum display time was added.
+- Removed sidebar placeholder bars and content skeletons. Static branding, surfaces, titles and subtitles render independently; actual navigation and account information wait for authenticated identity. Navigation readiness no longer waits for the clock or page datasets. The checking and locked session gates still conceal protected information.
+- Fresh navigation previously verified `/session` once at script startup and again at the initial `pageshow`, briefly concealing an already authorized sidebar. It now verifies once on startup; persisted back/forward restores, focus, visibility changes, cross-tab state and inactivity retain their verification behavior.
+- Dashboard headings are immediately `Admin Dashboard` or `Staff Dashboard`; staff identity stays in the account area. Inventory section headings moved from lazy fragments into the existing shell, preserving controls and their live panel handlers.
+- Initial data, confirmed empty results and background refreshes have separate readiness states. Customers, History, Transactions, Clinic, Inventory, Services, Reports, Settings and Notifications show loaders only for pending regions. Matching loaded results remain visible during refreshes/errors, with Retry actions. New queries do not present old results as current. Available pet profile information displays independently of its histories.
+- Existing Grooming tab reuse, compact endpoints, API cache/deduplication/invalidation, polling safeguards, scanner deferral and backend action validation remain. Customers/History use bounded 15-second presentation reuse for loaded filters, guarded by the existing API invalidation revision. Confined Clinic patients continue to refresh on entry while retaining available content.
+
+### Local verification
+
+- `npm test`: **69/69 regression scripts passed**; subsequent focused History, Clinic Services and universal-loading regressions passed after the final readiness/retry changes.
+- Focused Laravel interface/security suite: **271 passed, 1 existing MySQL-only test skipped under SQLite**. Workflow suite: **286 passed**. Coverage includes session locking/unlocking/expiry/logout, Dashboard endpoints, staff account permissions, Clinic/Inventory interfaces, Services, Reports, Grooming payments and cancellations. Test runs use isolated local test databases and fake external services.
+- Headless Edge against localhost with temporary existing admin, Grooming staff and Clinic staff sessions: all accessible sidebar destinations, plus Notifications; delayed initial data; correct headings; content-only local sprite loaders; reduced motion; desktop/mobile sidebar; cached Dashboard navigation; failed-refresh retention/Retry; lazy Security and reuse; all six Inventory sections and Add Product handler; both Services/Reports panels; Clinic filters; Settings Availability and Blocked Dates.
+- Request assertions retain **zero full-booking reads on Dashboard**, **one Grooming board read**, **zero extra reads across the five Grooming tabs**, and reused Security/Services/Reports panels. Fresh navigation no longer makes the duplicate initial session check.
+- With server session verification deliberately held pending, navigation and account details remain concealed while the static Settings title is visible. Actual server inactivity locks concealed the sidebar, rejected incorrect passwords and allowed logout for all three accounts. Existing automated tests also cover successful unlock and absolute expiry.
+- JavaScript syntax checks and `git diff --check` pass. Temporary review tokens and private helper/fixture files are removed after testing. No generated CSS build or migration is needed.
+
+The optional browser regression accepts `PLAYWRIGHT_PATH`, `LOCAL_REVIEW_SESSIONS`, optional `LOCAL_REVIEW_PAGES` (comma-separated names), `LOCAL_REVIEW_VERIFY_GATE`, `LOCAL_REVIEW_LOCK_HELPER` and `LOCAL_REVIEW_SCREENSHOTS`. Session fixtures are private local files containing `{admin: {token, role}, staff: {token, role}, clinic: {token, role}}`; never use production sessions. Loader delays exist only in this test harness.
+
+### Limitations and review
+
+Separate HTML documents still perform fresh server authorization on navigation; permission-based menus are never shown from a storage hint alone. Existing Alpine/Lucide CDN dependencies remain. These checks establish loading/request behavior, not a new Core Web Vitals timing claim. External payment settlement and the MySQL-only concurrency case were not executed. Review normally with local accounts before approving a push; no production migration steps are needed.
+
+## Original performance implementation (retained historical measurements)
+
+The following records the earlier optimization baseline. Its skeleton presentation is superseded by the universal loader above; its endpoint, caching and polling optimizations remain.
+
 Implemented locally on `gerald-frontend`. No push, deployment, live-server access, production database change or migration.
 
 ## Bottlenecks and changes

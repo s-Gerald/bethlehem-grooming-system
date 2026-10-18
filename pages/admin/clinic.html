@@ -27,9 +27,11 @@
       }
     </style>
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
-    <div x-data="adminSidebar()" x-cloak class="min-h-screen flex bg-[#f5f8fb]">
+    <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
 
       <!-- Mobile Backdrop -->
       <div x-cloak x-show="sidebarOpen" x-transition.opacity
@@ -38,10 +40,10 @@
 
       <!-- Sidebar -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-      >
-        <div class="px-6 py-6">
+       data-session-surface>
+        <div class="px-6 py-6" data-session-public>
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img src="../../assets/images/clinic/Bethlehem_Logo.png" alt="Bethlehem Animal Clinic logo" class="h-full w-full object-contain" />
@@ -52,8 +54,9 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
-        <nav class="px-4 py-6">
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -101,7 +104,7 @@
           </div>
         </nav>
 
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -125,7 +128,7 @@
           </button>
         </header>
 
-        <div x-show="sectionLoading" role="status" class="p-6 text-sm text-slate-500">Loading Clinic section…</div>
+        <admin-loader x-cloak x-show="sectionLoading"></admin-loader>
         <div x-show="sectionError" x-cloak role="alert" class="m-4 rounded-xl bg-red-50 p-4 text-sm text-red-700"><span x-text="sectionError"></span><button type="button" @click="showSection()" class="ml-3 font-semibold underline">Try again</button></div>
         <div x-ref="cases">
         <section x-data="adminClinicCasesSection()" x-show="activeSection !== 'services'">
@@ -133,18 +136,22 @@
           <p x-show="accessError" x-text="accessError" role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"></p>
 
           <!-- Page Banner -->
-          <header class="sticky top-14 z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6">
-            <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6">
-              <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Clinic Cases</h2>
-              <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]">BETHLEHEM ANIMAL CLINIC &amp; GROOMING</p>
+          <header class="sticky top-14 z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6" data-session-surface>
+            <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+              <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Clinic Cases</h2>
+              <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]" data-session-public>BETHLEHEM ANIMAL CLINIC &amp; GROOMING</p>
             </div>
           </header>
+          <admin-loader page x-cloak x-show="activeCasesLoading &amp;&amp; !activeCasesLoaded &amp;&amp; !accessError"></admin-loader>
+          <p x-cloak x-show="activeCasesError" class="admin-load-error px-4" role="alert"><span x-text="activeCasesError"></span><button type="button" @click="loadActiveCases()">Retry</button></p>
+          <div x-cloak x-show="activeCasesLoaded" :aria-busy="activeCasesLoading">
+
 
           <div class="mt-5 flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1" role="group" aria-label="Case status filters">
-            <button type="button" :aria-pressed="tab === 'expected'" @click="setTab('expected')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'expected' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Expected <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'expected' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="expectedCount"></span></button>
-            <button type="button" :aria-pressed="tab === 'active-cases'" @click="setTab('active-cases')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'active-cases' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Active <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'active-cases' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="activeCount"></span></button>
-            <button type="button" :aria-pressed="tab === 'confined'" @click="setTab('confined')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'confined' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Confined <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'confined' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="confinedCount"></span></button>
-            <button id="clinic-for-payment-filter" type="button" :aria-pressed="tab === 'for-payment'" @click="setTab('for-payment')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'for-payment' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">For Payment <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="forPaymentCount > 0 ? 'bg-amber-100 text-amber-800' : (tab === 'for-payment' ? 'bg-white/20 text-white' : 'bg-white text-slate-600')" x-text="forPaymentCount"></span></button>
+            <button type="button" :aria-pressed="tab === 'expected'" @click="setTab('expected')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'expected' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Expected <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'expected' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="expectedCount" x-cloak x-show="activeCasesLoaded"></span></button>
+            <button type="button" :aria-pressed="tab === 'active-cases'" @click="setTab('active-cases')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'active-cases' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Active <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'active-cases' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="activeCount" x-cloak x-show="activeCasesLoaded"></span></button>
+            <button type="button" :aria-pressed="tab === 'confined'" @click="setTab('confined')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'confined' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Confined <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'confined' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="confinedCount" x-cloak x-show="activeCasesLoaded"></span></button>
+            <button id="clinic-for-payment-filter" type="button" :aria-pressed="tab === 'for-payment'" @click="setTab('for-payment')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'for-payment' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">For Payment <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="forPaymentCount > 0 ? 'bg-amber-100 text-amber-800' : (tab === 'for-payment' ? 'bg-white/20 text-white' : 'bg-white text-slate-600')" x-text="forPaymentCount" x-cloak x-show="activeCasesLoaded"></span></button>
           </div>
 
           <section x-show="['active-cases', 'for-payment', 'expected'].includes(tab)" class="mt-5 rounded-2xl border border-[#cfe0ee] bg-white shadow-sm">
@@ -152,9 +159,10 @@
               <h3 class="font-bold text-[#2f4b66]" x-text="tab === 'expected' ? 'Expected' : tab === 'for-payment' ? 'For Payment' : 'Active Cases'">Active Cases</h3>
               <span class="rounded-full bg-[#eef5fb] px-2.5 py-1 text-xs font-bold text-[#315b7e]" x-text="caseRows.length"></span>
             </div>
-            <div x-show="activeCasesLoading" class="px-4 py-5 text-sm text-slate-500" x-text="tab === 'expected' ? 'Loading expected arrivals…' : 'Loading cases…'"></div>
-            <div x-show="!activeCasesLoading && caseRows.length === 0" class="px-4 py-5 text-sm text-slate-400" x-text="tab === 'expected' ? 'No expected arrivals.' : tab === 'for-payment' ? 'No cases for payment.' : 'No active cases.'"></div>
-            <div x-show="!activeCasesLoading && caseRows.length" class="divide-y divide-slate-100">
+
+
+            <div x-show="activeCasesLoaded && !activeCasesError && caseRows.length === 0" class="px-4 py-5 text-sm text-slate-400" x-text="tab === 'expected' ? 'No expected arrivals.' : tab === 'for-payment' ? 'No cases for payment.' : 'No active cases.'"></div>
+            <div x-show="activeCasesLoaded && caseRows.length" class="divide-y divide-slate-100">
               <template x-for="caseItem in caseRows" :key="caseItem.id">
                 <div>
                   <div class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" :class="tab !== 'for-payment' ? 'cursor-pointer transition hover:bg-[#f0f7fd]' : ''"
@@ -182,8 +190,8 @@
 
           <section x-show="tab === 'confined'" class="mt-5 overflow-hidden rounded-2xl border border-[#cfe0ee] bg-white shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><h3 class="font-bold text-[#2f4b66]">Confined patients</h3><button type="button" @click="loadConfinedCases(confinedPage)" :disabled="confinedLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Refresh</button></div>
-            <p x-show="confinedLoading" role="status" class="p-4 text-sm text-slate-500">Loading confined patients…</p><p x-show="confinedError" role="alert" x-text="confinedError" class="p-4 text-sm text-red-600"></p>
-            <p x-show="!confinedLoading && !confinedError && !confinedCases.length" class="p-6 text-center text-sm text-slate-500">No patients currently confined.</p>
+            <admin-loader x-cloak x-show="confinedLoading &amp;&amp; !confinedLoaded"></admin-loader><p x-show="confinedError" role="alert" x-text="confinedError" class="p-4 text-sm text-red-600"></p>
+            <p x-show="confinedLoaded && !confinedError && !confinedCases.length" class="p-6 text-center text-sm text-slate-500">No patients currently confined.</p>
             <div x-show="confinedCases.length" class="overflow-x-auto" role="region" aria-label="Confined patients" tabindex="0"><table class="w-full min-w-[860px] text-left text-sm"><caption class="sr-only">Active confinement episodes</caption><thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th scope="col" class="px-4 py-3">Patient / owner</th><th scope="col" class="px-4 py-3">Admitted</th><th scope="col" class="px-4 py-3">Duration</th><th scope="col" class="px-4 py-3">Service</th><th scope="col" class="px-4 py-3">Attending veterinarian</th><th scope="col" class="px-4 py-3">Status</th><th scope="col" class="px-4 py-3">Action</th></tr></thead><tbody class="divide-y divide-slate-100"><template x-for="caseItem in confinedCases" :key="caseItem.id"><tr><td class="px-4 py-3"><p class="font-semibold text-[#2f4b66]" x-text="caseItem.pet?.name || 'Patient'"></p><p class="text-xs text-slate-500" x-text="caseItem.ownerName || 'Owner'"></p></td><td class="px-4 py-3" x-text="new Date(caseItem.confinement.admitted_at).toLocaleString('en-PH', {dateStyle: 'medium', timeStyle: 'short'})"></td><td class="whitespace-nowrap px-4 py-3 tabular-nums" x-text="confinementDuration(caseItem)"></td><td class="max-w-xs break-words px-4 py-3" x-text="caseItem.confinement.case_service?.clinic_service?.name || 'Confinement service'"></td><td class="px-4 py-3" x-text="caseItem.confinement.attending_veterinarian_name || 'Staff #' + caseItem.confinement.attending_veterinarian_id"></td><td class="px-4 py-3"><span class="rounded-full bg-[#eef5fb] px-2.5 py-1 text-xs font-semibold text-[#315b7e]">Confined</span></td><td class="px-4 py-3"><button type="button" @click="openCase(caseItem, 'confinement')" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-3 py-2 text-xs font-semibold text-white hover:bg-[#274864]">Open Case</button></td></tr></template></tbody></table></div>
             <div x-show="confinedLastPage > 1" class="flex items-center justify-end gap-3 border-t border-slate-100 p-3 text-xs"><button type="button" @click="loadConfinedCases(confinedPage - 1)" :disabled="confinedLoading || confinedPage <= 1" class="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button><span x-text="confinedPage + ' / ' + confinedLastPage"></span><button type="button" @click="loadConfinedCases(confinedPage + 1)" :disabled="confinedLoading || confinedPage >= confinedLastPage" class="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button></div>
           </section>
@@ -196,8 +204,7 @@
                 <!-- Record count -->
                 <div class="mt-3 flex w-fit items-center gap-2 rounded-xl bg-white/60 px-4 py-2 text-sm font-semibold text-[#1f3850]">
                   <i data-lucide="stethoscope" class="h-4 w-4 text-[#315b7e]"></i>
-                  <span x-show="searching && searchRows.length === 0" style="display:none" class="text-slate-500">Loading…</span>
-                  <span x-show="!searching || searchRows.length > 0" style="display:none"
+                  <span x-cloak x-show="recordsLoaded" style="display:none"
                     x-text="searchRows.length + ' customer' + (searchRows.length !== 1 ? 's' : '')"></span>
                 </div>
               </div>
@@ -230,26 +237,10 @@
               </div>
             </div>
 
-          <!-- Loading skeleton -->
-          <div x-show="searching && searchRows.length === 0" style="display:none" role="status" aria-label="Loading patient records"
-            class="overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div class="border-b border-slate-100 bg-slate-50 px-4 py-3">
-              <div class="h-3 w-40 animate-pulse rounded-full bg-slate-200"></div>
-            </div>
-            <template x-for="i in 6" :key="i">
-              <div class="flex items-center gap-4 border-b border-slate-100 px-4 py-4 last:border-0">
-                <div class="h-8 w-8 shrink-0 animate-pulse rounded-full bg-slate-200"></div>
-                <div class="flex-1 space-y-2">
-                  <div class="h-3 w-36 animate-pulse rounded-full bg-slate-200"></div>
-                  <div class="h-2.5 w-24 animate-pulse rounded-full bg-slate-100"></div>
-                </div>
-                <div class="hidden h-3 w-24 animate-pulse rounded-full bg-slate-200 sm:block"></div>
-                <div class="hidden h-3 w-20 animate-pulse rounded-full bg-slate-200 sm:block"></div>
-                <div class="h-6 w-14 animate-pulse rounded-xl bg-slate-100"></div>
-              </div>
-            </template>
-          </div>
+          <!-- Initial loading -->
+          <admin-loader x-cloak x-show="searching &amp;&amp; !recordsLoaded"></admin-loader>
 
+          <p x-cloak x-show="recordsError" class="admin-load-error" role="alert"><span x-text="recordsError"></span><button type="button" @click="searchQuery.trim().length >= 2 ? onSearchInput() : loadAllRecords()">Retry</button></p>
           <!-- No results -->
           <div x-show="!searching && noResults" style="display:none"
             class="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-400">
@@ -257,7 +248,7 @@
           </div>
 
           <!-- Records table -->
-          <div x-show="searchRows.length > 0" style="display:none"
+          <div x-show="recordsLoaded && searchRows.length > 0" style="display:none"
             class="min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm">
             <div class="overflow-x-auto" role="region" aria-label="Patient Records table" tabindex="0">
             <table class="w-full min-w-[640px] table-fixed text-sm">
@@ -330,7 +321,9 @@
           </div>
 
           </section><!-- /Patient Records -->
-        </main>
+
+          </div>
+</main>
 
         <div x-cloak x-show="payment.open" @keydown.escape.window="if (payment.open) closePayment()" class="fixed inset-0 z-[210] flex items-center justify-center bg-slate-900/60 px-4 py-8">
           <div class="receipt-modal-card w-full overflow-hidden bg-white shadow-2xl" role="dialog" aria-modal="true" :aria-labelledby="payment.recorded ? 'clinic-payment-recorded-title' : 'clinic-payment-title'" @keydown.tab="trapPaymentFocus($event)">
@@ -462,17 +455,14 @@
             </div>
 
             <div x-ref="profileBody" class="min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
-              <div x-show="profile.loading" role="status" class="flex flex-col items-center justify-center py-12">
-                <i data-lucide="loader-circle" class="h-8 w-8 animate-spin text-[#315b7e]" aria-hidden="true"></i>
-                <p class="mt-3 text-sm text-slate-500">Loading patient profile&hellip;</p>
-              </div>
+              <admin-loader x-cloak x-show="profile.loading"></admin-loader>
               <div x-show="!profile.loading && profile.error" role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <p x-text="profile.error"></p>
               </div>
 
               <p x-show="profileActionError" role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" x-text="profileActionError"></p>
               <div x-show="profileEditing">
-                <p x-show="profileEditorLoading" role="status" class="text-sm text-slate-500">Loading patient editor&hellip;</p>
+                <admin-loader x-cloak x-show="profileEditorLoading"></admin-loader>
                 <div x-ref="patientEditor"></div>
               </div>
               <div x-show="!profile.loading && !profile.error && !detail.record && !profileEditing" class="space-y-6">
@@ -551,7 +541,7 @@
                       </select>
                     </div>
                     <template x-if="histories.treatment"><div :aria-busy="histories.treatment.loading">
-                      <p x-show="histories.treatment.loading" role="status" class="py-4 text-sm text-slate-500">Loading records…</p>
+                      <admin-loader x-cloak x-show="histories.treatment.loading &amp;&amp; !histories.treatment.loaded"></admin-loader>
                       <div x-show="histories.treatment.error" role="alert" class="mb-3 text-sm text-red-600"><span x-text="histories.treatment.error"></span> <button type="button" @click="loadHistory('treatment', histories.treatment.page + 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
                       <div class="overflow-hidden rounded-2xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Treatment history" tabindex="0">
                         <table class="w-full min-w-[760px] table-fixed text-left text-sm"><caption class="sr-only">Treatment history for this patient</caption>
@@ -571,7 +561,7 @@
                   <div id="profile-services-history" x-show="historyTab === 'services'" role="tabpanel" aria-labelledby="profile-services-tab">
                     <h3 class="mb-3 text-sm font-bold text-[#2f4b66]">Services</h3>
                     <template x-if="histories.services"><div :aria-busy="histories.services.loading">
-                      <p x-show="histories.services.loading" role="status" class="py-4 text-sm text-slate-500">Loading records…</p>
+                      <admin-loader x-cloak x-show="histories.services.loading &amp;&amp; !histories.services.loaded"></admin-loader>
                       <div x-show="histories.services.error" role="alert" class="mb-3 text-sm text-red-600"><span x-text="histories.services.error"></span> <button type="button" @click="loadHistory('services', histories.services.page + 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
                       <div class="overflow-hidden rounded-2xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Services history" tabindex="0">
                         <table class="w-full min-w-[640px] table-fixed text-left text-sm"><caption class="sr-only">Services history for this patient</caption>
@@ -591,7 +581,7 @@
                   <div id="profile-confinement-history" x-show="historyTab === 'confinement'" role="tabpanel" aria-labelledby="profile-confinement-tab">
                     <h3 class="mb-3 text-sm font-bold text-[#2f4b66]">Confinement</h3>
                     <template x-if="histories.confinement"><div :aria-busy="histories.confinement.loading">
-                      <p x-show="histories.confinement.loading" role="status" class="py-4 text-sm text-slate-500">Loading records…</p>
+                      <admin-loader x-cloak x-show="histories.confinement.loading &amp;&amp; !histories.confinement.loaded"></admin-loader>
                       <div x-show="histories.confinement.error" role="alert" class="mb-3 text-sm text-red-600"><span x-text="histories.confinement.error"></span> <button type="button" @click="loadHistory('confinement', histories.confinement.page + 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
                       <div class="overflow-hidden rounded-2xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Confinement history" tabindex="0">
                         <table class="w-full min-w-[640px] table-fixed text-left text-sm"><caption class="sr-only">Confinement history for this patient</caption>
@@ -612,7 +602,7 @@
               </div>
 
         <div x-show="detail.record" :aria-busy="detail.loading">
-          <p x-show="detail.loading" role="status" class="py-8 text-sm text-slate-500">Loading case details…</p>
+          <admin-loader x-cloak x-show="detail.loading"></admin-loader>
           <div x-show="detail.error" role="alert" class="py-4 text-sm text-red-600"><span x-text="detail.error"></span> <button type="button" @click="loadCaseDetail()" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
           <div x-show="!detail.caseId" class="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <template x-for="field in treatmentDetails(detail.record).filter(field => field.label !== 'Case')" :key="field.label"><div class="min-w-0"><dt class="text-xs font-semibold text-slate-400" x-text="field.label"></dt><dd class="mt-1 whitespace-pre-wrap break-words font-medium text-slate-700" x-text="field.value || '—'"></dd></div></template>
@@ -819,7 +809,7 @@
                 <h3 id="case-confinement-heading" tabindex="-1" class="mb-4 text-sm font-bold text-[#2f4b66]">Confinement</h3>
                 <dl class="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3"><template x-for="field in confinementDetailFields(detail.confinement)" :key="field.label"><div class="min-w-0"><dt class="text-xs text-slate-500" x-text="field.label"></dt><dd class="mt-1 whitespace-pre-wrap break-words font-medium text-slate-700" x-text="field.value"></dd></div></template></dl>
                 <div class="mt-5">
-                  <p x-show="detail.observationsLoading" role="status" class="py-3 text-sm text-slate-500">Loading monitoring…</p>
+                  <admin-loader x-cloak x-show="detail.observationsLoading"></admin-loader>
                   <div x-show="detail.observationsError" role="alert" class="mb-3 text-sm text-red-600"><span x-text="detail.observationsError"></span><button type="button" @click="loadHistoryObservations(detail.page + 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
                   <div x-show="detail.observations?.length">
                     <h4 class="mb-3 text-sm font-semibold text-slate-700">Monitoring</h4>
@@ -1095,7 +1085,7 @@
                     <div>
                       <label for="imaging-service-search" class="mb-1 block text-xs font-medium text-slate-600">Imaging Service <span aria-hidden="true" class="text-red-600">*</span></label>
                       <input id="imaging-service-search" type="search" x-model="imagingQuery" @input="searchImagingServices()" @focus="if (!imagingSelected) loadImagingOptions()" @keydown.enter.prevent="if (imagingSelected) addImagingService()" aria-required="true" maxlength="200" autocomplete="off" placeholder="Search active imaging services…" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
-                      <p x-show="imagingOptionsLoading" role="status" class="mt-1 text-xs text-slate-500">Searching imaging services…</p>
+                      <admin-loader compact x-cloak x-show="imagingOptionsLoading"></admin-loader>
                       <p x-show="imagingOptionsPage > 0 && !imagingOptionsLoading && !imagingOptions.length && !imagingSelected" class="mt-1 text-xs text-slate-500">No active imaging services match this search.</p>
                       <ul x-show="imagingOptions.length" aria-label="Imaging service results" class="mt-2 max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
                         <template x-for="service in imagingOptions" :key="service.id"><li><button type="button" @click="selectImagingService(service)" class="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-3 text-left hover:bg-slate-50"><span class="min-w-0 break-words text-sm font-semibold text-[#2f4b66]" x-text="service.name"></span></button></li></template>
@@ -1115,7 +1105,7 @@
                 </div>
                 <div x-show="imagingError" role="alert" class="space-y-2 text-sm text-red-600"><p x-text="imagingError"></p><button x-show="imagingRetry" type="button" @click="retryImaging()" :disabled="imagingBusy || imagingLoading || imagingOptionsLoading || imagingPricingLoading" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold disabled:opacity-50">Try again</button></div>
                 <p x-show="attachmentError" role="alert" x-text="attachmentError" class="text-sm text-red-600"></p>
-                <p x-show="imagingLoading" role="status" class="text-xs text-slate-500">Loading recorded imaging…</p>
+                <admin-loader x-cloak x-show="imagingLoading"></admin-loader>
                 <p x-show="!imagingLoading && !imagingError && !imagingRows.length" class="text-sm text-slate-400">No imaging recorded.</p>
                 <div x-show="imagingRows.length" class="overflow-x-auto rounded-xl border border-slate-200">
                   <table class="w-full text-left text-sm" aria-label="Recorded diagnostic imaging">
@@ -1242,7 +1232,7 @@
             <div x-show="canMutateServices && !pendingPayload" class="space-y-2">
               <label for="case-service-search" class="block text-xs font-semibold text-slate-600">Service</label>
               <input id="case-service-search" type="search" x-model="searchQuery" @input="searchServices()" @focus="if (!searchRows.length) loadOptions()" :disabled="serviceSaving || serviceRemovingId !== null" maxlength="200" placeholder="Search by service name…" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
-              <p x-show="searchLoading" role="status" class="text-xs text-slate-500">Searching catalogue…</p>
+              <admin-loader compact x-cloak x-show="searchLoading"></admin-loader>
               <p x-show="searchError" role="alert" x-text="searchError" class="text-sm text-red-600"></p>
               <p x-show="searchPage > 0 && !searchLoading && !searchError && !searchRows.length && !selectedService" class="text-sm text-slate-500">No active services match this search.</p>
               <ul x-show="searchRows.length" aria-label="Catalogue service results" class="max-h-56 overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -1255,7 +1245,7 @@
             </div>
             <form x-show="serviceForm" x-ref="serviceComposer" @submit.prevent="submitService()" @input="persistDraft()" @change="persistDraft()" novalidate class="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div class="flex items-start justify-between gap-3"><h4 class="min-w-0 break-words text-sm font-bold text-[#2f4b66]" x-text="selectedService?.name || 'Loading selected service…'"></h4><button type="button" @click="dismissService()" :disabled="serviceSaving || !!pendingPayload" class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-40">Dismiss</button></div>
-              <p x-show="pricingLoading" role="status" class="text-xs text-slate-500">Resolving price…</p>
+              <admin-loader x-cloak x-show="pricingLoading"></admin-loader>
               <template x-if="serviceForm"><div class="space-y-3">
                 <fieldset :disabled="serviceSaving || serviceRemovingId !== null || !!pendingPayload || !canMutateServices" class="space-y-3">
                   <p x-show="servicePricing && !servicePricing.error && !needsFinalPrice" class="text-sm font-semibold tabular-nums text-slate-700" x-text="money(servicePricing?.resolved_price)"></p>
@@ -1274,7 +1264,7 @@
                 </div>
               </div></template>
             </form>
-            <p x-show="servicesLoading" role="status" class="text-sm text-slate-500">Loading services…</p>
+            <admin-loader x-cloak x-show="servicesLoading"></admin-loader>
             <p x-show="servicesError" role="alert" x-text="servicesError" class="text-sm text-red-600"></p>
             <p x-show="!servicesLoading && !servicesError && !serviceRows.length" class="py-6 text-center text-sm text-slate-500">No services added yet.</p>
             <div x-show="serviceRows.length" class="overflow-hidden rounded-xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Case service history" tabindex="0">
@@ -1291,7 +1281,7 @@
             <section x-show="$store.clinicAccess.permissions.billing_view" aria-labelledby="treatment-charges-heading" class="space-y-3 border-t border-slate-200 pt-5">
               <h3 id="treatment-charges-heading" class="text-base font-bold text-[#2f4b66]">Treatment Charges</h3>
               <p class="text-xs text-slate-500">Charges from recorded Treatment. Make corrections in the Treatment tab.</p>
-              <p x-show="billingLoading" role="status" class="text-sm text-slate-500">Loading charges…</p>
+              <admin-loader x-cloak x-show="billingLoading"></admin-loader>
               <p x-show="billingError" role="alert" class="text-sm text-red-600"><span x-text="billingError"></span> <button type="button" @click="loadBilling()" class="font-semibold underline">Retry</button></p>
               <p x-show="!billingLoading && !billingError && !treatmentCharges.length && chargePage >= chargeLastPage" class="text-sm text-slate-500">No treatment charges yet.</p>
               <ul x-show="treatmentCharges.length" aria-label="Treatment charges" class="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -1311,7 +1301,7 @@
         <div x-show="chargesOpen" x-cloak @click="closeCharges()" aria-hidden="true" class="absolute inset-0 z-10 bg-slate-900/20"></div>
           <section id="case-billing-panel" role="dialog" aria-modal="true" aria-labelledby="case-charges-title" x-show="chargesOpen && $store.clinicAccess.permissions.billing_view" x-cloak class="absolute right-0 top-0 z-20 max-h-full w-full max-w-xl space-y-4 overflow-y-auto rounded-bl-2xl border-l border-slate-200 bg-white p-4 shadow-xl sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-3"><h3 id="case-charges-title" class="text-base font-bold text-[#2f4b66]">Charges</h3><button type="button" @click="loadBilling()" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Refresh</button><button type="button" @click="closeCharges()" aria-label="Close charges" class="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><i data-lucide="x" class="h-5 w-5"></i></button></div>
-            <p x-show="billingLoading" role="status" class="text-sm text-slate-500">Loading charges…</p><p x-show="billingError" role="alert" x-text="billingError" class="text-sm text-red-600"></p>
+            <admin-loader x-cloak x-show="billingLoading"></admin-loader><p x-show="billingError" role="alert" x-text="billingError" class="text-sm text-red-600"></p>
             <p x-show="!billingLoading && !billingError && !chargeRows.length" class="py-6 text-center text-sm text-slate-500">No chargeable items recorded.</p>
             <div x-show="chargeRows.length" class="overflow-hidden rounded-xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Clinic billing breakdown" tabindex="0"><table class="w-full table-fixed text-left text-xs sm:text-sm"><caption class="sr-only">Case charges, including services, medicines and treatments</caption><thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th scope="col" class="w-[45%] px-2 py-3 sm:px-3">Description</th><th scope="col" class="w-1/4 px-2 py-3 sm:px-3">Source</th><th scope="col" class="px-2 py-3 sm:px-3 text-right">Amount</th></tr></thead><tbody class="divide-y divide-slate-100"><template x-for="charge in chargeRows" :key="charge.id"><tr><td class="max-w-xs break-words px-2 py-3 sm:px-3 font-semibold text-[#2f4b66]" x-text="charge.description"></td><td class="break-words px-2 py-3 sm:px-3"><span class="text-slate-600" x-text="charge.clinic_case_service_id ? 'Service' : charge.vaccination_record_id ? 'Treatment' : charge.kind"></span></td><td class="px-2 py-3 sm:px-3 break-words text-right font-semibold tabular-nums" x-text="money(charge.amount)"></td></tr></template></tbody></table></div></div>
             <button x-show="chargePage < chargeLastPage" type="button" @click="loadBilling(chargePage + 1)" :disabled="billingLoading" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50">Load more charges</button>
@@ -1320,7 +1310,7 @@
 
         <section :inert="chargesOpen" id="case-confinement-panel" aria-labelledby="case-confinement-tab" x-data="clinicConfinementWorkspace()" x-effect="syncConfinement(open, currentAppt, activeSection, form)" x-show="activeSection === 'confinement'" role="tabpanel" aria-label="Confinement" @keydown.capture="window.InventoryMoneyInput?.handle($event)" @beforeinput.capture="window.InventoryMoneyInput?.handle($event)" @paste.capture="window.InventoryMoneyInput?.handle($event)" @input.capture="window.InventoryMoneyInput?.handle($event)" class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
           <div class="flex flex-wrap items-center justify-between gap-3"><h3 class="text-base font-bold text-[#2f4b66]">Confinement</h3><button type="button" @click="loadConfinement()" :disabled="loading || busy" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Refresh</button></div>
-          <p x-show="loading" role="status" class="text-sm text-slate-500">Loading confinement…</p><p x-show="error" role="alert" x-text="error" class="rounded-xl bg-red-50 p-3 text-sm text-red-700"></p>
+          <admin-loader x-cloak x-show="loading"></admin-loader><p x-show="error" role="alert" x-text="error" class="rounded-xl bg-red-50 p-3 text-sm text-red-700"></p>
           <div x-show="!loading && !episode && !admissionForm" class="space-y-3"><p class="text-sm text-slate-500">No confinement episode for this case.</p><button x-show="canAdmitConfinement" type="button" @click="openAdmission()" class="rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white">Admit for Confinement</button></div>
           <template x-if="admissionForm"><form novalidate @submit.prevent="submitAdmission()" class="space-y-4 rounded-xl border border-[#d0e4f2] bg-[#f5f8fb] p-4">
             <h4 class="text-sm font-bold text-[#2f4b66]">Admit for Confinement</h4>
@@ -1328,7 +1318,7 @@
             <div x-show="admissionErrors.primary_veterinarian_id" class="space-y-1"><p role="alert" class="text-sm text-red-700" x-text="admissionErrors.primary_veterinarian_id"></p><button type="button" @click="focusAdmissionMedicalField('primary_veterinarian_id')" class="text-xs font-semibold text-[#315b7e] underline">Go to Medical Record</button></div>
             <fieldset :disabled="busy || confirming || !!admissionPending" class="space-y-3">
               <div><p class="mb-1 text-xs font-semibold text-slate-600">Recorded weight</p><p class="text-sm font-semibold text-[#2f4b66]" x-text="weightLabel(admissionRecordedWeight)"></p></div>
-              <div><p class="mb-1 text-xs font-semibold text-slate-600">Confinement rate</p><p x-show="pricingLoading" role="status" class="text-sm text-slate-500">Resolving confinement rate...</p><p x-show="pricing && !pricing.error" class="text-sm font-semibold text-[#2f4b66]" x-text="pricing ? sizeLabel(pricing.pet_size) + ' · ' + money(pricing.resolved_price) + '/day' : ''"></p><p x-show="pricing?.error && !admissionErrors.weight_kg && !admissionErrors.rate" role="alert" class="text-sm text-amber-800" x-text="pricing?.error"></p><p x-show="admissionErrors.rate" role="alert" class="text-sm text-red-700" x-text="admissionErrors.rate"></p><div x-show="admissionErrors.weight_kg" class="mt-1 space-y-1"><p role="alert" class="text-sm text-red-700" x-text="admissionErrors.weight_kg"></p><button type="button" @click="focusAdmissionMedicalField('weight_kg')" class="text-xs font-semibold text-[#315b7e] underline">Go to Medical Record > Vitals</button></div><button x-show="!pricingLoading && (!pricing || pricing.error)" type="button" @click="previewAdmissionService()" class="mt-2 rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] underline">Retry rate</button></div>
+              <div><p class="mb-1 text-xs font-semibold text-slate-600">Confinement rate</p><admin-loader x-cloak x-show="pricingLoading"></admin-loader><p x-show="pricing && !pricing.error" class="text-sm font-semibold text-[#2f4b66]" x-text="pricing ? sizeLabel(pricing.pet_size) + ' · ' + money(pricing.resolved_price) + '/day' : ''"></p><p x-show="pricing?.error && !admissionErrors.weight_kg && !admissionErrors.rate" role="alert" class="text-sm text-amber-800" x-text="pricing?.error"></p><p x-show="admissionErrors.rate" role="alert" class="text-sm text-red-700" x-text="admissionErrors.rate"></p><div x-show="admissionErrors.weight_kg" class="mt-1 space-y-1"><p role="alert" class="text-sm text-red-700" x-text="admissionErrors.weight_kg"></p><button type="button" @click="focusAdmissionMedicalField('weight_kg')" class="text-xs font-semibold text-[#315b7e] underline">Go to Medical Record > Vitals</button></div><button x-show="!pricingLoading && (!pricing || pricing.error)" type="button" @click="previewAdmissionService()" class="mt-2 rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] underline">Retry rate</button></div>
               <div><label for="confinement-reason" class="mb-1 block text-xs font-semibold text-slate-600">Reason for admission <span aria-hidden="true">*</span></label><textarea id="confinement-reason" x-ref="confinementReason" x-model="admissionForm.reason" @input="persistAdmission()" required :aria-invalid="!!admissionErrors.reason" aria-describedby="confinement-reason-error" maxlength="2000" rows="2" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"></textarea><p id="confinement-reason-error" x-show="admissionErrors.reason" role="alert" class="mt-1 text-xs text-red-700" x-text="admissionErrors.reason"></p></div>
               <div><label for="confinement-notes" class="mb-1 block text-xs font-semibold text-slate-600">Notes (optional)</label><textarea id="confinement-notes" x-model="admissionForm.notes" @input="persistAdmission()" maxlength="5000" rows="2" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"></textarea></div>
             </fieldset><p x-show="admissionPending" class="text-sm text-amber-800">Admission is awaiting confirmation. Retry the same request safely.</p>
@@ -1359,7 +1349,7 @@
                 <h5 class="text-sm font-semibold text-[#2f4b66]" x-text="extraForm.kind === 'stop' ? 'Stop daily charge' : 'Add confinement charge'"></h5>
                 <fieldset :disabled="busy || !!extraPending" class="space-y-3">
                   <div x-show="extraForm.kind === 'add'"><label for="confinement-extra-service" class="mb-1 block text-xs font-semibold text-slate-600">Additional Charge</label><select id="confinement-extra-service" x-ref="extraService" x-model="extraForm.clinic_service_id" @change="previewExtra()" :required="extraForm.kind === 'add'" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select a charge</option><template x-for="service in options" :key="service.id"><option :value="service.id" x-text="service.name + ' · ' + cataloguePrice(service)"></option></template></select><p x-show="!optionsLoading && !options.length" class="mt-1 text-xs text-slate-500">No active additional charges configured in Clinic Services.</p><button x-show="optionsPage < optionsLastPage" type="button" @click="loadConfinementOptions(optionsPage + 1)" :disabled="optionsLoading" class="mt-2 text-xs font-semibold text-[#315b7e] underline">Load more charges</button></div>
-                  <p x-show="pricingLoading" role="status" class="text-xs text-slate-500">Resolving rate...</p><p x-show="extraPricing?.pricing?.error" role="alert" class="text-sm text-amber-800" x-text="extraPricing?.pricing?.error"></p><p x-show="extraPricing && !extraPricing.pricing?.error" class="text-sm text-slate-700" x-text="extraPricing ? extraPricing.data.name + ' · ' + (extraPricing.pricing?.resolved_price != null ? money(extraPricing.pricing.resolved_price) + (extraPricing.data.billing_unit === 'day' ? '/day' : '') : cataloguePrice(extraPricing.data)) : ''"></p>
+                  <admin-loader x-cloak x-show="pricingLoading"></admin-loader><p x-show="extraPricing?.pricing?.error" role="alert" class="text-sm text-amber-800" x-text="extraPricing?.pricing?.error"></p><p x-show="extraPricing && !extraPricing.pricing?.error" class="text-sm text-slate-700" x-text="extraPricing ? extraPricing.data.name + ' · ' + (extraPricing.pricing?.resolved_price != null ? money(extraPricing.pricing.resolved_price) + (extraPricing.data.billing_unit === 'day' ? '/day' : '') : cataloguePrice(extraPricing.data)) : ''"></p>
                   <p x-show="extraForm.kind === 'add' && extraPricing?.data?.billing_unit === 'day'" class="text-xs text-slate-500">Starts now. Days are calculated automatically when stopped or discharged.</p>
                   <template x-if="extraNeedsPrice"><div><label for="extra-final-price" class="mb-1 block text-xs font-semibold text-slate-600">Final unit price (₱)</label><input id="extra-final-price" x-ref="extraFinalPrice" x-model="extraForm.applied_price" type="text" inputmode="decimal" data-money-input required class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" /><p class="mt-1 text-xs text-slate-500" x-text="cataloguePrice(extraPricing.data)"></p></div></template>
                 </fieldset>
@@ -1368,10 +1358,10 @@
             </section>
             <div class="flex flex-wrap items-center justify-between gap-3"><h4 class="text-sm font-bold text-[#2f4b66]">Monitoring history</h4><button x-show="canCareForConfinement && !monitoringOpen && !dischargeForm && !extraForm && !extraPending" type="button" @click="openMonitoring()" :disabled="busy" class="rounded-xl border border-[#d0e4f2] px-3 py-2 text-xs font-semibold text-[#315b7e] disabled:opacity-50">Record Monitoring</button></div>
             <template x-if="monitoringOpen && monitoringForm"><form @submit.prevent="submitMonitoring()" class="space-y-3 rounded-xl border border-slate-200 p-4"><fieldset :disabled="busy || !!monitoringPending" class="space-y-3"><div class="grid gap-3 sm:grid-cols-3"><div><label for="monitoring-temperature" class="mb-1 block text-xs font-semibold text-slate-600">Temperature (°C)</label><input id="monitoring-temperature" x-model="monitoringForm.temperature_c" @input="persistMonitoring()" type="number" min="0" max="999.9" step="0.1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></div><div><label for="monitoring-heart" class="mb-1 block text-xs font-semibold text-slate-600">Heart rate (bpm)</label><input id="monitoring-heart" x-model="monitoringForm.heart_rate_bpm" @input="persistMonitoring()" type="number" min="0" max="65535" step="1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></div><div><label for="monitoring-respiratory" class="mb-1 block text-xs font-semibold text-slate-600">Respiratory rate (bpm)</label><input id="monitoring-respiratory" x-model="monitoringForm.respiratory_rate_bpm" @input="persistMonitoring()" type="number" min="0" max="65535" step="1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" /></div></div><div><label for="monitoring-notes" class="mb-1 block text-xs font-semibold text-slate-600">Observation / notes</label><textarea id="monitoring-notes" x-model="monitoringForm.notes" @input="persistMonitoring()" maxlength="5000" rows="2" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></textarea></div></fieldset><p class="text-xs text-slate-500">Record at least one value or observation. Each entry is added to history.</p><p x-show="monitoringPending" class="text-sm text-amber-800">Monitoring is awaiting confirmation. Retry the same request safely.</p><div class="flex flex-wrap justify-end gap-3"><button type="button" @click="closeConfinementForm('monitoring')" :disabled="busy || !!monitoringPending" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Cancel</button><button type="submit" :disabled="busy || !canCareForConfinement" class="rounded-xl bg-[#315b7e] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" x-text="busy ? 'Saving…' : monitoringPending ? 'Retry Monitoring' : 'Save Monitoring'"></button></div></form></template>
-            <p x-show="observationsLoading" role="status" class="text-xs text-slate-500">Loading monitoring history…</p><p x-show="!observationsLoading && !observations.length" class="text-sm text-slate-500">No monitoring entries yet.</p>
+            <admin-loader x-cloak x-show="observationsLoading"></admin-loader><p x-show="!observationsLoading && !observations.length" class="text-sm text-slate-500">No monitoring entries yet.</p>
             <div x-show="observations.length" class="overflow-hidden rounded-xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Confinement monitoring history" tabindex="0"><table class="w-full min-w-[660px] text-left text-sm"><caption class="sr-only">Chronological confinement observations</caption><thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-500"><tr><th scope="col" class="px-3 py-3">Recorded</th><th scope="col" class="px-3 py-3">Temp °C</th><th scope="col" class="px-3 py-3">Heart bpm</th><th scope="col" class="px-3 py-3">Resp. bpm</th><th scope="col" class="px-3 py-3">Observation</th><th scope="col" class="px-3 py-3">Recorded by</th></tr></thead><tbody class="divide-y divide-slate-100"><template x-for="entry in observations" :key="entry.id"><tr><td class="px-3 py-3" x-text="formatConfinementTime(entry.recorded_at)"></td><td class="px-3 py-3 tabular-nums" x-text="entry.temperature_c ?? '—'"></td><td class="px-3 py-3 tabular-nums" x-text="entry.heart_rate_bpm ?? '—'"></td><td class="px-3 py-3 tabular-nums" x-text="entry.respiratory_rate_bpm ?? '—'"></td><td class="max-w-xs break-words whitespace-pre-wrap px-3 py-3" x-text="entry.notes || '—'"></td><td class="px-3 py-3" x-text="'Staff #' + entry.recorded_by_user_id"></td></tr></template></tbody></table></div></div><button x-show="observationPage < observationLastPage" type="button" @click="loadObservations(observationPage + 1)" :disabled="observationsLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Load more observations</button>
             <button x-show="canCareForConfinement && !dischargeForm && !monitoringOpen && !extraForm && !extraPending" type="button" @click="openDischarge()" :disabled="busy" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Discharge &amp; Send to Billing</button>
-            <template x-if="dischargeForm"><form @submit.prevent="submitDischarge()" class="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><h4 class="text-sm font-bold text-[#2f4b66]">Discharge Patient</h4><p class="text-sm font-semibold" x-text="confinementCase?.pet?.name || 'Patient'"></p><p class="text-xs text-slate-600" x-text="'Admitted ' + formatConfinementTime(episode.admitted_at) + ' · Duration ' + duration()"></p><p x-show="pricingLoading" role="status" class="text-sm text-slate-500">Preparing discharge billing…</p>
+            <template x-if="dischargeForm"><form @submit.prevent="submitDischarge()" class="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><h4 class="text-sm font-bold text-[#2f4b66]">Discharge Patient</h4><p class="text-sm font-semibold" x-text="confinementCase?.pet?.name || 'Patient'"></p><p class="text-xs text-slate-600" x-text="'Admitted ' + formatConfinementTime(episode.admitted_at) + ' · Duration ' + duration()"></p><admin-loader x-cloak x-show="pricingLoading"></admin-loader>
               <template x-if="dischargePreview"><div class="space-y-3"><p class="text-sm font-semibold" x-text="dischargePreview.quantity + ' billable day(s) · ' + (dischargePreview.pricing.resolved_price != null ? money(dischargePreview.pricing.resolved_price * dischargePreview.quantity) : 'Final price required')"></p><p class="text-xs text-slate-500">Running daily charges stop automatically at discharge. Final duration is calculated when saved.</p><p x-show="dischargePreview.pricing.error" role="alert" class="text-sm text-amber-800" x-text="dischargePreview.pricing.error"></p>
                 <template x-for="extra in (dischargePreview.charges || [])" :key="extra.id"><div class="rounded-xl border border-emerald-200 bg-white p-3"><p class="text-sm font-semibold" x-text="extra.service.name + ' · ' + extra.quantity + (extra.service.billing_unit === 'day' ? ' day(s)' : ' charge')"></p><p x-show="extra.pricing.error" role="alert" class="text-sm text-amber-800" x-text="extra.pricing.error"></p><p x-show="!extra.pricing.requires_final_price && !extra.pricing.error" class="mt-1 text-sm text-slate-600" x-text="money(extra.pricing.resolved_price * extra.quantity)"></p><template x-if="extra.pricing.requires_final_price"><label class="mt-2 block text-xs font-semibold text-slate-600">Final unit price (₱)<input type="text" inputmode="decimal" data-money-input required :disabled="busy || confirming || !!dischargePending" x-model="dischargeForm.charge_prices[extra.id]" @input="persistDischarge()" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" /><span class="mt-1 block font-normal" x-text="cataloguePrice(extra.service)"></span></label></template></div></template>
               </div></template>
@@ -1420,7 +1410,7 @@
                     <div x-show="!selectedProduct">
                       <label for="treatment-product-search" class="mb-1 block text-xs font-semibold text-slate-600">Search Product <span class="text-red-600" aria-hidden="true">*</span></label>
                       <input id="treatment-product-search" type="search" autocomplete="off" x-model="productQuery" @input="searchTreatmentProducts()" :disabled="formModal.saving || optionsLoading" :aria-invalid="Boolean(formErrors.inventory_item_id)" :placeholder="treatmentType === 'medicine' ? 'Search medicine name…' : 'Search vaccine name…'" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-100" :class="formErrors.inventory_item_id ? 'border-red-400' : 'border-slate-300'" />
-                      <p x-show="productLoading" role="status" class="mt-2 text-xs text-slate-500">Loading products…</p>
+                      <admin-loader x-cloak x-show="productLoading"></admin-loader>
                       <p x-show="productSearchError" role="alert" class="mt-2 text-xs text-red-600" x-text="productSearchError"></p>
                       <p x-show="formModal.unavailableVaccineName" class="mt-2 text-xs text-amber-700" x-text="formModal.unavailableVaccineName + ' is no longer available. Select another product.'"></p>
                       <div x-show="!productLoading && productResults.length" class="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white" role="listbox" aria-label="Treatment inventory products">
@@ -1561,7 +1551,7 @@
 
           <section class="mt-5 border-t border-slate-200 pt-4" aria-labelledby="current-treatment-title" :aria-busy="loading">
             <h3 id="current-treatment-title" class="mb-3 text-sm font-bold text-[#2f4b66]">Current Visit Treatments</h3>
-            <p x-show="loading" role="status" class="py-3 text-sm text-slate-500">Loading treatments…</p>
+            <admin-loader x-cloak x-show="loading"></admin-loader>
             <div x-show="error" role="alert" class="py-3 text-sm text-red-600"><span x-text="error"></span><button x-show="!petNotFound" type="button" @click="loadVaccinations()" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
             <p x-show="!loading && !error && !records.length" class="py-4 text-sm text-slate-500">No treatments recorded for this case.</p>
             <div x-show="records.length" class="overflow-hidden rounded-xl border border-slate-200">
@@ -1611,10 +1601,7 @@
                   <i data-lucide="x" class="h-5 w-5"></i>
                 </button>
               </div>
-              <div x-show="detailModal.loading" class="px-5 py-12 text-center sm:px-6" aria-live="polite">
-                <i data-lucide="loader-circle" class="mx-auto h-7 w-7 animate-spin text-[#315b7e]"></i>
-                <p class="mt-3 text-sm text-slate-500">Loading complete record…</p>
-              </div>
+              <admin-loader x-cloak x-show="detailModal.loading"></admin-loader>
               <div x-show="detailModal.error" role="alert" class="px-5 py-4 text-sm text-red-600"><span x-text="detailModal.error"></span><button type="button" @click="retryDetails()" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
               <div x-show="!detailModal.loading && detailModal.record" class="max-h-[75vh] overflow-y-auto px-5 py-5 sm:px-6">
                 <template x-if="detailModal.record">
@@ -1700,16 +1687,16 @@
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/components/online-payment.js?v=20261018"></script>
     <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=clinic-merge-20261007&auth=session-scope-20261006&clinic=billing-20261014-v1&clinic-products=20261010&medical-record=20261015-imaging-v2&patient-history=20261014-case-details&case-lifecycle=20261017&payments=20261018-shared&session=lock-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=sections-removed-20261010&clinic-services=20261013&case-flow=20261013-v5&unified-cases=20261014&services=20261017"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=clinic-merge-20261007&auth=session-scope-20261006&clinic=billing-20261014-v1&clinic-products=20261010&medical-record=20261015-imaging-v2&patient-history=20261014-case-details&case-lifecycle=20261017&payments=20261018-shared&session=lock-20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=sections-removed-20261010&clinic-services=20261013&case-flow=20261013-v5&unified-cases=20261014&services=20261017&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared"></script>
+    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
     <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014"></script>
     <script src="../../scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>
-    <script src="../../scripts/components/admin-clinic-shell.js?services=20261017&v=20261015-imaging-v2&case-flow=20261013-v5&unified-cases=20261014"></script>
+    <script src="../../scripts/components/admin-clinic-shell.js?services=20261017&v=20261015-imaging-v2&case-flow=20261013-v5&unified-cases=20261014&loading-ui=universal-20261018"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   </body>
 </html>

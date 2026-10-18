@@ -12,7 +12,12 @@ function adminArchive() {
     sortOrder: "newest",
     selectedYear: currentYear,
     selectedMonth: "",
-    loading: false,
+    loading: true,
+    historyLoaded: false,
+    _historyKey: "",
+    _historyRequest: 0,
+    _historyCache: {},
+    _archiveIdentityLoaded: false,
     errorMessage: "",
     detailsModalOpen: false,
     detailsBooking: null,
@@ -73,40 +78,51 @@ function adminArchive() {
       this.selectedMonth = "";
       this.closeDetails();
       this.closeClinicRecord();
-      await this.loadArchive();
+      await this.loadArchive({ force: false });
     },
 
-    async loadArchive() {
+    async loadArchive({ force = true } = {}) {
+      if (!this._archiveIdentityLoaded && typeof API.getStaffIdentity === 'function') {
+        this.loading = true;
+        this.errorMessage = '';
+        try {
+          const identity = await API.getStaffIdentity();
+          if (identity.user?.role === 'staff' && identity.user?.staff_type === 'clinic') this.archiveType = 'clinic';
+          this._archiveIdentityLoaded = true;
+        } catch (error) {
+          this.errorMessage = error.message || 'Could not verify History access.';
+          this.loading = false;
+          return;
+        }
+      }
+      const type = this.archiveType, search = this.searchQuery.trim();
+      const key = JSON.stringify([type, search]), request = ++this._historyRequest;
+      const epoch = API.getAdminDataRevision?.(), cached = this._historyCache[key];
+      this.historyLoaded = this.historyLoaded && this._historyKey === key;
       this.loading = true;
       this.errorMessage = "";
-
       try {
-        if (this.archiveType === "clinic") {
-          const data = await API.getArchivedClinicAppointments({
-            search: this.searchQuery.trim(),
-          });
+        const fromCache = !force && cached && cached.epoch === epoch && Date.now() - cached.at < 15000;
+        const data = fromCache ? cached.data : await (type === 'clinic'
+          ? API.getArchivedClinicAppointments({ search }) : API.getArchivedBookings({ search }));
+        if (request !== this._historyRequest) return;
+        if (type === 'clinic') {
           this.clinicArchivedList = data.archived || [];
           this.clinicTotalCount = data.total ?? this.clinicArchivedList.length;
         } else {
-          const data = await API.getArchivedBookings({
-            search: this.searchQuery.trim(),
-          });
           this.archivedList = data.archived || [];
           this.totalCount = data.total ?? this.archivedList.length;
         }
+        this._historyKey = key;
+        this.historyLoaded = true;
+        if (!fromCache) this._historyCache[key] = { data, epoch, at: Date.now() };
+        const keys = Object.keys(this._historyCache);
+        if (keys.length > 12) delete this._historyCache[keys[0]];
         this.selectAvailableYear();
       } catch (error) {
-        this.errorMessage = error.message || "Failed to load history. Please try again.";
-        if (this.archiveType === "clinic") {
-          this.clinicArchivedList = [];
-          this.clinicTotalCount = 0;
-        } else {
-          this.archivedList = [];
-          this.totalCount = 0;
-        }
+        if (request === this._historyRequest) this.errorMessage = error.message || "Failed to load history. Please try again.";
       } finally {
-        this.loading = false;
-        this.refreshIcons();
+        if (request === this._historyRequest) { this.loading = false; this.refreshIcons(); }
       }
     },
 

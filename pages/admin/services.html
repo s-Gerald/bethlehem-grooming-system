@@ -10,9 +10,11 @@
     <link rel="stylesheet" href="../../css/components/admin-services.css?v=20261017-followup" />
     <link rel="stylesheet" href="../../css/components/toast.css?v=semantic-toast-20261015" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
-    <div x-data="adminSidebar()" x-cloak class="min-h-screen flex bg-[#f5f8fb]">
+    <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
 
       <!-- Mobile Backdrop -->
       <div x-cloak x-show="sidebarOpen" x-transition.opacity
@@ -21,10 +23,10 @@
 
       <!-- Sidebar -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-      >
-        <div class="px-6 py-6">
+       data-session-surface>
+        <div class="px-6 py-6" data-session-public>
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img src="../../assets/images/clinic/Bethlehem_Logo.png" alt="Bethlehem Animal Clinic logo" class="h-full w-full object-contain" />
@@ -35,8 +37,9 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
-        <nav class="px-4 py-6">
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -84,7 +87,7 @@
           </div>
         </nav>
 
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -99,23 +102,23 @@
       </aside>
 
       <main class="services-page min-w-0 flex-1 px-4 pb-6 lg:ml-[280px] lg:px-6" x-data="adminServices()" data-money-input-root>
-        <header class="sticky top-0 z-40 -mx-4 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 lg:hidden">
-          <h1 class="font-bold text-[#1f3850]">Services</h1>
+        <header class="sticky top-0 z-40 -mx-4 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 lg:hidden" data-session-surface>
+          <h1 class="font-bold text-[#1f3850]" data-session-public>Services</h1>
           <button type="button" aria-label="Open navigation" class="rounded-xl border border-[#cfe0ee] bg-white p-2 text-[#315b7e]" @click="sidebarOpen = !sidebarOpen"><i data-lucide="menu" class="h-5 w-5"></i></button>
         </header>
-        <header class="sticky top-14 z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6">
-          <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6">
-            <h1 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Services</h1>
+        <header class="sticky top-14 z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6" data-session-surface>
+          <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+            <h1 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Services</h1>
           </div>
         </header>
         <div x-ref="tabs" class="services-tabs mt-5 flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="Service type" @keydown="tabKeydown($event)">
           <button id="grooming-tab" type="button" role="tab" x-show="isAdmin" :aria-selected="activeTab === 'grooming'" :tabindex="activeTab === 'grooming' ? 0 : -1" aria-controls="grooming-panel" @click="selectTab('grooming')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="activeTab === 'grooming' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Grooming</button>
           <button id="clinic-tab" type="button" role="tab" x-show="canViewClinic" :aria-selected="activeTab === 'clinic'" :tabindex="activeTab === 'clinic' ? 0 : -1" aria-controls="clinic-panel" @click="selectTab('clinic')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="activeTab === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Clinic</button>
         </div>
-        <p x-show="loading" class="py-6 text-sm text-slate-500" role="status">Loading Services…</p>
+        <admin-loader x-cloak page x-show="loading && !error"></admin-loader>
         <div x-show="error" x-cloak class="py-6 text-sm text-red-600" role="alert"><span x-text="error"></span> <button type="button" @click="showTab()" class="font-semibold underline">Retry</button></div>
-        <div id="grooming-panel" x-ref="grooming" role="tabpanel" aria-labelledby="grooming-tab" x-show="activeTab === 'grooming' && !error" class="mt-6 min-w-0"></div>
-        <div id="clinic-panel" x-ref="clinic" role="tabpanel" aria-labelledby="clinic-tab" x-show="activeTab === 'clinic' && !error" class="services-clinic mt-6 min-w-0" data-money-input-root></div>
+        <div id="grooming-panel" x-ref="grooming" role="tabpanel" aria-labelledby="grooming-tab" x-show="activeTab === 'grooming' && !error && !loading" class="mt-6 min-w-0"></div>
+        <div id="clinic-panel" x-ref="clinic" role="tabpanel" aria-labelledby="clinic-tab" x-show="activeTab === 'clinic' && !error && !loading" class="services-clinic mt-6 min-w-0" data-money-input-root></div>
       </main>
     </div>
 
@@ -167,13 +170,13 @@
     </div>
 
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=services-20261017&session=lock-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=services-20261017&services=20261017"></script>
+    <script src="../../scripts/api.js?v=services-20261017&session=lock-20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=services-20261017&services=20261017&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
-    <script src="../../scripts/components/admin-clinic-services.js?v=20261015-confinement-weight-v2"></script>
+    <script src="../../scripts/components/admin-clinic-services.js?v=20261015-confinement-weight-v2&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>
-    <script src="../../scripts/components/admin-grooming-services.js?v=services-20261017-followup"></script>
-    <script src="../../scripts/components/admin-services.js?v=services-20261017-followup"></script>
+    <script src="../../scripts/components/admin-grooming-services.js?v=services-20261017-followup&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-services.js?v=services-20261017-followup&loading-ui=universal-20261018"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   </body>
 </html>

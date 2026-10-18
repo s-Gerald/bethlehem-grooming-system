@@ -2,6 +2,9 @@ function adminInventoryTransactions() {
   return {
     transactions: [],
     loading: true,
+    loaded: false,
+    _loadedQuery: "",
+    _listRequest: 0,
     error: "",
 
     filterType: "",
@@ -18,6 +21,8 @@ function adminInventoryTransactions() {
     },
 
     async load(page = 1) {
+      const query = JSON.stringify([this.filterType, this.filterCategory, this.filterDateFrom, this.filterDateTo, page]), request = ++this._listRequest;
+      this.loaded = this.loaded && query === this._loadedQuery;
       this.loading = true;
       this.error   = "";
       try {
@@ -28,13 +33,18 @@ function adminInventoryTransactions() {
           date_to:   this.filterDateTo,
           page,
         });
+        if (request !== this._listRequest) return;
+        this.loaded = true;
+        this._loadedQuery = query;
         this.transactions = res.data;
         this.currentPage  = res.page;
         this.lastPage     = res.last_page;
         this.total        = res.total;
       } catch (err) {
+        if (request !== this._listRequest) return;
         this.error = err.message || "Failed to load transactions.";
       } finally {
+        if (request !== this._listRequest) return;
         this.loading = false;
         this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       }

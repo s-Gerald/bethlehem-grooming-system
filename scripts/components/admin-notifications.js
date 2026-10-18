@@ -14,7 +14,9 @@ function adminNotifications() {
     ],
     page: 1,
     hasMore: false,
-    loading: false,
+    loading: true,
+    loaded: false,
+    _loadedFilter: '',
     loadingMore: false,
     error: "",
     _requestId: 0,
@@ -82,6 +84,8 @@ function adminNotifications() {
 
     async loadNotifications(reset = false) {
       const requestId = ++this._requestId;
+      const filter = JSON.stringify([this.statusFilter, this.categoryFilter]);
+      this.loaded = this.loaded && filter === this._loadedFilter;
 
       if (reset) {
         this.page = 1;
@@ -112,6 +116,8 @@ function adminNotifications() {
           : [...this.notifications, ...nextNotifications];
         this.unreadCount = Number(data.unread_count || 0);
         this.hasMore = Boolean(data.pagination?.has_more);
+        this.loaded = true;
+        this._loadedFilter = filter;
       } catch (error) {
         if (requestId !== this._requestId) return;
         this.error = error?.message || "Unable to load notifications.";

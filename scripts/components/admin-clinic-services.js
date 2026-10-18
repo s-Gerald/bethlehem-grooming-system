@@ -41,6 +41,7 @@ function adminClinicServices() {
     rows: [], categories: [], q: '', category: '', status: 'active',
     total: 0, currentPage: 1, lastPage: 1,
     loading: false, error: '', loaded: false, optionsLoaded: false,
+    _loadedQuery: '',
     _requestId: 0, _searchTimer: null, _activation: null,
     modalOpen: false, saving: false, busyId: null, editingId: null, formError: '',
     form: emptyClinicService(), details: null, _detailsTrigger: null,
@@ -69,6 +70,8 @@ function adminClinicServices() {
     async load(page = 1) {
       clearTimeout(this._searchTimer);
       const requestId = ++this._requestId;
+      const query = JSON.stringify([this.q.trim(), this.category, this.status, page]);
+      this.loaded = this.loaded && query === this._loadedQuery;
       this.loading = true;
       this.error = '';
       const params = new URLSearchParams({page, status: this.status});
@@ -90,6 +93,7 @@ function adminClinicServices() {
         this.currentPage = response.current_page;
         this.lastPage = response.last_page;
         this.loaded = true;
+        this._loadedQuery = query;
       } catch (error) {
         if (requestId === this._requestId) this.error = error.message || 'Unable to load services. Please try again.';
       } finally { if (requestId === this._requestId) this.loading = false; }

@@ -1,6 +1,7 @@
 function adminInventoryDashboard() {
   return {
     loading: true,
+    loaded: false,
     error: "",
     totalItems: 0,
     lowStockCount: 0,
@@ -21,6 +22,7 @@ function adminInventoryDashboard() {
           InventoryAPI.getLowStock({ page: 1 }),
           InventoryAPI.getExpiryAlerts({ page: 1 }),
         ]);
+        this.loaded = true;
         this.totalItems = summary.total_items;
         this.lowStockCount = summary.low_stock_count;
         this.expiryCount = summary.expiry_alert_count;

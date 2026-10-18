@@ -1,18 +1,3 @@
-<!-- Page header -->
-<section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur">
-  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6">
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-      <div>
-        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Stock Movements</h2>
-        <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]">
-          Stock movement records · <span x-text="total"></span> record(s)
-        </p>
-      </div>
-
-    </div>
-  </div>
-</section>
-
 <!-- Filters -->
 <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
   <select x-model="filterType" @change="applyFilters()"
@@ -45,17 +30,13 @@
 </div>
 
 <!-- Error -->
-<div x-show="error" style="display:none" class="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700" x-text="error"></div>
+<p x-cloak x-show="error" class="admin-load-error" role="alert"><span x-text="error"></span><button type="button" @click="load(currentPage)">Retry</button></p>
 
-<!-- Loading skeleton -->
-<div x-show="loading" style="display:none" class="mt-4 space-y-2">
-  <div class="h-12 rounded-xl bg-slate-100 animate-pulse"></div>
-  <div class="h-12 rounded-xl bg-slate-100 animate-pulse"></div>
-  <div class="h-12 rounded-xl bg-slate-100 animate-pulse"></div>
-</div>
+<!-- Initial loading -->
+<admin-loader x-cloak x-show="loading &amp;&amp; !loaded"></admin-loader>
 
 <!-- Table -->
-<div x-show="!loading" class="mt-4 overflow-hidden rounded-2xl border border-[#e6eef7] bg-white shadow-sm">
+<div x-show="loaded" class="mt-4 overflow-hidden rounded-2xl border border-[#e6eef7] bg-white shadow-sm">
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>

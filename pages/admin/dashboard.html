@@ -9,7 +9,8 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -56,14 +57,11 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
         <!-- Navigation -->
-        <div data-session-public class="admin-shell-nav-placeholder px-6 py-6" aria-hidden="true">
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span>
-        </div>
-        <nav class="px-4 py-6">
+
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p
               class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]"
@@ -186,7 +184,7 @@
         </nav>
 
         <!-- Admin Info -->
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div
               class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white"
@@ -265,8 +263,8 @@
           class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
         >
           <div data-session-public>
-            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
-            <h2 class="text-lg font-extrabold text-[#1f3850]">Dashboard</h2>
+            <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public><span data-admin-title-admin>Admin Dashboard</span><span data-admin-title-staff>Staff Dashboard</span></h2>
           </div>
 
           <button
@@ -292,16 +290,13 @@
                 class="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between"
               >
                 <div>
-                  <h2 data-session-public class="admin-checking-title text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Dashboard</h2>
+
                   <h2
-                    class="admin-verified-title text-3xl font-extrabold text-[#1f3850] lg:text-4xl"
-                    x-text="API.getUserRole() === 'staff' ? `${staffDisplayName} Dashboard` : 'Admin Dashboard'"
-                  >
-                    Admin Dashboard
-                  </h2>
+                    class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl"
+                   data-session-public><span data-admin-title-admin>Admin Dashboard</span><span data-admin-title-staff>Staff Dashboard</span></h2>
                   <p
                     class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]"
-                  >
+                   data-session-public>
                     BETHLEHEM ANIMAL CLINIC &amp; GROOMING
                   </p>
                 </div>
@@ -340,10 +335,7 @@
                       class="absolute left-0 right-0 top-full z-50 mt-2 max-h-[420px] overflow-y-auto rounded-2xl border border-[#d7e3ef] bg-white py-2 shadow-xl"
                       aria-live="polite"
                     >
-                      <div x-show="dashboardSearchLoading" class="flex items-center gap-2 px-4 py-4 text-sm text-slate-500">
-                        <i data-lucide="loader-circle" class="h-4 w-4 animate-spin text-[#315b7e]"></i>
-                        <span>Searching...</span>
-                      </div>
+                      <admin-loader compact x-cloak x-show="dashboardSearchLoading"></admin-loader>
 
                       <p
                         x-show="!dashboardSearchLoading && dashboardSearchError"
@@ -476,7 +468,7 @@
                       <!-- Scrollable list -->
                       <div class="notif-list overflow-y-auto divide-y divide-[#f0f4f8]">
 
-                        <div x-show="notificationsLoading" role="status" aria-label="Loading notifications" class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+                        <admin-loader x-cloak x-show="notificationsLoading"></admin-loader>
                         <p x-cloak x-show="notificationsError" class="admin-load-error px-4" role="alert"><span x-text="notificationsError"></span><button type="button" @click="loadNotifications()">Retry</button></p>
                         <!-- Empty state -->
                         <template x-if="notificationsLoaded &amp;&amp; groupedNotifications().today.length === 0 && groupedNotifications().earlier.length === 0">
@@ -564,7 +556,10 @@
             </div>
           </section>
 
+
+<admin-loader page x-cloak x-show="summaryLoading &amp;&amp; !summaryLoaded"></admin-loader>
           <p x-cloak x-show="summaryError" class="admin-load-error" role="alert"><span x-text="summaryError"></span><button type="button" @click="loadDashboardSummary({ force: true })">Retry</button></p>
+          <div x-cloak x-show="summaryLoaded" :aria-busy="summaryLoading">
           <!-- Summary cards -->
           <section class="mt-6">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -576,7 +571,7 @@
                       Grooming capacity
                     </p>
                     <h3 class="mt-2 text-3xl font-semibold text-[#1f3850]" :aria-busy="summaryLoading">
-                      <span data-session-public x-show="!summaryLoaded &amp;&amp; !summaryError" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="summaryLoaded" x-text="currentCapacity + ' / ' + maxCapacity"></span>
                       <span x-cloak x-show="!summaryLoaded &amp;&amp; summaryError">—</span>
                     </h3>
@@ -598,7 +593,7 @@
                       Waiting now
                     </p>
                     <h3 class="mt-2 text-3xl font-semibold text-[#1f3850]" :aria-busy="summaryLoading">
-                      <span data-session-public x-show="!summaryLoaded &amp;&amp; !summaryError" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="summaryLoaded" x-text="waitingNow"></span>
                       <span x-cloak x-show="!summaryLoaded &amp;&amp; summaryError">—</span>
                     </h3>
@@ -615,7 +610,7 @@
                       Completed today
                     </p>
                     <h3 class="mt-2 text-3xl font-semibold text-[#1f3850]" :aria-busy="summaryLoading">
-                      <span data-session-public x-show="!summaryLoaded &amp;&amp; !summaryError" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="summaryLoaded" x-text="todayCount"></span>
                       <span x-cloak x-show="!summaryLoaded &amp;&amp; summaryError">—</span>
                     </h3>
@@ -631,7 +626,7 @@
                       Revenue today
                     </p>
                     <h3 class="mt-2 text-3xl font-bold text-[#1f3850]" :aria-busy="summaryLoading">
-                      <span data-session-public x-show="!summaryLoaded &amp;&amp; !summaryError" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="summaryLoaded" x-text="formatDashboardCurrency(revenueToday)"></span>
                       <span x-cloak x-show="!summaryLoaded &amp;&amp; summaryError">—</span>
                     </h3>
@@ -652,10 +647,7 @@
               </div>
 
               <div>
-                <div data-session-public x-show="!summaryLoaded &amp;&amp; !summaryError" role="status" aria-label="Loading queue">
-                  <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                  <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                </div>
+
                 <template x-if="summaryLoaded &amp;&amp; todayQueuePreview().length === 0">
                   <div class="px-5 py-10 text-center">
                     <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-700">
@@ -702,10 +694,7 @@
               </div>
 
               <div>
-                <div data-session-public x-show="!activityLoaded &amp;&amp; !activityError" role="status" aria-label="Loading recent activity">
-                  <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                  <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                </div>
+                <admin-loader x-cloak x-show="!activityLoaded &amp;&amp; !activityError"></admin-loader>
                 <p x-cloak x-show="activityError" class="admin-load-error px-5" role="alert"><span x-text="activityError"></span><button type="button" @click="loadDashboardActivity({ force: true })">Retry</button></p><template x-if="activityLoaded &amp;&amp; recentActivity.length === 0">
                   <div class="px-5 py-10 text-center">
                     <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -730,7 +719,8 @@
             </article>
           </section>
 
-        </main>
+                  </div>
+</main>
       </div>
     </div>
 
@@ -740,15 +730,15 @@
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script src="../../scripts/api.js?v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018"></script>
+    <script src="../../scripts/api.js?v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018&loading-ui=universal-20261018"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
     <!-- Existing sidebar script -->
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018&loading-ui=universal-20261018"></script>
 
     <!-- Shared dashboard content scripts -->
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?v=grooming-workload-20261009&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018"></script>
+    <script src="../../scripts/components/admin-dashboard.js?v=grooming-workload-20261009&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018"></script>
   </body>
 </html>

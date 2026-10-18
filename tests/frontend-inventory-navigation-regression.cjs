@@ -277,14 +277,16 @@ function testUnifiedEntryAndSectionMarkup() {
   assert.match(sidebar, /aria-current/);
 
   const overview=read('pages/admin/inventory/sections/overview.html');
-  const header=overview.split('</section>')[0];
+  const shell=read('pages/admin/inventory/inventory.html');
+  const header=shell.slice(shell.indexOf('data-admin-heading'), shell.indexOf('</section>', shell.indexOf('data-admin-heading')));
   assert.match(header,/Monitor products, stock levels, alerts, and recent activity\./);
   assert.match(header,/href="#stock-in"[^>]*>Stock In<\/a>/);
   assert.match(header,/href="#stock-out"[^>]*>Stock Out<\/a>/);
   assert.match(overview,/href="#stock-in"[^>]*>Restock<\/a>/);
   assert.doesNotMatch(overview,/New Sale|href=["'][^"']*pos\.html|scannerActive|pending\.length/i);
   for (const section of ['stock-in','stock-out']) {
-    const header=read(`pages/admin/inventory/sections/${section}.html`).split('</section>')[0];
+    const start=shell.indexOf(`activeSection === '${section}'`);
+    const header=shell.slice(start, shell.indexOf('</section>',start));
     assert.match(header,/href="#overview"[^>]*>.*Back to Overview<\/a>/);
     assert.match(header,/focus-visible:outline/);
   }

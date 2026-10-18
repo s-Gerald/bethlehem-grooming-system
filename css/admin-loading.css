@@ -1,35 +1,27 @@
-/* Hallmark component guidance: Bethlehem portal palette, stable geometry, quiet loading states. */
-.admin-skeleton {
-  display: inline-block;
-  min-width: 3rem;
-  height: 1em;
-  border-radius: .375rem;
-  background: #e2eaf2;
-  animation: admin-loading-pulse 1.8s ease-in-out infinite;
-}
-.admin-skeleton--number { display: block; width: 6rem; height: 1lh; margin: 0; }
+/* Hallmark component guidance: Bethlehem surfaces and My Pets loading. */
+admin-loader { display: flex; min-height: 10rem; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem 0; color: #64748b; text-align: center; }
+admin-loader[page] { min-height: 60vh; }
+admin-loader[compact] { min-height: 5rem; padding: 1rem 0; }
+admin-loader > svg { width: 2.25rem; height: 2.25rem; fill: currentColor; color: #7b91a6; animation: admin-loading-spin 1s linear infinite; }
+admin-loader > p { margin: .75rem 0 0; font-size: .875rem; line-height: 1.25rem; font-weight: 400; }
 .admin-count { display: inline-block; min-width: 2ch; text-align: center; }
-.admin-skeleton--count { min-width: 2ch; width: 2ch; vertical-align: middle; }
 .admin-summary-detail { min-height: 1.25rem; }
-.admin-skeleton--line { display: block; width: 65%; height: .875rem; margin: .625rem 0; }
-.admin-skeleton--short { width: 40%; }
-.admin-skeleton-row { min-height: 6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #e8f0f8; }
-.admin-skeleton-card { min-height: 8rem; padding: 1.5rem; border: 1px solid #d7e3ef; border-radius: 1.5rem; background: white; }
 .admin-load-error { margin: .75rem 0; color: #b91c1c; font-size: .875rem; }
 .admin-load-error button { margin-left: .5rem; color: #315b7e; font-weight: 600; text-decoration: underline; }
 .admin-load-error button:focus-visible { outline: 2px solid #315b7e; outline-offset: 3px; }
-.admin-checking-title, .admin-shell-nav-placeholder { display: none; }
-html[data-session-gate="checking"] [data-admin-shell] .admin-checking-title,
-html[data-session-gate="checking"] [data-admin-shell] .admin-shell-nav-placeholder { display: block; }
-html[data-session-gate="checking"] [data-admin-shell] .admin-verified-title { display: none; }
-/* These exceptions contain only static branding, surfaces and empty placeholders.
-   Permission-based navigation, identities and loaded content remain concealed.
-   The locked state deliberately has no exceptions. */
+[data-admin-title-staff], html:not([data-admin-role]) [data-admin-title-admin] { display: none; }
+html[data-admin-role="staff"] [data-admin-title-staff] { display: inline; }
+html[data-admin-role="staff"] [data-admin-title-admin] { display: none; }
+[data-admin-shell]:not([data-admin-ready]) main,
+[data-admin-shell]:not([data-admin-ready]) [data-admin-navigation] { visibility: hidden; }
+/* Static branding, titles and surfaces are public during verification.
+   Permission-based navigation and account details require authenticated identity.
+   The locked state has no exceptions. */
+html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-surface],
+html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public],
+html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public] * { visibility: visible; }
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-surface],
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public],
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public] * {
-  visibility: visible !important;
-  pointer-events: none !important;
-}
-@keyframes admin-loading-pulse { 50% { opacity: .5; } }
-@media (prefers-reduced-motion: reduce) { .admin-skeleton { animation: none; } }
+html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public] * { visibility: visible !important; pointer-events: none !important; }
+@keyframes admin-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { admin-loader > svg { animation: none; } }

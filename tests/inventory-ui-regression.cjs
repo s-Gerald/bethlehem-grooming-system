@@ -63,8 +63,7 @@ for (const [section, models] of [
 }
 for (const file of ['pages/admin/inventory/inventory.html', 'pages/admin/inventory/sections/products.html']) {
   const html = read(file);
-  assert.match(html, /role="status" aria-live="polite" class="inventory-loader/);
-  assert.match(html, /phosphor.svg#spinner-gap/);
+  assert.match(html, /<admin-loader\b/);
 }
 
 vm.runInContext(read('scripts/components/product-form.js'), context);

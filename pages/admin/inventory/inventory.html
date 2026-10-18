@@ -12,13 +12,16 @@
     <link rel="stylesheet" href="../../../css/components/admin-inventory.css?v=inventory-ux-20261011-v3" />
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="../../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
-    <div x-data="adminSidebar()" x-cloak class="min-h-screen flex bg-[#f5f8fb]">
+    <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
       <div x-cloak x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" @click="sidebarOpen = false"></div>
-      <aside class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'">
-        <div class="px-6 py-6"><div class="flex items-start gap-4"><div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm"><img src="../../../assets/images/clinic/Bethlehem_Logo.png" alt="logo" class="h-full w-full object-contain" /></div><div class="min-w-0"><h1 class="text-xl font-extrabold leading-tight text-[#1f3850]">Bethlehem Animal</h1><p class="text-sm font-medium text-[#355674]">Clinic &amp; Grooming</p></div></div></div>
-        <nav class="px-4 py-6">
+      <aside class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'" data-session-surface>
+        <div class="px-6 py-6" data-session-public><div class="flex items-start gap-4"><div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm"><img src="../../../assets/images/clinic/Bethlehem_Logo.png" alt="logo" class="h-full w-full object-contain" /></div><div class="min-w-0"><h1 class="text-xl font-extrabold leading-tight text-[#1f3850]">Bethlehem Animal</h1><p class="text-sm font-medium text-[#355674]">Clinic &amp; Grooming</p></div></div></div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8"><p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p><div class="space-y-1.5">
             <a href="../dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage==='dashboard'?'bg-[#315b7e] text-white shadow-sm':'text-[#2f4b66]'"><i data-lucide="layout-dashboard" class="h-5 w-5"></i><span>Dashboard</span></a>
             <a href="../clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40" :class="activePage==='customers'?'bg-[#315b7e] text-white shadow-sm':'text-[#2f4b66]'"><i data-lucide="users" class="h-5 w-5"></i><span>Customers</span></a>
@@ -33,7 +36,7 @@
           </div></div>
           <div x-show="isAdmin"><p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p><div class="space-y-1.5"><a href="../settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]"><i data-lucide="settings" class="h-5 w-5"></i><span>Settings</span></a></div></div>
         </nav>
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3"><div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin?'AD':'ST'">AD</div><div class="min-w-0"><p class="truncate font-bold text-white" x-text="isAdmin?'Admin':'Staff'">Admin</p><p class="truncate text-sm text-white/80" x-text="isAdmin?'Clinic Manager':staffRoleLabel">Clinic Manager</p></div></div>
           <button type="button" x-show="isAdmin" @click="handleStopReceivingClick()" class="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 font-bold transition" :class="clinicStopped?'btn-clinic-reopen':'btn-clinic-stop'"><i data-lucide="door-closed" class="h-4 w-4 shrink-0"></i><span x-text="clinicStopped?'Reopen Today':'We\'re Done for Today'"></span></button>
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()"><i data-lucide="log-out" class="h-4 w-4"></i><span>Logout</span></button>
@@ -49,7 +52,81 @@
         </header>
 
         <main x-data="adminInventory()" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0" aria-label="Inventory">
-          <div x-show="sectionLoading" role="status" aria-live="polite" class="inventory-loader inventory-loader--main"><svg class="ph-icon animate-spin" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p>Loading inventory section…</p></div>
+<section data-admin-heading x-cloak x-show="activeSection === 'overview'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div>
+        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Inventory</h2>
+        <p class="mt-1 text-sm font-medium text-[#355674]" data-session-public>Monitor products, stock levels, alerts, and recent activity.</p>
+      </div>
+      <div class="flex flex-wrap gap-2 xl:shrink-0">
+        <a href="#stock-in" class="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Stock In</a>
+        <a href="#stock-out" class="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl border border-[#6e8ba8] bg-white/60 px-4 py-2.5 text-sm font-semibold text-[#1f3850] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Stock Out</a>
+      </div>
+    </div>
+  </div>
+</section>
+<section data-admin-heading x-cloak x-show="activeSection === 'products'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div>
+        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Products</h2>
+        <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]">
+          <span x-show="sectionData('products')?.loaded" x-text="sectionData('products')?.total"></span> <span x-text="sectionData('products')?.alertFilter === 'expiry' ? 'expiry alert(s)' : 'matching product(s)'"></span>
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+
+        <button x-ref="productsAdd" type="button" @click="sectionData('products')?.openAdd()" :disabled="!sectionData('products')" class="inline-flex items-center gap-2 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]">
+          <span>Add Product</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+<section data-admin-heading x-cloak x-show="activeSection === 'sell-product'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Point of Sale</h2>
+    <p class="mt-1 text-sm text-[#355674]" data-session-public>Process a retail product sale</p>
+  </div>
+</section>
+<section data-admin-heading x-cloak x-show="activeSection === 'stock-in'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Stock In</h2>
+        <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]" data-session-public>Record received inventory</p>
+      </div>
+      <a href="#overview" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> Back to Overview</a>
+    </div>
+  </div>
+</section>
+<section data-admin-heading x-cloak x-show="activeSection === 'stock-out'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Stock Out</h2>
+        <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]" data-session-public>Record inventory reductions</p>
+      </div>
+      <a href="#overview" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> Back to Overview</a>
+    </div>
+  </div>
+</section>
+<section data-admin-heading x-cloak x-show="activeSection === 'history'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
+  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div>
+        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Stock Movements</h2>
+        <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]">
+          Stock movement records · <span x-show="sectionData('history')?.loaded" x-text="sectionData('history')?.total"></span> record(s)
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+          <admin-loader x-cloak page x-show="sectionLoading"></admin-loader>
           <div x-show="sectionError" x-cloak role="alert" class="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700">
             <span x-text="sectionError"></span>
             <button type="button" @click="showSection()" class="ml-3 font-semibold underline">Try again</button>
@@ -58,11 +135,11 @@
         </main>
       </div>
     </div>
-    <script src="../../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&clinic-products=20261010&payments=20261018-shared&session=lock-20261018"></script>
+    <script src="../../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&clinic-products=20261010&payments=20261018-shared&session=lock-20261018&loading-ui=universal-20261018"></script>
     <script src="../../../scripts/services/inventory-service.js?v=unified-inventory-20261001b&release=pos-cart-20261007&payments=20261018-shared"></script>
-    <script src="../../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
+    <script src="../../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading-ui=universal-20261018"></script>
     <script src="../../../scripts/components/inventory-money-input.js?v=inventory-ux-20261011"></script>
-    <script src="../../../scripts/components/admin-inventory.js?v=product-details-20261002&release=pos-cart-20261007&clinic-products=physical-stock-units-20261012&payments=20261018-shared"></script>
+    <script src="../../../scripts/components/admin-inventory.js?v=product-details-20261002&release=pos-cart-20261007&clinic-products=physical-stock-units-20261012&payments=20261018-shared&loading-ui=universal-20261018"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   </body>
 </html>

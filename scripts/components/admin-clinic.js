@@ -519,16 +519,21 @@ function adminClinicPage() {
     searchQuery: "",
     searchRows: [],
     noResults: false,
-    searching: false,
+    searching: true,
+    recordsLoaded: false,
+    recordsError: '',
     _timer: null,
     _reqId: 0,
     recordsPage: 1,
     hasMoreRecords: false,
     activeCases: [],
     arrivals: [],
-    activeCasesLoading: false,
+    activeCasesLoading: true,
+    activeCasesLoaded: false,
+    activeCasesError: '',
+    _activeCaseRequest: 0,
     clinicToday: '',
-    confinedCases: [], confinedCount: 0, confinedLoading: false, confinedError: '', confinedPage: 1, confinedLastPage: 1,
+    confinedCases: [], confinedCount: 0, confinedLoading: false, confinedLoaded: false, confinedError: '', confinedPage: 1, confinedLastPage: 1,
     _confinedRequest: 0,
     caseBusyId: null,
     accessError: "",
@@ -605,18 +610,22 @@ function adminClinicPage() {
     },
 
     async loadActiveCases() {
+      const request = ++this._activeCaseRequest;
       this.activeCasesLoading = true;
+      this.activeCasesError = '';
       try {
         const response = await API.getActiveClinicCases();
+        if (request !== this._activeCaseRequest) return false;
         this.activeCases = response.cases || [];
         this.arrivals = response.arrivals || [];
         this.clinicToday = response.today || '';
         this.confinedCount = response.confined_count || 0;
+        this.activeCasesLoaded = true;
         window.dispatchEvent(new CustomEvent("clinic-cases-loaded", { detail: this.activeCases }));
         return true;
       }
-      catch { return false; }
-      finally { this.activeCasesLoading = false; }
+      catch { if (request === this._activeCaseRequest) this.activeCasesError = 'Could not load Clinic cases.'; return false; }
+      finally { if (request === this._activeCaseRequest) this.activeCasesLoading = false; }
     },
 
     get visibleActiveCases() {
@@ -635,6 +644,7 @@ function adminClinicPage() {
         const response = await API.getClinicConfinedCases(page);
         if (request !== this._confinedRequest) return;
         this.confinedCases = response.data; this.confinedCount = response.total;
+        this.confinedLoaded = true;
         this.confinedPage = response.current_page; this.confinedLastPage = response.last_page;
       } catch (error) { if (request === this._confinedRequest) this.confinedError = error.message || 'Could not load confined patients.'; }
       finally { if (request === this._confinedRequest) this.confinedLoading = false; }
@@ -920,6 +930,7 @@ function adminClinicPage() {
       const rid = ++this._reqId;
       this.searching = true;
       this.noResults = false;
+      this.recordsError = '';
       const page = append ? this.recordsPage + 1 : 1;
       try {
         const res = await API.getClinicRecords(page);
@@ -927,10 +938,11 @@ function adminClinicPage() {
         this.recordsPage = page;
         this.hasMoreRecords = !!res.has_more;
         this.searchRows = append ? this.searchRows.concat(res.rows || []) : (res.rows || []);
+        this.recordsLoaded = true;
         this.noResults = this.searchRows.length === 0;
       } catch {
         if (rid !== this._reqId) return;
-        if (!append) this.searchRows = [];
+        this.recordsError = 'Could not load patient records.';
         this.noResults = false;
       } finally {
         if (rid === this._reqId) {
@@ -974,11 +986,14 @@ function adminClinicPage() {
       }
 
       this.searchRows = rows;
+      this.recordsLoaded = true;
       this.hasMoreRecords = false;
       this.noResults  = rows.length === 0;
     },
 
     async onSearchInput() {
+      this.recordsLoaded = false;
+      this.recordsError = "";
       const q = this.searchQuery.trim();
       clearTimeout(this._timer);
       const rid = ++this._reqId;
@@ -1000,7 +1015,7 @@ function adminClinicPage() {
           this._buildRows(res);
         } catch {
           if (rid !== this._reqId) return;
-          this.searchRows = [];
+          this.recordsError = "Could not load patient records.";
           this.noResults  = false;
         } finally {
           if (rid === this._reqId) this.searching = false;
@@ -1013,6 +1028,8 @@ function adminClinicPage() {
       this._reqId++;
       this.searchQuery = "";
       this.searchRows  = [];
+      this.recordsLoaded = false;
+      this.recordsError = "";
       this.noResults   = false;
       this.searching   = false;
       this.loadAllRecords();

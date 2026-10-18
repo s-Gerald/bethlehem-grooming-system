@@ -2,6 +2,9 @@ function adminInventoryItems() {
   return {
     items: [],
     loading: true,
+    loaded: false,
+    _loadedQuery: "",
+    _listRequest: 0,
     error: "",
     toast: { show: false, msg: "", ok: true },
 
@@ -43,12 +46,17 @@ function adminInventoryItems() {
     // ── List ────────────────────────────────────────────────────────────────
 
     async load(page = 1) {
+      const query = JSON.stringify([this.q, this.category, this.showInactive, this.alertFilter, page]), request = ++this._listRequest;
+      this.loaded = this.loaded && query === this._loadedQuery;
       this.loading = true;
       this.error = "";
       try {
         const res = this.alertFilter === "expiry"
           ? await InventoryAPI.getExpiryAlerts({ page })
           : await InventoryAPI.getItems({ q: this.q, category: this.category, low_stock: this.alertFilter === "low-stock", inactive_only: this.showInactive, page });
+        if (request !== this._listRequest) return;
+        this.loaded = true;
+        this._loadedQuery = query;
         if (this.alertFilter === "expiry") this.expiryItems = res.data;
         else this.items = res.data;
         this.currentPage = res.page;
@@ -59,8 +67,10 @@ function adminInventoryItems() {
           return;
         }
       } catch (err) {
+        if (request !== this._listRequest) return;
         this.error = err.message || "Failed to load items.";
       } finally {
+        if (request !== this._listRequest) return;
         this.loading = false;
         this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       }

@@ -1172,10 +1172,10 @@ var API = (() => {
     });
 
     if (enforceProtectedPageAccess()) startSessionInactivityManager();
-    window.addEventListener("pageshow", () => {
+    window.addEventListener("pageshow", (event) => {
       // A logout page navigation can leave a protected dashboard in the
       // browser back-forward cache. Re-check storage whenever it is restored.
-      if (enforceProtectedPageAccess()) startSessionInactivityManager();
+      if (event.persisted && enforceProtectedPageAccess()) startSessionInactivityManager();
     });
   }
 

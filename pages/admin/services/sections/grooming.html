@@ -1,8 +1,8 @@
 <div class="grooming-pricing services-grooming">
-  <p x-show="loading" class="py-6 text-sm text-slate-500" role="status">Loading Grooming Services…</p>
+  <admin-loader x-cloak x-show="loading &amp;&amp; !loaded"></admin-loader>
   <div x-show="error" class="py-4 text-sm text-red-600" role="alert"><span x-text="error"></span> <button type="button" @click="load()" class="font-semibold underline">Retry</button></div>
   <template x-for="group in groups" :key="group.kind">
-    <section x-show="!loading && !error" class="services-group" :aria-labelledby="'heading-' + group.kind">
+    <section x-show="loaded" class="services-group" :aria-labelledby="'heading-' + group.kind">
       <header class="services-group-header">
         <h2 :id="'heading-' + group.kind" class="text-xl font-bold text-[#1f3850]" x-text="group.label"></h2>
         <button type="button" @click="openEditor(group.kind)" class="grooming-pricing-button grooming-pricing-button--primary" x-text="group.action"></button>

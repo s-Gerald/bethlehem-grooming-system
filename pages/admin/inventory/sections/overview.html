@@ -1,29 +1,9 @@
-<!-- Page header -->
-<section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur">
-  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6">
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-      <div>
-        <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Inventory</h2>
-        <p class="mt-1 text-sm font-medium text-[#355674]">Monitor products, stock levels, alerts, and recent activity.</p>
-      </div>
-      <div class="flex flex-wrap gap-2 xl:shrink-0">
-        <a href="#stock-in" class="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Stock In</a>
-        <a href="#stock-out" class="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl border border-[#6e8ba8] bg-white/60 px-4 py-2.5 text-sm font-semibold text-[#1f3850] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Stock Out</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div x-show="error" style="display:none" class="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-700" x-text="error"></div>
+<p x-cloak x-show="error" class="admin-load-error" role="alert"><span x-text="error"></span><button type="button" @click="load()">Retry</button></p>
 
 <!-- Loading -->
-<div x-show="loading" style="display:none" class="mt-6 grid gap-4 sm:grid-cols-3">
-  <div class="h-28 rounded-2xl bg-slate-100 animate-pulse"></div>
-  <div class="h-28 rounded-2xl bg-slate-100 animate-pulse"></div>
-  <div class="h-28 rounded-2xl bg-slate-100 animate-pulse"></div>
-</div>
+<admin-loader x-cloak x-show="loading &amp;&amp; !loaded"></admin-loader>
 
-<div x-show="!loading">
+<div x-show="loaded">
   <!-- Summary -->
   <div class="mt-6 grid gap-4 sm:grid-cols-3">
     <div class="rounded-2xl border border-[#e6eef7] bg-white p-5 shadow-sm">

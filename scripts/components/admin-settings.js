@@ -25,6 +25,7 @@ function adminSettings() {
     availability: clone(defaultAvailability),
     savedAvailability: clone(defaultAvailability),
     availabilityLoading: true,
+    availabilityLoaded: false,
     availabilitySaving: false,
     availabilityError: "",
     availabilitySuccess: "",
@@ -201,6 +202,7 @@ function adminSettings() {
         this.savedAvailability = clone(this.availability);
         this.groomersOnDuty = Number(response.groomers_on_duty) || 0;
         this.petGroomers = response.pet_groomers || [];
+        this.availabilityLoaded = true;
       } catch (error) {
         this.availabilityError =
           error.message || "Could not load availability settings.";

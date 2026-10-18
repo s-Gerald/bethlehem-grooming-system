@@ -93,12 +93,6 @@
 .reports-outcomes dd { margin-top: 6px; font-size: 24px; font-weight: 800; }
 .reports-insights-clinic { grid-template-columns: minmax(0, 1fr); }
 .reports-insights-clinic .reports-outcomes { padding: 0; border: 0; }
-.reports-loading { display: grid; gap: 20px; }
-.reports-skeleton { display: block; border-radius: 6px; background: var(--report-tint); }
-.reports-skeleton-kpi .reports-skeleton:first-child { width: 75%; height: 16px; }
-.reports-skeleton-kpi .reports-skeleton:last-child { width: 90%; height: 32px; margin-top: 20px; }
-.reports-skeleton-chart .reports-skeleton:first-child { width: 40%; height: 20px; }
-.reports-skeleton-chart .reports-skeleton:last-child { height: 240px; margin-top: 24px; }
 .reports-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (min-width: 1024px) and (max-width: 1220px), (max-width: 767px) {
   .reports-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }

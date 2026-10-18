@@ -23,7 +23,7 @@
     <button x-show="canManageServices" type="button" @click="openModal()" :disabled="!optionsLoaded" class="inline-flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#274b69] disabled:opacity-50 sm:ml-auto sm:w-auto"><i data-lucide="plus" class="h-4 w-4"></i>Add Service</button>
   </div>
   <div class="my-3 flex items-center gap-3 text-sm text-slate-500" aria-live="polite">
-    <span x-show="!loading && !error" x-text="total + ' service' + (total === 1 ? '' : 's')"></span>
+    <span x-show="loaded" x-text="total + ' service' + (total === 1 ? '' : 's')"></span>
     <button type="button" x-show="filtersActive" @click="clearFilters()" class="font-semibold text-[#315b7e] underline underline-offset-2">Clear filters</button>
   </div>
   <div x-show="error" role="alert" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><span x-text="error"></span><button type="button" @click="load(currentPage)" class="ml-3 font-semibold underline">Try again</button></div>
@@ -36,7 +36,7 @@
           <th scope="col" class="px-4 py-3">Service</th><th scope="col" class="px-4 py-3">Category</th><th scope="col" class="px-4 py-3">Price</th><th scope="col" class="px-4 py-3">Status</th><th scope="col" class="w-px whitespace-nowrap px-4 py-3 text-right">Actions</th>
         </tr></thead>
         <tbody class="divide-y divide-slate-100">
-          <template x-for="service in (!loading && !error ? rows : [])" :key="service.id">
+          <template x-for="service in (loaded ? rows : [])" :key="service.id">
             <tr tabindex="0" @click="openDetails(service, $event)" @keydown.enter.self.prevent="openDetails(service, $event)" @keydown.space.self.prevent="openDetails(service, $event)" :aria-label="'View details for ' + service.name" aria-haspopup="dialog" class="cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e] focus-visible:-outline-offset-2">
               <th scope="row" class="max-w-[260px] break-words px-4 py-4 font-semibold text-[#2f4b66]" x-text="service.name"></th>
               <td class="px-4 py-4 text-slate-600"><span x-text="service.category.name"></span><p x-show="service.category.name === 'Confinement'" class="mt-1 text-xs text-slate-500" x-text="behaviorLabel(service.charge_behavior)"></p></td>
@@ -54,7 +54,7 @@
         </tbody>
       </table>
     </div>
-    <div x-show="loading" class="px-4 py-10 text-center text-sm text-slate-500" role="status">Loading services…</div>
+    <admin-loader x-cloak x-show="loading &amp;&amp; !loaded"></admin-loader>
     <div x-show="!loading && !error && total === 0" class="px-4 py-12 text-center">
       <p class="font-semibold text-[#2f4b66]" x-text="filtersActive ? 'No matching services' : 'No active services yet'"></p>
       <p class="mt-2 text-sm text-slate-500" x-text="filtersActive ? 'Try a different search or clear the filters.' : 'Add a service to begin, or choose All statuses to view inactive services.'"></p>

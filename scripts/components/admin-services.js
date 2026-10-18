@@ -1,7 +1,7 @@
 function adminServices() {
   const pending = {};
   return {
-    activeTab: 'grooming', loading: false, error: '',
+    activeTab: 'grooming', loading: true, error: '',
     isAdmin: API.getUserRole() === 'admin', canViewClinic: false,
     _navigationListener: null,
     async init() {
@@ -46,11 +46,11 @@ function adminServices() {
       this.activeTab = tab;
       if (window.location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
       this.error = '';
-      this.loading = !this.$refs[tab].firstElementChild;
+      const existing = this.$refs[tab].firstElementChild;
+      this.loading = !existing || !Alpine.$data(existing).loaded;
       try {
         const panel = await this.mount(tab);
         if (this.activeTab !== tab) return;
-        this.loading = false;
         await Alpine.$data(panel).activate();
       } catch (error) { if (this.activeTab === tab) this.error = error.message || 'Unable to load Services.'; }
       finally { if (this.activeTab === tab) this.loading = false; }

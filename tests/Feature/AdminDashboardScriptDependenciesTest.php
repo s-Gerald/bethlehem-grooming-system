@@ -23,13 +23,13 @@ class AdminDashboardScriptDependenciesTest extends TestCase
         );
     }
 
-    public function test_staff_dashboard_uses_the_authenticated_staff_display_name(): void
+    public function test_staff_dashboard_has_a_stable_title_and_keeps_identity_in_the_sidebar(): void
     {
         $page = file_get_contents(base_path('pages/admin/dashboard.html'));
         $sidebar = file_get_contents(base_path('scripts/components/admin-sidebar.js'));
 
         $this->assertStringContainsString(
-            'API.getUserRole() === \'staff\' ? `${staffDisplayName} Dashboard` : \'Admin Dashboard\'',
+            'data-admin-title-staff>Staff Dashboard</span>',
             $page,
         );
         $this->assertStringContainsString(

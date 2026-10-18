@@ -14,7 +14,8 @@
     />
     <link rel="stylesheet" href="../../css/grooming-estimates.css?v=checkin-layout-20261009-2">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -61,14 +62,11 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
         <!-- Navigation -->
-        <div data-session-public class="admin-shell-nav-placeholder px-6 py-6" aria-hidden="true">
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span>
-        </div>
-        <nav class="px-4 py-6">
+
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p
               class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]"
@@ -191,7 +189,7 @@
         </nav>
 
         <!-- Admin Info -->
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div
               class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white"
@@ -270,8 +268,8 @@
           class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
         >
           <div data-session-public>
-            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
-            <h2 class="text-lg font-extrabold text-[#1f3850]">Grooming</h2>
+            <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Grooming</h2>
           </div>
 
           <button
@@ -284,7 +282,8 @@
         </header>
 
         <!-- Grooming Body -->
-        <main
+                  </div>
+<main
           x-data="adminDashboard()"
           class="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
@@ -304,7 +303,7 @@
                   </h2>
                   <p
                     class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]"
-                  >
+                   data-session-public>
                     BETHLEHEM ANIMAL CLINIC &amp; GROOMING
                   </p>
                 </div>
@@ -343,10 +342,7 @@
                       class="absolute left-0 right-0 top-full z-50 mt-2 max-h-[420px] overflow-y-auto rounded-2xl border border-[#d7e3ef] bg-white py-2 shadow-xl"
                       aria-live="polite"
                     >
-                      <div x-show="dashboardSearchLoading" class="flex items-center gap-2 px-4 py-4 text-sm text-slate-500">
-                        <i data-lucide="loader-circle" class="h-4 w-4 animate-spin text-[#315b7e]"></i>
-                        <span>Searching...</span>
-                      </div>
+                      <admin-loader compact x-cloak x-show="dashboardSearchLoading"></admin-loader>
 
                       <p
                         x-show="!dashboardSearchLoading && dashboardSearchError"
@@ -502,7 +498,7 @@
                       <!-- Scrollable list -->
                       <div class="notif-list overflow-y-auto divide-y divide-[#f0f4f8]">
 
-                        <div x-show="notificationsLoading" role="status" aria-label="Loading notifications" class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+                        <admin-loader x-cloak x-show="notificationsLoading"></admin-loader>
                         <p x-cloak x-show="notificationsError" class="admin-load-error px-4" role="alert"><span x-text="notificationsError"></span><button type="button" @click="loadNotifications()">Retry</button></p>
                         <!-- Empty state -->
                         <template x-if="notificationsLoaded &amp;&amp; groupedNotifications().today.length === 0 && groupedNotifications().earlier.length === 0">
@@ -588,7 +584,10 @@
                 </div>
               </div>
             </div>
-          </section>
+     <admin-loader page x-cloak x-show="bookingsLoading &amp;&amp; !bookingsLoaded"></admin-loader>
+          <p x-cloak x-show="bookingsError" class="admin-load-error" role="alert"><span x-text="bookingsError"></span><button type="button" @click="loadAdminBookings()">Retry</button></p>
+          <div x-cloak x-show="bookingsLoaded" :aria-busy="bookingsLoading">
+     </section>
 
           <!-- Summary cards -->
           <section class="mt-6">
@@ -601,7 +600,7 @@
                     <p class="text-sm text-slate-600">Completed today</p>
                     <!-- BACKEND: count all grooming appointments completed today -->
                     <h3 class="mt-1 text-4xl font-extrabold text-black" :aria-busy="bookingsLoading">
-                      <span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="bookingsLoaded" x-text="todayCount"></span>
                       <span x-cloak x-show="!bookingsLoaded &amp;&amp; bookingsError">—</span>
                     </h3>
@@ -621,7 +620,7 @@
                     <p class="text-sm text-slate-600">This Week</p>
                     <!-- BACKEND: count all appointments scheduled this week -->
                     <h3 class="mt-1 text-4xl font-extrabold text-black" :aria-busy="bookingsLoading">
-                      <span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+
                       <span x-cloak x-show="bookingsLoaded" x-text="weekCount"></span>
                       <span x-cloak x-show="!bookingsLoaded &amp;&amp; bookingsError">—</span>
                     </h3>
@@ -656,7 +655,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'incoming' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  Incoming (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="incomingList.length"></span>)
+                  Incoming (<span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="incomingList.length"></span>)
                 </button>
 
                 <button
@@ -666,7 +665,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'queued' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  Queued (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="queuedList.length"></span>)
+                  Queued (<span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="queuedList.length"></span>)
                 </button>
 
                 <button
@@ -676,7 +675,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'in-progress' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  In Progress (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="inProgressList.length"></span>)
+                  In Progress (<span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="inProgressList.length"></span>)
                 </button>
 
                 <button
@@ -686,7 +685,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'for-payment' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  For Payment (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="forPaymentList.length"></span>)
+                  For Payment (<span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="forPaymentList.length"></span>)
                 </button>
 
                 <button
@@ -696,18 +695,15 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'to-be-picked-up' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  To Pick Up (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="releasedList.length"></span>)
+                  To Pick Up (<span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="releasedList.length"></span>)
                 </button>
 
               </div>
             </div>
           </section>
 
-          <div data-session-public x-show="bookingsLoading" class="mt-6 space-y-4" role="status" aria-label="Loading grooming visits">
-            <div class="admin-skeleton-card"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-            <div class="admin-skeleton-card"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-          </div>
-          <p x-cloak x-show="bookingsError" class="admin-load-error" role="alert"><span x-text="bookingsError"></span><button type="button" @click="loadAdminBookings()">Retry</button></p>
+
+
           <!-- Incoming -->
           <section x-cloak x-show="bookingsLoaded &amp;&amp; activeTab === 'incoming'" class="mt-6 space-y-4">
             <!-- EMPTY STATE -->
@@ -1680,13 +1676,13 @@
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018"></script>
+    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018&loading-ui=universal-20261018"></script>
     <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
     <!-- Existing sidebar script -->
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018&loading-ui=universal-20261018"></script>
 
     <script>
       window.ADMIN_DASHBOARD_CONFIG = {
@@ -1700,6 +1696,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018"></script>
   </body>
 </html>

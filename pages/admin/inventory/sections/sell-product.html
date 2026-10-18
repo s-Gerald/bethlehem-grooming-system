@@ -1,10 +1,3 @@
-<section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur">
-  <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6">
-    <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Point of Sale</h2>
-    <p class="mt-1 text-sm text-[#355674]">Process a retail product sale</p>
-  </div>
-</section>
-
 <div class="pos-workflow">
   <fieldset x-show="!onlinePayment" :disabled="submitting || validating || receiptOpen || !!onlinePayment" :aria-busy="submitting || validating" class="pos-layout">
     <div class="pos-left">
@@ -19,7 +12,7 @@
         </button>
         </div>
         <p class="pos-helper">Medicine and Vaccine are excluded from retail sales.</p>
-        <p x-show="searching" role="status" class="pos-helper">Searching products…</p>
+        <admin-loader compact x-cloak x-show="searching"></admin-loader>
         <p x-show="noResults" role="status" class="pos-helper">No retail products found. Try another name or barcode.</p>
         <div id="pos-search-results" x-ref="results" x-show="searchResults.length" class="pos-results" aria-label="Product search results"
           @keydown.arrow-down.prevent="moveResult($event, 1)" @keydown.arrow-up.prevent="moveResult($event, -1)" @keydown.escape.prevent="cancelSearch(); $refs.productSearch.focus()">

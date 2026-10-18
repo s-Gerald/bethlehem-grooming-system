@@ -5,7 +5,7 @@ function adminReports() {
   const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
   const sectionState = () => ({ period: 'this_month', start: '', end: '', metric: 'collections',
-    loading: true, error: '', validationError: '', report: null, requestId: 0,
+    loading: true, error: '', validationError: '', report: null, requestId: 0, loadedFilter: '',
     showAllServices: false, activePoint: null });
   const page = {
     activeSection: 'grooming', sections: { grooming: sectionState(), clinic: sectionState() }, chartWidth: 740,
@@ -31,7 +31,8 @@ function adminReports() {
       const requestId = ++state.requestId;
       state.error = ''; state.validationError = ''; state.activePoint = null;
       state.showAllServices = false;
-      state.report = null;
+      const filterKey = JSON.stringify([state.period, state.start, state.end]);
+      if (filterKey !== state.loadedFilter) state.report = null;
       if (state.period === 'custom' && (!validDate(state.start) || !validDate(state.end) || state.start > state.end)) {
         state.validationError = 'Enter a valid start and end date, with the end on or after the start.';
         state.loading = false;
@@ -46,6 +47,7 @@ function adminReports() {
         if (data?.success !== true || !data.overview || !data.period || !Array.isArray(data.performance)
           || !Array.isArray(data.services) || (section === 'grooming' && !data.customers) || !data.outcomes) throw new Error('Unable to load reports. Please try again.');
         state.report = data;
+        state.loadedFilter = filterKey;
       } catch {
         if (requestId === state.requestId) state.error = 'Unable to load reports. Please try again.';
       } finally {

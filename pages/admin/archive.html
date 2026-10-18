@@ -203,13 +203,14 @@
       }
     </style>
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
       x-data="adminSidebar()"
-      x-cloak
       class="min-h-screen flex bg-[#f5f8fb]"
-    >
+     data-admin-shell>
       <!-- Mobile Backdrop -->
       <div
         x-cloak
@@ -222,11 +223,11 @@
       <!-- Sidebar -->
       <!-- NOTE: Keep using your already existing sidebar structure/script -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-      >
+       data-session-surface>
         <!-- Brand -->
-        <div class="px-6 py-6">
+        <div class="px-6 py-6" data-session-public>
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
@@ -241,9 +242,10 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
         <!-- Navigation -->
-        <nav class="px-4 py-6">
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -301,7 +303,7 @@
         </nav>
 
         <!-- Admin Info -->
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -349,10 +351,10 @@
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
 
         <!-- Mobile Header -->
-        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
+        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden" data-session-surface>
           <div>
-            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
-            <h2 class="text-lg font-extrabold text-[#1f3850]">History</h2>
+            <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>History</h2>
           </div>
           <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
             <i data-lucide="menu" class="h-5 w-5"></i>
@@ -362,20 +364,21 @@
         <!-- Archive Body -->
         <main
           x-data="adminArchive()"
+          :aria-busy="loading"
           :class="archiveType === 'grooming' ? 'grooming-history' : 'clinic-history'"
           class="history-page flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
 
           <!-- History header -->
-          <section class="history-toolbar lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
-            <div class="history-banner rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4">
+          <section class="history-toolbar lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur" data-session-surface>
+            <div class="history-banner rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4" data-session-surface>
               <div class="history-controls flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl">History</h2>
+                  <h2 class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl" data-session-public>History</h2>
                   <div class="history-stats mt-2 flex flex-wrap items-center gap-4 text-sm font-semibold text-[#1f3850]">
                     <div class="flex items-center gap-2">
                       <i data-lucide="archive" class="h-4 w-4 text-[#315b7e]"></i>
-                      <span x-text="filteredCount + ' record' + (filteredCount !== 1 ? 's' : '')"></span>
+                      <span x-text="filteredCount + ' record' + (filteredCount !== 1 ? 's' : '')" x-cloak x-show="historyLoaded"></span>
                     </div>
                     <div x-show="selectedYear" class="flex items-center gap-2">
                       <i data-lucide="calendar-check" class="h-4 w-4 text-[#315b7e]"></i>
@@ -486,12 +489,7 @@
           </section>
 
           <!-- Loading state -->
-          <section x-show="loading" class="mt-8 flex items-center justify-center py-16">
-            <div class="flex flex-col items-center gap-3 text-slate-400">
-              <i data-lucide="loader-circle" class="h-10 w-10 animate-spin text-[#315b7e]"></i>
-              <p class="text-sm font-medium">Loading history records...</p>
-            </div>
-          </section>
+          <admin-loader x-cloak x-show="loading &amp;&amp; !historyLoaded" page></admin-loader>
 
           <!-- Error state -->
           <section x-show="!loading && errorMessage" class="mt-8">
@@ -505,7 +503,7 @@
           </section>
 
           <!-- Empty state -->
-          <section x-show="!loading && !errorMessage && filteredCount === 0" class="mt-8">
+          <section x-show="historyLoaded && !errorMessage && filteredCount === 0" class="mt-8">
             <div class="rounded-[24px] border border-dashed border-[#bfd3e3] bg-white p-10 text-center">
               <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
                 <i data-lucide="archive-x" class="h-8 w-8"></i>
@@ -516,7 +514,7 @@
           </section>
 
           <!-- Archive cards — grouped by date -->
-          <section x-show="!loading && !errorMessage && filteredCount > 0" class="history-groups mt-6 space-y-8">
+          <section x-show="historyLoaded && filteredCount > 0" class="history-groups mt-6 space-y-8">
 
             <template x-for="group in groupedByDate" :key="group.date">
               <div>
@@ -618,7 +616,7 @@
 
                 <section class="history-record-section" aria-labelledby="history-consent-title">
                   <h5 id="history-consent-title">Consent &amp; Signature</h5>
-                  <p x-show="consentLoading" class="history-label">Loading consent…</p>
+                  <admin-loader x-cloak x-show="consentLoading"></admin-loader>
                   <p x-show="consentError" x-text="consentError" role="alert" class="text-sm text-red-600"></p>
                   <button x-show="consentError" type="button" class="text-sm text-[#315b7e] hover:underline" @click="loadSignedConsent(detailsBooking.id)">Retry</button>
                   <div x-show="!consentLoading && !consentError">
@@ -766,7 +764,7 @@
                   <h5 id="clinic-vitals-title">Vitals</h5>
                   <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals" :key="field.label"><div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div></template></dl>
                 </section>
-                <div role="status" x-show="clinicCareLoading" class="clinic-visit-muted" style="margin-top: 1rem">Loading care provided…</div>
+                <admin-loader x-cloak x-show="clinicCareLoading"></admin-loader>
                 <div role="alert" x-show="clinicCareError" style="margin-top: 1rem"><p class="clinic-visit-note" x-text="clinicCareError"></p><button type="button" class="history-details-button" @click="loadClinicCare()">Retry care details</button></div>
                 <section class="clinic-visit-section" x-show="clinicHasCare" aria-labelledby="clinic-care-title">
                   <h5 id="clinic-care-title">Care Provided</h5>
@@ -836,9 +834,9 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?grooming-cancellation=20261016&v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&consent=20261016&session=lock-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
+    <script src="../../scripts/api.js?grooming-cancellation=20261016&v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&consent=20261016&session=lock-20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016"></script>
+    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018"></script>
   </body>
 </html>

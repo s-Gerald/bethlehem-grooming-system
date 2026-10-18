@@ -8,13 +8,14 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=customer-actions-20260927&release=20261001" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
       x-data="adminSidebar()"
-      x-cloak
       class="flex min-h-screen bg-[#f5f8fb]"
-    >
+     data-admin-shell>
       <!-- Mobile Backdrop -->
       <div
         x-cloak
@@ -27,10 +28,10 @@
       <!-- Sidebar -->
       <!-- NOTE: Keep using your already existing sidebar structure/script -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-      >
-        <div class="px-6 py-6">
+       data-session-surface>
+        <div class="px-6 py-6" data-session-public>
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
@@ -45,8 +46,9 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
-        <nav class="px-4 py-6">
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -101,7 +103,7 @@
           </div>
         </nav>
 
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -149,10 +151,10 @@
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
 
         <!-- Mobile Header -->
-        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
+        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden" data-session-surface>
           <div>
-            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
-            <h2 class="text-lg font-extrabold text-[#1f3850]">Customers</h2>
+            <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Customers</h2>
           </div>
           <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
             <i data-lucide="menu" class="h-5 w-5"></i>
@@ -162,16 +164,17 @@
         <!-- Page Body -->
         <main
           x-data="adminCustomers()"
+          :aria-busy="loading"
           class="flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
 
           <!-- Top Banner -->
-          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-3 lg:backdrop-blur">
-            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4">
+          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-3 lg:backdrop-blur" data-session-surface>
+            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4" data-session-surface>
               <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
-                  <h2 class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl">Customer Records</h2>
-                  <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]">BETHLEHEM ANIMAL CLINIC &amp; GROOMING</p>
+                  <h2 class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl" data-session-public>Customer Records</h2>
+                  <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]" data-session-public>BETHLEHEM ANIMAL CLINIC &amp; GROOMING</p>
                 </div>
 
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -208,7 +211,7 @@
                   <i data-lucide="users" class="h-4 w-4 text-[#315b7e]"></i>
                   <span x-text="searchQuery.trim()
                     ? (totalCount + petSearchResults.length) + ' result' + ((totalCount + petSearchResults.length) !== 1 ? 's' : '')
-                    : totalCount + ' customer' + (totalCount !== 1 ? 's' : '')"></span>
+                    : totalCount + ' customer' + (totalCount !== 1 ? 's' : '')" x-cloak x-show="customersLoaded"></span>
                 </div>
 
                 <!-- Tier toggle -->
@@ -286,23 +289,19 @@
           </section>
 
           <!-- Loading -->
-          <section x-show="loading" class="mt-8 flex justify-center py-16">
-            <div class="flex flex-col items-center gap-3 text-slate-400">
-              <i data-lucide="loader-circle" class="h-10 w-10 animate-spin text-[#315b7e]"></i>
-              <p class="text-sm font-medium">Loading customers...</p>
-            </div>
-          </section>
+          <admin-loader x-cloak x-show="loading &amp;&amp; !customersLoaded" page></admin-loader>
 
           <!-- Error -->
           <section x-show="!loading && errorMessage" class="mt-6">
             <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
               <p class="font-semibold">Failed to load customers</p>
               <p class="mt-1" x-text="errorMessage"></p>
+              <button type="button" @click="loadCustomers()" class="mt-2 font-semibold underline">Retry</button>
             </div>
           </section>
 
           <!-- Empty state -->
-          <section x-show="!loading && !errorMessage && customers.length === 0 && petSearchResults.length === 0" class="mt-6">
+          <section x-show="customersLoaded && !errorMessage && customers.length === 0 && petSearchResults.length === 0" class="mt-6">
             <div class="rounded-[24px] border border-dashed border-[#bfd3e3] bg-white p-10 text-center">
               <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
                 <i x-show="statusFilter === 'unregistered'" data-lucide="user-plus" class="h-8 w-8"></i>
@@ -323,7 +322,7 @@
           </section>
 
           <!-- Customer Cards -->
-          <section x-show="!loading && !errorMessage && customers.length > 0" class="mt-6 space-y-4">
+          <section x-show="customersLoaded && customers.length > 0" class="mt-6 space-y-4">
             <div x-show="searchQuery.trim()" class="flex items-center gap-2 px-1">
               <h3 class="text-base font-semibold text-[#1f3850]">Customers</h3>
               <span class="text-sm font-medium text-slate-500" x-text="'(' + customers.length + ')'">(0)</span>
@@ -423,7 +422,7 @@
           </section>
 
           <!-- Pet search results -->
-          <section x-show="!loading && !errorMessage && searchQuery.trim() && petSearchResults.length > 0" class="mt-8 space-y-4">
+          <section x-show="customersLoaded && !errorMessage && searchQuery.trim() && petSearchResults.length > 0" class="mt-8 space-y-4">
             <div class="flex items-center gap-2 px-1">
               <h3 class="text-base font-semibold text-[#1f3850]">Pets</h3>
               <span class="text-sm font-medium text-slate-500" x-text="'(' + petSearchResults.length + ')'">(0)</span>
@@ -772,12 +771,7 @@
                   </div>
                 </section>
 
-                <div x-show="detailModal.loading" class="flex justify-center py-16">
-                  <div class="flex flex-col items-center gap-3 text-slate-400">
-                    <i data-lucide="loader-circle" class="h-10 w-10 animate-spin text-[#315b7e]"></i>
-                    <p class="text-sm font-medium">Loading customer details...</p>
-                  </div>
-                </div>
+                <admin-loader x-cloak x-show="detailModal.loading"></admin-loader>
 
                 <div x-show="!detailModal.loading && detailModal.error" class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <p class="font-semibold">Failed to load details</p>
@@ -1163,10 +1157,7 @@
                   </div>
                 </div>
 
-                <div x-show="petModal.profileLoading" class="rounded-3xl border border-slate-200 bg-white px-5 py-8 text-center shadow-sm">
-                  <i data-lucide="loader" class="mx-auto h-8 w-8 animate-spin text-slate-300"></i>
-                  <p class="mt-3 text-sm text-slate-500">Loading pet records...</p>
-                </div>
+                <admin-loader x-cloak x-show="petModal.profileLoading && !petModal.profileLoaded && petModal.activeTab !== 'overview'"></admin-loader>
 
                 <div x-show="!petModal.profileLoading && petModal.profileError" class="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-center" role="alert">
                   <i data-lucide="circle-alert" class="mx-auto h-8 w-8 text-red-400"></i>
@@ -1177,7 +1168,7 @@
                   </button>
                 </div>
 
-                <section x-show="!petModal.profileLoading && petModal.activeTab === 'overview'" role="tabpanel" class="space-y-4">
+                <section x-show="petModal.activeTab === 'overview'" role="tabpanel" class="space-y-4">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4">
                       <h3 class="text-xl font-bold text-[#2f4b66]">Basic Information</h3>
@@ -1206,7 +1197,7 @@
                   </div>
                 </section>
 
-                <section x-show="!petModal.profileLoading && petModal.activeTab === 'grooming'" role="tabpanel">
+                <section x-show="petModal.profileLoaded && petModal.activeTab === 'grooming'" role="tabpanel" :aria-busy="petModal.profileLoading">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4">
                       <h3 class="text-xl font-bold text-[#2f4b66]">Grooming Records</h3>
@@ -1241,7 +1232,7 @@
                   </div>
                 </section>
 
-                <section x-show="!petModal.profileLoading && petModal.activeTab === 'medical'" role="tabpanel">
+                <section x-show="petModal.profileLoaded && petModal.activeTab === 'medical'" role="tabpanel" :aria-busy="petModal.profileLoading">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4 flex items-start gap-3">
                       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><i data-lucide="stethoscope" class="h-5 w-5"></i></div>
@@ -1291,7 +1282,7 @@
                   </div>
                 </section>
 
-                <section x-show="!petModal.profileLoading && petModal.activeTab === 'vaccinations'" role="tabpanel">
+                <section x-show="petModal.profileLoaded && petModal.activeTab === 'vaccinations'" role="tabpanel" :aria-busy="petModal.profileLoading">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4 flex items-start gap-3">
                       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><i data-lucide="syringe" class="h-5 w-5"></i></div>
@@ -1357,8 +1348,8 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&session=lock-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
-    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014"></script>
+    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&session=lock-20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018"></script>
   </body>
 </html>

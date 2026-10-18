@@ -13,7 +13,8 @@
       #success-toast { z-index: 10002; }
     </style>
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=universal-20261018" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -51,13 +52,10 @@
             </div>
           </div>
         </div>
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
 
-        <div data-session-public class="admin-shell-nav-placeholder px-6 py-6" aria-hidden="true">
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
-          <span class="admin-skeleton admin-skeleton--line"></span>
-        </div>
-        <nav class="px-4 py-6">
+
+        <nav class="px-4 py-6" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
@@ -114,7 +112,7 @@
           </div>
         </nav>
 
-        <div class="admin-sidebar-footer p-4">
+        <div class="admin-sidebar-footer p-4" data-admin-navigation x-show="sidebarReady" x-cloak>
           <div class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : 'ST'">AD</div>
             <div class="min-w-0">
@@ -165,8 +163,8 @@
         <!-- Mobile Header -->
         <header data-session-surface class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
           <div data-session-public>
-            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
-            <h2 class="text-lg font-bold text-[#1f3850]">Settings</h2>
+            <p class="text-sm font-semibold text-[#5c7690]" data-session-public>Admin Panel</p>
+            <h2 class="text-lg font-bold text-[#1f3850]" data-session-public>Settings</h2>
           </div>
           <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
             <i data-lucide="menu" class="h-5 w-5"></i>
@@ -182,7 +180,7 @@
               <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <h2 data-session-public class="text-2xl font-bold text-[#1f3850] lg:text-3xl">Settings</h2>
-                  <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]">SYSTEM SETTINGS</p>
+                  <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]" data-session-public>SYSTEM SETTINGS</p>
                 </div>
 
                 <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white/75 px-4 py-2.5 text-sm font-semibold text-[#1f3850]">
@@ -406,6 +404,9 @@
             </form>
 
             <form x-cloak x-show="activeSettingsTab === 'availability'" class="space-y-6" @submit.prevent>
+              <admin-loader page x-cloak x-show="availabilityLoading && !availabilityLoaded"></admin-loader>
+              <p x-cloak x-show="availabilityError" class="admin-load-error" role="alert"><span x-text="availabilityError"></span><button type="button" @click="loadAvailability()">Retry</button></p>
+              <div x-cloak x-show="availabilityLoaded" class="space-y-6" :aria-busy="availabilityLoading">
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 Most settings on this page are managed by an administrator. You can manage Pet Groomers here.
               </div>
@@ -479,11 +480,7 @@
                 </div>
 
                 <div class="px-5 py-5 lg:px-6">
-                  <div x-show="availabilityLoading" class="rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-5 text-sm font-semibold text-slate-500">
-                    Loading availability settings...
-                  </div>
-
-                  <div x-show="!availabilityLoading">
+                  <div>
                     <div class="mb-5 flex items-start gap-3 rounded-2xl bg-[#eef5fb] px-4 py-3">
                       <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#315b7e] shadow-sm">
                         <i :data-lucide="availabilityService === 'clinic' ? 'stethoscope' : 'scissors'" class="h-5 w-5"></i>
@@ -522,7 +519,6 @@
                       The 12:00 PM to 1:00 PM break remains unavailable.
                     </div>
 
-                    <p x-show="availabilityError" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" x-text="availabilityError"></p>
                     <p x-show="availabilitySuccess" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700" x-text="availabilitySuccess"></p>
 
                     <div x-show="isAdmin" class="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
@@ -619,7 +615,9 @@
 
                   <div class="mt-6">
                     <h4 class="text-sm font-bold uppercase tracking-wide text-[#5c7690]">Current Blocked Dates</h4>
-                    <div x-show="blockedDates.length === 0" class="mt-3 rounded-2xl border border-dashed border-[#bfd3e3] bg-[#f8fbfe] px-4 py-4 text-sm text-slate-500">
+                    <admin-loader compact x-cloak x-show="blockedDatesLoading && !blockedDatesLoaded"></admin-loader>
+                    <p x-cloak x-show="blockedDatesError" class="admin-load-error" role="alert"><span x-text="blockedDatesError"></span><button type="button" @click="loadBlockedDates()">Retry</button></p>
+                    <div x-show="blockedDatesLoaded && blockedDates.length === 0" class="mt-3 rounded-2xl border border-dashed border-[#bfd3e3] bg-[#f8fbfe] px-4 py-4 text-sm text-slate-500">
                       No blocked dates added yet.
                     </div>
                     <div x-show="blockedDates.length > 0" class="mt-3 space-y-3">
@@ -648,6 +646,7 @@
                 </div>
               </div>
 
+              </div>
             </form>
 
             <form x-cloak x-show="activeSettingsTab === 'capacity'" class="space-y-6">
@@ -791,6 +790,10 @@
               class="space-y-6"
               @keydown.escape.window="closeSecurityModals()"
             >
+              <admin-loader page x-cloak x-show="staffLoading &amp;&amp; !staffLoaded"></admin-loader>
+              <p x-cloak x-show="!staffLoaded &amp;&amp; !staffLoading &amp;&amp; (staffError || staffPassword.error)" class="admin-load-error" role="alert"><span x-text="staffError || staffPassword.error"></span><button type="button" @click="selectSettingsTab('security')">Retry</button></p>
+              <div x-cloak x-show="staffLoaded" :aria-busy="staffLoading">
+
               <div x-show="isAdmin" class="space-y-6">
               <div
                 class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm"
@@ -984,11 +987,7 @@
                 </div>
 
                 <div class="divide-y divide-slate-100">
-                  <div x-show="staffLoading" role="status" aria-label="Loading staff accounts">
-                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
-                  </div>
+
                   <div x-cloak x-show="staffError" class="admin-load-error px-5" role="alert"><span x-text="staffError"></span><button type="button" @click="loadSecurityAccounts()">Retry</button></div>
                   <template x-for="staff in filteredStaffAccounts" :key="staff.id">
                     <article
@@ -1474,7 +1473,8 @@
                 </div>
               </template>
 
-            </div>
+                          </div>
+</div>
           </section>
         </main>
       </div>
@@ -1482,9 +1482,9 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=staff-settings-20260928&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&staff=role-change-20261012&groomers=named-20261016&session=lock-20261018&loading=20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&role_model=canonical-20261012&clinic-services=20261013&services=20261017&loading=20261018"></script>
+    <script src="../../scripts/api.js?v=staff-settings-20260928&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&staff=role-change-20261012&groomers=named-20261016&session=lock-20261018&loading=20261018&loading-ui=universal-20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&role_model=canonical-20261012&clinic-services=20261013&services=20261017&loading=20261018&loading-ui=universal-20261018"></script>
     <script src="../../scripts/components/success-toast.js"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018"></script>
   </body>
 </html>

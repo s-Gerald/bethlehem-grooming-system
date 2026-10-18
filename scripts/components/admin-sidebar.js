@@ -116,6 +116,9 @@ function installAdminServicesNavigation() {
   const clinic = document.querySelector('.admin-sidebar-menu a[href$="clinic.html"]');
   if (!clinic) return;
   clinic.setAttribute('@click', 'sidebarOpen = false');
+  clinic.setAttribute('x-show', 'isAdmin || clinicPermissions.access');
+  const grooming = document.querySelector('.admin-sidebar-menu a[href$="appointments.html"]');
+  grooming?.setAttribute('x-show', 'isAdmin || canAccessGrooming');
   const services = document.createElement('a');
   services.href = new URL('services.html', clinic.href).pathname;
   services.className = clinic.className;
@@ -139,10 +142,13 @@ if (typeof document !== "undefined" && document.querySelector) {
 function adminSidebar() {
   return {
     sidebarOpen: false,
+    sidebarReady: false,
+    sidebarError: '',
     activePage: getAdminSidebarActivePage(),
     inventoryExpanded: getAdminSidebarActivePage() === "inventory",
     inventorySection: getAdminInventorySection(),
     clinicPermissions: {},
+    canAccessGrooming: false,
     _inventoryNavigationListener: null,
     isAdmin: false,
     staffDisplayName: "Staff",
@@ -168,6 +174,10 @@ function adminSidebar() {
       error: "",
     },
     blockedDates: [],
+    blockedDatesLoading: false,
+    blockedDatesLoaded: false,
+    blockedDatesError: "",
+    _blockedDatesRequest: 0,
     blockDatesModal: { open: false },
     blockForm: {
       startDate: "",
@@ -195,9 +205,6 @@ function adminSidebar() {
       this.isAdmin = API.getUserRole() === "admin";
       if (API.enforceAdminPageAccess && !API.enforceAdminPageAccess()) return;
 
-      await window.AppClock?.load?.();
-      if (this._destroyed) return;
-
       this.registerIncomingAppointmentListener();
 
       this.$nextTick(() => {
@@ -208,7 +215,8 @@ function adminSidebar() {
       const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
       await Promise.all([
         this.loadClinicStatus(),
-        this.loadLoggedInIdentity().then(() => {
+        this.loadLoggedInIdentity().then(async () => {
+          await window.AppClock?.load?.();
           if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) return this.loadIncomingAppointmentCount();
         }),
       ]);
@@ -251,11 +259,19 @@ function adminSidebar() {
 
     async loadLoggedInIdentity() {
       if (typeof API.getMe !== "function") return;
-
+      this.sidebarError = '';
       try {
         const response = await (API.getStaffIdentity ? API.getStaffIdentity() : API.getMe("staff"));
         const user = response?.user;
+        if (!user || this._destroyed) return;
+        if (user.role) this.isAdmin = user.role === 'admin';
         this.clinicPermissions = user?.clinic_permissions || {};
+        this.canAccessGrooming = this.isAdmin || (user.staff_type === 'grooming' && user.staff_subrole === 'grooming_receptionist');
+        this.sidebarReady = true;
+        this.$nextTick?.(() => {
+          this.$root?.setAttribute('data-admin-ready', '');
+          document.documentElement?.setAttribute('data-admin-role', this.isAdmin ? 'admin' : 'staff');
+        });
         if (this.isAdmin) return;
         this.staffRoleLabel = user?.staff_type === "clinic"
           ? ({ veterinarian: "Veterinarian", clinic_receptionist: "Clinic Receptionist" }[user.staff_subrole] || "Clinic Staff")
@@ -268,7 +284,7 @@ function adminSidebar() {
         this.staffDisplayName = fullName;
         this.staffInitials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
       } catch {
-        // Non-fatal: retain the generic staff label when profile loading fails.
+        this.sidebarError = 'Could not verify access.';
       }
     },
 
@@ -388,12 +404,18 @@ function adminSidebar() {
     },
 
     async loadBlockedDates() {
+      const request = ++this._blockedDatesRequest;
+      this.blockedDatesLoading = true;
+      this.blockedDatesError = "";
       try {
         const data = await API.getBlockedDates();
+        if (request !== this._blockedDatesRequest) return;
         this.blockedDates = data.blocked_dates || [];
+        this.blockedDatesLoaded = true;
       } catch {
-        this.blockedDates = [];
+        if (request === this._blockedDatesRequest) this.blockedDatesError = "Could not load blocked dates.";
       } finally {
+        if (request === this._blockedDatesRequest) this.blockedDatesLoading = false;
         this.$nextTick(() => {
           if (window.lucide) window.lucide.createIcons();
         });
