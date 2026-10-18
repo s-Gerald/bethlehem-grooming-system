@@ -325,6 +325,33 @@ function getPaymentPriceSafetyRules(pricing, serviceDefinition, petSize) {
  */
 function adminDashboard() {
   return {
+    _initialized: false,
+    pageMode: window.location?.pathname?.endsWith('/dashboard.html') ? 'dashboard' : 'grooming',
+    bookingsLoaded: false,
+    bookingsLoading: true,
+    bookingsError: "",
+    summaryLoaded: false,
+    summaryLoading: true,
+    summaryError: "",
+    activityLoaded: false,
+    activityLoading: true,
+    activityError: "",
+    notificationsLoaded: false,
+    notificationsLoading: true,
+    notificationsError: "",
+    dashboardQueuePreview: [],
+    activeTodayCount: null,
+    _bookingRequest: null,
+    _bookingRequestDate: null,
+    _bookingRevision: 0,
+    _summaryRequest: null,
+    _activityRequest: null,
+    _notificationRequest: null,
+    _visibilityListener: null,
+    _sessionResumeListener: null,
+    _clinicStatusListener: null,
+    _destroyed: false,
+
     activeTab: "incoming",
     dashboardSearchQuery: "",
     dashboardSearchOpen: false,
@@ -504,10 +531,22 @@ function adminDashboard() {
       }
 
       await window.AppClock?.load?.();
+      if (this._destroyed) return;
       this.selectedDate = this.todayDate;
 
       this.registerBridge();
       this.loadConfig();
+
+      this._clinicStatusListener = event => { this.clinicStopped = Boolean(event.detail.stopped_today); };
+      window.addEventListener('admin-clinic:status', this._clinicStatusListener);
+
+      if (this.pageMode === 'dashboard') {
+        this.startContentPolling();
+        await Promise.all([this.loadDashboardSummary(), this.loadDashboardActivity(), this.loadNotifications(), this.loadClinicStatus()]);
+        this.refreshIcons();
+        this.dispatchDashboardEvent('admin-dashboard:ready', { state: this.getState() });
+        return;
+      }
 
       try {
         await this.bootstrapDashboard();
@@ -620,20 +659,71 @@ function adminDashboard() {
         },
       });
 
-      // Load bookings on init, then poll every 30 seconds
-      await this.loadAdminBookings();
-      await this.restoreGroomingOnlinePayment();
-      this._bookingInterval = setInterval(() => this.loadAdminBookings(), 30000);
+      this.startContentPolling();
+      await Promise.all([
+        this.loadAdminBookings({ force: false }).then(() => this.restoreGroomingOnlinePayment()),
+        this.loadNotifications(),
+        this.loadClinicStatus(),
+      ]);
+    },
 
-      // Load notifications immediately, then poll every 30 seconds
-      await this.loadNotifications();
-      this._notifInterval = setInterval(() => this.loadNotifications(), 30000);
+    startContentPolling() {
+      if (this._destroyed) return;
+      const refresh = () => {
+        if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
+        if (this.pageMode === 'dashboard') {
+          void this.loadDashboardSummary({ force: true });
+          void this.loadDashboardActivity({ force: true });
+        } else void this.loadAdminBookings();
+        void this.loadNotifications();
+      };
+      this._bookingInterval = setInterval(refresh, 30000);
+      this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
+      document.addEventListener('visibilitychange', this._visibilityListener);
+      this._sessionResumeListener = () => {
+        if (!this.bookingsLoaded && !this.summaryLoaded && !this.activityLoaded) return;
+        Promise.allSettled([this._bookingRequest, this._summaryRequest, this._activityRequest, this._notificationRequest]).then(refresh);
+      };
+      window.addEventListener('admin-session:unlocked', this._sessionResumeListener);
+    },
 
-      // Load clinic status on init, then poll every 60 seconds
-      await this.loadClinicStatus();
-      this._clinicInterval = setInterval(async () => {
-        await this.loadClinicStatus();
-      }, 60000);
+    destroy() {
+      this._destroyed = true;
+      this._bookingRevision++;
+      for (const timer of ['_bookingInterval', '_notifInterval', '_clinicInterval']) clearInterval(this[timer]);
+      clearTimeout(this._onlinePaymentPoll);
+      clearTimeout(this._paymentProductSearchTimer);
+      document.removeEventListener('visibilitychange', this._visibilityListener);
+      window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
+      window.removeEventListener('admin-clinic:status', this._clinicStatusListener);
+      this.closePaymentScanner();
+    },
+
+    loadDashboardSummary({ force = false } = {}) {
+      if (this._summaryRequest) return this._summaryRequest;
+      this.summaryLoading = !this.summaryLoaded;
+      this.summaryError = '';
+      this._summaryRequest = API.getAdminDashboardSummary({ force }).then(data => {
+        if (this._destroyed) return;
+        this.dashboardQueuePreview = data.queuePreview || [];
+        this.applyDashboardData(data);
+        this.summaryLoaded = true;
+      }).catch(() => { this.summaryError = 'Could not refresh Dashboard.'; })
+        .finally(() => { this.summaryLoading = false; this._summaryRequest = null; });
+      return this._summaryRequest;
+    },
+
+    loadDashboardActivity({ force = false } = {}) {
+      if (this._activityRequest) return this._activityRequest;
+      this.activityLoading = !this.activityLoaded;
+      this.activityError = '';
+      this._activityRequest = API.getAdminDashboardActivity({ force }).then(data => {
+        if (this._destroyed) return;
+        this.recentActivity = this.normalizeRecentActivity(data.recentActivity);
+        this.activityLoaded = true;
+      }).catch(() => { this.activityError = 'Could not refresh activity.'; })
+        .finally(() => { this.activityLoading = false; this._activityRequest = null; });
+      return this._activityRequest;
     },
 
     get dashboardSearchHasResults() {
@@ -705,15 +795,10 @@ function adminDashboard() {
       window.location.href = `./clients.html?${params.toString()}`;
     },
 
-    // Stops a poll interval after 3 consecutive server errors.
-    _stopPollOnFailure(intervalProp, label, error) {
+    // Keep the shared poll alive so transient failures recover without a reload.
+    _recordPollFailure(intervalProp, label, error) {
       this._pollFailures[intervalProp] = (this._pollFailures[intervalProp] || 0) + 1;
-      console.error(`${label} failed (${this._pollFailures[intervalProp]}/3):`, error);
-      if (this._pollFailures[intervalProp] >= 3) {
-        clearInterval(this[intervalProp]);
-        this[intervalProp] = null;
-        console.warn(`[dashboard] Polling stopped for "${label}" after 3 consecutive failures. Reload the page to retry.`);
-      }
+      console.error(`${label} failed:`, error);
     },
 
     _resetPollFailures(intervalProp) {
@@ -1456,6 +1541,7 @@ function adminDashboard() {
 
     // Normalizes and applies dashboard metrics plus all booking lists into Alpine state.
     applyDashboardData(payload = {}) {
+      if ('activeTodayCount' in payload) this.activeTodayCount = payload.activeTodayCount;
       if (payload.estimateRules) window.GroomingEstimates.configure(payload.estimateRules);
       const nextPayload = this.normalizeDashboardPayload(payload);
 
@@ -2317,6 +2403,7 @@ function adminDashboard() {
     // Returns a snapshot of the dashboard state for handlers and custom events.
     getState() {
       return {
+        activeTodayCount: this.activeTodayCount,
         selectedDate: this.selectedDate,
         activeTab: this.activeTab,
         todayCount: this.todayCount,
@@ -2891,6 +2978,7 @@ function adminDashboard() {
     },
 
     todayQueuePreview() {
+      if (this.pageMode === 'dashboard' && this.summaryLoaded) return this.dashboardQueuePreview;
       const today = this.localToday();
       const visibleBookings = [...this.inProgressList, ...this.queuedList]
         .filter((booking, index, bookings) =>
@@ -3222,7 +3310,22 @@ function adminDashboard() {
       };
     },
 
-    openPaymentScanner() {
+    async openPaymentScanner() {
+      if (!window.Html5Qrcode) {
+        try {
+          if (!window.__groomingScannerLibrary) {
+            window.__groomingScannerLibrary = new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+              script.onload = resolve;
+              script.onerror = () => { script.remove(); window.__groomingScannerLibrary = null; reject(new Error('Scanner could not load. Try again.')); };
+              document.head.appendChild(script);
+            });
+          }
+          await window.__groomingScannerLibrary;
+        } catch (error) { this.paymentModal.error = error.message; return; }
+      }
+      if (!this.paymentModal.open || this._destroyed) return;
       this.paymentModal.productSearchError = "";
       ProductForm.openBarcodeScanner(this.paymentModal, "grooming-payment-barcode-reader", (decoded) => {
         if (!this.paymentModal.scannerActive) return;
@@ -4091,22 +4194,40 @@ function adminDashboard() {
 
     // ── Admin Bookings ────────────────────────────────────────────────────────
 
-    async loadAdminBookings() {
+    loadAdminBookings({ force = true } = {}) {
       const selectedDate = this.selectedDate;
-      try {
-        const data = await API.getAdminBookings(selectedDate, {
+      const cacheRevision = API.getAdminDataRevision?.();
+      if (this._bookingRequest && this._bookingRequestDate === selectedDate && this._bookingCacheRevision === cacheRevision) return this._bookingRequest;
+      this._bookingCacheRevision = cacheRevision;
+      const revision = ++this._bookingRevision;
+      this._bookingRequestDate = selectedDate;
+      this.bookingsLoading = !this.bookingsLoaded;
+      this.bookingsError = '';
+      const pending = API.getAdminBookings(selectedDate, {
           includeFuture: this.showFutureAppointments,
-        });
+          boardOnly: true, force,
+        }).then(data => {
         this._resetPollFailures("_bookingInterval");
-        if (selectedDate !== this.selectedDate) return;
+        if (revision !== this._bookingRevision || selectedDate !== this.selectedDate || this._destroyed) return;
         this.applyDashboardData(data);
-      } catch (error) {
-        this._stopPollOnFailure("_bookingInterval", "loadAdminBookings", error);
-      }
+        this.bookingsLoaded = true;
+      }).catch(error => {
+        if (revision !== this._bookingRevision || this._destroyed) return;
+        this.bookingsError = 'Could not refresh Grooming.';
+        this._recordPollFailure("_bookingInterval", "loadAdminBookings", error);
+      }).finally(() => {
+        if (revision === this._bookingRevision) {
+          this.bookingsLoading = false;
+          this._bookingRequest = null;
+        }
+      });
+      this._bookingRequest = pending;
+      return pending;
     },
 
     // Called when the date picker changes — reloads bookings for the new date
     onDateChange() {
+      this.bookingsLoaded = false;
       this.loadAdminBookings();
     },
 
@@ -4241,15 +4362,21 @@ function adminDashboard() {
 
     // ── Notifications ─────────────────────────────────────────────────────────
 
-    async loadNotifications() {
-      try {
-        const data = await API.getNotifications();
+    loadNotifications() {
+      if (this._notificationRequest) return this._notificationRequest;
+      this.notificationsLoading = !this.notificationsLoaded;
+      this.notificationsError = '';
+      this._notificationRequest = API.getNotifications().then(data => {
+        if (this._destroyed) return;
         this._resetPollFailures("_notifInterval");
         this.notifications    = data.notifications || [];
         this.notificationCount = data.unread_count  || 0;
-      } catch (error) {
-        this._stopPollOnFailure("_notifInterval", "loadNotifications", error);
-      }
+        this.notificationsLoaded = true;
+      }).catch(error => {
+        this.notificationsError = 'Could not refresh notifications.';
+        this._recordPollFailure("_notifInterval", "loadNotifications", error);
+      }).finally(() => { this.notificationsLoading = false; this._notificationRequest = null; });
+      return this._notificationRequest;
     },
 
     toggleNotifications() {
@@ -4315,7 +4442,7 @@ function adminDashboard() {
         this._resetPollFailures("_clinicInterval");
         this.clinicStopped = Boolean(data.stopped_today);
       } catch (error) {
-        this._stopPollOnFailure("_clinicInterval", "loadClinicStatus", error);
+        this._recordPollFailure("_clinicInterval", "loadClinicStatus", error);
       }
     },
 

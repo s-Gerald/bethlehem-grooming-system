@@ -153,6 +153,11 @@ function adminSidebar() {
     _incomingAppointmentRevision: 0,
     _incomingAppointmentInterval: null,
     _incomingAppointmentListener: null,
+    _visibilityListener: null,
+    _sidebarSessionListener: null,
+    _incomingCountRequest: null,
+    _clinicStatusRequest: null,
+    _destroyed: false,
     stopModal: {
       open: false,
       title: "",
@@ -179,6 +184,8 @@ function adminSidebar() {
     },
 
     async init() {
+      if (this._sidebarInitialized) return;
+      this._sidebarInitialized = true;
       this.detectActivePage();
       this._inventoryNavigationListener = () => {
         this.inventorySection = getAdminInventorySection();
@@ -189,6 +196,7 @@ function adminSidebar() {
       if (API.enforceAdminPageAccess && !API.enforceAdminPageAccess()) return;
 
       await window.AppClock?.load?.();
+      if (this._destroyed) return;
 
       this.registerIncomingAppointmentListener();
 
@@ -197,19 +205,33 @@ function adminSidebar() {
         if (window.lucide) window.lucide.createIcons();
       });
 
+      const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
       await Promise.all([
-        this.loadLoggedInIdentity(),
         this.loadClinicStatus(),
-        this.loadIncomingAppointmentCount(),
+        this.loadLoggedInIdentity().then(() => {
+          if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) return this.loadIncomingAppointmentCount();
+        }),
       ]);
-
-      this._incomingAppointmentInterval = setInterval(
-        () => this.loadIncomingAppointmentCount(),
-        30000,
-      );
+      if (this._destroyed) return;
+      const refresh = () => {
+        if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
+        void this.loadClinicStatus();
+        if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) void this.loadIncomingAppointmentCount();
+      };
+      this._incomingAppointmentInterval = setInterval(refresh, 30000);
+      this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
+      document.addEventListener('visibilitychange', this._visibilityListener);
+      this._sidebarSessionListener = () => {
+        Promise.allSettled([this._incomingCountRequest, this._clinicStatusRequest]).then(refresh);
+      };
+      window.addEventListener('admin-session:unlocked', this._sidebarSessionListener);
     },
 
     destroy() {
+      this._destroyed = true;
+      this._incomingAppointmentRevision++;
+      document.removeEventListener?.('visibilitychange', this._visibilityListener);
+      window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
       if (this._incomingAppointmentInterval) {
         clearInterval(this._incomingAppointmentInterval);
@@ -253,6 +275,11 @@ function adminSidebar() {
     registerIncomingAppointmentListener() {
       this._incomingAppointmentListener = (event) => {
         const state = event.detail?.state;
+        if (Number.isFinite(state?.activeTodayCount)) {
+          this._incomingAppointmentRevision++;
+          this.incomingAppointmentCount = state.activeTodayCount;
+          return;
+        }
         if (state?.selectedDate === this.todayDate()) {
           this.setIncomingAppointmentCount(state);
         }
@@ -290,6 +317,7 @@ function adminSidebar() {
     },
 
     async loadIncomingAppointmentCount() {
+      if (this._incomingCountRequest) return this._incomingCountRequest;
       if (
         !window.API ||
         typeof API.getAdminBookings !== "function" ||
@@ -302,12 +330,17 @@ function adminSidebar() {
       try {
         const today = this.todayDate();
         const revision = ++this._incomingAppointmentRevision;
-        const data = await API.getAdminBookings(today);
-        if (revision === this._incomingAppointmentRevision && today === this.todayDate()) {
-          this.setIncomingAppointmentCount(data, today);
+        this._incomingCountRequest = API.getAdminGroomingActivity
+          ? API.getAdminGroomingActivity({ force: true }) : API.getAdminBookings(today);
+        const data = await this._incomingCountRequest;
+        if (!this._destroyed && revision === this._incomingAppointmentRevision && today === this.todayDate()) {
+          if (Number.isFinite(data.activeTodayCount)) this.incomingAppointmentCount = data.activeTodayCount;
+          else this.setIncomingAppointmentCount(data, today);
         }
       } catch {
         // Non-fatal: the sidebar should stay usable even if the count cannot load.
+      } finally {
+        this._incomingCountRequest = null;
       }
     },
 
@@ -320,11 +353,17 @@ function adminSidebar() {
     },
 
     async loadClinicStatus() {
+      if (this._clinicStatusRequest) return this._clinicStatusRequest;
       try {
-        const data = await API.getClinicStatus();
+        this._clinicStatusRequest = API.getClinicStatus();
+        const data = await this._clinicStatusRequest;
+        if (this._destroyed) return;
         this.clinicStopped = Boolean(data.stopped_today);
+        window.dispatchEvent(new CustomEvent('admin-clinic:status', { detail: data }));
       } catch {
         // Non-fatal
+      } finally {
+        this._clinicStatusRequest = null;
       }
     },
 

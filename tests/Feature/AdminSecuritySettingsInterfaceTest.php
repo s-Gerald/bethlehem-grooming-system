@@ -82,10 +82,11 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('6-digit email verification code', $security);
         $this->assertSame(6, substr_count($adminSecurity, 'data-lucide="eye-closed"'));
         $this->assertSame(6, substr_count($adminSecurity, 'data-lucide="eye"'));
-        $this->assertStringContainsString(
-            'admin-settings.js?v=staff-settings-20260928&release=clinic-merge-20261007',
-            $page,
-        );
+        preg_match('/src="([^\"]*admin-settings\.js\?[^\"]+)"/', $page, $script);
+        $this->assertNotEmpty($script[1] ?? null);
+        parse_str(parse_url($script[1], PHP_URL_QUERY), $scriptVersion);
+        $this->assertSame('staff-settings-20260928', $scriptVersion['v']);
+        $this->assertSame('clinic-merge-20261007', $scriptVersion['release']);
     }
 
     public function test_role_change_controls_stay_inside_the_staff_details_dialog(): void

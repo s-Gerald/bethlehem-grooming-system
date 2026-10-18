@@ -68,6 +68,80 @@ var API = (() => {
   let customerCacheToken = null;
   let customerCacheEpoch = 0;
 
+  const ADMIN_CACHE_KEY = "bethlehem.admin.presentation.v1";
+  const ADMIN_DATA_CHANGED_KEY = "bethlehem.admin.data_changed";
+  const adminCache = new Map();
+  const adminRequests = new Map();
+  let adminCacheOwner = null;
+  let adminCacheEpoch = 0;
+  let staffIdentityRequest = null;
+
+  function adminCacheTTL(endpoint) {
+    if (/^\/admin\/bookings\?/.test(endpoint)) return 10000;
+    if (/^\/admin\/dashboard\/(summary|activity)$/.test(endpoint)) return 15000;
+    if (endpoint === "/admin/grooming/activity") return 15000;
+    if (endpoint === "/admin/notifications") return 10000;
+    if (endpoint === "/clinic/status") return 15000;
+    return 0;
+  }
+
+  function clearAdminCache() {
+    adminCacheEpoch++;
+    adminCache.clear();
+    adminRequests.clear();
+    adminCacheOwner = null;
+    staffIdentityRequest = null;
+    safeStorageRemove(sessionStorage, ADMIN_CACHE_KEY);
+  }
+
+  function ensureAdminCache() {
+    const token = getAdminToken();
+    if (adminCacheOwner === token) return;
+    adminCacheEpoch++;
+    adminCache.clear();
+    adminRequests.clear();
+    staffIdentityRequest = null;
+    adminCacheOwner = token;
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(ADMIN_CACHE_KEY));
+      if (token && stored?.owner === activitySessionId(getAuthSession())) {
+        for (const [key, entry] of Object.entries(stored.entries || {})) {
+          if (Date.now() - entry.at < adminCacheTTL(key)) adminCache.set(key, entry);
+        }
+      }
+    } catch { /* Storage is optional; network reads remain available. */ }
+  }
+
+  function adminRead(endpoint, token, options) {
+    ensureAdminCache();
+    const cached = adminCache.get(endpoint);
+    if (!options.force && cached && Date.now() - cached.at < adminCacheTTL(endpoint)) {
+      return Promise.resolve(cached.data);
+    }
+    if (adminRequests.has(endpoint)) return adminRequests.get(endpoint);
+    const owner = adminCacheOwner, epoch = adminCacheEpoch;
+    const pending = networkRequest("GET", endpoint, null, token, options).then(data => {
+      if (owner !== getAdminToken() || epoch !== adminCacheEpoch) {
+        throw new Error("Admin data changed while loading. Please retry.");
+      }
+      adminCache.set(endpoint, { at: Date.now(), data });
+      for (const [key, entry] of adminCache) {
+        if (Date.now() - entry.at >= adminCacheTTL(key)) adminCache.delete(key);
+      }
+      while (adminCache.size > 10) adminCache.delete(adminCache.keys().next().value);
+      try {
+        sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({
+          owner: activitySessionId(getAuthSession()), entries: Object.fromEntries(adminCache),
+        }));
+      } catch { /* Quota/privacy restrictions only disable navigation reuse. */ }
+      return data;
+    }).finally(() => {
+      if (adminRequests.get(endpoint) === pending) adminRequests.delete(endpoint);
+    });
+    adminRequests.set(endpoint, pending);
+    return pending;
+  }
+
   // Only customer presentation data is eligible. Medical records, pet detail,
   // slot availability and scheduling rules always go to the server.
   function customerCachePolicy(endpoint) {
@@ -319,6 +393,7 @@ var API = (() => {
   }
 
   function clearAuthStorage() {
+    clearAdminCache();
     sessionRevision += 1;
     serverSession = null;
     sessionSync = null;
@@ -962,10 +1037,14 @@ var API = (() => {
       resetSessionPassword();
       sessionGate(null);
       if (wasLocked) {
+        clearAdminCache();
         previousSessionFocus?.focus?.();
         previousSessionFocus = null;
       }
       sessionWaiters.splice(0).forEach(({ resolve }) => resolve());
+      if (wasLocked && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('admin-session:unlocked'));
+      }
     }
     evaluateSessionInactivity(timestamp);
   }
@@ -1064,6 +1143,12 @@ var API = (() => {
       if (event.key === CUSTOMER_TOKEN_KEY || event.key === CUSTOMER_CACHE_SESSION_KEY || event.key === USER_ROLE_KEY) {
         clearCustomerCache();
       }
+      if (event.key === ADMIN_TOKEN_KEY || event.key === USER_ROLE_KEY) clearAdminCache();
+      if (event.key === ADMIN_DATA_CHANGED_KEY && event.newValue) {
+        try {
+          if (JSON.parse(event.newValue).owner === activitySessionId(getAuthSession())) clearAdminCache();
+        } catch { /* Ignore malformed cross-tab signals. */ }
+      }
 
       if (event.key === AUTH_LAST_ACTIVITY_KEY && event.newValue) {
         // Local hints never unlock or trigger a request per mouse movement.
@@ -1106,16 +1191,29 @@ var API = (() => {
       && (sessionLocked || sessionChecking)) {
       const key = `${token}:${endpoint}:${requestOptions.responseType || "json"}`;
       if (pausedSessionReads.has(key)) return pausedSessionReads.get(key);
-      const pending = networkRequest(method, endpoint, body, token, requestOptions)
+      const pending = new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject }))
+        .then(() => {
+          if (getAdminToken() !== token) throw new Error("Session ended.");
+          return request(method, endpoint, body, token, requestOptions);
+        })
         .finally(() => { if (pausedSessionReads.get(key) === pending) pausedSessionReads.delete(key); });
       pausedSessionReads.set(key, pending);
       return pending;
+    }
+    if (method === "GET" && getAdminToken() && adminCacheTTL(endpoint)) {
+      return adminRead(endpoint, token, requestOptions);
     }
     const customerRequest = !!token && token === getCustomerToken();
     const policy = method === "GET" && customerRequest ? customerCachePolicy(endpoint) : null;
     if (!policy || !ensureCustomerCacheSession()) {
       return networkRequest(method, endpoint, body, token, requestOptions).then((data) => {
         if (method !== "GET" && customerRequest && token === getCustomerToken()) invalidateCustomerMutation(endpoint);
+        if (method !== "GET" && token && token === getAdminToken() && /^\/(admin|settings)\//.test(endpoint)) {
+          clearAdminCache();
+          try {
+            localStorage.setItem(ADMIN_DATA_CHANGED_KEY, JSON.stringify({ owner: activitySessionId(getAuthSession()), at: Date.now(), nonce: Math.random() }));
+          } catch { /* Short TTLs and visible polling still refresh other tabs. */ }
+        }
         return data;
       });
     }
@@ -1556,8 +1654,8 @@ var API = (() => {
     return response;
   }
 
-  let staffIdentityRequest = null;
   function getStaffIdentity() {
+    ensureAdminCache();
     if (!staffIdentityRequest) {
       staffIdentityRequest = getMe(getUserRole()).catch((error) => {
         staffIdentityRequest = null;
@@ -1761,13 +1859,23 @@ var API = (() => {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
-  async function getAdminBookings(date = null, { includeFuture = false } = {}) {
+  async function getAdminBookings(date = null, { includeFuture = false, boardOnly = false, force = false } = {}) {
     // GET /api/admin/bookings?date=YYYY-MM-DD&include_future=1
     const params = new URLSearchParams();
     if (date) params.set("date", date);
     if (includeFuture) params.set("include_future", "1");
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/bookings${query}`, null, getAdminToken());
+    return request("GET", `/admin/bookings${query}${boardOnly ? `${query ? "&" : "?"}view=board` : ""}`, null, getAdminToken(), { force });
+  }
+
+  function getAdminDashboardSummary({ force = false } = {}) {
+    return request("GET", "/admin/dashboard/summary", null, getAdminToken(), { force });
+  }
+  function getAdminDashboardActivity({ force = false } = {}) {
+    return request("GET", "/admin/dashboard/activity", null, getAdminToken(), { force });
+  }
+  function getAdminGroomingActivity({ force = false } = {}) {
+    return request("GET", "/admin/grooming/activity", null, getAdminToken(), { force });
   }
 
   async function adminCheckIn(bookingId, petSizes = [], internalStaffNote = null) {
@@ -1972,9 +2080,9 @@ var API = (() => {
 
   // ── Clinic closures ─────────────────────────────────────────────
 
-  async function getClinicStatus() {
+  async function getClinicStatus({ force = false } = {}) {
     // GET /api/clinic/status  (public — no token needed)
-    return request("GET", "/clinic/status");
+    return request("GET", "/clinic/status", null, null, { force });
   }
 
   async function adminStopToday(reason = null) {
@@ -2503,6 +2611,7 @@ var API = (() => {
     recordSessionActivity,
     evaluateSessionInactivity,
     isSessionLocked: () => sessionLocked,
+    getAdminDataRevision: () => adminCacheEpoch,
     startSessionInactivityManager,
     enforceAdminPageAccess,
     enforceProtectedPageAccess,
@@ -2546,6 +2655,9 @@ var API = (() => {
     submitClinicPreRegistration,
     // Admin bookings
     getAdminBookings,
+    getAdminDashboardSummary,
+    getAdminDashboardActivity,
+    getAdminGroomingActivity,
     adminCheckIn,
     adminUpdateInternalStaffNote,
     adminUpdateGroomingVisitNotes,

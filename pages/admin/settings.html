@@ -13,11 +13,12 @@
       #success-toast { z-index: 10002; }
     </style>
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=20261018" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
       x-data="adminSidebar()"
-      x-cloak
+      data-admin-shell
       class="flex min-h-screen bg-[#f5f8fb]"
     >
       <!-- Mobile Backdrop -->
@@ -31,10 +32,11 @@
 
       <!-- Sidebar -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        data-session-surface
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
       >
-        <div class="px-6 py-6">
+        <div data-session-public class="px-6 py-6">
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
@@ -50,6 +52,11 @@
           </div>
         </div>
 
+        <div data-session-public class="admin-shell-nav-placeholder px-6 py-6" aria-hidden="true">
+          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
+          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
+          <span class="admin-skeleton admin-skeleton--line"></span>
+        </div>
         <nav class="px-4 py-6">
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
@@ -156,8 +163,8 @@
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
         <!-- Mobile Header -->
-        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
-          <div>
+        <header data-session-surface class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
+          <div data-session-public>
             <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
             <h2 class="text-lg font-bold text-[#1f3850]">Settings</h2>
           </div>
@@ -170,11 +177,11 @@
           x-data="adminSettings()"
           class="flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
-          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
-            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4">
+          <section data-session-surface class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
+            <div data-session-surface class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4">
               <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
-                  <h2 class="text-2xl font-bold text-[#1f3850] lg:text-3xl">Settings</h2>
+                  <h2 data-session-public class="text-2xl font-bold text-[#1f3850] lg:text-3xl">Settings</h2>
                   <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]">SYSTEM SETTINGS</p>
                 </div>
 
@@ -228,7 +235,7 @@
                   </button>
                   <button
                     type="button"
-                    @click="activeSettingsTab = 'security'"
+                    @click="selectSettingsTab('security')"
                     class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
                     :class="activeSettingsTab === 'security' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
                   >
@@ -241,7 +248,7 @@
           </section>
 
           <section class="mt-6 space-y-6">
-            <form x-show="activeSettingsTab === 'general'" class="space-y-6">
+            <form x-cloak x-show="activeSettingsTab === 'general'" class="space-y-6">
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 These settings are managed by an administrator.
               </div>
@@ -398,7 +405,7 @@
               </div>
             </form>
 
-            <form x-show="activeSettingsTab === 'availability'" class="space-y-6" @submit.prevent>
+            <form x-cloak x-show="activeSettingsTab === 'availability'" class="space-y-6" @submit.prevent>
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 Most settings on this page are managed by an administrator. You can manage Pet Groomers here.
               </div>
@@ -643,7 +650,7 @@
 
             </form>
 
-            <form x-show="activeSettingsTab === 'capacity'" class="space-y-6">
+            <form x-cloak x-show="activeSettingsTab === 'capacity'" class="space-y-6">
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 These settings are managed by an administrator.
               </div>
@@ -708,7 +715,7 @@
               </div>
             </form>
 
-            <form x-show="activeSettingsTab === 'notifications'" class="space-y-6">
+            <form x-cloak x-show="activeSettingsTab === 'notifications'" class="space-y-6">
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 These settings are managed by an administrator.
               </div>
@@ -780,7 +787,7 @@
             </form>
 
             <div
-              x-show="activeSettingsTab === 'security'"
+ x-cloak              x-show="activeSettingsTab === 'security'"
               class="space-y-6"
               @keydown.escape.window="closeSecurityModals()"
             >
@@ -801,7 +808,7 @@
                     </div>
                     <div class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e]">
                       <i data-lucide="mail" class="h-3.5 w-3.5"></i>
-                      <span class="max-w-[15rem] truncate" x-text="adminAccount.email">Admin email</span>
+                      <span x-cloak class="max-w-[15rem] truncate" x-show="staffLoaded" x-text="adminAccount.email">Admin email</span>
                     </div>
                   </div>
                 </div>
@@ -945,7 +952,7 @@
                         class="rounded-lg px-3 py-2 text-sm font-semibold transition"
                         :class="staffFilter === 'all' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-slate-500 hover:text-[#315b7e]'"
                       >
-                        All <span class="ml-1 text-xs" x-text="staffAccounts.length"></span>
+                        All <span x-cloak x-show="staffLoaded" class="ml-1 text-xs" x-text="staffAccounts.length"></span>
                       </button>
                       <button
                         type="button"
@@ -953,7 +960,7 @@
                         class="rounded-lg px-3 py-2 text-sm font-semibold transition"
                         :class="staffFilter === 'active' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-slate-500 hover:text-[#315b7e]'"
                       >
-                        Active <span class="ml-1 text-xs" x-text="activeStaffCount"></span>
+                        Active <span x-cloak class="ml-1 text-xs" x-show="staffLoaded" x-text="activeStaffCount"></span>
                       </button>
                       <button
                         type="button"
@@ -961,7 +968,7 @@
                         class="rounded-lg px-3 py-2 text-sm font-semibold transition"
                         :class="staffFilter === 'pending' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-slate-500 hover:text-[#315b7e]'"
                       >
-                        Pending <span class="ml-1 text-xs" x-text="pendingStaffCount"></span>
+                        Pending <span x-cloak class="ml-1 text-xs" x-show="staffLoaded" x-text="pendingStaffCount"></span>
                       </button>
                       <button
                         type="button"
@@ -969,7 +976,7 @@
                         class="rounded-lg px-3 py-2 text-sm font-semibold transition"
                         :class="staffFilter === 'deactivated' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-slate-500 hover:text-[#315b7e]'"
                       >
-                        Deactivated <span class="ml-1 text-xs" x-text="deactivatedStaffCount"></span>
+                        Deactivated <span x-cloak class="ml-1 text-xs" x-show="staffLoaded" x-text="deactivatedStaffCount"></span>
                       </button>
                     </div>
 
@@ -977,13 +984,15 @@
                 </div>
 
                 <div class="divide-y divide-slate-100">
-                  <div x-show="staffLoading" class="px-5 py-10 text-center text-sm font-semibold text-slate-500 lg:px-6">
-                    Loading staff accounts...
+                  <div x-show="staffLoading" role="status" aria-label="Loading staff accounts">
+                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+                    <div class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
                   </div>
-                  <div x-show="!staffLoading && staffError" x-text="staffError" class="px-5 py-6 text-sm font-semibold text-red-600 lg:px-6" role="alert"></div>
+                  <div x-cloak x-show="staffError" class="admin-load-error px-5" role="alert"><span x-text="staffError"></span><button type="button" @click="loadSecurityAccounts()">Retry</button></div>
                   <template x-for="staff in filteredStaffAccounts" :key="staff.id">
                     <article
-                      x-show="!staffLoading && !staffError"
+ x-cloak                      x-show="staffLoaded"
                       @click="openStaffDetails(staff)"
                       @keydown.enter.prevent="openStaffDetails(staff)"
                       @keydown.space.prevent="openStaffDetails(staff)"
@@ -1038,7 +1047,7 @@
                     </article>
                   </template>
 
-                  <div x-show="!staffLoading && !staffError && filteredStaffAccounts.length === 0" class="px-5 py-10 text-center lg:px-6">
+                  <div x-cloak x-show="staffLoaded && filteredStaffAccounts.length === 0" class="px-5 py-10 text-center lg:px-6">
                     <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
                       <i data-lucide="users-round" class="h-5 w-5"></i>
                     </div>
@@ -1473,9 +1482,9 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=staff-settings-20260928&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&staff=role-change-20261012&groomers=named-20261016&session=lock-20261018"></script>
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&role_model=canonical-20261012&clinic-services=20261013&services=20261017"></script>
+    <script src="../../scripts/api.js?v=staff-settings-20260928&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&staff=role-change-20261012&groomers=named-20261016&session=lock-20261018&loading=20261018"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&role_model=canonical-20261012&clinic-services=20261013&services=20261017&loading=20261018"></script>
     <script src="../../scripts/components/success-toast.js"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018"></script>
   </body>
 </html>

@@ -160,6 +160,9 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
             ->middleware(['role:staff', 'throttle:3,10']);
         Route::get('/admin/transactions', [PaymentController::class, 'index']);
         Route::middleware('grooming')->group(function () {
+            Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary']);
+            Route::get('/admin/dashboard/activity', [AdminBookingController::class, 'dashboardActivity']);
+            Route::get('/admin/grooming/activity', [AdminBookingController::class, 'activityIndicator']);
             Route::get('/admin/bookings', [AdminBookingController::class, 'index']);
             Route::get('/admin/bookings/archived', [AdminBookingController::class, 'archivedIndex']);
             Route::get('/admin/bookings/{id}/signed-consent', [AdminBookingController::class, 'signedConsent']);

@@ -178,22 +178,6 @@ class AdminBookingController extends Controller
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
 
-        // Summary metrics (always based on today, not the filter date)
-        $todayCompletedCount = Booking::whereDate('grooming_finished_at', $today->toDateString())
-            ->whereNotIn('status', ['cancelled', 'no_show', 'expired'])
-            ->sum('number_of_pets');
-
-        $weekStart = Carbon::now()->startOfWeek()->toDateString();
-        $weekEnd = Carbon::now()->endOfWeek()->toDateString();
-        $weekCount = Booking::whereBetween('booking_date', [$weekStart, $weekEnd])
-            ->whereNotIn('status', ['cancelled'])
-            ->sum('number_of_pets');
-        $revenueToday = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
-            ->where('payment_status', 'paid')
-            ->sum('total_amount');
-        $revenuePaymentCount = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
-            ->where('payment_status', 'paid')
-            ->count();
         return response()->json([
             'success' => true,
             'incomingList' => $incoming->values(),
@@ -201,19 +185,91 @@ class AdminBookingController extends Controller
             'inProgressList' => $inProgress->values(),
             'forPaymentList' => $forPayment->values(),
             'releasedList' => $released->values(),
-            'summary' => [
-                'today' => $todayCompletedCount,
-                'week' => $weekCount,
-                'revenueToday' => (float) $revenueToday,
-                'revenuePaymentCount' => $revenuePaymentCount,
-                'waitingNow' => app(\App\Services\OperationalCapacity::class)->waitingCount(),
-            ],
-            'recentActivity' => $this->recentActivity(),
+            ...($request->query('view') === 'board' ? ['summary' => $this->groomingCounts()] : [
+                'summary' => $this->dashboardMetrics(),
+                'recentActivity' => $this->recentActivity(),
+            ]),
+            'activeTodayCount' => $this->activeTodayCount(),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
             'groomerCapacity' => $this->groomerCapacitySnapshot(),
             'groomingWorkload' => app(\App\Services\GroomingWorkloadCapacity::class)->snapshot(),
             'estimateRules' => config('grooming_estimates'),
-        ]);
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
+    private function activeTodayCount(): int
+    {
+        return Booking::whereDate('booking_date', Carbon::today()->toDateString())
+            ->whereIn('status', ['waiting_to_arrive', 'checked_in', 'in_progress', 'for_payment', 'released'])
+            ->count();
+    }
+
+    public function activityIndicator()
+    {
+        return response()->json(['activeTodayCount' => $this->activeTodayCount()])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    public function dashboardSummary()
+    {
+        app(\App\Services\PreRegistrationExpiry::class)->expire();
+        $today = Carbon::today()->toDateString();
+        $queue = Booking::whereDate('booking_date', $today)
+            ->whereIn('status', ['checked_in', 'in_progress'])
+            ->withExists(['bookingPets as has_started_pet' => fn ($query) => $query->whereNotNull('grooming_start_time')])
+            ->with(['user:user_id,first_name,last_name', 'walkin', 'bookingPets.pet'])
+            ->orderByRaw("(status = 'in_progress' OR has_started_pet) DESC")
+            ->orderBy('queue_number')->limit(5)->get()
+            ->map(fn (Booking $booking) => [
+                'id' => $booking->booking_id,
+                'status' => $booking->status === 'in_progress' || $booking->has_started_pet ? 'in-progress' : 'queued',
+                'appointmentDate' => $today,
+                'queueNumber' => $booking->queue_number,
+                ...$this->bookingCardIdentity($booking),
+                'dropOffTime' => $booking->dropped_off_at?->format('g:i A'),
+            ]);
+
+        return response()->json([
+            'summary' => $this->dashboardMetrics(false),
+            'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
+            'queuePreview' => $queue,
+            'activeTodayCount' => $this->activeTodayCount(),
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
+    public function dashboardActivity()
+    {
+        return response()->json(['recentActivity' => $this->recentActivity()])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function groomingCounts(bool $includeWeek = true): array
+    {
+        $today = Carbon::today();
+        $todayCompletedCount = Booking::whereDate('grooming_finished_at', $today->toDateString())
+            ->whereNotIn('status', ['cancelled', 'no_show', 'expired'])
+            ->sum('number_of_pets');
+
+        $weekStart = Carbon::now()->startOfWeek()->toDateString();
+        $weekEnd = Carbon::now()->endOfWeek()->toDateString();
+        $weekCount = $includeWeek ? Booking::whereBetween('booking_date', [$weekStart, $weekEnd])
+            ->whereNotIn('status', ['cancelled'])
+            ->sum('number_of_pets') : null;
+        return ['today' => $todayCompletedCount, ...($includeWeek ? ['week' => $weekCount] : [])];
+    }
+
+    private function dashboardMetrics(bool $includeWeek = true): array
+    {
+        $today = Carbon::today();
+        $collections = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
+            ->where('payment_status', 'paid')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total, COUNT(*) as payments')->first();
+        return [
+                ...$this->groomingCounts($includeWeek),
+                'revenueToday' => (float) $collections->total,
+                'revenuePaymentCount' => (int) $collections->payments,
+                'waitingNow' => app(\App\Services\OperationalCapacity::class)->waitingCount(),
+        ];
     }
 
     // Records optional in-person consent only after staff confirms the customer agreed.
@@ -1243,6 +1299,20 @@ class AdminBookingController extends Controller
 
     // ── OWNER CARD CONCERN STATE ──────────────────────────
     // ── FORMAT BOOKING FOR FRONTEND ───────────────────────
+    private function bookingCardIdentity(Booking $booking): array
+    {
+        $pets = $booking->bookingPets->sortBy('booking_pet_id')->values();
+        $firstPet = $pets->first()?->pet;
+        $petName = $firstPet?->pet_name ?? '—';
+        if ($pets->count() > 1) $petName .= ' +'.($pets->count() - 1).' more';
+
+        return [
+            'petName' => $petName,
+            'breed' => $firstPet?->breed ?? '—',
+            'ownerName' => $booking->user || $booking->walkin ? $this->ownerName($booking) : '—',
+        ];
+    }
+
     private function formatBooking(Booking $booking, ?array $paymentSummary = null): array
     {
         $user = $booking->user;
@@ -1255,13 +1325,7 @@ class AdminBookingController extends Controller
         $firstPet = $firstBp?->pet;
         $bpetsById = $bpets->keyBy('booking_pet_id');
 
-        $petName = $firstPet?->pet_name ?? '—';
-        if ($bpets->count() > 1) {
-            $petName .= ' +'.($bpets->count() - 1).' more';
-        }
-
         $petType = $this->formatPetTypeSummary($bpets);
-        $breed = $firstPet?->breed ?? '—';
 
         // Build service label from booked services
         $bookedServices = $booking->bookingServices ?? collect();
@@ -1299,9 +1363,7 @@ class AdminBookingController extends Controller
             // Fields the card templates read directly
             'id' => $booking->booking_id,
             'queueNumber' => $booking->queue_number ?? 0,
-            'ownerName' => $user
-                ? trim(($user->first_name ?? '').' '.($user->last_name ?? ''))
-                : ($walkin ? trim("{$walkin->fname} {$walkin->lname}") : '—'),
+            ...$this->bookingCardIdentity($booking),
             'contactNumber' => $ownerAccountDeleted
                 ? '—'
                 : ($user?->phone ?? $walkin?->phone ?? '—'),
@@ -1327,9 +1389,7 @@ class AdminBookingController extends Controller
             'canRecordSedationConsent' => ! $walkin
                 && ! (bool) $booking->sedation_consent
                 && in_array($booking->status, ['waiting_to_arrive', 'checked_in'], true),
-            'petName' => $petName,
             'petType' => $petType,
-            'breed' => $breed,
             'petSize' => $firstBp?->confirmed_size ?? $firstPet?->groomingSize(),
             'size' => $firstBp?->confirmed_size ?? $firstPet?->groomingSize(),
             'serviceLabel' => $serviceLabel,
@@ -1695,7 +1755,7 @@ class AdminBookingController extends Controller
 
     private function recentActivity(): array
     {
-        $payments = Payment::with(['booking.user', 'booking.bookingPets.pet'])
+        $payments = Payment::with(['booking.user', 'booking.walkin'])
             ->where('payment_status', 'paid')
             ->whereNotNull('paid_at')
             ->orderBy('paid_at', 'desc')
@@ -1729,8 +1789,7 @@ class AdminBookingController extends Controller
                 ];
             });
 
-        $groomingStarted = Booking::with(['user', 'bookingPets.pet', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+        $groomingStarted = Booking::with(['bookingPets.pet', 'bookingServices.service'])
             ->whereNotNull('grooming_started_at')
             ->orderBy('grooming_started_at', 'desc')
             ->limit(6)
@@ -1745,8 +1804,7 @@ class AdminBookingController extends Controller
                 ];
             });
 
-        $completed = Booking::with(['user', 'bookingPets.pet', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+        $completed = Booking::with(['bookingPets.pet', 'bookingServices.service'])
             ->whereNotNull('grooming_finished_at')
             ->orderBy('grooming_finished_at', 'desc')
             ->limit(6)

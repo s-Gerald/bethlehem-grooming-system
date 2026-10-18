@@ -24,6 +24,44 @@ class AdminDashboardSummaryTest extends TestCase
 {
     use \Tests\Support\CreatesPetGroomers;
 
+    public function test_compact_dashboard_and_indicator_do_not_load_workflow_details(): void
+    {
+        DB::table('bookings')->insert([
+            ['booking_reference' => 'ACTIVE-TODAY', 'booking_date' => '2026-06-24', 'number_of_pets' => 2, 'status' => 'checked_in'],
+            ['booking_reference' => 'FUTURE', 'booking_date' => '2026-06-25', 'number_of_pets' => 1, 'status' => 'waiting_to_arrive'],
+        ]);
+        $controller = new AdminBookingController;
+        DB::enableQueryLog();
+        $full = $controller->index(Request::create('/api/admin/bookings'))->getData(true);
+        $fullQueries = count(DB::getQueryLog());
+        DB::flushQueryLog();
+        $board = $controller->index(Request::create('/api/admin/bookings?view=board'))->getData(true);
+        $this->assertSame($full['summary']['today'], $board['summary']['today']);
+        $this->assertSame($full['summary']['week'], $board['summary']['week']);
+        $this->assertArrayNotHasKey('recentActivity', $board);
+        $this->assertArrayNotHasKey('revenueToday', $board['summary']);
+        DB::flushQueryLog();
+        $summary = $controller->dashboardSummary()->getData(true);
+        $summaryQueries = count(DB::getQueryLog());
+        DB::flushQueryLog();
+        $indicator = $controller->activityIndicator()->getData(true);
+        $indicatorQueries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertSame($full['summary']['today'], $summary['summary']['today']);
+        $this->assertSame($full['summary']['waitingNow'], $summary['summary']['waitingNow']);
+        $this->assertSame($full['capacity'], $summary['capacity']);
+        $this->assertCount(1, $summary['queuePreview']);
+        $this->assertSame(1, $summary['activeTodayCount']);
+        $this->assertSame(1, $indicator['activeTodayCount']);
+        $this->assertArrayNotHasKey('incomingList', $summary);
+        $this->assertArrayNotHasKey('groomingWorkload', $summary);
+        $this->assertArrayNotHasKey('services', $summary['queuePreview'][0]);
+        $this->assertLessThan($fullQueries, $summaryQueries);
+        $this->assertSame(1, $indicatorQueries);
+        fwrite(STDOUT, "\nLocal fixture: full={$fullQueries} queries/".strlen(json_encode($full))." bytes; summary={$summaryQueries} queries/".strlen(json_encode($summary))." bytes; indicator={$indicatorQueries} query/".strlen(json_encode($indicator))." bytes\n");
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -423,6 +461,11 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertSame([], collect($schedule['queuedList'])->pluck('id')->all());
         $this->assertSame([1], collect($schedule['inProgressList'])->pluck('id')->all());
         $this->assertSame('in-progress', $schedule['inProgressList'][0]['status']);
+        $this->assertSame('in-progress', $controller->dashboardSummary()->getData(true)['queuePreview'][0]['status']);
+        $preview = $controller->dashboardSummary()->getData(true)['queuePreview'][0];
+        foreach (['petName', 'breed', 'ownerName'] as $field) {
+            $this->assertSame($schedule['inProgressList'][0][$field], $preview[$field]);
+        }
         $this->assertTrue($schedule['inProgressList'][0]['pets'][0]['isGroomingStarted']);
         $this->assertFalse($schedule['inProgressList'][0]['pets'][1]['isGroomingStarted']);
 

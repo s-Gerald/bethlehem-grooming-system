@@ -246,7 +246,9 @@ async function testPrivilegedLockAndUnlock(role) {
   assert.equal(browser.elements.get("session-unlock").disabled, false);
   assert.equal(browser.elements.get("session-error").textContent, "Incorrect password.");
   assert.equal(browser.API.isSessionLocked(), true);
+  const dataRevision = browser.API.getAdminDataRevision();
   await browser.submit("correct");
+  assert.ok(browser.API.getAdminDataRevision() > dataRevision, "Unlock invalidates presentation data from before the lock");
   assert.equal(browser.API.isSessionLocked(), false);
   assert.equal(browser.root.attributes["data-session-gate"], undefined);
   assert.deepEqual(browser.replacements, [], "unlock preserves the mounted workflow and URL");

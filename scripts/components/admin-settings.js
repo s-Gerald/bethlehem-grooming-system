@@ -69,6 +69,11 @@ function adminSettings() {
     },
     staffAccounts: [],
     staffLoading: true,
+    staffLoaded: false,
+    _securityRequest: null,
+    _securityRevision: 0,
+    _staffAccountsRequest: null,
+    _staffAccountsEpoch: null,
     staffError: "",
     staffFilter: "all",
     staffNotice: "",
@@ -153,12 +158,21 @@ function adminSettings() {
 
       await Promise.all([
         this.loadAvailability(),
-        this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount(),
+        this.activeSettingsTab === "security" ? this.selectSettingsTab("security") : Promise.resolve(),
       ]);
 
       this.$nextTick(() => {
         if (window.lucide) window.lucide.createIcons();
       });
+    },
+
+    selectSettingsTab(tab) {
+      this.activeSettingsTab = tab;
+      if (tab !== "security" || this.staffLoaded) return Promise.resolve();
+      if (this._securityRequest) return this._securityRequest;
+      this._securityRequest = (this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount())
+        .finally(() => { this._securityRequest = null; });
+      return this._securityRequest;
     },
 
     normalizeAvailability(payload) {
@@ -204,6 +218,7 @@ function adminSettings() {
     },
 
     async loadOwnAccount() {
+      this.staffLoading = !this.staffLoaded;
       try {
         const response = await API.getSettingsSecurityAccount();
         const account = response?.account || {};
@@ -214,8 +229,11 @@ function adminSettings() {
           email: account.email || "No email address",
           statusLabel: account.is_active && !account.is_archived ? "Active" : "Inactive",
         };
+        this.staffLoaded = true;
       } catch (error) {
         this.staffPassword.error = error.message || "Could not load your account information.";
+      } finally {
+        this.staffLoading = false;
       }
     },
 
@@ -242,11 +260,15 @@ function adminSettings() {
       }
     },
 
-    async loadSecurityAccounts() {
-      this.staffLoading = true;
+    loadSecurityAccounts() {
+      const epoch = API.getAdminDataRevision?.();
+      if (this._staffAccountsRequest && this._staffAccountsEpoch === epoch) return this._staffAccountsRequest;
+      this._staffAccountsEpoch = epoch;
+      const revision = ++this._securityRevision;
+      this.staffLoading = !this.staffLoaded;
       this.staffError = "";
-      try {
-        const response = await API.getAdminSecurityAccounts();
+      const pending = API.getAdminSecurityAccounts().then(response => {
+        if (revision !== this._securityRevision) return;
         this.adminAccount = {
           email: response?.admin?.email || "Admin email",
           username: response?.admin?.username || "",
@@ -273,11 +295,18 @@ function adminSettings() {
             statusClass: state === "pending" ? "bg-amber-50 text-amber-700" : state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
           };
         });
-      } catch (error) {
+        this.staffLoaded = true;
+      }).catch(error => {
+        if (revision !== this._securityRevision) return;
         this.staffError = error.message || "Could not load security accounts.";
-      } finally {
-        this.staffLoading = false;
-      }
+      }).finally(() => {
+        if (revision === this._securityRevision) {
+          this.staffLoading = false;
+          this._staffAccountsRequest = null;
+        }
+      });
+      this._staffAccountsRequest = pending;
+      return pending;
     },
 
     selectAvailabilityService(service) {

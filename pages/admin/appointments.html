@@ -12,14 +12,14 @@
       rel="stylesheet"
       href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003"
     />
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <link rel="stylesheet" href="../../css/grooming-estimates.css?v=checkin-layout-20261009-2">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=20261018" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
       x-data="adminSidebar()"
-      x-cloak
+      data-admin-shell
       class="min-h-screen flex bg-[#f5f8fb]"
     >
       <!-- Mobile Backdrop -->
@@ -34,11 +34,12 @@
       <!-- Sidebar -->
       <!-- NOTE: Keep using your already existing sidebar structure/script -->
       <aside
-        class="admin-sidebar-menu fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
+        data-session-surface
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
       >
         <!-- Brand -->
-        <div class="px-6 py-6">
+        <div data-session-public class="px-6 py-6">
           <div class="flex items-start gap-4">
             <div
               class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm"
@@ -62,6 +63,11 @@
         </div>
 
         <!-- Navigation -->
+        <div data-session-public class="admin-shell-nav-placeholder px-6 py-6" aria-hidden="true">
+          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
+          <span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line"></span>
+          <span class="admin-skeleton admin-skeleton--line"></span>
+        </div>
         <nav class="px-4 py-6">
           <div class="mb-8">
             <p
@@ -260,10 +266,10 @@
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
         <!-- Mobile Header -->
-        <header
+        <header data-session-surface
           class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
         >
-          <div>
+          <div data-session-public>
             <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
             <h2 class="text-lg font-extrabold text-[#1f3850]">Grooming</h2>
           </div>
@@ -283,15 +289,15 @@
           class="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
           <!-- Top banner -->
-          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur">
+          <section data-session-surface class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur">
             <div
-              class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6"
+              data-session-surface class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6"
             >
               <div
                 class="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between"
               >
                 <div>
-                  <h2
+                  <h2 data-session-public
                     class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl"
                   >
                     Grooming
@@ -457,7 +463,7 @@
 
                     <!-- Dropdown -->
                     <div
-                      x-show="notificationsOpen"
+ x-cloak                      x-show="notificationsOpen"
                       x-transition
                       class="notif-dropdown rounded-2xl border border-[#d7e3ef] bg-white shadow-xl flex flex-col"
                     >
@@ -496,8 +502,10 @@
                       <!-- Scrollable list -->
                       <div class="notif-list overflow-y-auto divide-y divide-[#f0f4f8]">
 
+                        <div x-show="notificationsLoading" role="status" aria-label="Loading notifications" class="admin-skeleton-row"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+                        <p x-cloak x-show="notificationsError" class="admin-load-error px-4" role="alert"><span x-text="notificationsError"></span><button type="button" @click="loadNotifications()">Retry</button></p>
                         <!-- Empty state -->
-                        <template x-if="groupedNotifications().today.length === 0 && groupedNotifications().earlier.length === 0">
+                        <template x-if="notificationsLoaded &amp;&amp; groupedNotifications().today.length === 0 && groupedNotifications().earlier.length === 0">
                           <p class="px-4 py-6 text-center text-sm text-slate-400">
                             <span x-text="notifTab === 'unread' ? 'No unread notifications.' : 'No notifications yet.'"></span>
                           </p>
@@ -585,17 +593,18 @@
           <!-- Summary cards -->
           <section class="mt-6">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <article
+              <article data-session-surface
                 class="rounded-2xl border border-[#7fa2c9] bg-white px-5 py-4 shadow-sm"
               >
                 <div class="flex items-start justify-between gap-4">
                   <div>
                     <p class="text-sm text-slate-600">Completed today</p>
                     <!-- BACKEND: count all grooming appointments completed today -->
-                    <h3
-                      class="mt-1 text-4xl font-extrabold text-black"
-                      x-text="todayCount"
-                    ></h3>
+                    <h3 class="mt-1 text-4xl font-extrabold text-black" :aria-busy="bookingsLoading">
+                      <span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+                      <span x-cloak x-show="bookingsLoaded" x-text="todayCount"></span>
+                      <span x-cloak x-show="!bookingsLoaded &amp;&amp; bookingsError">—</span>
+                    </h3>
                   </div>
 
                   <div class="text-[#63c7bb]">
@@ -604,17 +613,18 @@
                 </div>
               </article>
 
-              <article
+              <article data-session-surface
                 class="rounded-2xl border border-[#7fa2c9] bg-white px-5 py-4 shadow-sm"
               >
                 <div class="flex items-start justify-between gap-4">
                   <div>
                     <p class="text-sm text-slate-600">This Week</p>
                     <!-- BACKEND: count all appointments scheduled this week -->
-                    <h3
-                      class="mt-1 text-4xl font-extrabold text-black"
-                      x-text="weekCount"
-                    ></h3>
+                    <h3 class="mt-1 text-4xl font-extrabold text-black" :aria-busy="bookingsLoading">
+                      <span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--number" aria-label="Loading statistic"></span>
+                      <span x-cloak x-show="bookingsLoaded" x-text="weekCount"></span>
+                      <span x-cloak x-show="!bookingsLoaded &amp;&amp; bookingsError">—</span>
+                    </h3>
                   </div>
 
                   <div class="text-[#b14dff]">
@@ -646,7 +656,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'incoming' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  Incoming (<span x-text="incomingList.length"></span>)
+                  Incoming (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="incomingList.length"></span>)
                 </button>
 
                 <button
@@ -656,7 +666,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'queued' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  Queued (<span x-text="queuedList.length"></span>)
+                  Queued (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="queuedList.length"></span>)
                 </button>
 
                 <button
@@ -666,7 +676,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'in-progress' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  In Progress (<span x-text="inProgressList.length"></span>)
+                  In Progress (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="inProgressList.length"></span>)
                 </button>
 
                 <button
@@ -676,7 +686,7 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'for-payment' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  For Payment (<span x-text="forPaymentList.length"></span>)
+                  For Payment (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="forPaymentList.length"></span>)
                 </button>
 
                 <button
@@ -686,15 +696,20 @@
                   class="rounded-full px-3 py-3 text-sm font-bold transition"
                   :class="activeTab === 'to-be-picked-up' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'"
                 >
-                  To Pick Up (<span x-text="releasedList.length"></span>)
+                  To Pick Up (<span data-session-public x-show="bookingsLoading" class="admin-skeleton admin-skeleton--count" aria-label="Loading count"></span><span class="admin-count" x-cloak x-show="bookingsLoaded" x-text="releasedList.length"></span>)
                 </button>
 
               </div>
             </div>
           </section>
 
+          <div data-session-public x-show="bookingsLoading" class="mt-6 space-y-4" role="status" aria-label="Loading grooming visits">
+            <div class="admin-skeleton-card"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+            <div class="admin-skeleton-card"><span class="admin-skeleton admin-skeleton--line"></span><span class="admin-skeleton admin-skeleton--line admin-skeleton--short"></span></div>
+          </div>
+          <p x-cloak x-show="bookingsError" class="admin-load-error" role="alert"><span x-text="bookingsError"></span><button type="button" @click="loadAdminBookings()">Retry</button></p>
           <!-- Incoming -->
-          <section x-show="activeTab === 'incoming'" class="mt-6 space-y-4">
+          <section x-cloak x-show="bookingsLoaded &amp;&amp; activeTab === 'incoming'" class="mt-6 space-y-4">
             <!-- EMPTY STATE -->
             <template x-if="incomingList.length === 0">
               <div
@@ -768,7 +783,7 @@
           </section>
 
           <!-- Shared queue card: the booking keeps the same anatomy through pickup. -->
-          <section x-show="activeTab !== 'incoming'" class="mt-6 space-y-4" aria-label="Grooming visits">
+          <section x-cloak x-show="bookingsLoaded &amp;&amp; activeTab !== 'incoming'" class="mt-6 space-y-4" aria-label="Grooming visits">
             <template x-if="operationalBookings.length === 0">
               <div class="grooming-empty" x-text="({ queued: 'No pets are queued right now', 'in-progress': 'No ongoing grooming right now', 'for-payment': 'No pending payments', 'to-be-picked-up': 'No pets awaiting pickup' })[activeTab]"></div>
             </template>
@@ -1665,13 +1680,13 @@
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?paymongo=20261016&grooming-cancellation=20261016&v=grooming-notes-20260927&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018&loading=20261018"></script>
     <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
     <!-- Existing sidebar script -->
-    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
+    <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017&loading=20261018"></script>
 
     <script>
       window.ADMIN_DASHBOARD_CONFIG = {
@@ -1685,6 +1700,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018"></script>
   </body>
 </html>

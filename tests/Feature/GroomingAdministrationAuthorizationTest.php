@@ -30,6 +30,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     ];
 
     private const GROOMING_ADMIN_ROUTES = [
+        ['GET', 'api/admin/dashboard/summary'],
+        ['GET', 'api/admin/dashboard/activity'],
+        ['GET', 'api/admin/grooming/activity'],
         ['GET', 'api/admin/notifications'],
         ['PATCH', 'api/admin/notifications/read-all'],
         ['PATCH', 'api/admin/notifications/{id}/read'],
@@ -376,6 +379,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public static function unauthenticatedGroomingRoutes(): array
     {
         return [
+            'dashboard summary' => ['GET', '/api/admin/dashboard/summary'],
+            'dashboard activity' => ['GET', '/api/admin/dashboard/activity'],
+            'sidebar activity' => ['GET', '/api/admin/grooming/activity'],
             'queue listing' => ['GET', '/api/admin/bookings'],
             'add pet groomer' => ['POST', '/api/admin/pet-groomers', ['first_name' => 'Anna']],
             'change pet groomer' => ['PATCH', '/api/admin/pet-groomers/1', ['on_duty' => true]],
@@ -414,6 +420,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public static function customerForbiddenGroomingRoutes(): array
     {
         return [
+            'dashboard summary' => ['GET', '/api/admin/dashboard/summary'],
+            'dashboard activity' => ['GET', '/api/admin/dashboard/activity'],
+            'sidebar activity' => ['GET', '/api/admin/grooming/activity'],
             'staff notifications' => ['GET', '/api/admin/notifications'],
             'mark all staff notifications read' => ['PATCH', '/api/admin/notifications/read-all'],
             'mark staff notification read' => ['PATCH', '/api/admin/notifications/1/read'],
