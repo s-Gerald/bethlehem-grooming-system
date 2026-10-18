@@ -25,25 +25,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginCodeResendCountdown = document.getElementById("loginCodeResendCountdown");
 
   let resendCodeTimer = null;
-  let resendCodeCount = 0;
-  const RESEND_CODE_MAX = 3;
+  let resendUntil = 0;
+  let loginBusy = false;
   let stopDeliveryCheck = () => {};
-  let deliveryMessage = "";
 
   function checkDelivery(receipt) {
     stopDeliveryCheck();
     if (!receipt) return;
     stopDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
-      if (status === "sent") {
-        if (loginCodeMessage.textContent === deliveryMessage) clearLoginCodeMessage();
-        return;
+      if (status === "failed" && !loginCodeMessage.textContent) {
+        showLoginCodeMessage("Couldn't send the code. Try again.", false);
       }
-      deliveryMessage = status === "queued"
-        ? "Your sign-in email is queued. Enter the code when it arrives."
-        : status === "failed"
-          ? "The sign-in code could not be sent. Please try Resend Code."
-          : "Your email is taking longer than expected. Please try Resend Code shortly.";
-      showLoginCodeMessage(deliveryMessage);
     });
   }
 
@@ -104,7 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     })();
   } else if (loginCodeMode) {
-    document.title = "Confirm Sign-In | Bethlehem Animal Clinic";
+    document.title = "Verify your sign-in | Bethlehem Animal Clinic";
 
     if (!API.hasPendingLoginConfirmation()) {
       errorTitle.textContent = "Sign-In Request Unavailable";
@@ -112,34 +104,36 @@ document.addEventListener("DOMContentLoaded", () => {
       showState("error");
     } else {
       const email = API.getPendingLoginConfirmationEmail();
-      loginCodeEmail.textContent = email || "your registered email";
+      loginCodeEmail.textContent = window.VerificationCode.maskEmail(email);
       showState("loginCode");
       loginCodeInput.focus();
-      startResendCountdown(60);
+      let deadline = 0;
+      try { deadline = Number(sessionStorage.getItem("pendingLoginResendUntil")) || 0; } catch { /* UX only */ }
+      startResendCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
       checkDelivery(API.getEmailDeliveryToken("login"));
     }
   }
 
-  loginCodeInput.addEventListener("input", () => {
-    loginCodeInput.value = loginCodeInput.value.replace(/\D/g, "").slice(0, 6);
-    loginCodeSubmit.disabled = loginCodeInput.value.length !== 6;
-    clearLoginCodeMessage();
-  });
+  const loginOtp = window.VerificationCode.bind(loginCodeInput,
+    [...stateLoginCode.querySelectorAll(".verification-code-cell")], () => {
+      loginCodeSubmit.disabled = loginBusy || loginCodeInput.value.length !== 6;
+      clearLoginCodeMessage();
+    });
 
   loginCodeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     clearLoginCodeMessage();
 
     const code = loginCodeInput.value;
-    if (!/^\d{6}$/.test(code)) return;
+    if (loginBusy || !/^\d{6}$/.test(code)) return;
 
     setLoginCodeBusy(true);
 
     try {
       const response = await API.confirmLoginCode(code);
       stopDeliveryCheck();
-      successTitle.textContent = "Sign-In Confirmed!";
-      successMessage.textContent = "Redirecting you to your account…";
+      successTitle.textContent = "Sign-in verified";
+      successMessage.textContent = "Redirecting to your account…";
       showState("success");
       setTimeout(() => {
         window.location.replace(
@@ -149,85 +143,70 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }, 750);
     } catch (error) {
-      if (error.expired || error.status === 403 || error.status === 429) {
+      if (error.expired || error.status === 403) {
         errorTitle.textContent = "Sign-In Confirmation Failed";
         errorMessage.textContent = error.message
           || "This sign-in request is no longer available. Please sign in again.";
         showState("error");
       } else {
-        showLoginCodeMessage(error.message || "Unable to confirm sign-in. Please try again.");
+        showLoginCodeMessage(error.status === 429 ? "Too many attempts. Try again later."
+          : error.status === 422 ? "Invalid or expired code." : "Couldn't verify the code. Try again.");
       }
     } finally {
       setLoginCodeBusy(false);
     }
   });
 
-  function lockResendPermanently() {
-    clearInterval(resendCodeTimer);
-    resendCodeTimer = null;
-    loginCodeResendBtn.classList.remove("hidden");
-    loginCodeResendBtn.disabled = true;
-    loginCodeResendCountdown.classList.add("hidden");
-    showLoginCodeMessage("Too many resend attempts. Try again later.", "error");
-  }
-
   function startResendCountdown(seconds = 60) {
-    loginCodeResendBtn.disabled = true;
-    loginCodeResendBtn.classList.add("hidden");
-    loginCodeResendCountdown.classList.remove("hidden");
-
-    let remaining = seconds;
+    clearInterval(resendCodeTimer);
+    resendUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+    try { sessionStorage.setItem("pendingLoginResendUntil", String(resendUntil)); } catch { /* UX only */ }
     function tick() {
-      if (remaining <= 0) {
+      const remaining = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000));
+      loginCodeResendBtn.disabled = remaining > 0 || loginBusy;
+      loginCodeResendBtn.classList.toggle("hidden", remaining > 0);
+      loginCodeResendCountdown.classList.toggle("hidden", remaining === 0);
+      loginCodeResendCountdown.textContent = `Resend in ${window.VerificationCode.formatCountdown(remaining)}`;
+      if (!remaining) {
         clearInterval(resendCodeTimer);
         resendCodeTimer = null;
-        loginCodeResendCountdown.classList.add("hidden");
-        if (resendCodeCount >= RESEND_CODE_MAX) {
-          lockResendPermanently();
-        } else {
-          loginCodeResendBtn.classList.remove("hidden");
-          loginCodeResendBtn.disabled = false;
-        }
-        return;
       }
-      loginCodeResendCountdown.textContent = `Resend available in ${remaining}s`;
-      remaining--;
     }
-    tick();
     resendCodeTimer = setInterval(tick, 1000);
+    tick();
   }
 
-  if (loginCodeResendBtn) {
-    loginCodeResendBtn.addEventListener("click", async () => {
-      clearLoginCodeMessage();
-      loginCodeResendBtn.disabled = true;
-
-      try {
-        const result = await API.resendLoginCode();
-        resendCodeCount++;
-        if (resendCodeCount >= RESEND_CODE_MAX) {
-          showLoginCodeMessage("A new email is queued. This was your last resend attempt.", "success");
-          startResendCountdown(60);
-        } else {
-          showLoginCodeMessage("A new sign-in email is queued. Please check your inbox shortly.", "success");
-          startResendCountdown(60);
-        }
-        checkDelivery(result?.email_delivery_token);
-      } catch (error) {
-        loginCodeResendBtn.disabled = false;
-        if (error.status === 429) {
-          resendCodeCount = RESEND_CODE_MAX;
-          lockResendPermanently();
-        } else if (error.expired || error.status === 422) {
-          errorTitle.textContent = "Sign-In Expired";
-          errorMessage.textContent = error.message || "This sign-in session has expired. Please sign in again.";
-          showState("error");
-        } else {
-          showLoginCodeMessage(error.message || "Failed to resend. Please try again.");
-        }
+  loginCodeResendBtn.addEventListener("click", async () => {
+    if (loginCodeResendBtn.disabled || loginBusy) return;
+    clearLoginCodeMessage();
+    stopDeliveryCheck();
+    loginBusy = true;
+    loginCodeResendBtn.disabled = true;
+    loginCodeResendBtn.textContent = "Sending...";
+    loginCodeSubmit.disabled = true;
+    try {
+      const result = await API.resendLoginCode();
+      loginOtp.clear();
+      startResendCountdown(result?.resend_after ?? 60);
+      checkDelivery(result?.email_delivery_token);
+    } catch (error) {
+      if (error.status === 429) {
+        startResendCountdown(error.retryAfter || 60);
+        showLoginCodeMessage("Too many attempts. Try again later.", false);
+      } else if (error.expired || error.status === 422 || error.status === 403) {
+        errorTitle.textContent = "Sign-in expired";
+        errorMessage.textContent = error.message || "Please sign in again.";
+        showState("error");
+      } else {
+        showLoginCodeMessage("Couldn't send the code. Try again.", false);
       }
-    });
-  }
+    } finally {
+      loginBusy = false;
+      loginCodeResendBtn.textContent = "Resend code";
+      loginCodeResendBtn.disabled = Date.now() < resendUntil;
+      loginCodeSubmit.disabled = loginCodeInput.value.length !== 6;
+    }
+  });
 
   resendForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -239,9 +218,9 @@ document.addEventListener("DOMContentLoaded", () => {
     setResendBusy(true);
 
     try {
-      await API.resendVerification(email);
+      const result = await API.resendVerification(email);
       sessionStorage.setItem("pendingVerificationEmail", email);
-      sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + 45000));
+      sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (result?.resend_after ?? 45) * 1000));
       window.location.replace("./verify-email.html");
     } catch (error) {
       if (error.status === 429) {
@@ -261,25 +240,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setLoginCodeBusy(busy) {
+    loginBusy = busy;
     loginCodeInput.disabled = busy;
+    loginCodeResendBtn.disabled = busy || Date.now() < resendUntil;
     loginCodeSubmit.disabled = busy || loginCodeInput.value.length !== 6;
     const label = document.getElementById("loginCodeBtnLabel");
-    if (label) label.textContent = busy ? "Confirming…" : "Confirm Sign-In";
+    if (label) label.textContent = busy ? "Verifying..." : "Verify and continue";
   }
 
-  function showLoginCodeMessage(text, type = "error") {
-    const styles = {
-      error:   "mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700",
-      success: "mt-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700",
-    };
-    loginCodeMessage.className = styles[type] || styles.error;
+  function showLoginCodeMessage(text, invalid = true) {
+    loginCodeMessage.className = "verification-message";
     loginCodeMessage.textContent = text;
-    loginCodeMessage.classList.remove("hidden");
+    loginCodeInput.setAttribute("aria-invalid", invalid ? "true" : "false");
   }
 
   function clearLoginCodeMessage() {
-    loginCodeMessage.className = "mt-3 hidden rounded-2xl border px-4 py-3 text-sm";
+    loginCodeMessage.className = "hidden";
     loginCodeMessage.textContent = "";
+    loginCodeInput.setAttribute("aria-invalid", "false");
   }
 
   function showResendMessage(type, text) {

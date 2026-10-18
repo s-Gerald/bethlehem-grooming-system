@@ -88,7 +88,90 @@ tasks:
 /usr/bin/php /home/ACCOUNT/domains/DOMAIN/public_html/artisan queue:work database --stop-when-empty --max-time=50 --timeout=45 --tries=3 --sleep=1
 ```
 
-The direct worker cron is the selected setup for this test deployment.
+The direct worker cron is the documented deployed setup. The performance changes
+below are local implementation changes; they have not been deployed or timed
+against Brevo as part of this release.
+
+## Authentication mail performance rollout
+
+The once-per-minute worker can add 0–60 seconds before a first attempt, plus any
+backlog. Previously, authentication jobs retried after 60 and 300 seconds, and the
+receipt was incorrectly marked failed on the first exception. Those intervals
+can explain multi-minute processing delays; they do not establish which portion
+of the reported 2–5 minutes occurred at Brevo or the recipient.
+
+Prefer a **managed persistent worker** if the account actually provides one.
+Confirm process supervision with Hostinger before selecting this option; SSH
+access alone is not evidence that persistent daemons are supported. Set
+`AUTH_MAIL_DELIVERY=queued`. Optionally set `AUTH_MAIL_QUEUE=auth` and configure the
+managed worker to consume `--queue=auth,default --sleep=1 --timeout=45 --tries=3`.
+Replace the existing cron worker rather than adding a second worker setup.
+Restart the managed worker after deployment with `php artisan queue:restart`.
+
+For the currently documented **cron-only deployment**, set privately:
+
+```dotenv
+AUTH_MAIL_DELIVERY=immediate
+QUEUE_CONNECTION=database
+CACHE_STORE=database
+MAIL_TIMEOUT=30
+```
+
+Leave `AUTH_MAIL_QUEUE` unset so the existing single default-queue cron continues
+to work unchanged. Rebuild configuration with `php artisan config:cache` and
+restart any running workers. Keep the existing Brevo credentials and `APP_KEY`.
+No new cron, shell background process, scheduler, public worker route, or new
+provider is required. Both PHP runtimes must use the same shared cache/database.
+
+Immediate mode persists the normal **encrypted notification job first**, then
+uses a Laravel termination callback after the HTTP response to attempt only
+authentication mail. On a FastCGI host, response flushing allows the verification
+form to load while SMTP runs. Confirm that the deployed PHP response-flush support
+works; on SAPIs without it, the client can still wait for SMTP. The bounded attempt
+uses an existing PHP request process, not a new background worker. At higher mail
+volume it consumes PHP capacity, so a supported supervised worker is preferable.
+
+If the request ends early or SMTP fails, the saved job remains for the existing
+cron. Successful immediate sends also leave a lightweight job that the cron
+removes without sending again. A shared receipt lock prevents concurrent request
+and worker sends. Receipts remain cached through the longest supported issuance
+lifetime (24 hours for staff setup, plus a buffer). Routine notifications, including
+grooming completion, keep their existing queue behavior.
+
+Retries use three worker attempts with 5- and 15-second backoff. On cron-only
+hosting, retries may still wait for a later minute tick. Transient failures remain
+`retrying`; only exhausted attempts become `failed`. Each new job checks its
+issuance hash and expiry before SMTP, dropping replaced, consumed, and expired
+work. Pre-release OTP jobs without issuance metadata are suppressed; request a
+fresh code after deployment. Previously issued verification links remain supported.
+Do not bulk retry old authentication failures. An email already handed to SMTP
+cannot be recalled; a superseded code still fails verification. As with ordinary
+SMTP queues, a process crash after remote acceptance but before recording success
+is an ambiguous outcome, so exact-once inbox delivery cannot be guaranteed.
+
+Login resends now enforce the existing UI's 60-second cooldown on the server.
+Registration keeps its 45-second cooldown. Existing request and invalid-code
+limits remain in place. The UI persists absolute deadlines and honors server
+`resend_after` and `Retry-After`, including temporary endpoint throttles.
+
+### Measuring delivery
+
+Use the `Authentication mail delivery` log entries, correlated by the opaque
+`delivery_id`. They contain status and numeric timings only, never recipient
+addresses, OTPs, bodies, credentials, or receipt bearer tokens:
+
+- `queued.request_ms`: request start to queue submission, where PHP supplies
+  `REQUEST_TIME_FLOAT`.
+- `sending.elapsed_ms`: queue submission to the request/worker send attempt.
+- `sent.transport_ms`: transport execution time; `sent.elapsed_ms` includes wait.
+- `retrying`, `failed`, and `superseded`: retry lifecycle and skipped issuance.
+
+`sent` means the configured transport accepted the message. To measure subsequent
+Brevo processing and recipient delivery, compare these timestamps with Brevo's
+transactional events and the controlled inbox's received headers. The 5–30 second
+inbox target is not an application guarantee. No real SMTP or inbox latency has
+been measured locally; array-transport tests establish removal of the cron wait
+for a successful immediate attempt and verify that the worker does not resend it.
 
 ## Hosting environment
 
@@ -156,9 +239,9 @@ below the worker's 45 seconds, which is below the database queue's default
 90-second reservation. Hostinger CLI should support `pcntl` for worker timeouts;
 check `php -m`. Laravel's database queue reserves each job so concurrent worker
 processes do not normally process the same job.
-Notification-specific retry attempts and backoff remain unchanged. Delayed retry
-jobs run on subsequent cron ticks. Mail can take roughly a minute to start on
-shared hosting. The cron output endpoint captures console output; exceptions and
+Authentication jobs use the retry policy described above. Delayed retry jobs run
+on subsequent cron ticks. In queued mode, mail can take roughly a minute to start
+on shared hosting. The cron output endpoint captures console output; exceptions and
 terminal failures remain in Laravel's logs and `failed_jobs`.
 
 If the account provides a supervised persistent worker, use that instead.
@@ -175,7 +258,7 @@ Use inboxes you control and dedicated customer, staff, and admin test accounts.
 Never log or commit OTPs, passwords, queue payloads, or mail credentials.
 
 1. Register a customer. Confirm a pending registration and queued job exist,
-   wait for the cron, and receive the actual Brevo verification email. Enter its
+   check the immediate attempt or worker timing, and receive the actual Brevo verification email. Enter its
    code: the customer is created, signed in, and redirected to the customer dashboard.
 2. Sign out, then sign in with the verified customer's password. No access token
    is issued until the received login code is submitted. Confirm the dashboard.
@@ -185,16 +268,19 @@ Never log or commit OTPs, passwords, queue payloads, or mail credentials.
    retain the previous challenge. Resend does not reset the invalid-code counter.
 5. Check wrong codes, five incorrect attempts, expired codes, expired challenges,
    and the existing resend/request throttles. None may create a session.
-6. On the test host only, simulate relay rejection and confirm the current error
-   panel appears without credentials or a success claim. Restore the private
+6. On the test host only, simulate relay rejection. A temporary failure should
+   remain unobtrusive while the saved job retries; exhausted retries should show
+   "Couldn't send the code. Try again." Restore the private
    configuration and rebuild its cache. Confirm a retry or resend is delivered.
 7. Check `php artisan queue:failed`, queue/scheduler logs, and Brevo transactional
    delivery events. An empty queue alone does not prove inbox receipt. Avoid
    retrying expired authentication jobs; request a fresh code instead.
 
 New jobs include a private delivery receipt in their encrypted queue middleware.
-The UI polls every five seconds for at most two minutes and distinguishes queued,
-transport-accepted, failed, and delayed delivery. The status endpoint never returns
+The UI polls every five seconds for at most two minutes. Normal queued, sending,
+retrying, accepted, and delayed states do not display banners or delivery claims.
+Only terminal failure prompts the user; OTP entry never waits for the receipt.
+The status endpoint never returns
 email addresses, codes, exception details, or credentials. Public email recovery
 resends expose no receipt unless the private pending-registration edit credential
 matches, preserving the existing generic recovery response. A receipt grants no

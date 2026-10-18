@@ -77,7 +77,8 @@ class PendingStaffAccountService
             .'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
 
         try {
-            $staff->notify(new SetUpStaffPasswordNotification($setupUrl));
+            AuthenticationMailDelivery::queue($staff, new SetUpStaffPasswordNotification($setupUrl),
+                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail());
         } catch (Throwable $exception) {
             DB::transaction(function () use ($staff, $tokenHash): void {
                 $createdStaff = User::query()

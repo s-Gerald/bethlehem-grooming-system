@@ -1,28 +1,25 @@
-// Signup delivery/verification actions are separate from the shared OTP input.
+// Signup actions use the shared OTP input and the existing private delivery receipt.
 document.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(window.location.search);
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   if (params.get("mode") === "login" || params.has("token") || fragment.has("token")) return;
 
   const view = document.getElementById("statePending");
-  const title = document.getElementById("verificationTitle");
   const description = document.getElementById("verificationDescription");
+  const maskedEmail = document.getElementById("verifyCodeEmail");
   const form = document.getElementById("signupCodeForm");
   const input = document.getElementById("signupCode");
   const submit = document.getElementById("signupCodeSubmit");
   const resend = document.getElementById("signupResend");
-  const switchChannel = document.getElementById("switchVerificationChannel");
   const message = document.getElementById("signupCodeMessage");
   const recovery = document.getElementById("verificationEmailRecovery");
   const recoveryEmail = document.getElementById("verificationEmail");
   const read = (key) => { try { return sessionStorage.getItem(key) || ""; } catch { return ""; } };
   const write = (key, value) => { try { sessionStorage.setItem(key, value); } catch { /* UX only */ } };
   let email = read("pendingVerificationEmail");
-  const phone = read("pendingVerificationPhone");
-  let channel = "email";
   let busy = "";
   let completed = false;
-  const until = { email: Number(read("pendingVerificationResendUntil")) || 0, sms: 0 };
+  let until = Number(read("pendingVerificationResendUntil")) || 0;
   let timer = null;
   let stopDeliveryCheck = () => {};
 
@@ -30,42 +27,16 @@ document.addEventListener("DOMContentLoaded", () => {
     stopDeliveryCheck();
     if (!receipt) return;
     stopDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
-      if (completed || channel !== "email") return;
-      if (status === "queued") description.textContent = `Your verification email for ${email} is queued. Enter the code when it arrives.`;
-      if (status === "sent") description.textContent = `We sent a 6-digit verification code to ${email}.`;
-      if (status === "failed" || status === "delayed") {
-        description.textContent = `Enter the verification code for ${email} when it arrives.`;
-        setMessage(status === "failed"
-          ? "The code could not be sent. Please try Resend Code."
-          : "Your email is taking longer than expected. Please try Resend Code shortly.");
+      if (!completed && status === "failed" && !message.textContent) {
+        setMessage("Couldn't send the code. Try again.", false);
       }
     });
   }
 
-  // These adapters are the only delivery boundary. SMS intentionally has no
-  // endpoint, code generation, verification result, or account/session mutation.
-  const localSmsInteraction = () => new Promise((resolve) => window.setTimeout(resolve, 400));
-  const actions = {
-    email: {
-      send: () => API.resendVerification(email),
-      verify: (code) => API.verifyEmail(email, code),
-    },
-    sms: {
-      async send() {
-        await localSmsInteraction();
-        return { delivered: false, resend_after: 45 };
-      },
-      async verify() {
-        await localSmsInteraction();
-        throw new Error("We couldn't verify this mobile number. Use email to finish creating your account.");
-      },
-    },
-  };
-
-  function setMessage(text = "") {
+  function setMessage(text = "", invalid = true) {
     message.textContent = text;
-    message.className = text ? "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" : "hidden";
-    input.setAttribute("aria-invalid", text ? "true" : "false");
+    message.className = text ? "verification-message" : "hidden";
+    input.setAttribute("aria-invalid", text && invalid ? "true" : "false");
   }
   const otp = window.VerificationCode.bind(input, [...view.querySelectorAll(".verification-code-cell")], () => {
     setMessage();
@@ -73,14 +44,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   function updateControls() {
-    const remaining = Math.max(0, Math.ceil((until[channel] - Date.now()) / 1000));
-    input.disabled = !!busy || completed;
+    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    input.disabled = busy === "verify" || completed;
     recoveryEmail.disabled = !!busy || completed;
     submit.disabled = !!busy || completed || input.value.length !== 6;
-    switchChannel.disabled = !!busy || completed || !phone;
     resend.disabled = !!busy || completed || remaining > 0;
-    submit.textContent = busy === "verify" ? "Verifying..." : channel === "email" ? "Verify Email" : "Verify Mobile Number";
-    resend.textContent = busy === "send" ? "Sending..." : remaining > 0 ? `Resend code in ${remaining}s` : "Resend Code";
+    submit.textContent = busy === "verify" ? "Verifying..." : "Verify and continue";
+    resend.textContent = busy === "send" ? "Sending..." : remaining > 0
+      ? `Resend in ${window.VerificationCode.formatCountdown(remaining)}` : "Resend code";
     if (remaining === 0 && timer) {
       window.clearInterval(timer);
       timer = null;
@@ -94,24 +65,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function startCooldown(seconds = 45) {
-    until[channel] = Date.now() + Math.max(0, Number(seconds) || 45) * 1000;
-    if (channel === "email") write("pendingVerificationResendUntil", String(until.email));
+    until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+    write("pendingVerificationResendUntil", String(until));
     scheduleCountdown();
   }
 
-  function renderChannel() {
-    title.textContent = channel === "email" ? "Verify your email" : "Verify your mobile number";
-    document.title = `${title.textContent} | Bethlehem Animal Clinic`;
-    description.textContent = channel === "email"
-      ? `Enter the 6-digit verification code for ${email || "your email address"}.`
-      : `We'll send a 6-digit verification code to ${phone.slice(0, 4)} ••• ••${phone.slice(-2)}.`;
-    switchChannel.textContent = channel === "email" ? "Use SMS instead" : "Use email instead";
-    recovery.classList.toggle("hidden", !!email || channel !== "email");
-    otp.clear();
-    scheduleCountdown();
-    if (channel === "email") checkDelivery(API.getEmailDeliveryToken("registration"));
-    else stopDeliveryCheck();
-    input.focus();
+  function renderEmail() {
+    description.textContent = "Enter the 6-digit code sent to";
+    maskedEmail.textContent = window.VerificationCode.maskEmail(email);
+    recovery.classList.toggle("hidden", !!email);
   }
 
   function resolveEmail() {
@@ -123,30 +85,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     email = recoveryEmail.value.trim().toLowerCase();
     write("pendingVerificationEmail", email);
-    description.textContent = `Enter the 6-digit verification code for ${email}.`;
-    recovery.classList.add("hidden");
+    renderEmail();
     return true;
   }
 
-  switchChannel.addEventListener("click", () => {
-    if (busy || completed || !phone) return;
-    channel = channel === "email" ? "sms" : "email";
-    renderChannel();
-  });
-
   resend.addEventListener("click", async () => {
-    if (resend.disabled || busy || (channel === "email" && !resolveEmail())) return;
+    if (resend.disabled || busy || !resolveEmail()) return;
     busy = "send";
+    stopDeliveryCheck();
     setMessage();
     updateControls();
     try {
-      const result = await actions[channel].send();
+      const result = await API.resendVerification(email);
       otp.clear();
-      startCooldown(result?.resend_after);
-      if (channel === "email") checkDelivery(result?.email_delivery_token);
-      if (result?.delivered === false) setMessage("We couldn't send a text message. Use email to finish creating your account.");
+      startCooldown(result?.resend_after ?? 45);
+      checkDelivery(result?.email_delivery_token);
     } catch (error) {
-      setMessage(error?.status === 429 ? "Please wait before requesting another code." : "The code could not be sent. Please try again.");
+      setMessage(error?.status === 429 ? "Too many attempts. Try again later." : "Couldn't send the code. Try again.", false);
       if (error?.retryAfter) startCooldown(error.retryAfter);
     } finally {
       busy = "";
@@ -156,20 +111,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (busy || completed || (channel === "email" && !resolveEmail())) return;
-    if (!/^[0-9]{6}$/.test(input.value)) {
-      setMessage("Invalid or expired verification code.");
-      return;
-    }
+    if (busy || completed || !resolveEmail()) return;
+    if (!/^[0-9]{6}$/.test(input.value)) return;
     busy = "verify";
     setMessage();
     updateControls();
     try {
-      const result = await actions[channel].verify(input.value);
-      // Only an authenticated Email response can complete this registration.
-      if (channel !== "email" || !result?.token || result?.user?.role !== "customer") {
-        throw new Error("Invalid or expired verification code.");
-      }
+      const result = await API.verifyEmail(email, input.value);
+      if (!result?.token || result?.user?.role !== "customer") throw new Error("Invalid session");
       completed = true;
       stopDeliveryCheck();
       otp.clear();
@@ -179,12 +128,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (timer) window.clearInterval(timer);
       view.classList.add("hidden");
       document.getElementById("stateSuccess").classList.remove("hidden");
-      window.setTimeout(() => window.location.replace("./dashboard.html"), 1500);
+      window.setTimeout(() => window.location.replace("./dashboard.html"), 750);
     } catch (error) {
-      setMessage(channel === "sms" ? error.message : error?.status === 429
-        ? "Too many attempts. Please request a new verification code."
+      setMessage(error?.status === 429 ? "Too many attempts. Try again later."
+        : error?.status >= 500 || !error?.status ? "Couldn't verify the code. Try again."
         : error?.message === "These registration details are no longer available. Please register again."
-          ? error.message : "Invalid or expired verification code.");
+          ? error.message : "Invalid or expired code.");
     } finally {
       busy = "";
       updateControls();
@@ -192,8 +141,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   view.classList.remove("hidden");
-  renderChannel();
-  if (read("pendingVerificationDeliveryFailed") === "1") {
-    setMessage("Your registration was saved, but the code could not be sent. Please select Resend Code.");
-  }
+  document.getElementById("verificationTitle").textContent = "Verify your email";
+  renderEmail();
+  scheduleCountdown();
+  checkDelivery(API.getEmailDeliveryToken("registration"));
+  if (read("pendingVerificationDeliveryFailed") === "1") setMessage("Couldn't send the code. Try again.", false);
+  if (email) input.focus();
+  else recoveryEmail.focus();
 });

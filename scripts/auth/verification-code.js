@@ -1,5 +1,12 @@
 // One underlying input drives six visual cells; codes never leave this input.
 window.VerificationCode = {
+  maskEmail(email) {
+    const [local, domain] = String(email || "").split("@");
+    return local && domain ? `${Array.from(local)[0]}***@${domain}` : "your email address";
+  },
+  formatCountdown(seconds) {
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  },
   bind(codeInput, codeCells, onChange = () => {}) {
     function updateCodeCells() {
       const digits = codeInput.value;

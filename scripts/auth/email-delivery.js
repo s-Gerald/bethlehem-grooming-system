@@ -13,7 +13,7 @@ window.AuthenticationEmailDelivery = {
       } catch { /* A transient status request failure does not imply delivery. */ }
       if (stopped) return;
       checks++;
-      if (status === "sent" || status === "failed") {
+      if (status === "sent" || status === "failed" || status === "superseded") {
         onStatus(status);
         return;
       }

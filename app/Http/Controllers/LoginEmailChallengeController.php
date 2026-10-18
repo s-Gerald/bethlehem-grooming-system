@@ -35,6 +35,8 @@ class LoginEmailChallengeController extends Controller
             'success' => true,
             'message' => 'A new sign-in email is queued. Please check your inbox shortly.',
             'email_delivery_token' => $receipt,
+            'resend_after' => LoginEmailChallengeService::resendAfter(LoginEmailChallenge::query()
+                ->where('poll_token_hash', hash('sha256', $data['poll_token']))->first()),
         ]);
     }
 

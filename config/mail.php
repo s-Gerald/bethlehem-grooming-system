@@ -16,6 +16,12 @@ return [
 
     'default' => env('MAIL_MAILER', 'log'),
 
+    // Only authentication mail uses this policy. Routine notifications stay queued.
+    'authentication' => [
+        'delivery' => env('AUTH_MAIL_DELIVERY', 'queued'),
+        'queue' => env('AUTH_MAIL_QUEUE'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations

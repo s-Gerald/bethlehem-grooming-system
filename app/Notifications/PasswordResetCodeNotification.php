@@ -11,17 +11,13 @@ use Illuminate\Notifications\Notification;
 class PasswordResetCodeNotification extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
+    use \App\Notifications\Concerns\TracksAuthenticationMail;
 
     public int $tries = 3;
 
     public function __construct(public readonly string $code)
     {
         $this->afterCommit();
-    }
-
-    public function backoff(): array
-    {
-        return [60, 300, 900];
     }
 
     public function via(object $notifiable): array

@@ -216,17 +216,21 @@ class EmailVerificationController extends Controller
             }
         }
 
+        $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
+            && is_string($request->input('registration_token'))
+            && $registrant->registration_edit_token_hash
+            && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')));
+
         return response()->json([
             'success' => true,
             'message' => 'If that email is registered and unverified, a new verification email is queued.',
             // Only the private signup tab may inspect delivery. Public recovery
             // responses must not reveal whether an address is registered.
-            'email_delivery_token' => $registrant instanceof PendingCustomerRegistration
-                && is_string($request->input('registration_token'))
-                && $registrant->registration_edit_token_hash
-                && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')))
-                    ? ($receipt ?? null) : null,
-            'resend_after' => RegistrationEmailCodeService::COOLDOWN_SECONDS,
+            'email_delivery_token' => $canInspectDelivery ? ($receipt ?? null) : null,
+            'resend_after' => $canInspectDelivery && isset($receipt)
+                ? max(0, ($registrant->fresh()->email_verification_last_sent_at?->timestamp ?? 0)
+                    + RegistrationEmailCodeService::COOLDOWN_SECONDS - now()->timestamp)
+                : RegistrationEmailCodeService::COOLDOWN_SECONDS,
         ]);
     }
 

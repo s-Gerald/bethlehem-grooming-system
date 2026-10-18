@@ -8,15 +8,16 @@
     <title>Verify Your Email | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
-    <link rel="stylesheet" href="../../css/components/verification-code.css?v=verification-css-20261005&release=verification-footer-gap-20261005" />
+    <link rel="stylesheet" href="../../css/components/verification-code.css?v=auth-speed-20261018" />
   </head>
-  <body class="min-h-screen bg-slate-100 px-4 py-8">
-    <div class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-lg items-center justify-center">
-      <div class="w-full rounded-[1.75rem] bg-white shadow-[0_18px_48px_rgba(15,23,42,0.12)]">
-        <div id="verificationCardContent" class="px-8 py-10 sm:px-10">
+  <body class="verification-page">
+    <main class="verification-layout">
+      <div class="verification-card">
+        <div id="verificationCardContent">
+          <img class="verification-logo" src="../../assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic" width="56" height="56" />
 
           <!-- ── Verifying state (shown while API call is in-flight) ── -->
-          <div id="stateVerifying" class="hidden text-center">
+          <div id="stateVerifying" class="hidden text-center" role="status">
             <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
               <svg class="h-8 w-8 animate-spin fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg>
             </div>
@@ -25,19 +26,19 @@
           </div>
 
           <!-- ── Success state ── -->
-          <div id="stateSuccess" class="hidden text-center">
+          <div id="stateSuccess" class="hidden text-center" role="status">
             <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
               <svg class="h-8 w-8 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg>
             </div>
-            <h2 id="successTitle" class="text-2xl font-bold text-slate-800">Email Verified!</h2>
-            <p id="successMessage" class="mt-2 text-sm text-slate-500">Your account is now active. Redirecting you to your account…</p>
+            <h2 id="successTitle" class="text-2xl font-bold text-slate-800">Email verified</h2>
+            <p id="successMessage" class="mt-2 text-sm text-slate-500">Redirecting to your account…</p>
           </div>
 
           <div id="statePending" class="hidden">
-            <div class="mb-8 text-center">
-              <img class="mx-auto mb-4 h-16 w-auto" src="../../assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic Logo" />
-              <h1 id="verificationTitle" class="text-3xl font-bold leading-tight text-slate-800">Verify your email</h1>
-              <p id="verificationDescription" class="mt-4 text-sm leading-6 text-slate-500"></p>
+            <div class="verification-heading">
+              <h1 id="verificationTitle">Verify your email</h1>
+              <p id="verificationDescription">Enter the 6-digit code sent to</p>
+              <p id="verifyCodeEmail" class="verification-email"></p>
             </div>
             <form id="signupCodeForm" class="space-y-5" novalidate>
               <div id="verificationEmailRecovery" class="hidden">
@@ -45,9 +46,9 @@
                 <input id="verificationEmail" type="email" autocomplete="email" class="w-full rounded-2xl border border-slate-300 px-4 py-3" required />
               </div>
               <div>
-                <label for="signupCode" class="mb-3 block text-center text-base font-semibold text-[#1e3a5f]">Verification Code</label>
+                <label for="signupCode" class="sr-only">6-digit email verification code</label>
                 <div class="verification-code-cells">
-                  <input id="signupCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="signupCodeMessage" required />
+                  <input id="signupCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="verificationDescription verifyCodeEmail signupCodeMessage" required />
                   <span class="verification-code-cell" aria-hidden="true"></span>
                   <span class="verification-code-cell" aria-hidden="true"></span>
                   <span class="verification-code-cell" aria-hidden="true"></span>
@@ -57,63 +58,46 @@
                 </div>
                 <div id="signupCodeMessage" class="hidden" role="alert"></div>
               </div>
-              <button id="signupCodeSubmit" type="submit" class="w-full rounded-2xl bg-[#315b7e] px-4 py-4 text-base font-semibold text-white transition hover:bg-[#274a66] disabled:cursor-not-allowed disabled:opacity-70">Verify Email</button>
-              <div id="signupVerificationActions" class="space-y-2 text-center text-sm text-slate-500">
-                <div>Didn't receive the code? <button id="signupResend" type="button" class="font-semibold text-[#315b7e] transition hover:text-[#274a66] disabled:cursor-not-allowed disabled:opacity-70">Resend Code</button></div>
-                <div class="text-slate-600">
-                  <button id="switchVerificationChannel" type="button" class="whitespace-nowrap transition hover:text-[#315b7e] disabled:cursor-not-allowed disabled:opacity-70">Use SMS instead</button>
-                </div>
+              <button id="signupCodeSubmit" type="submit" class="verification-primary" disabled>Verify and continue</button>
+              <div id="signupVerificationActions" class="verification-resend">
+                <p>Didn't receive the code?</p>
+                <button id="signupResend" type="button" class="verification-link">Resend code</button>
               </div>
             </form>
           </div>
 
           <!-- Login code state -->
           <div id="stateLoginCode" class="hidden text-center">
-            <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
-              <svg class="h-8 w-8 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#envelope"></use></svg>
+            <div class="verification-heading">
+              <h1>Verify your sign-in</h1>
+              <p id="loginCodeDescription">Enter the 6-digit code sent to</p>
+              <p id="loginCodeEmail" class="verification-email"></p>
             </div>
-            <h2 class="text-2xl font-bold text-slate-800">Confirm Your Sign-In</h2>
-            <p class="mt-3 text-sm leading-relaxed text-slate-500">
-              Enter the 6-digit sign-in code for
-              <span id="loginCodeEmail" class="font-semibold text-slate-700"></span>.
-            </p>
-            <form id="loginCodeForm" class="mt-6 space-y-3">
+            <form id="loginCodeForm" class="space-y-5" novalidate>
               <label for="loginCode" class="sr-only">6-digit sign-in code</label>
-              <input
-                id="loginCode"
-                type="text"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                maxlength="6"
-                pattern="[0-9]{6}"
-                aria-describedby="loginCodeMessage"
-                class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-center text-lg font-semibold tracking-[0.35em] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/10"
-                required
-              />
-              <button
-                id="loginCodeSubmit"
-                type="submit"
-                class="w-full rounded-2xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#274a66] disabled:cursor-not-allowed disabled:opacity-70"
-                disabled
-              >
-                <span id="loginCodeBtnLabel">Confirm Sign-In</span>
+              <div class="verification-code-cells">
+                <input id="loginCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" aria-describedby="loginCodeDescription loginCodeEmail loginCodeMessage" required />
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+              </div>
+              <div id="loginCodeMessage" class="hidden" role="alert"></div>
+              <button id="loginCodeSubmit" type="submit" class="verification-primary" disabled>
+                <span id="loginCodeBtnLabel">Verify and continue</span>
               </button>
             </form>
-            <div id="loginCodeMessage" class="mt-3 hidden rounded-2xl border px-4 py-3 text-sm"></div>
-            <div class="mt-4 text-center text-sm text-slate-500">
-              <button
-                id="loginCodeResendBtn"
-                type="button"
-                class="font-semibold text-[#315b7e] transition hover:text-[#274a66] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Resend Code
-              </button>
-              <span id="loginCodeResendCountdown" class="hidden text-slate-400"></span>
+            <div class="verification-resend">
+              <p>Didn't receive the code?</p>
+              <button id="loginCodeResendBtn" type="button" class="verification-link">Resend code</button>
+              <span id="loginCodeResendCountdown" class="hidden"></span>
             </div>
           </div>
 
           <!-- ── Error state (invalid / expired token) ── -->
-          <div id="stateError" class="hidden text-center">
+          <div id="stateError" class="hidden text-center" role="alert">
             <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
               <svg class="h-8 w-8 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#x-circle"></use></svg>
             </div>
@@ -147,18 +131,18 @@
           <!-- Back to sign-in -->
           <div id="verificationBackLink" class="mt-6 text-center text-sm text-slate-500">
             <a href="./sign-in.html" class="font-semibold text-[#315b7e] transition hover:text-[#274a66]">
-              Back to Sign In
+              Back to sign in
             </a>
           </div>
 
         </div>
       </div>
-    </div>
+    </main>
 
-    <script src="../../scripts/api.js?v=email-auth-20261018&auth=session-scope-20261006&session=lock-20261018" defer></script>
-    <script src="../../scripts/auth/email-delivery.js?v=email-auth-20261018" defer></script>
-    <script src="../../scripts/auth/verification-code.js?v=signup-code-20261005" defer></script>
-    <script src="../../scripts/auth/client/signup-verification.js?v=email-auth-20261018&release=verification-footer-gap-20261005" defer></script>
-    <script src="../../scripts/auth/client/verify-email.js?v=email-auth-20261018" defer></script>
+    <script src="../../scripts/api.js?v=auth-speed-20261018&auth=session-scope-20261006&session=lock-20261018" defer></script>
+    <script src="../../scripts/auth/email-delivery.js?v=auth-speed-20261018" defer></script>
+    <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018" defer></script>
+    <script src="../../scripts/auth/client/signup-verification.js?v=auth-speed-20261018&release=verification-footer-gap-20261005" defer></script>
+    <script src="../../scripts/auth/client/verify-email.js?v=auth-speed-20261018" defer></script>
   </body>
 </html>

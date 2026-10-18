@@ -55,7 +55,8 @@ class RegistrationEmailCodeService
             return [$code, $hash, $previous, $locked];
         });
         try {
-            return AuthenticationMailDelivery::queue($recipient, new VerifyEmailNotification($code));
+            return AuthenticationMailDelivery::queue($recipient, new VerifyEmailNotification($code), $recipient,
+                'email_verification_code_hash', 'email_verification_expires_at');
         } catch (Throwable $exception) {
             // Restore only our issuance; never overwrite a newer resend or a
             // consumed registration. Queue jobs are encrypted and retry delivery.

@@ -523,6 +523,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   const elementListeners = new Map();
   const intervals = new Map();
   let nextIntervalId = 0;
+  let now = 100000;
   let onReady = null;
 
   function element(id) {
@@ -534,10 +535,14 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
           add(name) { classes.add(name); },
           remove(name) { classes.delete(name); },
           contains(name) { return classes.has(name); },
+          toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
         },
         addEventListener(name, handler) {
           elementListeners.set(`${id}:${name}`, handler);
         },
+        setAttribute(name, value) { this[name] = value; },
+        setSelectionRange() {},
+        querySelectorAll() { return Array.from({ length: 6 }, (_, i) => element(`cell${i}`)); },
         className: "",
         disabled: id === "loginCodeSubmit",
         textContent: "",
@@ -581,6 +586,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     },
     URL,
     URLSearchParams,
+    Date: { now: () => now },
     console,
     document: {
       addEventListener(name, handler) {
@@ -601,10 +607,12 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
       return id;
     },
     clearInterval(id) { intervals.delete(id); },
-    window: { location, clearTimeout() {} },
+    window: { location, clearTimeout() {}, setTimeout() {} },
   };
 
+  context.sessionStorage.setItem("pendingLoginResendUntil", String(now + 60000));
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/email-delivery.js'), 'utf8'), context);
   vm.runInContext(source, context, {
     filename: "scripts/auth/client/verify-email.js",
@@ -614,15 +622,18 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   return {
     elements,
     events,
+    API: context.API,
+    storage: context.sessionStorage,
     advanceSeconds(seconds) {
       for (let second = 0; second < seconds; second++) {
+        now += 1000;
         for (const callback of [...intervals.values()]) callback();
       }
     },
-    async dispatch(id, name) {
+    async dispatch(id, name, extra = {}) {
       const handler = elementListeners.get(`${id}:${name}`);
       assert.equal(typeof handler, "function", `Missing ${name} handler for ${id}`);
-      return handler({ preventDefault() {} });
+      return handler({ preventDefault() {}, ...extra });
     },
   };
 }
@@ -656,7 +667,7 @@ async function testLoginCodeIsEnteredOnTheOriginalTab() {
   const input = page.elements.get("loginCode");
   const submit = page.elements.get("loginCodeSubmit");
 
-  assert.equal(page.elements.get("loginCodeEmail").textContent, "customer@example.com");
+  assert.equal(page.elements.get("loginCodeEmail").textContent, "c***@example.com");
   assert.equal(page.elements.get("stateLoginCode").classList.contains("hidden"), false);
   assert.equal(submit.disabled, true);
 
@@ -696,16 +707,32 @@ async function testLoginCodeResendCooldownAndLimit() {
       attempt,
     );
     page.advanceSeconds(60);
-    assert.equal(resend.disabled, attempt === 3);
+    assert.equal(resend.disabled, false);
   }
-  assert.match(page.elements.get("loginCodeMessage").textContent, /Too many resend attempts/);
+  assert.equal(page.elements.get("loginCodeMessage").textContent, "");
+  page.API.resendLoginCode = async () => { throw { status: 429, retryAfter: 128 }; };
+  await page.dispatch("loginCodeResendBtn", "click");
+  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend in 2:08");
+  page.advanceSeconds(127);
+  assert.equal(resend.disabled, true);
+  page.advanceSeconds(1);
+  assert.equal(resend.disabled, false, "Server throttling must not permanently lock resends");
 }
 
 async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
   const failed = verificationPageHarness({ search: '?mode=login', hash: '', pendingLogin: true, deliveryStatus: 'failed' });
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(failed.elements.get('loginCodeMessage').textContent, /could not be sent/);
+  assert.match(failed.elements.get('loginCodeMessage').textContent, /Couldn't send the code/);
   assert.equal(failed.events.some(event => event.type === 'redirect'), false);
+  for (const status of ['queued', 'sending', 'retrying', 'sent', 'delayed']) {
+    const quiet = verificationPageHarness({ search: '?mode=login', hash: '', pendingLogin: true, deliveryStatus: status });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(quiet.elements.get('loginCodeMessage').textContent, '', `${status} must remain quiet`);
+    await quiet.dispatch('loginCode', 'paste', { clipboardData: { getData: () => '01 23 45' } });
+    assert.equal(quiet.elements.get('loginCode').value, '012345');
+    assert.equal(quiet.elements.get('loginCodeSubmit').disabled, false);
+    assert.deepEqual(Array.from({ length: 6 }, (_, i) => quiet.elements.get(`cell${i}`).textContent), ['0', '1', '2', '3', '4', '5']);
+  }
   for (const role of ['staff', 'admin']) {
     const page = verificationPageHarness({ search: '?mode=login', hash: '', pendingLogin: true, role });
     page.elements.get('loginCode').value = '012345';

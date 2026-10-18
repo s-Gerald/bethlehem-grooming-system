@@ -1162,6 +1162,7 @@ class EmailVerificationTest extends TestCase
         ])->assertAccepted();
         $code = $this->loginCodeSentTo($user);
         $previous = LoginEmailChallenge::firstOrFail()->getAttributes();
+        $this->travel(61)->seconds();
         $this->mock(Dispatcher::class, function ($mock) {
             $mock->shouldReceive('send')->once()
                 ->andThrow(new \RuntimeException('SMTP secret must not reach the browser'));
@@ -1191,6 +1192,7 @@ class EmailVerificationTest extends TestCase
             ])->assertStatus(422);
         }
         Notification::fake();
+        $this->travel(61)->seconds();
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1'])
             ->postJson('/api/email/login/resend', ['poll_token' => $pollToken])->assertOk();
         $newCode = $this->loginCodeSentTo($user);
@@ -1220,6 +1222,11 @@ class EmailVerificationTest extends TestCase
 
     public function test_database_queue_delivers_registration_mail_and_reports_transport_acceptance(): void
     {
+        $timings = [];
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Log\Events\MessageLogged::class,
+            function ($event) use (&$timings): void {
+                if ($event->message === 'Authentication mail delivery') $timings[] = $event->context;
+            });
         $this->useDatabaseMailQueue();
         $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $receipt = $response->json('email_delivery_token');
@@ -1240,6 +1247,15 @@ class EmailVerificationTest extends TestCase
         preg_match('/\b[0-9]{6}\b/', $email->getTextBody(), $matches);
         $this->assertNotEmpty($matches);
         $this->assertStringNotContainsString($matches[0], $payload);
+        $this->assertSame(['queued', 'sending', 'sent'], array_column($timings, 'status'));
+        foreach ($timings as $timing) {
+            $this->assertSame([], array_diff(array_keys($timing), ['delivery_id', 'status', 'elapsed_ms', 'request_ms', 'transport_ms']));
+            $this->assertGreaterThanOrEqual(0, $timing['elapsed_ms']);
+            $this->assertStringNotContainsString($matches[0], json_encode($timing));
+            $this->assertStringNotContainsString($receipt, json_encode($timing));
+            $this->assertStringNotContainsString('new.customer@example.test', json_encode($timing));
+        }
+        $this->assertGreaterThanOrEqual(0, $timings[2]['transport_ms']);
         $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
             ->assertOk()->assertJsonPath('status', 'sent');
         $this->postJson('/api/email/verify', ['email' => 'new.customer@example.test', 'code' => $matches[0]])
@@ -1283,7 +1299,7 @@ class EmailVerificationTest extends TestCase
         $receipt = $response->json('email_delivery_token');
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
-            ->assertOk()->assertJsonPath('status', 'failed')->assertDontSee('Private SMTP');
+            ->assertOk()->assertJsonPath('status', 'retrying')->assertDontSee('Private SMTP');
         $this->assertDatabaseCount('personal_access_tokens', 0);
         $this->assertDatabaseCount('jobs', 1);
         config()->set('mail.default', 'array');
@@ -1326,11 +1342,146 @@ class EmailVerificationTest extends TestCase
             ->assertJsonMissingPath('email')->assertJsonMissingPath('code');
     }
 
+    public function test_immediate_authentication_mail_does_not_wait_for_a_worker_or_queue_a_duplicate(): void
+    {
+        $this->useDatabaseMailQueue();
+        config()->set('mail.authentication.delivery', 'immediate');
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->postJson('/api/email/delivery-status', ['delivery_token' => $response->json('email_delivery_token')])
+            ->assertOk()->assertJsonPath('status', 'sent');
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_replaced_and_expired_registration_jobs_do_not_send(): void
+    {
+        $this->useDatabaseMailQueue();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $this->travel(46)->seconds();
+        $this->postJson('/api/email/resend', ['email' => 'new.customer@example.test'])->assertOk();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->postJson('/api/email/delivery-status', ['delivery_token' => $response->json('email_delivery_token')])
+            ->assertOk()->assertJsonPath('status', 'superseded');
+        $this->travel(16)->minutes();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('jobs', 0);
+    }
+
+    public function test_replaced_login_job_does_not_send_but_current_code_authenticates(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        $this->travel(61)->seconds();
+        $this->postJson('/api/email/login/resend', ['poll_token' => $response->json('login_poll_token')])->assertOk();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        preg_match('/\b[0-9]{6}\b/', $messages[0]->getOriginalMessage()->getTextBody(), $matches);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $response->json('login_poll_token'), 'code' => $matches[0]])
+            ->assertOk()->assertJsonStructure(['token']);
+    }
+
+    public function test_login_resend_cooldown_is_enforced_on_the_server(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        $hash = LoginEmailChallenge::firstOrFail()->token_hash;
+        $this->travel(32)->seconds();
+        $this->postJson('/api/email/login/resend', ['poll_token' => $response->json('login_poll_token')])
+            ->assertTooManyRequests()->assertHeader('Retry-After', '28')->assertJsonPath('retry_after', 28);
+        $this->assertSame($hash, LoginEmailChallenge::firstOrFail()->token_hash);
+        $this->travel(28)->seconds();
+        $this->postJson('/api/email/login/resend', ['poll_token' => $response->json('login_poll_token')])
+            ->assertOk()->assertJsonPath('resend_after', 60);
+    }
+
+    public function test_immediate_transport_failure_falls_back_to_encrypted_retries_until_terminal_failure(): void
+    {
+        $this->useDatabaseMailQueue();
+        config()->set('mail.authentication.delivery', 'immediate');
+        app('mail.manager')->extend('unavailable', fn () => new class extends \Symfony\Component\Mailer\Transport\AbstractTransport {
+            protected function doSend(\Symfony\Component\Mailer\SentMessage $message): void
+            {
+                throw new \Symfony\Component\Mailer\Exception\TransportException('Private SMTP credentials');
+            }
+            public function __toString(): string { return 'unavailable'; }
+        });
+        config()->set('mail.mailers.unavailable', ['transport' => 'unavailable']);
+        config()->set('mail.default', 'unavailable');
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $this->assertDatabaseCount('jobs', 1);
+        $payload = DB::table('jobs')->value('payload');
+        $this->assertStringNotContainsString('VerifyEmailNotification', json_decode($payload, true)['data']['command']);
+        foreach (range(1, 3) as $attempt) {
+            $this->postJson('/api/email/delivery-status', ['delivery_token' => $response->json('email_delivery_token')])
+                ->assertOk()->assertJsonPath('status', 'retrying')->assertDontSee('Private SMTP');
+            DB::table('jobs')->update(['available_at' => now()->timestamp]);
+            $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        }
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertDatabaseCount('failed_jobs', 1);
+        $this->postJson('/api/email/delivery-status', ['delivery_token' => $response->json('email_delivery_token')])
+            ->assertOk()->assertJsonPath('status', 'failed');
+        $this->assertDatabaseCount('users', 0);
+    }
+
     private function useDatabaseMailQueue(): void
     {
         (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
         config()->set('mail.default', 'array');
+    }
+
+    public function test_legacy_otp_jobs_are_suppressed_but_legacy_link_mail_still_sends(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create();
+        $user->notify(new ConfirmLoginNotification('123456'));
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $reflection = new \ReflectionClass(VerifyEmailNotification::class);
+        $legacy = $reflection->newInstanceWithoutConstructor();
+        $reflection->getProperty('verificationUrl')->setValue($legacy, 'https://clinic.example/pages/client/verify-email.html#token=legacy');
+        $user->notify($legacy);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_a_competing_worker_releases_the_job_without_duplicate_sending(): void
+    {
+        $this->useDatabaseMailQueue();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $receipt = $response->json('email_delivery_token');
+        $lock = \Illuminate\Support\Facades\Cache::lock('auth-mail-send:'.hash('sha256', $receipt), 60);
+        $this->assertTrue($lock->get());
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('jobs', 1);
+        $lock->release();
+        DB::table('jobs')->update(['available_at' => now()->timestamp]);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_removed_pending_registration_is_skipped_without_a_failed_job(): void
+    {
+        $this->useDatabaseMailQueue();
+        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        PendingCustomerRegistration::query()->delete();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertDatabaseCount('failed_jobs', 0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
     private function registrationPayload(): array

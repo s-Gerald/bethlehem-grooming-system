@@ -13,7 +13,8 @@ return new class extends Migration
             $table->unsignedInteger('user_id')->unique();
             $table->string('token_hash', 64)->unique();
             $table->boolean('remember_me')->default(true);
-            $table->timestamp('expires_at')->index();
+            // Avoid implicit ON UPDATE behavior in older MySQL timestamp modes.
+            $table->timestamp('expires_at')->useCurrent()->index();
             $table->timestamps();
 
             $table->foreign('user_id')

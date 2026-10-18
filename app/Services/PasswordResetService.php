@@ -32,9 +32,7 @@ class PasswordResetService
 
         EmailVerificationController::assertMailCanBeDelivered();
 
-        $code = (string) random_int(100000, 999999);
-        $tokenHash = Hash::make($code);
-        $previous = DB::transaction(function () use ($user, $tokenHash): ?array {
+        $issuance = DB::transaction(function () use ($user): ?array {
             $lockedUser = User::query()->whereKey($user->getKey())->lockForUpdate()->first();
             if (! $lockedUser || ! $this->userIsEligible($lockedUser) || $lockedUser->requiresPasswordSetup()) {
                 return null;
@@ -51,6 +49,11 @@ class PasswordResetService
                 'verified_token_hash',
                 'verification_attempts',
             ]);
+            do {
+                $code = (string) random_int(100000, 999999);
+            } while ($existing && password_get_info($existing->token_hash)['algoName'] !== 'unknown'
+                && Hash::check($code, $existing->token_hash));
+            $tokenHash = Hash::make($code);
 
             PasswordResetRequest::query()->updateOrCreate(
                 ['user_id' => $lockedUser->getKey()],
@@ -64,17 +67,23 @@ class PasswordResetService
             );
 
             return [
+                'code' => $code,
+                'token_hash' => $tokenHash,
                 'had_existing_request' => $existing !== null,
                 'state' => $previousState,
             ];
         });
 
-        if ($previous === null) {
+        if ($issuance === null) {
             return;
         }
+        $code = $issuance['code'];
+        $tokenHash = $issuance['token_hash'];
+        $previous = $issuance;
 
         try {
-            $user->notify(new PasswordResetCodeNotification($code));
+            AuthenticationMailDelivery::queue($user, new PasswordResetCodeNotification($code),
+                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail());
         } catch (Throwable $exception) {
             DB::transaction(function () use ($user, $tokenHash, $previous): void {
                 $request = PasswordResetRequest::query()
@@ -359,7 +368,8 @@ class PasswordResetService
             .'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
 
         try {
-            $result['user']->notify(new SetUpStaffPasswordNotification($setupUrl));
+            AuthenticationMailDelivery::queue($result['user'], new SetUpStaffPasswordNotification($setupUrl),
+                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail());
         } catch (Throwable $exception) {
             DB::transaction(function () use ($result, $tokenHash): void {
                 PasswordResetRequest::query()

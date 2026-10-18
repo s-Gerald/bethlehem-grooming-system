@@ -13,6 +13,13 @@ use Throwable;
 
 class LoginEmailChallengeService
 {
+    public const COOLDOWN_SECONDS = 60;
+
+    public static function resendAfter(?LoginEmailChallenge $challenge): int
+    {
+        return $challenge ? max(0, $challenge->updated_at->timestamp + self::COOLDOWN_SECONDS - now()->timestamp) : 0;
+    }
+
     public function resend(string $plainPollToken): string
     {
         $pollTokenHash = hash('sha256', $plainPollToken);
@@ -41,6 +48,14 @@ class LoginEmailChallengeService
 
         EmailVerificationController::assertMailCanBeDelivered();
 
+        if ($remaining = self::resendAfter($challenge)) {
+            throw new HttpResponseException(response()->json([
+                'success' => false,
+                'message' => 'Please wait before requesting another code.',
+                'retry_after' => $remaining,
+            ], 429)->header('Retry-After', (string) $remaining));
+        }
+
         do {
             $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         } while (hash_equals($challenge->token_hash, hash_hmac('sha256', $code, $plainPollToken)));
@@ -63,7 +78,8 @@ class LoginEmailChallengeService
         }
 
         try {
-            return AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code));
+            return AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code),
+                LoginEmailChallenge::query()->where('token_hash', $newTokenHash)->firstOrFail());
         } catch (Throwable $exception) {
             LoginEmailChallenge::query()->whereKey($challenge->getKey())
                 ->where('token_hash', $newTokenHash)->update($previous);
@@ -130,7 +146,8 @@ class LoginEmailChallengeService
         });
 
         try {
-            $receipt = AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code));
+            $receipt = AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code),
+                LoginEmailChallenge::query()->where('token_hash', $tokenHash)->firstOrFail());
         } catch (Throwable $exception) {
             DB::transaction(function () use ($user, $tokenHash, $previousChallenge): void {
                 $challenge = LoginEmailChallenge::query()
@@ -153,6 +170,10 @@ class LoginEmailChallengeService
             throw $exception;
         }
 
-        return ['poll_token' => $plainPollToken, 'delivery_token' => $receipt];
+        return [
+            'poll_token' => $plainPollToken,
+            'delivery_token' => $receipt,
+            'resend_after' => self::resendAfter(LoginEmailChallenge::query()->where('token_hash', $tokenHash)->first()),
+        ];
     }
 }

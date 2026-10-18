@@ -342,6 +342,7 @@ var API = (() => {
     safeStorageRemove(sessionStorage, LOGIN_POLL_TOKEN_KEY);
     safeStorageRemove(sessionStorage, LOGIN_CONFIRMATION_EMAIL_KEY);
     safeStorageRemove(sessionStorage, "pending_login_email_delivery");
+    safeStorageRemove(sessionStorage, "pendingLoginResendUntil");
   }
 
   function storePendingLoginConfirmation(pollToken, email = "") {
@@ -1335,6 +1336,9 @@ var API = (() => {
 
     if (data?.requires_login_confirmation) {
       storePendingLoginConfirmation(data?.login_poll_token, data?.email);
+      try {
+        sessionStorage.setItem("pendingLoginResendUntil", String(Date.now() + (data.resend_after ?? 60) * 1000));
+      } catch { /* Server-side cooldown remains authoritative. */ }
       storeEmailDelivery("login", data.email_delivery_token);
       return data;
     }

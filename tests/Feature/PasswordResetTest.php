@@ -63,6 +63,9 @@ class PasswordResetTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
         Schema::dropIfExists('personal_access_tokens');
         Schema::dropIfExists('password_reset_requests');
         Schema::dropIfExists('users');
@@ -393,6 +396,85 @@ class PasswordResetTest extends TestCase
             ['y@gmail.com', 'y***@gmail.com'],
             ['gerald.santos@clinic.example.com', 'g***@clinic.example.com'],
         ];
+    }
+
+    #[DataProvider('passwordResetRoles')]
+    public function test_immediate_password_reset_mail_uses_durable_delivery_without_duplicate_sends(string $role): void
+    {
+        $this->useDatabaseMailQueue();
+        config()->set('mail.authentication.delivery', 'immediate');
+        $user = $this->createUser($role);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        preg_match('/\b[0-9]{6}\b/', $messages[0]->getOriginalMessage()->getTextBody(), $matches);
+        $this->assertNotEmpty($matches);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('jobs', 0);
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $matches[0]])
+            ->assertOk()->assertJsonStructure(['token']);
+    }
+
+    public function test_replaced_and_consumed_password_reset_jobs_are_suppressed(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        PasswordResetRequest::query()->update(['token_hash' => Hash::make('already-consumed')]);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('jobs', 0);
+    }
+
+    public function test_a_password_reset_resend_invalidates_the_previous_code(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $oldCode = $this->resetCodeSentTo($user);
+        Notification::fake();
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $newCode = $this->resetCodeSentTo($user);
+        $this->assertNotSame($oldCode, $newCode);
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $oldCode])->assertUnprocessable();
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $newCode])->assertOk();
+    }
+
+    public function test_staff_setup_resend_sends_only_the_current_unexpired_link(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = $this->createUser('staff');
+        $user->update(['password_hash' => User::passwordSetupPlaceholder(), 'is_active' => false]);
+        PasswordResetRequest::query()->create([
+            'user_id' => $user->getKey(), 'token_hash' => hash('sha256', 'old-link'),
+            'expires_at' => now()->addHours(24), 'last_sent_at' => now(),
+        ]);
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->resendStaffSetupLink($user);
+        $service->resendStaffSetupLink($user);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        preg_match('/set-up-password\.html#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
+        $this->assertNotEmpty($matches);
+        $this->assertSame('valid', $service->inspectStaffSetup($matches[1])['status']);
+        $service->resendStaffSetupLink($user);
+        $this->travel(25)->hours();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    private function useDatabaseMailQueue(): void
+    {
+        (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
+        config()->set('queue.default', 'database');
+        config()->set('mail.default', 'array');
     }
 
     private function setupTokenSentTo(User $user): string

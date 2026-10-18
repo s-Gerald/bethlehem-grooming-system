@@ -88,9 +88,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 (async () => {
   const p = page();
   assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
-  assert.equal(p.element('switchVerificationChannel').textContent, 'Use SMS instead');
-  assert.match(p.element('verificationDescription').textContent, /customer@example.test/);
-  assert.equal(p.element('signupResend').textContent, 'Resend code in 45s');
+  assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code sent to');
+  assert.equal(p.element('verifyCodeEmail').textContent, 'c***@example.test');
+  assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   assert.equal(p.element('signupCodeSubmit').disabled, true);
   p.type('12a34b567');
   assert.equal(p.element('signupCode').value, '123456');
@@ -103,43 +103,12 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(p.element('signupCode').value, '987654');
   assert.deepEqual(p.cells.map(c => c.textContent), ['9', '8', '7', '6', '5', '4']);
 
-  p.advance(15000);
-  p.dispatch('switchVerificationChannel', 'click');
-  assert.equal(p.element('verificationTitle').textContent, 'Verify your mobile number');
-  assert.match(p.element('verificationDescription').textContent, /0917 ••• ••42/);
-  assert.doesNotMatch(p.element('verificationDescription').textContent, /09171234542/);
-  assert.equal(p.element('switchVerificationChannel').textContent, 'Use email instead');
-  assert.equal(p.element('signupCode').value, '');
-  assert.equal(p.element('signupResend').textContent, 'Resend Code');
-  const smsSend = p.dispatch('signupResend', 'click');
-  assert.equal(p.element('signupResend').textContent, 'Sending...');
-  assert.equal(p.element('signupCode').disabled, true);
-  p.advance(400);
-  await smsSend;
-  assert.equal(p.element('signupResend').textContent, 'Resend code in 45s');
-  assert.match(p.element('signupCodeMessage').textContent, /couldn't send a text message/);
-  p.dispatch('signupCode', 'paste', { clipboardData: { getData: () => '123456' } });
-  assert.equal(p.element('signupCode').value, '123456');
-  const smsVerify = p.dispatch('signupCodeForm', 'submit');
-  assert.equal(p.element('signupCodeSubmit').textContent, 'Verifying...');
-  p.advance(400);
-  await smsVerify;
-  assert.match(p.element('signupCodeMessage').textContent, /couldn't verify this mobile number/);
-  assert.deepEqual(p.calls, [], 'SMS must never call an API or authenticate');
-  assert.equal(p.element('statePending').classList.contains('hidden'), false);
-  assert.equal(p.element('stateSuccess').classList.contains('hidden'), true);
-  assert.equal(p.storage.has('pendingVerificationEmail'), true);
+  p.advance(45000);
+  assert.equal(p.element('signupResend').disabled, false);
   assert.equal([...p.storage.values()].includes('123456'), false, 'OTP must never enter storage');
-  p.dispatch('switchVerificationChannel', 'click');
-  assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
-  assert.equal(p.element('switchVerificationChannel').textContent, 'Use SMS instead');
-  assert.equal(p.element('signupCode').value, '');
-  assert.match(p.element('signupResend').textContent, /^Resend code in 30s/);
-  p.advance(30000);
-  assert.equal(p.element('signupResend').textContent, 'Resend Code');
   await p.dispatch('signupResend', 'click');
   assert.deepEqual(p.calls, [['send', 'customer@example.test']]);
-  assert.equal(p.element('signupResend').textContent, 'Resend code in 45s');
+  assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   p.type('654321');
   await p.dispatch('signupCodeForm', 'submit');
   assert.deepEqual(p.calls.at(-1), ['verify', 'customer@example.test', '654321']);
@@ -150,30 +119,31 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
   const transportFailure = page({ deliveryStatus: 'failed' });
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(transportFailure.element('signupCodeMessage').textContent, /could not be sent/);
+  assert.match(transportFailure.element('signupCodeMessage').textContent, /Couldn't send the code/);
   assert.doesNotMatch(transportFailure.element('verificationDescription').textContent, /We sent/);
   assert.deepEqual(transportFailure.calls, [], 'Delivery failure cannot authenticate or redirect');
   const transportAccepted = page({ deliveryStatus: 'sent' });
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(transportAccepted.element('verificationDescription').textContent, /We sent/);
+  assert.equal(transportAccepted.element('signupCodeMessage').textContent, '');
+  assert.equal(transportAccepted.element('verifyCodeEmail').textContent, 'c***@example.test');
   assert.deepEqual(transportAccepted.calls, [], 'Delivery receipt alone cannot authenticate');
 
   const throttled = page({ deliveryFailed: true });
-  assert.match(throttled.element('signupCodeMessage').textContent, /registration was saved/);
+  assert.match(throttled.element('signupCodeMessage').textContent, /Couldn't send the code/);
   assert.equal(throttled.element('signupResend').disabled, false);
   throttled.API.resendVerification = async () => { throw { status: 429, retryAfter: 90 }; };
   await throttled.dispatch('signupResend', 'click');
-  assert.equal(throttled.element('signupResend').textContent, 'Resend code in 90s');
-  assert.equal(throttled.element('signupCodeMessage').textContent, 'Please wait before requesting another code.');
+  assert.equal(throttled.element('signupResend').textContent, 'Resend in 1:30');
+  assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Try again later.');
   throttled.advance(90000);
   throttled.API.resendVerification = async () => { throw { status: 503 }; };
   await throttled.dispatch('signupResend', 'click');
   assert.equal(throttled.element('signupResend').disabled, false);
-  assert.match(throttled.element('signupCodeMessage').textContent, /could not be sent/);
+  assert.match(throttled.element('signupCodeMessage').textContent, /Couldn't send the code/);
   throttled.API.verifyEmail = async () => { throw { status: 429 }; };
   throttled.type('123456');
   await throttled.dispatch('signupCodeForm', 'submit');
-  assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Please request a new verification code.');
+  assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Try again later.');
   assert.equal(throttled.element('signupCode').attributes['aria-invalid'], 'true');
 
   const recovery = page({ noStorage: true });
@@ -182,18 +152,15 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await recovery.dispatch('signupResend', 'click');
   assert.deepEqual(recovery.calls, [['send', 'restore@example.test']]);
 
-  for (const htmlFile of ['pages/client/verify-email.html', 'pages/client/forgot-password.html']) {
-    const html = fs.readFileSync(path.join(root, htmlFile), 'utf8');
-    assert.equal((html.match(/class="verification-code-cell"/g) || []).length, 6);
-    assert.match(html, /verification-code\.js/);
-    assert.match(html, /verification-code\.css/);
-    assert.match(html, /inputmode="numeric"/);
-    assert.match(html, /autocomplete="one-time-code"/);
+  for (const status of ['queued', 'sending', 'retrying', 'delayed', 'sent']) {
+    const quiet = page({ deliveryStatus: status });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(quiet.element('signupCodeMessage').textContent, '', `${status} must not show a warning`);
+    quiet.type('123456');
+    assert.equal(quiet.element('signupCodeSubmit').disabled, false, 'Tracking cannot block OTP entry');
   }
-  const verificationHtml = fs.readFileSync(path.join(root, 'pages/client/verify-email.html'), 'utf8');
-  assert.match(verificationHtml, /id="signupVerificationActions" class="space-y-2 text-center text-sm text-slate-500"/);
-  assert.match(verificationHtml, /id="switchVerificationChannel"[^>]*>Use SMS instead<\/button>/);
-  assert.doesNotMatch(verificationHtml, /Prefer text message\?|Correct signup information|Edit signup information|correctSignup|channelPrompt|&middot;/);
-  assert.match(verificationHtml, /id="verificationBackLink"[\s\S]*?href="\.\/sign-in\.html"/);
+  const expiredTab = page();
+  expiredTab.advance(120000);
+  assert.equal(expiredTab.element('signupResend').disabled, false, 'Countdown uses elapsed time, including background tabs');
   console.log('Customer signup verification regression checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

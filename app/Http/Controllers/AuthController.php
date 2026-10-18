@@ -118,7 +118,7 @@ class AuthController extends Controller
             'email_delivery_token' => $receipt,
             'email' => $pendingRegistration->email,
             'registration_token' => $editToken,
-            'resend_after' => 45,
+            'resend_after' => max(0, ($pendingRegistration->fresh()->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
         ], 201);
     }
 
@@ -264,6 +264,7 @@ class AuthController extends Controller
                 'requires_login_confirmation' => true,
                 'email_delivery_queued' => true,
                 'email_delivery_token' => $challenge['delivery_token'],
+                'resend_after' => $challenge['resend_after'],
                 'login_poll_token' => $challenge['poll_token'],
                 'email' => $user->email,
             ], 202);

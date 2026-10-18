@@ -11,17 +11,13 @@ use Illuminate\Notifications\Notification;
 class SetUpStaffPasswordNotification extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
+    use \App\Notifications\Concerns\TracksAuthenticationMail;
 
     public int $tries = 3;
 
     public function __construct(public readonly string $setupUrl)
     {
         $this->afterCommit();
-    }
-
-    public function backoff(): array
-    {
-        return [60, 300, 900];
     }
 
     public function via(object $notifiable): array
