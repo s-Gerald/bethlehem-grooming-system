@@ -165,6 +165,7 @@ class GroomingPayMongoTest extends TestCase
         $this->assertSame(0, Payment::count());
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => false]);
         $this->assertSame(7, GatewayPayment::first()->initiated_by);
+        $this->assertSame('850.00', GatewayPayment::first()->snapshot['grooming_total']);
     }
 
     public function test_active_checkout_is_reused_and_its_prices_cannot_be_changed_or_paid_in_cash(): void
@@ -226,6 +227,7 @@ class GroomingPayMongoTest extends TestCase
         $this->webhook($this->event())->assertOk();
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => 'in_progress']);
         $this->assertSame('850.00', GatewayPayment::first()->snapshot['summary']['pets'][0]['final_pet_charge']);
+        $this->assertSame('850.00', GatewayPayment::first()->snapshot['grooming_total']);
     }
 
     public function test_early_payment_releases_if_pets_finish_while_checkout_is_pending(): void
@@ -295,6 +297,8 @@ class GroomingPayMongoTest extends TestCase
     {
         $this->addProduct();
         $this->checkout(['products' => [['item_id' => 10, 'quantity' => 2]]])->assertOk();
+        $this->assertSame('850.00', GatewayPayment::first()->snapshot['grooming_total']);
+        $this->assertSame('1010.00', GatewayPayment::first()->snapshot['total']);
         $this->assertEquals(3, DB::table('inventory_items')->value('quantity_on_hand'));
         $this->assertSame(0, DB::table('grooming_payment_products')->count());
         DB::table('inventory_items')->update(['selling_price' => 200, 'item_name' => 'Renamed']);

@@ -18,6 +18,8 @@ class BookingService extends Model
         'price_at_booking',
         'price_min_at_booking',
         'price_max_at_booking',
+        'service_name_snapshot',
+        'service_kind_snapshot',
     ];
 
     public function service()

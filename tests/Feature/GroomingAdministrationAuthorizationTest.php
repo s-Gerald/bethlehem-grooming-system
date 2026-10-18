@@ -3442,6 +3442,27 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         return [[false, false], [false, true], [true, false], [true, true]];
     }
 
+    public static function reportSnapshotFlows(): array
+    {
+        return ['customer booking' => [false], 'walk-in booking' => [true]];
+    }
+
+    #[DataProvider('reportSnapshotFlows')]
+    public function test_booking_workflows_snapshot_service_identity_for_reports(bool $walkIn): void
+    {
+        Schema::table('booking_services', function (Blueprint $table) {
+            $table->string('service_name_snapshot')->nullable();
+            $table->string('service_kind_snapshot')->nullable();
+        });
+        $this->authenticateAs($walkIn ? 'staff' : 'customer');
+        $payload = $this->signedGroomingPayload($walkIn);
+        $service = \App\Models\Service::where('slug', 'partial_grooming')->firstOrFail();
+        $response = $this->postJson($walkIn ? '/api/admin/walk-in' : '/api/booking/store', $payload)->assertCreated();
+        $id = $response->json($walkIn ? 'booking_id' : 'booking.booking_id');
+        $this->assertDatabaseHas('booking_services', ['booking_id' => $id,
+            'service_name_snapshot' => $service->service_name, 'service_kind_snapshot' => $service->kind]);
+    }
+
     #[DataProvider('signedConsentFlows')]
     public function test_signed_consent_survives_the_complete_grooming_flow(bool $walkIn, bool $sedation): void
     {

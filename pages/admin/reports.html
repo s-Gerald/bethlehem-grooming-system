@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html data-session-gate="checking" lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-reports.css?v=20261018" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -148,7 +149,7 @@
         </div>
       </div>
 
-      <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
+      <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
         <header
           class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
         >
@@ -160,759 +161,120 @@
           <button
             type="button"
             class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm"
-            @click="sidebarOpen = true"
+            aria-label="Open navigation" @click="sidebarOpen = true"
           >
             <i data-lucide="menu" class="h-5 w-5"></i>
           </button>
         </header>
 
-        <main
-          x-data="adminReports()"
-          class="flex-1 px-4 py-6 lg:px-6 lg:pt-0"
-          aria-label="Reports"
-        >
-          <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
-            <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6 lg:py-4">
-              <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                  <h2 class="text-2xl font-extrabold text-[#1f3850] lg:text-3xl">Reports</h2>
-                  <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674] lg:text-sm lg:tracking-[0.25em]">CLINIC PERFORMANCE</p>
-                </div>
+        <main x-data="adminReports()" class="reports-page flex-1 px-4 py-6 lg:px-6" aria-label="Reports">
+          <header class="reports-heading">
+            <h1>Reports</h1>
+          </header>
+          <div class="reports-tabs" role="tablist" aria-label="Report sections"
+            @keydown.right.prevent="activeSection = activeSection === 'grooming' ? 'clinic' : 'grooming'; $nextTick(() => $refs[activeSection + 'Tab'].focus())"
+            @keydown.left.prevent="activeSection = activeSection === 'grooming' ? 'clinic' : 'grooming'; $nextTick(() => $refs[activeSection + 'Tab'].focus())"
+            @keydown.home.prevent="activeSection = 'grooming'; $refs.groomingTab.focus()"
+            @keydown.end.prevent="activeSection = 'clinic'; $refs.clinicTab.focus()">
+            <button type="button" id="grooming-tab" x-ref="groomingTab" role="tab" aria-controls="grooming-panel" :aria-selected="activeSection === 'grooming'" :tabindex="activeSection === 'grooming' ? 0 : -1" @click="activeSection = 'grooming'">Grooming</button>
+            <button type="button" id="clinic-tab" x-ref="clinicTab" role="tab" aria-controls="clinic-panel" :aria-selected="activeSection === 'clinic'" :tabindex="activeSection === 'clinic' ? 0 : -1" @click="activeSection = 'clinic'">Clinic</button>
+          </div>
 
-                <div class="flex flex-wrap gap-2" role="tablist" aria-label="Report sections">
-                  <button
-                    type="button"
-                    role="tab"
-                    @click="switchSection('services')"
-                    class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition"
-                    :class="activeSection === 'services' ? 'border-[#315b7e] bg-[#315b7e] text-white shadow-sm' : 'border-[#c9d9e8] bg-white/75 text-[#315b7e] hover:bg-white'"
-                  >
-                    <i data-lucide="scissors" class="h-4 w-4"></i>
-                    <span>Services performed</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    @click="switchSection('transactions')"
-                    class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition"
-                    :class="activeSection === 'transactions' ? 'border-[#315b7e] bg-[#315b7e] text-white shadow-sm' : 'border-[#c9d9e8] bg-white/75 text-[#315b7e] hover:bg-white'"
-                  >
-                    <i data-lucide="receipt" class="h-4 w-4"></i>
-                    <span>Transaction summary</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    @click="switchSection('customers')"
-                    class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition"
-                    :class="activeSection === 'customers' ? 'border-[#315b7e] bg-[#315b7e] text-white shadow-sm' : 'border-[#c9d9e8] bg-white/75 text-[#315b7e] hover:bg-white'"
-                  >
-                    <i data-lucide="activity" class="h-4 w-4"></i>
-                    <span>Customer activity</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+          <section id="clinic-panel" role="tabpanel" aria-labelledby="clinic-tab" x-show="activeSection === 'clinic'" x-cloak class="reports-coming-soon">
+            <i data-lucide="stethoscope" aria-hidden="true"></i>
+            <h2>Coming Soon</h2>
           </section>
 
-          <section x-show="activeSection === 'services'" class="mt-6 space-y-5">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Services performed</p>
-                <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">Total grooming services completed</h3>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-3">
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar-range" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <select
-                    x-model="servicesPeriod"
-                    @change="onServicesPeriodChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  >
-                    <option value="day">Day</option>
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                    <option value="year">Year</option>
+          <section id="grooming-panel" role="tabpanel" aria-labelledby="grooming-tab" x-show="activeSection === 'grooming'">
+            <div class="reports-toolbar">
+              <h2>Grooming Performance</h2>
+              <form class="reports-filters" @submit.prevent="loadReport()">
+                <div class="reports-field">
+                  <label for="report-period">Reporting period</label>
+                  <select id="report-period" x-model="period" @change="changePeriod()">
+                    <option value="today">Today</option>
+                    <option value="last_7_days">Last 7 Days</option>
+                    <option value="this_month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="custom">Custom Range</option>
                   </select>
                 </div>
-
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <input
-                    x-show="servicesPeriod === 'day'"
-                    type="date"
-                    x-model="selectedDate"
-                    @change="onServicesPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="servicesPeriod === 'week'"
-                    type="week"
-                    x-model="selectedWeek"
-                    @change="onServicesPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="servicesPeriod === 'month'"
-                    type="month"
-                    x-model="selectedMonth"
-                    @change="onServicesPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="servicesPeriod === 'year'"
-                    type="number"
-                    min="2000"
-                    max="2100"
-                    step="1"
-                    x-model="selectedYear"
-                    @input.debounce.400ms="onServicesPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  x-show="hasSelectedPeriodValue"
-                  @click="clearServicesPeriod()"
-                  class="inline-flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] shadow-sm transition hover:bg-slate-50"
-                >
-                  <i data-lucide="x" class="h-4 w-4"></i>
-                  <span>Clear</span>
-                </button>
-              </div>
-            </div>
-
-            <template x-if="loadingServices">
-              <div class="rounded-[24px] border border-[#d7e3ef] bg-white px-5 py-10 text-center text-slate-400 shadow-sm">
-                <i data-lucide="loader-circle" class="mx-auto h-9 w-9 animate-spin text-[#315b7e]"></i>
-                <p class="mt-3 text-sm font-medium">Loading services performed...</p>
-              </div>
-            </template>
-
-            <template x-if="!loadingServices && servicesError">
-              <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="font-semibold">Failed to load services report</p>
-                    <p class="mt-1" x-text="servicesError"></p>
-                  </div>
-                  <button type="button" @click="loadServicesPerformed()" class="inline-flex items-center justify-center rounded-xl bg-red-100 px-4 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-200">
-                    Try again
-                  </button>
-                </div>
-              </div>
-            </template>
-
-            <div x-show="!loadingServices && !servicesError" class="grid gap-4 lg:grid-cols-3">
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm xl:col-span-2">
-                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="text-sm font-semibold text-slate-500" x-text="servicesPeriodLabel"></p>
-                    <p class="mt-2 text-5xl font-bold leading-none text-[#1f3850] lg:text-6xl" x-text="formatWholeNumber(servicesReport.totalCompleted)"></p>
-                    <p class="mt-3 text-sm text-slate-500" x-text="servicesSubtitle"></p>
-                  </div>
-                  <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="clipboard-check" class="h-8 w-8"></i>
-                  </div>
-                </div>
-              </article>
-
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Top service</p>
-                    <template x-if="topService">
-                      <div>
-                        <p class="mt-2 text-lg font-bold text-[#1f3850]" x-text="topService.serviceName"></p>
-                        <p class="mt-1 text-sm text-slate-500">
-                          <span x-text="formatWholeNumber(topService.completedCount)"></span>
-                          <span x-text="' completed'"></span>
-                        </p>
-                      </div>
-                    </template>
-                    <template x-if="!topService">
-                      <p class="mt-2 text-sm font-semibold text-slate-500">No services completed</p>
-                    </template>
-                  </div>
-                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#dcfce7] text-[#15803d]">
-                    <i data-lucide="badge-check" class="h-6 w-6"></i>
-                  </div>
-                </div>
-              </article>
-            </div>
-
-            <article x-show="!loadingServices && !servicesError" class="rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
-              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h4 class="font-extrabold text-[#1f3850]">Service breakdown</h4>
-                  <p class="text-sm text-slate-500" x-text="'Completed services for ' + servicesPeriodLabel"></p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2">
-                    <i data-lucide="filter" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                    <select
-                      x-model="selectedServiceFilter"
-                      class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                    >
-                      <option value="all">All Services</option>
-                      <option value="Partial Grooming">Partial Grooming</option>
-                      <option value="Regular Dog Grooming">Regular Dog Grooming</option>
-                      <option value="Deluxe Dog Grooming">Deluxe Dog Grooming</option>
-                      <option value="Bath and Go!">Bath and Go!</option>
-                      <option value="Full Grooming">Full Grooming</option>
-                      <option disabled>------ A la carte ------</option>
-                      <option value="Nail Clipping">Nail Clipping</option>
-                      <option value="Ear Cleaning">Ear Cleaning</option>
-                      <option value="Facial Trimming">Facial Trimming</option>
-                      <option value="Anal Sac Draining">Anal Sac Draining</option>
-                      <option value="Tooth Brushing">Tooth Brushing</option>
-                    </select>
-                  </div>
-                  <span class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#315b7e]">
-                    <i data-lucide="list-checks" class="h-3.5 w-3.5"></i>
-                    <span x-text="formatWholeNumber(filteredServiceBreakdown.length) + ' service type' + (filteredServiceBreakdown.length === 1 ? '' : 's')"></span>
-                  </span>
-                </div>
-              </div>
-
-              <template x-if="filteredServiceBreakdown.length === 0">
-                <div class="px-5 py-10 text-center">
-                  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="scissors" class="h-7 w-7"></i>
-                  </div>
-                  <p class="mt-3 font-bold text-[#2f4b66]" x-text="serviceBreakdownEmptyMessage"></p>
-                </div>
-              </template>
-
-              <div x-show="filteredServiceBreakdown.length > 0" class="divide-y divide-slate-100">
-                <template x-for="service in filteredServiceBreakdown" :key="service.serviceName">
-                  <div class="flex items-center justify-between gap-4 px-5 py-4">
-                    <div class="min-w-0">
-                      <p class="truncate font-semibold text-slate-800" x-text="service.serviceName"></p>
-                    </div>
-                    <div class="shrink-0 rounded-full bg-[#eef5fb] px-3 py-1 text-sm font-extrabold text-[#315b7e]" x-text="formatWholeNumber(service.completedCount)"></div>
+                <template x-if="period === 'custom'">
+                  <div class="reports-custom-dates">
+                    <div class="reports-field"><label for="report-start">Start date</label><input id="report-start" type="date" x-model="start" :max="end || null" required :aria-invalid="!!validationError" aria-describedby="report-validation" /></div>
+                    <div class="reports-field"><label for="report-end">End date</label><input id="report-end" type="date" x-model="end" :min="start || null" required :aria-invalid="!!validationError" aria-describedby="report-validation" /></div>
+                    <button type="submit" class="reports-button reports-primary" :disabled="loading">Apply</button>
                   </div>
                 </template>
-              </div>
-            </article>
-
-          </section>
-
-          <section x-show="activeSection === 'transactions'" class="mt-6 space-y-5">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Transaction summary</p>
-                <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">Collections by client</h3>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-3">
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar-range" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <select
-                    x-model="transactionPeriod"
-                    @change="onTransactionPeriodChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  >
-                    <option value="day">Day</option>
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                    <option value="year">Year</option>
-                  </select>
-                </div>
-
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <input
-                    x-show="transactionPeriod === 'day'"
-                    type="date"
-                    x-model="transactionSelectedDate"
-                    @change="onTransactionPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="transactionPeriod === 'week'"
-                    type="week"
-                    x-model="transactionSelectedWeek"
-                    @change="onTransactionPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="transactionPeriod === 'month'"
-                    type="month"
-                    x-model="transactionSelectedMonth"
-                    @change="onTransactionPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="transactionPeriod === 'year'"
-                    type="number"
-                    min="2000"
-                    max="2100"
-                    step="1"
-                    x-model="transactionSelectedYear"
-                    @input.debounce.400ms="onTransactionPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  x-show="hasSelectedTransactionPeriodValue"
-                  @click="clearTransactionPeriod()"
-                  class="inline-flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] shadow-sm transition hover:bg-slate-50"
-                >
-                  <i data-lucide="x" class="h-4 w-4"></i>
-                  <span>Clear</span>
-                </button>
-              </div>
+                <button x-show="period !== 'custom'" type="submit" class="reports-button reports-refresh" :disabled="loading" aria-label="Refresh report" title="Refresh report"><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
+              </form>
+            </div>
+            <p id="report-validation" class="reports-validation" x-show="validationError" x-text="validationError" role="alert" x-cloak></p>
+            <div x-show="error" class="reports-error" role="alert" x-cloak>
+              <p x-text="error"></p>
+              <button type="button" class="reports-button" @click="loadReport()">Retry</button>
+            </div>
+            <div x-show="loading" class="reports-loading" role="status" aria-label="Loading report" x-cloak>
+              <div class="reports-kpis"><template x-for="i in 4" :key="i"><div class="reports-card reports-skeleton-kpi"><span class="reports-skeleton"></span><span class="reports-skeleton"></span></div></template></div>
+              <div class="reports-card reports-skeleton-chart"><span class="reports-skeleton"></span><span class="reports-skeleton"></span></div>
+              <span class="reports-sr-only">Loading report</span>
             </div>
 
-            <template x-if="loadingTransactionSummary">
-              <div class="rounded-[24px] border border-[#d7e3ef] bg-white px-5 py-10 text-center text-slate-400 shadow-sm">
-                <i data-lucide="loader-circle" class="mx-auto h-9 w-9 animate-spin text-[#315b7e]"></i>
-                <p class="mt-3 text-sm font-medium">Loading transaction summary...</p>
+            <template x-if="report && !loading && !error">
+              <div class="reports-content">
+                <p class="reports-period-label" x-text="periodLabel"></p>
+                <div class="reports-kpis" aria-label="Business overview">
+                  <template x-for="kpi in kpis" :key="kpi.title">
+                    <article class="reports-card reports-kpi" :title="kpi.hint || null">
+                      <div class="reports-kpi-heading"><h3 x-text="kpi.title"></h3><i :data-lucide="kpi.icon" aria-hidden="true"></i></div>
+                      <p x-text="kpi.value"></p>
+                    </article>
+                  </template>
+                </div>
+
+                <article class="reports-card reports-performance" aria-labelledby="performance-title">
+                  <div class="reports-card-heading">
+                    <h3 id="performance-title">Performance Over Time</h3>
+                    <div class="reports-segmented" role="group" aria-label="Performance metric">
+                      <button type="button" :aria-pressed="metric === 'collections'" @click="metric = 'collections'; activePoint = null">Collections</button>
+                      <button type="button" :aria-pressed="metric === 'visits'" @click="metric = 'visits'; activePoint = null">Visits</button>
+                    </div>
+                  </div>
+                  <template x-if="!hasPerformance"><p class="reports-empty" x-text="metric === 'collections' ? 'No collections for this period.' : 'No completed visits for this period.'"></p></template>
+                  <div x-show="hasPerformance" class="reports-chart">
+                    <p class="reports-chart-tooltip" aria-live="polite" x-text="activePoint !== null && chartPoints[activePoint] ? pointDescription(chartPoints[activePoint]) : (metric === 'collections' ? 'Collections (PHP)' : 'Completed visits')"></p>
+                    <svg :viewBox="`0 0 ${chartWidth} 250`" x-init="observeChart($el)" role="group" :aria-label="metric === 'collections' ? 'Grooming collections over time' : 'Completed grooming visits over time'"
+                      x-html="chartMarkup" @pointerover="inspectPoint($event)" @pointerleave="activePoint = null" @focusin="inspectPoint($event)" @focusout="activePoint = null" @click="inspectPoint($event)" @keydown.enter.prevent="inspectPoint($event)" @keydown.space.prevent="inspectPoint($event)"></svg>
+                    <details class="reports-data-details"><summary>View chart data</summary><div class="reports-table-wrap"><table><caption class="reports-sr-only">Performance Over Time</caption><thead><tr><th scope="col">Period</th><th scope="col">Collections</th><th scope="col">Visits</th></tr></thead><tbody><template x-for="point in chartPoints" :key="point.date"><tr><th scope="row" x-text="point.label"></th><td x-text="formatMoney(point.collections)"></td><td x-text="formatCount(point.visits)"></td></tr></template></tbody></table></div></details>
+                  </div>
+                </article>
+
+                <article class="reports-card" aria-labelledby="services-title">
+                  <div class="reports-card-heading"><h3 id="services-title">Popular Grooming Services</h3></div>
+                  <p class="reports-empty" x-show="report.services.length === 0">No completed services for this period.</p>
+                  <ol class="reports-services" x-show="report.services.length > 0" aria-label="Completed services, most performed first">
+                    <template x-for="(service, index) in visibleServices" :key="index">
+                      <li><div class="reports-service-heading"><div><span class="reports-service-name" x-text="service.name"></span><span class="reports-service-kind" x-text="serviceKind(service.kind)"></span></div><strong x-text="formatCount(service.count)" :aria-label="`${formatCount(service.count)} completed`"></strong></div><div class="reports-service-track" aria-hidden="true"><div :style="{ width: serviceWidth(service.count) }"></div></div></li>
+                    </template>
+                  </ol>
+                  <button type="button" class="reports-more" x-show="report.services.length > 6" @click="showAllServices = !showAllServices" :aria-expanded="showAllServices" x-text="showAllServices ? 'Show fewer' : `Show all ${formatCount(report.services.length)} services`"></button>
+                </article>
+
+                <article class="reports-card" aria-labelledby="insights-title">
+                  <div class="reports-card-heading"><h3 id="insights-title">Customer Insights</h3></div>
+                  <div class="reports-insights">
+                    <div>
+                      <p class="reports-empty reports-empty-compact" x-show="customerTotal === 0">No completed customer visits for this period.</p>
+                      <div x-show="customerTotal > 0">
+                        <dl class="reports-customer-counts"><div><dt><span class="reports-customer-dot reports-new"></span>New customers</dt><dd x-text="formatCount(report.customers.new)"></dd></div><div><dt><span class="reports-customer-dot reports-returning"></span>Returning customers</dt><dd x-text="formatCount(report.customers.returning)"></dd></div></dl>
+                        <div class="reports-customer-share" aria-hidden="true"><div :style="{ width: newCustomerWidth }"></div></div>
+                      </div>
+                    </div>
+                    <div class="reports-outcomes"><h4>Booking outcomes</h4><dl><div><dt>Completed</dt><dd x-text="formatCount(report.outcomes.completed)"></dd></div><div><dt>Cancelled</dt><dd x-text="formatCount(report.outcomes.cancelled)"></dd></div><div><dt>No-show</dt><dd x-text="formatCount(report.outcomes.noShow)"></dd></div></dl></div>
+                  </div>
+                </article>
               </div>
             </template>
-
-            <template x-if="!loadingTransactionSummary && transactionSummaryError">
-              <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="font-semibold">Failed to load transaction summary</p>
-                    <p class="mt-1" x-text="transactionSummaryError"></p>
-                  </div>
-                  <button type="button" @click="loadTransactionSummary()" class="inline-flex items-center justify-center rounded-xl bg-red-100 px-4 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-200">
-                    Try again
-                  </button>
-                </div>
-              </div>
-            </template>
-
-            <div x-show="!loadingTransactionSummary && !transactionSummaryError" class="grid gap-4 lg:grid-cols-3">
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm">
-                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="text-sm font-semibold text-slate-500" x-text="transactionSummaryPeriodLabel"></p>
-                    <p class="mt-2 break-words text-4xl font-bold leading-tight text-[#15803d]" x-text="formatPeso(transactionCollectionTotal)"></p>
-                    <p class="mt-3 text-sm text-slate-500" x-text="transactionSummarySubtitle"></p>
-                  </div>
-                  <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#dcfce7] text-[#15803d]">
-                    <i data-lucide="banknote" class="h-8 w-8"></i>
-                  </div>
-                </div>
-              </article>
-
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm">
-                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Average Transaction Value</p>
-                    <p class="mt-2 break-words text-4xl font-bold leading-tight text-[#315b7e]" x-text="formatPeso(averageTransactionValue)"></p>
-                    <p class="mt-3 text-sm text-slate-500" x-text="'Per transaction for ' + transactionSummaryPeriodLabel"></p>
-                  </div>
-                  <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="calculator" class="h-8 w-8"></i>
-                  </div>
-                </div>
-              </article>
-
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Top payment method</p>
-                    <template x-if="topPaymentMethod">
-                      <div>
-                        <p class="mt-2 text-lg font-bold text-[#1f3850]" x-text="topPaymentMethod.label"></p>
-                        <p class="mt-1 text-4xl font-bold leading-none text-[#315b7e]">
-                          <span x-text="formatPercent(topPaymentMethod.percent)"></span><span>%</span>
-                        </p>
-                        <p class="mt-2 text-sm text-slate-500">
-                          <span class="font-bold" x-text="formatPeso(topPaymentMethod.total)"></span>
-                          <span> from </span>
-                          <span x-text="formatWholeNumber(topPaymentMethod.count)"></span>
-                          <span x-text="' transaction' + (topPaymentMethod.count === 1 ? '' : 's')"></span>
-                        </p>
-                      </div>
-                    </template>
-                    <template x-if="!topPaymentMethod">
-                      <p class="mt-2 text-sm font-semibold text-slate-500">No payment methods recorded</p>
-                    </template>
-                  </div>
-                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="percent" class="h-6 w-6"></i>
-                  </div>
-                </div>
-              </article>
-            </div>
-
-            <article x-show="!loadingTransactionSummary && !transactionSummaryError" class="rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
-              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h4 class="font-extrabold text-[#1f3850]">Client transaction summary</h4>
-                  <p class="text-sm text-slate-500" x-text="'Collections for ' + transactionSummaryPeriodLabel"></p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2">
-                    <i data-lucide="filter" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                    <select
-                      x-model="selectedPaymentMethodFilter"
-                      @change="onPaymentMethodFilterChange()"
-                      class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                    >
-                      <template x-for="method in paymentMethodOptions" :key="method.value">
-                        <option :value="method.value" x-text="method.label"></option>
-                      </template>
-                    </select>
-                  </div>
-                  <span class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#315b7e]">
-                    <i data-lucide="users" class="h-3.5 w-3.5"></i>
-                    <span x-text="formatWholeNumber(transactionClientRows.length) + ' client' + (transactionClientRows.length === 1 ? '' : 's')"></span>
-                  </span>
-                </div>
-              </div>
-
-              <template x-if="transactionClientRows.length === 0">
-                <div class="px-5 py-10 text-center">
-                  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="receipt" class="h-7 w-7"></i>
-                  </div>
-                  <p class="mt-3 font-bold text-[#2f4b66]" x-text="transactionClientRowsEmptyMessage"></p>
-                </div>
-              </template>
-
-              <div x-show="transactionClientRows.length > 0" class="overflow-x-auto">
-                <table class="min-w-full text-left text-sm">
-                  <thead class="border-b border-slate-100 bg-[#f8fbfd] text-xs font-bold uppercase tracking-widest text-slate-400">
-                    <tr>
-                      <th scope="col" class="px-5 py-3">Client Name</th>
-                      <th scope="col" class="px-5 py-3">No. of Pets</th>
-                      <th scope="col" class="px-5 py-3">Total Visits</th>
-                      <th scope="col" class="px-5 py-3 text-right">Avg. per visit</th>
-                      <th scope="col" class="px-5 py-3 text-right">Total Spent</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-100">
-                    <template x-for="row in transactionClientRows" :key="row.clientName">
-                      <tr class="transition hover:bg-[#f8fbfd]">
-                        <td class="px-5 py-4 font-semibold text-slate-800" x-text="row.clientName"></td>
-                        <td class="px-5 py-4 font-semibold text-slate-700" x-text="formatWholeNumber(row.petCount)"></td>
-                        <td class="px-5 py-4 font-semibold text-slate-700" x-text="formatWholeNumber(row.totalVisits)"></td>
-                        <td class="px-5 py-4 text-right font-bold text-slate-700" x-text="formatPeso(row.averageSpentPerVisit)"></td>
-                        <td class="px-5 py-4 text-right font-bold text-[#15803d]" x-text="formatPeso(row.totalSpent)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </article>
-          </section>
-
-          <section x-show="activeSection === 'customers'" class="mt-6 space-y-5">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Customer activity</p>
-                <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">Total unique customers</h3>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-3">
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar-range" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <select
-                    x-model="customerPeriod"
-                    @change="onCustomerPeriodChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  >
-                    <option value="day">Day</option>
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                    <option value="year">Year</option>
-                  </select>
-                </div>
-
-                <div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-3 py-2.5 shadow-sm">
-                  <i data-lucide="calendar" class="h-4 w-4 shrink-0 text-[#315b7e]"></i>
-                  <input
-                    x-show="customerPeriod === 'day'"
-                    type="date"
-                    x-model="customerSelectedDate"
-                    @change="onCustomerPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="customerPeriod === 'week'"
-                    type="week"
-                    x-model="customerSelectedWeek"
-                    @change="onCustomerPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="customerPeriod === 'month'"
-                    type="month"
-                    x-model="customerSelectedMonth"
-                    @change="onCustomerPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                  <input
-                    x-show="customerPeriod === 'year'"
-                    type="number"
-                    min="2000"
-                    max="2100"
-                    step="1"
-                    x-model="customerSelectedYear"
-                    @input.debounce.400ms="onCustomerPeriodValueChange()"
-                    class="cursor-pointer bg-transparent text-sm font-semibold text-[#1f3850] outline-none"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  x-show="hasSelectedCustomerPeriodValue"
-                  @click="clearCustomerPeriod()"
-                  class="inline-flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] shadow-sm transition hover:bg-slate-50"
-                >
-                  <i data-lucide="x" class="h-4 w-4"></i>
-                  <span>Clear</span>
-                </button>
-              </div>
-            </div>
-
-            <template x-if="loadingCustomerActivity">
-              <div class="rounded-[24px] border border-[#d7e3ef] bg-white px-5 py-10 text-center text-slate-400 shadow-sm">
-                <i data-lucide="loader-circle" class="mx-auto h-9 w-9 animate-spin text-[#315b7e]"></i>
-                <p class="mt-3 text-sm font-medium">Loading customer activity...</p>
-              </div>
-            </template>
-
-            <template x-if="!loadingCustomerActivity && customerActivityError">
-              <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="font-semibold">Failed to load customer activity</p>
-                    <p class="mt-1" x-text="customerActivityError"></p>
-                  </div>
-                  <button type="button" @click="loadCustomerActivity()" class="inline-flex items-center justify-center rounded-xl bg-red-100 px-4 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-200">
-                    Try again
-                  </button>
-                </div>
-              </div>
-            </template>
-
-            <div x-show="!loadingCustomerActivity && !customerActivityError" class="grid gap-4 lg:grid-cols-3">
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm xl:col-span-2">
-                <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p class="text-sm font-semibold text-slate-500" x-text="customerActivityPeriodLabel"></p>
-                    <p class="mt-2 text-5xl font-bold leading-none text-[#1f3850] lg:text-6xl" x-text="formatWholeNumber(customerActivityReport.totalUniqueCustomers)"></p>
-                    <p class="mt-3 text-sm text-slate-500" x-text="customerActivitySubtitle"></p>
-                  </div>
-                  <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="users" class="h-8 w-8"></i>
-                  </div>
-                </div>
-
-              </article>
-
-              <article class="rounded-[24px] border border-[#cfe0ee] bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Top customer</p>
-                    <template x-if="topCustomer">
-                      <div>
-                        <p class="mt-2 text-lg font-bold text-[#1f3850]" x-text="topCustomer.customerName"></p>
-                        <p class="mt-1 text-sm text-slate-500">
-                          <span x-text="formatWholeNumber(topCustomer.visitCount)"></span>
-                          <span x-text="' grooming visit' + (topCustomer.visitCount === 1 ? '' : 's')"></span>
-                        </p>
-                      </div>
-                    </template>
-                    <template x-if="!topCustomer">
-                      <p class="mt-2 text-sm font-semibold text-slate-500">No customer visits</p>
-                    </template>
-                  </div>
-                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#dcfce7] text-[#15803d]">
-                    <i data-lucide="user-check" class="h-6 w-6"></i>
-                  </div>
-                </div>
-
-              </article>
-            </div>
-
-            <nav
-              x-show="!loadingCustomerActivity && !customerActivityError"
-              class="grid w-full gap-2 rounded-[24px] border border-[#d7e3ef] bg-white p-3 shadow-sm"
-              style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));"
-              role="tablist"
-              aria-label="Customer activity lists"
-            >
-              <template x-for="item in customerActivityNavItems" :key="item.key">
-                <button
-                  type="button"
-                  role="tab"
-                  @click="customerActivitySubsection = item.key; refreshIcons()"
-                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition"
-                  :aria-selected="customerActivitySubsection === item.key"
-                  :class="customerActivitySubsection === item.key ? 'border-[#315b7e] bg-[#315b7e] text-white shadow-sm' : 'border-[#c9d9e8] bg-[#f8fbfd] text-[#315b7e] hover:bg-[#eef5fb]'"
-                >
-                  <i :data-lucide="item.icon" class="h-4 w-4"></i>
-                  <span x-text="item.label"></span>
-                </button>
-              </template>
-            </nav>
-
-            <article
-              x-show="!loadingCustomerActivity && !customerActivityError && customerActivitySubsection === 'all'"
-              class="rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm"
-            >
-              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h4 class="font-extrabold text-[#1f3850]">All customers</h4>
-                  <p class="text-sm text-slate-500">Customers with completed grooming visits across all dates</p>
-                </div>
-                <span class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#315b7e]">
-                  <i data-lucide="users" class="h-3.5 w-3.5"></i>
-                  <span x-text="formatWholeNumber(allCustomerActivityCustomers.length) + ' customer' + (allCustomerActivityCustomers.length === 1 ? '' : 's')"></span>
-                </span>
-              </div>
-
-              <template x-if="allCustomerActivityCustomers.length === 0">
-                <div class="px-5 py-10 text-center">
-                  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="users" class="h-7 w-7"></i>
-                  </div>
-                  <p class="mt-3 font-bold text-[#2f4b66]" x-text="allCustomersEmptyMessage"></p>
-                </div>
-              </template>
-
-              <div x-show="allCustomerActivityCustomers.length > 0" class="divide-y divide-slate-100">
-                <template x-for="customer in allCustomerActivityCustomers" :key="customer.id">
-                  <div class="grid gap-4 px-5 py-4 lg:grid-cols-3 lg:items-center">
-                    <div class="flex min-w-0 items-center gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb] text-sm font-extrabold text-[#315b7e]" x-text="customerInitials(customer)"></div>
-                      <div class="min-w-0">
-                        <p class="truncate font-semibold text-slate-800" x-text="customer.customerName"></p>
-                        <p class="truncate text-sm text-slate-500" x-text="customerContactLine(customer) || 'No contact details'"></p>
-                      </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p class="text-xs font-bold uppercase tracking-widest text-slate-400">First visit</p>
-                        <p class="mt-1 font-semibold text-slate-700" x-text="formatReportDateTime(customer.firstVisitAt)"></p>
-                      </div>
-                      <div>
-                        <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Last visit</p>
-                        <p class="mt-1 font-semibold text-slate-700" x-text="formatReportDateTime(customer.lastVisitAt)"></p>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-3 lg:justify-end">
-                      <span class="text-sm font-semibold text-slate-500">Visit count</span>
-                      <span class="shrink-0 rounded-full bg-[#eef5fb] px-3 py-1 text-sm font-extrabold text-[#315b7e]" x-text="formatWholeNumber(customer.visitCount)"></span>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </article>
-
-            <article
-              x-show="!loadingCustomerActivity && !customerActivityError && customerActivitySubsection === 'new'"
-              class="rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm"
-            >
-              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h4 class="font-extrabold text-[#1f3850]">New customers</h4>
-                  <p class="text-sm text-slate-500" x-text="'First-time grooming visits for ' + customerActivityPeriodLabel"></p>
-                </div>
-                <span class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#315b7e]">
-                  <i data-lucide="user-plus" class="h-3.5 w-3.5"></i>
-                  <span x-text="formatWholeNumber(newCustomerActivityCustomers.length) + ' new customer' + (newCustomerActivityCustomers.length === 1 ? '' : 's')"></span>
-                </span>
-              </div>
-
-              <template x-if="newCustomerActivityCustomers.length === 0">
-                <div class="px-5 py-10 text-center">
-                  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="user-plus" class="h-7 w-7"></i>
-                  </div>
-                  <p class="mt-3 font-bold text-[#2f4b66]" x-text="newCustomersEmptyMessage"></p>
-                </div>
-              </template>
-
-              <div x-show="newCustomerActivityCustomers.length > 0" class="divide-y divide-slate-100">
-                <template x-for="customer in newCustomerActivityCustomers" :key="customer.id">
-                  <div class="grid gap-4 px-5 py-4 lg:grid-cols-3 lg:items-center">
-                    <div class="flex min-w-0 items-center gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb] text-sm font-extrabold text-[#315b7e]" x-text="customerInitials(customer)"></div>
-                      <div class="min-w-0">
-                        <p class="truncate font-semibold text-slate-800" x-text="customer.customerName"></p>
-                        <p class="truncate text-sm text-slate-500" x-text="customerContactLine(customer) || 'No contact details'"></p>
-                      </div>
-                    </div>
-
-                    <div class="text-sm">
-                      <p class="text-xs font-bold uppercase tracking-widest text-slate-400">First visit</p>
-                      <p class="mt-1 font-semibold text-slate-700" x-text="formatReportDateTime(customer.firstVisitAt)"></p>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-3 lg:justify-end">
-                      <span class="text-sm font-semibold text-slate-500">Visits in period</span>
-                      <span class="shrink-0 rounded-full bg-[#eef5fb] px-3 py-1 text-sm font-extrabold text-[#315b7e]" x-text="formatWholeNumber(customer.visitCount)"></span>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </article>
-
-            <article
-              x-show="!loadingCustomerActivity && !customerActivityError && customerActivitySubsection === 'returning'"
-              class="rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm"
-            >
-              <div class="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h4 class="font-extrabold text-[#1f3850]">Returning customers</h4>
-                  <p class="text-sm text-slate-500" x-text="'Customers who returned after their first grooming visit for ' + customerActivityPeriodLabel"></p>
-                </div>
-                <span class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#315b7e]">
-                  <i data-lucide="repeat-2" class="h-3.5 w-3.5"></i>
-                  <span x-text="formatWholeNumber(returningCustomerActivityCustomers.length) + ' returning customer' + (returningCustomerActivityCustomers.length === 1 ? '' : 's')"></span>
-                </span>
-              </div>
-
-              <template x-if="returningCustomerActivityCustomers.length === 0">
-                <div class="px-5 py-10 text-center">
-                  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                    <i data-lucide="repeat-2" class="h-7 w-7"></i>
-                  </div>
-                  <p class="mt-3 font-bold text-[#2f4b66]" x-text="returningCustomersEmptyMessage"></p>
-                </div>
-              </template>
-
-              <div x-show="returningCustomerActivityCustomers.length > 0" class="divide-y divide-slate-100">
-                <template x-for="customer in returningCustomerActivityCustomers" :key="customer.id">
-                  <div class="grid gap-4 px-5 py-4 lg:grid-cols-3 lg:items-center">
-                    <div class="flex min-w-0 items-center gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb] text-sm font-extrabold text-[#315b7e]" x-text="customerInitials(customer)"></div>
-                      <div class="min-w-0">
-                        <p class="truncate font-semibold text-slate-800" x-text="customer.customerName"></p>
-                        <p class="truncate text-sm text-slate-500" x-text="customerContactLine(customer) || 'No contact details'"></p>
-                      </div>
-                    </div>
-
-                    <div class="text-sm">
-                      <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Last visit</p>
-                      <p class="mt-1 font-semibold text-slate-700" x-text="formatReportDateTime(customer.lastVisitAt)"></p>
-                    </div>
-
-                    <div class="flex items-center justify-between gap-3 lg:justify-end">
-                      <span class="text-sm font-semibold text-slate-500">Visit count</span>
-                      <span class="shrink-0 rounded-full bg-[#eef5fb] px-3 py-1 text-sm font-extrabold text-[#315b7e]" x-text="formatWholeNumber(customer.visitCount)"></span>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </article>
-
           </section>
         </main>
       </div>
@@ -923,8 +285,8 @@
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?v=grooming-reports-20261018&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018"></script>
     <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
-    <script src="../../scripts/components/admin-reports.js?payments=20261018-shared"></script>
+    <script src="../../scripts/components/admin-reports.js?v=grooming-mariadb-20261018"></script>
   </body>
 </html>

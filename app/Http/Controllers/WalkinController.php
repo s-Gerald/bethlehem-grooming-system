@@ -121,6 +121,7 @@ class WalkinController extends Controller
 
             // For each pet: find or create a pet record, then attach services
             $petsResponse = [];
+            $hasServiceSnapshots = \Illuminate\Support\Facades\Schema::hasColumn('booking_services', 'service_name_snapshot');
             $groomers = \App\Models\PetGroomer::whereIn('id', array_column($data['pets'], 'groomer_id'))->get()->keyBy('id');
             foreach ($resolvedPets as $item) {
                 $pet = $item['pet'];
@@ -141,6 +142,10 @@ class WalkinController extends Controller
                         'booking_id' => $booking->booking_id,
                         'booking_pet_id' => $bookingPet->booking_pet_id,
                         'service_id' => $svc['service_id'],
+                        ...($hasServiceSnapshots ? [
+                            'service_name_snapshot' => $svc['name'],
+                            'service_kind_snapshot' => $svc['kind'],
+                        ] : []),
                         'price_at_booking' => $svc['price'],
                         'price_min_at_booking' => $svc['price_min'],
                         'price_max_at_booking' => $svc['price_max'],
@@ -331,6 +336,7 @@ class WalkinController extends Controller
             return [
                 'service_id' => $service->service_id,
                 'name' => $service->service_name,
+                'kind' => $service->kind,
                 ...$this->resolvePrice($service, $size),
             ];
         }, $services);

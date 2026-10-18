@@ -2212,16 +2212,10 @@ var API = (() => {
     return request("GET", `/admin/transactions${query}`, null, getAdminToken());
   }
 
-  async function getServicesPerformedReport({ period = "day", date = "", week = "", month = "", year = "" } = {}) {
-    // GET /api/admin/reports/services-performed  (protected - admin token)
-    const params = new URLSearchParams();
-    if (period) params.set("period", period);
-    if (date)   params.set("date",   date);
-    if (week)   params.set("week",   week);
-    if (month)  params.set("month",  month);
-    if (year)   params.set("year",   year);
-    const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/reports/services-performed${query}`, null, getAdminToken());
+  async function getGroomingPerformanceReport({ period = "this_month", start = "", end = "" } = {}) {
+    const params = new URLSearchParams({ period });
+    if (period === "custom") { params.set("start", start); params.set("end", end); }
+    return request("GET", `/admin/reports/grooming?${params}`, null, getAdminToken());
   }
 
   async function getGroomingCatalogue() {
@@ -2455,18 +2449,6 @@ var API = (() => {
     return request("GET", "/admin/vaccination-options" + (clinicalOnly ? "?clinical_only=1" : ""), null, getAdminToken());
   }
 
-  async function getCustomerActivityReport({ period = "day", date = "", week = "", month = "", year = "" } = {}) {
-    // GET /api/admin/reports/customer-activity  (protected - admin token)
-    const params = new URLSearchParams();
-    if (period) params.set("period", period);
-    if (date)   params.set("date",   date);
-    if (week)   params.set("week",   week);
-    if (month)  params.set("month",  month);
-    if (year)   params.set("year",   year);
-    const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/reports/customer-activity${query}`, null, getAdminToken());
-  }
-
   function normalizePhoneLikeIdentifier(value) {
     const digits = String(value || "").replace(/\D/g, "");
 
@@ -2627,8 +2609,7 @@ var API = (() => {
     releaseBooking,
     markPickedUp,
     getTransactions,
-    getServicesPerformedReport,
-    getCustomerActivityReport,
+    getGroomingPerformanceReport,
     // Walk-in
     getGroomingCatalogue,
     updateGroomingPricing,

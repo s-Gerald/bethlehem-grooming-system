@@ -191,8 +191,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         });
     });
 
-    Route::get('/admin/reports/services-performed', [ReportController::class, 'servicesPerformed']);
-    Route::get('/admin/reports/customer-activity', [ReportController::class, 'customerActivity']);
+    Route::get('/admin/reports/grooming', [ReportController::class, 'grooming']);
 
     // Clinic administration — available only to the project's staff/admin roles.
     Route::middleware(['role:admin,staff', 'clinic:access'])->group(function () {

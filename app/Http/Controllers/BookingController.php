@@ -209,6 +209,8 @@ class BookingController extends Controller
             $lastCount = $maxRef ? ((int) substr($maxRef, -4)) + 1 : 1;
             $reference = $prefix.str_pad($lastCount, 4, '0', STR_PAD_LEFT);
 
+            $hasServiceSnapshots = Schema::hasColumn('booking_services', 'service_name_snapshot');
+
             // ── Create the booking ────────────────────────────
             $booking = Booking::create([
                 'booking_reference' => $reference,
@@ -309,6 +311,10 @@ class BookingController extends Controller
                             'booking_id' => $booking->booking_id,
                             'booking_pet_id' => $bookingPet->booking_pet_id ?? null,
                             'service_id' => $service->service_id,
+                            ...($hasServiceSnapshots ? [
+                                'service_name_snapshot' => $service->service_name,
+                                'service_kind_snapshot' => $service->kind,
+                            ] : []),
                             'addon_id' => null,
                             'price_at_booking' => $price,
                             'price_min_at_booking' => $bounds['min'],

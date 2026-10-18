@@ -461,6 +461,7 @@ class PaymentController extends Controller
                     'services' => $services->map->only(['booking_service_id', 'booking_pet_id', 'service_id', 'addon_id', 'price_at_booking'])->all(),
                     'pet_sizes' => $pets->toArray(), 'products' => $products, 'line_items' => $lineItems,
                     'total' => $prepared['serverTotal'], 'summary' => $receiptSummary, 'notes' => $data['notes'] ?? null,
+                    'grooming_total' => $this->paymentReadiness()->centsToMoney($totalCents - array_sum(array_column($products, 'subtotalCents'))),
                 ],
                 'reconciliation_reason' => 'checkout_creation_unconfirmed',
             ]);
