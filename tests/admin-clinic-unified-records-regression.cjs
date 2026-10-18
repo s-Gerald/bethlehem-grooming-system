@@ -48,12 +48,19 @@ function setup(access = true) {
   assert.equal(app.calls.cases, 1);
   assert.deepEqual(app.calls.records, [1]);
   assert.equal(app.state.searching, true, 'Records have their own loading state');
-  app.cases.resolve({cases: [{id: 1, status: 'in_consultation', pet: {name: 'Milo'}}, {id: 2, status: 'for_payment'}]});
+  app.cases.resolve({cases: [{id: 1, status: 'in_consultation', pet: {name: 'Milo'}}, {id: 2, status: 'for_payment'}],
+    arrivals: [{id: 3, status: 'waiting_to_arrive', pet: {name: 'Mochi'}}]});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(app.state.activeCasesLoading, false, 'Cases finish while Records remain pending');
   assert.equal(app.state.visibleActiveCases[0].id, 1);
+  assert.equal(app.state.expectedCount, 1);
+  const loadedCases = app.events.find(event => event.type === 'clinic-cases-loaded').detail;
+  assert.deepEqual(Array.from(loadedCases, item => item.id), [1, 2], 'Clinical consumers receive no pending arrivals');
   app.state.openCase(app.state.visibleActiveCases[0]);
   assert.equal(app.events.at(-1).type, 'clinic-open-modal', 'A case opens before Records resolve');
+  app.state.setTab('expected');
+  assert.deepEqual(Array.from(app.state.caseRows, item => item.id), [3]);
+  assert.equal(app.state.activeCount, 1);
   app.state.setTab('for-payment');
   assert.equal(app.state.visibleActiveCases[0].id, 2);
   app.state.setTab('confined');

@@ -67,11 +67,13 @@ class ClinicAppointment extends Model
 
     public function scopeOperational(Builder $query): Builder
     {
-        return $query->blocking()->where(fn (Builder $cases) => $cases
-            ->whereIn('status', self::OPERATIONAL_STATUSES)
-            ->orWhere(fn (Builder $waiting) => $waiting
-                ->where('status', 'waiting_to_arrive')
-                ->whereDate('appointment_date', now()->toDateString())));
+        return $query->whereIn('status', self::OPERATIONAL_STATUSES);
+    }
+
+    public function scopeExpected(Builder $query): Builder
+    {
+        return $query->where('status', 'waiting_to_arrive')
+            ->whereDate('appointment_date', now()->toDateString());
     }
 
     public function scopeConfined(Builder $query): Builder

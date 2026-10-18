@@ -547,7 +547,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
                 'clinic_appointment_id' => 8, 'clinic_case_service_id' => $entryId, 'admitted_at' => now()->subDay(), 'reason' => 'Observe overnight',
             ]);
             $response = $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonPath('confined_count', 1);
-            $this->assertEqualsCanonicalizing([1, 2, 3, 5, 6], array_column($response->json('cases'), 'id'));
+            $this->assertEqualsCanonicalizing([1, 2, 3, 6], array_column($response->json('cases'), 'id'));
+            $response->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 5);
             $this->getJson('/api/admin/clinic-confinements')->assertOk()->assertJsonPath('data.0.id', 8);
             $this->assertDatabaseCount('clinic_appointments', 8);
         } finally {
@@ -1156,6 +1157,67 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(1, 'cases');
     }
 
+    public function test_expected_arrival_moves_through_check_in_consultation_payment_and_completion(): void
+    {
+        Carbon::setTestNow('2026-10-19 08:30:00');
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        $id = $this->postJson('/api/clinic/pre-register', [
+            'common_concerns' => ['Routine check-up'], 'chief_complaint' => 'Annual exam',
+            'appointment_date' => now()->toDateString(), 'window_id' => 1, 'pet_id' => 101,
+        ])->assertCreated()->json('appointment.appointment_id');
+
+        $this->authenticateAs('staff');
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'cases')
+            ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', $id)
+            ->assertJsonPath('arrivals.0.final_status_label', 'Waiting for Arrival')
+            ->assertJsonPath('arrivals.0.pet.name', 'Mochi')
+            ->assertJsonPath('arrivals.0.ownerName', 'Customer User')
+            ->assertJsonPath('arrivals.0.time_window.window_label', '8:00 AM - 9:00 AM')
+            ->assertJsonPath('arrivals.0.chief_complaint', "Routine check-up\nAnnual exam");
+        $this->assertSame(0, app(\App\Services\OperationalCapacity::class)->waitingCount());
+        $this->postJson("/api/admin/clinic-appointments/{$id}/check-in")->assertOk()
+            ->assertJsonPath('appointment.queue_number', 1);
+        $this->assertSame(1, app(\App\Services\OperationalCapacity::class)->waitingCount());
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'arrivals')
+            ->assertJsonCount(1, 'cases')->assertJsonPath('cases.0.status', 'checked_in');
+        $this->postJson("/api/admin/clinic-cases/{$id}/start")->assertOk()->assertJsonPath('case.status', 'in_consultation');
+        $this->postJson("/api/admin/clinic-appointments/{$id}/record", [
+            'diagnosis' => 'Healthy', 'finish_case' => true,
+            'weight_kg' => 4.5, 'temperature_c' => 38.5, 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20,
+        ])->assertOk();
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'arrivals')
+            ->assertJsonCount(1, 'cases')->assertJsonPath('cases.0.status', 'for_payment');
+        $this->postJson("/api/admin/clinic-appointments/{$id}/pay", [
+            'total_amount' => 0, 'payment_method' => 'cash', 'amount_paid' => 0,
+        ])->assertOk()->assertJsonPath('appointment.status', 'completed')->assertJsonPath('appointment.paid', true);
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'arrivals')->assertJsonCount(0, 'cases');
+        $this->getJson('/api/admin/pets/101/clinic-case')->assertOk()->assertJsonPath('case', null)->assertJsonPath('arrival', null);
+    }
+
+    public function test_cancelled_and_expired_arrivals_leave_expected_while_future_registrations_still_block_intake(): void
+    {
+        $this->authenticateAs('staff');
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        foreach (range(1, 3) as $id) {
+            $this->insertClinicAppointment('waiting_to_arrive', $id);
+            DB::table('clinic_appointments')->where('id', $id)->update([
+                'pet_id' => $id === 3 ? 101 : null, 'queue_number' => null,
+                'appointment_date' => now()->addDays($id - 2)->toDateString(),
+            ]);
+        }
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'cases')
+            ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 2);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'expired']);
+        $this->postJson('/api/admin/clinic-appointments/2/cancel')->assertOk();
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'cases')->assertJsonCount(0, 'arrivals');
+        $this->postJson('/api/admin/clinic-cases', ['pet_id' => 101, 'case_type' => 'consultation'])
+            ->assertStatus(409)->assertJsonPath('code', 'pre_registration_exists')->assertJsonPath('arrival.id', 3);
+        $this->postJson('/api/admin/clinic-appointments/3/check-in')->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 3, 'status' => 'waiting_to_arrive', 'queue_number' => null]);
+        $this->assertSame(0, \App\Models\ClinicAppointment::operational()->count());
+    }
+
     public function test_online_request_assigns_its_queue_number_only_when_staff_starts_physical_intake(): void
     {
         $this->authenticateAs('staff');
@@ -1164,8 +1226,13 @@ class ClinicAdministrationAuthorizationTest extends TestCase
 
         $this->getJson('/api/admin/clinic-cases')
             ->assertOk()
-            ->assertJsonPath('cases.0.case_type', 'online_request')
-            ->assertJsonPath('cases.0.queue_number', null);
+            ->assertJsonCount(0, 'cases')
+            ->assertJsonCount(1, 'arrivals')
+            ->assertJsonPath('arrivals.0.case_type', 'online_request')
+            ->assertJsonPath('arrivals.0.queue_number', null);
+
+        $this->assertSame(0, \App\Models\ClinicAppointment::operational()->count());
+        $this->assertSame(1, \App\Models\ClinicAppointment::blocking()->count());
 
         DB::table('unregistered_customers')->insert([
             'id' => 1, 'first_name' => 'Ana', 'last_name' => 'Cruz', 'phone' => '09171234567',
@@ -1173,10 +1240,14 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
         DB::table('pets')->insert(['pet_id' => 1, 'unregistered_customer_id' => 1, 'pet_name' => 'Mochi', 'species' => 'Dog']);
         DB::table('clinic_appointments')->where('id', 1)->update(['pet_id' => 1]);
+        $this->getJson('/api/admin/pets/1/clinic-case')->assertOk()
+            ->assertJsonPath('case', null)->assertJsonPath('arrival.id', 1);
         $this->postJson('/api/admin/clinic-cases', ['pet_id' => 1, 'case_type' => 'vaccination'])
             ->assertStatus(409)
-            ->assertJsonPath('code', 'active_case_exists')
-            ->assertJsonPath('case.id', 1);
+            ->assertJsonPath('code', 'pre_registration_exists')
+            ->assertJsonPath('arrival.id', 1)
+            ->assertJsonMissingPath('case')
+            ->assertJsonPath('message', 'Mochi already has a pre-registration waiting for arrival (CL-20260722-001).');
         $this->assertSame('waiting_to_arrive', DB::table('clinic_appointments')->where('id', 1)->value('status'));
 
         $this->postJson('/api/admin/clinic-cases/1/start')
@@ -1184,6 +1255,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'waiting_to_arrive', 'queue_number' => null, 'consultation_started_at' => null]);
         $this->postJson('/api/admin/clinic-appointments/1/check-in')->assertOk()
             ->assertJsonPath('appointment.status', 'checked_in')->assertJsonPath('appointment.queue_number', 1);
+        $this->getJson('/api/admin/clinic-cases')->assertOk()
+            ->assertJsonCount(0, 'arrivals')->assertJsonCount(1, 'cases')->assertJsonPath('cases.0.status', 'checked_in');
+        $this->getJson('/api/admin/pets/1/clinic-case')->assertOk()
+            ->assertJsonPath('arrival', null)->assertJsonPath('case.id', 1);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'consultation_started_at' => null]);
         $this->postJson('/api/admin/clinic-cases/1/start')
             ->assertOk()
@@ -1256,12 +1331,14 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
         DB::table('clinic_appointments')->where('id', 4)->update(['pet_id' => 80, 'checked_in_at' => null, 'queue_number' => null]);
         DB::table('clinic_appointments')->where('id', 5)->update(['appointment_date' => '2026-10-17', 'checked_in_at' => null]);
-        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(4, 'cases');
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(3, 'cases')
+            ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 4);
 
         Carbon::setTestNow('2026-10-17 00:00:01');
         $this->getJson('/api/admin/pets/80/clinic-case')->assertOk()->assertJsonPath('case', null);
-        $response = $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(4, 'cases');
-        $this->assertEqualsCanonicalizing([1, 2, 3, 5], array_column($response->json('cases'), 'id'));
+        $response = $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(3, 'cases')
+            ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 5);
+        $this->assertEqualsCanonicalizing([1, 2, 3], array_column($response->json('cases'), 'id'));
         $this->assertDatabaseHas('clinic_appointments', ['id' => 4, 'status' => 'expired']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 5, 'status' => 'waiting_to_arrive']);
         Carbon::setTestNow('2026-10-17 10:00:00');

@@ -34,8 +34,7 @@ class AdminClinicController extends Controller
         $with = $this->appointmentRelations();
 
         $incoming = ClinicAppointment::with($with)
-            ->where('appointment_date', now()->toDateString())
-            ->where('status', 'waiting_to_arrive')
+            ->expected()
             ->orderBy('created_at')
             ->get()
             ->map(fn ($a) => $this->formatAppointment($a));
@@ -134,18 +133,24 @@ class AdminClinicController extends Controller
     public function activeCases()
     {
         app(\App\Services\PreRegistrationExpiry::class)->expire();
+        $with = $this->appointmentRelations();
+        $arrivals = ClinicAppointment::with($with)
+            ->expected()
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (ClinicAppointment $arrival) => $this->formatAppointment($arrival))
+            ->values();
         $cases = ClinicAppointment::query()
-            ->with($this->appointmentRelations())
+            ->with($with)
             ->operational()
             ->when($this->hasConfinements, fn ($query) => $query
                 ->whereDoesntHave('confinement', fn ($episode) => $episode->whereNull('discharged_at')))
-            ->orderByRaw("CASE WHEN status = 'waiting_to_arrive' THEN 0 ELSE 1 END")
             ->orderBy('created_at')
             ->get()
             ->map(fn (ClinicAppointment $case) => $this->formatAppointment($case))
             ->values();
 
-        return response()->json(['success' => true, 'cases' => $cases, 'today' => now()->toDateString(),
+        return response()->json(['success' => true, 'arrivals' => $arrivals, 'cases' => $cases, 'today' => now()->toDateString(),
             'confined_count' => $this->hasConfinements ? ClinicAppointment::confined()->count() : 0]);
     }
 
@@ -166,7 +171,10 @@ class AdminClinicController extends Controller
         $case = ClinicAppointment::with($this->appointmentRelations())
             ->blocking()->where('pet_id', $petId)->orderBy('id')->first();
 
-        return response()->json(['case' => $case ? $this->formatAppointment($case) : null]);
+        $isArrival = $case?->status === 'waiting_to_arrive';
+        $formatted = $case ? $this->formatAppointment($case) : null;
+
+        return response()->json(['case' => $isArrival ? null : $formatted, 'arrival' => $isArrival ? $formatted : null]);
     }
 
     public function createCase(Request $request, ClinicAppointmentSequence $sequence)
@@ -188,6 +196,14 @@ class AdminClinicController extends Controller
 
             if ($existing) {
                 $case = $this->formatAppointment($existing);
+                if ($existing->status === 'waiting_to_arrive') {
+                    return response()->json([
+                        'success' => false,
+                        'code' => 'pre_registration_exists',
+                        'message' => "{$pet->pet_name} already has a pre-registration waiting for arrival ({$existing->appointment_reference}).",
+                        'arrival' => $case,
+                    ], 409);
+                }
                 $label = ['online_request' => 'online request', 'vaccination' => 'vaccination'][$case['case_type']] ?? 'consultation';
 
                 return response()->json([
@@ -943,7 +959,7 @@ class AdminClinicController extends Controller
     private function clinicStatusLabel(?string $status): string
     {
         return match ($status) {
-            'waiting_to_arrive' => 'Waiting to Arrive',
+            'waiting_to_arrive' => 'Waiting for Arrival',
             'checked_in' => 'Checked In',
             'in_consultation' => 'In Consultation',
             'for_payment' => 'For Payment',

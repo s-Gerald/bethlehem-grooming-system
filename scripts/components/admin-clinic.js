@@ -525,6 +525,7 @@ function adminClinicPage() {
     recordsPage: 1,
     hasMoreRecords: false,
     activeCases: [],
+    arrivals: [],
     activeCasesLoading: false,
     clinicToday: '',
     confinedCases: [], confinedCount: 0, confinedLoading: false, confinedError: '', confinedPage: 1, confinedLastPage: 1,
@@ -589,6 +590,7 @@ function adminClinicPage() {
         }
       } catch (error) { this.accessError = error.message || "Could not verify Clinic access."; return; }
       if (new URLSearchParams(window.location.search).get("tab") === "active-cases") this.tab = "active-cases";
+      if (new URLSearchParams(window.location.search).get("tab") === "expected") this.tab = "expected";
       if (new URLSearchParams(window.location.search).get("tab") === "for-payment") this.tab = "for-payment";
       if (new URLSearchParams(window.location.search).get("tab") === "confined") { this.tab = "confined"; this.loadConfinedCases(); }
       await this.loadActiveCases();
@@ -607,12 +609,13 @@ function adminClinicPage() {
       try {
         const response = await API.getActiveClinicCases();
         this.activeCases = response.cases || [];
+        this.arrivals = response.arrivals || [];
         this.clinicToday = response.today || '';
         this.confinedCount = response.confined_count || 0;
         window.dispatchEvent(new CustomEvent("clinic-cases-loaded", { detail: this.activeCases }));
         return true;
       }
-      catch { this.activeCases = []; }
+      catch { return false; }
       finally { this.activeCasesLoading = false; }
     },
 
@@ -621,8 +624,9 @@ function adminClinicPage() {
     },
     get currentActiveCases() { return this.activeCases.filter(item => ['checked_in', 'in_consultation'].includes(item.status) && !(item.confinement && !item.confinement.discharged_at)); },
     get activeCount() { return this.currentActiveCases.length; },
-    get waitingCases() { return this.activeCases.filter(item => item.status === 'waiting_to_arrive'); },
-    get caseRows() { return this.tab === 'for-payment' ? this.visibleActiveCases : [...this.visibleActiveCases, ...this.waitingCases]; },
+    get waitingCases() { return this.arrivals.filter(item => item.status === 'waiting_to_arrive'); },
+    get expectedCount() { return this.waitingCases.length; },
+    get caseRows() { return this.tab === 'expected' ? this.waitingCases : this.visibleActiveCases; },
     get forPaymentCount() { return this.activeCases.filter(item => item.status === 'for_payment').length; },
     async loadConfinedCases(page = 1) {
       const request = ++this._confinedRequest;
@@ -643,6 +647,7 @@ function adminClinicPage() {
       this.tab = tab;
       const url = new URL(window.location.href);
       if (tab === "active-cases") url.searchParams.set("tab", "active-cases");
+      else if (tab === 'expected') url.searchParams.set('tab', 'expected');
       else if (tab === 'for-payment') url.searchParams.set('tab', 'for-payment');
       else if (tab === 'confined') { url.searchParams.set('tab', 'confined'); this.loadConfinedCases(); }
       else url.searchParams.delete("tab");
@@ -651,7 +656,7 @@ function adminClinicPage() {
       this.$nextTick?.(() => { if (window.lucide) window.lucide.createIcons(); });
     },
 
-    caseLabel(item) { return ({ online_request: "Online request", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
+    caseLabel(item) { return ({ online_request: "Online Pre-registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
     caseStatus(item) { return ({ waiting_to_arrive: "Waiting for Arrival", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" })[item.status] || item.status; },
     casePatientLabel(item) {
       return (item.status !== 'waiting_to_arrive' && item.queue_number ? `#${item.queue_number} · ` : '') + (item.pet?.name || 'Patient');
@@ -684,11 +689,16 @@ function adminClinicPage() {
       this.caseBusyId = item.id;
       try {
         const response = await API.clinicCheckIn(item.id);
+        this.applyCheckedInCase(response.appointment);
         if (String(item.pet?.id) === String(this.profile.pet?.id)) this.profileVisit = response.appointment;
         await this.loadActiveCases();
       }
       catch (error) { this.$store.clinicFeedback.notify(error.message || "Could not check in this patient.", "error"); }
       finally { this.caseBusyId = null; }
+    },
+    applyCheckedInCase(appointment) {
+      this.arrivals = this.arrivals.filter(item => item.id !== appointment.id);
+      this.activeCases = [...this.activeCases.filter(item => item.id !== appointment.id), appointment];
     },
     async reviewPayment(item, checkOnline = true) {
       if (!this.permissions.payment || item.status !== "for_payment" || this.payment.open) return;
@@ -1144,7 +1154,7 @@ function adminClinicPage() {
       try {
         const response = await API.getCurrentPetClinicCase(petId);
         if (request !== this._profileRequest) return false;
-        this.profileVisit = response.case;
+        this.profileVisit = response.case || response.arrival || null;
         this.profileVisitLoaded = true;
         this.profileActionError = '';
         return true;
@@ -1193,13 +1203,16 @@ function adminClinicPage() {
           try {
             visit = (await API.createClinicCase({ pet_id: this.profile.pet.id, case_type: 'consultation' })).case;
           } catch (error) {
-            if (error.code !== 'active_case_exists' || !error.data?.case) throw error;
-            this.profileVisit = error.data.case;
+            const existing = error.code === 'pre_registration_exists' ? error.data?.arrival
+              : error.code === 'active_case_exists' ? error.data?.case : null;
+            if (!existing) throw error;
+            this.profileVisit = existing;
             await this.loadActiveCases();
             return;
           }
         }
         this.profileVisit = visit;
+        this.applyCheckedInCase(visit);
         await this.loadActiveCases();
       } catch (error) {
         this.profileActionError = error.message || 'Could not check in this patient.';

@@ -204,7 +204,7 @@ function permissions(clinical, payment, queue, customers) {
   const page = fs.readFileSync(path.join(root, 'pages/admin/clinic.html'), 'utf8');
   const filters = page.slice(page.indexOf('aria-label="Case status filters"'), page.indexOf('<section x-show="[\'active-cases\''));
   const filterOrder = [...filters.matchAll(/@click="setTab\('([^']+)'\)"/g)].map(match => match[1]);
-  assert.deepEqual(filterOrder, ['active-cases', 'confined', 'for-payment']);
+  assert.deepEqual(filterOrder, ['expected', 'active-cases', 'confined', 'for-payment']);
   assert.match(filters, /id="clinic-for-payment-filter"[^>]*:aria-pressed="tab === 'for-payment'"[^>]*@click="setTab\('for-payment'\)"/);
   assert.equal(filters.includes('justify-between'), false, 'Small screens use natural spacing and wrapping');
   assert.equal((page.match(/Save &amp; Send to Payment/g) || []).length, 1);

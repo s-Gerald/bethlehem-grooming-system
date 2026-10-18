@@ -205,9 +205,11 @@ function setup() {
   const waiting = setup();
   await waiting.state.openProfile({pet: {id: 7}, owner}, waiting.trigger);
   let waitingVisit = {id: 2, status: 'waiting_to_arrive', pet: {id: 7}};
-  waiting.state.activeCases = [waitingVisit];
-  waiting.context.API.getActiveClinicCases = async () => ({cases: [waitingVisit]});
-  waiting.context.API.getCurrentPetClinicCase = async () => ({case: waitingVisit});
+  waiting.state.arrivals = [waitingVisit];
+  waiting.context.API.getActiveClinicCases = async () => waitingVisit.status === 'waiting_to_arrive'
+    ? {cases: [], arrivals: [waitingVisit]} : {cases: [waitingVisit], arrivals: []};
+  waiting.context.API.getCurrentPetClinicCase = async () => waitingVisit.status === 'waiting_to_arrive'
+    ? {case: null, arrival: waitingVisit} : {case: waitingVisit, arrival: null};
   waiting.context.API.createClinicCase = async () => {throw new Error('Waiting arrivals must reuse their case');};
   waiting.context.API.clinicCheckIn = async id => {assert.equal(id, 2); waitingVisit = {...waitingVisit, status: 'checked_in', queue_number: 5}; return {appointment: waitingVisit};};
   waiting.context.API.startClinicCase = async () => {throw new Error('Check-in must stop at checked_in');};
@@ -215,7 +217,49 @@ function setup() {
   assert.equal(waiting.state.waitingCases.length, 1);
   await waiting.state.checkInPatient();
   assert.equal(waiting.state.activeCount, 1);
+  assert.equal(waiting.state.expectedCount, 0);
   assert.equal(waiting.state.currentClinicVisit.queue_number, 5);
+
+  const checkIn = setup();
+  const arrival = {id: 4, status: 'waiting_to_arrive', pet: {id: 7, name: 'Mochi'}};
+  checkIn.state.arrivals = [arrival];
+  checkIn.state.tab = 'expected';
+  checkIn.context.API.clinicCheckIn = async () => ({appointment: {...arrival, status: 'checked_in', queue_number: 1}});
+  const refresh = deferred();
+  checkIn.context.API.getActiveClinicCases = () => refresh.promise;
+  const checkingIn = checkIn.state.checkInCase(arrival);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(checkIn.state.expectedCount, 0, 'Successful check-in removes the arrival before the list request finishes');
+  assert.equal(checkIn.state.activeCount, 1, 'Active count updates immediately from the successful check-in response');
+  assert.equal(checkIn.state.caseRows.length, 0);
+  refresh.resolve({cases: [{...arrival, status: 'checked_in', queue_number: 1}], arrivals: []});
+  await checkingIn;
+  assert.equal(checkIn.state.activeCount, 1, 'Refreshing does not duplicate the checked-in patient');
+
+  const failedCheckIn = setup();
+  failedCheckIn.state.arrivals = [arrival];
+  failedCheckIn.context.API.clinicCheckIn = async () => {throw new Error('Clinic is not accepting check-ins');};
+  await failedCheckIn.state.checkInCase(arrival);
+  assert.equal(failedCheckIn.state.expectedCount, 1, 'Rejected check-in leaves the pre-registration in Expected');
+  assert.equal(failedCheckIn.state.activeCount, 0);
+
+  const failedRefresh = setup();
+  failedRefresh.state.arrivals = [arrival];
+  failedRefresh.context.API.clinicCheckIn = async () => ({appointment: {...arrival, status: 'checked_in', queue_number: 1}});
+  failedRefresh.context.API.getActiveClinicCases = async () => {throw new Error('Temporary connection failure');};
+  await failedRefresh.state.checkInCase(arrival);
+  assert.equal(failedRefresh.state.expectedCount, 0);
+  assert.equal(failedRefresh.state.activeCount, 1, 'A failed refresh must retain the confirmed check-in and its count');
+
+  const pendingRace = setup();
+  await pendingRace.state.openProfile({pet: {id: 7}, owner}, pendingRace.trigger);
+  pendingRace.context.API.getActiveClinicCases = async () => ({cases: [], arrivals: [arrival]});
+  pendingRace.context.API.createClinicCase = async () => {throw {code: 'pre_registration_exists', data: {arrival}};};
+  pendingRace.context.API.clinicCheckIn = async () => {throw new Error('A new pre-registration conflict must require its own Check In action');};
+  await pendingRace.state.checkInPatient();
+  assert.equal(pendingRace.state.currentClinicVisit.id, 4);
+  assert.equal(pendingRace.state.profileActionLabel, 'Check In Patient');
+  assert.equal(pendingRace.state.profileActionError, '');
 
   const race = setup();
   await race.state.openProfile({pet: {id: 7}, owner}, race.trigger);
@@ -255,11 +299,15 @@ function setup() {
   const filtering = setup();
   filtering.state.activeCases = ['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment', 'completed'].map((status, id) => ({id, status}));
   filtering.state.activeCases.push({id: 6, status: 'in_consultation', confinement: {discharged_at: null}});
+  filtering.state.arrivals = [{id: 7, status: 'waiting_to_arrive'}, {id: 8, status: 'cancelled'}, {id: 9, status: 'expired'}];
   assert.equal(filtering.state.activeCount, 2);
   assert.deepEqual(Array.from(filtering.state.visibleActiveCases, item => item.status), ['checked_in', 'in_consultation']);
   assert.equal(filtering.state.waitingCases.length, 1);
-  assert.equal(filtering.state.caseRows.length, 3, 'Waiting arrivals remain visible without being counted Active');
-  assert.equal(filtering.state.activeCount, filtering.state.caseRows.filter(item => item.status !== 'waiting_to_arrive').length);
+  assert.equal(filtering.state.caseRows.length, 2, 'Active contains only checked-in and consultation patients');
+  assert.equal(filtering.state.activeCount, filtering.state.caseRows.length);
+  filtering.state.tab = 'expected';
+  assert.equal(filtering.state.expectedCount, 1);
+  assert.deepEqual(Array.from(filtering.state.caseRows, item => item.id), [7]);
   filtering.state.tab = 'for-payment';
   assert.deepEqual(Array.from(filtering.state.caseRows, item => item.status), ['for_payment']);
   assert.equal(filtering.state.forPaymentCount, filtering.state.caseRows.length);
