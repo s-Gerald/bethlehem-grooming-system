@@ -3,12 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Services\GroomingPerformanceReport;
+use App\Services\ClinicPerformanceReport;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
     public function grooming(Request $request, GroomingPerformanceReport $report)
+    {
+        return $this->performance($request, $report);
+    }
+
+    public function clinic(Request $request, ClinicPerformanceReport $report)
+    {
+        return $this->performance($request, $report);
+    }
+
+    private function performance(Request $request, GroomingPerformanceReport|ClinicPerformanceReport $report)
     {
         if ($request->user()?->role !== 'admin') {
             abort(response()->json([

@@ -17,7 +17,7 @@ const report = () => ({ success: true, period: { start: '2026-10-01', end: '2026
   services: [{ name: 'Recorded service', kind: 'package', count: 2 }], customers: { new: 1, returning: 0 },
   outcomes: { completed: 1, cancelled: 0, noShow: 0 } });
 
-test('default and every preset fetch one shared report; Clinic does not fetch', async () => {
+test('default and every preset fetch one shared report; chart mode does not fetch', async () => {
   const calls = [];
   const page = component({ getGroomingPerformanceReport: async args => { calls.push(args); return report(); } });
   await page.init();
@@ -30,11 +30,85 @@ test('default and every preset fetch one shared report; Clinic does not fetch', 
     assert.equal(page.report.overview.collections, 600);
     assert.equal(page.report.services[0].count, 2);
   }
-  page.activeSection = 'clinic';
   assert.equal(calls.length, 4);
   page.metric = 'visits';
   assert.equal(page.chartPoints[0].value, 2);
   assert.equal(calls.length, 4);
+});
+
+test('Clinic loads lazily with exactly three KPIs and switching tabs restores each section without reloading', async () => {
+  const calls = [];
+  const clinic = report(); delete clinic.customers;
+  clinic.overview = { collections: 1500, completedVisits: 3, averageSale: 750, paidCases: 2 };
+  const page = component({
+    getGroomingPerformanceReport: async args => { calls.push(['grooming', args]); return report(); },
+    getClinicPerformanceReport: async args => { calls.push(['clinic', args]); return clinic; },
+  });
+  await page.init();
+  page.period = 'last_month'; await page.changePeriod();
+  page.metric = 'visits';
+  await page.selectSection('clinic');
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2][0], 'clinic');
+  assert.equal(page.period, 'this_month');
+  assert.equal(page.kpis.length, 3);
+  assert.equal(page.kpis[0].title, 'Clinic Collections');
+  assert.equal(page.kpis[1].value, '3');
+  assert.equal(page.kpis[2].value, '₱750.00');
+  await page.selectSection('grooming');
+  assert.equal(page.period, 'last_month');
+  assert.equal(page.metric, 'visits');
+  assert.equal(page.kpis.length, 4);
+  await page.selectSection('clinic');
+  assert.equal(page.report.overview.collections, 1500);
+  assert.equal(calls.length, 3);
+});
+
+test('section switches cannot leak pending responses and returning to a loading section reuses its request', async () => {
+  let finishGrooming, finishClinic;
+  let groomingRequests = 0;
+  const page = component({
+    getGroomingPerformanceReport: () => { groomingRequests++; return new Promise(resolve => { finishGrooming = resolve; }); },
+    getClinicPerformanceReport: () => new Promise(resolve => { finishClinic = resolve; }),
+  });
+  const grooming = page.init();
+  const clinic = page.selectSection('clinic');
+  await page.selectSection('grooming');
+  assert.equal(groomingRequests, 1);
+  const clinicData = report(); delete clinicData.customers; clinicData.overview.collections = 1500;
+  finishClinic(clinicData); await clinic;
+  assert.equal(page.report, null);
+  assert.equal(page.loading, true);
+  finishGrooming(report()); await grooming;
+  assert.equal(page.report.overview.collections, 600);
+  await page.selectSection('clinic');
+  assert.equal(page.report.overview.collections, 1500);
+  assert.equal(page.loading, false);
+});
+
+test('Clinic custom dates, failures, retry, and service expansion use the shared behavior', async () => {
+  let fail = true;
+  const calls = [];
+  const clinic = report(); delete clinic.customers;
+  clinic.services = Array.from({ length: 8 }, (_, i) => ({ name: `Clinic ${i}`, kind: 'service', count: 8 - i }));
+  const page = component({
+    getGroomingPerformanceReport: async () => report(),
+    getClinicPerformanceReport: async args => { calls.push(args); if (fail) throw new Error('SQL details'); return clinic; },
+  });
+  await page.init(); await page.selectSection('clinic');
+  assert.equal(page.error, 'Unable to load reports. Please try again.');
+  assert.equal(page.report, null);
+  page.period = 'custom'; page.start = '2026-10-31'; page.end = '2026-10-01';
+  await page.loadReport();
+  assert.ok(page.validationError); assert.equal(calls.length, 1);
+  page.start = '2026-10-01'; page.end = '2026-10-31'; fail = false;
+  await page.loadReport();
+  assert.equal(page.error, ''); assert.equal(calls[1].start, '2026-10-01');
+  assert.equal(page.visibleServices.length, 6);
+  page.showAllServices = true; assert.equal(page.visibleServices.length, 8);
+  page.metric = 'visits'; assert.equal(page.chartPoints[0].value, 2);
+  assert.match(page.chartMarkup, /2 visits/);
+  assert.equal(calls.length, 2);
 });
 
 test('custom range rejects invalid dates before fetching and forwards inclusive valid dates', async () => {

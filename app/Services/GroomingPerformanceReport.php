@@ -13,17 +13,19 @@ class GroomingPerformanceReport
     // Grooming workflows persist datetimes in the application's Manila timezone.
     private const FINISHED_AT = 'COALESCE(bp.grooming_end_time, b.grooming_finished_at)';
 
+    public function __construct(private readonly ReportPeriod $period) {}
+
     public function build(array $filters): array
     {
-        [$start, $end] = $this->range($filters);
+        [$start, $end] = $this->period->range($filters);
         $until = $end->addDay();
-        $grouping = $start->diffInDays($until) <= 45 ? 'day' : ($start->diffInDays($until) <= 180 ? 'week' : 'month');
+        $grouping = $this->period->grouping($start, $end);
         $payments = $this->collections();
-        $this->between($payments, 'paid_at', $start, $until);
+        $this->period->between($payments, 'paid_at', $start, $until);
         $money = (clone $payments)->selectRaw('COALESCE(SUM(amount), 0) as total, COUNT(DISTINCT booking_id) as bookings')->first();
 
         $pets = $this->completedPets();
-        $this->between($pets, self::FINISHED_AT, $start, $until);
+        $this->period->between($pets, self::FINISHED_AT, $start, $until);
         $visits = (clone $pets)->count();
         $customers = $this->customers($pets, $until);
         $collectionsByDay = (clone $payments)->selectRaw('DATE(paid_at) as day, SUM(amount) as total')->groupByRaw('DATE(paid_at)')->get();
@@ -38,29 +40,11 @@ class GroomingPerformanceReport
                 'paidBookings' => (int) $money->bookings,
                 'averageSale' => $money->bookings ? round($money->total / $money->bookings, 2) : 0,
                 'returningCustomers' => $customers['returning']],
-            'performance' => $this->series($start, $end, $grouping, $collectionsByDay, $visitsByDay),
+            'performance' => $this->period->series($start, $end, $grouping, $collectionsByDay, $visitsByDay),
             'services' => $this->services($pets),
             'customers' => $customers,
             'outcomes' => $this->outcomes($start, $until),
         ];
-    }
-
-    private function range(array $filters): array
-    {
-        $today = CarbonImmutable::now('Asia/Manila')->startOfDay();
-        return match ($filters['period'] ?? 'this_month') {
-            'today' => [$today, $today],
-            'last_7_days' => [$today->subDays(6), $today],
-            'last_month' => [$today->subMonthNoOverflow()->startOfMonth(), $today->subMonthNoOverflow()->endOfMonth()->startOfDay()],
-            'custom' => [CarbonImmutable::parse($filters['start'], 'Asia/Manila')->startOfDay(),
-                CarbonImmutable::parse($filters['end'], 'Asia/Manila')->startOfDay()],
-            default => [$today->startOfMonth(), $today->endOfMonth()->startOfDay()],
-        };
-    }
-
-    private function between(Builder $query, string $column, CarbonImmutable $start, CarbonImmutable $until): void
-    {
-        $query->whereRaw("$column >= ? AND $column < ?", [$start->toDateTimeString(), $until->toDateTimeString()]);
     }
 
     private function completedPets(): Builder
@@ -165,34 +149,12 @@ class GroomingPerformanceReport
                 });
         })->select('b.booking_id')->selectRaw('MAX('.self::FINISHED_AT.') as completed_at')->groupBy('b.booking_id');
         $completed = DB::query()->fromSub($completed, 'finished_bookings');
-        $this->between($completed, 'completed_at', $start, $until);
+        $this->period->between($completed, 'completed_at', $start, $until);
         $cancelled = DB::table('bookings')->where('status', 'cancelled');
         $cancelled->whereRaw('DATE(COALESCE(cancelled_at, booking_date)) >= ? AND DATE(COALESCE(cancelled_at, booking_date)) < ?',
             [$start->toDateString(), $until->toDateString()]);
         $noShow = DB::table('bookings')->where('status', 'no_show')
             ->where('booking_date', '>=', $start->toDateString())->where('booking_date', '<', $until->toDateString());
         return ['completed' => $completed->count(), 'cancelled' => $cancelled->count(), 'noShow' => $noShow->count()];
-    }
-
-    private function series(CarbonImmutable $start, CarbonImmutable $end, string $grouping, $collections, $visits): array
-    {
-        $bucket = fn (CarbonImmutable $date) => match ($grouping) {
-            'week' => $date->startOfWeek(), 'month' => $date->startOfMonth(), default => $date,
-        };
-        $points = [];
-        for ($date = $bucket($start); $date->lte($end); $date = match ($grouping) {
-            'week' => $date->addWeek(), 'month' => $date->addMonth(), default => $date->addDay(),
-        }) {
-            $last = match ($grouping) {'week' => $date->addDays(6), 'month' => $date->endOfMonth()->startOfDay(), default => $date};
-            $points[$date->toDateString()] = ['date' => $date->max($start)->toDateString(), 'end' => $last->min($end)->toDateString(),
-                'collections' => 0, 'visits' => 0];
-        }
-        foreach (['collections' => $collections, 'visits' => $visits] as $metric => $rows) {
-            foreach ($rows as $row) {
-                $key = $bucket(CarbonImmutable::parse($row->day, 'Asia/Manila'))->toDateString();
-                $points[$key][$metric] += $metric === 'visits' ? (int) $row->total : round((float) $row->total, 2);
-            }
-        }
-        return array_values($points);
     }
 }

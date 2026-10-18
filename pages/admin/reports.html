@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
-    <link rel="stylesheet" href="../../css/admin-reports.css?v=20261018" />
+    <link rel="stylesheet" href="../../css/admin-reports.css?v=clinic-reports-20261018" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -151,7 +151,7 @@
 
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
         <header
-          class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
+          class="reports-mobile-header sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden"
         >
           <div>
             <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
@@ -172,22 +172,17 @@
             <h1>Reports</h1>
           </header>
           <div class="reports-tabs" role="tablist" aria-label="Report sections"
-            @keydown.right.prevent="activeSection = activeSection === 'grooming' ? 'clinic' : 'grooming'; $nextTick(() => $refs[activeSection + 'Tab'].focus())"
-            @keydown.left.prevent="activeSection = activeSection === 'grooming' ? 'clinic' : 'grooming'; $nextTick(() => $refs[activeSection + 'Tab'].focus())"
-            @keydown.home.prevent="activeSection = 'grooming'; $refs.groomingTab.focus()"
-            @keydown.end.prevent="activeSection = 'clinic'; $refs.clinicTab.focus()">
-            <button type="button" id="grooming-tab" x-ref="groomingTab" role="tab" aria-controls="grooming-panel" :aria-selected="activeSection === 'grooming'" :tabindex="activeSection === 'grooming' ? 0 : -1" @click="activeSection = 'grooming'">Grooming</button>
-            <button type="button" id="clinic-tab" x-ref="clinicTab" role="tab" aria-controls="clinic-panel" :aria-selected="activeSection === 'clinic'" :tabindex="activeSection === 'clinic' ? 0 : -1" @click="activeSection = 'clinic'">Clinic</button>
+            @keydown.right.prevent="selectSection(activeSection === 'grooming' ? 'clinic' : 'grooming'); $nextTick(() => $refs[activeSection + 'Tab'].focus())"
+            @keydown.left.prevent="selectSection(activeSection === 'grooming' ? 'clinic' : 'grooming'); $nextTick(() => $refs[activeSection + 'Tab'].focus())"
+            @keydown.home.prevent="selectSection('grooming'); $refs.groomingTab.focus()"
+            @keydown.end.prevent="selectSection('clinic'); $refs.clinicTab.focus()">
+            <button type="button" id="grooming-tab" x-ref="groomingTab" role="tab" aria-controls="reports-panel" :aria-selected="activeSection === 'grooming'" :tabindex="activeSection === 'grooming' ? 0 : -1" @click="selectSection('grooming')">Grooming</button>
+            <button type="button" id="clinic-tab" x-ref="clinicTab" role="tab" aria-controls="reports-panel" :aria-selected="activeSection === 'clinic'" :tabindex="activeSection === 'clinic' ? 0 : -1" @click="selectSection('clinic')">Clinic</button>
           </div>
 
-          <section id="clinic-panel" role="tabpanel" aria-labelledby="clinic-tab" x-show="activeSection === 'clinic'" x-cloak class="reports-coming-soon">
-            <i data-lucide="stethoscope" aria-hidden="true"></i>
-            <h2>Coming Soon</h2>
-          </section>
-
-          <section id="grooming-panel" role="tabpanel" aria-labelledby="grooming-tab" x-show="activeSection === 'grooming'">
+          <section id="reports-panel" role="tabpanel" :aria-labelledby="activeSection + '-tab'" :aria-busy="loading">
             <div class="reports-toolbar">
-              <h2>Grooming Performance</h2>
+              <h2 x-text="sectionLabel + ' Performance'">Grooming Performance</h2>
               <form class="reports-filters" @submit.prevent="loadReport()">
                 <div class="reports-field">
                   <label for="report-period">Reporting period</label>
@@ -215,7 +210,7 @@
               <button type="button" class="reports-button" @click="loadReport()">Retry</button>
             </div>
             <div x-show="loading" class="reports-loading" role="status" aria-label="Loading report" x-cloak>
-              <div class="reports-kpis"><template x-for="i in 4" :key="i"><div class="reports-card reports-skeleton-kpi"><span class="reports-skeleton"></span><span class="reports-skeleton"></span></div></template></div>
+              <div class="reports-kpis" :class="{ 'reports-kpis-clinic': activeSection === 'clinic' }"><template x-for="i in (activeSection === 'clinic' ? 3 : 4)" :key="i"><div class="reports-card reports-skeleton-kpi"><span class="reports-skeleton"></span><span class="reports-skeleton"></span></div></template></div>
               <div class="reports-card reports-skeleton-chart"><span class="reports-skeleton"></span><span class="reports-skeleton"></span></div>
               <span class="reports-sr-only">Loading report</span>
             </div>
@@ -223,7 +218,7 @@
             <template x-if="report && !loading && !error">
               <div class="reports-content">
                 <p class="reports-period-label" x-text="periodLabel"></p>
-                <div class="reports-kpis" aria-label="Business overview">
+                <div class="reports-kpis" :class="{ 'reports-kpis-clinic': activeSection === 'clinic' }" aria-label="Business overview">
                   <template x-for="kpi in kpis" :key="kpi.title">
                     <article class="reports-card reports-kpi" :title="kpi.hint || null">
                       <div class="reports-kpi-heading"><h3 x-text="kpi.title"></h3><i :data-lucide="kpi.icon" aria-hidden="true"></i></div>
@@ -243,34 +238,34 @@
                   <template x-if="!hasPerformance"><p class="reports-empty" x-text="metric === 'collections' ? 'No collections for this period.' : 'No completed visits for this period.'"></p></template>
                   <div x-show="hasPerformance" class="reports-chart">
                     <p class="reports-chart-tooltip" aria-live="polite" x-text="activePoint !== null && chartPoints[activePoint] ? pointDescription(chartPoints[activePoint]) : (metric === 'collections' ? 'Collections (PHP)' : 'Completed visits')"></p>
-                    <svg :viewBox="`0 0 ${chartWidth} 250`" x-init="observeChart($el)" role="group" :aria-label="metric === 'collections' ? 'Grooming collections over time' : 'Completed grooming visits over time'"
+                    <svg :viewBox="`0 0 ${chartWidth} 250`" x-init="observeChart($el)" role="group" :aria-label="metric === 'collections' ? sectionLabel + ' collections over time' : 'Completed ' + sectionLabel.toLowerCase() + ' visits over time'"
                       x-html="chartMarkup" @pointerover="inspectPoint($event)" @pointerleave="activePoint = null" @focusin="inspectPoint($event)" @focusout="activePoint = null" @click="inspectPoint($event)" @keydown.enter.prevent="inspectPoint($event)" @keydown.space.prevent="inspectPoint($event)"></svg>
                     <details class="reports-data-details"><summary>View chart data</summary><div class="reports-table-wrap"><table><caption class="reports-sr-only">Performance Over Time</caption><thead><tr><th scope="col">Period</th><th scope="col">Collections</th><th scope="col">Visits</th></tr></thead><tbody><template x-for="point in chartPoints" :key="point.date"><tr><th scope="row" x-text="point.label"></th><td x-text="formatMoney(point.collections)"></td><td x-text="formatCount(point.visits)"></td></tr></template></tbody></table></div></details>
                   </div>
                 </article>
 
                 <article class="reports-card" aria-labelledby="services-title">
-                  <div class="reports-card-heading"><h3 id="services-title">Popular Grooming Services</h3></div>
+                  <div class="reports-card-heading"><h3 id="services-title" x-text="'Popular ' + sectionLabel + ' Services'">Popular Grooming Services</h3></div>
                   <p class="reports-empty" x-show="report.services.length === 0">No completed services for this period.</p>
                   <ol class="reports-services" x-show="report.services.length > 0" aria-label="Completed services, most performed first">
                     <template x-for="(service, index) in visibleServices" :key="index">
-                      <li><div class="reports-service-heading"><div><span class="reports-service-name" x-text="service.name"></span><span class="reports-service-kind" x-text="serviceKind(service.kind)"></span></div><strong x-text="formatCount(service.count)" :aria-label="`${formatCount(service.count)} completed`"></strong></div><div class="reports-service-track" aria-hidden="true"><div :style="{ width: serviceWidth(service.count) }"></div></div></li>
+                      <li><div class="reports-service-heading"><div><span class="reports-service-name" x-text="service.name"></span><span class="reports-service-kind" x-show="activeSection === 'grooming'" x-text="serviceKind(service.kind)"></span></div><strong x-text="formatCount(service.count)" :aria-label="`${formatCount(service.count)} completed`"></strong></div><div class="reports-service-track" aria-hidden="true"><div :style="{ width: serviceWidth(service.count) }"></div></div></li>
                     </template>
                   </ol>
                   <button type="button" class="reports-more" x-show="report.services.length > 6" @click="showAllServices = !showAllServices" :aria-expanded="showAllServices" x-text="showAllServices ? 'Show fewer' : `Show all ${formatCount(report.services.length)} services`"></button>
                 </article>
 
                 <article class="reports-card" aria-labelledby="insights-title">
-                  <div class="reports-card-heading"><h3 id="insights-title">Customer Insights</h3></div>
-                  <div class="reports-insights">
-                    <div>
+                  <div class="reports-card-heading"><h3 id="insights-title" x-text="activeSection === 'clinic' ? 'Clinic Visit Outcomes' : 'Customer Insights'">Customer Insights</h3></div>
+                  <div class="reports-insights" :class="{ 'reports-insights-clinic': activeSection === 'clinic' }">
+                    <template x-if="activeSection === 'grooming'"><div>
                       <p class="reports-empty reports-empty-compact" x-show="customerTotal === 0">No completed customer visits for this period.</p>
                       <div x-show="customerTotal > 0">
                         <dl class="reports-customer-counts"><div><dt><span class="reports-customer-dot reports-new"></span>New customers</dt><dd x-text="formatCount(report.customers.new)"></dd></div><div><dt><span class="reports-customer-dot reports-returning"></span>Returning customers</dt><dd x-text="formatCount(report.customers.returning)"></dd></div></dl>
                         <div class="reports-customer-share" aria-hidden="true"><div :style="{ width: newCustomerWidth }"></div></div>
                       </div>
-                    </div>
-                    <div class="reports-outcomes"><h4>Booking outcomes</h4><dl><div><dt>Completed</dt><dd x-text="formatCount(report.outcomes.completed)"></dd></div><div><dt>Cancelled</dt><dd x-text="formatCount(report.outcomes.cancelled)"></dd></div><div><dt>No-show</dt><dd x-text="formatCount(report.outcomes.noShow)"></dd></div></dl></div>
+                    </div></template>
+                    <div class="reports-outcomes"><h4 x-show="activeSection === 'grooming'">Visit outcomes</h4><dl><div><dt>Completed</dt><dd x-text="formatCount(report.outcomes.completed)"></dd></div><div><dt>Cancelled</dt><dd x-text="formatCount(report.outcomes.cancelled)"></dd></div><div><dt>No-show</dt><dd x-text="formatCount(report.outcomes.noShow)"></dd></div></dl></div>
                   </div>
                 </article>
               </div>
@@ -285,8 +280,8 @@
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="../../scripts/api.js?v=grooming-reports-20261018&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018"></script>
+    <script src="../../scripts/api.js?v=clinic-reports-20261018&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&payments=20261018-shared&session=lock-20261018"></script>
     <script src="../../scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005&release=inventory-labels-20261007&clinic=roles-20261010&clinic-services=20261013&services=20261017"></script>
-    <script src="../../scripts/components/admin-reports.js?v=grooming-mariadb-20261018"></script>
+    <script src="../../scripts/components/admin-reports.js?v=clinic-reports-20261018"></script>
   </body>
 </html>

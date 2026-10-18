@@ -4,11 +4,20 @@ function adminReports() {
   const whole = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 0 });
   const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
     && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-  return {
-    activeSection: 'grooming', period: 'this_month', start: '', end: '', metric: 'collections',
+  const sectionState = () => ({ period: 'this_month', start: '', end: '', metric: 'collections',
     loading: true, error: '', validationError: '', report: null, requestId: 0,
-    showAllServices: false, activePoint: null, chartWidth: 740,
+    showAllServices: false, activePoint: null });
+  const page = {
+    activeSection: 'grooming', sections: { grooming: sectionState(), clinic: sectionState() }, chartWidth: 740,
     async init() { await this.loadReport(); this.refreshIcons(); },
+    async selectSection(section) {
+      if (section === this.activeSection) return;
+      this.activeSection = section;
+      this.activePoint = null;
+      if (this.requestId === 0) await this.loadReport();
+      this.refreshIcons();
+    },
+    get sectionLabel() { return this.activeSection === 'clinic' ? 'Clinic' : 'Grooming'; },
     async changePeriod() {
       if (this.period === 'custom') {
         this.start ||= this.report?.period.start || '';
@@ -17,28 +26,30 @@ function adminReports() {
       await this.loadReport();
     },
     async loadReport() {
-      const requestId = ++this.requestId;
-      this.error = ''; this.validationError = ''; this.activePoint = null;
-      this.showAllServices = false;
-      this.report = null;
-      if (this.period === 'custom' && (!validDate(this.start) || !validDate(this.end) || this.start > this.end)) {
-        this.validationError = 'Enter a valid start and end date, with the end on or after the start.';
-        this.loading = false;
+      const section = this.activeSection;
+      const state = this.sections[section];
+      const requestId = ++state.requestId;
+      state.error = ''; state.validationError = ''; state.activePoint = null;
+      state.showAllServices = false;
+      state.report = null;
+      if (state.period === 'custom' && (!validDate(state.start) || !validDate(state.end) || state.start > state.end)) {
+        state.validationError = 'Enter a valid start and end date, with the end on or after the start.';
+        state.loading = false;
         return;
       }
-      this.loading = true;
+      state.loading = true;
       try {
-        const filters = { period: this.period };
-        if (this.period === 'custom') Object.assign(filters, { start: this.start, end: this.end });
-        const data = await API.getGroomingPerformanceReport(filters);
-        if (requestId !== this.requestId) return;
+        const filters = { period: state.period };
+        if (state.period === 'custom') Object.assign(filters, { start: state.start, end: state.end });
+        const data = await (section === 'clinic' ? API.getClinicPerformanceReport(filters) : API.getGroomingPerformanceReport(filters));
+        if (requestId !== state.requestId) return;
         if (data?.success !== true || !data.overview || !data.period || !Array.isArray(data.performance)
-          || !Array.isArray(data.services) || !data.customers || !data.outcomes) throw new Error('Unable to load reports. Please try again.');
-        this.report = data;
+          || !Array.isArray(data.services) || (section === 'grooming' && !data.customers) || !data.outcomes) throw new Error('Unable to load reports. Please try again.');
+        state.report = data;
       } catch {
-        if (requestId === this.requestId) this.error = 'Unable to load reports. Please try again.';
+        if (requestId === state.requestId) state.error = 'Unable to load reports. Please try again.';
       } finally {
-        if (requestId === this.requestId) { this.loading = false; this.refreshIcons(); }
+        if (requestId === state.requestId) { state.loading = false; if (section === this.activeSection) this.refreshIcons(); }
       }
     },
     refreshIcons() { this.$nextTick(() => window.lucide?.createIcons()); },
@@ -54,7 +65,7 @@ function adminReports() {
       const value = event.target.dataset.pointIndex;
       this.activePoint = value === undefined ? null : Number(value);
     },
-    destroy() { chartObserver?.disconnect(); this.requestId++; },
+    destroy() { chartObserver?.disconnect(); Object.values(this.sections).forEach(state => state.requestId++); },
     formatMoney(value) { return money.format(value); },
     formatCount(value) { return whole.format(value); },
     dateLabel(value, options = { month: 'short', day: 'numeric' }) {
@@ -69,12 +80,15 @@ function adminReports() {
     get kpis() {
       const overview = this.report?.overview;
       if (!overview) return [];
-      return [
-        { title: 'Grooming Collections', value: this.formatMoney(overview.collections), icon: 'wallet' },
-        { title: 'Completed Visits', value: this.formatCount(overview.completedVisits), icon: 'paw-print' },
-        { title: 'Average Sale', value: this.formatMoney(overview.averageSale), icon: 'receipt', hint: 'Collected grooming amount per paid booking' },
-        { title: 'Returning Customers', value: this.formatCount(overview.returningCustomers), icon: 'repeat-2' },
+      const cards = [
+        { title: `${this.sectionLabel} Collections`, value: this.formatMoney(overview.collections), icon: 'wallet' },
+        { title: 'Completed Visits', value: this.formatCount(overview.completedVisits), icon: this.activeSection === 'clinic' ? 'stethoscope' : 'paw-print' },
+        { title: 'Average Sale', value: this.formatMoney(overview.averageSale), icon: 'receipt', hint: `Collected ${this.sectionLabel.toLowerCase()} amount per paid session` },
       ];
+      if (this.activeSection === 'grooming') cards.push(
+        { title: 'Returning Customers', value: this.formatCount(overview.returningCustomers), icon: 'repeat-2' },
+      );
+      return cards;
     },
     get hasPerformance() { return !!this.report?.performance.some(point => point[this.metric] > 0); },
     get chartMax() {
@@ -129,7 +143,17 @@ function adminReports() {
     get visibleServices() { return this.showAllServices ? (this.report?.services || []) : (this.report?.services || []).slice(0, 6); },
     serviceWidth(count) { return `${count / Math.max(1, this.report?.services[0]?.count || 0) * 100}%`; },
     serviceKind(kind) { return ({ package: 'Package', ala_carte: 'À la carte', addon: 'Add-on' })[kind] || 'Service'; },
-    get customerTotal() { return (this.report?.customers.new || 0) + (this.report?.customers.returning || 0); },
-    get newCustomerWidth() { return `${(this.report?.customers.new || 0) / Math.max(1, this.customerTotal) * 100}%`; },
+    get customerTotal() { return (this.report?.customers?.new || 0) + (this.report?.customers?.returning || 0); },
+    get newCustomerWidth() { return `${(this.report?.customers?.new || 0) / Math.max(1, this.customerTotal) * 100}%`; },
   };
+  // The same panel binds to independent reactive section state. Background
+  // responses update their own section and switching tabs reuses loaded data.
+  for (const key of Object.keys(sectionState())) {
+    Object.defineProperty(page, key, {
+      enumerable: true,
+      get() { return this.sections[this.activeSection][key]; },
+      set(value) { this.sections[this.activeSection][key] = value; },
+    });
+  }
+  return page;
 }

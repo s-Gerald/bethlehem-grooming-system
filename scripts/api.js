@@ -2217,9 +2217,17 @@ var API = (() => {
   }
 
   async function getGroomingPerformanceReport({ period = "this_month", start = "", end = "" } = {}) {
+    return getPerformanceReport("grooming", { period, start, end });
+  }
+
+  async function getClinicPerformanceReport({ period = "this_month", start = "", end = "" } = {}) {
+    return getPerformanceReport("clinic", { period, start, end });
+  }
+
+  async function getPerformanceReport(section, { period, start, end }) {
     const params = new URLSearchParams({ period });
     if (period === "custom") { params.set("start", start); params.set("end", end); }
-    return request("GET", `/admin/reports/grooming?${params}`, null, getAdminToken());
+    return request("GET", `/admin/reports/${section}?${params}`, null, getAdminToken());
   }
 
   async function getGroomingCatalogue() {
@@ -2614,6 +2622,7 @@ var API = (() => {
     markPickedUp,
     getTransactions,
     getGroomingPerformanceReport,
+    getClinicPerformanceReport,
     // Walk-in
     getGroomingCatalogue,
     updateGroomingPricing,

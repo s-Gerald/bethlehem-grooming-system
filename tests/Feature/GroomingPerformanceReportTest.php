@@ -16,6 +16,7 @@ class GroomingPerformanceReportTest extends TestCase
     {
         parent::setUp();
         $driver = DB::getDriverName();
+        if (getenv('REPORTS_REQUIRE_MYSQL')) $this->assertSame('mysql', $driver);
         $database = DB::connection()->getDatabaseName();
         if (! ($driver === 'sqlite' && $database === ':memory:')
             && ! (in_array($driver, ['mysql', 'mariadb'], true) && preg_match('/^bethlehem_reports_test_[a-f0-9]{12}$/', $database))) {
