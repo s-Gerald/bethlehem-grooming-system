@@ -44,7 +44,7 @@ async function sidebarReadiness() {
   const clock = deferred(); let identityCalls = 0;
   const API = { getUserRole: () => 'admin', enforceAdminPageAccess: () => true,
     getMe: async () => ({}), getStaffIdentity: async () => { identityCalls++; return { user: { role: 'admin', clinic_permissions: {} } }; },
-    getClinicStatus: async () => ({}), getAdminGroomingActivity: async () => ({}), getAdminToken: () => 'local', getAdminBookings() {} };
+    getAdminGroomingActivity: async () => ({}), getAdminToken: () => 'local', getAdminBookings() {} };
   const { ui } = component('admin-sidebar.js', 'adminSidebar', API, {
     window: { API, AppClock: { load: () => clock.promise }, location: { pathname: '/pages/admin/dashboard.html' }, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
     document: { querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
@@ -99,7 +99,7 @@ async function availabilityReadiness() {
   assert.equal(ui.groomersOnDuty, 0, 'Confirmed zero remains data after a failed refresh');
 }
 async function blockedDatesReadiness() {
-  const { ui, context } = component('admin-sidebar.js', 'adminSidebar', {
+  const { ui, context } = component('admin-settings.js', 'adminSettings', {
     getBlockedDates: async () => ({ blocked_dates: [{ id: 1 }] }),
   }, { window: { location: { pathname: '/pages/admin/settings.html' } } });
   assert.equal(ui.blockedDatesLoaded, false);

@@ -1902,6 +1902,16 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     {
         $this->authenticateAs('staff');
 
+        $this->getJson('/api/clinic/status')
+            ->assertOk()
+            ->assertJsonPath('stopped_today', false);
+
+        foreach (['stop-today', 'reopen-today'] as $action) {
+            $this->postJson('/api/admin/clinic/'.$action)
+                ->assertForbidden()
+                ->assertExactJson(self::FORBIDDEN_RESPONSE);
+        }
+
         $this->getJson('/api/admin/clinic/blocked-dates')
             ->assertOk()
             ->assertJsonPath('success', true);

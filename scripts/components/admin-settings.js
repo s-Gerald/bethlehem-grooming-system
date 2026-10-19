@@ -29,6 +29,28 @@ function adminSettings() {
     availabilitySaving: false,
     availabilityError: "",
     availabilitySuccess: "",
+    intakeStopped: false,
+    intakeLoaded: false,
+    intakeLoading: false,
+    intakeError: "",
+    intakeSuccess: "",
+    _intakeRequest: null,
+    _intakeRefreshListener: null,
+    intakeModal: { open: false, action: "", busy: false, error: "" },
+    blockedDates: [],
+    blockedDatesLoading: false,
+    blockedDatesLoaded: false,
+    blockedDatesError: "",
+    _blockedDatesRequest: 0,
+    blockForm: {
+      startDate: "",
+      endDate: "",
+      reason: "",
+      busy: false,
+      error: "",
+      warning: "",
+    },
+
     groomersOnDuty: 0,
     petGroomers: [],
     petGroomerEditor: null,
@@ -152,6 +174,10 @@ function adminSettings() {
     },
 
     async init() {
+      this._intakeRefreshListener = () => { void this.refreshIntakeStatus(); };
+      window.addEventListener?.('focus', this._intakeRefreshListener);
+      window.addEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
+      document.addEventListener?.('visibilitychange', this._intakeRefreshListener);
       // settings.html?tab=security opens staff accounts (vaccination form's "Add veterinarian").
       if (this.isAdmin && new URLSearchParams(window.location.search).get("tab") === "security") {
         this.activeSettingsTab = "security";
@@ -165,12 +191,157 @@ function adminSettings() {
     },
 
     selectSettingsTab(tab) {
+      const changed = this.activeSettingsTab !== tab;
       this.activeSettingsTab = tab;
+      if (tab === "availability") {
+        if (!changed && (this.intakeLoaded || this._intakeRequest)) return this._intakeRequest || Promise.resolve();
+        return Promise.all([this.loadIntakeStatus(), this.loadBlockedDates()]);
+      }
       if (tab !== "security" || this.staffLoaded) return Promise.resolve();
       if (this._securityRequest) return this._securityRequest;
       this._securityRequest = (this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount())
         .finally(() => { this._securityRequest = null; });
       return this._securityRequest;
+    },
+
+    destroy() {
+      window.removeEventListener?.('focus', this._intakeRefreshListener);
+      window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
+      document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
+    },
+
+    refreshIntakeStatus() {
+      if (this.activeSettingsTab !== "availability" || document.visibilityState === 'hidden'
+        || API.isSessionLocked?.() || this.intakeModal.busy || this.intakeModal.open) return Promise.resolve();
+      return this.loadIntakeStatus();
+    },
+
+    loadIntakeStatus() {
+      if (this._intakeRequest) return this._intakeRequest;
+      this.intakeLoading = true;
+      this.intakeError = "";
+      this._intakeRequest = API.getClinicStatus({ force: true }).then(data => {
+        this.intakeStopped = Boolean(data.stopped_today);
+        this.intakeLoaded = true;
+        return true;
+      }).catch(error => {
+        this.intakeError = error.message || "Could not load today's intake status.";
+        return false;
+      }).finally(() => {
+        this.intakeLoading = false;
+        this._intakeRequest = null;
+      });
+      return this._intakeRequest;
+    },
+
+    async openIntakeConfirmation() {
+      if (!this.isAdmin || this.intakeLoading || this.intakeModal.busy || this.intakeModal.open) return;
+      this.intakeSuccess = "";
+      if (!await this.loadIntakeStatus() || this.activeSettingsTab !== "availability") return;
+      this.intakeModal = { open: true, action: this.intakeStopped ? "reopen" : "stop", busy: false, error: "" };
+      this.$nextTick?.(() => this.$refs?.intakeCancel?.focus());
+    },
+
+    closeIntakeConfirmation() {
+      if (this.intakeModal.busy) return;
+      this.intakeModal.open = false;
+      this.$nextTick?.(() => this.$refs?.intakeAction?.focus());
+    },
+
+    async executeIntakeAction() {
+      if (!this.isAdmin || !this.intakeModal.open || this.intakeModal.busy
+        || !["stop", "reopen"].includes(this.intakeModal.action)) return;
+      const stopping = this.intakeModal.action === "stop";
+      this.intakeModal.busy = true;
+      this.intakeModal.error = "";
+      try {
+        if (stopping) await API.adminStopToday();
+        else await API.adminReopenToday();
+        this.intakeStopped = stopping;
+        this.intakeSuccess = stopping ? "Intake stopped for today." : "Intake reopened.";
+        await this.loadIntakeStatus();
+        this.intakeModal.open = false;
+        window.showSuccessToast?.(this.intakeSuccess);
+        this.$nextTick?.(() => this.$refs?.intakeAction?.focus());
+      } catch (error) {
+        this.intakeModal.error = error.message || "Could not change intake. Please try again.";
+      } finally {
+        this.intakeModal.busy = false;
+      }
+    },
+
+    clearBlockedDateForm() {
+      this.blockForm = {
+        startDate: "",
+        endDate: "",
+        reason: "",
+        busy: false,
+        error: "",
+        warning: "",
+      };
+    },
+
+    async loadBlockedDates() {
+      const request = ++this._blockedDatesRequest;
+      this.blockedDatesLoading = true;
+      this.blockedDatesError = "";
+      try {
+        const data = await API.getBlockedDates();
+        if (request !== this._blockedDatesRequest) return;
+        this.blockedDates = data.blocked_dates || [];
+        this.blockedDatesLoaded = true;
+      } catch {
+        if (request === this._blockedDatesRequest) this.blockedDatesError = "Could not load blocked dates.";
+      } finally {
+        if (request === this._blockedDatesRequest) this.blockedDatesLoading = false;
+      }
+    },
+
+    async submitBlockedDate() {
+      if (!this.isAdmin) return;
+
+      this.blockForm.error = "";
+      this.blockForm.warning = "";
+
+      if (!this.blockForm.startDate || !this.blockForm.endDate) {
+        this.blockForm.error = "Please select both a start and end date.";
+        return;
+      }
+      if (this.blockForm.endDate < this.blockForm.startDate) {
+        this.blockForm.error = "End date cannot be before start date.";
+        return;
+      }
+
+      this.blockForm.busy = true;
+      try {
+        const res = await API.addBlockedDate({
+          start_date: this.blockForm.startDate,
+          end_date:   this.blockForm.endDate,
+          reason:     this.blockForm.reason || null,
+        });
+        if (res.conflict_warning) {
+          this.blockForm.warning = res.conflict_warning;
+        }
+        this.blockForm.startDate = "";
+        this.blockForm.endDate   = "";
+        this.blockForm.reason    = "";
+        await this.loadBlockedDates();
+      } catch (err) {
+        this.blockForm.error = err.message || "Failed to block dates. Please try again.";
+      } finally {
+        this.blockForm.busy = false;
+      }
+    },
+
+    async removeBlockedDate(id) {
+      if (!this.isAdmin) return;
+
+      try {
+        await API.removeBlockedDate(id);
+        this.blockedDates = this.blockedDates.filter(b => b.id !== id);
+      } catch (err) {
+        alert(err.message || "Failed to remove blocked date.");
+      }
     },
 
     normalizeAvailability(payload) {

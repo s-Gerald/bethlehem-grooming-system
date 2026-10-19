@@ -5,8 +5,8 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006" />
+    <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019" />
+    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-navigation-20261018-2" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
     <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2&intake=20261019" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -125,18 +125,6 @@
             </div>
           </div>
 
-          <button
-            type="button"
-            x-show="isAdmin"
-            style="display: none"
-            @click="handleStopReceivingClick()" disabled :disabled="!clinicStatusLoaded"
-            class="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 font-bold transition"
-            :class="clinicStopped ? 'btn-clinic-reopen' : 'btn-clinic-stop'"
-          >
-            <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#door"></use></svg>
-            <span x-text="clinicStopped ? 'Reopen Today' : 'We\'re Done for Today'">We're Done for Today</span>
-          </button>
-
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
             <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
@@ -144,24 +132,7 @@
         </div>
       </aside>
       <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2"></script>
-
-      <!-- Stop Receiving Confirmation Modal -->
-      <div x-cloak x-show="stopModal.open" x-transition class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 px-4">
-        <div class="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
-          <div class="px-6 py-5">
-            <h4 class="text-lg font-bold text-slate-800" x-text="stopModal.title"></h4>
-            <p class="mt-2 text-sm text-slate-600" x-text="stopModal.message"></p>
-            <p x-show="stopModal.error" class="mt-2 text-sm text-red-600" x-text="stopModal.error"></p>
-          </div>
-          <div class="flex gap-3 px-6 py-4">
-            <button type="button" @click="stopModal.open = false" class="flex-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button type="button" @click="executeStopReceiving()" :disabled="stopModal.busy" class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition" :class="clinicStopped ? 'btn-confirm-reopen' : 'btn-confirm-stop'">
-              <span x-text="stopModal.busy ? 'Please wait...' : stopModal.confirmLabel"></span>
-            </button>
-          </div>
-        </div>
-      </div>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2&intake=20261019"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -209,7 +180,7 @@
 
                   <button
                     type="button"
-                    @click="activeSettingsTab = 'availability'; loadBlockedDates()"
+                    @click="selectSettingsTab('availability')"
                     class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
                     :class="activeSettingsTab === 'availability' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
                   >
@@ -409,6 +380,23 @@
             </form>
 
             <form x-cloak x-show="activeSettingsTab === 'availability'" class="space-y-6" @submit.prevent>
+              <div class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm" :aria-busy="intakeLoading">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 class="flex items-center gap-2 text-xl font-bold text-[#1f3850]">
+                      <svg class="ph-icon h-5 w-5 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#door"></use></svg>
+                      Today's Intake
+                    </h3>
+                    <p role="status" class="mt-1 text-sm font-semibold text-[#5c7690]" x-text="intakeLoaded ? (intakeStopped ? 'Intake Stopped' : 'Accepting Customers') : (intakeLoading ? 'Loading status…' : 'Status unavailable')"></p>
+                  </div>
+                  <button x-cloak x-show="isAdmin" x-ref="intakeAction" type="button" @click="openIntakeConfirmation()"
+                    :disabled="!intakeLoaded || intakeLoading || !!intakeError || intakeModal.busy"
+                    class="min-h-11 shrink-0 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284b69] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:cursor-not-allowed disabled:opacity-50">
+                    <span x-text="intakeStopped ? 'Reopen Intake' : 'Stop Intake for Today'"></span>
+                  </button>
+                </div>
+                <p x-cloak x-show="intakeError" class="admin-load-error mt-3" role="alert"><span x-text="intakeError"></span><button type="button" @click="loadIntakeStatus()" :disabled="intakeLoading">Retry</button></p>
+              </div>
               <admin-loader page x-cloak x-show="availabilityLoading && !availabilityLoaded"></admin-loader>
               <p x-cloak x-show="availabilityError" class="admin-load-error" role="alert"><span x-text="availabilityError"></span><button type="button" @click="loadAvailability()">Retry</button></p>
               <div x-cloak x-show="availabilityLoaded" class="space-y-6" :aria-busy="availabilityLoading">
@@ -1481,6 +1469,22 @@
                           </div>
 </div>
           </section>
+          <dialog x-ref="intakeDialog" x-effect="intakeModal.open ? $el.showModal() : $el.close()"
+            @cancel.prevent="closeIntakeConfirmation()" @click="if ($event.target === $el) closeIntakeConfirmation()"
+            class="admin-intake-dialog rounded-3xl bg-white p-0 text-slate-800 shadow-2xl"
+            aria-labelledby="intake-confirm-title" aria-describedby="intake-confirm-description" :aria-busy="intakeModal.busy">
+            <div class="px-6 py-5">
+              <h4 id="intake-confirm-title" class="text-lg font-bold" x-text="intakeModal.action === 'stop' ? 'Stop Intake for Today?' : 'Reopen Intake?'"></h4>
+              <p id="intake-confirm-description" class="mt-2 text-sm text-slate-600" x-text="intakeModal.action === 'stop' ? 'Stop walk-ins and check-ins for both Clinic and Grooming today. You can reopen intake today.' : 'Allow walk-ins and check-ins for both Clinic and Grooming again today.'"></p>
+              <p x-cloak x-show="intakeModal.error" class="mt-2 text-sm text-red-600" role="alert" x-text="intakeModal.error"></p>
+            </div>
+            <div class="flex gap-3 px-6 py-4">
+              <button x-ref="intakeCancel" type="button" @click="closeIntakeConfirmation()" :disabled="intakeModal.busy" class="flex-1 whitespace-nowrap rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              <button type="button" @click="executeIntakeAction()" :disabled="intakeModal.busy" class="flex-1 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284b69] disabled:opacity-50">
+                <span x-text="intakeModal.busy ? 'Please wait…' : (intakeModal.error ? 'Try Again' : (intakeModal.action === 'stop' ? 'Stop Intake' : 'Reopen Intake'))"></span>
+              </button>
+            </div>
+          </dialog>
         </main>
       </div>
     </div>
@@ -1489,6 +1493,6 @@
 
 
     <script src="../../scripts/components/success-toast.js"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019"></script>
   </body>
 </html>

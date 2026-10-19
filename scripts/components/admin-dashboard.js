@@ -349,7 +349,6 @@ function adminDashboard() {
     _notificationRequest: null,
     _visibilityListener: null,
     _sessionResumeListener: null,
-    _clinicStatusListener: null,
     _destroyed: false,
 
     activeTab: "incoming",
@@ -415,8 +414,6 @@ function adminDashboard() {
     groomingWorkload: null,
     groomerCapacityBusy: false,
     groomerCapacityError: "",
-    clinicStopped: false,
-    stopModal: { open: false, title: "", message: "" },
     pickupModal: { open: false, booking: null, busy: false },
     actionConfirmModal: {
       open: false,
@@ -537,15 +534,12 @@ function adminDashboard() {
       this.registerBridge();
       this.loadConfig();
 
-      this._clinicStatusListener = event => { this.clinicStopped = Boolean(event.detail.stopped_today); };
-      window.addEventListener('admin-clinic:status', this._clinicStatusListener);
 
       if (this.pageMode === 'dashboard') {
         this.startContentPolling();
         const primary = this.loadDashboardSummary();
         void this.loadDashboardActivity();
         void this.loadNotifications();
-        void primary.then(() => this.loadClinicStatus());
         await primary;
         this.dispatchDashboardEvent('admin-dashboard:ready', { state: this.getState() });
         return;
@@ -664,7 +658,6 @@ function adminDashboard() {
       await Promise.all([
         this.loadAdminBookings({ force: false }).then(() => this.restoreGroomingOnlinePayment()),
         this.loadNotifications(),
-        this.loadClinicStatus(),
       ]);
     },
 
@@ -691,12 +684,11 @@ function adminDashboard() {
     destroy() {
       this._destroyed = true;
       this._bookingRevision++;
-      for (const timer of ['_bookingInterval', '_notifInterval', '_clinicInterval']) clearInterval(this[timer]);
+      for (const timer of ['_bookingInterval', '_notifInterval']) clearInterval(this[timer]);
       clearTimeout(this._onlinePaymentPoll);
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
-      window.removeEventListener('admin-clinic:status', this._clinicStatusListener);
       this.closePaymentScanner();
     },
 
@@ -4417,54 +4409,5 @@ function adminDashboard() {
       });
     },
 
-    // ── Clinic Status ───────────────────────────────────────────────
-
-    async loadClinicStatus() {
-      try {
-        const data = await API.getClinicStatus();
-        this._resetPollFailures("_clinicInterval");
-        this.clinicStopped = Boolean(data.stopped_today);
-      } catch (error) {
-        this._recordPollFailure("_clinicInterval", "loadClinicStatus", error);
-      }
-    },
-
-    // Opens the confirmation modal before stopping / reopening.
-    handleStopReceivingClick() {
-      if (this.clinicStopped) {
-        this.stopModal = {
-          open:    true,
-          title:   "Reopen for Today?",
-          message: "This will allow Clinic and Grooming walk-ins and check-ins for the rest of the day.",
-          action:  "reopen",
-        };
-      } else {
-        this.stopModal = {
-          open:    true,
-          title:   "Stop Receiving for Today?",
-          message: "This stops physical intake for Clinic and Grooming today. Unused pre-registrations expire after their selected date ends. You can reopen intake today.",
-          action:  "stop",
-        };
-      }
-    },
-
-    // Called by the Confirm button inside the stop-receiving modal.
-    async executeStopReceiving() {
-      const action = this.stopModal.action;
-      this.stopModal = { open: false, title: "", message: "", action: "" };
-      try {
-        if (action === "stop") {
-          await API.adminStopToday();
-          this.clinicStopped = true;
-          await this.loadAdminBookings();
-          await this.loadNotifications();
-        } else {
-          await API.adminReopenToday();
-          this.clinicStopped = false;
-        }
-      } catch (error) {
-        console.error("Failed to toggle clinic status:", error);
-      }
-    },
   };
 }

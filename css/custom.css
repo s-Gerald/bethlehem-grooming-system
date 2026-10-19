@@ -276,6 +276,25 @@ body.customer-detail-modal-open {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(49 91 126 / 30%) transparent;
+}
+
+.admin-sidebar-menu > nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.admin-sidebar-menu > nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-sidebar-menu > nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(49 91 126 / 30%);
+}
+
+.admin-sidebar-menu > nav::-webkit-scrollbar-thumb:hover {
+  background: rgb(49 91 126 / 50%);
 }
 
 .admin-sidebar-menu nav a.bg-\[\#315b7e\]:hover {
@@ -541,38 +560,16 @@ body.customer-detail-modal-open {
 .btn-confirm-archive          { background-color: #64748b; color: #ffffff; }
 .btn-confirm-archive:hover    { background-color: #475569; }
 
-/* ----- Clinic Receiving Controls ----- */
-.btn-clinic-stop {
-  background-color: #fee2e2;
-  border: 1px solid #fca5a5;
-  color: #b91c1c;
-}
-.btn-clinic-stop:hover {
-  background-color: #fecaca;
-}
-.btn-clinic-reopen {
-  background-color: #dcfce7;
-  border: 1px solid #86efac;
-  color: #15803d;
-}
-.btn-clinic-reopen:hover {
-  background-color: #bbf7d0;
+/* ----- Availability Intake Confirmation ----- */
+.admin-intake-dialog {
+  width: calc(100% - 2rem);
+  max-width: 24rem;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
 }
 
-/* ----- Clinic Receiving Confirmation Buttons ----- */
-.btn-confirm-stop {
-  background-color: #ef4444;
-  color: #ffffff;
-}
-.btn-confirm-stop:hover {
-  background-color: #dc2626;
-}
-.btn-confirm-reopen {
-  background-color: #16a34a;
-  color: #ffffff;
-}
-.btn-confirm-reopen:hover {
-  background-color: #15803d;
+.admin-intake-dialog::backdrop {
+  background: rgb(15 23 42 / 50%);
 }
 
 /* ----- Admin Appointment Actions ----- */

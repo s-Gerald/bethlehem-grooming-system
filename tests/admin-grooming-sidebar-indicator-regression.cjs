@@ -149,7 +149,7 @@ async function run() {
   assert.equal(freshSidebar.hasIncomingAppointments, true);
 
   for (const file of [
-    'dashboard.html', 'clients.html', 'appointments.html', 'clinic.html', 'archive.html',
+    'dashboard.html', 'clients.html', 'appointments.html', 'clinic.html', 'services.html', 'archive.html',
     'transactions.html', 'reports.html', 'notifications.html', 'settings.html',
     'inventory/inventory.html',
   ]) {
@@ -160,6 +160,7 @@ async function run() {
     assert.ok(groomingLink?.includes('aria-label="Active grooming customers today"'));
     assert.doesNotMatch(groomingLink, /@click=.*(?:incomingAppointmentCount|hasIncomingAppointments)/);
     assert.match(page, /<script[^>]+src="[^"]*admin-sidebar\.js\?/);
+    assert.doesNotMatch(page, /@click="(?:handleStopReceivingClick|executeStopReceiving)\(\)"|x-show="stopModal\.open"/, `${file} has no obsolete intake bindings or confirmation modal`);
   }
 
   sidebar.destroy();

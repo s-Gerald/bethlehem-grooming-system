@@ -197,8 +197,6 @@ function adminSidebar() {
     staffDisplayName: "Staff",
     staffRoleLabel: "Staff",
     staffInitials: "ST",
-    clinicStopped: false,
-    clinicStatusLoaded: false,
     incomingAppointmentCount: 0,
     _incomingAppointmentRevision: 0,
     _incomingAppointmentInterval: null,
@@ -206,33 +204,8 @@ function adminSidebar() {
     _visibilityListener: null,
     _sidebarSessionListener: null,
     _incomingCountRequest: null,
-    _clinicStatusRequest: null,
     _destroyed: false,
     ...getAdminSidebarIdentityState(window.API?.getCachedStaffIdentity?.()?.user),
-    stopModal: {
-      open: false,
-      title: "",
-      message: "",
-      confirmLabel: "Confirm",
-      action: "",
-      busy: false,
-      error: "",
-    },
-    blockedDates: [],
-    blockedDatesLoading: false,
-    blockedDatesLoaded: false,
-    blockedDatesError: "",
-    _blockedDatesRequest: 0,
-    blockDatesModal: { open: false },
-    blockForm: {
-      startDate: "",
-      endDate: "",
-      reason: "",
-      busy: false,
-      error: "",
-      warning: "",
-    },
-
     get hasIncomingAppointments() {
       // Keep the shared sidebar binding; the dot represents all active grooming customers today.
       return this.incomingAppointmentCount > 0;
@@ -259,21 +232,12 @@ function adminSidebar() {
       window.addEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
 
       const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
-      if (this.activePage === 'dashboard') {
-        this._dashboardStatusReady = () => { void this.loadClinicStatus(); };
-        window.addEventListener('admin-dashboard:ready', this._dashboardStatusReady, { once: true });
-      }
-      await Promise.all([
-        this.activePage === 'dashboard' ? Promise.resolve() : this.loadClinicStatus(),
-        this.loadLoggedInIdentity().then(async () => {
-          if (!API.getAdminGroomingActivity) await window.AppClock?.load?.();
-          if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) return this.loadIncomingAppointmentCount();
-        }),
-      ]);
+      await this.loadLoggedInIdentity();
+      if (!API.getAdminGroomingActivity) await window.AppClock?.load?.();
+      if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) await this.loadIncomingAppointmentCount();
       if (this._destroyed) return;
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
-        void this.loadClinicStatus();
         if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) void this.loadIncomingAppointmentCount();
       };
       this._incomingAppointmentInterval = setInterval(refresh, 30000);
@@ -281,7 +245,7 @@ function adminSidebar() {
       document.addEventListener('visibilitychange', this._visibilityListener);
       this._sidebarSessionListener = () => {
         void this.loadLoggedInIdentity();
-        Promise.allSettled([this._incomingCountRequest, this._clinicStatusRequest]).then(refresh);
+        Promise.allSettled([this._incomingCountRequest]).then(refresh);
       };
       window.addEventListener('admin-session:unlocked', this._sidebarSessionListener);
     },
@@ -291,7 +255,6 @@ function adminSidebar() {
       this._incomingAppointmentRevision++;
       document.removeEventListener?.('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
-      window.removeEventListener('admin-dashboard:ready', this._dashboardStatusReady);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
       window.removeEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
       if (this._incomingAppointmentInterval) {
@@ -408,151 +371,5 @@ function adminSidebar() {
       }
     },
 
-    async loadClinicStatus() {
-      if (this._clinicStatusRequest) return this._clinicStatusRequest;
-      try {
-        this._clinicStatusRequest = API.getClinicStatus();
-        const data = await this._clinicStatusRequest;
-        if (this._destroyed) return;
-        this.clinicStopped = Boolean(data.stopped_today);
-        this.clinicStatusLoaded = true;
-        window.dispatchEvent(new CustomEvent('admin-clinic:status', { detail: data }));
-      } catch {
-        // Non-fatal
-      } finally {
-        this._clinicStatusRequest = null;
-      }
-    },
-
-    async openBlockedDatesModal() {
-      if (!this.isAdmin) return;
-
-      this.blockDatesModal.open = true;
-      this.clearBlockedDateForm();
-      await this.loadBlockedDates();
-    },
-
-    clearBlockedDateForm() {
-      this.blockForm = {
-        startDate: "",
-        endDate: "",
-        reason: "",
-        busy: false,
-        error: "",
-        warning: "",
-      };
-    },
-
-    async loadBlockedDates() {
-      const request = ++this._blockedDatesRequest;
-      this.blockedDatesLoading = true;
-      this.blockedDatesError = "";
-      try {
-        const data = await API.getBlockedDates();
-        if (request !== this._blockedDatesRequest) return;
-        this.blockedDates = data.blocked_dates || [];
-        this.blockedDatesLoaded = true;
-      } catch {
-        if (request === this._blockedDatesRequest) this.blockedDatesError = "Could not load blocked dates.";
-      } finally {
-        if (request === this._blockedDatesRequest) this.blockedDatesLoading = false;
-      }
-    },
-
-    async submitBlockedDate() {
-      if (!this.isAdmin) return;
-
-      this.blockForm.error = "";
-      this.blockForm.warning = "";
-
-      if (!this.blockForm.startDate || !this.blockForm.endDate) {
-        this.blockForm.error = "Please select both a start and end date.";
-        return;
-      }
-      if (this.blockForm.endDate < this.blockForm.startDate) {
-        this.blockForm.error = "End date cannot be before start date.";
-        return;
-      }
-
-      this.blockForm.busy = true;
-      try {
-        const res = await API.addBlockedDate({
-          start_date: this.blockForm.startDate,
-          end_date:   this.blockForm.endDate,
-          reason:     this.blockForm.reason || null,
-        });
-        if (res.conflict_warning) {
-          this.blockForm.warning = res.conflict_warning;
-        }
-        this.blockForm.startDate = "";
-        this.blockForm.endDate   = "";
-        this.blockForm.reason    = "";
-        await this.loadBlockedDates();
-      } catch (err) {
-        this.blockForm.error = err.message || "Failed to block dates. Please try again.";
-      } finally {
-        this.blockForm.busy = false;
-      }
-    },
-
-    async removeBlockedDate(id) {
-      if (!this.isAdmin) return;
-
-      try {
-        await API.removeBlockedDate(id);
-        this.blockedDates = this.blockedDates.filter(b => b.id !== id);
-      } catch (err) {
-        alert(err.message || "Failed to remove blocked date.");
-      }
-    },
-
-    handleStopReceivingClick() {
-      if (!this.isAdmin || !this.clinicStatusLoaded) return;
-
-      if (this.clinicStopped) {
-        this.stopModal = {
-          open: true,
-          title: "Reopen for Today?",
-          message: "This will allow Clinic and Grooming walk-ins and check-ins for the rest of the day.",
-          confirmLabel: "Yes, Reopen",
-          action: "reopen",
-          busy: false,
-          error: "",
-        };
-      } else {
-        this.stopModal = {
-          open: true,
-          title: "Stop Receiving for Today?",
-          message: "This stops physical intake for Clinic and Grooming today. Unused pre-registrations expire after their selected date ends. You can reopen intake today.",
-          confirmLabel: "Yes, Stop",
-          action: "stop",
-          busy: false,
-          error: "",
-        };
-      }
-    },
-
-    async executeStopReceiving() {
-      if (!this.isAdmin) return;
-
-      const action = this.stopModal.action;
-      this.stopModal.busy = true;
-      this.stopModal.error = "";
-
-      try {
-        if (action === "stop") {
-          await API.adminStopToday();
-          this.clinicStopped = true;
-        } else {
-          await API.adminReopenToday();
-          this.clinicStopped = false;
-        }
-        this.stopModal.open = false;
-      } catch (err) {
-        this.stopModal.error = err.message || "Something went wrong. Please try again.";
-      } finally {
-        this.stopModal.busy = false;
-      }
-    },
   };
 }

@@ -931,10 +931,6 @@ video {
   z-index: 50;
 }
 
-.z-\[100\] {
-  z-index: 100;
-}
-
 .z-\[11000\] {
   z-index: 11000;
 }
@@ -4058,6 +4054,11 @@ video {
 .hover\:bg-\[\#284a67\]:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(40 74 103 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-\[\#284b69\]:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(40 75 105 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:bg-\[\#2d4f73\]:hover {

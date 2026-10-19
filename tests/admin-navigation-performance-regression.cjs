@@ -68,7 +68,7 @@ async function groomingWaitsForVerifiedTestClock() {
   await e.c.AppClock.load({force: true});
   assert.equal(e.c.AppClock.isTestClockActive(), false, 'A forced clock verification can leave test mode');
 }
-async function clinicStatusFollowsPrimaryDashboardData() {
+async function dashboardDoesNotRequestIntakeStatus() {
   const e = environment(), summary = deferred();
   e.respond(endpoint => endpoint === '/admin/dashboard/summary' ? summary.promise : {});
   e.c.Intl = Intl;
@@ -78,7 +78,7 @@ async function clinicStatusFollowsPrimaryDashboardData() {
   const p = ui.init(); await new Promise(r => setImmediate(r));
   assert.equal(e.calls.some(c => c.endpoint === '/clinic/status'), false, 'Secondary status cannot sit ahead of primary Dashboard data');
   summary.resolve({}); await p; await new Promise(r => setImmediate(r));
-  assert.equal(e.calls.filter(c => c.endpoint === '/clinic/status').length, 1);
+  assert.equal(e.calls.filter(c => c.endpoint === '/clinic/status').length, 0, 'Dashboard does not load obsolete intake controls');
 }
 async function clinicDefersRecordsAndKeepsConfinedOnDemand() {
   const e = environment(); let observe;
@@ -112,6 +112,6 @@ async function clinicListRefreshPreservesWorkspaceDetails() {
   assert.equal(ui.appointment.weight_kg, '24.00', 'A list refresh cannot erase medical workspace weight');
   assert.equal(ui.appointment.confinement.id, 9);
 }
-(async () => { for (const test of [customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardDoesNotWaitForClock, clinicStatusFollowsPrimaryDashboardData, groomingWaitsForVerifiedTestClock, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
+(async () => { for (const test of [customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardDoesNotWaitForClock, dashboardDoesNotRequestIntakeStatus, groomingWaitsForVerifiedTestClock, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
   await test(); console.log(test.name+' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

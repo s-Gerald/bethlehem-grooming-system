@@ -6,12 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
-    <link rel="stylesheet" href="../../css/custom.css?v=customer-actions-20260927&release=20261001" />
+    <link rel="stylesheet" href="../../css/custom.css?v=customer-actions-20260927&release=20261001&intake=20261019" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-navigation-20261018-2" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
     <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2&intake=20261019" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -116,16 +116,6 @@
             </div>
           </div>
           <!-- Stop Receiving / Reopen toggle — hidden from staff (admin only) -->
-          <button
-            type="button"
-            x-show="isAdmin"
-            @click="handleStopReceivingClick()" disabled :disabled="!clinicStatusLoaded"
-            class="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 font-bold transition"
-            :class="clinicStopped ? 'btn-clinic-reopen' : 'btn-clinic-stop'"
-          >
-            <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#door"></use></svg>
-            <span x-text="clinicStopped ? 'Reopen Today' : 'We\'re Done for Today'">We're Done for Today</span>
-          </button>
 
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
             <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
@@ -134,24 +124,8 @@
         </div>
       </aside>
       <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-navigation-20261018-3&admin-perf=20261019-2&intake=20261019"></script>
 
-      <!-- Stop Receiving Confirmation Modal -->
-      <div x-cloak x-show="stopModal.open" x-transition class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 px-4">
-        <div class="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden">
-          <div class="px-6 py-5">
-            <h4 class="text-lg font-bold text-slate-800" x-text="stopModal.title"></h4>
-            <p class="mt-2 text-sm text-slate-600" x-text="stopModal.message"></p>
-            <p x-show="stopModal.error" class="mt-2 text-sm text-red-600" x-text="stopModal.error"></p>
-          </div>
-          <div class="flex gap-3 px-6 py-4">
-            <button type="button" @click="stopModal.open = false" class="flex-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-            <button type="button" @click="executeStopReceiving()" :disabled="stopModal.busy" class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition" :class="clinicStopped ? 'btn-confirm-reopen' : 'btn-confirm-stop'">
-              <span x-text="stopModal.busy ? 'Please wait...' : stopModal.confirmLabel"></span>
-            </button>
-          </div>
-        </div>
-      </div>
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
 

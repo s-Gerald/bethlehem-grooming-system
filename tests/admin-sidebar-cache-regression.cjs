@@ -78,15 +78,15 @@ async function independentRendering() {
   const e = environment();
   await e.c.API.getStaffIdentity();
   const c = e.page(), sidebar = c.adminSidebar();
-  let resolveStatus;
-  c.API.getClinicStatus = () => new Promise(resolve => { resolveStatus = resolve; });
+  let statusCalls = 0;
+  c.API.getClinicStatus = async () => { statusCalls++; return { stopped_today: false }; };
   sidebar.$nextTick = fn => fn();
   const pending = sidebar.init();
-  assert.equal(sidebar.sidebarReady, true, 'Slow clinic status cannot hide cached navigation');
+  assert.equal(sidebar.sidebarReady, true, 'Cached navigation is available immediately');
   assert.equal(sidebar.staffDisplayName, 'Test Staff');
   await Promise.resolve();
-  resolveStatus({ stopped_today: false });
   await pending;
+  assert.equal(statusCalls, 0, 'Sidebar initialization does not read intake status');
   assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 1);
   sidebar.destroy();
 }
