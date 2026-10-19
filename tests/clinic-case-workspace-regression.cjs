@@ -249,7 +249,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
   assert.match(treatmentChargesMarkup, /x-text="charge.description"/);
   assert.match(treatmentChargesMarkup, /x-text="money\(charge.amount\)"/);
   assert.doesNotMatch(treatmentChargesMarkup, /Remove|@click="remove|<input|<select|request_key|inventory_item_id|pricing_method/);
-  assert.match(page, /clipboard-list[^\n]* Billing/);
+  assert.match(page, /phosphor\.svg(?:\?[^"#\s]+)?#clipboard-text[^\n]* Billing/);
   assert.equal(/role="tab"[^>]*aria-controls="case-billing-panel"/.test(page), false, 'Charges is contextual, not a clinical tab');
   assert.match(source, /service_snapshot \|\| entry.clinic_service/);
   assert.equal(/sizeFor|groomingSize|\+ 500|\+ 200/.test(source), false, 'JS does not recreate size or pricing rules');

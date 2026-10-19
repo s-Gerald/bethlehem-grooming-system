@@ -14,7 +14,7 @@ const storage = (entries = []) => {
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
 };
 const context = {
-  console, Date, Intl,
+  console, Date, Intl, URLSearchParams,
   window: { AppClock: { todayKey: () => '2026-10-16' }, addEventListener() {},
     location: { protocol: 'http:', hostname: 'localhost', port: '5173', origin: 'http://localhost:5173', pathname: '/tests' } },
   localStorage: storage([['admin_token', 'test-admin-session'], ['user_role', 'admin']]),

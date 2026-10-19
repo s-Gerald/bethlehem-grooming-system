@@ -200,7 +200,7 @@ function testPaymentAndScannerIntegration() {
   assert.match(markup, /min="1" step="1"/);
   assert.match(markup, /x-show="validationFailed"/);
   assert.match(markup, /@click="openScanner\(\)" aria-label="Scan barcode"/);
-  assert.match(markup, /phosphor\.svg#barcode/);
+  assert.match(markup, /phosphor\.svg(?:\?[^"#\s]+)?#barcode/);
   for (const page of ['appointments', 'dashboard']) {
     const html = read(`pages/admin/${page}.html`);
     assert.ok(html.indexOf('scripts/components/cash-payment.js') >= 0);
