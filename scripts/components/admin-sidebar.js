@@ -65,7 +65,6 @@ function installAdminInventoryNavigation() {
     const child = document.createElement("a");
     child.href = `${url.pathname}#${section}`;
     child.textContent = label;
-    child.setAttribute(":class", `activePage === 'inventory' && inventorySection === '${section}' ? 'is-active' : ''`);
     child.setAttribute(":aria-current", `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
     child.setAttribute("@click", "sidebarOpen = false");
     submenu.appendChild(child);
@@ -143,12 +142,13 @@ function renderCachedAdminSidebar() {
   });
   if (activePage === 'inventory') {
     const submenu = aside.querySelector('#inventory-submenu');
+    const section = getAdminInventorySection();
     submenu?.removeAttribute('x-cloak');
     submenu?.style.removeProperty('display');
     submenu?.querySelectorAll('a').forEach(link => {
-      const selected = new URL(link.href).hash === `#${getAdminInventorySection()}`;
-      link.classList.toggle('is-active', selected);
+      const selected = new URL(link.href).hash === `#${section}`;
       if (selected) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
     });
   }
   if (state.sidebarReady) {

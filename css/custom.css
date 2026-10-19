@@ -334,7 +334,7 @@ body.customer-detail-modal-open {
   background-color: rgb(255 255 255 / 30%);
 }
 
-.admin-inventory-submenu a.is-active {
+.admin-inventory-submenu a[aria-current="page"] {
   background-color: rgb(255 255 255 / 65%);
   color: #1f3850;
   font-weight: 800;

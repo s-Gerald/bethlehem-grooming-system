@@ -315,8 +315,7 @@ function testSidebarNavigation() {
     assert.equal(actionSidebar.inventoryExpanded,true);
     assert.equal(actionSidebar.inventorySection,section);
     if (section.startsWith('stock-')) for (const child of group.children[1].children) {
-      assert.equal(vm.runInNewContext(child.attrs[':class'],actionSidebar),'','no destination may be falsely highlighted in an action view');
-      assert.equal(vm.runInNewContext(child.attrs[':aria-current'],actionSidebar),null);
+      assert.equal(vm.runInNewContext(child.attrs[':aria-current'],actionSidebar),null,'no destination may be falsely highlighted in an action view');
     }
     assert.equal(vm.runInNewContext(mobileTitle,actionSidebar),title);
   }
