@@ -43,18 +43,18 @@ class AlpineModalCloakInterfaceTest extends TestCase
                         $head[1],
                     );
                 }
-                $this->assertMatchesRegularExpression(
-                    '/<[a-z]+\b(?=[^>]*\bdata-admin-navigation(?:\s|>))(?=[^>]*\bx-cloak\b)[^>]*>/i',
+                $this->assertDoesNotMatchRegularExpression(
+                    '/<[a-z]+\b(?=[^>]*\bdata-admin-navigation(?:\s|>))(?=[^>]*(?:\bx-cloak\b|x-show="sidebarReady"))[^>]*>/i',
                     $source,
                 );
-                $this->assertStringContainsString('data-admin-sidebar-loading', $source);
+                $this->assertStringNotContainsString('data-admin-sidebar-loading', $source);
             }
         }
 
         $this->assertGreaterThan(0, $checkedShells, 'The Admin shell scan must cover real pages.');
         $loadingCss = file_get_contents(base_path('css/admin-loading.css'));
         $this->assertMatchesRegularExpression(
-            '/\[data-admin-shell\]:not\(\[data-admin-ready\]\)\s+main\s*,\s*\[data-admin-shell\]:not\(\[data-admin-ready\]\)\s+\[data-admin-navigation\]\s*\{\s*visibility\s*:\s*hidden\s*;/s',
+            '/\[data-admin-shell\]:not\(\[data-admin-ready\]\)\s+main\s*\{\s*visibility\s*:\s*hidden\s*;/s',
             $loadingCss,
         );
         $sessionCss = file_get_contents(base_path('css/session-lock.css'));

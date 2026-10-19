@@ -159,7 +159,10 @@ async function permissionRevalidation() {
   assert.equal(sidebar.clinicPermissions.access, undefined);
   assert.equal(sidebar.sidebarReady, true);
   await c.API.logout('staff');
-  assert.equal(sidebar.sidebarReady, false, 'Logout conceals the existing sidebar immediately');
+  assert.equal(sidebar.sidebarReady, false, 'Logout clears the existing navigation identity immediately');
+  assert.equal(sidebar.canAccessGrooming, false, 'Logout revokes permission-dependent presentation');
+  assert.deepEqual(Object.keys(sidebar.clinicPermissions), []);
+  assert.equal(sidebar.staffDisplayName, '', 'Logout clears the previous account name');
   assert.equal(c.API.getCachedStaffIdentity(), null);
   sidebar.destroy();
 }
@@ -171,7 +174,7 @@ async function firstLoginAndExpiration() {
   const sidebar = e.c.adminSidebar();
   sidebar.$nextTick = fn => fn();
   const pending = sidebar.init();
-  assert.equal(sidebar.sidebarReady, false, 'First login never shows unverified navigation');
+  assert.equal(sidebar.sidebarReady, false, 'First login keeps permission-dependent presentation unresolved');
   assert.equal(sidebar.isAdmin, false, 'Stored role alone cannot reveal admin controls');
   resolveIdentity(identity({ role: 'admin', staff_type: null, staff_subrole: null }));
   await pending;
@@ -181,11 +184,25 @@ async function firstLoginAndExpiration() {
   await assert.rejects(e.c.API.getAdminBookings('2026-10-18', { force: true }), error => error.status === 401);
   assert.equal(e.c.API.getCachedStaffIdentity(), null);
   assert.equal(e.c.API.getAdminToken(), null);
-  assert.equal(sidebar.sidebarReady, false, 'Expiration conceals the existing menu');
+  assert.equal(sidebar.sidebarReady, false, 'Expiration clears the existing navigation identity');
+  assert.equal(sidebar.isAdmin, false, 'Expiration clears admin presentation even when the shell stays visible');
+  sidebar.destroy();
+}
+async function cachedIdentityLogoutRace() {
+  const e = environment();
+  await e.c.API.getStaffIdentity();
+  const c = e.page(), sidebar = c.adminSidebar();
+  sidebar.$nextTick = fn => fn();
+  const pending = sidebar.init();
+  c.API.clearAuthState();
+  await pending;
+  assert.equal(sidebar.sidebarReady, false, 'A queued cached identity cannot restore presentation after logout');
+  assert.equal(sidebar.staffDisplayName, '');
+  assert.equal(sidebar.clinicPermissions.access, undefined);
   sidebar.destroy();
 }
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

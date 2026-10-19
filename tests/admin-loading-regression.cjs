@@ -62,7 +62,7 @@ async function mutationRace() {
 }
 async function lazySecurity() {
   let calls = 0;
-  const c = vm.createContext({ URLSearchParams, window: { location: { search: '' } },
+  const c = vm.createContext({ URLSearchParams, document: {}, window: { location: { search: '' } },
     API: { getUserRole: () => 'admin', getAvailabilitySettings: async () => ({}),
       getAdminSecurityAccounts: async () => { calls++; return { admin: {}, staff: [] }; } } });
   vm.runInContext(read('scripts/components/admin-settings.js'), c);

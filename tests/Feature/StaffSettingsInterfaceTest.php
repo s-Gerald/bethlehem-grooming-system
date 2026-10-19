@@ -45,13 +45,12 @@ class StaffSettingsInterfaceTest extends TestCase
     public function test_staff_can_reach_settings_from_the_shared_admin_shell(): void
     {
         $api = file_get_contents(base_path('scripts/api.js'));
-        $sidebar = file_get_contents(base_path('scripts/components/admin-sidebar.js'));
 
         $this->assertStringNotContainsString(
             "\"reports.html\",\n    \"settings.html\"",
             $api,
         );
-        $this->assertStringContainsString('function revealStaffSettingsSidebarLink()', $sidebar);
-        $this->assertStringContainsString('a[href$="settings.html"]', $sidebar);
+        // Settings is now visible in HTML; the browser sidebar regression verifies
+        // Staff access on cold paint and through pending session checks.
     }
 }

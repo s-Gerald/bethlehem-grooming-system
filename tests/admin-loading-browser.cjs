@@ -161,13 +161,14 @@ async function ready(page, name, property) {
         await page.route('**/api/session', async route => { await held; await route.continue(); });
         try {
           await page.goto(origin + '/pages/admin/settings.html', { waitUntil: 'domcontentloaded' });
-          assert.equal(await page.locator('aside nav').isVisible(), false, 'Pending authorization conceals navigation');
-          assert.equal(await page.locator('.admin-sidebar-footer').isVisible(), false, 'Pending authorization conceals account information');
+          assert.equal(await page.locator('aside nav').isVisible(), true, 'Pending session validation preserves navigation');
+          assert.equal(await page.locator('.admin-sidebar-footer').isVisible(), true, 'Pending session validation preserves the footer');
+          assert.equal(await page.locator('aside nav').evaluate(el => el.inert), true, 'Pending navigation stays non-interactive');
           assert.equal(await page.locator('main [data-session-public]').filter({ hasText: /^Settings$/ }).isVisible(), true, 'Static title is visible independently');
         } finally { release(); }
         await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate') && document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
         await page.unroute('**/api/session');
-        console.log(key + ' pending authorization concealment passed');
+        console.log(key + ' pending session presentation passed');
       }
       if (process.env.LOCAL_REVIEW_LOCK_HELPER) {
         execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, 'lock', key]);

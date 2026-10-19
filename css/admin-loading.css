@@ -12,8 +12,8 @@ admin-loader > p { margin: .75rem 0 0; font-size: .875rem; line-height: 1.25rem;
 [data-admin-title-staff], html:not([data-admin-role]) [data-admin-title-admin] { display: none; }
 html[data-admin-role="staff"] [data-admin-title-staff] { display: inline; }
 html[data-admin-role="staff"] [data-admin-title-admin] { display: none; }
-[data-admin-shell]:not([data-admin-ready]) main,
-[data-admin-shell]:not([data-admin-ready]) [data-admin-navigation] { visibility: hidden; }
+[data-admin-shell]:not([data-admin-ready]) main { visibility: hidden; }
+.admin-sidebar-menu:not([data-admin-navigation-ready]) [data-admin-permission] { display: none !important; }
 /* Static branding, titles and surfaces are public during verification.
    Permission-based navigation and account details require authenticated identity.
    The locked state has no exceptions. */
@@ -23,17 +23,18 @@ html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public] 
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-surface],
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public],
 html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public] * { visibility: visible !important; pointer-events: none !important; }
-/* Verified presentation stays visible during security validation. The central
+/* The shell and verified presentation stay visible during security validation. The central
    session gate still blocks all interaction and fully conceals locked sessions. */
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu[data-admin-navigation-ready] [data-admin-navigation],
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu[data-admin-navigation-ready] [data-admin-navigation] * {
+html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu [data-admin-navigation],
+html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu [data-admin-navigation] * {
   visibility: visible !important;
   pointer-events: none !important;
 }
-[data-admin-sidebar-loading] { display: flex; flex: 1 1 auto; justify-content: center; padding-top: 2rem; color: #5c7690; }
-[data-admin-sidebar-loading] svg { animation: admin-loading-spin 1s linear infinite; }
-.admin-sidebar-menu[data-admin-navigation-ready] [data-admin-sidebar-loading] { display: none; }
+[data-admin-account] > [x-text] { flex-shrink: 0; }
+[data-admin-account][aria-busy="true"] [x-text] { color: transparent; }
+[data-admin-account][aria-busy="true"] p::after { content: ''; display: inline-block; width: 7rem; height: .75rem; border-radius: .25rem; background: rgb(255 255 255 / 20%); }
+[data-admin-account][aria-busy="true"] p + p::after { width: 5rem; }
 .admin-sidebar-menu button:disabled { cursor: wait; }
 .admin-sidebar-menu a:focus-visible, .admin-sidebar-menu button:focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; }
 @keyframes admin-loading-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { admin-loader > svg, [data-admin-sidebar-loading] svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { admin-loader > svg { animation: none; } }
