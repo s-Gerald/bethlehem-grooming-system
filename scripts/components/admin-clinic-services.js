@@ -50,7 +50,7 @@ function adminClinicServices() {
     get canManageServices() { return !!this.$store.clinicAccess.permissions.services_manage; },
     destroy() { clearTimeout(this._searchTimer); this.$refs.serviceDialog.close(); this.closeDetails(false); },
     async activate() {
-      if (this.loaded) return;
+      if (this.loaded && (!API.readAdminCache || API.readAdminCache(this._listKey)?.fresh)) return;
       return this._activation ??= this.load().finally(() => { this._activation = null; });
     },
     pricing: clinicServicePricing,
@@ -77,23 +77,26 @@ function adminClinicServices() {
       const params = new URLSearchParams({page, status: this.status});
       if (this.q.trim()) params.set('q', this.q.trim());
       if (this.category) params.set('category_id', this.category);
+      const key = this._listKey = `/admin/clinic-services?${params}`;
       try {
-        const [response, options] = await Promise.all([
-          API.adminRequest('GET', `/admin/clinic-services?${params}`, null, {force: true}),
-          this.optionsLoaded ? null : API.adminRequest('GET', '/admin/clinic-services/options'),
+        const [response] = await Promise.all([
+          API.loadAdminData(key, () => API.adminRequest('GET', key), response => {
+            if (requestId !== this._requestId) return;
+            this.rows = response.data;
+            this.total = response.total;
+            this.currentPage = response.current_page;
+            this.lastPage = response.last_page;
+            this.loaded = true;
+            this._loadedQuery = query;
+            this._onPresentation?.();
+          }),
+          API.loadAdminData('/admin/clinic-services/options', () => API.adminRequest('GET', '/admin/clinic-services/options'), options => {
+            this.categories = options.categories;
+            this.optionsLoaded = true;
+          }),
         ]);
         if (requestId !== this._requestId) return;
-        if (options) {
-          this.categories = options.categories;
-          this.optionsLoaded = true;
-        }
         if (page > response.last_page) { await this.load(response.last_page); return; }
-        this.rows = response.data;
-        this.total = response.total;
-        this.currentPage = response.current_page;
-        this.lastPage = response.last_page;
-        this.loaded = true;
-        this._loadedQuery = query;
       } catch (error) {
         if (requestId === this._requestId) this.error = error.message || 'Unable to load services. Please try again.';
       } finally { if (requestId === this._requestId) this.loading = false; }

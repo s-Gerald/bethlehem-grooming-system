@@ -135,6 +135,17 @@ var API = (() => {
   function adminCachePolicy(endpoint) {
     const [path, query = ""] = endpoint.split("?");
     const params = new URLSearchParams(query);
+    const presentation = (group, fresh, retain) => {
+      const persist = [...params].every(([key, value]) => (key === 'page' && value === '1')
+        || (key === 'status' && value === 'active') || (key === 'view' && value === 'overview'));
+      return { group, persist, fresh: persist ? fresh : Math.min(fresh, 5000), retain: persist ? retain : Math.min(retain, 15000) };
+    };
+    if (path === '/admin/grooming/services') return { group: 'services-grooming', fresh: 60000, retain: 300000 };
+    if (/^\/admin\/clinic-services(?:\/options)?$/.test(path)) return presentation('services-clinic', 60000, 300000);
+    if (/^\/inventory\/(items|summary|low-stock|alerts\/expiry|transactions)$/.test(path)) return presentation('inventory', 5000, 30000);
+    // Legacy archive lists include payment/medical fields: reuse only in memory.
+    if (path === '/admin/bookings/archived') return { group: 'history-grooming', fresh: 5000, retain: 15000, persist: false };
+    if (path === '/admin/clinic-appointments/archived') return { group: 'history-clinic', fresh: 5000, retain: 15000, persist: false };
     if (path === "/admin/bookings") return { group: "grooming", fresh: 5000, retain: 60000 };
     if (/^\/admin\/dashboard\/(summary|activity)$/.test(path)) return { group: "dashboard", fresh: 15000, retain: 120000 };
     if (path === "/admin/grooming/activity") return { group: "grooming", fresh: 15000, retain: 60000 };
@@ -215,9 +226,11 @@ var API = (() => {
   function invalidateAdminMutation(endpoint) {
     const path = endpoint.split("?")[0];
     let groups = [];
-    if (/^\/admin\/notifications\//.test(path)) groups = ["notifications"];
+    if (/^\/inventory\/(?:items|stock-in|stock-out)(?:\/|$)/.test(path) || path === '/pos/transactions') groups = ['inventory'];
+    else if (/^\/admin\/clinic-services(?:\/|$)/.test(path)) groups = ['services-clinic'];
+    else if (/^\/admin\/notifications\//.test(path)) groups = ["notifications"];
     else if (/^\/admin\/bookings\//.test(path)) {
-      groups = ["grooming"];
+      groups = ["grooming", "history-grooming"];
       if (!/\/(internal-staff-note|grooming-visit-notes|sedation-consent)$/.test(path)) {
         groups.push("dashboard");
         if (/\/(mark-done|cancel)$/.test(path)) groups.push("notifications");
@@ -231,11 +244,16 @@ var API = (() => {
       groups = /\/vaccinations(?:\/|$)/.test(path) ? ["clinic-active"]
         : ["customers", "clinic-records", "clinic-active", "clinic-confined", "grooming", "dashboard"];
     } else if (/^\/admin\/(clinic-cases|clinic-appointments)(?:\/|$)/.test(path) || path === "/admin/clinic-walk-in") {
-      groups = ["clinic-active", "dashboard"];
+      groups = ["clinic-active", "dashboard", "history-clinic"];
+      if (/\/(pay|finish|finish-consultation|services|treatments|vaccinations)(?:\/|$)/.test(path)) groups.push('inventory');
       if (/\/(check-in|cancel|finish|finish-consultation|pay)$/.test(path) || path === "/admin/clinic-walk-in") groups.push("notifications");
       if (/\/confinement(?:\/|$)/.test(path)) groups.push("clinic-confined");
       if (path === "/admin/clinic-walk-in" || path === "/admin/clinic-cases") groups.push("customers", "clinic-records");
-    } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) groups = ["grooming", "dashboard"];
+    } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) {
+      groups = ["grooming", "dashboard"];
+      if (path.startsWith('/admin/grooming/services')) groups.push('services-grooming');
+    }
+    if (/^\/admin\/bookings\/[^/]+\/pay$/.test(path)) groups.push('inventory');
     invalidateAdminCache(groups);
   }
 
@@ -1364,7 +1382,7 @@ var API = (() => {
     if (!policy || !ensureCustomerCacheSession()) {
       return networkRequest(method, endpoint, body, token, requestOptions).then((data) => {
         if (method !== "GET" && customerRequest && token === getCustomerToken()) invalidateCustomerMutation(endpoint);
-        if (method !== "GET" && token && token === getAdminToken() && /^\/(admin|settings)\//.test(endpoint)) {
+        if (method !== "GET" && token && token === getAdminToken() && /^\/(admin|settings|inventory|pos)\//.test(endpoint)) {
           invalidateAdminMutation(endpoint);
         }
         return data;
@@ -1466,6 +1484,9 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
+      && /^\/pos\/online-payment(?:\/\d+)?(?:\?|$)/.test(endpoint)
+      && data.online_payment?.status === 'paid' && data.receipt) invalidateAdminCache(['inventory']);
     if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
       && /^\/admin\/(bookings|clinic-appointments)\/[^/]+\/online-payment(?:\?|$)/.test(endpoint)
       && (data.online_payment?.status === "paid" || data.appointment?.paid || data.booking?.paid || data.booking_status === "released")) {
@@ -2223,25 +2244,25 @@ var API = (() => {
     return request("POST", `/admin/bookings/${bookingId}/archive`, null, getAdminToken());
   }
 
-  async function getArchivedBookings({ search = "", date = "" } = {}) {
+  async function getArchivedBookings({ search = "", date = "" } = {}, { force = false } = {}) {
     // GET /api/admin/bookings/archived  (protected — admin token)
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (date)   params.set("date", date);
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/bookings/archived${query}`, null, getAdminToken());
+    return request("GET", `/admin/bookings/archived${query}`, null, getAdminToken(), {force});
   }
 
   async function getGroomingSignedConsent(bookingId) {
     return request("GET", `/admin/bookings/${bookingId}/signed-consent`, null, getAdminToken());
   }
 
-  async function getArchivedClinicAppointments({ search = "", date = "" } = {}) {
+  async function getArchivedClinicAppointments({ search = "", date = "" } = {}, { force = false } = {}) {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (date) params.set("date", date);
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/clinic-appointments/archived${query}`, null, getAdminToken());
+    return request("GET", `/admin/clinic-appointments/archived${query}`, null, getAdminToken(), {force});
   }
 
   async function markAllNotificationsRead() {
@@ -2789,7 +2810,10 @@ var API = (() => {
     recordSessionActivity,
     evaluateSessionInactivity,
     isSessionLocked: () => sessionLocked,
-    getAdminDataRevision: (group = "grooming") => `${adminCacheEpoch}:${adminCacheRevisions.get(group) || 0}`,
+    getAdminDataRevision: (group = "grooming") => {
+      ensureAdminCache();
+      return `${adminCacheEpoch}:${adminCacheRevisions.get(group) || 0}`;
+    },
     startSessionInactivityManager,
     enforceAdminPageAccess,
     enforceProtectedPageAccess,

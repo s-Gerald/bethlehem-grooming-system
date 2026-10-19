@@ -7,15 +7,20 @@ function adminGroomingServices() {
       {kind: 'ala_carte', label: 'Ala carte', action: 'Add Ala carte Service'}],
     form: null, editingId: null, saving: false, formError: '', fieldErrors: {},
     init() {},
-    async activate() { if (!this.loaded && !this.loading) await this.load(); },
+    async activate() {
+      if (this.loaded && (!API.readAdminCache || API.readAdminCache('/admin/grooming/services')?.fresh)) return;
+      if (!this.loading) await this.load();
+    },
     async load() {
       this.loading = true;
       this.error = '';
       try {
-        const response = await API.adminRequest('GET', '/admin/grooming/services', null, {force: true});
-        this.rows = response.data;
-        this.priceLimits = response.priceLimits;
-        this.loaded = true;
+        await API.loadAdminData('/admin/grooming/services', () => API.adminRequest('GET', '/admin/grooming/services'), response => {
+          this.rows = response.data;
+          this.priceLimits = response.priceLimits;
+          this.loaded = true;
+          this._onPresentation?.();
+        });
       } catch (error) { this.error = error.message || 'Unable to load Grooming Services.'; }
       finally { this.loading = false; }
     },

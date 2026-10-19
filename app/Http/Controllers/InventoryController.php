@@ -666,7 +666,30 @@ class InventoryController extends Controller
             ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
             ->count();
 
-        $expiryCount = $this->currentExpiryAlerts()->count();
+        $expiryAlerts = $this->currentExpiryAlerts();
+        $expiryCount = $expiryAlerts->count();
+
+        if ($request->query('view') === 'overview') {
+            // Reuse the expiry computation above; previews need no pagination
+            // counts, batch/price hydration or report-only 30-day aggregates.
+            $lowStock = InventoryItem::where('is_active', 1)
+                ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
+                ->orderByRaw('quantity_on_hand / reorder_level ASC')->orderBy('item_id')
+                ->limit(5)->get(['item_id', 'item_name', 'category', 'unit', 'quantity_on_hand', 'reorder_level']);
+            $recent = InventoryTransaction::with(['item', 'performedBy'])
+                ->orderBy('created_at', 'desc')->limit(5)->get();
+
+            return response()->json([
+                'total_items' => $totalItems,
+                'low_stock_count' => $lowStockCount,
+                'expiry_alert_count' => $expiryCount,
+                'low_stock_items' => $lowStock,
+                'expiry_items' => $expiryAlerts->take(5)->map(fn (array $item) => array_intersect_key($item, array_flip([
+                    'item_id', 'item_name', 'batch_number', 'earliest_expiry', 'is_expired', 'days_until_expiry',
+                ])))->values(),
+                'recent_transactions' => $this->formatTransactions($recent),
+            ]);
+        }
 
         $recentTransactionsPage = max(1, $request->integer('page', 1));
         $recentTransactions = InventoryTransaction::with(['item', 'performedBy'])

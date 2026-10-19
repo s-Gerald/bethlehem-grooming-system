@@ -1,10 +1,10 @@
 // The shell owns navigation and resource loading; each workflow keeps its own state.
 const InventorySections = {
   overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js"] },
-  products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js", "scanner"] },
-  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "scanner", "payment-invoice.js", "product-sale-invoice.js"] },
-  "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js", "scanner"] },
-  "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js", "scanner"] },
+  products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js"] },
+  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "payment-invoice.js", "product-sale-invoice.js"] },
+  "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js"] },
+  "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js"] },
   history: { script: "admin-inventory-transactions.js", factory: "adminInventoryTransactions", dependencies: [] },
 };
 
@@ -22,7 +22,7 @@ function loadInventoryScript(name) {
       const script = document.createElement("script");
       script.src = name === "scanner"
         ? "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
-        : `../../../scripts/components/${name}?v=product-details-20261002&release=paymongo-20261018&icons=20261018`;
+        : `../../../scripts/components/${name}?v=product-details-20261002&release=paymongo-20261018&icons=20261018&fetching=20261019`;
       script.onload = resolve;
       script.onerror = () => {
         script.remove();
@@ -110,14 +110,19 @@ function adminInventory() {
       this.activeSection = route.section;
       this.sectionError = "";
       const existing = this.$refs.panels.querySelector(`[data-inventory-section="${route.section}"]`);
-      this.sectionLoading = !existing || Alpine.$data(existing)._loadedRevision < 0;
+      this.sectionLoading = !existing || Alpine.$data(existing)._loadedRevision === -1;
       document.title = `${({ overview: "Inventory", products: "Products", "sell-product": "Point of Sale", "stock-in": "Stock In", "stock-out": "Stock Out", history: "Stock Movements" })[route.section]} | Bethlehem Animal Clinic`;
       try {
         const panel = await this.mountSection(route.section);
         // A slower first visit must not override a more recent navigation.
         const current = inventoryRoute();
         if (current.section !== route.section || current.filter !== route.filter) return;
-        await Alpine.$data(panel).activate(route, this.inventoryRevision);
+        const state = Alpine.$data(panel);
+        state._onPresentation = () => {
+          const current = inventoryRoute();
+          if (current.section === route.section && current.filter === route.filter) this.sectionLoading = false;
+        };
+        await state.activate(route, `${this.inventoryRevision}:${API.getAdminDataRevision?.('inventory') || ''}`);
       } catch (err) {
         if (inventoryRoute().section === route.section) {
           this.sectionError = err.message || "Unable to open this inventory section.";

@@ -112,6 +112,76 @@ async function clinicListRefreshPreservesWorkspaceDetails() {
   assert.equal(ui.appointment.weight_kg, '24.00', 'A list refresh cannot erase medical workspace weight');
   assert.equal(ui.appointment.confinement.id, 9);
 }
-(async () => { for (const test of [customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardDoesNotWaitForClock, dashboardDoesNotRequestIntakeStatus, groomingWaitsForVerifiedTestClock, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
+async function scopedListsReuseRetainedData() {
+  const e = environment();
+  const response = {data: [{item_id: 1}], page: 1, last_page: 1, total: 1, priceLimits: {}, archived: []};
+  e.respond(() => response);
+  const load = (page, file, factory) => {vm.runInContext(read('scripts/components/'+file), page.c); return page.c[factory]();};
+  let services = load(e, 'admin-grooming-services.js', 'adminGroomingServices');
+  await services.activate();
+  services = load(e.page(), 'admin-grooming-services.js', 'adminGroomingServices'); await services.activate();
+  assert.equal(e.calls.length,1,'Fresh Services survives HTML navigation');
+  assert.equal(e.calls.some(c=>c.endpoint.includes('clinic-services')),false);
+  e.advance(61000); const held=deferred(); e.respond(()=>held.promise);
+  const retained=load(e.page(),'admin-grooming-services.js','adminGroomingServices');
+  let presented=false; retained._onPresentation=()=>{presented=true;};
+  const pending=retained.activate();
+  assert.ok(retained.loaded && presented,'Services releases retained content before network completes');
+  held.resolve(response); await pending;
+  e.respond(()=>response);
+  for (const [file,factory] of [['admin-inventory-dashboard.js','adminInventoryDashboard'],['admin-inventory-items.js','adminInventoryItems'],['admin-inventory-transactions.js','adminInventoryTransactions']]) {
+    const page=e.page(); vm.runInContext(read('scripts/services/inventory-service.js'),page.c);
+    page.c.ProductForm={empty:()=>({})};
+    const ui=load(page,file,factory); const before=e.calls.length; await ui.load();
+    assert.ok(ui.loaded); assert.equal(e.calls.length,before+1,'Section needs exactly its own list');
+    const next=e.page(); vm.runInContext(read('scripts/services/inventory-service.js'),next.c); next.c.ProductForm={empty:()=>({})};
+    const reused=load(next,file,factory); await reused.load(); assert.ok(reused.loaded);
+    assert.equal(e.calls.length,before+1,'Inventory list survives HTML navigation');
+    e.advance(6000); const refresh=deferred(); e.respond(()=>refresh.promise);
+    const stale=e.page(); vm.runInContext(read('scripts/services/inventory-service.js'),stale.c); stale.c.ProductForm={empty:()=>({})};
+    const visible=load(stale,file,factory); let shown=false; visible._onPresentation=()=>{shown=true;};
+    const p=visible.load(); assert.ok(visible.loaded && shown,'Retained section content is ready before revalidation');
+    refresh.resolve(response); await p; e.respond(()=>response);
+  }
+}
+async function servicesPrimaryDoesNotWaitForClinicPermissions() {
+  const e=environment(), permission=deferred(); e.c.API.getUserRole=()=> 'admin';
+  e.c.window.location.hash='#grooming'; e.c.window.removeEventListener=()=>{};
+  e.c.history={replaceState(){}};
+  vm.runInContext(read('scripts/components/admin-services.js'),e.c);
+  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,permissions:{services_view:false}}};
+  let mounted=''; const state={loaded:true,activate:async()=>{}};
+  shell.$refs={grooming:{},clinic:{}}; shell.mount=async tab=>{mounted=tab;return {};}; e.c.Alpine={$data:()=>state};
+  const pending=shell.init(); await new Promise(setImmediate);
+  assert.equal(mounted,'grooming','Unresolved Clinic permissions cannot delay Grooming');
+  permission.resolve(); await pending;
+  e.c.window.location.hash='#clinic'; await shell.showTab();
+  assert.equal(mounted,'grooming','Denied Clinic access never mounts its functionality'); assert.ok(shell.error);
+}
+async function historyActiveTypeAndSearchRace() {
+  const e=environment(); e.c.API.getStaffIdentity=async()=>({user:{role:'admin'}});
+  e.c.window.history={state:null}; e.c.window.removeEventListener=()=>{};
+  vm.runInContext(read('scripts/components/admin-archive.js'),e.c);
+  const ui=e.c.adminArchive(); ui.selectAvailableYear=()=>{}; ui.closeDetails=()=>{}; ui.closeClinicRecord=()=>{};
+  e.respond(()=>({archived:[],total:0})); await ui.init();
+  assert.deepEqual(e.calls.map(c=>c.endpoint),['/admin/bookings/archived'],'History fetches no inactive type or details');
+  await ui.selectArchiveType('clinic'); await ui.selectArchiveType('grooming');
+  assert.equal(e.calls.length,2,'History tabs share API memory retention');
+  const old=deferred(); ui.searchQuery='old'; e.respond(()=>old.promise); const pending=ui.loadArchive();
+  ui.searchQuery='new'; old.resolve({archived:[{id:99}]}); await pending;
+  assert.equal(ui.archivedList.length,0,'A query changed during markup debounce cannot accept the old response');
+}
+async function staffServicesWaitForAuthorizedActiveTab() {
+  const e=environment(), permission=deferred(); e.c.API.getUserRole=()=> 'staff';
+  e.c.window.location.hash=''; e.c.history={replaceState(){}};
+  vm.runInContext(read('scripts/components/admin-services.js'),e.c);
+  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,permissions:{services_view:true}}};
+  let mounted=''; const state={loaded:true,activate:async()=>{}};
+  shell.$refs={grooming:{},clinic:{}}; shell.mount=async tab=>{mounted=tab;return {};}; e.c.Alpine={$data:()=>state};
+  const pending=shell.init(); await new Promise(setImmediate);
+  assert.equal(mounted,'','Staff Clinic functionality waits for permission verification');
+  permission.resolve(); await pending; assert.equal(mounted,'clinic');
+}
+(async () => { for (const test of [scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardDoesNotWaitForClock, dashboardDoesNotRequestIntakeStatus, groomingWaitsForVerifiedTestClock, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
   await test(); console.log(test.name+' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

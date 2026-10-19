@@ -17,20 +17,16 @@ function adminInventoryDashboard() {
       this.loading = true;
       this.error = "";
       try {
-        const [summary, lowStock, expiry] = await Promise.all([
-          InventoryAPI.getSummary({ page: 1 }),
-          InventoryAPI.getLowStock({ page: 1 }),
-          InventoryAPI.getExpiryAlerts({ page: 1 }),
-        ]);
-        this.loaded = true;
-        this.totalItems = summary.total_items;
-        this.lowStockCount = summary.low_stock_count;
-        this.expiryCount = summary.expiry_alert_count;
-        // The endpoints retain their reporting/pagination capabilities. The
-        // Overview only renders the first five records in the server's order.
-        this.lowStockItems = (lowStock.data ?? []).slice(0, 5);
-        this.expiryItems = (expiry.data ?? []).slice(0, 5);
-        this.recentTransactions = (summary.recent_transactions ?? []).slice(0, 5);
+        await InventoryAPI.getSummary({ page: 1, view: 'overview' }, summary => {
+          this.loaded = true;
+          this._onPresentation?.();
+          this.totalItems = summary.total_items;
+          this.lowStockCount = summary.low_stock_count;
+          this.expiryCount = summary.expiry_alert_count;
+          this.lowStockItems = (summary.low_stock_items ?? []).slice(0, 5);
+          this.expiryItems = (summary.expiry_items ?? []).slice(0, 5);
+          this.recentTransactions = (summary.recent_transactions ?? []).slice(0, 5);
+        });
       } catch (err) {
         this.error = err.message || "Failed to load inventory overview.";
       } finally {

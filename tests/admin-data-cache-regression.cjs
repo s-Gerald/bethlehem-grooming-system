@@ -145,6 +145,69 @@ async function retainedDataWaitsForSessionVerification() {
   assert.equal(rendered.customers[0].id, 2);
 }
 module.exports = { environment, deferred };
+async function scopedPresentationPolicies() {
+  for (const [key, freshness] of [
+    ['/admin/grooming/services', 61000], ['/admin/clinic-services?page=1&status=active', 61000],
+    ['/admin/clinic-services/options', 61000], ['/inventory/summary?page=1&view=overview', 6000],
+    ['/inventory/items?page=1', 6000], ['/inventory/transactions?page=1', 6000],
+  ]) {
+    const e = environment(); await e.API.adminRequest('GET', key);
+    const next = e.page().API;
+    await next.adminRequest('GET', key);
+    assert.equal(e.calls.length, 1, key + ' fresh cross-document reuse');
+    e.advance(freshness); const held = deferred(); e.respond(() => held.promise); let visible;
+    const a = next.loadAdminData(key, () => next.adminRequest('GET', key), data => { visible = data; });
+    const b = next.adminRequest('GET', key);
+    assert.equal(visible.version, 1, key + ' retained content precedes revalidation');
+    assert.equal(e.calls.length, 2, key + ' revalidations deduplicate');
+    held.resolve({ version: 2 }); await Promise.all([a, b]); assert.equal(visible.version, 2);
+    e.API.setUserRole('staff'); assert.equal(e.API.readAdminCache(key), null);
+    e.API.setAdminToken('2|other'); assert.equal(e.API.readAdminCache(key), null);
+  }
+  const e = environment();
+  for (const key of ['/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/clinic-services?page=1&q=private-search', '/inventory/items?page=1&q=private-search', '/inventory/transactions?page=1&type=stock_in']) {
+    await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
+    assert.equal(e.calls.filter(c => c.endpoint === key).length, 1, key + ' memory reuse');
+    assert.ok(!e.sessionStorage.getItem('bethlehem.admin.presentation.v2')?.includes(key), key + ' must not persist');
+  }
+  for (const key of ['/pos/online-payment', '/inventory/search?q=retail&sale_context=pos', '/inventory/items/1', '/admin/bookings/1/signed-consent', '/admin/clinic-cases/1']) {
+    await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
+    assert.equal(e.calls.filter(c => c.endpoint === key).length, 2, key + ' operational reads stay current');
+  }
+}
+async function scopedMutationInvalidation() {
+  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived'];
+  for (const [mutation, affected] of [
+    ['/admin/grooming/services/1/status', [0]], ['/admin/clinic-services/1/status', [1]],
+    ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
+    ['/inventory/stock-out', [2,3,4]], ['/pos/transactions', [2,3,4]],
+    ['/admin/bookings/1/mark-done', [5]], ['/admin/clinic-appointments/1/finish', [2,3,4,6]],
+    ['/pos/validate-cart', []],
+  ]) {
+    const e = environment();
+    for (const key of keys) await e.API.adminRequest('GET', key);
+    e.respond(() => response({message: 'Rejected'}, 422));
+    await assert.rejects(e.API.adminRequest('POST', mutation, {}));
+    for (const key of keys) assert.ok(e.API.readAdminCache(key), 'Failed mutation retains ' + key);
+    e.respond(() => ({})); const other = e.page();
+    // Memory-only History entries are seeded in the current document above.
+    await other.API.adminRequest('POST', mutation, {});
+    const signal = e.localStorage.getItem('bethlehem.admin.data_changed');
+    if (signal) e.events.get('storage')({storageArea: e.localStorage, key: 'bethlehem.admin.data_changed', newValue: signal});
+    keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), mutation + ' invalidates precisely ' + key));
+  }
+}
+async function inventoryReadMutationRaceAndOnlineSettlement() {
+  const e=environment(), old=deferred(), key='/inventory/items?page=1';
+  e.respond(()=>old.promise); const a=e.API.adminRequest('GET',key), b=e.API.adminRequest('GET',key);
+  assert.equal(e.calls.length,1);
+  e.respond(()=>({})); await e.API.adminRequest('POST','/inventory/stock-out',{});
+  old.resolve({version:1}); await Promise.all([assert.rejects(a,/changed/),assert.rejects(b,/changed/)]);
+  await e.API.adminRequest('GET',key);
+  e.respond(()=>({online_payment:{status:'paid'},receipt:{id:3}}));
+  await e.API.adminRequest('GET','/pos/online-payment/3');
+  assert.equal(e.API.readAdminCache(key),null,'Confirmed online settlement invalidates presentation while status stays uncached');
+}
 if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification]) {
   await test(); console.log(test.name+' passed');
-} })().catch(error => { console.error(error); process.exitCode = 1; });
+} for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, inventoryReadMutationRaceAndOnlineSettlement]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });

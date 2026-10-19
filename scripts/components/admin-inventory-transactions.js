@@ -25,20 +25,22 @@ function adminInventoryTransactions() {
       this.loading = true;
       this.error   = "";
       try {
-        const res = await InventoryAPI.getTransactions({
+        await InventoryAPI.getTransactions({
           type:      this.filterType,
           category:  this.filterCategory,
           date_from: this.filterDateFrom,
           date_to:   this.filterDateTo,
           page,
+        }, res => {
+          if (request !== this._listRequest) return;
+          this.loaded = true;
+          this._onPresentation?.();
+          this._loadedQuery = query;
+          this.transactions = res.data;
+          this.currentPage  = res.page;
+          this.lastPage     = res.last_page;
+          this.total        = res.total;
         });
-        if (request !== this._listRequest) return;
-        this.loaded = true;
-        this._loadedQuery = query;
-        this.transactions = res.data;
-        this.currentPage  = res.page;
-        this.lastPage     = res.last_page;
-        this.total        = res.total;
       } catch (err) {
         if (request !== this._listRequest) return;
         this.error = err.message || "Failed to load transactions.";

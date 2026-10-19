@@ -14,6 +14,11 @@ const productFormSource = fs.readFileSync(
 );
 
 function createPage(inventoryApi = {}) {
+  for (const name of ['getItems', 'getExpiryAlerts']) {
+    if (!inventoryApi[name]) continue;
+    const read = inventoryApi[name];
+    inventoryApi[name] = async (params, render) => { const data = await read(params); render?.(data); return data; };
+  }
   const context = {
     InventoryAPI: inventoryApi,
     clearTimeout,

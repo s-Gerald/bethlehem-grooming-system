@@ -189,6 +189,31 @@ class InventorySecurityRegressionTest extends TestCase
             ->assertJsonPath('recent_transactions_total', 11);
     }
 
+    public function test_overview_summary_contains_bounded_previews_without_report_queries(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000029'));
+        foreach (range(1, 7) as $sequence) {
+            $itemId = $this->createInventoryItem('Preview '.$sequence, 2, 100);
+            DB::table('inventory_items')->where('item_id', $itemId)->update(['reorder_level' => 5]);
+            $this->recordInventoryTransaction($itemId, 'stock_in', 2, [
+                'expiry_date' => now()->addDays($sequence)->toDateString(),
+            ]);
+        }
+        DB::enableQueryLog();
+        $overview = $this->getJson('/api/inventory/summary?page=1&view=overview')->assertOk()
+            ->assertJsonPath('total_items', 7)->assertJsonPath('low_stock_count', 7)
+            ->assertJsonPath('expiry_alert_count', 7)
+            ->assertJsonCount(5, 'low_stock_items')->assertJsonCount(5, 'expiry_items')
+            ->assertJsonCount(5, 'recent_transactions')->assertJsonMissingPath('top_used_30_days');
+        $queries = collect(DB::getQueryLog())->pluck('query');
+        DB::disableQueryLog();
+        $this->assertFalse($queries->contains(fn ($sql) => str_contains(strtolower($sql), 'total_used')));
+        $low = $this->getJson('/api/inventory/low-stock')->assertOk()->json('data');
+        $expiry = $this->getJson('/api/inventory/alerts/expiry')->assertOk()->json('data');
+        $this->assertSame(array_column(array_slice($low, 0, 5), 'item_id'), array_column($overview->json('low_stock_items'), 'item_id'));
+        $this->assertSame(array_column(array_slice($expiry, 0, 5), 'item_id'), array_column($overview->json('expiry_items'), 'item_id'));
+    }
+
     public function test_low_stock_alerts_paginate_ten_items_per_page(): void
     {
         Sanctum::actingAs($this->createUser('admin', '09170000015'));

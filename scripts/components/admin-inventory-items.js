@@ -50,18 +50,22 @@ function adminInventoryItems() {
       this.loading = true;
       this.error = "";
       try {
+        const render = res => {
+          if (request !== this._listRequest) return;
+          this.loaded = true;
+          this._onPresentation?.();
+          this._loadedQuery = query;
+          if (this.alertFilter === "expiry") this.expiryItems = res.data;
+          else this.items = res.data;
+          this.currentPage = res.page;
+          this.lastPage    = res.last_page;
+          this.total       = res.total;
+        };
         const res = this.alertFilter === "expiry"
-          ? await InventoryAPI.getExpiryAlerts({ page })
-          : await InventoryAPI.getItems({ q: this.q, category: this.category, low_stock: this.alertFilter === "low-stock", inactive_only: this.showInactive, page });
+          ? await InventoryAPI.getExpiryAlerts({ page }, render)
+          : await InventoryAPI.getItems({ q: this.q, category: this.category, low_stock: this.alertFilter === "low-stock", inactive_only: this.showInactive, page }, render);
         if (request !== this._listRequest) return;
-        this.loaded = true;
-        this._loadedQuery = query;
-        if (this.alertFilter === "expiry") this.expiryItems = res.data;
-        else this.items = res.data;
-        this.currentPage = res.page;
-        this.lastPage    = res.last_page;
-        this.total       = res.total;
-        if (res.data.length === 0 && page > this.lastPage) {
+        if (res.data.length === 0 && page > res.last_page) {
           await this.load(this.lastPage);
           return;
         }
@@ -75,6 +79,7 @@ function adminInventoryItems() {
     },
 
     onSearchInput() {
+      this._listRequest++;
       clearTimeout(this._searchTimer);
       this._searchTimer = setTimeout(() => this.load(1), 350);
     },

@@ -21,10 +21,10 @@ function setup() {
     addEventListener:(type,listener)=>{listeners.set(type,listener);},
     removeEventListener:(type)=>listeners.delete(type),
     dispatchEvent:(event)=>listeners.get(event.type)?.(event),
-    API:{enforceAdminPageAccess:()=>true,adminRequest:async (method,url)=>{
+    API:{enforceAdminPageAccess:()=>true,loadAdminData:(key,load,render)=>load().then(data=>{render(data);return data;}),adminRequest:async (method,url)=>{
       calls.push([method,url]);
       if(fail)throw new Error('Rejected');
-      if(url.startsWith('/inventory/summary'))return {total_items:25,low_stock_count:25,expiry_alert_count:1,recent_transactions:[]};
+      if(url.startsWith('/inventory/summary'))return {total_items:25,low_stock_count:25,expiry_alert_count:1,recent_transactions:[],low_stock_items:[],expiry_items:[]};
       if(url.startsWith('/inventory/items/'))return {data:{...stockItem}};
       return pageResponse;
     }},
@@ -70,11 +70,12 @@ async function testLazyNavigationAndMutationRefresh() {
   const app=setup();
   await app.visit('#overview');
   assert.deepEqual(app.calls.filter(c=>c[0]==='GET').map(c=>c[1]),[
-    '/inventory/summary?page=1','/inventory/low-stock?page=1','/inventory/alerts/expiry?page=1',
+    '/inventory/summary?page=1&view=overview',
   ]);
   assert.equal(app.panels.length,1);
   assert.equal(app.scripts.some(url=>url.includes('qrcode')),false);
   await app.visit('#products');
+  assert.equal(app.scripts.some(url=>url.includes('qrcode')),false,'Products must not load scanner code until scanning starts');
   const products=app.state('products');
   products.q='Medicine';products.currentPage=2;
   await app.visit('#stock-in');
@@ -105,7 +106,7 @@ async function testLazyNavigationAndMutationRefresh() {
   await app.visit('#history');
   assert.equal(app.calls.length,refreshedCount+1);
   await app.visit('#overview');
-  assert.equal(app.calls.length,refreshedCount+4);
+  assert.equal(app.calls.length,refreshedCount+2);
   app.stockItem.quantity_on_hand=23;app.stockItem.selling_price=60;
   await app.visit('#stock-out');
   assert.equal(stockOut.selected.quantity_on_hand,23);
@@ -198,7 +199,7 @@ async function testRapidNavigationDoesNotLoadHiddenData() {
 }
 
 async function testCameraStopsEvenWhenNavigationInterruptsStartup() {
-  for (const section of ['stock-in','stock-out','sell-product']) {
+  for (const section of ['products','stock-in','stock-out','sell-product']) {
     const app=setup();
     await app.visit('#'+section);
     const state=app.state(section);
@@ -223,6 +224,63 @@ async function testCameraStopsEvenWhenNavigationInterruptsStartup() {
     assert.equal(stops,2,'camera startup must stop after navigation even if the first stop was too early');
     assert.equal(state.scannerActive,false);
   }
+}
+
+async function testScannerDependencyLoadsOnlyOnUseAndCancelsOnLeave() {
+  const app=setup(); await app.visit('#products');
+  assert.equal(app.scripts.some(url=>url.includes('qrcode')),false);
+  let release;
+  app.context.loadInventoryScript = name => {
+    assert.equal(name,'scanner');
+    return new Promise(resolve=>{release=resolve;});
+  };
+  app.context.alert=()=>{throw Error('Unexpected scanner error');};
+  const frames=[]; let starts=0;
+  app.context.requestAnimationFrame=fn=>frames.push(fn);
+  const products=app.state('products');
+  products.openScanner();
+  assert.equal(products.scannerActive,true,'pending library load participates in teardown');
+  products.leave();
+  app.context.Html5Qrcode=class {start(){starts++;return Promise.resolve();}};
+  release(); await new Promise(setImmediate);
+  while(frames.length)frames.shift()();
+  assert.equal(starts,0,'leaving during library loading must prevent camera startup');
+}
+async function testCentralRevisionReuseAndCrossTabMutation() {
+  const e=require('./admin-data-cache-regression.cjs').environment(), app=setup();
+  e.respond(()=>({data:[app.stockItem],page:1,last_page:1,total:1}));
+  app.context.API=e.API;
+  await app.visit('#products');
+  await app.visit('#history'); e.advance(6000);
+  const before=e.calls.length;
+  await app.visit('#products');
+  assert.equal(e.calls.length,before,'Unchanged mounted sections must not revalidate just because cache aged');
+  const other=e.page(); await other.API.adminRequest('POST','/inventory/stock-in',{});
+  e.events.get('storage')({storageArea:e.localStorage,key:'bethlehem.admin.data_changed',newValue:e.localStorage.getItem('bethlehem.admin.data_changed')});
+  await app.visit('#history'); await app.visit('#products');
+  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint==='/inventory/items?page=1').length,2,'Cross-tab mutation refreshes mounted Products on return');
+}
+async function testScannerLibraryIsSharedAndLoadedOnceOnUse() {
+  const app=setup(); await app.visit('#products');
+  const append=app.context.document.head.appendChild;
+  let starts=0,stops=0; const frames=[];
+  app.context.alert=()=>{throw Error('Unexpected scanner error');};
+  app.context.requestAnimationFrame=fn=>frames.push(fn);
+  app.context.document.head.appendChild=script=>{
+    if(script.src.includes('qrcode'))app.context.Html5Qrcode=class {
+      start(){starts++;return Promise.resolve();}
+      stop(){stops++;return Promise.resolve();}
+    };
+    append(script);
+  };
+  const products=app.state('products'); products.openScanner();
+  await new Promise(setImmediate); while(frames.length)frames.shift()();
+  await new Promise(setImmediate);
+  assert.equal(starts,1); products.closeScanner();
+  products.openScanner(); while(frames.length)frames.shift()();
+  await new Promise(setImmediate); products.closeScanner();
+  assert.equal(starts,2); assert.equal(stops,2);
+  assert.equal(app.scripts.filter(src=>src.includes('qrcode')).length,1,'Scanner dependency downloads once across repeated starts');
 }
 
 function testSidebarNavigation() {
@@ -299,6 +357,9 @@ function testUnifiedEntryAndSectionMarkup() {
   await testSellProductUsesTheShellAndInvalidatesStockViews();
   await testRapidNavigationDoesNotLoadHiddenData();
   await testCameraStopsEvenWhenNavigationInterruptsStartup();
+  await testScannerDependencyLoadsOnlyOnUseAndCancelsOnLeave();
+  await testCentralRevisionReuseAndCrossTabMutation();
+  await testScannerLibraryIsSharedAndLoadedOnceOnUse();
   testSidebarNavigation();
   testUnifiedEntryAndSectionMarkup();
   console.log('frontend unified inventory regression checks passed');

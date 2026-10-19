@@ -267,35 +267,50 @@ window.ProductForm = (() => {
   }
 
   function openBarcodeScanner(owner, readerId, onDecoded) {
+    if (owner.scannerActive) return;
+    owner.scannerActive = true;
+    const generation = owner._scannerGeneration = (owner._scannerGeneration || 0) + 1;
     if (typeof Html5Qrcode === "undefined") {
-      alert("Camera scanner library not loaded. Try refreshing the page.");
+      // The Inventory shell shares one script promise, including concurrent starts.
+      loadInventoryScript('scanner').then(() => {
+        if (!owner.scannerActive || generation !== owner._scannerGeneration) return;
+        startCamera();
+      }).catch(() => {
+        if (!owner.scannerActive || generation !== owner._scannerGeneration) return;
+        owner.scannerActive = false;
+        alert("Camera scanner could not load. Please try again.");
+      });
       return;
     }
+    startCamera();
 
-    owner.scannerActive = true;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (!owner.scannerActive) return;
-      const config = { fps: 10, qrbox: { width: 260, height: 120 } };
-      const start = (constraints) => {
-        if (!owner.scannerActive) return Promise.resolve();
-        owner._scanner = new Html5Qrcode(readerId);
-        const scanner = owner._scanner;
-        return scanner.start(constraints, config, onDecoded, () => {}).then(() => {
-          if (!owner.scannerActive || owner._scanner !== scanner) return scanner.stop().catch(() => {});
+    function startCamera() {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!owner.scannerActive || generation !== owner._scannerGeneration) return;
+        const config = { fps: 10, qrbox: { width: 260, height: 120 } };
+        const start = (constraints) => {
+          if (!owner.scannerActive || generation !== owner._scannerGeneration) return Promise.resolve();
+          owner._scanner = new Html5Qrcode(readerId);
+          const scanner = owner._scanner;
+          return scanner.start(constraints, config, onDecoded, () => {}).then(() => {
+            if (!owner.scannerActive || owner._scanner !== scanner) return scanner.stop().catch(() => {});
+          });
+        };
+
+        start({
+          facingMode: { ideal: "environment" },
+          advanced: [{ focusMode: "continuous" }],
+        }).catch(() => start({ facingMode: "environment" })).catch(() => {
+          if (!owner.scannerActive || generation !== owner._scannerGeneration) return;
+          owner.scannerActive = false;
+          alert("Camera not available. Make sure the app is served on localhost or HTTPS, and that camera permission is granted.");
         });
-      };
-
-      start({
-        facingMode: { ideal: "environment" },
-        advanced: [{ focusMode: "continuous" }],
-      }).catch(() => start({ facingMode: "environment" })).catch(() => {
-        owner.scannerActive = false;
-        alert("Camera not available. Make sure the app is served on localhost or HTTPS, and that camera permission is granted.");
-      });
-    }));
+      }));
+    }
   }
 
   function closeBarcodeScanner(owner) {
+    owner._scannerGeneration = (owner._scannerGeneration || 0) + 1;
     if (owner._scanner) {
       // Navigation may close the scanner before camera startup has completed.
       try { owner._scanner.stop().catch(() => {}); } catch { /* startup will stop on completion */ }

@@ -181,7 +181,7 @@ assert.equal(prevented, 2, 'Tab can reach the transaction link normally');
   context.window.removeEventListener = () => {};
   context.window.scrollTo = (x, y) => { restoredScroll = y; };
   context.document = { body: { style: { overflow: '' } }, querySelector: (selector) => selector.includes('data-history-booking') ? { focus: () => focused++ } : dialog };
-  context.API = { getArchivedBookings: async (query) => {
+  context.API = { loadAdminData: (key,load,render) => load().then(data=>{render(data);return data;}), getArchivedBookings: async (query) => {
     assert.equal(query.search, 'Owner');
     return { archived: [session, repeat], total: 2 };
   } };

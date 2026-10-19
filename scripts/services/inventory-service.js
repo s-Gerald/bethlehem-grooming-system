@@ -2,11 +2,12 @@
 // Loaded as a plain <script> before Alpine. Exposes global InventoryAPI.
 
 var InventoryAPI = (() => {
-  function request(method, endpoint, body = null) {
+  function request(method, endpoint, body = null, render = null) {
     if (typeof API === "undefined" || typeof API.adminRequest !== "function") {
       throw new Error("The shared admin API client is unavailable.");
     }
 
+    if (render) return API.loadAdminData(endpoint, () => request(method, endpoint, body), render);
     return API.adminRequest(method, endpoint, body).then((response) => {
       if (method !== "GET" && (endpoint.startsWith("/inventory/") || endpoint === "/pos/transactions") && window.dispatchEvent) {
         window.dispatchEvent(new CustomEvent("inventory:changed"));
@@ -17,14 +18,14 @@ var InventoryAPI = (() => {
 
   // ── Items ─────────────────────────────────────────────────────────────────
 
-  function getItems({ q = "", category = "", low_stock = false, include_inactive = false, inactive_only = false, page = 1 } = {}) {
+  function getItems({ q = "", category = "", low_stock = false, include_inactive = false, inactive_only = false, page = 1 } = {}, render) {
     const p = new URLSearchParams({ page });
     if (q)                p.set("q", q);
     if (category)         p.set("category", category);
     if (low_stock)        p.set("low_stock", "1");
     if (include_inactive) p.set("include_inactive", "1");
     if (inactive_only)    p.set("inactive_only", "1");
-    return request("GET", `/inventory/items?${p}`);
+    return request("GET", `/inventory/items?${p}`, null, render);
   }
 
   function getItem(id) {
@@ -82,15 +83,15 @@ var InventoryAPI = (() => {
     return request("GET", `/inventory/low-stock?page=${page}`);
   }
 
-  function getExpiryAlerts({ page = 1 } = {}) {
-    return request("GET", `/inventory/alerts/expiry?page=${page}`);
+  function getExpiryAlerts({ page = 1 } = {}, render) {
+    return request("GET", `/inventory/alerts/expiry?page=${page}`, null, render);
   }
 
   function getAlertBadge() {
     return request("GET", "/inventory/alerts/badge");
   }
 
-  function getTransactions({ item_id = "", type = "", category = "", date_from = "", date_to = "", page = 1, per_page = 20 } = {}) {
+  function getTransactions({ item_id = "", type = "", category = "", date_from = "", date_to = "", page = 1, per_page = 20 } = {}, render) {
     const p = new URLSearchParams({ page });
     if (per_page !== 20) p.set("per_page", per_page);
     if (item_id)   p.set("item_id", item_id);
@@ -98,11 +99,11 @@ var InventoryAPI = (() => {
     if (category)  p.set("category", category);
     if (date_from) p.set("date_from", date_from);
     if (date_to)   p.set("date_to", date_to);
-    return request("GET", `/inventory/transactions?${p}`);
+    return request("GET", `/inventory/transactions?${p}`, null, render);
   }
 
-  function getSummary({ page = 1 } = {}) {
-    return request("GET", `/inventory/summary?page=${page}`);
+  function getSummary({ page = 1, view = '' } = {}, render) {
+    return request("GET", `/inventory/summary?page=${page}${view ? '&view=' + encodeURIComponent(view) : ''}`, null, render);
   }
 
   // ── POS ───────────────────────────────────────────────────────────────────

@@ -16,7 +16,6 @@ function adminArchive() {
     historyLoaded: false,
     _historyKey: "",
     _historyRequest: 0,
-    _historyCache: {},
     _archiveIdentityLoaded: false,
     errorMessage: "",
     detailsModalOpen: false,
@@ -80,7 +79,7 @@ function adminArchive() {
       await this.loadArchive({ force: false });
     },
 
-    async loadArchive({ force = true } = {}) {
+    async loadArchive({ force = false } = {}) {
       if (!this._archiveIdentityLoaded && typeof API.getStaffIdentity === 'function') {
         this.loading = true;
         this.errorMessage = '';
@@ -96,28 +95,26 @@ function adminArchive() {
       }
       const type = this.archiveType, search = this.searchQuery.trim();
       const key = JSON.stringify([type, search]), request = ++this._historyRequest;
-      const epoch = API.getAdminDataRevision?.(), cached = this._historyCache[key];
+      const endpoint = (type === 'clinic' ? '/admin/clinic-appointments/archived' : '/admin/bookings/archived')
+        + (search ? '?' + new URLSearchParams({search}) : '');
       this.historyLoaded = this.historyLoaded && this._historyKey === key;
       this.loading = true;
       this.errorMessage = "";
       try {
-        const fromCache = !force && cached && cached.epoch === epoch && Date.now() - cached.at < 15000;
-        const data = fromCache ? cached.data : await (type === 'clinic'
-          ? API.getArchivedClinicAppointments({ search }) : API.getArchivedBookings({ search }));
-        if (request !== this._historyRequest) return;
-        if (type === 'clinic') {
-          this.clinicArchivedList = data.archived || [];
-          this.clinicTotalCount = data.total ?? this.clinicArchivedList.length;
-        } else {
-          this.archivedList = data.archived || [];
-          this.totalCount = data.total ?? this.archivedList.length;
-        }
-        this._historyKey = key;
-        this.historyLoaded = true;
-        if (!fromCache) this._historyCache[key] = { data, epoch, at: Date.now() };
-        const keys = Object.keys(this._historyCache);
-        if (keys.length > 12) delete this._historyCache[keys[0]];
-        this.selectAvailableYear();
+        await API.loadAdminData(endpoint, () => type === 'clinic'
+          ? API.getArchivedClinicAppointments({search}, {force}) : API.getArchivedBookings({search}, {force}), data => {
+          if (request !== this._historyRequest || type !== this.archiveType || search !== this.searchQuery.trim()) return;
+          if (type === 'clinic') {
+            this.clinicArchivedList = data.archived || [];
+            this.clinicTotalCount = data.total ?? this.clinicArchivedList.length;
+          } else {
+            this.archivedList = data.archived || [];
+            this.totalCount = data.total ?? this.archivedList.length;
+          }
+          this._historyKey = key;
+          this.historyLoaded = true;
+          this.selectAvailableYear();
+        }, {force});
       } catch (error) {
         if (request === this._historyRequest) this.errorMessage = error.message || "Failed to load history. Please try again.";
       } finally {

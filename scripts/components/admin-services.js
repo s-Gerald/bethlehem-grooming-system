@@ -1,12 +1,24 @@
 function adminServices() {
   const pending = {};
+  const scripts = new Map();
+  function loadScript(name) {
+    if (!scripts.has(name)) scripts.set(name, new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `../../scripts/components/${name}?v=scoped-fetching-20261019`;
+      script.onload = resolve;
+      script.onerror = () => { scripts.delete(name); script.remove(); reject(new Error('Unable to load Services. Please retry.')); };
+      document.head.appendChild(script);
+    }));
+    return scripts.get(name);
+  }
   return {
     activeTab: 'grooming', loading: true, error: '',
     isAdmin: API.getUserRole() === 'admin', canViewClinic: false,
     _navigationListener: null,
     async init() {
-      await this.$store.clinicAccess.init();
-      this.canViewClinic = !!this.$store.clinicAccess.permissions.services_view;
+      this._clinicAccess = this.$store.clinicAccess.init().then(() => {
+        this.canViewClinic = !!this.$store.clinicAccess.permissions.services_view;
+      });
       this._navigationListener = () => this.showTab();
       window.addEventListener('hashchange', this._navigationListener);
       await this.showTab();
@@ -20,7 +32,11 @@ function adminServices() {
       const host = this.$refs[tab];
       if (host.firstElementChild) return host.firstElementChild;
       return pending[tab] ??= (async () => {
-        const response = await fetch(tab === 'clinic' ? './clinic/sections/services.html?v=services-20261017&icons=20261018' : './services/sections/grooming.html?v=services-20261017-followup&icons=20261018');
+        const [response] = await Promise.all([
+          fetch(tab === 'clinic' ? './clinic/sections/services.html?v=services-20261017&icons=20261018' : './services/sections/grooming.html?v=services-20261017-followup&icons=20261018'),
+          loadScript(tab === 'clinic' ? 'admin-clinic-services.js' : 'admin-grooming-services.js'),
+          ...(tab === 'clinic' ? [loadScript('inventory-money-input.js')] : []),
+        ]);
         if (!response.ok) throw new Error('Unable to load Services. Please retry.');
         const panel = document.createElement('section');
         panel.setAttribute('x-data', tab === 'clinic' ? 'adminClinicServices()' : 'adminGroomingServices()');
@@ -33,6 +49,10 @@ function adminServices() {
     },
     async showTab() {
       const tab = window.location.hash === '#clinic' || !this.isAdmin ? 'clinic' : 'grooming';
+      if (tab === 'clinic') {
+        await this._clinicAccess;
+        if ((window.location.hash === '#clinic' || !this.isAdmin ? 'clinic' : 'grooming') !== tab) return;
+      }
       if (tab === 'clinic' && !this.canViewClinic) { this.error = 'You do not have access to Clinic Services.'; return; }
       if (tab !== this.activeTab) {
         const oldPanel = this.$refs[this.activeTab].firstElementChild;
@@ -51,7 +71,9 @@ function adminServices() {
       try {
         const panel = await this.mount(tab);
         if (this.activeTab !== tab) return;
-        await Alpine.$data(panel).activate();
+        const state = Alpine.$data(panel);
+        state._onPresentation = () => { if (this.activeTab === tab) this.loading = false; };
+        await state.activate();
       } catch (error) { if (this.activeTab === tab) this.error = error.message || 'Unable to load Services.'; }
       finally { if (this.activeTab === tab) this.loading = false; }
     },

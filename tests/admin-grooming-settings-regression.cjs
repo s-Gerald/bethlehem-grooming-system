@@ -7,7 +7,7 @@ const catalogue = catalogueResponse.data;
 const source = fs.readFileSync(path.join(__dirname, '../scripts/components/admin-settings.js'), 'utf8');
 
 async function main() {
-  const context = {API: {getUserRole: () => 'admin'}, window: {}, setTimeout};
+  const context = {API: {getUserRole: () => 'admin', loadAdminData: (key,load,render) => load().then(data=>{render(data);return data;})}, window: {}, setTimeout};
   vm.runInNewContext(source, context);
   const ui = context.adminSettings();
   ui.$nextTick = (callback) => callback();

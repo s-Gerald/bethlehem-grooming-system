@@ -56,14 +56,13 @@ async function sidebarReadiness() {
   assert.equal(ui.sidebarReady, true, 'Navigation is ready only after authenticated identity'); ui.destroy();
 }
 async function historyTabs() {
-  let calls = 0;
-  const { ui } = component('admin-archive.js', 'adminArchive', {
-    getArchivedBookings: async () => { calls++; return { archived: [], total: 0 }; },
-    getArchivedClinicAppointments: async () => { calls++; return { archived: [], total: 0 }; },
-  });
+  const e = require('./admin-data-cache-regression.cjs').environment();
+  e.respond(() => ({archived: [], total: 0}));
+  const { ui } = component('admin-archive.js', 'adminArchive', e.API);
+  ui._archiveIdentityLoaded = true;
   ui.closeDetails = () => {}; ui.closeClinicRecord = () => {}; ui.selectAvailableYear = () => {};
   await ui.loadArchive(); await ui.selectArchiveType('clinic'); await ui.selectArchiveType('grooming');
-  assert.equal(calls, 2, 'Previously loaded History tabs should reuse their data');
+  assert.equal(e.calls.length, 2, 'Previously loaded History tabs reuse the shared API cache');
 }
 async function petProfileReadiness() {
   const { ui, context } = component('admin-customers.js', 'adminCustomers', {

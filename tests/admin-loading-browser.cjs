@@ -20,8 +20,11 @@ async function ready(page, name, property) {
   await page.waitForFunction(({ name, property }) => {
     const el = name === 'clinic' ? document.querySelector('[x-data="adminClinicCasesSection()"]') : document.querySelector('main');
     const ui = Alpine.$data(el);
-    if (name === 'inventory') return !ui.sectionLoading && ui.activeSection;
-    if (name === 'services') return !ui.loading && ui.$refs[ui.activeTab].firstElementChild;
+    if (name === 'inventory') return !ui.sectionLoading && ui.sectionData(ui.activeSection)?.loaded;
+    if (name === 'services') {
+      const panel = ui.$refs[ui.activeTab].firstElementChild;
+      return !ui.loading && panel && Alpine.$data(panel).loaded;
+    }
     return !!ui[property];
   }, { name, property });
 }
@@ -72,6 +75,18 @@ async function ready(page, name, property) {
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         if (process.env.LOCAL_REVIEW_SCREENSHOTS && key === 'admin') await page.screenshot({ path: path.join(process.env.LOCAL_REVIEW_SCREENSHOTS, 'universal-' + name + '-loading.png'), fullPage: true });
         await ready(page, name, property);
+        if (name === 'inventory') {
+          assert.equal(requests.filter(url=>url.startsWith('/api/inventory/')).length,1,'Overview has one data request');
+          assert.ok(requests.some(url=>url.includes('/inventory/summary?page=1&view=overview')));
+          assert.equal(await page.locator('script[src*="html5-qrcode"]').count(),0,'Scanner stays on demand');
+        }
+        if (name === 'services') {
+          assert.equal(requests.some(url=>url.includes(session.role === 'admin' ? '/clinic-services' : '/grooming/services')),false,'Inactive service catalogue is not fetched');
+        }
+        if (name === 'history') {
+          assert.equal(requests.filter(url=>url.includes('/archived')).length,1,'Only the active history type loads');
+          assert.equal(requests.some(url=>/signed-consent|case-details|attachments/.test(url)),false,'History details stay on demand');
+        }
         await page.waitForFunction(() => [...document.querySelectorAll('admin-loader')].filter(el => el.getBoundingClientRect().height && getComputedStyle(el).visibility === 'visible').length === 0);
         if (name === 'dashboard') {
           assert.equal(requests.filter(url => url.startsWith('/api/admin/bookings')).length, 0);
@@ -116,8 +131,13 @@ async function ready(page, name, property) {
             assert.equal(await page.locator('[data-admin-heading]:visible').count(), 1);
           }
           await page.evaluate(() => location.hash = 'overview'); await ready(page, name, property);
+          // An ordinary refresh now honors freshness. Let its five-second
+          // presentation window expire before exercising a network failure.
+          await pause(5100);
           await page.route('**/api/inventory/summary*', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"Local retry test"}' }));
+          const refreshCount = requests.filter(url=>url.includes('/inventory/summary')).length;
           await page.evaluate(() => Alpine.$data(document.querySelector('main')).sectionData('overview').load());
+          assert.equal(requests.filter(url=>url.includes('/inventory/summary')).length,refreshCount+1,'Expired presentation revalidates even when retained');
           assert.equal(await page.locator('admin-loader:visible').count(), 0, 'Background Inventory refresh keeps loaded content');
           await page.unroute('**/api/inventory/summary*');
         }
