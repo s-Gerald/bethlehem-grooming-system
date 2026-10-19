@@ -9,9 +9,9 @@ use Tests\TestCase;
 
 class AlpineModalCloakInterfaceTest extends TestCase
 {
-    public function test_every_admin_sidebar_shell_is_cloaked_before_initialization(): void
+    public function test_admin_shells_load_readiness_and_session_gates_before_content(): void
     {
-        $violations = [];
+        $checkedShells = 0;
         $pagesPath = base_path('pages/admin');
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($pagesPath),
@@ -31,24 +31,47 @@ class AlpineModalCloakInterfaceTest extends TestCase
                 PREG_OFFSET_CAPTURE,
             );
 
-            foreach ($matches[0] as [$openingTag, $offset]) {
-                if (preg_match('/\bx-cloak\b/i', $openingTag)) {
-                    continue;
+            foreach ($matches[0] as [$openingTag]) {
+                $checkedShells++;
+                $this->assertStringContainsString('data-admin-shell', $openingTag, $file->getPathname());
+                $this->assertStringNotContainsString('data-admin-ready', $openingTag);
+                $this->assertMatchesRegularExpression('/<html\b[^>]*data-session-gate="checking"/', $source);
+                $this->assertSame(1, preg_match('/<head\b[^>]*>(.*?)<\/head>/is', $source, $head));
+                foreach (['custom', 'session-lock', 'admin-loading'] as $stylesheet) {
+                    $this->assertMatchesRegularExpression(
+                        '~<link\b(?=[^>]*rel="stylesheet")[^>]*href="[^"#]*css/'.$stylesheet.'\.css(?:\?[^"#]*)?"~',
+                        $head[1],
+                    );
                 }
-
-                $relativePath = str_replace('\\', '/', $file->getPathname());
-                $relativePath = str_replace(str_replace('\\', '/', base_path()).'/', '', $relativePath);
-                $line = substr_count(substr($source, 0, $offset), "\n") + 1;
-                $violations[] = "{$relativePath}:{$line}";
+                $this->assertMatchesRegularExpression(
+                    '/<[a-z]+\b(?=[^>]*\bdata-admin-navigation(?:\s|>))(?=[^>]*\bx-cloak\b)[^>]*>/i',
+                    $source,
+                );
+                $this->assertStringContainsString('data-admin-sidebar-loading', $source);
             }
         }
 
-        $this->assertSame(
-            [],
-            $violations,
-            "Every admin Alpine shell must include x-cloak so conditional tab content cannot flash during startup.\n"
-                .implode("\n", $violations),
+        $this->assertGreaterThan(0, $checkedShells, 'The Admin shell scan must cover real pages.');
+        $loadingCss = file_get_contents(base_path('css/admin-loading.css'));
+        $this->assertMatchesRegularExpression(
+            '/\[data-admin-shell\]:not\(\[data-admin-ready\]\)\s+main\s*,\s*\[data-admin-shell\]:not\(\[data-admin-ready\]\)\s+\[data-admin-navigation\]\s*\{\s*visibility\s*:\s*hidden\s*;/s',
+            $loadingCss,
         );
+        $sessionCss = file_get_contents(base_path('css/session-lock.css'));
+        $this->assertSame(1, preg_match(
+            '/html\[data-session-gate\]\s+body\s*>\s*:not\(#bethlehem-session-lock\):not\(script\):not\(style\)\s+\*\s*\{([^}]+)\}/s',
+            $sessionCss,
+            $sessionGate,
+        ));
+        $this->assertMatchesRegularExpression('/visibility\s*:\s*hidden\s*!important\s*;/', $sessionGate[1]);
+        $this->assertMatchesRegularExpression('/pointer-events\s*:\s*none\s*!important\s*;/', $sessionGate[1]);
+        $this->assertSame(1, preg_match(
+            '/html\[data-session-gate="checking"\][^{]+\[data-admin-navigation\]\s+\*\s*\{([^}]+)\}/s',
+            $loadingCss,
+            $checkingNavigation,
+        ));
+        $this->assertMatchesRegularExpression('/visibility\s*:\s*visible\s*!important\s*;/', $checkingNavigation[1]);
+        $this->assertMatchesRegularExpression('/pointer-events\s*:\s*none\s*!important\s*;/', $checkingNavigation[1]);
     }
 
     public function test_every_alpine_full_screen_overlay_is_cloaked_before_initialization(): void

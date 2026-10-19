@@ -80,8 +80,28 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('Change credentials', $security);
         $this->assertStringNotContainsString('resetStaffModal', $security);
         $this->assertStringNotContainsString('6-digit email verification code', $security);
-        $this->assertSame(6, substr_count($adminSecurity, 'data-lucide="eye-closed"'));
-        $this->assertSame(6, substr_count($adminSecurity, 'data-lucide="eye"'));
+        foreach ([
+            'adminPassword.showCurrent',
+            'adminPassword.showPassword',
+            'adminPassword.showConfirmation',
+            'staffStatusModal.showPassword',
+            'staffDetailsModal.showPassword',
+            'staffSetupModal.showPassword',
+        ] as $visibility) {
+            $this->assertStringContainsString(':type="'.$visibility.' ? \'text\' : \'password\'"', $adminSecurity);
+            $this->assertSame(1, preg_match(
+                '/<button\b[^>]*@click="'.preg_quote("{$visibility} = !{$visibility}", '/').'"[^>]*>(.*?)<\/button>/s',
+                $adminSecurity,
+                $toggle,
+            ));
+            $this->assertMatchesRegularExpression('/:aria-label="'.preg_quote($visibility, '/').' \? \'Hide[^\']*\' : \'Show[^\']*\'"/', $toggle[0]);
+            foreach (['!'.$visibility => 'eye-slash', $visibility => 'eye'] as $condition => $icon) {
+                $this->assertMatchesRegularExpression(
+                    '/<svg\b[^>]*x-show="'.preg_quote($condition, '/').'"[^>]*>\s*<use\b[^>]*href="[^"#]*assets\/icons\/phosphor\.svg(?:\?[^"#]*)?#'.$icon.'"/',
+                    $toggle[1],
+                );
+            }
+        }
         preg_match('/src="([^\"]*admin-settings\.js\?[^\"]+)"/', $page, $script);
         $this->assertNotEmpty($script[1] ?? null);
         parse_str(parse_url($script[1], PHP_URL_QUERY), $scriptVersion);

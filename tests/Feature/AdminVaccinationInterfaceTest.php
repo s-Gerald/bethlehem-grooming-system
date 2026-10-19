@@ -35,7 +35,15 @@ class AdminVaccinationInterfaceTest extends TestCase
         $this->assertStringContainsString('Add Treatment', $this->clinicPage);
         $this->assertStringNotContainsString('Record Treatment', $this->clinicPage);
         $this->assertStringContainsString('No treatments recorded for this case.', $this->clinicPage);
-        $this->assertStringContainsString('Loading treatments…', $this->clinicPage);
+        $this->assertMatchesRegularExpression(
+            '/<section\b[^>]*aria-labelledby="current-treatment-title"[^>]*:aria-busy="loading"[^>]*>\s*<h3\b[^>]*>Current Visit Treatments<\/h3>\s*<admin-loader\b(?=[^>]*\bx-cloak\b)(?=[^>]*\bx-show="loading")[^>]*>/',
+            $this->clinicPage,
+        );
+        $this->assertStringContainsString('scripts/components/admin-loading.js', $this->clinicPage);
+        $loader = file_get_contents(base_path('scripts/components/admin-loading.js'));
+        $this->assertStringContainsString("this.setAttribute('role', 'status')", $loader);
+        $this->assertStringContainsString("this.setAttribute('aria-live', 'polite')", $loader);
+        $this->assertStringContainsString("label.textContent = 'Loading...'", $loader);
         $this->assertStringContainsString('@click="loadVaccinations()"', $this->clinicPage);
 
         $this->assertStringContainsString(

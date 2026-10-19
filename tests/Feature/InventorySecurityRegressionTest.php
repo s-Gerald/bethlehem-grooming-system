@@ -692,7 +692,7 @@ class InventorySecurityRegressionTest extends TestCase
         ]);
     }
 
-    public function test_inventory_pages_use_the_shared_api_base_and_fresh_script_versions(): void
+    public function test_inventory_pages_use_the_shared_api_and_versionable_assets(): void
     {
         $service = file_get_contents(base_path('scripts/services/inventory-service.js'));
 
@@ -700,18 +700,19 @@ class InventorySecurityRegressionTest extends TestCase
         $this->assertStringNotContainsString('127.0.0.1:8000', $service);
 
         $page = file_get_contents(base_path('pages/admin/inventory/inventory.html'));
-        $this->assertStringContainsString('scripts/api.js?v=session-inactivity-20260828', $page);
-        $this->assertStringContainsString('scripts/services/inventory-service.js?v=unified-inventory-20261001b', $page);
-        $this->assertStringContainsString('scripts/components/admin-sidebar.js?v=grooming-today-indicator-20261005', $page);
+        foreach (['api.js', 'services/inventory-service.js', 'components/admin-sidebar.js', 'components/admin-inventory.js'] as $script) {
+            $this->assertMatchesRegularExpression(
+                '~<script\b[^>]*src="(?:\.\./)+scripts/'.preg_quote($script, '~').'(?:\?[^"#]+)?"[^>]*>~',
+                $page,
+            );
+        }
         $this->assertStringContainsString('inventory.html#sell-product', file_get_contents(base_path('pages/admin/inventory/pos.html')));
 
-        $inventoryPage = file_get_contents(base_path('pages/admin/inventory/inventory.html'));
         $inventoryLoader = file_get_contents(base_path('scripts/components/admin-inventory.js'));
         $posPage = file_get_contents(base_path('pages/admin/inventory/pos.html'));
         $stockOutScript = file_get_contents(base_path('scripts/components/admin-stock-out.js'));
 
-        $this->assertStringContainsString('admin-inventory.js?v=product-details-20261002', $inventoryPage);
-        $this->assertStringContainsString('components/${name}?v=product-details-20261002', $inventoryLoader);
+        $this->assertMatchesRegularExpression('~scripts/components/\$\{name\}(?:\?[^`\s]+)?`~', $inventoryLoader);
         foreach ([
             'overview' => 'admin-inventory-dashboard.js',
             'products' => 'admin-inventory-items.js',

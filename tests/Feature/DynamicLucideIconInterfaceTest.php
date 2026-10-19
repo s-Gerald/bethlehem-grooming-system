@@ -12,38 +12,42 @@ class DynamicLucideIconInterfaceTest extends TestCase
     {
         $page = file_get_contents(base_path('pages/admin/clients.html'));
 
-        $this->assertStringContainsString(
-            '<i x-show="statusFilter === \'unregistered\'" data-lucide="user-plus"',
-            $page,
-        );
-        $this->assertStringContainsString(
-            '<i x-show="statusFilter !== \'unregistered\'" data-lucide="users"',
-            $page,
-        );
+        foreach (["statusFilter === 'unregistered'" => 'user-plus', "statusFilter !== 'unregistered'" => 'users'] as $condition => $icon) {
+            $this->assertMatchesRegularExpression(
+                '/<svg\b[^>]*x-show="'.preg_quote($condition, '/').'"[^>]*>\s*<use\b[^>]*href="[^"#]*assets\/icons\/phosphor\.svg(?:\?[^"#]*)?#'.$icon.'"/',
+                $page,
+            );
+        }
         $this->assertStringNotContainsString(
             '<template x-if="statusFilter === \'unregistered\'">',
             $page,
         );
     }
 
-    public function test_shared_admin_runtime_refreshes_icons_created_by_conditional_templates(): void
+    public function test_admin_sprite_references_resolve_to_existing_symbols(): void
     {
-        $sidebar = file_get_contents(base_path('scripts/components/admin-sidebar.js'));
-
-        foreach ([
-            'installDynamicLucideIconObserver',
-            'new MutationObserver',
-            'i[data-lucide]',
-            'mutation.addedNodes',
-            'window.requestAnimationFrame',
-            'window.lucide.createIcons()',
-        ] as $guard) {
-            $this->assertStringContainsString($guard, $sidebar);
+        $sprite = file_get_contents(base_path('assets/icons/phosphor.svg'));
+        preg_match_all('/<symbol\b[^>]*\bid="([^"]+)"/', $sprite, $symbols);
+        $this->assertNotEmpty($symbols[1]);
+        $references = 0;
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path('pages/admin')));
+        foreach ($iterator as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'html') {
+                continue;
+            }
+            preg_match_all('/<use\b[^>]*(?<!:)href="([^"]*phosphor\.svg[^"]*)"/', file_get_contents($file->getPathname()), $icons);
+            foreach ($icons[1] as $href) {
+                $references++;
+                $this->assertMatchesRegularExpression('~^(?:\.\./)+assets/icons/phosphor\.svg(?:\?[^#]*)?#[a-z0-9-]+$~', $href);
+                $this->assertContains(parse_url($href, PHP_URL_FRAGMENT), $symbols[1], "Missing sprite target: {$href}");
+            }
         }
+        $this->assertGreaterThan(0, $references, 'The sprite reference scan must not be empty.');
     }
 
-    public function test_every_admin_page_with_conditional_lucide_icons_loads_the_shared_guard(): void
+    public function test_admin_pages_with_sprite_icons_do_not_load_lucide(): void
     {
+        $checkedPages = 0;
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator(base_path('pages/admin')),
         );
@@ -54,21 +58,14 @@ class DynamicLucideIconInterfaceTest extends TestCase
             }
 
             $page = file_get_contents($file->getPathname());
-            if (! str_contains($page, 'x-if=') || ! str_contains($page, 'data-lucide=')) {
+            if (! str_contains($page, 'phosphor.svg')) {
                 continue;
             }
-
-            if (! str_contains($page, '<html')) {
-                $this->assertSame(realpath(base_path('pages/admin/clinic/sections/services.html')), $file->getRealPath());
-                $this->assertStringContainsString("fetch('./clinic/sections/services.html?", file_get_contents(base_path('scripts/components/admin-clinic-shell.js')));
-                $page = file_get_contents(base_path('pages/admin/clinic.html'));
-            }
-
-            $this->assertStringContainsString(
-                'scripts/components/admin-sidebar.js',
-                str_replace('\\', '/', $page),
-                "{$file->getFilename()} must load the dynamic Lucide icon guard.",
-            );
+            $checkedPages++;
+            $this->assertStringNotContainsString('data-lucide=', $page, $file->getPathname());
+            $this->assertDoesNotMatchRegularExpression('/<script\b[^>]*src="[^"]*lucide/i', $page);
         }
+        $this->assertGreaterThan(0, $checkedPages, 'The icon runtime scan must cover real pages.');
+        $this->assertStringNotContainsString('window.lucide', file_get_contents(base_path('scripts/components/admin-sidebar.js')));
     }
 }

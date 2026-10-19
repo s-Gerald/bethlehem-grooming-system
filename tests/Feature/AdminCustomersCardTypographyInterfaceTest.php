@@ -172,13 +172,18 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
             "x-text=\"'(' + petSearchResults.length + ')'\"",
             '@click="openPetSearchResult(pet)"',
             'Owner: <span class="font-medium text-slate-700" x-text="pet.ownerName"></span>',
-            'data-lucide="cat"',
-            'data-lucide="dog"',
             'x-text="formatMobileNumber(pet.ownerPhone)"',
             'x-text="formatTextValue(pet.ownerEmail)"',
             'placeholder="Search customer, pet, or phone..."',
         ] as $searchUi) {
             $this->assertStringContainsString($searchUi, $page);
+        }
+
+        foreach (['cat', 'dog'] as $icon) {
+            $this->assertMatchesRegularExpression(
+                '/<svg\b[^>]*>\s*<use\b[^>]*href="[^"#]*assets\/icons\/phosphor\.svg(?:\?[^"#]*)?#'.$icon.'"/',
+                $petSearchResults,
+            );
         }
 
         foreach ([
