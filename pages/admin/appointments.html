@@ -287,8 +287,7 @@
         </header>
 
         <!-- Grooming Body -->
-                  </div>
-<main
+        <main
           x-data="adminDashboard()"
           class="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
@@ -589,10 +588,11 @@
                 </div>
               </div>
             </div>
-     <admin-loader page x-cloak x-show="bookingsLoading &amp;&amp; !bookingsLoaded"></admin-loader>
+          </section>
+
+          <admin-loader page x-cloak x-show="bookingsLoading &amp;&amp; !bookingsLoaded"></admin-loader>
           <p x-cloak x-show="bookingsError" class="admin-load-error" role="alert"><span x-text="bookingsError"></span><button type="button" @click="loadAdminBookings()">Retry</button></p>
           <div x-cloak x-show="bookingsLoaded" :aria-busy="bookingsLoading">
-     </section>
 
           <!-- Summary cards -->
           <section class="mt-6">
@@ -863,7 +863,7 @@
                   </template>
                   <template x-if="(activeTab === 'queued' || activeTab === 'in-progress') && booking.pets?.length">
                     <button type="button" class="grooming-disclosure-button" :aria-label="(isGroomingBookingExpanded(booking) ? 'Collapse' : 'Expand') + ' pets for ' + booking.ownerName" :aria-expanded="isGroomingBookingExpanded(booking)" :aria-controls="'grooming-pets-' + booking.id" @click.stop="toggleGroomingBooking(booking)">
-                      <svg  aria-hidden="true" :class="ph-icon isGroomingBookingExpanded(booking) ? 'is-expanded' : ''" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
+                      <svg class="ph-icon" aria-hidden="true" :class="isGroomingBookingExpanded(booking) ? 'is-expanded' : ''" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
                     </button>
                   </template>
                 </div>
@@ -912,7 +912,6 @@
                                     <template x-if="canCancelPet(booking, pet)"><button type="button" role="menuitem" tabindex="-1" class="grooming-menu-item grooming-menu-danger" @click.stop="closeGroomingMenu(); confirmCancelPet(booking, pet)">Cancel Pet</button></template>
                                   </div>
                                 </div>
-                                </div>
                               </template>
                               <button type="button" @click="printPetCard(booking, pet, petIndex)" class="admin-queued-pet-print" :aria-label="'Print grooming card for ' + pet.petName"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#printer"></use></svg>Print</button>
                             </div>
@@ -927,6 +926,7 @@
               </article>
             </template>
           </section>
+          </div>
 
           <!-- Payment Modal -->
           <div
