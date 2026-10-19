@@ -1,24 +1,41 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const path = require('node:path');
+const { registerHooks } = require('node:module');
 const { environment, deferred } = require('./admin-data-cache-regression.cjs');
 const read = p => fs.readFileSync(p, 'utf8');
+async function withCustomersComponent(e, test) {
+  // Observe real imports while using the native loader, which needs no VM flag.
+  const imports = [];
+  const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
+    imports.push(specifier);
+    return nextResolve(specifier, context);
+  } });
+  try {
+    vm.runInContext(read('scripts/components/admin-customers.js'), e.c, {
+      filename: path.resolve('scripts/components/admin-customers.js'),
+      importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    });
+    await test(e.c.adminCustomers(), imports);
+  } finally { hooks.deregister(); }
+}
 async function customersStartupAndSearchRace() {
   const e = environment();
-  let imports = 0;
-  vm.runInContext(read('scripts/components/admin-customers.js'), e.c, { importModuleDynamically: async () => { imports++; throw Error('Editor should be on demand'); } });
-  const ui = e.c.adminCustomers();
-  ui.initializePetFormFields = async () => { throw Error('Directory must not initialize the pet form'); };
-  e.c.window.location.search = '';
-  await ui.init(); assert.equal(ui.customersLoaded, true); assert.equal(imports, 0);
-  const retained = e.page();
-  vm.runInContext(read('scripts/components/admin-customers.js'), retained.c);
-  const next = retained.c.adminCustomers(); const wait = deferred(); e.advance(31000); e.respond(() => wait.promise);
-  const p = next.loadCustomers(); assert.equal(next.customersLoaded, true); assert.equal(next.customers[0].id, 1);
-  wait.resolve({ customers: [{ id: 2 }] }); await p; assert.equal(next.customers[0].id, 2);
-  const old = deferred(); e.respond(() => old.promise); next.searchQuery = 'old'; const a = next.loadCustomers();
-  e.respond(() => ({ customers: [{ id: 3 }] })); next.searchQuery = 'new'; await next.loadCustomers();
-  old.resolve({ customers: [{ id: 4 }] }); await a; assert.equal(next.customers[0].id, 3);
+  await withCustomersComponent(e, async (ui, imports) => {
+    ui.initializePetFormFields = async () => { throw Error('Directory must not initialize the pet form'); };
+    e.c.window.location.search = '';
+    await ui.init(); assert.equal(ui.customersLoaded, true); assert.deepEqual(imports, []);
+    assert.deepEqual(e.calls.map(call => call.endpoint), ['/admin/customers?status=active'], 'Startup loads only the directory');
+    const retained = e.page();
+    vm.runInContext(read('scripts/components/admin-customers.js'), retained.c);
+    const next = retained.c.adminCustomers(); const wait = deferred(); e.advance(31000); e.respond(() => wait.promise);
+    const p = next.loadCustomers(); assert.equal(next.customersLoaded, true); assert.equal(next.customers[0].id, 1);
+    wait.resolve({ customers: [{ id: 2 }] }); await p; assert.equal(next.customers[0].id, 2);
+    const old = deferred(); e.respond(() => old.promise); next.searchQuery = 'old'; const a = next.loadCustomers();
+    e.respond(() => ({ customers: [{ id: 3 }] })); next.searchQuery = 'new'; await next.loadCustomers();
+    old.resolve({ customers: [{ id: 4 }] }); await a; assert.equal(next.customers[0].id, 3);
+  });
 }
 async function dashboardDoesNotWaitForClock() {
   const e = environment(), clock = deferred();
@@ -33,18 +50,20 @@ async function dashboardDoesNotWaitForClock() {
   clock.resolve(null); await p;
 }
 async function customerDetailsFormatWeightWithoutPetEditor() {
-  const e = environment(), imports = [];
-  vm.runInContext(read('scripts/components/admin-customers.js'), e.c, { importModuleDynamically: async specifier => {
-    imports.push(specifier);
-    return import(require('node:url').pathToFileURL(require('node:path').resolve('scripts/components', specifier.split('?')[0])).href);
-  }});
-  const ui = e.c.adminCustomers(); ui.setCustomerDetailScrollLock = () => {};
-  e.c.API.getCustomerDetails = async () => ({customer: {id: 1, pets: [{weight: '25.000000000000'}, {weight: '4.999000000000'}]}});
-  await ui.openCustomerDetails({id: 1});
-  assert.equal(ui.formatWeight(ui.detailModal.customer.pets[0].weight), '25 kg');
-  assert.equal(ui.formatWeight(ui.detailModal.customer.pets[1].weight), '4.999 kg');
-  assert.equal(ui.formatWeight(null), 'Not provided');
-  assert.ok(!imports.some(s => /pet-weight-size|breed-|booking-draft/.test(s)), 'Viewing a customer is independent of pet editing');
+  const e = environment();
+  await withCustomersComponent(e, async (ui, imports) => {
+    ui.setCustomerDetailScrollLock = () => {};
+    assert.deepEqual(imports, [], 'Customer details formatting stays lazy');
+    e.respond(() => ({customer: {id: 1, pets: [{weight: '25.000000000000'}, {weight: '4.999000000000'}]}}));
+    await ui.openCustomerDetails({id: 1});
+    assert.equal(ui.detailModal.error, '', 'Customer details and their lazy formatter must load successfully');
+    assert.equal(ui.detailModal.customer.pets.length, 2);
+    assert.equal(ui.formatWeight(ui.detailModal.customer.pets[0].weight), '25 kg');
+    assert.equal(ui.formatWeight(ui.detailModal.customer.pets[1].weight), '4.999 kg');
+    assert.equal(ui.formatWeight(null), 'Not provided');
+    assert.ok(!imports.some(s => /pet-weight-size|breed-|booking-draft/.test(s)), 'Viewing a customer is independent of pet editing');
+    assert.deepEqual(e.calls.map(call => call.endpoint), ['/admin/customers/1'], 'Opening details makes one on-demand request');
+  });
 }
 async function groomingWaitsForVerifiedTestClock() {
   const e = environment(), clock = deferred();
