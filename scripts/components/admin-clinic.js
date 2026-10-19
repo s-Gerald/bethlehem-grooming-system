@@ -535,7 +535,7 @@ function adminClinicPage() {
     confinedCases: [], confinedCount: 0, confinedLoading: false, confinedLoaded: false, confinedError: '', confinedPage: 1, confinedLastPage: 1,
     _confinedRequest: 0,
     caseBusyId: null,
-    accessError: "",
+    accessError: null,
     payment: { open: false, case: null, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false },
     receiptModal: null,
     paymentReturnFocus: null,
