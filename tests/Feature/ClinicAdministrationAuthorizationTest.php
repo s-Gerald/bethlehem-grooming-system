@@ -585,8 +585,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'finish_case' => true,
         ])->assertOk();
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'paid' => false, 'total_amount' => 350]);
-        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(1, 'cases')
-            ->assertJsonPath('cases.0.charges.0.description', 'Previously recorded charge');
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(1, 'cases');
+        $this->getJson('/api/admin/clinic-cases/1')->assertOk()
+            ->assertJsonPath('case.charges.0.description', 'Previously recorded charge');
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['total_amount' => 1, 'payment_method' => 'cash', 'amount_paid' => 1])
             ->assertUnprocessable()->assertJsonValidationErrors('total_amount');
         $this->authenticateAs('staff', subrole: 'clinic_receptionist');
@@ -2748,6 +2749,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['PATCH', 'api/admin/clinic-services/{clinicService}/status', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-medicine-options', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-cases', 'role:admin,staff'],
+            ['GET', 'api/admin/clinic-cases/{id}', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-confinements', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-confinement-service-options', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-cases/{id}/confinement', 'role:admin,staff'],
@@ -2817,7 +2819,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             fn (RoutingRoute $route) => str_starts_with($route->getActionName(), AdminClinicController::class.'@'),
         );
 
-        $this->assertCount(19, $adminClinicRoutes);
+        $this->assertCount(20, $adminClinicRoutes);
         $adminClinicRoutes->each(function (RoutingRoute $route): void {
             $this->assertContains('role:admin,staff', $route->gatherMiddleware());
         });
@@ -2905,8 +2907,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'appointment_type' => $origin, 'chief_complaint' => $original,
                 'status' => $finishCase ? 'for_payment' : 'in_consultation']);
             $this->getJson('/api/admin/clinic-cases')->assertOk()
-                ->assertJsonPath('cases.0.chief_complaint', $original)
-                ->assertJsonPath('cases.0.record.chief_complaint', $origin === 'pre_registered' ? $original : 'Client replacement');
+                ->assertJsonPath('cases.0.chief_complaint', $original);
+            $this->getJson('/api/admin/clinic-cases/1')->assertOk()
+                ->assertJsonPath('case.record.chief_complaint', $origin === 'pre_registered' ? $original : 'Client replacement');
         }
     }
 

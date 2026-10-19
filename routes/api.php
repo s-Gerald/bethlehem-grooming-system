@@ -213,6 +213,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/admin/clinic-cases', [AdminClinicController::class, 'activeCases']);
         Route::get('/admin/clinic-confinements', [AdminClinicController::class, 'confinedCases']);
         Route::post('/admin/clinic-cases', [AdminClinicController::class, 'createCase'])->middleware('clinic:intake');
+        Route::get('/admin/clinic-cases/{id}', [AdminClinicController::class, 'showCase']);
         Route::post('/admin/clinic-cases/{id}/start', [AdminClinicController::class, 'startCase'])->middleware('clinic:clinical');
         Route::post('/admin/clinic-cases/{id}/finish', [AdminClinicController::class, 'finishCase'])->middleware('clinic:clinical');
         Route::get('/admin/clinic-cases/{id}/services', [ClinicCaseServiceController::class, 'index']);

@@ -72,17 +72,18 @@ class CustomerController extends Controller
             });
         }
 
-        $users = $query->orderBy('first_name')->get();
+        $pastStatuses = ['cancelled', 'waiting_to_arrive', 'expired', 'no_show'];
+        $users = $query->addSelect([
+            'booking_count' => Booking::selectRaw('COUNT(*)')->whereColumn('bookings.user_id', 'users.user_id')
+                ->whereNotIn('status', ['cancelled']),
+            'past_booking_count' => Booking::selectRaw('COUNT(*)')->whereColumn('bookings.user_id', 'users.user_id')
+                ->whereNotIn('status', $pastStatuses),
+        ])->orderBy('first_name')->get();
 
         // Attach booking counts and compute tier
         $customers = $users->map(function (User $user) use ($tier) {
-            $bookingCount = Booking::where('user_id', $user->user_id)
-                ->whereNotIn('status', ['cancelled'])
-                ->count();
-
-            $pastBookingCount = Booking::where('user_id', $user->user_id)
-                ->whereNotIn('status', ['cancelled', 'waiting_to_arrive', 'expired', 'no_show'])
-                ->count();
+            $bookingCount = (int) $user->booking_count;
+            $pastBookingCount = (int) $user->past_booking_count;
 
             $computedTier = $pastBookingCount > 0 ? 'returning' : 'new';
 
@@ -121,27 +122,20 @@ class CustomerController extends Controller
             $petMatches = Pet::query()
                 ->with('user:user_id,first_name,last_name,phone,email')
                 ->where('pet_name', 'like', "%{$search}%")
-                ->whereHas('user', function ($ownerQuery) use ($status) {
+                ->whereHas('user', function ($ownerQuery) use ($status, $tier, $pastStatuses) {
                     $ownerQuery->registeredCustomer();
                     $this->applyCustomerStatusFilter($ownerQuery, $status);
+                    if (in_array($tier, ['new', 'returning'], true)) {
+                        $ownerQuery->whereExists(fn ($booking) => $booking->selectRaw('1')->from('bookings')
+                            ->whereColumn('bookings.user_id', 'users.user_id')->whereNotIn('status', $pastStatuses),
+                            'and', $tier === 'new');
+                    } elseif ($tier !== '') {
+                        $ownerQuery->whereRaw('1 = 0');
+                    }
                 })
                 ->orderBy('pet_name')
                 ->orderBy('pet_id')
                 ->get();
-
-            if ($tier !== '') {
-                $ownerTiers = [];
-                $petMatches = $petMatches->filter(function (Pet $pet) use ($tier, &$ownerTiers) {
-                    if (! array_key_exists($pet->user_id, $ownerTiers)) {
-                        $hasPastBooking = Booking::where('user_id', $pet->user_id)
-                            ->whereNotIn('status', ['cancelled', 'waiting_to_arrive', 'expired', 'no_show'])
-                            ->exists();
-                        $ownerTiers[$pet->user_id] = $hasPastBooking ? 'returning' : 'new';
-                    }
-
-                    return $ownerTiers[$pet->user_id] === $tier;
-                });
-            }
 
             $petMatches = $petMatches->map(fn (Pet $pet) => [
                 'id' => $pet->pet_id,

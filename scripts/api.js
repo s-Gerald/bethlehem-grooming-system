@@ -68,11 +68,13 @@ var API = (() => {
   let customerCacheToken = null;
   let customerCacheEpoch = 0;
 
-  const ADMIN_CACHE_KEY = "bethlehem.admin.presentation.v1";
+  const ADMIN_CACHE_KEY = "bethlehem.admin.presentation.v2";
   const ADMIN_DATA_CHANGED_KEY = "bethlehem.admin.data_changed";
   const adminCache = new Map();
   const adminRequests = new Map();
+  const adminCacheRevisions = new Map();
   let adminCacheOwner = null;
+  let adminCacheToken = null;
   let adminCacheEpoch = 0;
   let staffIdentityRequest = null;
   const ADMIN_NAVIGATION_KEY = "bethlehem.admin.navigation.v1";
@@ -129,68 +131,152 @@ var API = (() => {
     catch { /* Storage restrictions retain same-page request sharing. */ }
   }
 
-  function adminCacheTTL(endpoint) {
-    if (/^\/admin\/bookings\?/.test(endpoint)) return 10000;
-    if (/^\/admin\/dashboard\/(summary|activity)$/.test(endpoint)) return 15000;
-    if (endpoint === "/admin/grooming/activity") return 15000;
-    if (endpoint === "/admin/notifications") return 10000;
-    if (endpoint === "/clinic/status") return 15000;
-    return 0;
+  // Explicit allowlist: never retain credentials, attachments or case workspaces.
+  function adminCachePolicy(endpoint) {
+    const [path, query = ""] = endpoint.split("?");
+    const params = new URLSearchParams(query);
+    if (path === "/admin/bookings") return { group: "grooming", fresh: 5000, retain: 60000 };
+    if (/^\/admin\/dashboard\/(summary|activity)$/.test(path)) return { group: "dashboard", fresh: 15000, retain: 120000 };
+    if (path === "/admin/grooming/activity") return { group: "grooming", fresh: 15000, retain: 60000 };
+    if (path === "/admin/notifications") return { group: "notifications", fresh: 10000, retain: 60000 };
+    if (path === "/clinic/status") return { group: "clinic-status", fresh: 15000, retain: 30000 };
+    if (path === "/admin/customers") return params.get("search")
+      ? { group: "customers", fresh: 5000, retain: 15000, persist: false }
+      : { group: "customers", fresh: 30000, retain: 180000 };
+    if (path === "/admin/clinic-cases") return { group: "clinic-active", fresh: 5000, retain: 60000 };
+    if (path === "/admin/clinic-records" && params.get("page") === "1") return { group: "clinic-records", fresh: 30000, retain: 180000 };
+    // Confined currently includes workspace details; deduplicate only, never persist.
+    if (path === "/admin/clinic-confinements") return { group: "clinic-confined", fresh: 0, retain: 0, persist: false };
+    return null;
   }
 
   function clearAdminCache() {
     adminCacheEpoch++;
     adminCache.clear();
     adminRequests.clear();
-    adminCacheOwner = null;
+    adminCacheRevisions.clear();
+    adminCacheOwner = adminCacheToken = null;
     safeStorageRemove(sessionStorage, ADMIN_CACHE_KEY);
+    safeStorageRemove(sessionStorage, "bethlehem.admin.presentation.v1");
   }
 
   function ensureAdminCache() {
-    const token = getAdminToken();
-    if (adminCacheOwner === token) return;
+    const token = getAdminToken(), owner = staffIdentityOwner();
+    if (!token || !owner) { clearAdminCache(); return false; }
+    if (adminCacheToken === token && adminCacheOwner === owner) return true;
     adminCacheEpoch++;
-    adminCache.clear();
-    adminRequests.clear();
-    adminCacheOwner = token;
+    adminCache.clear(); adminRequests.clear(); adminCacheRevisions.clear();
+    adminCacheToken = token; adminCacheOwner = owner;
+    safeStorageRemove(sessionStorage, "bethlehem.admin.presentation.v1");
     try {
-      const stored = JSON.parse(sessionStorage.getItem(ADMIN_CACHE_KEY));
-      if (token && stored?.owner === activitySessionId(getAuthSession())) {
+      const stored = JSON.parse(safeStorageGet(sessionStorage, ADMIN_CACHE_KEY) || "null");
+      if (stored?.owner === owner) {
         for (const [key, entry] of Object.entries(stored.entries || {})) {
-          if (Date.now() - entry.at < adminCacheTTL(key)) adminCache.set(key, entry);
+          const policy = adminCachePolicy(key), age = Date.now() - entry?.at;
+          if (policy && policy.persist !== false && Number.isFinite(age) && age >= 0 && age < policy.retain) adminCache.set(key, entry);
         }
       }
     } catch { /* Storage is optional; network reads remain available. */ }
+    return true;
+  }
+
+  function persistAdminCache() {
+    for (const [key, entry] of adminCache) {
+      const policy = adminCachePolicy(key), age = Date.now() - entry.at;
+      if (!policy || age < 0 || age >= policy.retain) adminCache.delete(key);
+    }
+    while (adminCache.size > 24) adminCache.delete(adminCache.keys().next().value);
+    const entries = Object.fromEntries([...adminCache].filter(([key]) => adminCachePolicy(key)?.persist !== false));
+    try { sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({ owner: adminCacheOwner, entries })); }
+    catch { /* Quota/privacy restrictions only disable navigation reuse. */ }
+  }
+
+  function readAdminCache(endpoint) {
+    if (!ensureAdminCache() || (endpoint !== "/clinic/status" && isManagedProtectedSession() && (sessionLocked || sessionChecking))) return null;
+    const entry = adminCache.get(endpoint), policy = adminCachePolicy(endpoint);
+    const age = Date.now() - entry?.at;
+    if (!policy || !entry || age < 0 || age >= policy.retain) return null;
+    adminCache.delete(endpoint); adminCache.set(endpoint, entry); // Bounded LRU.
+    return { data: entry.data, fresh: age < policy.fresh };
+  }
+
+  function invalidateAdminCache(groups, broadcast = true) {
+    if (!ensureAdminCache() || !groups.length) return;
+    for (const group of groups) adminCacheRevisions.set(group, (adminCacheRevisions.get(group) || 0) + 1);
+    for (const key of adminCache.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminCache.delete(key);
+    for (const key of adminRequests.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminRequests.delete(key);
+    persistAdminCache();
+    if (broadcast) {
+      try { localStorage.setItem(ADMIN_DATA_CHANGED_KEY, JSON.stringify({ owner: activitySessionId(getAuthSession()), groups, at: Date.now(), nonce: Math.random() })); }
+      catch { /* Polling still refreshes other tabs when storage is unavailable. */ }
+    }
+  }
+
+  function invalidateAdminMutation(endpoint) {
+    const path = endpoint.split("?")[0];
+    let groups = [];
+    if (/^\/admin\/notifications\//.test(path)) groups = ["notifications"];
+    else if (/^\/admin\/bookings\//.test(path)) {
+      groups = ["grooming"];
+      if (!/\/(internal-staff-note|grooming-visit-notes|sedation-consent)$/.test(path)) {
+        groups.push("dashboard");
+        if (/\/(mark-done|cancel)$/.test(path)) groups.push("notifications");
+        if (/\/(check-in|revert-check-in|cancel)$/.test(path)) groups.push("customers");
+      }
+    }
+    else if (path === "/admin/walk-in") groups = ["grooming", "dashboard", "notifications", "customers", "clinic-records"];
+    else if (/^\/admin\/clinic\/(stop-today|reopen-today)$/.test(path)) groups = ["clinic-status"];
+    else if (/^\/admin\/(customers|customer-pets)(?:\/|$)/.test(path)) groups = ["customers", "clinic-records", "clinic-active"];
+    else if (/^\/admin\/pets\//.test(path)) {
+      groups = /\/vaccinations(?:\/|$)/.test(path) ? ["clinic-active"]
+        : ["customers", "clinic-records", "clinic-active", "clinic-confined", "grooming", "dashboard"];
+    } else if (/^\/admin\/(clinic-cases|clinic-appointments)(?:\/|$)/.test(path) || path === "/admin/clinic-walk-in") {
+      groups = ["clinic-active", "dashboard"];
+      if (/\/(check-in|cancel|finish|finish-consultation|pay)$/.test(path) || path === "/admin/clinic-walk-in") groups.push("notifications");
+      if (/\/confinement(?:\/|$)/.test(path)) groups.push("clinic-confined");
+      if (path === "/admin/clinic-walk-in" || path === "/admin/clinic-cases") groups.push("customers", "clinic-records");
+    } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) groups = ["grooming", "dashboard"];
+    invalidateAdminCache(groups);
   }
 
   function adminRead(endpoint, token, options) {
-    ensureAdminCache();
-    const cached = adminCache.get(endpoint);
-    if (!options.force && cached && Date.now() - cached.at < adminCacheTTL(endpoint)) {
-      return Promise.resolve(cached.data);
-    }
+    if (!ensureAdminCache()) return networkRequest("GET", endpoint, null, token, options);
+    const policy = adminCachePolicy(endpoint), cached = readAdminCache(endpoint);
+    if (!options.force && cached?.fresh) return Promise.resolve(cached.data);
     if (adminRequests.has(endpoint)) return adminRequests.get(endpoint);
-    const owner = adminCacheOwner, epoch = adminCacheEpoch;
+    const owner = adminCacheOwner, epoch = adminCacheEpoch, revision = adminCacheRevisions.get(policy.group) || 0;
     const pending = networkRequest("GET", endpoint, null, token, options).then(data => {
-      if (owner !== getAdminToken() || epoch !== adminCacheEpoch) {
+      if (adminCacheToken !== getAdminToken() || owner !== adminCacheOwner || epoch !== adminCacheEpoch
+        || revision !== (adminCacheRevisions.get(policy.group) || 0)) {
         throw new Error("Admin data changed while loading. Please retry.");
       }
-      adminCache.set(endpoint, { at: Date.now(), data });
-      for (const [key, entry] of adminCache) {
-        if (Date.now() - entry.at >= adminCacheTTL(key)) adminCache.delete(key);
-      }
-      while (adminCache.size > 10) adminCache.delete(adminCache.keys().next().value);
-      try {
-        sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({
-          owner: activitySessionId(getAuthSession()), entries: Object.fromEntries(adminCache),
-        }));
-      } catch { /* Quota/privacy restrictions only disable navigation reuse. */ }
+      if (policy.retain) { adminCache.delete(endpoint); adminCache.set(endpoint, { at: Date.now(), data }); persistAdminCache(); }
       return data;
-    }).finally(() => {
-      if (adminRequests.get(endpoint) === pending) adminRequests.delete(endpoint);
-    });
+    }).finally(() => { if (adminRequests.get(endpoint) === pending) adminRequests.delete(endpoint); });
     adminRequests.set(endpoint, pending);
     return pending;
+  }
+
+  async function loadAdminData(endpoint, load, render, { force = false } = {}) {
+    const token = getAdminToken();
+    // Re-read retention after the server verifies/unlocks this document's session.
+    // Otherwise a stale cache hit during startup would become a cold network load.
+    if (isManagedProtectedSession() && (sessionLocked || sessionChecking)) {
+      await new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject }));
+      if (token !== getAdminToken()) throw new Error("Session ended.");
+    }
+    const cached = readAdminCache(endpoint);
+    if (cached) render(cached.data);
+    if (cached?.fresh && !force) return cached.data;
+    let data;
+    try { data = await load(); }
+    catch (error) {
+      if (cached && token === getAdminToken() && readAdminCache(endpoint)?.data === cached.data
+        && (error.status === 0 || error.status >= 500)) return cached.data;
+      throw error;
+    }
+    if (!cached || JSON.stringify(data) !== JSON.stringify(cached.data)) render(data);
+    return data;
   }
 
   // Only customer presentation data is eligible. Medical records, pet detail,
@@ -1215,7 +1301,8 @@ var API = (() => {
       }
       if (event.key === ADMIN_DATA_CHANGED_KEY && event.newValue) {
         try {
-          if (JSON.parse(event.newValue).owner === activitySessionId(getAuthSession())) clearAdminCache();
+          const change = JSON.parse(event.newValue);
+          if (change.owner === activitySessionId(getAuthSession()) && Array.isArray(change.groups)) invalidateAdminCache(change.groups, false);
         } catch { /* Ignore malformed cross-tab signals. */ }
       }
 
@@ -1269,7 +1356,7 @@ var API = (() => {
       pausedSessionReads.set(key, pending);
       return pending;
     }
-    if (method === "GET" && getAdminToken() && adminCacheTTL(endpoint)) {
+    if (method === "GET" && getAdminToken() && (token === getAdminToken() || endpoint === "/clinic/status") && adminCachePolicy(endpoint)) {
       return adminRead(endpoint, token, requestOptions);
     }
     const customerRequest = !!token && token === getCustomerToken();
@@ -1278,10 +1365,7 @@ var API = (() => {
       return networkRequest(method, endpoint, body, token, requestOptions).then((data) => {
         if (method !== "GET" && customerRequest && token === getCustomerToken()) invalidateCustomerMutation(endpoint);
         if (method !== "GET" && token && token === getAdminToken() && /^\/(admin|settings)\//.test(endpoint)) {
-          clearAdminCache();
-          try {
-            localStorage.setItem(ADMIN_DATA_CHANGED_KEY, JSON.stringify({ owner: activitySessionId(getAuthSession()), at: Date.now(), nonce: Math.random() }));
-          } catch { /* Short TTLs and visible polling still refresh other tabs. */ }
+          invalidateAdminMutation(endpoint);
         }
         return data;
       });
@@ -1382,6 +1466,11 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
+      && /^\/admin\/(bookings|clinic-appointments)\/[^/]+\/online-payment(?:\?|$)/.test(endpoint)
+      && (data.online_payment?.status === "paid" || data.appointment?.paid || data.booking?.paid || data.booking_status === "released")) {
+      invalidateAdminMutation(endpoint);
+    }
     if (response.status === 423 && responseBelongsToCurrentSession && data.code === "session_locked") {
       if (requestRevision !== sessionRevision && method === "GET" && !sessionControl) {
         return networkRequest(method, endpoint, body, token, requestOptions);
@@ -2068,14 +2157,14 @@ var API = (() => {
     return request("GET", `/admin/dashboard/search?${params.toString()}`, null, getAdminToken());
   }
 
-  async function getCustomers({ status = "active", tier = "", search = "" } = {}) {
+  async function getCustomers({ status = "active", tier = "", search = "" } = {}, { force = false } = {}) {
     // GET /api/admin/customers  (protected — admin token)
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (tier)   params.set("tier",   tier);
     if (search) params.set("search", search);
     const query = params.toString() ? `?${params.toString()}` : "";
-    return request("GET", `/admin/customers${query}`, null, getAdminToken());
+    return request("GET", `/admin/customers${query}`, null, getAdminToken(), { force });
   }
 
   async function getCustomerDetails(customerId) {
@@ -2450,8 +2539,12 @@ var API = (() => {
     return request("GET", `/admin/clinic-records?page=${page}`, null, getAdminToken());
   }
 
-  async function getActiveClinicCases() {
-    return request("GET", "/admin/clinic-cases", null, getAdminToken());
+  async function getActiveClinicCases({ force = false } = {}) {
+    return request("GET", "/admin/clinic-cases", null, getAdminToken(), { force });
+  }
+
+  function getClinicCase(id) {
+    return request("GET", `/admin/clinic-cases/${encodeURIComponent(id)}`, null, getAdminToken());
   }
 
   async function getCurrentPetClinicCase(petId) {
@@ -2667,6 +2760,8 @@ var API = (() => {
   return {
     // Resolved endpoint (shared by standalone browser services).
     getBaseUrl,
+    readAdminCache,
+    loadAdminData,
     readCustomerCache,
     loadCustomerData,
     invalidateCustomerCache,
@@ -2694,7 +2789,7 @@ var API = (() => {
     recordSessionActivity,
     evaluateSessionInactivity,
     isSessionLocked: () => sessionLocked,
-    getAdminDataRevision: () => adminCacheEpoch,
+    getAdminDataRevision: (group = "grooming") => `${adminCacheEpoch}:${adminCacheRevisions.get(group) || 0}`,
     startSessionInactivityManager,
     enforceAdminPageAccess,
     enforceProtectedPageAccess,
@@ -2826,6 +2921,7 @@ var API = (() => {
     submitClinicWalkIn,
     getClinicRecords,
     getActiveClinicCases,
+    getClinicCase,
     getCurrentPetClinicCase,
     getClinicCaseServices,
     clinicCaseServiceOptions,

@@ -530,7 +530,7 @@ function adminDashboard() {
         return;
       }
 
-      await window.AppClock?.load?.();
+      if (this.pageMode !== 'dashboard') await window.AppClock?.load?.();
       if (this._destroyed) return;
       this.selectedDate = this.todayDate;
 
@@ -542,7 +542,11 @@ function adminDashboard() {
 
       if (this.pageMode === 'dashboard') {
         this.startContentPolling();
-        await Promise.all([this.loadDashboardSummary(), this.loadDashboardActivity(), this.loadNotifications(), this.loadClinicStatus()]);
+        const primary = this.loadDashboardSummary();
+        void this.loadDashboardActivity();
+        void this.loadNotifications();
+        void primary.then(() => this.loadClinicStatus());
+        await primary;
         this.dispatchDashboardEvent('admin-dashboard:ready', { state: this.getState() });
         return;
       }
@@ -669,8 +673,8 @@ function adminDashboard() {
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
         if (this.pageMode === 'dashboard') {
-          void this.loadDashboardSummary({ force: true });
-          void this.loadDashboardActivity({ force: true });
+          void this.loadDashboardSummary();
+          void this.loadDashboardActivity();
         } else void this.loadAdminBookings();
         void this.loadNotifications();
       };
@@ -700,12 +704,12 @@ function adminDashboard() {
       if (this._summaryRequest) return this._summaryRequest;
       this.summaryLoading = !this.summaryLoaded;
       this.summaryError = '';
-      this._summaryRequest = API.getAdminDashboardSummary({ force }).then(data => {
+      this._summaryRequest = API.loadAdminData("/admin/dashboard/summary", () => API.getAdminDashboardSummary({ force }), data => {
         if (this._destroyed) return;
         this.dashboardQueuePreview = data.queuePreview || [];
         this.applyDashboardData(data);
         this.summaryLoaded = true;
-      }).catch(() => { this.summaryError = 'Could not refresh Dashboard.'; })
+      }, { force }).catch(() => { this.summaryError = 'Could not refresh Dashboard.'; })
         .finally(() => { this.summaryLoading = false; this._summaryRequest = null; });
       return this._summaryRequest;
     },
@@ -714,11 +718,11 @@ function adminDashboard() {
       if (this._activityRequest) return this._activityRequest;
       this.activityLoading = !this.activityLoaded;
       this.activityError = '';
-      this._activityRequest = API.getAdminDashboardActivity({ force }).then(data => {
+      this._activityRequest = API.loadAdminData("/admin/dashboard/activity", () => API.getAdminDashboardActivity({ force }), data => {
         if (this._destroyed) return;
         this.recentActivity = this.normalizeRecentActivity(data.recentActivity);
         this.activityLoaded = true;
-      }).catch(() => { this.activityError = 'Could not refresh activity.'; })
+      }, { force }).catch(() => { this.activityError = 'Could not refresh activity.'; })
         .finally(() => { this.activityLoading = false; this._activityRequest = null; });
       return this._activityRequest;
     },
@@ -4170,7 +4174,7 @@ function adminDashboard() {
 
     // ── Admin Bookings ────────────────────────────────────────────────────────
 
-    loadAdminBookings({ force = true } = {}) {
+    loadAdminBookings({ force = false } = {}) {
       const selectedDate = this.selectedDate;
       const cacheRevision = API.getAdminDataRevision?.();
       if (this._bookingRequest && this._bookingRequestDate === selectedDate && this._bookingCacheRevision === cacheRevision) return this._bookingRequest;
@@ -4179,15 +4183,18 @@ function adminDashboard() {
       this._bookingRequestDate = selectedDate;
       this.bookingsLoading = !this.bookingsLoaded;
       this.bookingsError = '';
-      const pending = API.getAdminBookings(selectedDate, {
-          includeFuture: this.showFutureAppointments,
-          boardOnly: true, force,
-        }).then(data => {
+      const params = new URLSearchParams();
+      if (selectedDate) params.set("date", selectedDate);
+      if (this.showFutureAppointments) params.set("include_future", "1");
+      params.set("view", "board");
+      const pending = API.loadAdminData(`/admin/bookings?${params}`, () => API.getAdminBookings(selectedDate, {
+        includeFuture: this.showFutureAppointments, boardOnly: true, force,
+      }), data => {
         this._resetPollFailures("_bookingInterval");
         if (revision !== this._bookingRevision || selectedDate !== this.selectedDate || this._destroyed) return;
         this.applyDashboardData(data);
         this.bookingsLoaded = true;
-      }).catch(error => {
+      }, { force }).catch(error => {
         if (revision !== this._bookingRevision || this._destroyed) return;
         this.bookingsError = 'Could not refresh Grooming.';
         this._recordPollFailure("_bookingInterval", "loadAdminBookings", error);
@@ -4342,7 +4349,7 @@ function adminDashboard() {
       if (this._notificationRequest) return this._notificationRequest;
       this.notificationsLoading = !this.notificationsLoaded;
       this.notificationsError = '';
-      this._notificationRequest = API.getNotifications().then(data => {
+      this._notificationRequest = API.loadAdminData("/admin/notifications", () => API.getNotifications(), data => {
         if (this._destroyed) return;
         this._resetPollFailures("_notifInterval");
         this.notifications    = data.notifications || [];

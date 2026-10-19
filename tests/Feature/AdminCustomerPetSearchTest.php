@@ -170,6 +170,31 @@ class AdminCustomerPetSearchTest extends TestCase
             ->assertJsonCount(0, 'pets');
     }
 
+    public function test_customer_counts_keep_exact_tiers_without_per_customer_queries(): void
+    {
+        DB::table('bookings')->insert(array_map(fn ($status) => ['user_id' => 10, 'status' => $status],
+            ['cancelled', 'waiting_to_arrive', 'expired', 'no_show', 'checked_in']));
+        DB::table('bookings')->insert(['user_id' => 20, 'status' => 'waiting_to_arrive']);
+        DB::enableQueryLog();
+        $this->getJson('/api/admin/customers?status=active')->assertOk()
+            ->assertJsonPath('customers.0.bookingCount', 4)->assertJsonPath('customers.0.tier', 'returning')
+            ->assertJsonPath('customers.1.bookingCount', 1)->assertJsonPath('customers.1.tier', 'new');
+        $small = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        for ($id = 100; $id < 110; $id++) DB::table('users')->insert([
+            'user_id' => $id, 'first_name' => 'Test', 'last_name' => (string) $id, 'role' => 'customer', 'email_verified_at' => now(),
+        ]);
+        DB::flushQueryLog(); DB::enableQueryLog();
+        $this->getJson('/api/admin/customers?status=active')->assertOk()->assertJsonCount(13, 'customers');
+        $large = count(DB::getQueryLog()); DB::disableQueryLog();
+        fwrite(STDOUT, "\nCustomer query growth: 3 customers={$small}, 13 customers={$large}\n");
+        $this->assertSame($small, $large, 'Adding ten customers must not add twenty booking queries.');
+        $this->getJson('/api/admin/customers?status=active&tier=returning&search=Max')->assertOk()
+            ->assertJsonCount(0, 'customers')->assertJsonCount(1, 'pets')->assertJsonPath('pets.0.ownerId', 10);
+        $this->getJson('/api/admin/customers?status=active&tier=new&search=Max')->assertOk()
+            ->assertJsonCount(1, 'customers')->assertJsonCount(1, 'pets')->assertJsonPath('pets.0.ownerId', 20);
+    }
+
     public function test_unverified_legacy_customer_is_hidden_from_admin_customer_operations(): void
     {
         $this->getJson('/api/admin/customers?status=active&search=Pending')

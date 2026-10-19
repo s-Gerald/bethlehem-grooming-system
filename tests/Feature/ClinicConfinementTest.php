@@ -117,6 +117,30 @@ class ClinicConfinementTest extends TestCase
         $this->getJson('/api/admin/pets/1/clinic-case')->assertOk()->assertJsonPath('case', null);
     }
 
+    public function test_active_list_omits_workspace_data_and_details_remain_available_on_demand(): void
+    {
+        $controller = new \App\Http\Controllers\AdminClinicController;
+        $full = $controller->formatAppointment(ClinicAppointment::findOrFail(1));
+        DB::enableQueryLog(); DB::flushQueryLog();
+        $list = $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonPath('cases.0.pet.name', 'Mochi');
+        $queries = DB::getQueryLog(); DB::disableQueryLog();
+        $row = $list->json('cases.0');
+        $this->assertArrayNotHasKey('record', $row);
+        $this->assertArrayNotHasKey('vitals', $row);
+        $this->assertArrayNotHasKey('charges', $row);
+        $this->assertArrayNotHasKey('medical_conditions', $row['pet']);
+        foreach ($queries as $query) {
+            $this->assertDoesNotMatchRegularExpression('/select .* from ["`](clinic_records|clinic_vitals|clinic_attachments|clinic_charges)["`]/i', $query['query']);
+        }
+        $this->assertLessThan(strlen(json_encode($full)), strlen(json_encode($row)));
+        $this->getJson('/api/admin/clinic-cases/1')->assertOk()
+            ->assertJsonPath('case.vitals.weight_kg', '18.40')
+            ->assertJsonPath('case.record.primary_veterinarian_name', $full['record']['primary_veterinarian_name']);
+        $this->signIn('grooming_receptionist');
+        $this->getJson('/api/admin/clinic-cases/1')->assertForbidden();
+        fwrite(STDOUT, "\nClinic fixture list=".strlen(json_encode($row))." bytes; full=".strlen(json_encode($full))." bytes; list queries=".count($queries)."\n");
+    }
+
     public function test_admission_links_one_ordered_service_to_the_same_case_and_retries_are_idempotent(): void
     {
         $payload = $this->admit();

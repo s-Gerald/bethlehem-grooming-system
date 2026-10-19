@@ -65,3 +65,13 @@ export function formatBookingSchedule(dateValue, timeValue) {
 
   return bookingDate || bookingTime || "";
 }
+
+
+// Preserve saved decimal precision; this is presentation, independent of pet form controls.
+export function formatSavedWeight(rawWeight) {
+  const text = String(rawWeight ?? "").trim();
+  if (!/^[+-]?\d+(?:\.\d*)?$/.test(text)) return text;
+  const [whole, fraction] = text.split(".");
+  const significant = (fraction || "").replace(/0+$/, "");
+  return significant ? `${whole}.${significant}` : whole;
+}

@@ -1,0 +1,495 @@
+{
+  "origin": "http://127.0.0.1:8000",
+  "date": "2026-10-19",
+  "notes": [
+    "DevTools cache-bypassing reload used because the automated Ctrl+F5 shortcut did not navigate.",
+    "Only request metadata is saved; no headers, bearer tokens or response bodies.",
+    "Original investigation and final verification had different dwell times. TTL-dependent counts vary with navigation pace."
+  ],
+  "before": [
+    {
+      "step": "cold-dashboard",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352233.285975
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 352234.69378
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 352234.699583
+        },
+        {
+          "url": "/api/admin/dashboard/summary",
+          "startedAt": 352235.921685
+        },
+        {
+          "url": "/api/admin/dashboard/activity",
+          "startedAt": 352235.921883
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 352235.922142
+        }
+      ],
+      "staticDiskResponses": 0
+    },
+    {
+      "step": "customers-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352251.280583
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 352251.318328
+        },
+        {
+          "url": "/api/admin/customers?status=active",
+          "startedAt": 352251.608017
+        },
+        {
+          "url": "/api/admin/grooming/activity",
+          "startedAt": 352251.60816
+        }
+      ],
+      "staticDiskResponses": 3
+    },
+    {
+      "step": "grooming-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352260.741484
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 352261.956335
+        },
+        {
+          "url": "/api/admin/bookings?date=2026-10-19&include_future=1&view=board",
+          "startedAt": 352262.474094
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 352262.474298
+        }
+      ],
+      "staticDiskResponses": 1
+    },
+    {
+      "step": "clinic-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352269.845947
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 352270.39255
+        },
+        {
+          "url": "/api/admin/grooming/activity",
+          "startedAt": 352270.46096
+        },
+        {
+          "url": "/api/admin/clinic-cases",
+          "startedAt": 352270.478539
+        },
+        {
+          "url": "/api/admin/clinic-records?page=1",
+          "startedAt": 352271.265941
+        }
+      ],
+      "staticDiskResponses": 13
+    },
+    {
+      "step": "dashboard-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352284.403586
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 352284.428519
+        },
+        {
+          "url": "/api/admin/dashboard/summary",
+          "startedAt": 352284.952025
+        },
+        {
+          "url": "/api/admin/dashboard/activity",
+          "startedAt": 352284.952318
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 352284.952611
+        }
+      ],
+      "staticDiskResponses": 1
+    },
+    {
+      "step": "customers-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352293.453164
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 352293.469306
+        },
+        {
+          "url": "/api/admin/customers?status=active",
+          "startedAt": 352293.799623
+        },
+        {
+          "url": "/api/admin/grooming/activity",
+          "startedAt": 352293.799783
+        }
+      ],
+      "staticDiskResponses": 3
+    },
+    {
+      "step": "grooming-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352314.785794
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 352314.818422
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 352314.823865
+        },
+        {
+          "url": "/api/admin/bookings?date=2026-10-19&include_future=1&view=board",
+          "startedAt": 352315.568542
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 352315.568733
+        }
+      ],
+      "staticDiskResponses": 1
+    },
+    {
+      "step": "clinic-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 352325.20743
+        },
+        {
+          "url": "/api/admin/grooming/activity",
+          "startedAt": 352325.511243
+        },
+        {
+          "url": "/api/admin/clinic-cases",
+          "startedAt": 352325.511373
+        },
+        {
+          "url": "/api/admin/clinic-records?page=1",
+          "startedAt": 352326.111296
+        }
+      ],
+      "staticDiskResponses": 13
+    }
+  ],
+  "after": [
+    {
+      "step": "cold-dashboard",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354195.995842,
+          "durationMs": 1641,
+          "status": 200,
+          "encodedBytes": 485
+        },
+        {
+          "url": "/api/admin/dashboard/summary",
+          "startedAt": 354197.63757,
+          "durationMs": 760,
+          "status": 200,
+          "encodedBytes": 425
+        },
+        {
+          "url": "/api/admin/dashboard/activity",
+          "startedAt": 354197.637831,
+          "durationMs": 1055,
+          "status": 200,
+          "encodedBytes": 1264
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 354197.638054,
+          "durationMs": 1318,
+          "status": 200,
+          "encodedBytes": 20265
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 354198.399544,
+          "durationMs": 1025,
+          "status": 200,
+          "encodedBytes": 502
+        }
+      ],
+      "staticCacheHits": 0,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "customers-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354208.367005,
+          "durationMs": 277,
+          "status": 200,
+          "encodedBytes": 485
+        },
+        {
+          "url": "/api/admin/customers?status=active",
+          "startedAt": 354208.645237,
+          "durationMs": 572,
+          "status": 200,
+          "encodedBytes": 4945
+        },
+        {
+          "url": "/api/admin/grooming/activity",
+          "startedAt": 354208.645506,
+          "durationMs": 276,
+          "status": 200,
+          "encodedBytes": 243
+        }
+      ],
+      "staticCacheHits": 11,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "grooming-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354209.699082,
+          "durationMs": 281,
+          "status": 200,
+          "encodedBytes": 485
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 354209.72781,
+          "durationMs": 478,
+          "status": 200,
+          "encodedBytes": 344
+        },
+        {
+          "url": "/api/admin/bookings?date=2026-10-19&include_future=1&view=board",
+          "startedAt": 354210.208416,
+          "durationMs": 333,
+          "status": 200,
+          "encodedBytes": 2602
+        },
+        {
+          "url": "/api/admin/notifications",
+          "startedAt": 354210.208782,
+          "durationMs": 610,
+          "status": 200,
+          "encodedBytes": 20265
+        }
+      ],
+      "staticCacheHits": 22,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "clinic-first",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354211.223781,
+          "durationMs": 285,
+          "status": 200,
+          "encodedBytes": 485
+        },
+        {
+          "url": "/api/admin/clinic-cases",
+          "startedAt": 354211.509746,
+          "durationMs": 310,
+          "status": 200,
+          "encodedBytes": 934
+        },
+        {
+          "url": "/api/admin/clinic-records?page=1",
+          "startedAt": 354211.8661,
+          "durationMs": 299,
+          "status": 200,
+          "encodedBytes": 6114
+        }
+      ],
+      "staticCacheHits": 23,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 1,
+        "ready": true,
+        "records": false,
+        "secondary": true
+      }
+    },
+    {
+      "step": "dashboard-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354212.444199,
+          "durationMs": 293,
+          "status": 200,
+          "encodedBytes": 485
+        }
+      ],
+      "staticCacheHits": 14,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "customers-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354213.500502,
+          "durationMs": 293,
+          "status": 200,
+          "encodedBytes": 485
+        }
+      ],
+      "staticCacheHits": 12,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "grooming-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354214.587216,
+          "durationMs": 277,
+          "status": 200,
+          "encodedBytes": 485
+        },
+        {
+          "url": "/api/clinic/status",
+          "startedAt": 354214.604365,
+          "durationMs": 536,
+          "status": 200,
+          "encodedBytes": 502
+        },
+        {
+          "url": "/api/system/clock",
+          "startedAt": 354214.60935,
+          "durationMs": 747,
+          "status": 200,
+          "encodedBytes": 344
+        }
+      ],
+      "staticCacheHits": 22,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "secondary": true
+      }
+    },
+    {
+      "step": "clinic-repeat",
+      "api": [
+        {
+          "url": "/api/session",
+          "startedAt": 354215.794748,
+          "durationMs": 289,
+          "status": 200,
+          "encodedBytes": 485
+        }
+      ],
+      "staticCacheHits": 23,
+      "state": {
+        "error": "",
+        "idle": true,
+        "loaders": 0,
+        "ready": true,
+        "records": true,
+        "secondary": true
+      }
+    }
+  ],
+  "browserChecks": {
+    "customersRetainedWith1200msLatency": {
+      "visibleCustomers": 17,
+      "refreshing": true,
+      "fullLoaders": 0
+    },
+    "clinic503": {
+      "retainedContent": true,
+      "fullLoaders": 0
+    },
+    "notificationMutation": {
+      "alreadyReadId": 368,
+      "invalidatedGroups": [
+        "notifications"
+      ],
+      "customersDashboardClinicRetained": true
+    },
+    "petEditor": {
+      "startupEditorResources": 0,
+      "editFormLoadedOnDemand": true,
+      "addFormOpened": true,
+      "formsCancelledWithoutSaving": true
+    },
+    "clinicWorkspace": {
+      "caseDetailFetchedOnlyAfterOpen": true,
+      "billingTotal": "580.00"
+    },
+    "confined": {
+      "startupRequests": 0,
+      "onTabOpenRequests": 1
+    }
+  },
+  "applicationErrorsInFinalFlow": 0
+}

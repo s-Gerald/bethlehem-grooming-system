@@ -81,8 +81,8 @@ async function lazySecurity() {
 }
 async function boardRaces() {
   let epoch = 0;
-  const requests = [], c = vm.createContext({ console, Date, Intl,
-    window: {}, API: { getAdminDataRevision: () => epoch, getAdminBookings: (date) => { const d = deferred(); requests.push({ date, ...d }); return d.promise; } } });
+  const requests = [], c = vm.createContext({ console, Date, Intl, URLSearchParams,
+    window: {}, API: { loadAdminData: (key, load, render) => load().then(render), getAdminDataRevision: () => epoch, getAdminBookings: (date) => { const d = deferred(); requests.push({ date, ...d }); return d.promise; } } });
   vm.runInContext(read('scripts/components/admin-dashboard.js'), c);
   const ui = c.adminDashboard(); ui.refreshIcons = () => {}; ui.dispatchDashboardEvent = () => {};
   ui.selectedDate = '2026-10-18';
@@ -105,9 +105,9 @@ async function boardRaces() {
 async function visiblePolling() {
   const intervals = new Map(), listeners = new Map(), windowListeners = new Map(); let calls = 0;
   const document = { visibilityState: 'visible', addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
-  const c = vm.createContext({ Date, Intl, console: { error() {}, warn() {} }, document,
+  const c = vm.createContext({ Date, Intl, URLSearchParams, console: { error() {}, warn() {} }, document,
     setInterval: fn => { intervals.set(1, fn); return 1; }, clearInterval: id => intervals.delete(id), clearTimeout() {},
-    window: { addEventListener: (name, fn) => windowListeners.set(name, fn), removeEventListener: name => windowListeners.delete(name) }, API: { getAdminBookings: async () => { calls++; throw new Error('offline'); }, getNotifications: async () => ({}) } });
+    window: { addEventListener: (name, fn) => windowListeners.set(name, fn), removeEventListener: name => windowListeners.delete(name) }, API: { loadAdminData: (key, load, render) => load().then(render), getAdminBookings: async () => { calls++; throw new Error('offline'); }, getNotifications: async () => ({}) } });
   vm.runInContext(read('scripts/components/admin-dashboard.js'), c);
   const ui = c.adminDashboard(); ui.bookingsLoaded = true; ui.startContentPolling();
   document.visibilityState = 'hidden'; intervals.get(1)(); assert.equal(calls, 0, 'Hidden pages must not poll');

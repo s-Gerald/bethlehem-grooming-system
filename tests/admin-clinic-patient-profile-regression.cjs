@@ -21,6 +21,7 @@ function setup() {
     window: {addEventListener() {}, dispatchEvent: event => events.push(event)},
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     API: {
+      loadAdminData: (key, load, render) => load().then(render),
       adminGetPetProfile: async id => {calls.push(['history', id]); return {medical_records: [record]};},
       getCurrentPetClinicCase: async () => ({case: null}),
       adminGetPetCaseDetails: async (petId, caseId) => {calls.push(['case', petId, caseId]); return {case: {id: caseId}, medical_record: record};},

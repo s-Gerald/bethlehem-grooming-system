@@ -6,6 +6,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function component(file, factory, API = {}, extra = {}) {
   let source = fs.readFileSync(path.join(__dirname, '../scripts/components', file), 'utf8');
   if (factory === 'adminCustomers') source = source.slice(source.indexOf('function adminCustomers()'));
+  API.loadAdminData ??= (key, load, render) => load().then(render);
   const context = vm.createContext({ API, console, Date, Intl, URL, URLSearchParams, setTimeout, clearTimeout,
     window: {}, ...extra });
   vm.runInContext(source, context);

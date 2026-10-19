@@ -8,9 +8,10 @@ let bookings = {};
 const requests = [];
 const listeners = new Map();
 const context = {
-  Date, Intl, console,
+  Date, Intl, URLSearchParams, console,
   document: {},
   API: {
+    loadAdminData: (key, load, render) => load().then(render),
     getAdminToken: () => 'test-token',
     getAdminBookings: async (date, options) => {
       requests.push({ date, options });
@@ -158,7 +159,7 @@ async function run() {
     assert.equal((groomingLink.match(/x-show="hasIncomingAppointments"/g) || []).length, 1, `${file} shows exactly one persistent dot`);
     assert.ok(groomingLink?.includes('aria-label="Active grooming customers today"'));
     assert.doesNotMatch(groomingLink, /@click=.*(?:incomingAppointmentCount|hasIncomingAppointments)/);
-    assert.ok(page.includes('admin-sidebar.js?v=grooming-today-indicator-20261005'));
+    assert.match(page, /<script[^>]+src="[^"]*admin-sidebar\.js\?/);
   }
 
   sidebar.destroy();

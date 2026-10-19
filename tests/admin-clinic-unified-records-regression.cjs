@@ -18,12 +18,15 @@ function setup(access = true) {
     URL, URLSearchParams, console,
     setTimeout(callback) { timers.push(callback); return timers.length; },
     clearTimeout(id) { timers[id - 1] = null; },
+    requestAnimationFrame: fn => { timers.push(fn); return timers.length; },
+    setInterval: () => 1, clearInterval() {},
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     document: {addEventListener() {}},
     location: {search: '', href: 'http://localhost/pages/admin/clinic.html#cases', hash: '#cases'},
     history: {replaceState() {}}, scrollTo() {}, addEventListener() {},
     dispatchEvent(event) { events.push(event); },
     API: {
+      loadAdminData: (key, load, render) => load().then(render),
       getAdminToken: () => 'test-token', getUserRole: () => 'staff',
       getStaffIdentity: async () => ({user: {clinic_permissions: permissions}}),
       getActiveClinicCases() { calls.cases++; return cases.promise; },
@@ -44,13 +47,16 @@ function setup(access = true) {
 
 (async () => {
   const app = setup();
-  await app.state.activate();
+  const activation = app.state.activate();
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(app.calls.cases, 1);
-  assert.deepEqual(app.calls.records, [1]);
+  assert.deepEqual(app.calls.records, [], "Records wait for primary content and paint");
   assert.equal(app.state.searching, true, 'Records have their own loading state');
   app.cases.resolve({cases: [{id: 1, status: 'in_consultation', pet: {name: 'Milo'}}, {id: 2, status: 'for_payment'}],
     arrivals: [{id: 3, status: 'waiting_to_arrive', pet: {name: 'Mochi'}}]});
-  await new Promise(resolve => setImmediate(resolve));
+  await activation;
+  app.timers.at(-1)(); app.timers.at(-1)();
+  assert.deepEqual(app.calls.records, [1]);
   assert.equal(app.state.activeCasesLoading, false, 'Cases finish while Records remain pending');
   assert.equal(app.state.visibleActiveCases[0].id, 1);
   assert.equal(app.state.expectedCount, 1);
@@ -99,7 +105,9 @@ function setup(access = true) {
   assert.match(denied.state.accessError, /does not have access/);
 
   const pending = setup();
+  pending.cases.resolve({cases: []});
   await pending.state.activate();
+  pending.timers.at(-1)(); pending.timers.at(-1)();
   pending.state.searchQuery = 'x';
   await pending.state.onSearchInput();
   pending.records.resolve({rows: [{owner: {id: 1}, pets: []}]});

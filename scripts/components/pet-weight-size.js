@@ -55,13 +55,7 @@ export function getSizeForStoredWeight(petType, rawWeight) {
   return getProfile(petType).find(({ max }) => max === null || weight < max)?.size || "";
 }
 
-export function formatSavedWeight(rawWeight) {
-  const text = String(rawWeight ?? "").trim();
-  if (!/^[+-]?\d+(?:\.\d*)?$/.test(text)) return text;
-  const [whole, fraction] = text.split(".");
-  const significant = (fraction || "").replace(/0+$/, "");
-  return significant ? `${whole}.${significant}` : whole;
-}
+export { formatSavedWeight } from "../services/booking-format-service.js?v=pet-weight-format-20261019";
 
 // Saved selections are references, not weight edits. New pet drafts keep their input text.
 export function getPetWeightSubmission(pet) {

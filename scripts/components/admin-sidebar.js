@@ -259,10 +259,14 @@ function adminSidebar() {
       window.addEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
 
       const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
+      if (this.activePage === 'dashboard') {
+        this._dashboardStatusReady = () => { void this.loadClinicStatus(); };
+        window.addEventListener('admin-dashboard:ready', this._dashboardStatusReady, { once: true });
+      }
       await Promise.all([
-        this.loadClinicStatus(),
+        this.activePage === 'dashboard' ? Promise.resolve() : this.loadClinicStatus(),
         this.loadLoggedInIdentity().then(async () => {
-          await window.AppClock?.load?.();
+          if (!API.getAdminGroomingActivity) await window.AppClock?.load?.();
           if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) return this.loadIncomingAppointmentCount();
         }),
       ]);
@@ -287,6 +291,7 @@ function adminSidebar() {
       this._incomingAppointmentRevision++;
       document.removeEventListener?.('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
+      window.removeEventListener('admin-dashboard:ready', this._dashboardStatusReady);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
       window.removeEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
       if (this._incomingAppointmentInterval) {
@@ -382,7 +387,7 @@ function adminSidebar() {
         const today = this.todayDate();
         const revision = ++this._incomingAppointmentRevision;
         this._incomingCountRequest = API.getAdminGroomingActivity
-          ? API.getAdminGroomingActivity({ force: true }) : API.getAdminBookings(today);
+          ? API.getAdminGroomingActivity() : API.getAdminBookings(today);
         const data = await this._incomingCountRequest;
         if (!this._destroyed && revision === this._incomingAppointmentRevision && today === this.todayDate()) {
           if (Number.isFinite(data.activeTodayCount)) this.incomingAppointmentCount = data.activeTodayCount;

@@ -598,29 +598,69 @@ function adminClinicPage() {
       if (new URLSearchParams(window.location.search).get("tab") === "for-payment") this.tab = "for-payment";
       if (new URLSearchParams(window.location.search).get("tab") === "confined") { this.tab = "confined"; this.loadConfinedCases(); }
       await this.loadActiveCases();
-      this.loadAllRecords();
+      this.deferPatientRecords();
       await this.restoreOnlinePayment();
-      window.addEventListener("clinic-case-updated", () => {
+      this._caseUpdatedListener = () => {
         this.loadActiveCases();
         if (this.profile.open) this.loadProfileVisit();
         if (this.tab === 'confined') this.loadConfinedCases();
-      });
-      window.addEventListener("clinic-review-payment", (event) => this.reviewPayment(event.detail));
+      };
+      window.addEventListener("clinic-case-updated", this._caseUpdatedListener);
+      this._reviewPaymentListener = event => this.reviewPayment(event.detail);
+      window.addEventListener("clinic-review-payment", this._reviewPaymentListener);
+      this._refreshCases = () => {
+        if (document.visibilityState === 'hidden' || API.isSessionLocked?.()) return;
+        void this.loadActiveCases();
+        if (this.tab === 'confined') void this.loadConfinedCases(this.confinedPage);
+      };
+      this._caseInterval = setInterval(this._refreshCases, 30000);
+      document.addEventListener('visibilitychange', this._refreshCases);
+      window.addEventListener('admin-session:unlocked', this._refreshCases);
     },
 
-    async loadActiveCases() {
+    deferPatientRecords() {
+      const load = () => {
+        this._recordsObserver?.disconnect();
+        if (!this.recordsLoaded && !this.searchQuery.trim()) void this.loadAllRecords();
+      };
+      const section = this.$root?.querySelector('#patient-records-heading');
+      if (!section || typeof IntersectionObserver === 'undefined') {
+        this._recordsFrame = requestAnimationFrame(() => { this._recordsFrame = requestAnimationFrame(load); });
+        return;
+      }
+      this._recordsObserver = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) load();
+      }, { rootMargin: '200px' });
+      this._recordsObserver.observe(section);
+    },
+
+    destroy() {
+      this._activeCaseRequest++; this._reqId++; this._confinedRequest++;
+      this._recordsObserver?.disconnect();
+      if (this._recordsFrame) cancelAnimationFrame(this._recordsFrame);
+      clearInterval(this._caseInterval);
+      clearTimeout(this._timer);
+      document.removeEventListener('visibilitychange', this._refreshCases);
+      window.removeEventListener('admin-session:unlocked', this._refreshCases);
+      window.removeEventListener('clinic-case-updated', this._caseUpdatedListener);
+      window.removeEventListener('clinic-review-payment', this._reviewPaymentListener);
+      this._clinicPaymentWatch?.stop();
+    },
+
+    async loadActiveCases({ force = false } = {}) {
       const request = ++this._activeCaseRequest;
       this.activeCasesLoading = true;
       this.activeCasesError = '';
       try {
-        const response = await API.getActiveClinicCases();
-        if (request !== this._activeCaseRequest) return false;
-        this.activeCases = response.cases || [];
-        this.arrivals = response.arrivals || [];
-        this.clinicToday = response.today || '';
-        this.confinedCount = response.confined_count || 0;
-        this.activeCasesLoaded = true;
-        window.dispatchEvent(new CustomEvent("clinic-cases-loaded", { detail: this.activeCases }));
+        await API.loadAdminData("/admin/clinic-cases", () => API.getActiveClinicCases({ force }), response => {
+          if (request !== this._activeCaseRequest) return;
+          this.activeCases = response.cases || [];
+          this.arrivals = response.arrivals || [];
+          this.clinicToday = response.today || '';
+          this.confinedCount = response.confined_count || 0;
+          this.activeCasesLoaded = true;
+          window.dispatchEvent(new CustomEvent("clinic-cases-loaded", { detail: this.activeCases }));
+        }, { force });
         return true;
       }
       catch { if (request === this._activeCaseRequest) this.activeCasesError = 'Could not load Clinic cases.'; return false; }
@@ -716,9 +756,12 @@ function adminClinicPage() {
       this.receiptModal = null;
       this.payment = { online: null, verifying: false, open: true, case: item, method: "cash", amountPaid: "", touched: false, saving: false, error: "", recorded: false };
       this.$nextTick?.(() => document.getElementById('clinic-cash-received')?.focus());
-      if (checkOnline) {
+      if (checkOnline || item.list_only) {
         this.payment.saving = true;
-        try { await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(item.id)); }
+        try {
+          if (item.list_only) this.payment.case = (await API.getClinicCase(item.id)).case;
+          if (checkOnline) await this.applyClinicOnlineStatus(await API.clinicOnlinePaymentStatus(item.id));
+        }
         catch (error) { this.payment.error = error.message || 'Could not check payment.'; }
         finally { this.payment.saving = false; }
       }
@@ -793,7 +836,7 @@ function adminClinicPage() {
         }
         this.payment.error = Object.values(error.errors || {}).flat().join(' ') || error.message || "Could not record payment.";
         if (error.errors?.total_amount) {
-          await this.loadActiveCases();
+          await this.loadActiveCases({ force: true });
           const current = this.activeCases.find((item) => item.id === this.payment.case.id);
           if (current) this.payment.case = current;
         }
@@ -901,9 +944,15 @@ function adminClinicPage() {
       }
       catch (error) { this.$store.clinicFeedback.notify(error.message || "Could not cancel this case.", "error"); }
     },
-    openCase(item, section) {
+    async openCase(item, section) {
       if (!this.permissions.access || !['checked_in', 'in_consultation', 'for_payment'].includes(item.status)) return;
-      window.dispatchEvent(new CustomEvent("clinic-open-modal", { detail: { appt: item, section: section || (item.case_type === "vaccination" ? "vaccinations" : "medical") } }));
+      if (this.caseBusyId !== null) return;
+      this.caseBusyId = item.id;
+      try {
+        if (item.list_only) item = (await API.getClinicCase(item.id)).case;
+        window.dispatchEvent(new CustomEvent("clinic-open-modal", { detail: { appt: item, section: section || (item.case_type === "vaccination" ? "vaccinations" : "medical") } }));
+      } catch (error) { this.$store.clinicFeedback.notify(error.message || 'Could not open this case.', 'error'); }
+      finally { this.caseBusyId = null; }
     },
     async startCase(item) {
       if (!this.permissions.clinical || this.caseBusyId || item.status !== 'checked_in') return;
@@ -912,6 +961,7 @@ function adminClinicPage() {
         const response = await API.startClinicCase(item.id);
         if (String(item.pet?.id) === String(this.profile.pet?.id)) this.profileVisit = response.case;
         await this.loadActiveCases();
+        this.caseBusyId = null;
         if (this.profile.open) this.openProfileCase(response.case);
         else this.openCase(response.case);
       }
@@ -930,13 +980,16 @@ function adminClinicPage() {
       this.recordsError = '';
       const page = append ? this.recordsPage + 1 : 1;
       try {
-        const res = await API.getClinicRecords(page);
-        if (rid !== this._reqId) return;
-        this.recordsPage = page;
-        this.hasMoreRecords = !!res.has_more;
-        this.searchRows = append ? this.searchRows.concat(res.rows || []) : (res.rows || []);
-        this.recordsLoaded = true;
-        this.noResults = this.searchRows.length === 0;
+        const render = res => {
+          if (rid !== this._reqId) return;
+          this.recordsPage = page;
+          this.hasMoreRecords = !!res.has_more;
+          this.searchRows = append ? this.searchRows.concat(res.rows || []) : (res.rows || []);
+          this.recordsLoaded = true;
+          this.noResults = this.searchRows.length === 0;
+        };
+        if (append) render(await API.getClinicRecords(page));
+        else await API.loadAdminData("/admin/clinic-records?page=1", () => API.getClinicRecords(1), render);
       } catch {
         if (rid !== this._reqId) return;
         this.recordsError = 'Could not load patient records.';
@@ -1471,7 +1524,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018';
+    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

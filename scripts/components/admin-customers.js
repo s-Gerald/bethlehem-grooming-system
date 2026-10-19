@@ -1,4 +1,6 @@
-const adminCustomerPetFieldModulesReady = Promise.all([
+let adminCustomerPetFieldModulesReady;
+function loadAdminCustomerPetFields() {
+  return adminCustomerPetFieldModulesReady ??= Promise.all([
   import("../services/booking-draft-service.js"),
   import("./breed-combobox.js"),
   import("./breed-coat-catalogue.js"),
@@ -19,10 +21,11 @@ const adminCustomerPetFieldModulesReady = Promise.all([
   ...breedCoatCombobox,
   ...fixedOptionCombobox,
   ...petWeightSize,
-}));
+})).catch(error => { adminCustomerPetFieldModulesReady = null; throw error; });
+}
 
 let adminCustomerPetFields = null;
-let adminCustomerPetTools = null;
+let adminCustomerFormatWeight = null;
 
 function adminCustomers() {
   return {
@@ -33,7 +36,6 @@ function adminCustomers() {
     customersLoaded: false,
     _customersKey: "",
     _customerRequest: 0,
-    _customerCache: {},
     errorMessage: "",
     statusFilter: "active",   // active | inactive | archived | unregistered
     tierFilter:   "",          // new | returning | ""
@@ -110,10 +112,7 @@ function adminCustomers() {
         this.tierFilter = "";
       }
 
-      await Promise.all([
-        this.loadCustomers(),
-        this.initializePetFormFields(),
-      ]);
+      await this.loadCustomers();
       const customerId = params.get("customer_id");
       const petId      = params.get("pet_id");
       if (customerId) {
@@ -140,34 +139,29 @@ function adminCustomers() {
 
     // ── Load ─────────────────────────────────────────────
 
-    async loadCustomers({ force = true } = {}) {
+    async loadCustomers({ force = false } = {}) {
       const params = { status: this.statusFilter, tier: this.tierFilter, search: this.searchQuery.trim() };
-      const key = JSON.stringify(params), request = ++this._customerRequest;
-      const epoch = API.getAdminDataRevision?.();
-      const cached = this._customerCache[key];
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+      const key = `/admin/customers${query.size ? `?${query}` : ""}`, request = ++this._customerRequest;
       this.customersLoaded = this.customersLoaded && key === this._customersKey;
       this.loading = true;
       this.errorMessage = "";
       try {
-        const fromCache = !force && cached && cached.epoch === epoch && Date.now() - cached.at < 15000;
-        const data = fromCache ? cached.data : await API.getCustomers(params);
-        if (request !== this._customerRequest) return;
-        this.customers = data.customers || [];
-        this.petSearchResults = data.pets || [];
-        this.totalCount = data.total ?? this.customers.length;
-        this._customersKey = key;
-        this.customersLoaded = true;
-        if (!fromCache) this._customerCache[key] = { data, epoch, at: Date.now() };
-        const keys = Object.keys(this._customerCache);
-        if (keys.length > 12) delete this._customerCache[keys[0]];
+        await API.loadAdminData(key, () => API.getCustomers(params, { force }), data => {
+          if (request !== this._customerRequest) return;
+          this.customers = data.customers || [];
+          this.petSearchResults = data.pets || [];
+          this.totalCount = data.total ?? this.customers.length;
+          this._customersKey = key;
+          this.customersLoaded = true;
+        }, { force });
       } catch (err) {
         if (request === this._customerRequest) this.errorMessage = err.message || "Failed to load customers.";
       } finally {
-        if (request === this._customerRequest) { this.loading = false;  }
+        if (request === this._customerRequest) this.loading = false;
       }
     },
-
-    // ── Filter helpers ────────────────────────────────────
 
     setStatus(status) {
       this.statusFilter = status;
@@ -511,9 +505,8 @@ function adminCustomers() {
             });
           })().finally(() => { this._petEditMarkupReady = null; }));
         }
-        const tools = await adminCustomerPetFieldModulesReady;
+        const tools = await loadAdminCustomerPetFields();
         if (adminCustomerPetFields) return true;
-        adminCustomerPetTools = tools;
         const elements = {
           species: document.getElementById("adminPetSpecies"),
           breed: document.getElementById("adminPetBreed"),
@@ -826,9 +819,13 @@ function adminCustomers() {
       };
 
       try {
-        const data = customer.recordType === "unregistered"
-          ? await API.getUnregisteredCustomerDetails(customer.id)
-          : await API.getCustomerDetails(customer.id);
+        const [data, format] = await Promise.all([
+          customer.recordType === "unregistered"
+            ? API.getUnregisteredCustomerDetails(customer.id)
+            : API.getCustomerDetails(customer.id),
+          import("../services/booking-format-service.js?v=pet-weight-format-20261019"),
+        ]);
+        adminCustomerFormatWeight = format.formatSavedWeight;
         this.detailModal.customer = data.customer || this.detailModal.customer;
       } catch (err) {
         this.detailModal.error = err.message || "Failed to load customer details.";
@@ -924,7 +921,7 @@ function adminCustomers() {
 
     formatWeight(value) {
       if (value === null || value === undefined || value === "") return "Not provided";
-      return `${adminCustomerPetTools.formatSavedWeight(value)} kg`;
+      return `${adminCustomerFormatWeight(value)} kg`;
     },
 
     formatPetBoolean(value) {

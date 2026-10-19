@@ -131,8 +131,8 @@ function adminClinicVaccinations() {
       });
       window.addEventListener('clinic-cases-loaded', (event) => {
         const current = event.detail?.find(item => item.id === this.appointment?.id);
-        if (current) this.appointment = {...this.appointment, status: current.status, weight_kg: current.vitals?.weight_kg,
-          confinement: current.confinement, paid: current.paid, archived_at: current.archived_at};
+        if (current) this.appointment = {...this.appointment, status: current.status, paid: current.paid,
+          ...(!current.list_only ? {weight_kg: current.vitals?.weight_kg, confinement: current.confinement, archived_at: current.archived_at} : {})};
       });
       window.addEventListener('clinic-case-patch', (event) => {
         if (event.detail.id === this.appointment?.id) this.appointment = {...this.appointment, ...event.detail};

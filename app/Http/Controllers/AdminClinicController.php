@@ -25,6 +25,7 @@ class AdminClinicController extends Controller
 {
     private ?bool $hasClinicCharges = null;
     private ?bool $hasConfinements = null;
+    private array $resolvedAppointmentRelations = [];
 
     // ── Queue index ──────────────────────────────────────────────────────────
 
@@ -133,12 +134,12 @@ class AdminClinicController extends Controller
     public function activeCases()
     {
         app(\App\Services\PreRegistrationExpiry::class)->expire();
-        $with = $this->appointmentRelations();
+        $with = $this->appointmentRelations(true);
         $arrivals = ClinicAppointment::with($with)
             ->expected()
             ->orderBy('created_at')
             ->get()
-            ->map(fn (ClinicAppointment $arrival) => $this->formatAppointment($arrival))
+            ->map(fn (ClinicAppointment $arrival) => $this->formatAppointment($arrival, true))
             ->values();
         $cases = ClinicAppointment::query()
             ->with($with)
@@ -147,11 +148,17 @@ class AdminClinicController extends Controller
                 ->whereDoesntHave('confinement', fn ($episode) => $episode->whereNull('discharged_at')))
             ->orderBy('created_at')
             ->get()
-            ->map(fn (ClinicAppointment $case) => $this->formatAppointment($case))
+            ->map(fn (ClinicAppointment $case) => $this->formatAppointment($case, true))
             ->values();
 
         return response()->json(['success' => true, 'arrivals' => $arrivals, 'cases' => $cases, 'today' => now()->toDateString(),
             'confined_count' => $this->hasConfinements ? ClinicAppointment::confined()->count() : 0]);
+    }
+
+    public function showCase(int $id)
+    {
+        $case = ClinicAppointment::with($this->appointmentRelations())->findOrFail($id);
+        return response()->json(['case' => $this->formatAppointment($case)]);
     }
 
     public function confinedCases(Request $request)
@@ -795,15 +802,15 @@ class AdminClinicController extends Controller
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    public function formatAppointment(ClinicAppointment $a): array
+    public function formatAppointment(ClinicAppointment $a, bool $listOnly = false): array
     {
-        $a->loadMissing($this->appointmentRelations());
+        $a->loadMissing($this->appointmentRelations($listOnly));
         $user = $a->user;
         $walkin = $a->walkin;
         $pet = $a->pet;
-        $vitals = Schema::hasTable('clinic_vitals') ? $a->vitals : null;
-        $record = Schema::hasTable('clinic_records') ? $a->record : null;
-        $timeWindow = Schema::hasTable('time_windows') ? $a->timeWindow : null;
+        $vitals = ! $listOnly && $a->relationLoaded('vitals') ? $a->vitals : null;
+        $record = ! $listOnly && $a->relationLoaded('record') ? $a->record : null;
+        $timeWindow = $a->relationLoaded('timeWindow') ? $a->timeWindow : null;
 
         $petOwner = $pet?->unregisteredCustomer;
         $ownerName = $user
@@ -821,7 +828,7 @@ class AdminClinicController extends Controller
             default => 'Walk-in',
         };
 
-        return [
+        $data = [
             'id' => $a->id,
             'appointment_reference' => $a->appointment_reference,
             'appointment_type' => $a->appointment_type,
@@ -902,10 +909,23 @@ class AdminClinicController extends Controller
                 'signed_corrections' => null,
             ],
         ];
+        if ($listOnly) {
+            $data = array_intersect_key($data, array_flip([
+                'id', 'appointment_reference', 'appointment_type', 'case_type', 'status', 'queue_number',
+                'appointment_date', 'started_on', 'time_window', 'chief_complaint', 'total_amount', 'paid',
+                'ownerName', 'contactNumber', 'owner', 'pet', 'final_status_label',
+            ]));
+            if ($data['pet']) $data['pet'] = array_intersect_key($data['pet'], array_flip(['id', 'name', 'species', 'breed']));
+            $data['list_only'] = true;
+        }
+        return $data;
     }
 
-    private function appointmentRelations(): array
+    private function appointmentRelations(bool $listOnly = false): array
     {
+        $key = $listOnly ? 'list' : 'detail';
+        if (isset($this->resolvedAppointmentRelations[$key])) return $this->resolvedAppointmentRelations[$key];
+        $this->hasConfinements ??= Schema::hasTable('clinic_confinements');
         $relations = [
             'user',
             'walkin',
@@ -924,24 +944,24 @@ class AdminClinicController extends Controller
         if (Schema::hasTable('time_windows')) {
             $relations[] = 'timeWindow';
         }
-        if (Schema::hasTable('clinic_vitals')) {
+        if (! $listOnly && Schema::hasTable('clinic_vitals')) {
             $relations[] = 'vitals';
         }
-        if (Schema::hasTable('clinic_records')) {
+        if (! $listOnly && Schema::hasTable('clinic_records')) {
             $relations[] = 'record';
             if (Schema::hasTable('clinic_attachments')) {
                 $relations[] = 'record.attachments';
             }
         }
 
-        if ($this->hasClinicCharges ??= Schema::hasTable('clinic_charges')) {
+        if (! $listOnly && ($this->hasClinicCharges ??= Schema::hasTable('clinic_charges'))) {
             $relations[] = 'charges';
         }
-        if ($this->hasConfinements ??= Schema::hasTable('clinic_confinements')) {
+        if (! $listOnly && $this->hasConfinements) {
             $relations[] = 'confinement.caseService.clinicService';
         }
 
-        return $relations;
+        return $this->resolvedAppointmentRelations[$key] = $relations;
     }
 
     private function ownerAccountDeleted(ClinicAppointment $appointment): bool
