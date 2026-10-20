@@ -199,15 +199,6 @@
 
                   <button
                     type="button"
-                    @click="activeSettingsTab = 'notifications'"
-                    class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
-                    :class="activeSettingsTab === 'notifications' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
-                  >
-                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#bell"></use></svg>
-                    <span>Notifications</span>
-                  </button>
-                  <button
-                    type="button"
                     @click="selectSettingsTab('security')"
                     class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
                     :class="activeSettingsTab === 'security' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
@@ -702,77 +693,6 @@
                 <button type="button" class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]">
                   <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
                   <span>Save Capacity</span>
-                </button>
-              </div>
-            </form>
-
-            <form x-cloak x-show="activeSettingsTab === 'notifications'" class="space-y-6">
-              <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
-                These settings are managed by an administrator.
-              </div>
-              <!-- BACKEND: Replace local toggle values with saved notification preferences and persist changes here. -->
-              <div class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
-                <div class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6">
-                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#5c7690]">Notifications</p>
-                      <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">Alert Preferences</h3>
-                      <p class="mt-1 text-sm text-slate-500">Choose which alerts are active.</p>
-                    </div>
-                    <div class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e]">
-                      <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#bell-ringing"></use></svg>
-                      <span>Active Alerts</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="divide-y divide-slate-100">
-                  <div class="flex items-center justify-between gap-4 px-5 py-5 lg:px-6">
-                    <div class="min-w-0">
-                      <h4 class="text-sm font-semibold text-[#1f3850]">Pre-register Reminders</h4>
-                      <p class="mt-1 text-xs font-normal text-slate-400">Remind customers about their preferred arrival window and check-in.</p>
-                    </div>
-                    <button
-                      x-show="isAdmin"
-                      type="button"
-                      @click="appointmentReminders = !appointmentReminders"
-                      :aria-label="appointmentReminders ? 'Pre-register reminders enabled' : 'Pre-register reminders disabled'"
-                      class="flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition"
-                      :class="appointmentReminders ? 'justify-end bg-[#315b7e]' : 'justify-start bg-slate-200'"
-                    >
-                      <span class="h-6 w-6 rounded-full bg-white shadow-sm"></span>
-                    </button>
-                    <span x-show="isStaff" class="shrink-0 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700" x-text="appointmentReminders ? 'Enabled' : 'Disabled'"></span>
-                  </div>
-
-                  <div class="flex items-center justify-between gap-4 px-5 py-5 lg:px-6">
-                    <div class="min-w-0">
-                      <h4 class="text-sm font-semibold text-[#1f3850]">Payment Receipt</h4>
-                      <p class="mt-1 text-xs font-normal text-slate-400">Auto-send receipt after payment is marked.</p>
-                    </div>
-                    <button
-                      x-show="isAdmin"
-                      type="button"
-                      @click="paymentReceipt = !paymentReceipt"
-                      :aria-label="paymentReceipt ? 'Payment receipt enabled' : 'Payment receipt disabled'"
-                      class="flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition"
-                      :class="paymentReceipt ? 'justify-end bg-[#315b7e]' : 'justify-start bg-slate-200'"
-                    >
-                      <span class="h-6 w-6 rounded-full bg-white shadow-sm"></span>
-                    </button>
-                    <span x-show="isStaff" class="shrink-0 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700" x-text="paymentReceipt ? 'Enabled' : 'Disabled'"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div x-show="isAdmin" class="flex flex-col gap-3 rounded-[24px] border border-[#d7e3ef] bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-end">
-                <button type="button" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50">
-                  Cancel
-                </button>
-                <!-- BACKEND: Wire this button to save notification preferences only. -->
-                <button type="button" class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]">
-                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
-                  <span>Save Notifications</span>
                 </button>
               </div>
             </form>

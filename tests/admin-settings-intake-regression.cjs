@@ -35,9 +35,28 @@ function setup(role = 'admin') {
     failMutation: value => { mutationError = value; }, holdStatus: value => { pendingStatus = value; },
     holdMutation: value => { pendingMutation = value; } };
 }
+async function obsoleteNotificationSettingsAreAbsent() {
+  for (const role of ['admin', 'staff']) {
+    const e = setup(role);
+    e.c.window.location.search = '?tab=notifications';
+    await e.ui.init();
+    assert.equal(e.ui.activeSettingsTab, 'general', 'Removed tab links fall back to General');
+    for (const key of ['appointmentReminders', 'paymentReceipt']) {
+      assert.equal(key in e.ui, false, `${role}: obsolete preference state is absent`);
+    }
+    const requests = e.calls.length;
+    for (const tab of ['capacity', 'general']) {
+      await e.ui.selectSettingsTab(tab);
+      assert.equal(e.ui.activeSettingsTab, tab);
+    }
+    assert.equal(e.calls.length, requests, 'General and Capacity navigation adds no API requests');
+    assert.equal(e.statusCalls(), 0, 'Removed tab links never load intake status');
+    e.ui.destroy();
+  }
+}
 async function lazyStatusAndFreshEntry() {
   const e = setup(); await e.ui.init();
-  for (const tab of ['general', 'capacity', 'notifications']) await e.ui.selectSettingsTab(tab);
+  for (const tab of ['general', 'capacity']) await e.ui.selectSettingsTab(tab);
   assert.equal(e.statusCalls(), 0, 'Other Settings tabs never request intake status');
   const wait = deferred(); e.holdStatus(wait);
   const first = e.ui.selectSettingsTab('availability');
@@ -129,6 +148,6 @@ async function sidebarRefreshNeverReadsIntake() {
     }
   }
 }
-(async () => { for (const test of [lazyStatusAndFreshEntry, confirmationAndActions, staffIsReadOnly, errorsAndRetry, sidebarRefreshNeverReadsIntake]) {
+(async () => { for (const test of [obsoleteNotificationSettingsAreAbsent, lazyStatusAndFreshEntry, confirmationAndActions, staffIsReadOnly, errorsAndRetry, sidebarRefreshNeverReadsIntake]) {
   await test(); console.log(test.name + ' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

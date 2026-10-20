@@ -15,7 +15,6 @@ class StaffSettingsInterfaceTest extends TestCase
             '>General</span>',
             '>Availability</span>',
             '>Capacity</span>',
-            '>Notifications</span>',
             '>Security</span>',
             'These settings are managed by an administrator.',
             'Most settings on this page are managed by an administrator. You can manage Pet Groomers here.',
@@ -24,10 +23,29 @@ class StaffSettingsInterfaceTest extends TestCase
             'person.on_duty',
             'x-show="isStaff"',
             'x-show="isAdmin"',
-            "appointmentReminders ? 'Enabled' : 'Disabled'",
-            "paymentReceipt ? 'Enabled' : 'Disabled'",
         ] as $expected) {
             $this->assertStringContainsString($expected, $page);
+        }
+    }
+
+    public function test_obsolete_notification_settings_interface_is_absent(): void
+    {
+        $page = file_get_contents(base_path('pages/admin/settings.html'));
+
+        foreach ([
+            '>Notifications</span>',
+            "activeSettingsTab === 'notifications'",
+            "activeSettingsTab = 'notifications'",
+            'Alert Preferences',
+            'Pre-register Reminders',
+            'Payment Receipt',
+            'Active Alerts',
+            'Save Notifications',
+            'appointmentReminders',
+            'paymentReceipt',
+            'notification preferences',
+        ] as $obsolete) {
+            $this->assertStringNotContainsString($obsolete, $page);
         }
     }
 

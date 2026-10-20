@@ -19,8 +19,6 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
-    appointmentReminders: true,
-    paymentReceipt: true,
     availabilityService: "clinic",
     availability: clone(defaultAvailability),
     savedAvailability: clone(defaultAvailability),
