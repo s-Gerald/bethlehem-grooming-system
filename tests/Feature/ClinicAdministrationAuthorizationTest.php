@@ -235,6 +235,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->increments('notification_id');
             $table->string('type', 50);
             $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedBigInteger('clinic_appointment_id')->nullable();
             $table->text('message');
             $table->boolean('is_read')->default(false);
             $table->dateTime('created_at')->nullable();

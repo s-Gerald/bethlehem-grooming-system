@@ -68,6 +68,14 @@ function assertCapacityConnection(Connection $connection): void
 
 function capacityPhpunitResult(?string $report, string $events, ?int $exitCode): string
 {
+    return concurrencyPhpunitResult($report, $events, $exitCode,
+        'Tests\\Feature\\GroomingAdministrationAuthorizationTest',
+        'test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql');
+}
+
+/** Both local concurrency runners must verify the intended PHPUnit case actually executed. */
+function concurrencyPhpunitResult(?string $report, string $events, ?int $exitCode, string $class, string $method, int $minimumAssertions = 1): string
+{
     if (! $report) return 'configuration_error';
     $document = new DOMDocument;
     $previous = libxml_use_internal_errors(true);
@@ -77,8 +85,6 @@ function capacityPhpunitResult(?string $report, string $events, ?int $exitCode):
     $cases = (new DOMXPath($document))->query('//testcase');
     if ($cases->length !== 1) return 'configuration_error';
     $case = $cases->item(0);
-    $method = 'test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql';
-    $class = 'Tests\\Feature\\GroomingAdministrationAuthorizationTest';
     if ($case->getAttribute('name') !== $method || $case->getAttribute('class') !== $class) return 'configuration_error';
     if ($case->getElementsByTagName('failure')->length) return 'failed';
     if ($case->getElementsByTagName('error')->length) return 'configuration_error';
@@ -89,5 +95,5 @@ function capacityPhpunitResult(?string $report, string $events, ?int $exitCode):
         return 'configuration_error';
     }
 
-    return $exitCode === 0 && (int) $case->getAttribute('assertions') > 0 ? 'passed' : 'configuration_error';
+    return $exitCode === 0 && (int) $case->getAttribute('assertions') >= $minimumAssertions ? 'passed' : 'configuration_error';
 }

@@ -346,54 +346,179 @@ class QueuePreRegistrationModelTest extends TestCase
 
     public function test_overlapping_expiry_calls_create_one_event_per_registration_on_sqlite(): void
     {
-        if (PHP_VERSION_ID < 80400) {
-            $this->markTestSkipped('SQLite immediate transactions require PHP 8.4 in Laravel; MySQL concurrency infrastructure is outside this task.');
-        }
-        $this->grooming('waiting_to_arrive', 1);
-        $this->clinic('waiting_to_arrive');
-        $database = tempnam(sys_get_temp_dir(), 'no-show-');
-        unlink($database);
-        DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
-        $worker = <<<'PHP'
-            require 'vendor/autoload.php';
-            $app = require 'bootstrap/app.php';
-            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $argv[1],
-                'database.connections.sqlite.busy_timeout' => 5000,
-                // SQLite has no FOR UPDATE; acquire its writer lock at transaction start.
-                'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
-            Carbon\Carbon::setTestNow('2026-10-10 00:00:00');
-            touch($argv[2]);
-            $deadline = microtime(true) + 5;
-            while (!is_file($argv[3]) && microtime(true) < $deadline) usleep(1000);
-            if (!is_file($argv[3])) throw new RuntimeException('Other expiry worker never became ready');
-            echo app(App\Services\PreRegistrationExpiry::class)->expire();
-            PHP;
-        $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => 'storage/framework/testing-config-unused.php',
-            'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
-            'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
-        $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $database.'.first', $database.'.second'], base_path(), $environment);
-        $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $database.'.second', $database.'.first'], base_path(), $environment);
-        $connection = null;
+        $directory = sys_get_temp_dir().'/bethlehem-expiry-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/expiry.sqlite';
+        $token = bin2hex(random_bytes(16));
+        file_put_contents($directory.'/owner', $token);
+        $first = $second = $connection = $probe = $contender = null;
         try {
+            // Probe this Laravel/PDO combination: a config value or PHP version alone is not proof.
+            $probePath = $directory.'/probe.sqlite';
+            $probe = new \Illuminate\Database\SQLiteConnection(new \PDO('sqlite:'.$probePath), $probePath, '', ['transaction_mode' => 'IMMEDIATE']);
+            $contender = new \PDO('sqlite:'.$probePath);
+            $contender->exec('PRAGMA busy_timeout=0');
+            $probe->beginTransaction();
+            $writerLocked = false;
+            try {
+                $contender->exec('BEGIN IMMEDIATE');
+                $contender->exec('ROLLBACK');
+            } catch (\PDOException $exception) {
+                if (($exception->errorInfo[1] ?? null) !== 5) throw $exception;
+                $writerLocked = true;
+            }
+            $pdoTracksTransaction = $probe->getPdo()->inTransaction();
+            $probe->rollBack();
+            $probe->disconnect();
+            $probe = $contender = null;
+            if (! $writerLocked || ! $pdoTracksTransaction) {
+                $this->markTestSkipped('This Laravel/PDO SQLite combination does not enforce and track IMMEDIATE transactions. Run this test with a compatible portable PHP runtime.');
+            }
+
+            DB::table('users')->insert(['user_id' => 22, 'first_name' => 'Gerald', 'last_name' => 'Senining']);
+            DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'user_id' => 22]);
+            $grooming = $this->grooming('waiting_to_arrive', 1);
+            $clinic = $this->clinic('waiting_to_arrive');
+            DB::table('bookings')->where('booking_id', $grooming)->update(['user_id' => 22]);
+            DB::table('booking_pets')->where('booking_id', $grooming)->update(['pet_id' => 1]);
+            DB::table('clinic_appointments')->where('id', $clinic)->update(['user_id' => 22, 'pet_id' => 1]);
+            foreach (['cancelled', 'completed', 'checked_in', 'expired', 'archived', 'waiting_to_arrive'] as $status) {
+                $booking = $this->grooming($status, 1);
+                $appointment = $this->clinic($status);
+                if ($status === 'waiting_to_arrive') {
+                    DB::table('bookings')->where('booking_id', $booking)->update(['booking_date' => '2026-10-11']);
+                    DB::table('clinic_appointments')->where('id', $appointment)->update(['appointment_date' => '2026-10-11']);
+                }
+            }
+            $arrivedBooking = $this->grooming('waiting_to_arrive', 1);
+            $arrivedAppointment = $this->clinic('waiting_to_arrive');
+            DB::table('bookings')->where('booking_id', $arrivedBooking)->update(['dropped_off_at' => now()]);
+            DB::table('clinic_appointments')->where('id', $arrivedAppointment)->update(['checked_in_at' => now()]);
+            $beforeBookings = DB::table('bookings')->where('booking_id', '!=', $grooming)->orderBy('booking_id')->get()->toArray();
+            $beforeClinic = DB::table('clinic_appointments')->where('id', '!=', $clinic)->orderBy('id')->get()->toArray();
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                $database = $argv[1];
+                $directory = realpath(dirname($database));
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-expiry-[a-f0-9]{12}\z/', basename($directory))
+                    || basename($database) !== 'expiry.sqlite' || !is_file($database)
+                    || !hash_equals(file_get_contents($directory.'/owner'), $argv[3])) {
+                    throw new RuntimeException('Worker requires this run\'s owned disposable SQLite database.');
+                }
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                Illuminate\Support\Facades\DB::purge('sqlite');
+                $connection = Illuminate\Support\Facades\DB::connection();
+                if ($connection->getDriverName() !== 'sqlite' || $connection->getDatabaseName() !== $database) {
+                    throw new RuntimeException('Worker resolved an unexpected database.');
+                }
+                if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
+                    throw new RuntimeException('SQLite opened a file other than this run\'s disposable database.');
+                }
+                Carbon\Carbon::setTestNow('2026-10-10 00:00:00');
+                $role = $argv[2];
+                $timing = [];
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('Expiry worker barrier timed out: '.basename($file));
+                };
+                $connection->beforeStartingTransaction(function () use (&$timing, $role, $directory, $database, $wait) {
+                    if ($role !== 'second' || isset($timing['attempted_at'])) return;
+                    $wait($directory.'/first-lock');
+                    // A real second connection must observe SQLITE_BUSY while the first expiry owns the writer lock.
+                    $probe = new PDO('sqlite:'.$database);
+                    $probe->exec('PRAGMA busy_timeout=0');
+                    try {
+                        $probe->exec('BEGIN IMMEDIATE');
+                        $probe->exec('ROLLBACK');
+                        throw new RuntimeException('First expiry did not hold a SQLite writer lock.');
+                    } catch (PDOException $exception) {
+                        if (($exception->errorInfo[1] ?? null) !== 5) throw $exception;
+                        $timing['busy_observed'] = true;
+                    }
+                    $timing['attempted_at'] = microtime(true);
+                    touch($directory.'/second-attempt');
+                });
+                $app['events']->listen(Illuminate\Database\Events\TransactionBeginning::class,
+                    function () use (&$timing, $role, $directory, $connection, $wait) {
+                        if (isset($timing['acquired_at'])) return;
+                        $timing['acquired_at'] = microtime(true);
+                        if (!$connection->getPdo()->inTransaction()) throw new RuntimeException('PDO did not track the transaction.');
+                        if ($role === 'first') {
+                            touch($directory.'/first-lock');
+                            $wait($directory.'/second-attempt');
+                            usleep(200000); // Keep the first transaction open while the second expiry begins its blocking call.
+                        }
+                    });
+                $app['events']->listen(Illuminate\Database\Events\TransactionCommitting::class,
+                    function () use (&$timing) { $timing['release_started_at'] ??= microtime(true); });
+                $expired = app(App\Services\PreRegistrationExpiry::class)->expire();
+                $repeated = app(App\Services\PreRegistrationExpiry::class)->expire();
+                echo json_encode(['pid' => getmypid(), 'php' => PHP_VERSION, 'driver' => $connection->getDriverName(),
+                    'database' => $connection->getDatabaseName(),
+                    'expired' => $expired, 'repeated' => $repeated, 'timing' => $timing], JSON_THROW_ON_ERROR);
+                PHP;
+            $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
+                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
+            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $token], base_path(), $environment);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $token], base_path(), $environment);
+            $first->setTimeout(15);
+            $second->setTimeout(15);
             $first->start();
             $second->start();
             $first->wait();
             $second->wait();
             $this->assertTrue($first->isSuccessful(), $first->getErrorOutput());
             $this->assertTrue($second->isSuccessful(), $second->getErrorOutput());
-            $this->assertSame(2, (int) $first->getOutput() + (int) $second->getOutput());
-            $connection = new \PDO('sqlite:'.$database);
-            $this->assertSame(2, (int) $connection->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
-            $this->assertSame(2, (int) $connection->query("SELECT COUNT(DISTINCT type) FROM notifications WHERE type IN ('no_show', 'clinic_no_show')")->fetchColumn());
-        } finally {
-            $first->stop();
-            $second->stop();
-            $connection = null;
-            foreach ([$database, $database.'.first', $database.'.second', $database.'-journal'] as $file) {
-                if (is_file($file)) unlink($file);
+            $results = array_map(fn ($process) => json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR), [$first, $second]);
+            $this->assertNotSame($results[0]['pid'], $results[1]['pid']);
+            foreach ($results as $result) {
+                $this->assertSame($database, $result['database']);
+                $this->assertSame('sqlite', $result['driver']);
+                $this->assertSame(PHP_VERSION, $result['php']);
+                $this->assertSame(0, $result['repeated']);
             }
+            $this->assertTrue($results[1]['timing']['busy_observed']);
+            $this->assertLessThan($results[1]['timing']['attempted_at'], $results[0]['timing']['acquired_at']);
+            $this->assertLessThan($results[0]['timing']['release_started_at'], $results[1]['timing']['attempted_at']);
+            $this->assertGreaterThanOrEqual($results[0]['timing']['release_started_at'], $results[1]['timing']['acquired_at']);
+            $this->assertSame(2, array_sum(array_column($results, 'expired')));
+            $connection = new \PDO('sqlite:'.$database);
+            $events = $connection->query('SELECT * FROM notifications ORDER BY notification_id')->fetchAll(\PDO::FETCH_ASSOC);
+            $this->assertCount(2, $events);
+            $this->assertSame(['no_show', 'clinic_no_show'], array_column($events, 'type'));
+            $this->assertSame($grooming, (int) $events[0]['booking_id']);
+            $this->assertSame($clinic, (int) $events[1]['clinic_appointment_id']);
+            foreach ($events as $event) {
+                foreach (['Gerald Senining', 'Mochi', 'Oct 9', 'No check-in recorded', $event['type'] === 'no_show' ? 'Grooming' : 'Clinic'] as $term) {
+                    $this->assertStringContainsString($term, $event['message']);
+                }
+            }
+            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM customer_notifications')->fetchColumn());
+            $this->assertSame('expired', $connection->query('SELECT status FROM bookings WHERE booking_id='.$grooming)->fetchColumn());
+            $this->assertSame('expired', $connection->query('SELECT status FROM clinic_appointments WHERE id='.$clinic)->fetchColumn());
+            $this->assertEquals($beforeBookings, $connection->query('SELECT * FROM bookings WHERE booking_id != '.$grooming.' ORDER BY booking_id')->fetchAll(\PDO::FETCH_OBJ));
+            $this->assertEquals($beforeClinic, $connection->query('SELECT * FROM clinic_appointments WHERE id != '.$clinic.' ORDER BY id')->fetchAll(\PDO::FETCH_OBJ));
+        } finally {
+            $first?->stop();
+            $second?->stop();
+            if ($probe?->transactionLevel()) $probe->rollBack();
+            $probe?->disconnect();
+            $connection = $probe = $contender = null;
+            foreach (['expiry.sqlite', 'expiry.sqlite-journal', 'probe.sqlite', 'probe.sqlite-journal', 'first-lock', 'second-attempt', 'owner'] as $file) {
+                if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
+            }
+            $this->assertTrue(rmdir($directory), 'Disposable expiry database directory must be removed.');
         }
+        $this->assertFileDoesNotExist($database);
+        $this->assertDirectoryDoesNotExist($directory);
     }
 
     public function test_migration_preserves_legacy_history_and_only_normalizes_unused_no_shows(): void
