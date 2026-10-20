@@ -24,6 +24,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     use \Tests\Support\CreatesPetGroomers;
     use \Tests\Support\SubmitsSignedGrooming;
 
+    private bool $fixtureDatabaseVerified = false;
+
     private const FORBIDDEN_RESPONSE = [
         'success' => false,
         'message' => 'Forbidden. You do not have permission to access this resource.',
@@ -71,6 +73,13 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        if (DB::getDriverName() === 'mysql') {
+            require_once __DIR__.'/../Support/CapacityMysqlHarness.php';
+            \Tests\Support\assertCapacityConnection(DB::connection());
+        } elseif (DB::getDriverName() !== 'sqlite' || DB::connection()->getDatabaseName() !== ':memory:') {
+            throw new \RuntimeException('This fixture requires in-memory SQLite or the isolated MySQL capacity runner.');
+        }
+        $this->fixtureDatabaseVerified = true;
         $this->createPetGroomers();
 
         Carbon::setTestNow(Carbon::parse('2026-07-24 10:00:00'));
@@ -341,6 +350,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     protected function tearDown(): void
     {
         Carbon::setTestNow();
+        if (! $this->fixtureDatabaseVerified) { parent::tearDown(); return; }
         Schema::dropIfExists('pos_transaction_items');
         Schema::dropIfExists('pos_transactions');
 
@@ -3301,18 +3311,20 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->markTestSkipped('Run tests/grooming-capacity-concurrency.php with its isolated MySQL database.');
         }
         $payload = array_replace($this->groomingConsentFixture(), $this->prepareReservationDay());
-        $signal = tempnam(sys_get_temp_dir(), 'grooming-lock-');
-        unlink($signal);
+        $directory = \Tests\Support\capacityRunDirectory();
+        $signal = $directory.'/first-lock.json';
         $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
             'APP_ENV' => 'testing', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'MAIL_MAILER' => 'array'];
         $worker = base_path('tests/grooming-capacity-submit.php');
-        $first = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '101', json_encode($payload), $signal], base_path(), $environment);
-        $second = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '102', json_encode($payload)], base_path(), $environment);
+        $first = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '101', json_encode($payload), 'first'], base_path(), $environment);
+        $second = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '102', json_encode($payload), 'second'], base_path(), $environment);
+        $first->setTimeout(25);
+        $second->setTimeout(25);
         try {
             $first->start();
             $deadline = microtime(true) + 10;
             while (! file_exists($signal) && $first->isRunning() && microtime(true) < $deadline) usleep(10000);
-            $this->assertFileExists($signal, $first->getOutput().$first->getErrorOutput());
+            $this->assertFileExists($signal, 'First worker never acquired its lock: '.$first->getOutput().$first->getErrorOutput());
             $second->start();
             $first->wait();
             $second->wait();
@@ -3320,7 +3332,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->assertSame(0, $second->getExitCode(), $second->getErrorOutput());
             $a = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
             $b = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            foreach ([$a, $b] as $result) {
+                $this->assertSame('mysql', $result['driver']);
+                $this->assertSame(DB::connection()->getDatabaseName(), $result['database']);
+            }
             $this->assertLessThan($a['finished_at'], $b['started_at'], 'Both submissions must overlap.');
+            $this->assertArrayHasKey('contention_observed_at', $a['lock'], 'MySQL must observe the competing GET_LOCK query while the first worker holds the lock.');
+            $this->assertLessThanOrEqual($a['lock']['contention_observed_at'], $b['lock']['attempted_at']);
+            $this->assertGreaterThanOrEqual($a['lock']['contention_observed_at'], $b['lock']['acquired_at']);
+            $this->assertGreaterThanOrEqual($a['lock']['release_started_at'], $b['lock']['acquired_at']);
             $this->assertSame(201, $a['status']);
             $this->assertSame(422, $b['status']);
             $this->assertSame(\App\Services\GroomingWorkloadCapacity::WINDOW_UNAVAILABLE, $b['body']['message']);
@@ -3328,12 +3348,26 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->assertFalse($b['body']['windows'][0]['is_workload_unavailable']);
             $this->assertDatabaseCount('bookings', 1);
             $this->assertDatabaseCount('pets', 1);
+            $this->assertDatabaseCount('booking_pets', 1);
             $this->assertDatabaseCount('notifications', 1);
+            $bookingId = DB::table('bookings')->value('booking_id');
+            $this->assertDatabaseHas('booking_pets', ['booking_id' => $bookingId, 'pet_id' => DB::table('pets')->value('pet_id')]);
+            $this->assertDatabaseHas('notifications', ['booking_id' => $bookingId, 'type' => 'booked']);
+            $this->assertSame(0, DB::table('bookings')->whereNotNull('queue_number')->count());
             $this->assertSame(0, DB::table('booking_pets')->whereNotNull('pet_queue_number')->count());
+            $this->assertCount(1, app(\App\Services\GroomingWorkloadCapacity::class)->reservedJobs($payload['booking_date']));
+            $this->assertSame(0, app(\App\Services\OperationalCapacity::class)->snapshot()['used']);
+            file_put_contents($directory.'/verification.json', json_encode([
+                'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
+                'statuses' => [$a['status'], $b['status']], 'overlap_observed' => true,
+                'bookings' => 1, 'pets' => 1, 'booking_pets' => 1, 'notifications' => 1,
+                'premature_queue_numbers' => 0, 'reserved_jobs' => 1,
+            ], JSON_THROW_ON_ERROR));
         } finally {
-            $first->stop();
-            $second->stop();
+            $first->stop(1);
+            $second->stop(1);
             if (file_exists($signal)) unlink($signal);
+            if (file_exists($directory.'/second-attempt.json')) unlink($directory.'/second-attempt.json');
         }
     }
 
