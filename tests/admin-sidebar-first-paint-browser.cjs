@@ -143,7 +143,7 @@ async function cachedRefresh(browser, profile) {
       f.state.sessionHold = deferred();
       if (hard) {
         await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
-        const loaded = f.page.waitForEvent('domcontentloaded');
+        const loaded = f.page.waitForEvent('domcontentloaded', { timeout: 30000 });
         await cdp.send('Page.reload', { ignoreCache: true });
         await loaded;
       } else await f.page.reload({ waitUntil: 'domcontentloaded' });
@@ -320,7 +320,7 @@ async function inventoryNavigation(browser) {
       assert.deepEqual(await f.page.locator('[data-inventory-section]').evaluateAll(els => els.map(el => el.dataset.inventorySection)), [section]);
       for (const hard of [false, true]) {
         if (hard) {
-          const reloaded = f.page.waitForEvent('domcontentloaded');
+          const reloaded = f.page.waitForEvent('domcontentloaded', { timeout: 30000 });
           await cdp.send('Page.reload', { ignoreCache: true }); await reloaded;
         } else await f.page.reload({ waitUntil: 'domcontentloaded' });
         await ready(f.page); await loaded(section); await inventoryHighlight(f.page, section);
@@ -387,15 +387,65 @@ async function cachedBeforeAlpine(browser) {
     console.log('cached identity and permissions render before Alpine, including nested Inventory');
   } finally { await f.context.close(); }
 }
+async function servicesMobileBackdrop(browser) {
+  for (const profile of ['admin', 'vet']) {
+    const f = await fixture(browser, profile);
+    try {
+      // Test the real header/sidebar without initializing unrelated Services editors.
+      // The normal fixture ignores main entirely; allow its header to inherit the sidebar scope.
+      await f.context.addInitScript(() => document.addEventListener('alpine:init', () => {
+        const main = document.querySelector('main.services-page');
+        if (!main) return;
+        main.removeAttribute('x-ignore');
+        main.setAttribute('x-ignore.self', '');
+        for (const child of main.children) if (child.tagName !== 'HEADER') child.setAttribute('x-ignore', '');
+      }));
+      await f.page.setViewportSize({ width: 375, height: 844 });
+      await visit(f.page, 'services.html#grooming'); await ready(f.page);
+      const header = f.page.locator('main > header').first();
+      const menu = header.getByRole('button', { name: 'Open navigation', exact: true });
+      const backdrop = f.page.locator('[data-admin-shell] > div[x-show="sidebarOpen"]');
+      for (const width of [375, 768, 961]) {
+        await f.page.setViewportSize({ width, height: 884 });
+        await menu.click();
+        await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().left >= 0);
+        assert.equal(await backdrop.evaluate(el => document.elementFromPoint(innerWidth - 30, 20) === el), true, `${profile} ${width}px: backdrop covers the mobile header`);
+        assert.equal(await backdrop.evaluate(el => document.elementFromPoint(innerWidth - 30, 180) === el), true, 'Header and content share the same backdrop');
+        assert.equal(await backdrop.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(15, 23, 42, 0.4)');
+        assert.equal(await f.page.locator('aside').evaluate(el => el.contains(document.elementFromPoint(140, 20))), true, 'Drawer stays above the dimming layer');
+        if (process.env.LOCAL_REVIEW_SCREENSHOTS && profile === 'admin' && width === 961) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/services-sidebar-overlay.png` });
+        await f.page.mouse.click(width - 30, 20);
+        await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().right <= 1);
+        assert.equal(await backdrop.isVisible(), false, 'Clicking the dimmed header closes the drawer');
+        assert.equal(await menu.evaluate(el => {
+          const r = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        }), true, 'Menu is interactive again after closing');
+      }
+      await f.page.reload({ waitUntil: 'domcontentloaded' }); await ready(f.page);
+      await menu.click();
+      await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().left >= 0);
+      assert.equal(await backdrop.evaluate(el => document.elementFromPoint(innerWidth - 30, 20) === el), true, 'Reload preserves header dimming');
+      assert.equal(f.state.requests.filter(p => p === '/api/me').length, 1, 'Reload reuses cached identity');
+      await f.page.mouse.click(931, 20);
+      await f.page.setViewportSize({ width: 1440, height: 1000 });
+      assert.equal(await header.isVisible(), false);
+      assert.equal(await f.page.locator('aside').evaluate(el => el.getBoundingClientRect().left), 0);
+      console.log(`${profile}: Services mobile header/content dimming, backdrop dismissal, cached reload and desktop sidebar passed`);
+    } finally { await f.context.close(); }
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
-    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'invalid', 'pre-alpine', 'inventory'];
+    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'invalid', 'pre-alpine', 'inventory', 'services'];
     if (cases.includes('cold')) await coldPaint(browser);
     if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
     if (cases.includes('security')) await securityTransitions(browser);
     if (cases.includes('invalid')) await invalidCaches(browser);
     if (cases.includes('pre-alpine')) await cachedBeforeAlpine(browser);
     if (cases.includes('inventory')) await inventoryNavigation(browser);
+    if (cases.includes('services')) await servicesMobileBackdrop(browser);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

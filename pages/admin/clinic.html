@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Clinic Cases | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?v=clinic-merge-20261007&clinic-products=20261010&treatments=20261012&medical-record=20261012&clinic-services=20261014-provided&case-flow=20261014-payment-filters&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261014-case-details-v3&clinic-payment=20261015-v2" />
+    <link rel="stylesheet" href="../../css/output.css?v=clinic-merge-20261007&clinic-products=20261010&treatments=20261012&medical-record=20261012&clinic-services=20261014-provided&case-flow=20261014-payment-filters&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261014-case-details-v3&clinic-payment=20261015-v2&clinic-navigation=20261020" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/print-information.css?v=clinic-invoice-20261015" />
@@ -126,9 +126,16 @@
       <!-- Main -->
       <div class="flex min-w-0 flex-1 flex-col lg:ml-[280px]" x-data="adminClinicShell()">
 
-        <!-- Mobile menu bar -->
-        <header class="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-4 lg:hidden">
-          <button type="button" aria-label="Open navigation" class="rounded-xl p-2 text-slate-600 hover:bg-slate-100" @click="$dispatch('toggle-sidebar')">
+        <!-- Mobile Header -->
+        <header data-session-surface
+          class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden">
+          <div data-session-public>
+            <p class="h-5 text-sm font-semibold text-[#5c7690]" data-session-public><span data-admin-title-admin>Admin Panel</span><span data-admin-title-staff>Staff Panel</span></p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Clinic Cases</h2>
+          </div>
+          <button type="button" aria-label="Open navigation"
+            class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"
+            @click="sidebarOpen = true">
             <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button>
         </header>
@@ -144,8 +151,8 @@
           </template>
         <main class="min-w-0 flex-1 px-4 pb-6 lg:px-6">
 
-          <!-- Page Banner -->
-          <header class="sticky top-14 z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6" data-session-surface>
+          <!-- Page Banner: mobile offset includes the two-line header and its border. -->
+          <header class="sticky top-[calc(5rem+1px)] z-30 -mx-4 bg-[#f5f8fb]/95 px-4 py-3 backdrop-blur lg:top-0 lg:-mx-6 lg:px-6" data-session-surface>
             <div class="flex items-center justify-between gap-3 rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
               <div class="min-w-0">
                 <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Clinic Cases</h2>

@@ -907,6 +907,10 @@ video {
   top: 1.25rem;
 }
 
+.top-\[calc\(5rem\+1px\)\] {
+  top: calc(5rem + 1px);
+}
+
 .top-full {
   top: 100%;
 }
