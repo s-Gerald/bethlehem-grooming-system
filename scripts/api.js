@@ -275,6 +275,16 @@ var API = (() => {
         throw new Error("Admin data changed while loading. Please retry.");
       }
       if (policy.retain) {
+        // Scheduled events have no browser mutation to invalidate cached pages.
+        if (policy.group === 'notifications' && notificationSequence >= notificationCountSequence
+          && Number.isFinite(data.unread_count)) {
+          const previousCount = adminCache.get('/admin/notifications?mode=count')?.data?.unread_count;
+          if (previousCount !== undefined && previousCount !== data.unread_count) {
+            for (const key of adminCache.keys()) {
+              if (adminCachePolicy(key)?.group === 'notifications') adminCache.delete(key);
+            }
+          }
+        }
         if (endpoint !== '/admin/notifications?mode=count' || notificationSequence >= notificationCountSequence) {
           adminCache.delete(endpoint); adminCache.set(endpoint, { at: Date.now(), data });
         }

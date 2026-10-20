@@ -3300,6 +3300,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('notifications.0.display_message', 'Your grooming pre-registration for Oct 16 was cancelled because the scheduled date passed without check-in.');
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseCount('customer_notifications', 1);
+        $this->assertSame(1, DB::table('notifications')->where('type', 'no_show')->where('booking_id', $id)->count());
         $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'expired', 'queue_number' => null]);
         $this->assertSame([], app(\App\Services\GroomingWorkloadCapacity::class)->reservedJobs('2026-10-16'));
         $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('allowed', true);

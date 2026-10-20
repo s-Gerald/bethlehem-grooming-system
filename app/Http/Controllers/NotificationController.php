@@ -83,7 +83,8 @@ class NotificationController extends Controller
         return response()->json([
             'success' => true,
             'unread_count' => $this->unreadCount(),
-            'activity_options' => collect(Notification::activities())->map(
+            'activity_options' => collect(Notification::activities())
+                ->filter(fn (array $definition) => $definition['selectable'] ?? true)->map(
                 fn (array $definition, string $value) => ['value' => $value, 'label' => $definition['label']],
             )->values(),
             'notifications' => collect($paginator->items())
@@ -190,7 +191,7 @@ class NotificationController extends Controller
                 $booking,
                 $storedMessage,
             ),
-            'no_show' => $this->legacyExpiredContent($booking),
+            Notification::TYPE_NO_SHOW, Notification::TYPE_CLINIC_NO_SHOW => $this->noShowContent($notification, $storedMessage),
             Notification::TYPE_CLINIC_BOOKED => $this->clinicBookedContent(
                 $clinicAppointment,
                 false,
@@ -325,20 +326,19 @@ class NotificationController extends Controller
         );
     }
 
-    private function legacyExpiredContent(?Booking $booking): array
+    private function noShowContent(Notification $notification, string $storedMessage): array
     {
-        $reference = $booking?->booking_reference;
-        $owner = $this->bookingOwnerName($booking);
-        $message = $reference
-            ? "Pre-registration {$reference}"
-                .($owner ? " for {$owner}" : '').' was not used on its selected date.'
-            : 'This historical pre-registration was not used on its selected date.';
+        $service = $notification->type === Notification::TYPE_CLINIC_NO_SHOW ? 'clinic' : 'grooming';
+        $registration = $service === 'clinic' ? $notification->clinicAppointment : $notification->booking;
+        $message = str_starts_with($storedMessage, 'No show — ') || ! $registration
+            ? ($storedMessage ?: Notification::noShowMessage(null, $service))
+            : Notification::noShowMessage($registration, $service);
 
         return $this->content(
-            'Pre-registration expired',
+            'No show — '.ucfirst($service),
             $message,
             null,
-            [$reference, $owner],
+            [$service === 'clinic' ? $this->clinicOwnerName($registration) : $this->bookingOwnerName($registration)],
         );
     }
 
@@ -504,7 +504,7 @@ class NotificationController extends Controller
             'payment_due' => 'circle-check',
             'payment_confirmed', Notification::TYPE_CLINIC_PAYMENT_CONFIRMED => 'credit-card',
             'cancelled', Notification::TYPE_CLINIC_CANCELLED => 'circle-x',
-            'no_show' => 'history',
+            Notification::TYPE_NO_SHOW, Notification::TYPE_CLINIC_NO_SHOW => 'history',
             Notification::TYPE_CLINIC_BOOKED,
             Notification::TYPE_CLINIC_WALK_IN => 'stethoscope',
             Notification::TYPE_CLINIC_PAYMENT_DUE => 'circle-check',

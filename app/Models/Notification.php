@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 
@@ -24,6 +25,10 @@ class Notification extends Model
     public const TYPE_CLINIC_PAYMENT_CONFIRMED = 'clinic_payment_confirmed';
 
     public const TYPE_CLINIC_CANCELLED = 'clinic_cancelled';
+
+    public const TYPE_NO_SHOW = 'no_show';
+
+    public const TYPE_CLINIC_NO_SHOW = 'clinic_no_show';
 
     protected $table = 'notifications';
 
@@ -59,7 +64,7 @@ class Notification extends Model
             self::CATEGORY_GROOMING => [
                 'booked',
                 'rescheduled',
-                'no_show',
+                self::TYPE_NO_SHOW,
                 'booking_confirmed',
                 'status_update',
                 'queue_update',
@@ -68,6 +73,7 @@ class Notification extends Model
             self::CATEGORY_CLINIC => [
                 self::TYPE_CLINIC_BOOKED,
                 self::TYPE_CLINIC_WALK_IN,
+                self::TYPE_CLINIC_NO_SHOW,
             ],
             self::CATEGORY_PAYMENTS => [
                 'payment_due',
@@ -108,12 +114,12 @@ class Notification extends Model
     {
         return [
             'pre_registrations' => ['label' => 'Pre-registrations', 'types' => ['booked', self::TYPE_CLINIC_BOOKED]],
-            'walk_ins' => ['label' => 'Walk-ins', 'types' => ['walk_in_registered', self::TYPE_CLINIC_WALK_IN]],
+            'walk_ins' => ['label' => 'Walk-ins', 'types' => ['walk_in_registered', self::TYPE_CLINIC_WALK_IN], 'selectable' => false],
             'schedule_changes' => ['label' => 'Schedule changes', 'types' => ['rescheduled']],
-            'status_updates' => ['label' => 'Queue / status updates', 'types' => ['booking_confirmed', 'status_update', 'queue_update']],
+            'status_updates' => ['label' => 'Queue / status updates', 'types' => ['booking_confirmed', 'status_update', 'queue_update'], 'selectable' => false],
             'payments' => ['label' => 'Payments', 'types' => self::categoryTypes()[self::CATEGORY_PAYMENTS]],
             'cancellations' => ['label' => 'Cancellations', 'types' => self::categoryTypes()[self::CATEGORY_CANCELLATIONS]],
-            'expired' => ['label' => 'Expired pre-registrations', 'types' => ['no_show']],
+            'expired' => ['label' => 'No show', 'types' => [self::TYPE_NO_SHOW, self::TYPE_CLINIC_NO_SHOW]],
         ];
     }
 
@@ -124,6 +130,23 @@ class Notification extends Model
         }
 
         return null;
+    }
+
+    /** Relations are loaded in batches by expiry and the notification controller. */
+    public static function noShowMessage(Booking|ClinicAppointment|null $registration, string $service): string
+    {
+        $owner = $registration?->user
+            ? trim($registration->user->first_name.' '.$registration->user->last_name)
+            : trim(($registration?->walkin?->fname ?? '').' '.($registration?->walkin?->lname ?? ''));
+        $pets = $registration instanceof Booking
+            ? $registration->bookingPets->pluck('pet.pet_name')->filter()->unique()->values()
+            : collect([$registration?->pet?->pet_name])->filter()->values();
+        $identity = implode(' · ', array_filter([$owner, $pets->take(3)->implode(', ').($pets->count() > 3 ? ' +'.($pets->count() - 3) : '')]));
+        $selectedDate = $registration instanceof Booking ? $registration->booking_date : $registration?->appointment_date;
+        $day = $selectedDate ? Carbon::parse($selectedDate) : null;
+        $date = $day ? ' for '.$day->format($day->year === now()->year ? 'M j' : 'M j, Y') : '';
+
+        return 'No show — '.ucfirst($service).($identity !== '' ? ': '.$identity : '').'. Pre-registration'.$date.' · No check-in recorded';
     }
 
     public static function createForClinic(

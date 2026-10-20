@@ -89,6 +89,15 @@ class QueuePreRegistrationModelTest extends TestCase
             $table->boolean('is_read')->default(false);
             $table->dateTime('created_at')->nullable();
         });
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->increments('notification_id');
+            $table->string('type', 50);
+            $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedBigInteger('clinic_appointment_id')->nullable();
+            $table->text('message');
+            $table->boolean('is_read')->default(false);
+            $table->dateTime('created_at')->nullable();
+        });
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
             $table->string('first_name')->nullable();
@@ -115,7 +124,7 @@ class QueuePreRegistrationModelTest extends TestCase
     protected function tearDown(): void
     {
         Carbon::setTestNow();
-        foreach (['customer_notifications', 'clinic_appointments', 'booking_pets', 'bookings', 'pets', 'users', 'time_windows', 'clinic_closures', 'clinic_settings'] as $table) {
+        foreach (['notifications', 'customer_notifications', 'clinic_appointments', 'booking_pets', 'bookings', 'pets', 'users', 'time_windows', 'clinic_closures', 'clinic_settings'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::dropIfExists('pet_groomers');
@@ -258,18 +267,133 @@ class QueuePreRegistrationModelTest extends TestCase
 
     public function test_expiry_ignores_preferred_time_and_releases_ongoing_access_after_midnight(): void
     {
+        DB::table('users')->insert(['user_id' => 22, 'first_name' => 'Gerald', 'last_name' => 'Senining']);
+        DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'user_id' => 22]);
         $grooming = $this->grooming('waiting_to_arrive', 1);
         $clinic = $this->clinic('waiting_to_arrive');
         DB::table('bookings')->where('booking_id', $grooming)->update(['user_id' => 22]);
-        DB::table('clinic_appointments')->where('id', $clinic)->update(['user_id' => 22]);
+        DB::table('booking_pets')->where('booking_id', $grooming)->update(['pet_id' => 1]);
+        DB::table('clinic_appointments')->where('id', $clinic)->update(['user_id' => 22, 'pet_id' => 1]);
         Carbon::setTestNow('2026-10-09 23:59:59');
         $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseCount('notifications', 0);
         $this->assertFalse(app(CustomerPreRegistrationAccessService::class)->forUser(22)['allowed']);
         Carbon::setTestNow('2026-10-10 00:00:00');
         $this->assertTrue(app(CustomerPreRegistrationAccessService::class)->forUser(22)['allowed']);
         $this->assertDatabaseHas('bookings', ['booking_id' => $grooming, 'status' => 'expired']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'expired']);
+        $this->assertDatabaseHas('notifications', ['type' => 'no_show', 'booking_id' => $grooming, 'is_read' => false]);
+        $this->assertDatabaseHas('notifications', ['type' => 'clinic_no_show', 'clinic_appointment_id' => $clinic, 'is_read' => false]);
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseCount('customer_notifications', 1);
+        foreach (DB::table('notifications')->get() as $notification) {
+            foreach (['Gerald Senining', 'Mochi', 'Oct 9', 'No check-in recorded', $notification->type === 'no_show' ? 'Grooming' : 'Clinic'] as $term) {
+                $this->assertStringContainsString($term, $notification->message);
+            }
+        }
         $this->assertSame(0, app(OperationalCapacity::class)->snapshot()['used']);
+    }
+
+    public function test_expiry_only_notifies_eligible_records_on_their_latest_date(): void
+    {
+        foreach (['checked_in', 'cancelled', 'completed', 'archived', 'expired', 'no_show', 'in_progress', 'for_payment'] as $status) {
+            $this->grooming($status, 1);
+            $this->clinic($status);
+        }
+        $arrived = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $arrived)->update(['dropped_off_at' => now()]);
+        $clinicArrived = $this->clinic('waiting_to_arrive');
+        DB::table('clinic_appointments')->where('id', $clinicArrived)->update(['checked_in_at' => now()]);
+        $rescheduled = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $rescheduled)->update(['booking_date' => '2026-10-11', 'user_id' => 22]);
+        $clinicRescheduled = $this->clinic('waiting_to_arrive');
+        DB::table('clinic_appointments')->where('id', $clinicRescheduled)->update(['appointment_date' => '2026-10-11', 'user_id' => 22]);
+        Carbon::setTestNow('2026-10-10 00:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseCount('notifications', 0);
+        Carbon::setTestNow('2026-10-12 00:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire(23));
+        $this->assertSame(2, app(PreRegistrationExpiry::class)->expire(22));
+        $this->assertDatabaseCount('notifications', 2);
+        foreach (DB::table('notifications')->pluck('message') as $message) {
+            $this->assertStringContainsString('Oct 11', $message);
+        }
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+    }
+
+    public function test_notification_failure_rolls_back_expiry_for_both_services(): void
+    {
+        foreach (['grooming', 'clinic'] as $service) {
+            $id = $service === 'grooming' ? $this->grooming('waiting_to_arrive', 1) : $this->clinic('waiting_to_arrive');
+            $table = $service === 'grooming' ? 'bookings' : 'clinic_appointments';
+            $key = $service === 'grooming' ? 'booking_id' : 'id';
+            Carbon::setTestNow(now()->addDay());
+            DB::unprepared("CREATE TRIGGER reject_no_show BEFORE INSERT ON notifications BEGIN SELECT RAISE(ABORT, 'notification failure'); END");
+            try {
+                app(PreRegistrationExpiry::class)->expire();
+                $this->fail('Notification insert failure must roll back expiry.');
+            } catch (\Illuminate\Database\QueryException $exception) {
+                $this->assertStringContainsString('notification failure', $exception->getMessage());
+            } finally {
+                DB::unprepared('DROP TRIGGER reject_no_show');
+            }
+            $this->assertDatabaseHas($table, [$key => $id, 'status' => 'waiting_to_arrive']);
+            $this->assertDatabaseCount('notifications', 0);
+            DB::table($table)->where($key, $id)->update(['status' => 'cancelled']);
+        }
+    }
+
+    public function test_overlapping_expiry_calls_create_one_event_per_registration_on_sqlite(): void
+    {
+        if (PHP_VERSION_ID < 80400) {
+            $this->markTestSkipped('SQLite immediate transactions require PHP 8.4 in Laravel; MySQL concurrency infrastructure is outside this task.');
+        }
+        $this->grooming('waiting_to_arrive', 1);
+        $this->clinic('waiting_to_arrive');
+        $database = tempnam(sys_get_temp_dir(), 'no-show-');
+        unlink($database);
+        DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+        $worker = <<<'PHP'
+            require 'vendor/autoload.php';
+            $app = require 'bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $argv[1],
+                'database.connections.sqlite.busy_timeout' => 5000,
+                // SQLite has no FOR UPDATE; acquire its writer lock at transaction start.
+                'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+            Carbon\Carbon::setTestNow('2026-10-10 00:00:00');
+            touch($argv[2]);
+            $deadline = microtime(true) + 5;
+            while (!is_file($argv[3]) && microtime(true) < $deadline) usleep(1000);
+            if (!is_file($argv[3])) throw new RuntimeException('Other expiry worker never became ready');
+            echo app(App\Services\PreRegistrationExpiry::class)->expire();
+            PHP;
+        $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => 'storage/framework/testing-config-unused.php',
+            'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+            'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
+        $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $database.'.first', $database.'.second'], base_path(), $environment);
+        $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $database.'.second', $database.'.first'], base_path(), $environment);
+        $connection = null;
+        try {
+            $first->start();
+            $second->start();
+            $first->wait();
+            $second->wait();
+            $this->assertTrue($first->isSuccessful(), $first->getErrorOutput());
+            $this->assertTrue($second->isSuccessful(), $second->getErrorOutput());
+            $this->assertSame(2, (int) $first->getOutput() + (int) $second->getOutput());
+            $connection = new \PDO('sqlite:'.$database);
+            $this->assertSame(2, (int) $connection->query('SELECT COUNT(*) FROM notifications')->fetchColumn());
+            $this->assertSame(2, (int) $connection->query("SELECT COUNT(DISTINCT type) FROM notifications WHERE type IN ('no_show', 'clinic_no_show')")->fetchColumn());
+        } finally {
+            $first->stop();
+            $second->stop();
+            $connection = null;
+            foreach ([$database, $database.'.first', $database.'.second', $database.'-journal'] as $file) {
+                if (is_file($file)) unlink($file);
+            }
+        }
     }
 
     public function test_migration_preserves_legacy_history_and_only_normalizes_unused_no_shows(): void

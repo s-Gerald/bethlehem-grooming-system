@@ -118,8 +118,33 @@ async function visiblePreviewFollowsCountChanges() {
   ui.open = false; await ui.onNotificationChange({kind: 'count', unreadCount: 3});
   assert.equal(e.calls.length, count, 'Unchanged counts and closed bells never reload records');
 }
+async function serverNoShowRefreshesVisibleHistory() {
+  const e = environment(), ui = controller(e);
+  ui.loaded = true; ui.unreadCount = 0;
+  e.respond(() => ({unread_count: 1, notifications: [{notification_id: 43, type: 'clinic_no_show', activity: 'expired'}]}));
+  await ui.onNotificationChange({kind: 'count', unreadCount: 1});
+  assert.equal(ui.notifications[0]?.type, 'clinic_no_show', 'A server-generated event refreshes visible full history');
+  const count = e.calls.length;
+  await ui.onNotificationChange({kind: 'count', unreadCount: 1});
+  assert.equal(e.calls.length, count, 'An unchanged count does not fetch history again');
+}
+async function changedServerCountInvalidatesCachedHistory() {
+  const e = environment();
+  const filters = {mode: 'full', service: 'clinic', activity: 'expired'};
+  e.respond(() => ({unread_count: 0, notifications: []}));
+  await e.API.getNotifications(filters);
+  e.advance(31000);
+  // A history view can be fetched shortly before the next count poll.
+  await e.API.getNotifications(filters);
+  e.respond(() => ({unread_count: 1, notifications: [{notification_id: 44, type: 'clinic_no_show'}]}));
+  await e.API.getNotifications({mode: 'count'});
+  // Force the count request through the existing request API, without waiting for history to age.
+  await e.API.adminRequest('GET', '/admin/notifications?mode=count', null, {force: true});
+  const data = await e.API.getNotifications(filters);
+  assert.equal(data.notifications[0]?.type, 'clinic_no_show', 'An authoritative changed count invalidates cached record pages');
+}
 (async () => {
-  for (const test of [filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges]) {
+  for (const test of [filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges, serverNoShowRefreshesVisibleHistory, changedServerCountInvalidatesCachedHistory]) {
     await test(); console.log(`${test.name} passed`);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

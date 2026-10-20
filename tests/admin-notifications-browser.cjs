@@ -4,8 +4,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const origin = 'http://127.0.0.1:8000';
 const evidence = process.env.LOCAL_REVIEW_SCREENSHOTS;
 const activities = [
-  ['pre_registrations', 'Pre-registrations'], ['walk_ins', 'Walk-ins'], ['schedule_changes', 'Schedule changes'],
-  ['status_updates', 'Queue / status updates'], ['payments', 'Payments'], ['cancellations', 'Cancellations'], ['expired', 'Expired pre-registrations'],
+  ['pre_registrations', 'Pre-registrations'], ['schedule_changes', 'Schedule changes'],
+  ['payments', 'Payments'], ['cancellations', 'Cancellations'], ['expired', 'No show'],
 ].map(([value, label]) => ({value, label}));
 const types = ['booked', 'payment_due', 'cancelled', 'clinic_booked', 'clinic_payment_due', 'clinic_cancelled'];
 const records = () => Array.from({length: 24}, (_, i) => {
@@ -95,10 +95,12 @@ async function bellsAndNavigation(browser) {
       await preview(f.page).locator('.admin-notification-row').first().waitFor();
       assert.equal(await preview(f.page).locator('.admin-notification-row').count(), 10);
       await contained(preview(f.page), f.page);
+      assert.equal(await preview(f.page).evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Pointer opening never outlines the popup');
       const previewCount = notificationRequests(f.state).filter(r => r.query.includes('mode=dropdown')).length;
       await f.page.keyboard.press('Tab');
       assert.equal(await preview(f.page).evaluate(el => el.contains(document.activeElement)), true, 'Tab enters the dropdown controls');
-      await f.page.keyboard.press('Escape'); assert.equal(await preview(f.page).isVisible(), false);
+      assert.equal(await f.page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle), 'solid', 'Keyboard focus remains visible on popup controls');
+      await f.page.keyboard.press('Escape'); await preview(f.page).waitFor({state: 'hidden'});
       assert.equal(await bell.evaluate(el => document.activeElement === el), true, 'Escape returns focus to the bell');
       await bell.click(); await preview(f.page).locator('.admin-notification-row').first().waitFor();
       assert.equal(notificationRequests(f.state).filter(r => r.query.includes('mode=dropdown')).length, previewCount, 'Reopening reuses a fresh preview');
@@ -142,6 +144,13 @@ async function filtersAndMutations(browser) {
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 20);
     const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
     const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
+    assert.deepEqual(await activity.locator('option').allTextContents(), ['All Activities', 'Pre-registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show']);
+    for (const control of [service, activity]) {
+      await control.click(); await f.page.keyboard.press('Escape');
+      assert.equal(await control.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Pointer focus has no filter outline');
+    }
+    await service.press('Tab');
+    assert.equal(await activity.evaluate(el => document.activeElement === el && getComputedStyle(el).outlineStyle === 'solid'), true, 'Tab focus remains visible on native filters');
     for (const selected of ['clinic', 'grooming']) {
       await service.selectOption(selected); await activity.selectOption('payments');
       await f.page.waitForFunction(service => [...document.querySelectorAll('main .admin-notification-row')].length === 4 && [...document.querySelectorAll('main .admin-notification-row')].every(el => el.textContent.includes(service + ' payments')), selected);
@@ -253,10 +262,42 @@ async function crossTabAndHiddenPolling(browser) {
     console.log('Cross-tab read/count synchronization and hidden-tab request pause passed');
   } finally {await f.context.close();}
 }
+async function noShowFiltersAndServerRefresh(browser) {
+  const f = await fixture(browser);
+  const noShow = (id, service, is_read = false) => ({notification_id: id, type: service === 'clinic' ? 'clinic_no_show' : 'no_show',
+    service, activity: 'expired', icon: 'history', title: `No show — ${service}`,
+    message_parts: [{text: `No show — ${service}: Local Review · Mochi`, emphasized: false}],
+    context_parts: [{text: 'Pre-registration for Oct 20 · No check-in recorded', emphasized: false}], is_read, created_at: new Date().toISOString()});
+  try {
+    await f.page.clock.install();
+    f.state.rows = [noShow(100, 'grooming'), noShow(101, 'clinic', true)];
+    await visit(f.page, 'notifications.html'); await ready(f.page);
+    const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
+    const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
+    await activity.selectOption('expired');
+    await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 2);
+    for (const selected of ['grooming', 'clinic']) {
+      await service.selectOption(selected);
+      await f.page.waitForFunction(service => document.querySelectorAll('main .admin-notification-row').length === 1
+        && document.querySelector('main .admin-notification-row').textContent.includes(`No show — ${service}`), selected);
+    }
+    await service.selectOption('all');
+    await f.page.getByRole('button', {name: /^Unread/}).click();
+    await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 1);
+    f.state.rows.unshift(noShow(102, 'clinic'));
+    await f.page.clock.fastForward(31000);
+    await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 2);
+    const before = notificationRequests(f.state).length;
+    await f.page.clock.fastForward(31000);
+    assert.equal(notificationRequests(f.state).slice(before).some(r => r.query.includes('mode=full')), false, 'Unchanged count does not refetch full history');
+    assert.deepEqual(f.state.errors, []);
+    console.log('No show service/unread filters and server-generated event visibility passed');
+  } finally {await f.context.close();}
+}
 (async () => {
   const browser = await chromium.launch({headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {})});
   try {
-    for (const test of [bellsAndNavigation, filtersAndMutations, permissionsAndLifecycle, preAlpineOrigins, crossTabAndHiddenPolling]) {
+    for (const test of [bellsAndNavigation, filtersAndMutations, permissionsAndLifecycle, preAlpineOrigins, crossTabAndHiddenPolling, noShowFiltersAndServerRefresh]) {
       if (!process.env.LOCAL_REVIEW_CASES || process.env.LOCAL_REVIEW_CASES.split(',').includes(test.name)) await test(browser);
     }
   } finally {await browser.close();}

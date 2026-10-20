@@ -356,6 +356,39 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertStringContainsString('count(*)', $queries[0]['query']);
     }
 
+    public function test_no_show_filters_include_both_services_and_keep_legacy_activity_consumers(): void
+    {
+        $this->insertNotification('no_show', false, bookingId: 1, message: '');
+        $this->insertNotification('clinic_no_show', true, clinicAppointmentId: 1, message: '');
+        foreach (['walk_in_registered', 'status_update', 'queue_update'] as $type) {
+            $this->insertNotification($type, false, bookingId: 1);
+        }
+        $this->insertNotification('clinic_walk_in', false, clinicAppointmentId: 1);
+
+        $payload = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired']);
+        $this->assertCount(2, $payload['notifications']);
+        $this->assertSame(['Pre-registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
+        foreach (['grooming' => 'no_show', 'clinic' => 'clinic_no_show'] as $service => $type) {
+            $filtered = $this->notificationPayload(['mode' => 'full', 'service' => $service, 'activity' => 'expired']);
+            $this->assertSame([$type], array_column($filtered['notifications'], 'type'));
+            $row = $filtered['notifications'][0];
+            $this->assertSame('expired', $row['activity']);
+            $this->assertSame($service, $row['category']);
+            foreach (['No show', ucfirst($service), 'Gerald Senining', 'Mochi', 'Aug 21', 'No check-in recorded'] as $term) {
+                $this->assertStringContainsString($term, $row['message']);
+            }
+            $this->assertSame('history', $row['icon']);
+        }
+        $unread = $this->notificationPayload(['mode' => 'full', 'status' => 'unread', 'activity' => 'expired']);
+        $this->assertSame(['no_show'], array_column($unread['notifications'], 'type'));
+        $this->assertSame(5, $unread['unread_count']);
+        $this->assertCount(6, $this->notificationPayload(['mode' => 'full'])['notifications']);
+        $this->assertCount(4, $this->notificationPayload(['service' => 'grooming'])['notifications']);
+        $this->assertCount(2, $this->notificationPayload(['service' => 'clinic'])['notifications']);
+        $this->assertCount(2, $this->notificationPayload(['activity' => 'walk_ins'])['notifications']);
+        $this->assertCount(2, $this->notificationPayload(['activity' => 'status_updates'])['notifications']);
+    }
+
     public function test_read_mutations_report_the_authoritative_shared_unread_count(): void
     {
         $this->insertNotification('booked', false, bookingId: 1);
@@ -365,6 +398,21 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertSame(1, $controller->markRead(1)->getData(true)['unread_count']);
         $this->assertSame(0, $controller->markAllRead()->getData(true)['unread_count']);
         $this->assertSame(0, $this->notificationPayload(['mode' => 'count'])['unread_count']);
+    }
+
+    public function test_no_show_snapshots_remain_readable_after_related_records_are_deleted(): void
+    {
+        $message = 'No show — Grooming: Gerald Senining · Mochi. Pre-registration for Aug 21 · No check-in recorded';
+        $this->insertNotification('no_show', false, bookingId: 1, message: $message);
+        $this->insertNotification('clinic_no_show', false, clinicAppointmentId: 1, message: str_replace('Grooming', 'Clinic', $message));
+        DB::table('bookings')->delete();
+        DB::table('clinic_appointments')->delete();
+        $this->insertNotification('no_show', true, message: 'Historical no show record.');
+        $rows = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired'])['notifications'];
+        $this->assertCount(3, $rows);
+        $this->assertSame('Historical no show record.', $rows[0]['message']);
+        $this->assertSame(str_replace('Grooming', 'Clinic', $message), $rows[1]['message']);
+        $this->assertSame($message, $rows[2]['message']);
     }
 
     public function test_invalid_service_or_activity_is_rejected(): void

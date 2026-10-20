@@ -103,7 +103,7 @@ function adminNotifications(mode = 'full') {
       }
       if (['invalidated', 'stale'].includes(event.kind)) this.loaded = false;
       if (['invalidated', 'resume'].includes(event.kind) && (this.open || this.mode === 'full')) return this.loadNotifications(true);
-      if (event.kind === 'count' && countChanged && this.open && this.loaded) return this.loadNotifications(true);
+      if (event.kind === 'count' && countChanged && (this.open || this.mode === 'full') && this.loaded && !this.loading) return this.loadNotifications(true);
     },
 
     async toggle() {
