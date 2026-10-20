@@ -7,6 +7,7 @@
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017" />
+    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-2" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
     <link
       rel="stylesheet"
@@ -16,8 +17,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -217,8 +218,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -400,145 +401,7 @@
                     ></span>
                   </div>
 
-                  <!-- Notification bell -->
-                  <div class="relative" @click.outside="closeNotifications()">
-                    <button
-                      type="button"
-                      @click="toggleNotifications()"
-                      class="relative flex items-center justify-center rounded-xl bg-[#315b7e] p-3 text-white"
-                    >
-                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#bell"></use></svg>
-                      <span
-                        x-show="notificationCount > 0"
-                        x-text="notificationCount"
-                        class="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold"
-                      ></span>
-                    </button>
-
-                    <!-- Dropdown -->
-                    <div
- x-cloak                      x-show="notificationsOpen"
-                      x-transition
-                      class="notif-dropdown rounded-2xl border border-[#d7e3ef] bg-white shadow-xl flex flex-col"
-                    >
-                      <!-- Header -->
-                      <div class="flex items-center justify-between border-b border-[#e8f0f8] px-4 py-3 shrink-0">
-                        <span class="text-sm font-semibold text-slate-700">Notifications</span>
-                        <button
-                          type="button"
-                          @click="handleMarkAllRead()"
-                          class="text-xs text-[#315b7e] hover:underline"
-                        >Mark all as read</button>
-                      </div>
-
-                      <!-- Tabs -->
-                      <div class="flex border-b border-[#e8f0f8] shrink-0">
-                        <button
-                          type="button"
-                          @click="notifTab = 'all'"
-                          class="flex-1 py-2 text-xs font-semibold transition"
-                          :class="notifTab === 'all' ? 'border-b-2 border-[#315b7e] text-[#315b7e]' : 'text-slate-400 hover:text-slate-600'"
-                        >All</button>
-                        <button
-                          type="button"
-                          @click="notifTab = 'unread'"
-                          class="flex-1 py-2 text-xs font-semibold transition"
-                          :class="notifTab === 'unread' ? 'border-b-2 border-[#315b7e] text-[#315b7e]' : 'text-slate-400 hover:text-slate-600'"
-                        >
-                          Unread
-                          <span
-                            x-show="notificationCount > 0"
-                            x-text="'(' + notificationCount + ')'"
-                          ></span>
-                        </button>
-                      </div>
-
-                      <!-- Scrollable list -->
-                      <div class="notif-list overflow-y-auto divide-y divide-[#f0f4f8]">
-
-                        <admin-loader x-cloak x-show="notificationsLoading"></admin-loader>
-                        <p x-cloak x-show="notificationsError" class="admin-load-error px-4" role="alert"><span x-text="notificationsError"></span><button type="button" @click="loadNotifications()">Retry</button></p>
-                        <!-- Empty state -->
-                        <template x-if="notificationsLoaded &amp;&amp; groupedNotifications().today.length === 0 && groupedNotifications().earlier.length === 0">
-                          <p class="px-4 py-6 text-center text-sm text-slate-400">
-                            <span x-text="notifTab === 'unread' ? 'No unread notifications.' : 'No notifications yet.'"></span>
-                          </p>
-                        </template>
-
-                        <!-- Today group -->
-                        <template x-if="groupedNotifications().today.length > 0">
-                          <div>
-                            <p class="px-4 py-2 text-[10px] font-bold text-slate-400">Today</p>
-                            <template x-for="notif in groupedNotifications().today" :key="notif.notification_id">
-                              <div
-                                class="flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-slate-50"
-                                :class="notif.is_read ? 'bg-white' : 'bg-[#eaf4fb]'"
-                                @click="handleMarkOneRead(notif)"
-                              >
-                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]" aria-hidden="true">
-                                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (getAdminNotificationIcon(notif.icon))"></use></svg>
-                                </span>
-                                <div class="min-w-0 flex-1">
-                                  <p class="text-sm text-slate-700">
-                                    <template x-for="(part, partIndex) in notif.message_parts" :key="partIndex">
-                                      <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                                    </template>
-                                  </p>
-                                  <p x-show="notif.context_parts && notif.context_parts.length" class="mt-1 text-xs text-slate-400">
-                                    <template x-for="(part, partIndex) in notif.context_parts" :key="partIndex">
-                                      <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                                    </template>
-                                  </p>
-                                  <p class="mt-1 text-xs text-slate-400" x-text="formatNotificationTime(notif.created_at)"></p>
-                                </div>
-                                <span class="mt-2 h-2 w-2 shrink-0 rounded-full" :class="notif.is_read ? 'bg-transparent' : 'bg-[#315b7e]'" aria-hidden="true"></span>
-                              </div>
-                            </template>
-                          </div>
-                        </template>
-
-                        <!-- Earlier group -->
-                        <template x-if="groupedNotifications().earlier.length > 0">
-                          <div>
-                            <p class="px-4 py-2 text-[10px] font-bold text-slate-400">Earlier</p>
-                            <template x-for="notif in groupedNotifications().earlier" :key="notif.notification_id">
-                              <div
-                                class="flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-slate-50"
-                                :class="notif.is_read ? 'bg-white' : 'bg-[#eaf4fb]'"
-                                @click="handleMarkOneRead(notif)"
-                              >
-                                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]" aria-hidden="true">
-                                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (getAdminNotificationIcon(notif.icon))"></use></svg>
-                                </span>
-                                <div class="min-w-0 flex-1">
-                                  <p class="text-sm text-slate-700">
-                                    <template x-for="(part, partIndex) in notif.message_parts" :key="partIndex">
-                                      <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                                    </template>
-                                  </p>
-                                  <p x-show="notif.context_parts && notif.context_parts.length" class="mt-1 text-xs text-slate-400">
-                                    <template x-for="(part, partIndex) in notif.context_parts" :key="partIndex">
-                                      <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                                    </template>
-                                  </p>
-                                  <p class="mt-1 text-xs text-slate-400" x-text="formatNotificationTime(notif.created_at)"></p>
-                                </div>
-                                <span class="mt-2 h-2 w-2 shrink-0 rounded-full" :class="notif.is_read ? 'bg-transparent' : 'bg-[#315b7e]'" aria-hidden="true"></span>
-                              </div>
-                            </template>
-                          </div>
-                        </template>
-                      </div>
-
-                      <!-- See all footer -->
-                      <div class="shrink-0 border-t border-[#e8f0f8] px-4 py-3 text-center">
-                        <a
-                          href="./notifications.html"
-                          class="text-xs font-semibold text-[#315b7e] hover:underline"
-                        >See all notifications</a>
-                      </div>
-                    </div>
-                  </div>
+                  <admin-notification-bell origin="grooming"></admin-notification-bell>
                 </div>
               </div>
             </div>
@@ -1637,6 +1500,8 @@
 
     <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
+    <script src="../../scripts/services/admin-notification-service.js?v=20261020-2"></script>
+    <script src="../../scripts/components/admin-notifications.js?v=20261020-2"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
 
@@ -1653,6 +1518,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
   </body>
 </html>

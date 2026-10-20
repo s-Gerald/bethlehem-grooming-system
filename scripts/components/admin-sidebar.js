@@ -1,9 +1,4 @@
-function getAdminNotificationIcon(name) {
-  return ({ 'calendar-days': 'calendar-dots', 'circle-check': 'check-circle', 'credit-card': 'credit-card',
-    'circle-x': 'x-circle', history: 'clock-counter-clockwise', stethoscope: 'stethoscope' })[name] || 'bell';
-}
-
-function getAdminSidebarActivePage(pathname = window.location.pathname) {
+function getAdminSidebarActivePage(pathname = window.location.pathname, search = window.location.search) {
   const normalizedPath = String(pathname || "")
     .replace(/\\/g, "/")
     .toLowerCase();
@@ -16,11 +11,14 @@ function getAdminSidebarActivePage(pathname = window.location.pathname) {
   }
 
   const pageName = normalizedPath.split("/").filter(Boolean).pop() || "";
+  if (pageName === 'notifications.html') {
+    const origin = new URLSearchParams(search).get('from');
+    return new Map([['dashboard', 'dashboard'], ['grooming', 'appointments'], ['clinic', 'clinic']]).get(origin) || '';
+  }
   const pageMap = {
     "dashboard.html": "dashboard",
     "clients.html": "customers",
     "appointments.html": "appointments",
-    "notifications.html": "appointments",
     "clinic.html": "clinic",
     "services.html": "services",
     "archive.html": "archive",
@@ -138,7 +136,8 @@ function renderCachedAdminSidebar() {
     if (el.closest('.admin-inventory-submenu')) return;
     el.classList.toggle('text-[#2f4b66]', !selected);
     for (const name of ['bg-[#315b7e]', 'text-white', 'shadow-sm']) el.classList.toggle(name, !!selected);
-    if (selected && el.tagName === 'A') el.setAttribute('aria-current', 'page');
+    if (selected && el.tagName === 'A' && !window.location.pathname.endsWith('/notifications.html')) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
   });
   if (activePage === 'inventory') {
     const submenu = aside.querySelector('#inventory-submenu');
@@ -170,7 +169,8 @@ if (typeof document !== "undefined" && document.querySelector) {
     if (link.closest('.admin-inventory-submenu')) return;
     const page = getAdminSidebarActivePage(new URL(link.href).pathname);
     link.setAttribute(':class', `activePage === '${page}' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'`);
-    link.setAttribute(':aria-current', `activePage === '${page}' ? 'page' : null`);
+    link.setAttribute(':aria-current', window.location.pathname === new URL(link.href).pathname
+      ? `activePage === '${page}' ? 'page' : null` : 'null');
   });
   renderCachedAdminSidebar();
 }
@@ -223,7 +223,9 @@ function adminSidebar() {
       };
       window.addEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
 
-      const ownsGroomingData = ['dashboard', 'appointments'].includes(this.activePage);
+      // Notification origins are presentation context, never ownership of workspace data.
+      const ownsGroomingData = window.location.pathname.endsWith('/notifications.html')
+        || ['dashboard', 'appointments'].includes(this.activePage);
       await this.loadLoggedInIdentity();
       if (!API.getAdminGroomingActivity) await window.AppClock?.load?.();
       if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) await this.loadIncomingAppointmentCount();

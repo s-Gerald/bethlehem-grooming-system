@@ -52,4 +52,11 @@ assert.doesNotMatch(
   "Notification rows should contain only the time because the separator owns the date",
 );
 
+component.notifications = [
+  {notification_id: 6, created_at: '2026-08-20T16:00:00Z'},
+  {notification_id: 7, created_at: '2026-08-20T15:59:59Z'},
+];
+assert.deepEqual(Array.from(component.notificationGroups(), group => group.label), ['Today', 'Yesterday'],
+  'Shared preview and history date separators use Manila midnight, not the UTC date prefix');
+
 console.log("Admin notification date grouping regression tests passed.");

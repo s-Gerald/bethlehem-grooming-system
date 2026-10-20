@@ -6,12 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notifications | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
+    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-2" />
     <link rel="stylesheet" href="../../css/custom.css?v=admin-notification-filter-20260821&release=20261001&intake=20261019" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div x-data="adminSidebar()" data-admin-shell class="min-h-screen flex bg-[#f5f8fb]">
@@ -56,7 +57,7 @@
                 <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
-              <a aria-current="page" data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
                 <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
@@ -115,8 +116,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
 
 
@@ -140,17 +141,19 @@
           </section>
 
           <section class="mt-6 rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
-            <div class="flex flex-col gap-3 border-b border-[#e8f0f8] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+            <div class="admin-notification-toolbar flex flex-col gap-3 border-b border-[#e8f0f8] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
               <div class="flex items-center">
                 <button
                   type="button"
                   @click="setStatus('all')"
+                  :aria-pressed="statusFilter === 'all'"
                   class="border-b-2 px-5 py-2 text-sm font-semibold transition"
                   :class="statusFilter === 'all' ? 'border-[#315b7e] text-[#315b7e]' : 'border-transparent text-slate-400 hover:text-slate-600'"
                 >All</button>
                 <button
                   type="button"
                   @click="setStatus('unread')"
+                  :aria-pressed="statusFilter === 'unread'"
                   class="border-b-2 px-5 py-2 text-sm font-semibold transition"
                   :class="statusFilter === 'unread' ? 'border-[#315b7e] text-[#315b7e]' : 'border-transparent text-slate-400 hover:text-slate-600'"
                 >
@@ -159,69 +162,22 @@
                 </button>
               </div>
 
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div
-                  class="admin-custom-select w-full sm:w-48"
-                  @click.outside="categoryMenuOpen = false"
-                  @focusout="if (!$el.contains($event.relatedTarget)) categoryMenuOpen = false"
-                  @keydown.escape.stop.prevent="categoryMenuOpen = false; $refs.categoryTrigger.focus()"
-                >
-                  <button
-                    type="button"
-                    x-ref="categoryTrigger"
-                    class="admin-custom-select-trigger"
-                    :disabled="loading"
-                    :aria-expanded="String(categoryMenuOpen)"
-                    aria-haspopup="listbox"
-                    aria-controls="notification-type-options"
-                    @click="toggleCategoryMenu()"
-                    @keydown.arrow-down.prevent="openCategoryMenu()"
-                    @keydown.arrow-up.prevent="openCategoryMenu(true)"
-                  >
-                    <span class="flex min-w-0 items-center gap-2">
-                      <svg class="ph-icon h-4 w-4 shrink-0 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#funnel"></use></svg>
-                      <span class="truncate" x-text="selectedCategoryLabel()"></span>
-                    </span>
-                    <svg
-
-                      class="ph-icon h-4 w-4 shrink-0 text-[#315b7e] transition-transform"
-                      :class="categoryMenuOpen ? 'rotate-180' : ''"
-                      aria-hidden="true"
-                     viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-down"></use></svg>
-                  </button>
-                  <div
-                    id="notification-type-options"
-                    x-ref="categoryListbox"
-                    x-show="categoryMenuOpen"
-                    x-transition.origin.top.right
-                    style="display: none"
-                    class="admin-custom-select-options"
-                    role="listbox"
-                    aria-label="Notification type"
-                  >
-                    <template x-for="option in categoryOptions" :key="option.value">
-                      <button
-                        type="button"
-                        role="option"
-                        class="admin-custom-select-option"
-                        :class="categoryFilter === option.value ? 'is-selected' : ''"
-                        :aria-selected="String(categoryFilter === option.value)"
-                        @click="selectCategory(option.value); $nextTick(() => $refs.categoryTrigger.focus())"
-                        @keydown.arrow-down.prevent="moveCategoryFocus($event.currentTarget, 1)"
-                        @keydown.arrow-up.prevent="moveCategoryFocus($event.currentTarget, -1)"
-                        @keydown.home.prevent="focusCategoryOption()"
-                        @keydown.end.prevent="focusCategoryOption(true)"
-                      >
-                        <span x-text="option.label"></span>
-                        <span x-show="categoryFilter === option.value" class="text-[#315b7e]" aria-hidden="true">&#10003;</span>
-                      </button>
-                    </template>
-                  </div>
-                </div>
+              <div class="admin-notification-filters">
+                <label class="admin-notification-filter"><span class="sr-only">Service</span>
+                  <select aria-label="Service" :value="serviceFilter" @change="setService($event.target.value)">
+                    <option value="all">All Services</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option>
+                  </select>
+                </label>
+                <label class="admin-notification-filter"><span class="sr-only">Notification activity</span>
+                  <select aria-label="Notification activity" :value="activityFilter" @change="setActivity($event.target.value)">
+                    <option value="all">All Activities</option>
+                    <template x-for="option in activityOptions" :key="option.value"><option :value="option.value" x-text="option.label"></option></template>
+                  </select>
+                </label>
                 <button
                   type="button"
                   @click="markAllRead()"
-                  :disabled="loading || unreadCount === 0"
+                  :disabled="busy || unreadCount === 0"
                   class="rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb] disabled:cursor-not-allowed disabled:opacity-50"
                 >Mark all as read</button>
               </div>
@@ -233,36 +189,14 @@
 
             <div x-cloak x-show="loaded" :aria-busy="loading || loadingMore">
               <template x-if="notifications.length === 0">
-                <p class="px-6 py-12 text-center text-sm text-slate-400">No notifications found.</p>
+                <p class="px-6 py-12 text-center text-sm text-slate-400">No notifications match these filters.</p>
               </template>
 
               <template x-for="group in notificationGroups()" :key="group.dateKey">
                 <section>
                   <p class="border-b border-[#f0f4f8] px-6 py-3 text-xs font-bold text-slate-400" x-text="group.label"></p>
                   <template x-for="notification in group.notifications" :key="notification.notification_id">
-                    <article
-                      @click="markOneRead(notification)"
-                      class="flex cursor-pointer items-start gap-4 border-b border-[#f0f4f8] px-6 py-5 transition hover:bg-slate-50"
-                      :class="notification.is_read ? 'bg-white' : 'bg-[#eaf4fb]'"
-                    >
-                      <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]" aria-hidden="true">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (getAdminNotificationIcon(notification.icon))"></use></svg>
-                      </span>
-                      <div class="min-w-0 flex-1">
-                        <p class="text-sm text-slate-700">
-                          <template x-for="(part, partIndex) in notification.message_parts" :key="partIndex">
-                            <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                          </template>
-                        </p>
-                        <p x-show="notification.context_parts && notification.context_parts.length" class="mt-1 text-xs text-slate-400">
-                          <template x-for="(part, partIndex) in notification.context_parts" :key="partIndex">
-                            <span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span>
-                          </template>
-                        </p>
-                        <p class="mt-1 text-xs text-slate-400" x-text="formatNotificationTime(notification.created_at)"></p>
-                      </div>
-                      <span class="mt-2 h-2 w-2 shrink-0 rounded-full" :class="notification.is_read ? 'bg-transparent' : 'bg-[#315b7e]'" aria-hidden="true"></span>
-                    </article>
+                    <admin-notification-row></admin-notification-row>
                   </template>
                 </section>
               </template>
@@ -284,8 +218,9 @@
 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
+    <script src="../../scripts/services/admin-notification-service.js?v=20261020-2"></script>
+    <script src="../../scripts/components/admin-notifications.js?v=20261020-2"></script>
     <script src="../../scripts/services/app-clock.js?v=service-prices-20260509"></script>
 
-    <script src="../../scripts/components/admin-notifications.js?v=admin-notification-filter-20260821&loading-ui=universal-20261018&icons=20261018"></script>
   </body>
 </html>

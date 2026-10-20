@@ -50,7 +50,7 @@ async function main() {
   context.applyPaymentCatalogue(applyGroomingCatalogue(catalogue));
   const ui = context.adminDashboard();
   ui.$nextTick = () => {};
-  ui.loadAdminBookings = ui.loadNotifications = async () => {};
+  ui.loadAdminBookings = async () => {};
   ui.setTab = () => {};
   const booking = { id: 1, ownerName: 'Test Customer', bookingReference: 'TEST-ONLINE',
     pets: [{ bookingPetId: 1, petName: 'Mochi', species: 'Cat', size: 'small' }],

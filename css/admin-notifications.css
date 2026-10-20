@@ -1,0 +1,40 @@
+/* Shared notification controls follow the existing Bethlehem palette and spacing. */
+admin-notification-bell { display: inline-block; flex-shrink: 0; }
+admin-notification-row { display: block; }
+.admin-notification-bell { position: relative; display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 12px; background: #315b7e; color: #fff; }
+.admin-notification-bell:hover { background: #284c6b; }
+.admin-notification-bell:active { background: #1f3850; }
+.admin-notification-badge { position: absolute; top: -4px; right: -4px; display: inline-flex; height: 20px; min-width: 20px; align-items: center; justify-content: center; border-radius: 999px; padding: 0 4px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; }
+.admin-notification-preview { position: fixed; z-index: 100; display: flex; width: min(352px, calc(100vw - 24px)); flex-direction: column; overflow: hidden; border: 1px solid #d7e3ef; border-radius: 16px; background: #fff; box-shadow: 0 12px 36px rgb(31 56 80 / 16%); }
+.admin-notification-preview-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #e8f0f8; }
+.admin-notification-preview-heading h3 { font-size: 14px; font-weight: 600; color: #334155; }
+.admin-notification-preview-heading button, .admin-notification-preview-footer a { font-size: 12px; font-weight: 600; color: #315b7e; }
+.admin-notification-preview-heading button:hover, .admin-notification-preview-footer a:hover { text-decoration: underline; }
+.admin-notification-tabs { display: flex; flex-shrink: 0; gap: 12px; padding: 0 16px; border-bottom: 1px solid #e8f0f8; }
+.admin-notification-tabs button { min-height: 40px; padding: 8px; border-bottom: 2px solid transparent; font-size: 13px; font-weight: 600; color: #64748b; }
+.admin-notification-tabs button[aria-pressed="true"] { border-color: #315b7e; color: #315b7e; }
+.admin-notification-preview-list { min-height: 0; max-height: 18rem; overflow-y: auto; overscroll-behavior: contain; }
+.admin-notification-preview:focus { outline: 2px solid #315b7e; outline-offset: 2px; }
+.admin-notification-preview-footer { flex-shrink: 0; padding: 12px 16px; border-top: 1px solid #e8f0f8; text-align: center; }
+.admin-notification-date { padding: 10px 16px; border-bottom: 1px solid #f0f4f8; font-size: 12px; font-weight: 600; color: #64748b; }
+.admin-notification-row { display: flex; width: 100%; align-items: flex-start; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #f0f4f8; background: #fff; text-align: left; overflow-wrap: anywhere; }
+.admin-notification-row.is-unread { background: #eaf4fb; }
+.admin-notification-row:hover { background: #f1f5f9; }
+.admin-notification-icon { display: flex; width: 40px; height: 40px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; background: #eef5fb; color: #315b7e; }
+.admin-notification-dot { width: 8px; height: 8px; flex-shrink: 0; margin-top: 8px; border-radius: 999px; background: #315b7e; }
+.admin-notification-preview .admin-notification-row { gap: 12px; padding: 12px 16px; }
+.admin-notification-preview .admin-notification-icon { width: 32px; height: 32px; }
+.admin-notification-empty { padding: 32px 16px; font-size: 14px; color: #64748b; text-align: center; }
+.admin-notification-toolbar { flex-wrap: wrap; }
+.admin-notification-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.admin-notification-filter { min-width: 0; }
+.admin-notification-filter select { min-height: 44px; max-width: 100%; border: 1px solid #c9d9e8; border-radius: 12px; padding: 10px 30px 10px 12px; background-color: #fff; color: #315b7e; font-size: 14px; font-weight: 600; }
+:is(.admin-notification-bell, .admin-notification-preview button, .admin-notification-preview a, .admin-notification-filter select, .admin-notification-row):focus-visible { outline: 2px solid #315b7e; outline-offset: 3px; }
+.admin-notification-row:focus-visible { outline-offset: -3px; }
+.admin-notification-preview button:disabled { cursor: not-allowed; opacity: .5; }
+@media (max-width: 639px) {
+  .admin-notification-filters { align-items: stretch; }
+  .admin-notification-filter, .admin-notification-filter select { width: 100%; }
+  .admin-notification-filters > button { width: 100%; }
+  .admin-notification-row { padding: 16px; gap: 12px; }
+}

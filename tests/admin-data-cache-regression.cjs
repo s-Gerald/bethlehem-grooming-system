@@ -176,12 +176,13 @@ async function scopedPresentationPolicies() {
   }
 }
 async function scopedMutationInvalidation() {
-  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived'];
+  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count', '/admin/notifications?mode=full&service=clinic&activity=payments'];
   for (const [mutation, affected] of [
     ['/admin/grooming/services/1/status', [0]], ['/admin/clinic-services/1/status', [1]],
     ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
     ['/inventory/stock-out', [2,3,4]], ['/pos/transactions', [2,3,4]],
-    ['/admin/bookings/1/mark-done', [5]], ['/admin/clinic-appointments/1/finish', [2,3,4,6]],
+    ['/admin/bookings/1/mark-done', [5,7,8]], ['/admin/clinic-appointments/1/finish', [2,3,4,6,7,8]],
+    ['/admin/bookings/1/pay', [2,3,4,5,7,8]], ['/admin/clinic-appointments/1/pay', [2,3,4,6,7,8]],
     ['/pos/validate-cart', []],
   ]) {
     const e = environment();

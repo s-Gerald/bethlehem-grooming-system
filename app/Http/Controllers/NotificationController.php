@@ -27,7 +27,9 @@ class NotificationController extends Controller
         $filters = $request->validate([
             'status' => ['sometimes', Rule::in(self::STATUSES)],
             'category' => ['sometimes', Rule::in(self::CATEGORIES)],
-            'mode' => ['sometimes', Rule::in(['dropdown', 'full'])],
+            'service' => ['sometimes', Rule::in(['all', ...array_keys(Notification::serviceTypes())])],
+            'activity' => ['sometimes', Rule::in(['all', ...array_keys(Notification::activities())])],
+            'mode' => ['sometimes', Rule::in(['count', 'dropdown', 'full'])],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:30'],
         ]);
@@ -35,6 +37,11 @@ class NotificationController extends Controller
         $status = $filters['status'] ?? 'all';
         $category = $filters['category'] ?? 'all';
         $mode = $filters['mode'] ?? 'dropdown';
+        $service = $filters['service'] ?? 'all';
+        $activity = $filters['activity'] ?? 'all';
+        if ($mode === 'count') {
+            return response()->json(['success' => true, 'unread_count' => $this->unreadCount()]);
+        }
         $page = (int) ($filters['page'] ?? 1);
         $perPage = (int) ($filters['per_page'] ?? ($mode === 'full' ? 10 : 30));
 
@@ -57,6 +64,13 @@ class NotificationController extends Controller
             $query->whereIn('type', Notification::categoryTypes()[$category]);
         }
 
+        if ($service !== 'all') {
+            $query->whereIn('type', Notification::serviceTypes()[$service]);
+        }
+        if ($activity !== 'all') {
+            $query->whereIn('type', Notification::activities()[$activity]['types']);
+        }
+
         if ($mode === 'dropdown' && $status === 'all') {
             $query->orderBy('is_read');
         }
@@ -68,7 +82,10 @@ class NotificationController extends Controller
 
         return response()->json([
             'success' => true,
-            'unread_count' => Notification::query()->where('is_read', false)->count(),
+            'unread_count' => $this->unreadCount(),
+            'activity_options' => collect(Notification::activities())->map(
+                fn (array $definition, string $value) => ['value' => $value, 'label' => $definition['label']],
+            )->values(),
             'notifications' => collect($paginator->items())
                 ->map(fn (Notification $notification) => $this->serialize($notification))
                 ->values(),
@@ -82,6 +99,8 @@ class NotificationController extends Controller
             'filters' => [
                 'status' => $status,
                 'category' => $category,
+                'service' => $service,
+                'activity' => $activity,
             ],
         ]);
     }
@@ -102,6 +121,7 @@ class NotificationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Notification marked as read.',
+            'unread_count' => $this->unreadCount(),
         ]);
     }
 
@@ -112,7 +132,13 @@ class NotificationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'All notifications marked as read.',
+            'unread_count' => $this->unreadCount(),
         ]);
+    }
+
+    private function unreadCount(): int
+    {
+        return Notification::query()->where('is_read', false)->count();
     }
 
     /** @return array<string, mixed> */
@@ -124,6 +150,8 @@ class NotificationController extends Controller
             'notification_id' => $notification->notification_id,
             'type' => $notification->type,
             'category' => Notification::categoryForType($notification->type),
+            'service' => str_starts_with((string) $notification->type, 'clinic_') ? 'clinic' : 'grooming',
+            'activity' => Notification::activityForType($notification->type),
             'icon' => $this->iconForType($notification->type),
             'title' => $content['title'],
             'message' => $content['message'],
@@ -365,7 +393,7 @@ class NotificationController extends Controller
         $owner = $this->clinicOwnerName($appointment);
         $message = $reference
             ? 'Payment received'.($owner ? " from {$owner}" : '')
-                ." for clinic appointment {$reference}."
+                ." for clinic visit {$reference}."
             : $fallback;
 
         return $this->content(
@@ -382,13 +410,13 @@ class NotificationController extends Controller
         $owner = $this->clinicOwnerName($appointment);
         $pet = trim((string) $appointment?->pet?->pet_name);
         $message = $reference
-            ? "Clinic appointment cancelled: {$reference}"
+            ? "Clinic visit cancelled: {$reference}"
                 .($owner ? " for {$owner}" : '')
                 .($pet ? " and {$pet}" : '').' by clinic staff.'
             : $fallback;
 
         return $this->content(
-            'Clinic appointment cancelled',
+            'Clinic visit cancelled',
             $message,
             null,
             [$reference, $owner, $pet],

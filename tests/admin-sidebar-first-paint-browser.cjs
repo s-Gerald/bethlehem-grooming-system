@@ -9,7 +9,7 @@ const pages = [
   ['appointments.html', 'Grooming'], ['clinic.html', 'Clinic'],
   ['inventory/inventory.html', 'Inventory'], ['transactions.html', 'Transactions'],
   ['reports.html', 'Reports'], ['settings.html', 'Settings'],
-  ['services.html', 'Services'], ['archive.html', 'History'], ['notifications.html', 'Grooming'],
+  ['services.html', 'Services'], ['archive.html', 'History'], ['notifications.html', ''],
 ];
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const profiles = {
@@ -67,13 +67,25 @@ async function fixture(browser, profile = 'admin', inventory = false) {
   return { context, page, state };
 }
 const visit = (page, file) => page.goto(`${origin}/pages/admin/${file}`, { waitUntil: 'domcontentloaded' });
-const ready = page => page.waitForFunction(() => document.querySelector('.admin-sidebar-menu')?.hasAttribute('data-admin-navigation-ready') && !document.documentElement.hasAttribute('data-session-gate'));
+const ready = async page => {
+  try { await page.waitForFunction(() => document.querySelector('.admin-sidebar-menu')?.hasAttribute('data-admin-navigation-ready') && !document.documentElement.hasAttribute('data-session-gate')); }
+  catch (error) {
+    console.error(await page.evaluate(() => ({url: location.href, gate: document.documentElement.getAttribute('data-session-gate'),
+      ready: document.querySelector('.admin-sidebar-menu')?.hasAttribute('data-admin-navigation-ready'), alpine: !!window.Alpine})));
+    throw error;
+  }
+};
 async function visibleShell(page, active) {
   const aside = page.locator('aside.admin-sidebar-menu');
   for (const label of ['Dashboard', 'Customers', 'History', 'Transactions', 'Settings']) {
     assert.equal(await aside.getByRole('link', { name: label, exact: true }).isVisible(), true, `${label} remains visible`);
   }
   assert.equal(await aside.getByRole('button', { name: 'Logout', exact: true }).isVisible(), true, 'Logout remains visible');
+  if (!active) {
+    assert.equal(await aside.locator('nav [aria-current="page"]').count(), 0);
+    assert.equal(await aside.locator('nav a.bg-\\[\\#315b7e\\]').count(), 0);
+    return;
+  }
   const selected = aside.locator(active === 'Inventory' ? 'nav button[aria-controls="inventory-submenu"], nav a[href$="inventory.html"]' : 'nav [aria-current="page"]').first();
   assert.equal((await selected.innerText()).trim().replace(/[▾▸]/g, '').trim(), active);
   assert.equal(await selected.evaluate(el => el.classList.contains('bg-[#315b7e]')), true);
@@ -135,7 +147,7 @@ async function cachedRefresh(browser, profile) {
         await cdp.send('Page.reload', { ignoreCache: true });
         await loaded;
       } else await f.page.reload({ waitUntil: 'domcontentloaded' });
-      await visibleShell(f.page, 'Grooming');
+      await visibleShell(f.page, '');
       assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), 'checking');
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       assert.equal(count(), 1, 'Valid cached reload avoids /me');
@@ -147,7 +159,7 @@ async function cachedRefresh(browser, profile) {
       await f.page.setViewportSize({ width, height: 844 });
       await f.page.evaluate(() => Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarOpen = true);
       await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().left >= 0);
-      await visibleShell(f.page, 'Grooming');
+      await visibleShell(f.page, '');
       await f.page.getByRole('link', { name: 'Customers', exact: true }).click();
       await ready(f.page);
       await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().right <= 1);
@@ -380,7 +392,7 @@ async function cachedBeforeAlpine(browser) {
   try {
     const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'invalid', 'pre-alpine', 'inventory'];
     if (cases.includes('cold')) await coldPaint(browser);
-    if (cases.includes('cache')) for (const profile of Object.keys(profiles)) await cachedRefresh(browser, profile);
+    if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
     if (cases.includes('security')) await securityTransitions(browser);
     if (cases.includes('invalid')) await invalidCaches(browser);
     if (cases.includes('pre-alpine')) await cachedBeforeAlpine(browser);

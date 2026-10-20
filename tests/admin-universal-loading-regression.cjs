@@ -77,7 +77,7 @@ async function petProfileReadiness() {
 async function notificationReadiness() {
   const { ui, context } = component('admin-notifications.js', 'adminNotifications', {
     getNotifications: async () => ({ notifications: [], unread_count: 0 }),
-  });
+  }, {AdminNotificationService: {load: filters => context.API.getNotifications(filters)}});
   assert.equal(ui.loaded, false);
   await ui.loadNotifications(true); assert.equal(ui.loaded, true);
   const next = deferred(); context.API.getNotifications = () => next.promise;

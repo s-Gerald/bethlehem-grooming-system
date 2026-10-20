@@ -336,9 +336,6 @@ function adminDashboard() {
     activityLoaded: false,
     activityLoading: true,
     activityError: "",
-    notificationsLoaded: false,
-    notificationsLoading: true,
-    notificationsError: "",
     dashboardQueuePreview: [],
     activeTodayCount: null,
     _bookingRequest: null,
@@ -346,7 +343,6 @@ function adminDashboard() {
     _bookingRevision: 0,
     _summaryRequest: null,
     _activityRequest: null,
-    _notificationRequest: null,
     _visibilityListener: null,
     _sessionResumeListener: null,
     _destroyed: false,
@@ -366,11 +362,7 @@ function adminDashboard() {
     waitingNow: 0,
     currentCapacity: 0,
     maxCapacity: 20,
-    notificationCount: 0,
-    notificationsOpen: false,
-    notifications: [],
     recentActivity: [],
-    notifTab: "all",
     detailsModalOpen: false,
     detailsBooking: null,
     noteEditor: { kind: "", bookingPetId: null, value: "", busy: false, error: "" },
@@ -539,7 +531,6 @@ function adminDashboard() {
         this.startContentPolling();
         const primary = this.loadDashboardSummary();
         void this.loadDashboardActivity();
-        void this.loadNotifications();
         await primary;
         this.dispatchDashboardEvent('admin-dashboard:ready', { state: this.getState() });
         return;
@@ -655,10 +646,8 @@ function adminDashboard() {
       });
 
       this.startContentPolling();
-      await Promise.all([
-        this.loadAdminBookings({ force: false }).then(() => this.restoreGroomingOnlinePayment()),
-        this.loadNotifications(),
-      ]);
+      await this.loadAdminBookings({ force: false });
+      await this.restoreGroomingOnlinePayment();
     },
 
     startContentPolling() {
@@ -669,14 +658,13 @@ function adminDashboard() {
           void this.loadDashboardSummary();
           void this.loadDashboardActivity();
         } else void this.loadAdminBookings();
-        void this.loadNotifications();
       };
       this._bookingInterval = setInterval(refresh, 30000);
       this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
       document.addEventListener('visibilitychange', this._visibilityListener);
       this._sessionResumeListener = () => {
         if (!this.bookingsLoaded && !this.summaryLoaded && !this.activityLoaded) return;
-        Promise.allSettled([this._bookingRequest, this._summaryRequest, this._activityRequest, this._notificationRequest]).then(refresh);
+        Promise.allSettled([this._bookingRequest, this._summaryRequest, this._activityRequest]).then(refresh);
       };
       window.addEventListener('admin-session:unlocked', this._sessionResumeListener);
     },
@@ -684,7 +672,7 @@ function adminDashboard() {
     destroy() {
       this._destroyed = true;
       this._bookingRevision++;
-      for (const timer of ['_bookingInterval', '_notifInterval']) clearInterval(this[timer]);
+      clearInterval(this._bookingInterval);
       clearTimeout(this._onlinePaymentPoll);
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
@@ -1566,10 +1554,6 @@ function adminDashboard() {
         this.activeGroomingPets = nextPayload.activeGroomingPets;
       }
 
-      if ("notificationCount" in nextPayload) {
-        this.notificationCount = nextPayload.notificationCount;
-      }
-
       if ("recentActivity" in nextPayload) {
         this.recentActivity = nextPayload.recentActivity;
       }
@@ -1626,7 +1610,6 @@ function adminDashboard() {
       const summary = payload.summary || payload.metrics || {};
       const capacity = payload.capacity || {};
       const groomerCapacity = payload.groomerCapacity || payload.groomer_capacity || {};
-      const notifications = payload.notifications || {};
 
       const nextPayload = {};
       if ("groomingWorkload" in payload) nextPayload.groomingWorkload = payload.groomingWorkload;
@@ -1707,16 +1690,6 @@ function adminDashboard() {
         nextPayload.activeGroomingPets = this.toNumber(
           payload.activeGroomingPets ?? groomerCapacity.active_pets,
           this.activeGroomingPets,
-        );
-      }
-
-      if (
-        this.hasValue(payload.notificationCount) ||
-        this.hasValue(notifications.count)
-      ) {
-        nextPayload.notificationCount = this.toNumber(
-          payload.notificationCount ?? notifications.count,
-          this.notificationCount,
         );
       }
 
@@ -2397,7 +2370,6 @@ function adminDashboard() {
         maxCapacity: this.maxCapacity,
         activeGroomers: this.activeGroomers,
         activeGroomingPets: this.activeGroomingPets,
-        notificationCount: this.notificationCount,
         recentActivity: [...this.recentActivity],
         incomingList: [...this.incomingList],
         queuedList: [...this.queuedList],
@@ -2430,8 +2402,7 @@ function adminDashboard() {
         "metrics" in value ||
         "capacity" in value ||
         "recentActivity" in value ||
-        "recent_activity" in value ||
-        "notifications" in value
+        "recent_activity" in value
       );
     },
 
@@ -4020,7 +3991,6 @@ function adminDashboard() {
         isEarlyPayment,
       };
       await this.loadAdminBookings();
-      await this.loadNotifications();
       if (!isEarlyPayment && res?.booking_status === "released") {
         this.setTab("to-be-picked-up");
       }
@@ -4333,80 +4303,6 @@ function adminDashboard() {
         this.sedationConsentCapture.error =
           error.message || "Failed to record sedation consent.";
       }
-    },
-
-    // ── Notifications ─────────────────────────────────────────────────────────
-
-    loadNotifications() {
-      if (this._notificationRequest) return this._notificationRequest;
-      this.notificationsLoading = !this.notificationsLoaded;
-      this.notificationsError = '';
-      this._notificationRequest = API.loadAdminData("/admin/notifications", () => API.getNotifications(), data => {
-        if (this._destroyed) return;
-        this._resetPollFailures("_notifInterval");
-        this.notifications    = data.notifications || [];
-        this.notificationCount = data.unread_count  || 0;
-        this.notificationsLoaded = true;
-      }).catch(error => {
-        this.notificationsError = 'Could not refresh notifications.';
-        this._recordPollFailure("_notifInterval", "loadNotifications", error);
-      }).finally(() => { this.notificationsLoading = false; this._notificationRequest = null; });
-      return this._notificationRequest;
-    },
-
-    toggleNotifications() {
-      this.notificationsOpen = !this.notificationsOpen;
-    },
-
-    closeNotifications() {
-      this.notificationsOpen = false;
-    },
-
-    async handleMarkAllRead() {
-      try {
-        await API.markAllNotificationsRead();
-        this.notifications     = this.notifications.map((n) => ({ ...n, is_read: true }));
-        this.notificationCount = 0;
-      } catch (error) {
-        console.error("Failed to mark notifications as read:", error);
-      }
-    },
-
-    async handleMarkOneRead(notif) {
-      if (notif.is_read) return;
-      try {
-        await API.markNotificationRead(notif.notification_id);
-        this.notifications = this.notifications.map((n) =>
-          n.notification_id === notif.notification_id ? { ...n, is_read: true } : n
-        );
-        this.notificationCount = Math.max(0, this.notificationCount - 1);
-      } catch (error) {
-        console.error("Failed to mark notification as read:", error);
-      }
-    },
-
-    // Returns the list to show based on the active tab, grouped into Today / Earlier
-    groupedNotifications() {
-      const source = this.notifTab === "unread"
-        ? this.notifications.filter((n) => !n.is_read)
-        : this.notifications;
-
-      const todayStr = this.localToday();
-      const today    = source.filter((n) => (n.created_at || "").slice(0, 10) === todayStr);
-      const earlier  = source.filter((n) => (n.created_at || "").slice(0, 10) !== todayStr);
-
-      return { today, earlier };
-    },
-
-    formatNotificationTime(createdAt) {
-      if (!createdAt) return "";
-      const date = new Date(createdAt);
-      return date.toLocaleString("en-PH", {
-        month:  "short",
-        day:    "numeric",
-        hour:   "numeric",
-        minute: "2-digit",
-      });
     },
 
   };

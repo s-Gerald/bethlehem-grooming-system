@@ -47,6 +47,7 @@ async function dashboardDoesNotWaitForClock() {
   const p = ui.init(); await new Promise(r => setImmediate(r));
   assert.ok(e.calls.some(c => c.endpoint === '/admin/dashboard/summary'), 'Summary starts without an unresolved clock');
   assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/bookings')), false);
+  assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/notifications')), false, 'Dashboard content does not own notification loading');
   clock.resolve(null); await p;
 }
 async function customerDetailsFormatWeightWithoutPetEditor() {
@@ -82,6 +83,7 @@ async function groomingWaitsForVerifiedTestClock() {
   await p;
   assert.equal(ui.selectedDate, '2099-05-10');
   assert.ok(e.calls.some(c => c.endpoint === '/admin/bookings?date=2099-05-10&include_future=1&view=board'));
+  assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/notifications')), false, 'Grooming content does not fetch notification history');
   assert.equal(e.c.AppClock.isTestClockActive(), true);
   e.respond(() => ({test_clock_active: false, now: '2026-10-19T10:00:00+08:00'}));
   await e.c.AppClock.load({force: true});

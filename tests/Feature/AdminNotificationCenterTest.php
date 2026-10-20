@@ -311,7 +311,72 @@ class AdminNotificationCenterTest extends TestCase
         ]);
 
         $this->assertCount(1, $cancellations['notifications']);
-        $this->assertSame('Clinic appointment cancelled', $cancellations['notifications'][0]['title']);
+        $this->assertSame('Clinic visit cancelled', $cancellations['notifications'][0]['title']);
+    }
+
+    public function test_service_and_activity_filters_are_independent_and_combinable(): void
+    {
+        foreach (['booked', 'rescheduled', 'payment_due', 'payment_confirmed', 'cancelled'] as $type) {
+            $this->insertNotification($type, false, bookingId: 1);
+        }
+        foreach (['clinic_booked', 'clinic_walk_in', 'clinic_payment_due', 'clinic_payment_confirmed', 'clinic_cancelled'] as $type) {
+            $this->insertNotification($type, $type === 'clinic_payment_confirmed', clinicAppointmentId: 1);
+        }
+
+        foreach (['clinic', 'grooming'] as $service) {
+            $all = $this->notificationPayload(['mode' => 'full', 'service' => $service]);
+            $this->assertCount(5, $all['notifications']);
+            foreach (['payments' => 2, 'cancellations' => 1, 'pre_registrations' => 1] as $activity => $count) {
+                $filtered = $this->notificationPayload(compact('service', 'activity') + ['mode' => 'full']);
+                $this->assertCount($count, $filtered['notifications']);
+                $this->assertSame($service, $filtered['notifications'][0]['service']);
+                $this->assertSame($activity, $filtered['notifications'][0]['activity']);
+            }
+        }
+        $this->assertCount(2, $this->notificationPayload(['mode' => 'full', 'activity' => 'pre_registrations'])['notifications']);
+        $unread = $this->notificationPayload(['mode' => 'full', 'status' => 'unread', 'service' => 'clinic', 'activity' => 'payments']);
+        $this->assertSame(['clinic_payment_due'], array_column($unread['notifications'], 'type'));
+        $this->assertSame(9, $unread['unread_count']);
+        $this->assertSame('clinic', $unread['filters']['service']);
+        $this->assertSame('payments', $unread['filters']['activity']);
+    }
+
+    public function test_count_mode_uses_one_count_query_without_loading_records(): void
+    {
+        $this->insertNotification('booked', false, bookingId: 1);
+        $this->insertNotification('clinic_cancelled', true, clinicAppointmentId: 1);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $payload = $this->notificationPayload(['mode' => 'count']);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame(1, $payload['unread_count']);
+        $this->assertArrayNotHasKey('notifications', $payload);
+        $this->assertCount(1, $queries);
+        $this->assertStringContainsString('count(*)', $queries[0]['query']);
+    }
+
+    public function test_read_mutations_report_the_authoritative_shared_unread_count(): void
+    {
+        $this->insertNotification('booked', false, bookingId: 1);
+        $this->insertNotification('clinic_booked', false, clinicAppointmentId: 1);
+        $controller = new NotificationController;
+        $this->assertSame(1, $controller->markRead(1)->getData(true)['unread_count']);
+        $this->assertSame(1, $controller->markRead(1)->getData(true)['unread_count']);
+        $this->assertSame(0, $controller->markAllRead()->getData(true)['unread_count']);
+        $this->assertSame(0, $this->notificationPayload(['mode' => 'count'])['unread_count']);
+    }
+
+    public function test_invalid_service_or_activity_is_rejected(): void
+    {
+        foreach (['service' => 'payments', 'activity' => 'appointments'] as $field => $value) {
+            try {
+                $this->notificationPayload([$field => $value]);
+                $this->fail("Invalid {$field} should be rejected");
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $this->assertArrayHasKey($field, $exception->errors());
+            }
+        }
     }
 
     /** @param array<string, mixed> $filters */

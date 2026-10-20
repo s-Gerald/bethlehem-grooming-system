@@ -76,6 +76,8 @@ var API = (() => {
   let adminCacheOwner = null;
   let adminCacheToken = null;
   let adminCacheEpoch = 0;
+  let notificationReadSequence = 0;
+  let notificationCountSequence = 0;
   let staffIdentityRequest = null;
   const ADMIN_NAVIGATION_KEY = "bethlehem.admin.navigation.v1";
   let staffIdentity = null;
@@ -149,7 +151,7 @@ var API = (() => {
     if (path === "/admin/bookings") return { group: "grooming", fresh: 5000, retain: 60000 };
     if (/^\/admin\/dashboard\/(summary|activity)$/.test(path)) return { group: "dashboard", fresh: 15000, retain: 120000 };
     if (path === "/admin/grooming/activity") return { group: "grooming", fresh: 15000, retain: 60000 };
-    if (path === "/admin/notifications") return { group: "notifications", fresh: 10000, retain: 60000 };
+    if (path === "/admin/notifications") return { group: "notifications", fresh: params.get('mode') === 'count' ? 30000 : 10000, retain: 60000 };
     if (path === "/clinic/status") return { group: "clinic-status", fresh: 15000, retain: 30000 };
     if (path === "/admin/customers") return params.get("search")
       ? { group: "customers", fresh: 5000, retain: 15000, persist: false }
@@ -217,6 +219,9 @@ var API = (() => {
     for (const key of adminCache.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminCache.delete(key);
     for (const key of adminRequests.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminRequests.delete(key);
     persistAdminCache();
+    if (typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('admin-data:invalidated', { detail: { groups } }));
+    }
     if (broadcast) {
       try { localStorage.setItem(ADMIN_DATA_CHANGED_KEY, JSON.stringify({ owner: activitySessionId(getAuthSession()), groups, at: Date.now(), nonce: Math.random() })); }
       catch { /* Polling still refreshes other tabs when storage is unavailable. */ }
@@ -233,7 +238,7 @@ var API = (() => {
       groups = ["grooming", "history-grooming"];
       if (!/\/(internal-staff-note|grooming-visit-notes|sedation-consent)$/.test(path)) {
         groups.push("dashboard");
-        if (/\/(mark-done|cancel)$/.test(path)) groups.push("notifications");
+        if (/\/(mark-done|cancel|pay)$/.test(path)) groups.push("notifications");
         if (/\/(check-in|revert-check-in|cancel)$/.test(path)) groups.push("customers");
       }
     }
@@ -263,12 +268,23 @@ var API = (() => {
     if (!options.force && cached?.fresh) return Promise.resolve(cached.data);
     if (adminRequests.has(endpoint)) return adminRequests.get(endpoint);
     const owner = adminCacheOwner, epoch = adminCacheEpoch, revision = adminCacheRevisions.get(policy.group) || 0;
+    const notificationSequence = policy.group === 'notifications' ? ++notificationReadSequence : 0;
     const pending = networkRequest("GET", endpoint, null, token, options).then(data => {
       if (adminCacheToken !== getAdminToken() || owner !== adminCacheOwner || epoch !== adminCacheEpoch
         || revision !== (adminCacheRevisions.get(policy.group) || 0)) {
         throw new Error("Admin data changed while loading. Please retry.");
       }
-      if (policy.retain) { adminCache.delete(endpoint); adminCache.set(endpoint, { at: Date.now(), data }); persistAdminCache(); }
+      if (policy.retain) {
+        if (endpoint !== '/admin/notifications?mode=count' || notificationSequence >= notificationCountSequence) {
+          adminCache.delete(endpoint); adminCache.set(endpoint, { at: Date.now(), data });
+        }
+        // Any notification response already carries the global unread count.
+        if (notificationSequence >= notificationCountSequence && policy.group === 'notifications' && Number.isFinite(data.unread_count)) {
+          notificationCountSequence = notificationSequence;
+          adminCache.set('/admin/notifications?mode=count', { at: Date.now(), data: { success: true, unread_count: data.unread_count } });
+        }
+        persistAdminCache();
+      }
       return data;
     }).finally(() => { if (adminRequests.get(endpoint) === pending) adminRequests.delete(endpoint); });
     adminRequests.set(endpoint, pending);
@@ -1169,6 +1185,7 @@ var API = (() => {
     const wasLocked = sessionLocked;
     sessionLocked = true;
     sessionChecking = false;
+    if (!wasLocked && typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('admin-session:locked'));
     pauseInactivityTracking();
     if (!wasLocked) previousSessionFocus = document.activeElement;
     ensureSessionLockCard();
@@ -2158,6 +2175,8 @@ var API = (() => {
 
     if (filters.status) params.set("status", filters.status);
     if (filters.category) params.set("category", filters.category);
+    if (filters.service) params.set("service", filters.service);
+    if (filters.activity) params.set("activity", filters.activity);
     if (filters.mode) params.set("mode", filters.mode);
     if (filters.page) params.set("page", String(filters.page));
     if (filters.per_page) params.set("per_page", String(filters.per_page));

@@ -93,6 +93,39 @@ class Notification extends Model
         return self::CATEGORY_GROOMING;
     }
 
+    /** Service and activity are separate dimensions; legacy categories remain unchanged. */
+    public static function serviceTypes(): array
+    {
+        $types = array_merge(...array_values(self::categoryTypes()));
+
+        return [
+            'grooming' => array_values(array_filter($types, fn ($type) => ! str_starts_with($type, 'clinic_'))),
+            'clinic' => array_values(array_filter($types, fn ($type) => str_starts_with($type, 'clinic_'))),
+        ];
+    }
+
+    public static function activities(): array
+    {
+        return [
+            'pre_registrations' => ['label' => 'Pre-registrations', 'types' => ['booked', self::TYPE_CLINIC_BOOKED]],
+            'walk_ins' => ['label' => 'Walk-ins', 'types' => ['walk_in_registered', self::TYPE_CLINIC_WALK_IN]],
+            'schedule_changes' => ['label' => 'Schedule changes', 'types' => ['rescheduled']],
+            'status_updates' => ['label' => 'Queue / status updates', 'types' => ['booking_confirmed', 'status_update', 'queue_update']],
+            'payments' => ['label' => 'Payments', 'types' => self::categoryTypes()[self::CATEGORY_PAYMENTS]],
+            'cancellations' => ['label' => 'Cancellations', 'types' => self::categoryTypes()[self::CATEGORY_CANCELLATIONS]],
+            'expired' => ['label' => 'Expired pre-registrations', 'types' => ['no_show']],
+        ];
+    }
+
+    public static function activityForType(?string $type): ?string
+    {
+        foreach (self::activities() as $activity => $definition) {
+            if (in_array($type, $definition['types'], true)) return $activity;
+        }
+
+        return null;
+    }
+
     public static function createForClinic(
         ClinicAppointment $appointment,
         string $type,

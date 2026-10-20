@@ -688,31 +688,6 @@ body.customer-detail-modal-open {
   padding-bottom: 1.25rem;
 }
 
-/* ----- Admin Notification Dropdown ----- */
-.notif-dropdown {
-  position: fixed;
-  top: 5rem;
-  right: 1rem;
-  z-index: 9999;
-  width: 22rem;
-  display: flex;
-  flex-direction: column;
-}
-
-.notif-dropdown .notif-list {
-  max-height: 18rem;
-  overflow-y: auto;
-}
-
-
-@media (max-width: 639px) {
-  .notif-dropdown {
-    right: 0.75rem;
-    left: 0.75rem;
-    width: auto;
-  }
-}
-
 /* ----- Client Notification Dropdown ----- */
 .notif-client-dropdown {
   position: fixed;
