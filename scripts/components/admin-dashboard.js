@@ -570,7 +570,11 @@ function adminDashboard() {
               throw new Error("Cannot start grooming: pet record is missing.");
             }
 
-            const response = await API.adminStartPetGrooming(booking.id, bookingPetId, { estimate_factors: pet.estimateFactors || [], grooming_preference: pet.groomingPreference || null });
+            const assessment = booking.bookingType === "Walk-In" ? {} : {
+              estimate_factors: pet.estimateFactors || [],
+              grooming_preference: pet.groomingPreference || null,
+            };
+            const response = await API.adminStartPetGrooming(booking.id, bookingPetId, assessment);
             await this.loadAdminBookings();
 
             this.setInProgressBookingExpanded(booking.id, true);
@@ -976,17 +980,18 @@ function adminDashboard() {
       }
 
       const petName = String(pet?.petName ?? pet?.pet_name ?? pet?.name ?? "this pet").trim();
+      const isWalkIn = booking.bookingType === "Walk-In";
       const hasEarlierUnfinishedPets = this.hasEarlierQueuedUnfinishedPets(booking);
       this.openActionConfirmModal({
         action: "startPetGrooming",
         booking: {
           ...booking,
-          actionPet: { ...pet, estimateFactors: [...(pet.groomingEstimate?.factors || [])], groomingPreference: pet.groomingEstimate?.preference || "" },
+          actionPet: isWalkIn ? { ...pet } : { ...pet, estimateFactors: [...(pet.groomingEstimate?.factors || [])], groomingPreference: pet.groomingEstimate?.preference || "" },
         },
-        title: hasEarlierUnfinishedPets ? "Queue Order Warning" : "Confirm Start Grooming",
+        title: hasEarlierUnfinishedPets ? "Queue Order Warning" : (isWalkIn ? "Start Grooming" : "Confirm Start Grooming"),
         message: hasEarlierUnfinishedPets
           ? "An earlier queue still has unfinished pets. Are you sure you want to start grooming this pet first?"
-          : `Are you sure you want to start grooming for ${petName}?`,
+          : (isWalkIn ? `Start grooming for ${petName}?` : `Are you sure you want to start grooming for ${petName}?`),
         confirmLabel: "Yes, Start",
         busyLabel: "Starting...",
         icon: "grooming",
@@ -1256,7 +1261,7 @@ function adminDashboard() {
 
     async executeConfirmedBookingAction() {
       const { action, booking } = this.actionConfirmModal;
-      if (!action || !booking) {
+      if (this.actionConfirmModal.busy || !action || !booking) {
         return;
       }
 
@@ -4202,7 +4207,7 @@ function adminDashboard() {
       this._detailsReturnFocus = null;
     },
 
-    trapGroomingDetailsFocus(event) {
+    trapGroomingModalFocus(event) {
       const controls = [...event.currentTarget.querySelectorAll('button, input, textarea, summary, [tabindex="0"]')]
         .filter((element) => !element.disabled && element.getClientRects().length);
       const first = controls[0];

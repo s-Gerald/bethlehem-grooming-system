@@ -195,4 +195,85 @@ assert.equal(ui.groomingMenuBookingId, null, 'Disclosure closes the secondary me
 ui.openGroomingMenu(record, event);
 ui.setTab('for-payment');
 assert.equal(ui.groomingMenuBookingId, null, 'Changing stages dismisses any secondary menu');
-console.log('Admin Grooming board regression tests passed.');
+async function startGroomingConfirmation() {
+  const { environment, deferred } = require('./admin-data-cache-regression.cjs');
+  const e = environment();
+  e.c.Intl = Intl;
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-dashboard.js'), 'utf8'), e.c);
+  const start = e.c.adminDashboard();
+  start.$nextTick = () => {};
+  start.pageMode = 'appointments';
+  for (const method of ['registerBridge', 'loadConfig', 'bootstrapDashboard', 'startContentPolling', 'restoreGroomingOnlinePayment', 'dispatchDashboardEvent']) {
+    start[method] = () => {};
+  }
+  let refreshes = 0;
+  start.loadAdminBookings = async () => { refreshes++; };
+  await start.init();
+  refreshes = 0;
+  const zeus = { ...pet, petName: 'Zeus', groomingEstimate: { minMinutes: 60, maxMinutes: 75,
+    formatted: '1 hr–1 hr 15 min', preference: 'summer_cut', factors: ['thick_coat'] } };
+  const ginger = { ...sibling, groomingEstimate: { minMinutes: 90, maxMinutes: 90,
+    formatted: '1 hr 30 min', preference: null, factors: [] } };
+  const walkin = { ...pair, bookingType: 'Walk-In', pets: [zeus, ginger] };
+  const before = JSON.stringify(walkin);
+  start.queuedList = [walkin];
+  start.confirmStartGroomingPet(walkin, zeus);
+  assert.equal(start.actionConfirmModal.title, 'Start Grooming');
+  assert.equal(start.actionConfirmModal.message, 'Start grooming for Zeus?');
+  assert.equal(start.getPetEstimateLabel(start.actionConfirmModal.booking.actionPet), '1 hr–1 hr 15 min');
+  assert.equal(start.actionConfirmModal.confirmLabel, 'Yes, Start');
+  assert.equal('estimateFactors' in start.actionConfirmModal.booking.actionPet, false);
+  assert.equal('groomingPreference' in start.actionConfirmModal.booking.actionPet, false);
+  assert.equal(e.calls.length, 0, 'Opening the confirmation uses loaded booking data');
+  start.closeActionConfirmModal();
+  assert.equal(start.actionConfirmModal.open, false);
+  assert.equal(e.calls.length, 0, 'Cancel sends no request');
+
+  start.confirmStartGroomingPet(walkin, ginger);
+  assert.equal(start.actionConfirmModal.message, 'Start grooming for Mark?');
+  assert.equal(start.getPetEstimateLabel(start.actionConfirmModal.booking.actionPet), '1 hr 30 min');
+  const held = deferred();
+  let submitted;
+  e.respond((endpoint, options) => { submitted = JSON.parse(options.body); return held.promise; });
+  const pending = start.executeConfirmedBookingAction();
+  assert.equal(start.actionConfirmModal.busy, true);
+  start.closeActionConfirmModal();
+  assert.equal(start.actionConfirmModal.open, true, 'Processing cannot dismiss the confirmation');
+  await start.executeConfirmedBookingAction();
+  assert.equal(start.actionConfirmModal.busy, true, 'A second confirmation must not clear the busy state');
+  assert.equal(e.calls.length, 1, 'Duplicate confirmation sends only one mutation');
+  assert.equal(e.calls[0].endpoint, '/admin/bookings/42/pets/8/start-grooming');
+  assert.deepEqual(submitted, {}, 'Walk-in start sends no assessment');
+  held.resolve({ success: true });
+  await pending;
+  assert.equal(refreshes, 1, 'Successful start keeps the single existing refresh');
+  assert.equal(start.actionConfirmModal.open, false);
+  assert.equal(JSON.stringify(walkin), before, 'Starting a pet never mutates either loaded assessment');
+
+  const prereg = { ...walkin, bookingType: 'Pre-Register' };
+  start.confirmStartGroomingPet(prereg, zeus);
+  assert.equal(start.actionConfirmModal.title, 'Confirm Start Grooming');
+  assert.equal(JSON.stringify(start.actionConfirmModal.booking.actionPet.estimateFactors), '["thick_coat"]');
+  start.actionConfirmModal.booking.actionPet.estimateFactors = ['extra_handling'];
+  start.actionConfirmModal.booking.actionPet.groomingPreference = 'regular_trim';
+  e.respond((endpoint, options) => { submitted = JSON.parse(options.body); return { success: true }; });
+  await start.executeConfirmedBookingAction();
+  assert.deepEqual(submitted, { estimate_factors: ['extra_handling'], grooming_preference: 'regular_trim' });
+  assert.equal(refreshes, 2);
+
+  start.queuedList = [{ ...booking, id: 1, queueNumber: 1 }, walkin];
+  start.confirmStartGroomingPet(walkin, zeus);
+  assert.equal(start.actionConfirmModal.title, 'Queue Order Warning');
+  assert.equal(start.actionConfirmModal.variant, 'warning');
+  assert.match(start.actionConfirmModal.message, /earlier queue still has unfinished pets/);
+  assert.equal(start.getPetEstimateLabel(start.actionConfirmModal.booking.actionPet), '1 hr–1 hr 15 min');
+  start.closeActionConfirmModal();
+  start.activeGroomers = 1;
+  start.activeGroomingPets = 1;
+  start.confirmStartGroomingPet(walkin, zeus);
+  assert.equal(start.actionConfirmModal.open, false);
+  assert.match(start.groomerCapacityError, /capacity is full/);
+  assert.equal(e.calls.length, 2, 'Warnings and capacity checks add no requests');
+}
+startGroomingConfirmation().then(() => console.log('Admin Grooming board regression tests passed.'))
+  .catch(error => { console.error(error); process.exitCode = 1; });

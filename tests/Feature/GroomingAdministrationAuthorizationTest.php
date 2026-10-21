@@ -2629,6 +2629,75 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         return [['large', 120, '2 hrs'], ['small', 90, '1 hr 30 min']];
     }
 
+    public function test_walkin_start_preserves_each_pets_saved_assessment_even_with_reassessment_input(): void
+    {
+        $this->authenticateAs('staff');
+        $this->seedMultiPetBooking();
+        DB::table('bookings')->where('booking_id', 1)->update(['booking_type' => 'walk_in']);
+        DB::table('booking_services')->update(['service_id' => 90]);
+        DB::table('booking_pets')->where('booking_pet_id', 1)->update([
+            'registered_size' => 'small', 'grooming_preference' => 'summer_cut',
+            'grooming_estimate_min' => 100, 'grooming_estimate_max' => 115,
+            'grooming_estimate_factors' => json_encode(['thick_coat']),
+        ]);
+        DB::table('booking_pets')->where('booking_pet_id', 2)->update([
+            'registered_size' => 'small', 'grooming_estimate_min' => 60, 'grooming_estimate_max' => 75,
+            'grooming_estimate_factors' => json_encode(['extra_handling']),
+        ]);
+        $before = BookingPet::findOrFail(1)->only(['grooming_preference', 'grooming_estimate_min', 'grooming_estimate_max', 'grooming_estimate_factors']);
+        $sibling = BookingPet::findOrFail(2)->getAttributes();
+        $this->partialMock(\App\Services\GroomingTimeEstimate::class, function ($mock) {
+            $mock->shouldNotReceive('recalculate');
+            $mock->shouldNotReceive('estimateForPet');
+        });
+
+        $this->postJson('/api/admin/bookings/1/pets/1/start-grooming', [
+            'grooming_preference' => 'regular_trim', 'estimate_factors' => ['extra_handling'],
+        ])->assertOk()->assertJsonPath('all_pets_started', false)->assertJsonPath('remaining_pets', 1);
+        $this->assertSame($before, BookingPet::findOrFail(1)->only(array_keys($before)));
+        $this->assertSame($sibling, BookingPet::findOrFail(2)->getAttributes());
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 1, 'grooming_state' => 'in_progress']);
+        $this->postJson('/api/admin/bookings/1/pets/1/start-grooming')->assertUnprocessable();
+        $this->postJson('/api/admin/bookings/1/pets/2/start-grooming')->assertOk()->assertJsonPath('all_pets_started', true);
+        $this->assertSame(60, BookingPet::findOrFail(2)->grooming_estimate_min);
+        $this->assertSame(['extra_handling'], BookingPet::findOrFail(2)->grooming_estimate_factors);
+    }
+
+    #[DataProvider('invalidWalkinEstimates')]
+    public function test_legacy_walkin_start_calculates_only_missing_duration_from_persisted_information(?int $min, ?int $max, ?string $preference, ?array $factors, array $range): void
+    {
+        $this->authenticateAs('admin');
+        $this->seedMultiPetBooking();
+        DB::table('bookings')->where('booking_id', 1)->update(['booking_type' => 'walk_in']);
+        DB::table('services')->insert(['service_id' => 91, 'service_name' => 'Regular Dog Grooming', 'slug' => 'regular_dog_grooming', 'base_price' => 650]);
+        DB::table('booking_services')->where('booking_pet_id', 1)->update(['service_id' => 91]);
+        DB::table('booking_pets')->where('booking_pet_id', 1)->update([
+            'registered_size' => 'small', 'grooming_preference' => $preference,
+            'grooming_estimate_min' => $min, 'grooming_estimate_max' => $max,
+            'grooming_estimate_factors' => $factors === null ? null : json_encode($factors),
+        ]);
+
+        $this->postJson('/api/admin/bookings/1/pets/1/start-grooming', [
+            'grooming_preference' => 'kalbo', 'estimate_factors' => ['detailed_styling'],
+        ])->assertOk();
+        $pet = BookingPet::findOrFail(1);
+        $this->assertSame($range, [$pet->grooming_estimate_min, $pet->grooming_estimate_max]);
+        $this->assertSame($preference, $pet->grooming_preference);
+        $this->assertSame($factors, $pet->grooming_estimate_factors);
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 2, 'grooming_state' => 'not_started', 'grooming_estimate_min' => null]);
+    }
+
+    public static function invalidWalkinEstimates(): array
+    {
+        return [
+            'missing range' => [null, null, 'summer_cut', ['thick_coat'], [95, 105]],
+            'missing maximum' => [100, null, 'summer_cut', ['thick_coat'], [95, 105]],
+            'reversed range' => [115, 100, 'summer_cut', ['thick_coat'], [95, 105]],
+            'zero minimum' => [0, 100, 'summer_cut', ['thick_coat'], [95, 105]],
+            'missing assessment stays unknown' => [null, null, null, null, [75, 90]],
+        ];
+    }
+
     #[DataProvider('packageFacialEstimates')]
     public function test_customer_and_walkin_store_the_same_package_and_separately_charged_facial_estimate(string $package, ?string $preference, string $species, int $weight, array $range, int $packagePrice): void
     {
@@ -2691,6 +2760,23 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('booking.pets.0.grooming_estimate.minMinutes', 90)
             ->assertJsonPath('booking.pets.0.grooming_estimate.maxMinutes', 90);
         $this->assertDatabaseHas('booking_pets', ['grooming_preference' => 'regular_trim', 'grooming_estimate_min' => 90, 'grooming_estimate_max' => 90]);
+
+        $this->authenticateAs('staff');
+        $walkin = $this->submitSignedGrooming('/api/admin/walk-in', [
+            'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
+            'pets' => [[
+                'pet_name' => 'Zeus', 'species' => 'dog', 'weight' => 8, 'groomer_id' => 1,
+                'grooming_preference' => 'summer_cut', 'estimate_factors' => ['thick_coat', 'extra_handling'],
+                'grooming_estimate_min' => 1, 'grooming_estimate_max' => 1,
+                'services' => [['service_slug' => 'regular_dog_grooming']],
+            ]],
+        ])->assertCreated()->assertJsonPath('pets.0.grooming_estimate.minMinutes', 115)
+            ->assertJsonPath('pets.0.grooming_estimate.maxMinutes', 150);
+        $savedPet = BookingPet::where('booking_id', $walkin->json('booking_id'))->firstOrFail();
+        $this->assertSame('summer_cut', $savedPet->grooming_preference);
+        $this->assertSame(['thick_coat', 'extra_handling'], $savedPet->grooming_estimate_factors);
+        $this->postJson("/api/admin/bookings/{$savedPet->booking_id}/pets/{$savedPet->booking_pet_id}/start-grooming")->assertOk();
+        $this->assertSame([115, 150], [$savedPet->fresh()->grooming_estimate_min, $savedPet->fresh()->grooming_estimate_max]);
     }
 
     public function test_check_in_refreshes_rules_and_admitted_and_completed_snapshots_survive_later_rule_changes(): void

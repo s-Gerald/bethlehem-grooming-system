@@ -76,6 +76,8 @@ async function main() {
   assert.equal(pending.calls[0].customer_user_id, 7);
   assert.deepEqual(pending.calls[0].pets, consent.buildApiPayload({}, pending.payload, {}).pets,
     "Preview and final submission send identical pet selections and staff factors");
+  assert.equal(pending.calls[0].pets[0].grooming_preference, "summer_cut");
+  assert.deepEqual(Array.from(pending.calls[0].pets[0].estimate_factors), ["thick_coat"]);
   resolve(capacity(false));
   await flush();
   assert.equal(pending.get("confirmBookingBtn").disabled, true);

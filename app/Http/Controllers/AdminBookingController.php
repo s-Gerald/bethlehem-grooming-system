@@ -685,7 +685,19 @@ class AdminBookingController extends Controller
                 return $this->groomerCapacityError($activePets, $settings->groomers_on_duty);
             }
 
-            if (! $bookingPet->grooming_estimate_min
+            if ($booking->booking_type === 'walk_in' || $booking->walkin_id !== null) {
+                if ($bookingPet->grooming_estimate_min <= 0
+                    || $bookingPet->grooming_estimate_max < $bookingPet->grooming_estimate_min) {
+                    // Legacy walk-ins may lack a duration. Preserve their saved assessment.
+                    $estimate = app(\App\Services\GroomingTimeEstimate::class)->estimateForPet($booking, $bookingPet);
+                    if ($estimate) {
+                        $bookingPet->fill([
+                            'grooming_estimate_min' => $estimate['minMinutes'],
+                            'grooming_estimate_max' => $estimate['maxMinutes'],
+                        ])->save();
+                    }
+                }
+            } elseif (! $bookingPet->grooming_estimate_min
                 || ($assessment['estimate_factors'] ?? $bookingPet->grooming_estimate_factors ?? []) !== ($bookingPet->grooming_estimate_factors ?? [])
                 || ($assessment['grooming_preference'] ?? $bookingPet->grooming_preference) !== $bookingPet->grooming_preference) {
                 app(\App\Services\GroomingTimeEstimate::class)->recalculate($booking, $bookingPet,
