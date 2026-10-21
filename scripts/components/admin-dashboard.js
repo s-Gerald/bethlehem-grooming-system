@@ -343,6 +343,7 @@ function adminDashboard() {
     _bookingRevision: 0,
     _summaryRequest: null,
     _activityRequest: null,
+    _dashboardRetryAt: { summary: 0, activity: 0 },
     _visibilityListener: null,
     _sessionResumeListener: null,
     _destroyed: false,
@@ -651,7 +652,7 @@ function adminDashboard() {
     },
 
     startContentPolling() {
-      if (this._destroyed) return;
+      if (this._destroyed || this._bookingInterval) return;
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
         if (this.pageMode === 'dashboard') {
@@ -673,6 +674,7 @@ function adminDashboard() {
       this._destroyed = true;
       this._bookingRevision++;
       clearInterval(this._bookingInterval);
+      this._bookingInterval = null;
       clearTimeout(this._onlinePaymentPoll);
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
@@ -681,30 +683,58 @@ function adminDashboard() {
     },
 
     loadDashboardSummary({ force = false } = {}) {
+      if (this._destroyed || this.pageMode !== 'dashboard' || document.visibilityState === 'hidden') return Promise.resolve();
       if (this._summaryRequest) return this._summaryRequest;
+      if (!force && Date.now() < this._dashboardRetryAt.summary) return Promise.resolve();
       this.summaryLoading = !this.summaryLoaded;
-      this.summaryError = '';
+      let failed = false;
+      const onRefreshError = error => { failed = true; this.dashboardRefreshFailed('summary', error); };
       this._summaryRequest = API.loadAdminData("/admin/dashboard/summary", () => API.getAdminDashboardSummary({ force }), data => {
         if (this._destroyed) return;
         this.dashboardQueuePreview = data.queuePreview || [];
         this.applyDashboardData(data);
         this.summaryLoaded = true;
-      }, { force }).catch(() => { this.summaryError = 'Could not refresh Dashboard.'; })
+      }, { force, onRefreshError }).then(() => {
+        if (!failed && !this._destroyed) {
+          this.summaryError = '';
+          this._pollFailures.summary = this._dashboardRetryAt.summary = 0;
+        }
+      }).catch(onRefreshError)
         .finally(() => { this.summaryLoading = false; this._summaryRequest = null; });
       return this._summaryRequest;
     },
 
     loadDashboardActivity({ force = false } = {}) {
+      if (this._destroyed || this.pageMode !== 'dashboard' || document.visibilityState === 'hidden') return Promise.resolve();
       if (this._activityRequest) return this._activityRequest;
+      if (!force && Date.now() < this._dashboardRetryAt.activity) return Promise.resolve();
       this.activityLoading = !this.activityLoaded;
-      this.activityError = '';
+      let failed = false;
+      const onRefreshError = error => { failed = true; this.dashboardRefreshFailed('activity', error); };
       this._activityRequest = API.loadAdminData("/admin/dashboard/activity", () => API.getAdminDashboardActivity({ force }), data => {
         if (this._destroyed) return;
         this.recentActivity = this.normalizeRecentActivity(data.recentActivity);
         this.activityLoaded = true;
-      }, { force }).catch(() => { this.activityError = 'Could not refresh activity.'; })
+      }, { force, onRefreshError }).then(() => {
+        if (!failed && !this._destroyed) {
+          this.activityError = '';
+          this._pollFailures.activity = this._dashboardRetryAt.activity = 0;
+        }
+      }).catch(onRefreshError)
         .finally(() => { this.activityLoading = false; this._activityRequest = null; });
       return this._activityRequest;
+    },
+
+    dashboardRefreshFailed(section, error) {
+      if (this._destroyed) return;
+      const label = section === 'summary' ? 'Dashboard' : 'activity';
+      this[`${section}Error`] = this[`${section}Loaded`]
+        ? `Could not refresh ${label}. Data may be outdated.`
+        : `Could not refresh ${label}.`;
+      if (error.status === 0 || error.status >= 500 || error.status === 429) {
+        const failures = this._pollFailures[section] = Math.min((this._pollFailures[section] || 0) + 1, 2);
+        this._dashboardRetryAt[section] = Date.now() + 30000 * 2 ** failures;
+      }
     },
 
     get dashboardSearchHasResults() {

@@ -144,6 +144,17 @@ async function retainedDataWaitsForSessionVerification() {
   data.resolve({customers: [{id: 2}]}); await p;
   assert.equal(rendered.customers[0].id, 2);
 }
+async function dashboardRoleChangeRejectsPendingData() {
+  const e = environment(), held = deferred();
+  e.respond(() => held.promise);
+  let rendered = false;
+  const pending = e.API.loadAdminData('/admin/dashboard/summary', () => e.API.getAdminDashboardSummary(), () => { rendered = true; });
+  e.API.setUserRole('staff');
+  held.resolve({summary: {revenueToday: 1200}});
+  await assert.rejects(pending, /changed|session/i);
+  assert.equal(rendered, false, 'An old-role response cannot render after the session role changes');
+  assert.equal(e.API.readAdminCache('/admin/dashboard/summary'), null);
+}
 module.exports = { environment, deferred };
 async function scopedPresentationPolicies() {
   for (const [key, freshness] of [
@@ -209,6 +220,6 @@ async function inventoryReadMutationRaceAndOnlineSettlement() {
   await e.API.adminRequest('GET','/pos/online-payment/3');
   assert.equal(e.API.readAdminCache(key),null,'Confirmed online settlement invalidates presentation while status stays uncached');
 }
-if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification]) {
+if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
   await test(); console.log(test.name+' passed');
 } for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, inventoryReadMutationRaceAndOnlineSettlement]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });

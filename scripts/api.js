@@ -217,7 +217,12 @@ var API = (() => {
     if (!ensureAdminCache() || !groups.length) return;
     for (const group of groups) adminCacheRevisions.set(group, (adminCacheRevisions.get(group) || 0) + 1);
     for (const key of adminCache.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminCache.delete(key);
-    for (const key of adminRequests.keys()) if (groups.includes(adminCachePolicy(key)?.group)) adminRequests.delete(key);
+    // A Dashboard read already in flight must settle before another can start.
+    // Its revision check still rejects the superseded result after a mutation.
+    for (const key of adminRequests.keys()) {
+      const group = adminCachePolicy(key)?.group;
+      if (group !== 'dashboard' && groups.includes(group)) adminRequests.delete(key);
+    }
     persistAdminCache();
     if (typeof window.dispatchEvent === 'function') {
       window.dispatchEvent(new CustomEvent('admin-data:invalidated', { detail: { groups } }));
@@ -301,7 +306,7 @@ var API = (() => {
     return pending;
   }
 
-  async function loadAdminData(endpoint, load, render, { force = false } = {}) {
+  async function loadAdminData(endpoint, load, render, { force = false, onRefreshError } = {}) {
     const token = getAdminToken();
     // Re-read retention after the server verifies/unlocks this document's session.
     // Otherwise a stale cache hit during startup would become a cold network load.
@@ -316,7 +321,10 @@ var API = (() => {
     try { data = await load(); }
     catch (error) {
       if (cached && token === getAdminToken() && readAdminCache(endpoint)?.data === cached.data
-        && (error.status === 0 || error.status >= 500)) return cached.data;
+        && (error.status === 0 || error.status >= 500)) {
+        onRefreshError?.(error);
+        return cached.data;
+      }
       throw error;
     }
     if (!cached || JSON.stringify(data) !== JSON.stringify(cached.data)) render(data);

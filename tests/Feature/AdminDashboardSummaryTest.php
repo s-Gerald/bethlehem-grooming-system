@@ -24,6 +24,23 @@ class AdminDashboardSummaryTest extends TestCase
 {
     use \Tests\Support\CreatesPetGroomers;
 
+    public function test_summary_formats_recorded_check_in_times_and_preserves_legacy_nulls(): void
+    {
+        DB::table('bookings')->insert([
+            ['booking_reference' => 'CHECKED-IN', 'booking_date' => '2026-06-24', 'status' => 'checked_in',
+                'queue_number' => 1, 'dropped_off_at' => '2026-06-24 09:45:00'],
+            ['booking_reference' => 'LEGACY-CHECK-IN', 'booking_date' => '2026-06-24', 'status' => 'checked_in',
+                'queue_number' => 2, 'dropped_off_at' => null],
+        ]);
+
+        $response = (new AdminBookingController)->dashboardSummary();
+        $this->assertSame(200, $response->getStatusCode());
+        $queue = $response->getData(true)['queuePreview'];
+        $this->assertSame('9:45 AM', $queue[0]['dropOffTime']);
+        $this->assertNull($queue[1]['dropOffTime']);
+        $this->assertSame([1, 2], array_column($queue, 'queueNumber'));
+    }
+
     public function test_compact_dashboard_and_indicator_do_not_load_workflow_details(): void
     {
         DB::table('bookings')->insert([

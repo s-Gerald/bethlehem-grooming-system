@@ -226,7 +226,9 @@ class AdminBookingController extends Controller
                 'appointmentDate' => $today,
                 'queueNumber' => $booking->queue_number,
                 ...$this->bookingCardIdentity($booking),
-                'dropOffTime' => $booking->dropped_off_at?->format('g:i A'),
+                'dropOffTime' => $booking->dropped_off_at
+                    ? Carbon::parse($booking->dropped_off_at)->format('g:i A')
+                    : null,
             ]);
 
         return response()->json([
