@@ -146,9 +146,30 @@ async function testSettingsFailureKeepsFormHiddenUntilRetry() {
   assert.equal(element("settingsLoadingScreen").classList.contains("hidden"), true);
 }
 
+async function testPhoneVerificationBadgesUseServerStatus() {
+  for (const [phone, status, label] of [
+    [null, 'not_added', 'Not added'],
+    ['09171234567', 'unverified', 'Not verified'],
+    ['09171234567', 'verified', 'Verified'],
+    [null, 'verified', 'Not added'],
+    ['09171234567', undefined, 'Not verified'],
+  ]) {
+    let requests = 0;
+    const element = createPage(async () => {
+      requests++;
+      return { user: { phone, phone_verification_status: status } };
+    });
+    await flush();
+    assert.equal(element('settingsPhoneStatus').textContent, label);
+    assert.equal(element('settingsPhone').value, phone ? '0917-123-4567' : 'Not provided');
+    assert.equal(requests, 1, 'Badge must reuse the Settings profile request.');
+  }
+}
+
 (async () => {
   await testSettingsWaitsForProfile();
   await testSettingsFailureKeepsFormHiddenUntilRetry();
+  await testPhoneVerificationBadgesUseServerStatus();
   console.log("Client settings loading regression tests passed.");
 })().catch((error) => {
   console.error(error);

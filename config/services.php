@@ -2,6 +2,12 @@
 
 return [
 
+    // Preparation only: a real provider and backend enforcement do not exist yet.
+    'sms_verification' => [
+        'available' => false,
+        'enforced' => false,
+    ],
+
     'paymongo' => [
         'secret_key' => env('PAYMONGO_SECRET_KEY'),
         'webhook_secret' => env('PAYMONGO_WEBHOOK_SECRET'),

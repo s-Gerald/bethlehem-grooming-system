@@ -15,10 +15,39 @@ function setButtonAccess(button, allowed) {
   button.setAttribute("title", "Pre-registration ongoing");
 }
 
+let openingPhonePreview = false;
+
 buttons.forEach((button) => {
-  button.addEventListener("click", (event) => {
+  button.addEventListener("click", async (event) => {
     if (button.getAttribute("aria-disabled") === "true") {
       event.preventDefault();
+      return;
+    }
+
+    // Preview only: this must never become a production verification gate.
+    const localPreview = button.hasAttribute("data-phone-verification-preview")
+      && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
+      && new URLSearchParams(window.location.search).get("smsPreview") === "1";
+    if (!localPreview || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+
+    event.preventDefault();
+    if (openingPhonePreview) return;
+    openingPhonePreview = true;
+    try {
+      // The dashboard supplies its existing profile request; never fetch again here.
+      const user = await button.customerProfileReady;
+      if (button.getAttribute("aria-disabled") === "true") return;
+      if (!user || (user.phone && user.phone_verification_status === "verified")) {
+        window.location.assign(button.href);
+        return;
+      }
+      const { openPhoneVerificationPreview } = await import("./customer-phone-verification.js?v=20261021-2");
+      if (button.getAttribute("aria-disabled") !== "true") openPhoneVerificationPreview(button, user);
+    } catch (error) {
+      console.error("Unable to open the local phone verification preview:", error);
+      if (button.getAttribute("aria-disabled") !== "true") window.location.assign(button.href);
+    } finally {
+      openingPhonePreview = false;
     }
   });
 });

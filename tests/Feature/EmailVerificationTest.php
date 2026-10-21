@@ -29,6 +29,7 @@ class EmailVerificationTest extends TestCase
             $table->string('phone', 20)->nullable()->unique();
             $table->string('email', 150)->unique();
             $table->timestamp('email_verified_at')->nullable();
+            $table->timestamp('phone_verified_at')->nullable();
             $table->string('email_verification_token', 64)->nullable()->unique();
             $table->timestamp('email_verification_expires_at')->nullable();
             $table->string('password_hash');
@@ -929,8 +930,35 @@ class EmailVerificationTest extends TestCase
         $this->assertNull($user->phone_verified_at);
         $this->assertNotNull($user->email_verified_at);
         $this->withToken($verified->json('token'))->getJson('/api/me')
-            ->assertOk()->assertJsonPath('user.phone', $expectedPhone);
+            ->assertOk()->assertJsonPath('user.phone', $expectedPhone)
+            ->assertJsonPath('user.phone_verification_status', $expectedPhone ? 'unverified' : 'not_added');
         $this->assertDatabaseCount('users', 2);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('phoneVerificationStatuses')]
+    public function test_me_derives_phone_status_from_the_stored_phone_and_verification_timestamp(?string $phone, ?string $verifiedAt, string $expected): void
+    {
+        $user = User::factory()->create([
+            'phone' => $phone,
+            'phone_verified_at' => $verifiedAt,
+            'email_verified_at' => now(),
+        ]);
+        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        $this->getJson('/api/me')->assertOk()
+            ->assertJsonPath('user.phone_verification_status', $expected)
+            ->assertJsonMissingPath('user.phone_verified_at');
+        $this->assertSame($phone, $user->fresh()->phone);
+    }
+
+    public static function phoneVerificationStatuses(): array
+    {
+        return [
+            'missing' => [null, null, 'not_added'],
+            'missing with stale timestamp' => [null, '2026-10-20 00:00:00', 'not_added'],
+            'empty with stale timestamp' => ['', '2026-10-20 00:00:00', 'not_added'],
+            'unverified' => ['09171234567', null, 'unverified'],
+            'verified' => ['09171234567', '2026-10-20 00:00:00', 'verified'],
+        ];
     }
 
     public static function optionalPhones(): array
@@ -1537,6 +1565,7 @@ class EmailVerificationTest extends TestCase
 
     public function test_login_resend_cooldown_is_enforced_on_the_server(): void
     {
+        $this->freezeTime();
         Notification::fake();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
         $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();

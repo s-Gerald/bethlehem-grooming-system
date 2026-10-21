@@ -324,6 +324,9 @@ class AuthController extends Controller
                 'username' => $user->username,
                 'email' => $user->email,
                 'phone' => $user->phone,
+                'phone_verification_status' => trim((string) $user->phone) === ''
+                    ? 'not_added'
+                    : ($user->phone_verified_at !== null ? 'verified' : 'unverified'),
                 'role' => $user->role,
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,

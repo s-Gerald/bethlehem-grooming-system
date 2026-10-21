@@ -323,15 +323,14 @@
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <label
-                        for="settingsPhone"
-                        class="mb-2 block text-sm font-semibold text-portal-text"
-                      >
-                        Phone Number
-                      </label>
+                      <div class="mb-2 flex flex-wrap items-center gap-2">
+                        <label for="settingsPhone" class="text-sm font-semibold text-portal-text">Phone Number</label>
+                        <span id="settingsPhoneStatus" class="rounded-full bg-portal-surface-soft px-2 py-0.5 text-xs font-medium text-portal-muted"></span>
+                      </div>
                       <input
                         type="tel"
                         id="settingsPhone"
+                        aria-describedby="settingsPhoneStatus"
                         name="phone"
                         inputmode="numeric"
                         maxlength="13"
@@ -497,6 +496,6 @@
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=customer-cache-20261005-v1"></script>
-    <script src="../../scripts/components/client-settings.js?v=customer-cache-20261005-v1"></script>
+    <script src="../../scripts/components/client-settings.js?v=phone-status-20261021"></script>
   </body>
 </html>

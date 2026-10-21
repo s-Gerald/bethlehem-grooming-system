@@ -105,9 +105,15 @@ function scheduleCustomerDashboardAfterPaint(task) {
   });
 
   // Client profile section: load the logged-in customer's name and initials.
+  const preRegisterButton = document.getElementById("preRegisterButton");
+  let resolveCustomerProfile;
+  if (preRegisterButton) {
+    preRegisterButton.customerProfileReady = new Promise((resolve) => { resolveCustomerProfile = resolve; });
+  }
   const loadDashboardProfile = async () => {
     try {
       const { user } = await API.getMe("customer");
+      resolveCustomerProfile?.(user);
       const firstName = user.first_name || "";
       const lastName = user.last_name || "";
 
@@ -128,6 +134,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
           ((firstName[0] || "") + (lastName[0] || "")).toUpperCase() || "--";
       }
     } catch (error) {
+      resolveCustomerProfile?.(null);
       if (API.isAuthenticationError?.(error) || !API.hasAuthenticatedSession?.("customer")) {
         API.redirectToSignIn?.();
         return;

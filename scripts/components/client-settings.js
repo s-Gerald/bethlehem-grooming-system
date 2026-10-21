@@ -232,6 +232,16 @@ document.addEventListener("DOMContentLoaded", () => {
     firstNameInput.value = user.first_name || "";
     lastNameInput.value = user.last_name || "";
     phoneInput.value = formatMobileNumber(user.phone) || "Not provided";
+    const phoneStatus = document.getElementById("settingsPhoneStatus");
+    if (phoneStatus) {
+      const hasPhone = Boolean(String(user.phone ?? "").trim());
+      const verified = hasPhone && user.phone_verification_status === "verified";
+      phoneStatus.textContent = !hasPhone ? "Not added" : verified ? "Verified" : "Not verified";
+      phoneStatus.classList.toggle("bg-green-50", verified);
+      phoneStatus.classList.toggle("text-green-700", verified);
+      phoneStatus.classList.toggle("bg-portal-surface-soft", !verified);
+      phoneStatus.classList.toggle("text-portal-muted", !verified);
+    }
     emailInput.value = user.email || "Not provided";
 
     updateVisibleProfile(user);
