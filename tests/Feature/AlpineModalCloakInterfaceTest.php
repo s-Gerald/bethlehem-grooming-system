@@ -58,20 +58,24 @@ class AlpineModalCloakInterfaceTest extends TestCase
             $loadingCss,
         );
         $sessionCss = file_get_contents(base_path('css/session-lock.css'));
+        $gatedBody = 'html\[data-session-gate\]\s+body\s*>\s*:where\(:not\(#bethlehem-session-lock\):not\(script\):not\(style\)\)';
         $this->assertSame(1, preg_match(
-            '/html\[data-session-gate\]\s+body\s*>\s*:not\(#bethlehem-session-lock\):not\(script\):not\(style\)\s+\*\s*\{([^}]+)\}/s',
+            '/'.$gatedBody.'\s*,\s*'.$gatedBody.'\s+\*\s*\{([^}]+)\}/s',
             $sessionCss,
             $sessionGate,
         ));
         $this->assertMatchesRegularExpression('/visibility\s*:\s*hidden\s*!important\s*;/', $sessionGate[1]);
         $this->assertMatchesRegularExpression('/pointer-events\s*:\s*none\s*!important\s*;/', $sessionGate[1]);
         $this->assertSame(1, preg_match(
-            '/html\[data-session-gate="checking"\][^{]+\[data-admin-navigation\]\s+\*\s*\{([^}]+)\}/s',
+            '/html\[data-session-gate="checking"\]\s+body\s*>\s*\[data-admin-shell\]\s+:is\(([^{}]+)\)\s*\{([^}]+)\}/s',
             $loadingCss,
             $checkingNavigation,
         ));
-        $this->assertMatchesRegularExpression('/visibility\s*:\s*visible\s*!important\s*;/', $checkingNavigation[1]);
-        $this->assertMatchesRegularExpression('/pointer-events\s*:\s*none\s*!important\s*;/', $checkingNavigation[1]);
+        $this->assertMatchesRegularExpression('/\.admin-sidebar-menu\s+\[data-admin-navigation\]\s*,/', $checkingNavigation[1]);
+        $this->assertMatchesRegularExpression('/\.admin-sidebar-menu\s+\[data-admin-navigation\]\s+\*\s*,/', $checkingNavigation[1]);
+        $this->assertMatchesRegularExpression('/visibility\s*:\s*visible\s*!important\s*;/', $checkingNavigation[2]);
+        // Navigation inherits pointer blocking from the session gate, even while visible.
+        $this->assertDoesNotMatchRegularExpression('/pointer-events\s*:/', $checkingNavigation[2]);
     }
 
     public function test_every_alpine_full_screen_overlay_is_cloaked_before_initialization(): void

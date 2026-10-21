@@ -10,6 +10,10 @@ function setup(role = 'admin') {
   e.c.document.visibilityState = 'visible';
   e.c.window.removeEventListener = () => {};
   e.c.document.removeEventListener = () => {};
+  const timers = new Map();
+  let nextTimer = 0;
+  e.c.window.setInterval = callback => { timers.set(++nextTimer, callback); return nextTimer; };
+  e.c.window.clearInterval = id => timers.delete(id);
   let stopped = false, statusError = false, mutationError = false, pendingStatus, pendingMutation;
   e.respond(async (endpoint, options) => {
     if (endpoint === '/clinic/status') {
@@ -29,7 +33,8 @@ function setup(role = 'admin') {
   vm.runInContext(fs.readFileSync('scripts/components/admin-settings.js', 'utf8'), e.c);
   const ui = e.c.adminSettings();
   ui.$nextTick = fn => fn();
-  return { ...e, ui, statusCalls: () => e.calls.filter(c => c.endpoint === '/clinic/status').length,
+  return { ...e, ui, timers, tick: milliseconds => { e.advance(milliseconds); for (const callback of timers.values()) callback(); },
+    statusCalls: () => e.calls.filter(c => c.endpoint === '/clinic/status').length,
     mutations: () => e.calls.filter(c => /\/(stop|reopen)-today$/.test(c.endpoint)),
     setStopped: value => { stopped = value; }, failStatus: value => { statusError = value; },
     failMutation: value => { mutationError = value; }, holdStatus: value => { pendingStatus = value; },
@@ -148,6 +153,26 @@ async function sidebarRefreshNeverReadsIntake() {
     }
   }
 }
-(async () => { for (const test of [obsoleteNotificationSettingsAreAbsent, lazyStatusAndFreshEntry, confirmationAndActions, staffIsReadOnly, errorsAndRetry, sidebarRefreshNeverReadsIntake]) {
+async function timerCleanupPreservesIntakeRequests() {
+  const e = setup();
+  await e.ui.init();
+  const requests = e.calls.length;
+  e.ui.startSecurityResendCountdown(2);
+  assert.equal(e.ui.securityVerification.resendRemaining, 2);
+  assert.equal(e.timers.size, 1);
+  e.tick(1000);
+  assert.equal(e.ui.securityVerification.resendRemaining, 1);
+  e.tick(1000);
+  assert.equal(e.ui.securityVerification.resendRemaining, 0);
+  assert.equal(e.timers.size, 0, 'Expired countdown clears its interval');
+  e.ui.startSecurityResendCountdown(5);
+  e.ui.startSecurityResendCountdown(10);
+  assert.equal(e.timers.size, 1, 'Restarting countdown replaces the previous interval');
+  e.ui.destroy();
+  assert.equal(e.timers.size, 0, 'Destroy clears the remaining interval');
+  assert.equal(e.ui._securityResendTimer, null);
+  assert.equal(e.calls.length, requests, 'Timer lifecycle performs no intake or other requests');
+}
+(async () => { for (const test of [obsoleteNotificationSettingsAreAbsent, lazyStatusAndFreshEntry, confirmationAndActions, staffIsReadOnly, errorsAndRetry, sidebarRefreshNeverReadsIntake, timerCleanupPreservesIntakeRequests]) {
   await test(); console.log(test.name + ' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

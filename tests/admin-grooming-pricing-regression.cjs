@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { execFileSync } = require("node:child_process");
 
 const source = fs.readFileSync(path.join(__dirname, "../scripts/components/admin-dashboard.js"), "utf8");
 const context = { window: {}, console, Date, Intl };
@@ -205,35 +206,38 @@ const legacyRules = ui.normalizePaymentLine({ slug: "ear_cleaning", priceAtBooki
 assert.equal(legacyRules.pricingType, "plus");
 assert.equal(legacyRules.safetyMaxAmount, 350);
 const draft = { pets: [{ id: "pet-1", size: "small", petType: "dog" }] };
-const selection = [{ petId: "pet-1", servicePackage: regular.id, alaCarteServices: [] }];
+const selection = [{ petId: "pet-1", servicePackage: regular.id, alaCarteServices: [], groomingPreference: "summer_cut", groomerId: 1 }];
 const beforeSignature = grooming.selectedPricingSignature(draft, selection);
 grooming.applyGroomingCatalogue(catalogue);
 assert.notEqual(grooming.selectedPricingSignature(draft, selection), beforeSignature);
 let loads = 0;
-global.API = { getGroomingCatalogue: async () => { loads++; return { data: updated }; } };
+const estimateRules = JSON.parse(execFileSync("php", ["-r", "echo json_encode(require 'config/grooming_estimates.php');"], {
+  cwd: path.resolve(__dirname, ".."), encoding: "utf8",
+}));
+global.API = { getGroomingCatalogue: async () => { loads++; return { data: updated, estimateRules }; } };
 await grooming.loadGroomingCatalogue();
 await grooming.loadGroomingCatalogue();
 assert.equal(loads, 2, "A normal catalogue refresh must fetch current prices again");
 // Review consumes the catalogue loaded in service selection, including new prices.
-const draftUtilities = await import("../scripts/services/booking-draft-service.js");
 const reviewElements = new Map();
 const reviewDocument = {
   body: {}, addEventListener() {},
+  querySelector: () => ({ outerHTML: "" }),
   getElementById(id) {
     if (!reviewElements.has(id)) reviewElements.set(id, {
-      classList: { add() {}, toggle() {} }, addEventListener() {},
+      classList: { add() {}, toggle() {} }, addEventListener() {}, setAttribute() {},
     });
     return reviewElements.get(id);
   },
 };
-const { renderEstimateReview } = await import("../scripts/components/grooming-estimate-selection.js");
-const petGroomers = await import("../scripts/components/pet-groomer-selection.js");
-const reviewContext = { renderEstimateReview, ...grooming, ...draftUtilities, ...petGroomers, document: reviewDocument, window: {}, sessionStorage: { setItem() {} } };
-const reviewSource = fs.readFileSync(path.join(__dirname, "../scripts/components/walk-in-review-step.js"), "utf8")
-  .replace(/import[\s\S]*?from\s+"[^"]+";\s*/g, "")
-  .replace(/export function /g, "function ");
-vm.runInNewContext(reviewSource, reviewContext);
-reviewContext.renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
+global.document = reviewDocument;
+global.window = {};
+global.sessionStorage = { getItem: () => null, setItem() {} };
+let verifications = 0, capacityReads = 0;
+global.API.waitForSessionVerification = async () => { verifications++; return true; };
+global.API.previewWalkInCapacity = async () => { capacityReads++; return { capacity: { fits: true } }; };
+const { renderWalkInReviewStep } = await import("../scripts/components/walk-in-review-step.js");
+await renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
 assert.equal(reviewElements.get("totalPriceText").textContent, "₱600");
 assert.ok(reviewElements.get("reviewSelections").innerHTML.includes("₱600"));
 
@@ -244,8 +248,11 @@ context.applyPaymentCatalogue(grooming.applyGroomingCatalogue(updated));
 const packageRange = grooming.evaluateServicePricing(grooming.getPackageById(regular.id), "small");
 assert.equal(packageRange.displayPrice, "₱600–₱680");
 assert.equal(packageRange.isEstimate, true);
-reviewContext.renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
+await renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
 assert.ok(reviewElements.get("reviewSelections").innerHTML.includes("₱600–₱680"));
+assert.equal(verifications, 2, "Each protected review waits for session verification");
+assert.equal(capacityReads, 2, "Each complete review checks capacity once");
+assert.equal(loads, 2, "Rendering review reuses the catalogue from service selection");
 const rangePet = { sizeKey: "small" };
 const packageLine = ui.normalizePaymentLine({ slug: regular.id, priceMinAtBooking: "600", priceMaxAtBooking: "680" }, rangePet, "package-range", { lockFixedPrices: true });
 assert.equal(packageLine.isFixedPriceLocked, false);
@@ -298,6 +305,9 @@ assert.equal(grooming.getPackageById('regular_dog_grooming'), null);
 global.API.getGroomingCatalogue = async () => { throw new Error("Pricing unavailable"); };
 await assert.rejects(grooming.loadGroomingCatalogue(), /unavailable/);
 delete global.API;
+delete global.document;
+delete global.window;
+delete global.sessionStorage;
 console.log("Admin grooming pricing regression tests passed.");
 
 }

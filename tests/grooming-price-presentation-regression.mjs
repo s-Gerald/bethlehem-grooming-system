@@ -57,8 +57,9 @@ globalThis.document = {
   getElementById: (id) => id === "confirmationRoot" ? root : {},
 };
 globalThis.window = { addEventListener() {}, removeEventListener() {}, print() {}, setTimeout() {} };
-globalThis.sessionStorage = { getItem: (key) => saved.get(key) || null };
-globalThis.API = { getAdminToken: () => "fixture", getUserRole: () => "staff" };
+let protectedReads = 0, verifications = 0;
+globalThis.sessionStorage = { getItem: (key) => { protectedReads++; return saved.get(key) || null; } };
+globalThis.API = { waitForSessionVerification: async () => { verifications++; return true; } };
 
 for (const test of cases) {
   const catalogue = structuredClone(fixture);
@@ -110,9 +111,12 @@ for (const test of cases) {
     })) },
   };
   for (const walkIn of [false, true]) {
+    root.innerHTML = "";
     document.body.dataset.confirmationContext = walkIn ? "walk-in" : "customer";
     saved.set(walkIn ? "walkInBookingConfirmation" : "bookingConfirmation", JSON.stringify(confirmation));
-    initBookingConfirmedStep();
+    const beforeVerifications = verifications;
+    await initBookingConfirmedStep();
+    assert.equal(verifications - beforeVerifications, walkIn ? 1 : 0, "Walk-in confirmation verifies its staff session");
     assert.ok(root.innerHTML.includes(presentation.label));
     assert.ok(root.innerHTML.includes(presentation.amount));
     assert.equal(root.innerHTML.includes("Estimate Only"), presentation.isEstimate);
@@ -121,6 +125,26 @@ for (const test of cases) {
     if (!presentation.isEstimate) assert.doesNotMatch(root.innerHTML, /Estimated Total Price|Estimated price|Estimate Only/);
   }
   console.log(`${test.name}: amounts, service/review labels, both confirmations passed`);
+}
+
+document.body.dataset.confirmationContext = "walk-in";
+for (const verified of [false, true]) {
+  root.innerHTML = "";
+  let finishVerification;
+  API.waitForSessionVerification = () => new Promise(resolve => { finishVerification = resolve; });
+  const reads = protectedReads;
+  const pending = initBookingConfirmedStep();
+  assert.equal(root.innerHTML, "", "Pending session verification cannot render protected confirmation");
+  assert.equal(protectedReads, reads, "Pending verification cannot read protected confirmation storage");
+  finishVerification(verified);
+  await pending;
+  if (verified) {
+    assert.match(root.innerHTML, /GR-FIXTURE/);
+    assert.ok(protectedReads > reads);
+  } else {
+    assert.equal(root.innerHTML, "", "Failed session verification cannot render protected confirmation");
+    assert.equal(protectedReads, reads, "Failed verification cannot read protected confirmation storage");
+  }
 }
 
 assert.deepEqual(grooming.getGroomingPricePresentation(null), { label: "Total Price", amount: "To be confirmed", isEstimate: false, disclaimer: "" });

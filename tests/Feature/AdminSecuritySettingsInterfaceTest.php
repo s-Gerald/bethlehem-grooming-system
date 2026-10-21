@@ -268,7 +268,13 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         $this->assertStringContainsString("'Verify your identity'", $page);
         $this->assertStringContainsString('We sent a 6-digit verification code to your registered email address.', $page);
-        $this->assertStringContainsString("Didn't receive a code?", $page);
+        $resendControl = $this->sourceBetween(
+            $securityTab,
+            '@click="resendSecurityCredentialChangeCode()"',
+            '</button>',
+        );
+        $this->assertStringContainsString('Resend code', $resendControl);
+        $this->assertStringContainsString(':disabled="securityVerification.resending || securityVerification.submitting || securityVerification.resendRemaining > 0"', $resendControl);
     }
 
     public function test_old_email_link_confirmation_interface_has_been_removed(): void
