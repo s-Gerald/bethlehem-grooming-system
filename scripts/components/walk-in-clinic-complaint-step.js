@@ -1,4 +1,4 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021";
 import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
@@ -8,7 +8,7 @@ let state = { pet: null, fields: null };
 function getMarkup() {
   return `
     <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
-      <section class="mb-6">
+      <section data-session-public class="mb-6">
         <button id="clinicComplaintBackTopBtn" type="button"
           class="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
           &larr; Back to Pet Information
@@ -23,7 +23,7 @@ function getMarkup() {
           </div>
         </div>
       </section>
-      <section class="rounded-3xl bg-[#cfe3f6] p-6 shadow-lg md:p-8">
+      <section data-session-surface class="rounded-3xl bg-[#cfe3f6] p-6 shadow-lg md:p-8">
         <div class="mx-auto max-w-5xl">
           <section class="rounded-3xl bg-white/90 p-5 shadow-sm md:p-6">
             <form id="clinicComplaintForm" class="space-y-5" novalidate>
@@ -71,11 +71,12 @@ function handleSubmit(event) {
   });
 }
 
-export function renderWalkInClinicComplaintStep({ pet = null } = {}) {
+export async function renderWalkInClinicComplaintStep({ pet = null } = {}) {
+  if (!await API.waitForSessionVerification()) return;
   state = { pet, fields: null };
   document.title = "Walk-in Clinic — Reason for Visit";
   document.body.className = "min-h-screen bg-[#f6fafd] text-slate-800";
-  document.body.innerHTML = getMarkup();
+  document.querySelector("main").outerHTML = getMarkup();
 
   const draft = restoreDraft();
   state.fields = mountClinicVisitReasonFields(
@@ -90,5 +91,4 @@ export function renderWalkInClinicComplaintStep({ pet = null } = {}) {
       window.location.href = "./walk-in-pet-details.html";
     });
   });
-
 }

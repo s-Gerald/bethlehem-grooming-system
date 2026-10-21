@@ -1079,17 +1079,13 @@ var API = (() => {
     });
     const card = document.getElementById("bethlehem-session-lock");
     if (!card) return;
-    // Sidebar documents already expose safe structure and scoped loaders.
-    const standaloneCheck = state === "checking" && !document.querySelector('[data-admin-shell]');
-    card.hidden = state !== "locked" && state !== "unavailable" && !standaloneCheck;
+    card.hidden = state !== "locked" && state !== "unavailable";
     if (card.hidden) return;
     card.querySelector("#session-lock-form").hidden = state !== "locked";
     card.querySelector("#session-retry").hidden = state !== "unavailable";
-    card.querySelector("#session-lock-heading").textContent = state === "locked" ? "Session locked"
-      : standaloneCheck ? "Checking session…" : "Unable to verify session";
-    card.querySelector("#session-lock-description").textContent = state === "locked" ? "Your session was locked due to inactivity."
-      : standaloneCheck ? "Verifying your access." : "Check your connection and try again.";
-    card.setAttribute("aria-busy", String(standaloneCheck || (state === "locked" && card.querySelector("#session-unlock").disabled)));
+    card.querySelector("#session-lock-heading").textContent = state === "locked" ? "Session locked" : "Unable to verify session";
+    card.querySelector("#session-lock-description").textContent = state === "locked" ? "Your session was locked due to inactivity." : "Check your connection and try again.";
+    card.setAttribute("aria-busy", String(state === "locked" && card.querySelector("#session-unlock").disabled));
   }
 
   function ensureSessionLockCard() {
@@ -1223,10 +1219,19 @@ var API = (() => {
     sessionRevision += 1;
     if (!sessionLocked && !sessionChecking) previousSessionFocus = document.activeElement;
     sessionChecking = !sessionLocked;
-    const standalone = !document.querySelector('[data-admin-shell]');
-    if (standalone) ensureSessionLockCard();
     sessionGate(sessionLocked ? "locked" : "checking");
-    if (standalone && !sessionLocked) document.getElementById("session-lock-heading")?.focus();
+  }
+
+  async function waitForSessionVerification() {
+    if (!enforceAdminPageAccess()) return false;
+    const token = getAdminToken();
+    if (!token) return false;
+    while (sessionLocked || sessionChecking) {
+      try { await new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject })); }
+      catch { return false; }
+      if (getAdminToken() !== token) return false;
+    }
+    return getAdminToken() === token;
   }
 
   function showSessionLock() {
@@ -2858,6 +2863,7 @@ var API = (() => {
   return {
     // Resolved endpoint (shared by standalone browser services).
     getBaseUrl,
+    waitForSessionVerification,
     readAdminCache,
     loadAdminData,
     readCustomerCache,

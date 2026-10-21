@@ -42,9 +42,9 @@ export function groomingPetConfirmation(pet, review = {}) {
   </section>`;
 }
 
-export function initBookingConfirmedStep() {
+export async function initBookingConfirmedStep() {
   const isWalkInConfirmation = document.body.dataset.confirmationContext === "walk-in";
-  if (isWalkInConfirmation && !guardAdminAccess()) return;
+  if (isWalkInConfirmation && !await API.waitForSessionVerification()) return;
   const confirmation = readConfirmationData(isWalkInConfirmation ? "walkInBookingConfirmation" : "bookingConfirmation");
   const bookingConsentStep = confirmation?.consent || readConfirmationData(isWalkInConfirmation ? "walkInConsentStep" : "bookingConsentStep");
   const root = document.getElementById("confirmationRoot");
@@ -171,23 +171,6 @@ export function initBookingConfirmedStep() {
       setText(ownerPhone, "Not provided");
       setText(ownerEmail, "Not provided");
     }
-  }
-
-  function guardAdminAccess() {
-    /*
-      BACKEND TEAMMATE + CLAUDE CODE:
-      This browser guard only keeps the admin confirmation page out of casual
-      navigation. The real walk-in confirmation API should enforce permissions.
-    */
-    const token = API.getAdminToken?.();
-    const role = API.getUserRole?.();
-
-    if (token && (role === "admin" || role === "staff")) {
-      return true;
-    }
-
-    window.location.href = "../client/sign-in.html";
-    return false;
   }
 }
 

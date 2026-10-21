@@ -49,6 +49,59 @@ class GroomingWorkloadCapacityTest extends TestCase
 
     public static function laneCounts(): array { return [[1], [2], [3], [4], [5]]; }
 
+    #[DataProvider('emptyWorkloadTimes')]
+    public function test_empty_workload_stays_neutral_without_changing_hours_restrictions(string $time, string $close, bool $fits): void
+    {
+        Carbon::setTestNow('2026-10-09 '.$time);
+        $result = app(GroomingWorkloadCapacity::class)->project([], [], $this->settings(2, $close), now());
+
+        $this->assertSame('On track', $result['state']);
+        $this->assertNull($result['projected_last_completion']);
+        $this->assertSame([], $result['pets']);
+        $this->assertSame(0, $result['waiting']);
+        $this->assertSame(0, $result['in_progress']);
+        $this->assertSame($fits, $result['fits']);
+    }
+
+    public static function emptyWorkloadTimes(): array
+    {
+        return [
+            'normal hours' => ['15:00:00', '17:00', true],
+            'risk boundary' => ['16:30:00', '17:00', true],
+            'shortly before closing' => ['16:45:00', '17:00', true],
+            'exact closing' => ['17:00:00', '17:00', true],
+            'after closing' => ['17:01:00', '17:00', false],
+            'updated closing risk window' => ['17:45:00', '18:00', true],
+            'after updated closing' => ['18:01:00', '18:00', false],
+        ];
+    }
+
+    public function test_ongoing_grooming_after_closing_still_needs_staff_action(): void
+    {
+        Carbon::setTestNow('2026-10-09 17:01:00');
+        $result = app(GroomingWorkloadCapacity::class)->project(
+            [$this->job(1, 60, '2026-10-09 16:00:00')], [], $this->settings(), now());
+
+        $this->assertSame('Needs staff action', $result['state']);
+        $this->assertSame('Needs staff action', $result['pets'][1]['state']);
+        $this->assertSame(1, $result['in_progress']);
+        $this->assertFalse($result['fits']);
+        $this->assertGreaterThan($result['closing_time'], $result['projected_last_completion']);
+    }
+
+    public function test_queued_workload_warning_uses_updated_closing_hours(): void
+    {
+        Carbon::setTestNow('2026-10-09 16:00:00');
+        $engine = app(GroomingWorkloadCapacity::class);
+        foreach (['16:30' => 'Needs staff action', '17:00' => 'At risk', '18:00' => 'On track'] as $close => $state) {
+            $result = $engine->project([$this->job(1, 45)], [], $this->settings(1, $close), now());
+            $this->assertSame($state, $result['state']);
+            $this->assertSame($state, $result['pets'][1]['state']);
+            $this->assertSame($state !== 'Needs staff action', $result['fits']);
+            $this->assertSame($close, Carbon::parse($result['closing_time'])->format('H:i'));
+        }
+    }
+
     public function test_zero_on_duty_has_no_lane_for_waiting_or_arriving_pets(): void
     {
         $result = app(GroomingWorkloadCapacity::class)->project([$this->job(1, 60)], [$this->job(2, 45)], $this->settings(0), now());
@@ -112,6 +165,7 @@ class GroomingWorkloadCapacityTest extends TestCase
             [$this->job(2, 60)], $this->settings(), now());
         $this->assertFalse($result['fits']);
         $this->assertNull($result['projected_last_completion']);
+        $this->assertSame('Needs staff action', $result['state']);
         $this->assertSame('Needs staff action', $result['pets'][1]['state']);
     }
 

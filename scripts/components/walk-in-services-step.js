@@ -20,7 +20,7 @@ import {
   getPackageAlaCarteRules,
   getPackagesByPetType,
 } from "../services/grooming-service.js?v=managed-services-20261017-2";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021";
 
 const state = {
   pets: [],
@@ -40,7 +40,7 @@ let elements = {};
 function getServicesMainMarkup() {
   return `
     <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
-      <section>
+      <section data-session-public>
         <button
           id="walkInServicesBackTopBtn"
           type="button"
@@ -66,7 +66,7 @@ function getServicesMainMarkup() {
         </div>
       </section>
 
-      <section class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
+      <section data-session-surface class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-[#2f4b66]">Grooming Services</h2>
         </div>
@@ -659,23 +659,6 @@ function handleSubmit(event) {
   });
 }
 
-function guardAdminAccess() {
-  /*
-    BACKEND TEAMMATE + CLAUDE CODE:
-    Frontend access checks are for navigation only. The eventual service-draft
-    endpoint should authorize admin/staff users independently.
-  */
-  const token = API.getAdminToken?.();
-  const role = API.getUserRole?.();
-
-  if (token && (role === "admin" || role === "staff")) {
-    return true;
-  }
-
-  window.location.href = "../client/sign-in.html";
-  return false;
-}
-
 function initServicesState(pets, petSelections = []) {
   state.pets = Array.isArray(pets) ? pets.map(normalizePet) : [];
   state.petSelections = state.pets.map((pet) => {
@@ -687,10 +670,11 @@ function initServicesState(pets, petSelections = []) {
   });
 }
 
-export function renderWalkInServicesStep({ pets = [], petSelections = [] } = {}) {
+export async function renderWalkInServicesStep({ pets = [], petSelections = [] } = {}) {
+  if (!await API.waitForSessionVerification()) return;
   document.title = "Walk-in - Grooming Services";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";
-  document.body.innerHTML = getServicesMainMarkup();
+  document.querySelector("main").outerHTML = getServicesMainMarkup();
 
   refreshElements();
   initServicesState(pets, petSelections);
@@ -701,15 +685,14 @@ export function renderWalkInServicesStep({ pets = [], petSelections = [] } = {})
   } else {
     loadServicePricing();
   }
-
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   if (!document.getElementById("walkInServicesForm")) {
     return;
   }
 
-  if (!guardAdminAccess()) {
+  if (!await API.waitForSessionVerification()) {
     return;
   }
 

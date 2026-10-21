@@ -100,12 +100,6 @@ function initializeWalkInFlow() {
     flowParams.delete("new");
     window.history.replaceState(null, "", `./walk-in-booking.html?${flowParams}`);
   }
-
-  const isClinic = appointmentType === "clinic";
-  document.getElementById("walkInPageTitle").textContent = isClinic ? "Clinic walk-in" : "Grooming walk-in";
-  document.querySelectorAll("[data-walk-in-back-link]").forEach((link) => {
-    link.setAttribute("href", isClinic ? "./clinic.html" : "./appointments.html");
-  });
 }
 
 function getFormValues() {
@@ -456,23 +450,6 @@ async function handleSubmit(event) {
   await validateNewOwnerAndContinue(values);
 }
 
-function guardAdminAccess() {
-  /*
-    BACKEND TEAMMATE + CLAUDE CODE:
-    This is only a frontend route guard using the locally stored admin/staff
-    token and role. Keep real authorization on the backend walk-in endpoints.
-  */
-  const token = API.getAdminToken?.();
-  const role = API.getUserRole?.();
-
-  if (token && (role === "admin" || role === "staff")) {
-    return true;
-  }
-
-  window.location.href = "../client/sign-in.html";
-  return false;
-}
-
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
 
@@ -509,8 +486,13 @@ function bindEvents() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  if (!guardAdminAccess()) {
+document.addEventListener("DOMContentLoaded", async () => {
+  const isClinic = appointmentType === "clinic";
+  document.getElementById("walkInPageTitle").textContent = isClinic ? "Clinic walk-in" : "Grooming walk-in";
+  document.querySelectorAll("[data-walk-in-back-link]").forEach((link) => {
+    link.setAttribute("href", isClinic ? "./clinic.html" : "./appointments.html");
+  });
+  if (!await API.waitForSessionVerification()) {
     return;
   }
 
@@ -518,5 +500,4 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   renderValidationErrors(getFormValues(), { showAll: false });
   syncNextButtonState();
-
 });

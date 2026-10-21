@@ -13,7 +13,7 @@ import {
   formatPriceOption,
   getPackageById,
 } from "../services/grooming-service.js?v=managed-services-20261017-2";
-import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017";
+import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021";
 
 const state = {
   bookingDraft: null,
@@ -47,7 +47,7 @@ function getReviewMainMarkup() {
         <span>Back to Grooming Services</span>
       </button>
 
-      <section class="mt-4">
+      <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Review your grooming visit</h1>
 
         <div class="mt-6">
@@ -61,7 +61,7 @@ function getReviewMainMarkup() {
         </div>
       </section>
 
-      <section class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
+      <section data-session-surface class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-[#2f4b66]">Visit review</h2>
         </div>
@@ -461,23 +461,6 @@ function renderTotalPricing() {
   elements.totalPriceSubtext.classList.add("hidden");
 }
 
-function guardAdminAccess() {
-  /*
-    BACKEND TEAMMATE + CLAUDE CODE:
-    This browser-only guard should not replace backend authorization on review,
-    draft, or submit endpoints.
-  */
-  const token = API.getAdminToken?.();
-  const role = API.getUserRole?.();
-
-  if (token && (role === "admin" || role === "staff")) {
-    return true;
-  }
-
-  window.location.href = "../client/sign-in.html";
-  return false;
-}
-
 function initReviewState({ pets = [], petSelections = [], onBack = null } = {}) {
   state.bookingDraft = {
     bookingType: "walk_in",
@@ -492,10 +475,11 @@ function initReviewState({ pets = [], petSelections = [], onBack = null } = {}) 
     : null;
 }
 
-export function renderWalkInReviewStep(options = {}) {
+export async function renderWalkInReviewStep(options = {}) {
+  if (!await API.waitForSessionVerification()) return;
   document.title = "Walk-in - Review";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";
-  document.body.innerHTML = getReviewMainMarkup();
+  document.querySelector("main").outerHTML = getReviewMainMarkup();
 
   refreshElements();
   initReviewState(options);
@@ -517,12 +501,12 @@ export function renderWalkInReviewStep(options = {}) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   if (!document.getElementById("confirmBookingBtn")) {
     return;
   }
 
-  if (!guardAdminAccess()) {
+  if (!await API.waitForSessionVerification()) {
     return;
   }
 

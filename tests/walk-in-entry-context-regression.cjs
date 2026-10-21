@@ -29,7 +29,7 @@ function element() {
   };
 }
 
-function ownerFlow(type, { fresh = true, draft = {} } = {}) {
+function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.resolve(true) } = {}) {
   const ui = new Map();
   const get = (id) => {
     if (!ui.has(id)) ui.set(id, element());
@@ -51,24 +51,36 @@ function ownerFlow(type, { fresh = true, draft = {} } = {}) {
       querySelectorAll(selector) { assert.equal(selector, "[data-walk-in-back-link]"); return back; },
       addEventListener(event, callback) { if (event === "DOMContentLoaded") ready = callback; },
     },
-    API: { getAdminToken: () => "test", getUserRole: () => "admin", validateWalkInNewOwner: async () => ({}) },
+    API: { waitForSessionVerification: () => verification, validateWalkInNewOwner: async () => ({}) },
     sessionStorage: {
       getItem: (key) => storage.get(key) || null,
       setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key),
     },
   });
   vm.runInContext(ownerSource, context);
-  ready();
-  return { context, storage, get, back, window };
+  const initialization = ready();
+  return { context, storage, get, back, window, initialization };
 }
 
 (async () => {
+  let authorize;
+  const verification = new Promise(resolve => { authorize = resolve; });
+  const delayed = ownerFlow("clinic", {verification, draft: {firstName: "Private draft"}});
+  assert.equal(JSON.parse(delayed.storage.get("walkInOwnerStep")).firstName, "Private draft", "Pending verification cannot reset or render the retained draft");
+  assert.equal(delayed.storage.get("walkInPetStep"), "stale");
+  authorize(true);
+  await delayed.initialization;
+  assert.equal(JSON.parse(delayed.storage.get("walkInOwnerStep")).appointmentType, "clinic");
+  const denied = ownerFlow("grooming", {verification: Promise.resolve(false), draft: {firstName: "Private draft"}});
+  await denied.initialization;
+  assert.equal(JSON.parse(denied.storage.get("walkInOwnerStep")).firstName, "Private draft", "Failed authorization cannot initialize a new flow");
   assert.doesNotMatch(ownerPage, /Walk-in Type|typeGrooming|typeClinic|name="appointmentType"/);
   assert.doesNotMatch(ownerSource, /syncExistingCustomerSearchVisibility|applyRequestedAppointmentType/);
   assert.match(read("scripts/components/admin-dashboard.js"), /walkInBookingUrl: "\.\/walk-in-booking.html\?flow=grooming&new=1"/);
 
   for (const type of ["grooming", "clinic"]) {
     const flow = ownerFlow(type);
+    await flow.initialization;
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
     flow.back.forEach((link) => assert.equal(link.getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html"));
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
@@ -108,6 +120,7 @@ function ownerFlow(type, { fresh = true, draft = {} } = {}) {
     }
 
     const resume = ownerFlow(type, { fresh: false, draft: { appointmentType: type, firstName: "Saved" } });
+    await resume.initialization;
     assert.equal(JSON.parse(resume.storage.get("walkInOwnerStep")).firstName, "Saved");
     assert.equal(resume.storage.get("walkInPetStep"), "stale", "Returning from pet step preserves draft");
   }

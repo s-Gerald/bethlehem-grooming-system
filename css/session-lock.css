@@ -6,6 +6,9 @@ html[data-session-gate] body > :where(:not(#bethlehem-session-lock):not(script):
   visibility: hidden !important;
   pointer-events: none !important;
 }
+html[data-session-gate="checking"] :is([data-session-surface], [data-session-public], [data-session-public] *) {
+  visibility: visible !important;
+}
 .session-lock[hidden], .session-lock [hidden] { display: none; }
 .session-lock {
   position: fixed;

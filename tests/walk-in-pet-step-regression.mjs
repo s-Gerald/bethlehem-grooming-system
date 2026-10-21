@@ -125,8 +125,7 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
       removeItem(key) { stored.delete(key); },
     },
     API: {
-      getAdminToken() { return "staff-token"; },
-      getUserRole() { return "staff"; },
+      waitForSessionVerification: async () => true,
       getCustomerDetails(id) { calls.push(["registered", id]); return pendingPets; },
       getUnregisteredCustomerDetails(id) { calls.push(["unregistered", id]); return pendingPets; },
     },

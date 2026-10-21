@@ -135,15 +135,27 @@ ui.groomingWorkload.projected_last_completion = '2026-10-16T18:30:00+08:00';
 assert.match(ui.groomingWorkloadMessage, /Projected completion exceeds grooming hours/);
 assert.match(ui.groomingWorkloadMessage, /6:00 PM/);
 
-ui.groomingWorkload = { state: 'On track', pets: {} };
+ui.applyDashboardData({
+  incomingList: [booking], queuedList: [], inProgressList: [],
+  groomerCapacity: { groomers_on_duty: 2, active_pets: 0 },
+  groomingWorkload: { state: 'On track', pets: [], waiting: 0, in_progress: 0,
+    closing_time: '2026-10-16T17:00:00+08:00', projected_last_completion: null, fits: false },
+});
+for (const tab of ['queued', 'in-progress']) {
+  ui.setTab(tab);
+  assert.equal(ui.groomingWorkloadMessage, '', 'Closed hours and an Incoming booking do not create a workload warning');
+  assert.equal(ui.showGroomingWorkload, false, 'A groomer count alone does not create a workload row');
+}
+ui.queuedList = [booking];
+ui.groomingWorkload = { state: 'Needs staff action', pets: { 7: { projected_completion: null } } };
+assert.equal(ui.groomingWorkloadMessage, 'Current grooming workload needs attention');
+assert.equal(ui.showGroomingWorkload, true, 'Unfinished work with unknown estimates keeps its warning visible');
+ui.groomingWorkload = { state: 'At risk', pets: { 7: { projected_completion: '2026-10-16T16:45:00+08:00' } } };
+assert.equal(ui.groomingWorkloadMessage, 'Schedule at risk');
+assert.equal(ui.showGroomingWorkload, true, 'Actual at-risk work remains visible');
 ui.queuedList = [];
-ui.inProgressList = [];
-ui.activeGroomingPets = 0;
-assert.equal(ui.showGroomingWorkload, false, 'A groomer count alone does not create a workload row');
-ui.groomingWorkload.state = 'At risk';
-assert.equal(ui.showGroomingWorkload, true, 'Warnings stay visible even when estimates are unavailable');
 ui.groomingWorkload = { state: 'On track', pets: { 7: { projected_completion: '2026-10-16T18:00:00+08:00' } } };
-assert.equal(ui.showGroomingWorkload, true);
+assert.equal(ui.showGroomingWorkload, true, 'Useful completion metrics remain visible without a warning');
 
 context.window.GroomingEstimates.factors = () => [
   { value: 'thick_coat', label: 'Thick coat' },

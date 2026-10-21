@@ -17,23 +17,23 @@ const profiles = {
   vet: { role: 'staff', first_name: 'Local', last_name: 'Vet', staff_type: 'clinic', staff_subrole: 'veterinarian', clinic_permissions: { access: true, services_view: true } },
   grooming: { role: 'staff', first_name: 'Local', last_name: 'Groomer', staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {} },
 };
-async function fixture(browser, profile = 'admin', inventory = false) {
+async function fixture(browser, profile = 'admin', inventory = false, workspaces = false) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const state = { user: { user_id: 7, ...profiles[profile] }, revision: 'revision-1', locked: false, expired: false, requests: [], sessionHold: null, identityHold: null, logoutHold: null };
-  await context.addInitScript(({ role, inventory, origin }) => {
+  await context.addInitScript(({ role, inventory, origin, workspaces }) => {
     if (location.origin !== origin) return;
     // Exercise the real shared sidebar against each page's HTML/CSS. Page
     // workspaces have separate loading tests and do not use these identity-only fixtures.
     document.addEventListener('alpine:init', () => {
       document.querySelectorAll('[x-data]:not([data-admin-shell])').forEach(el => {
-        if (!inventory || el.getAttribute('x-data') !== 'adminInventory()') el.setAttribute('x-ignore', '');
+        if (!workspaces && (!inventory || el.getAttribute('x-data') !== 'adminInventory()')) el.setAttribute('x-ignore', '');
       });
     });
     if (sessionStorage.getItem('sidebar-test')) return;
     localStorage.setItem('admin_token', '17|local-sidebar-fixture');
     localStorage.setItem('user_role', role);
     sessionStorage.setItem('sidebar-test', '1');
-  }, { role: state.user.role, inventory, origin });
+  }, { role: state.user.role, inventory, origin, workspaces });
   // Reuse the app's real Alpine response across its two CDN URLs. CDN latency
   // should not decide whether a local sidebar regression passes.
   await context.route('**/alpinejs@*/**', async route => {
@@ -47,7 +47,7 @@ async function fixture(browser, profile = 'admin', inventory = false) {
     if (url.pathname === '/api/session') await state.sessionHold?.promise;
     if (url.pathname === '/api/me') await state.identityHold?.promise;
     if (url.pathname === '/api/logout') await state.logoutHold?.promise;
-    let data = {};
+    let data = state.responses?.[url.pathname] || {};
     if (url.pathname === '/api/session' && state.statusFailure) {
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Temporarily unavailable' }) });
     }
@@ -103,6 +103,144 @@ async function visibleShell(page, active) {
     const icon = document.querySelector('aside.admin-sidebar-menu nav a[href$="dashboard.html"] use');
     return icon && icon.getBBox().width > 0;
   });
+}
+async function walkInNavigation(browser) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { execFileSync } = require('node:child_process');
+  const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8'));
+  catalogue.estimateRules = JSON.parse(execFileSync('php', ['-r', 'echo json_encode(require $argv[1]);', path.join(__dirname, '../config/grooming_estimates.php')]));
+  for (const [profile, entry, flow] of [
+    ['admin', 'dashboard.html', 'grooming'], ['grooming', 'appointments.html', 'grooming'], ['vet', 'clinic.html', 'clinic'],
+  ].filter(([profile]) => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) {
+    const f = await fixture(browser, profile, false, true);
+    const { page, state } = f;
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    state.user.clinic_permissions = { access: true, intake: true, clinical: true };
+    state.responses = {
+      '/api/grooming/services': catalogue,
+      '/api/grooming/pet-groomers': { pet_groomers: [{ id: 3, first_name: 'Local Groomer' }] },
+      '/api/admin/walk-in/capacity-preview': { capacity: { fits: true } },
+    };
+    const unlocked = () => page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+    const noCard = async () => assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false);
+    const release = async () => { state.sessionHold.resolve(); await unlocked(); await noCard(); };
+    try {
+      await visit(page, entry); await ready(page);
+      const identities = state.requests.filter(p => p === '/api/me').length;
+      state.sessionHold = deferred();
+      const before = state.requests.filter(p => p === '/api/session').length;
+      const started = Date.now();
+      await Promise.all([page.waitForEvent('domcontentloaded'), page.getByRole('button', { name: 'Walk-in', exact: true }).click()]);
+      await page.waitForFunction(() => typeof API?.waitForSessionVerification === 'function');
+      await noCard();
+      assert.equal(await page.locator('#walkInPageTitle').isVisible(), true);
+      assert.equal(await page.locator('#walkInOwnerForm').isVisible(), false);
+      assert.equal(await page.locator('#walkInPageTitle').innerText(), flow === 'clinic' ? 'Clinic walk-in' : 'Grooming walk-in');
+      assert.equal(state.requests.filter(p => p === '/api/session').length, before + 1);
+      assert.equal(state.requests.filter(p => p === '/api/me').length, identities);
+      const blocked = await page.evaluate(async () => { try { await API.submitWalkIn({}); } catch (e) { return e.status; } });
+      assert.equal(blocked, 503, 'An unverified workflow cannot submit');
+      if (process.env.LOCAL_REVIEW_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/walk-in-${profile}-checking.png` });
+      console.log(`${entry} → ${flow} Walk-in: safe heading in ${Date.now() - started}ms, one session request, no identity request or checking card`);
+      await release();
+      assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('walkInOwnerStep')).appointmentType), flow);
+      await page.locator('#ownerFirstName').fill('Local');
+      await page.locator('#ownerLastName').fill('Workflow');
+      await page.locator('#ownerPhoneNumber').fill('09171234567');
+      await Promise.all([page.waitForEvent('domcontentloaded'), page.locator('#walkInOwnerNextBtn').click()]);
+      await unlocked(); await noCard();
+      // Simulate an existing retained selection, then verify refresh does not
+      // render it until the server approves the new document.
+      await page.evaluate(() => sessionStorage.setItem('walkInPetStep', JSON.stringify({ pets: [
+        { id: 'local-pet', petName: 'Private Draft Pet', petType: 'Dog', size: 'Small', weight: 8, breed: 'Poodle', furType: 'Curly' },
+      ], newPetForm: {} })));
+      state.sessionHold = deferred();
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await noCard();
+      assert.equal(await page.locator('[data-session-public]').first().isVisible(), true);
+      assert.equal(await page.locator('#selectedPetCards').innerText(), '', 'Private draft is not initialized before verification');
+      await release();
+      await page.getByText('Private Draft Pet', { exact: true }).waitFor();
+      if (process.env.LOCAL_REVIEW_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/walk-in-${profile}-verified.png` });
+      // A genuine lock still interrupts the workflow and survives subsequent
+      // in-document step rendering after successful password recovery.
+      state.locked = true;
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
+      assert.equal(await page.locator('#selectedPetCards').isVisible(), false);
+      await page.getByLabel('Password', { exact: true }).fill('wrong');
+      await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+      await page.getByText('Incorrect password.', { exact: true }).waitFor();
+      await page.getByLabel('Password', { exact: true }).fill('LocalFixturePassword');
+      await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+      await unlocked();
+      await page.evaluate(() => { window.workflowSessionCard = document.getElementById('bethlehem-session-lock'); });
+      const stepChecks = state.requests.filter(p => p === '/api/session').length;
+      await page.locator('#nextBtn').click();
+      if (flow === 'clinic') {
+        await page.locator('[data-clinic-concern]').first().click();
+        await page.locator('#clinicVisitDetails').fill('Retained visit details');
+        await page.locator('#clinicComplaintForm button[type="submit"]').click();
+        await page.locator('#clinicConsentForm').waitFor(); await noCard();
+        await page.locator('#clinicConsentBackBtn').click();
+        await page.locator('#clinicComplaintForm').waitFor();
+        assert.equal(await page.locator('#clinicVisitDetails').inputValue(), 'Retained visit details');
+        assert.equal(state.requests.filter(p => p === '/api/session').length, stepChecks, 'Clinic dynamic steps reuse verified session');
+        assert.equal(await page.evaluate(() => window.workflowSessionCard === document.getElementById('bethlehem-session-lock')), true);
+        await page.locator('#clinicComplaintBackBtn').click();
+        await unlocked();
+        await page.getByText('Private Draft Pet', { exact: true }).waitFor();
+      } else {
+        await page.locator('[data-role="service-package"][value="partial_grooming"]').check();
+        await page.locator('#walkInServicesNextBtn').click();
+        await page.locator('#confirmBookingBtn:enabled').waitFor(); await noCard();
+        await page.locator('#confirmBookingBtn').click();
+        await page.locator('#walkInConsentForm').waitFor(); await noCard();
+        await page.locator('#walkInConsentBackBtn').click();
+        await page.locator('#walkInReviewBackBtn').click();
+        await page.locator('[data-role="service-package"][value="partial_grooming"]:checked').waitFor();
+        assert.equal(state.requests.filter(p => p === '/api/session').length, stepChecks, 'Dynamic steps reuse verified session');
+        assert.equal(await page.evaluate(() => window.workflowSessionCard === document.getElementById('bethlehem-session-lock')), true, 'Step rendering retains the shared lock UI');
+      }
+      await noCard();
+      await page.setViewportSize({ width: 375, height: 844 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      // Direct URLs (including confirmation) and hard refresh keep their
+      // privacy gate without constructing a checking dialog.
+      await page.evaluate(() => {
+        sessionStorage.setItem('walkInBookingConfirmation', JSON.stringify({ booking_reference: 'LOCAL-GROOMING', owner: { name: 'Private Confirmation Owner' }, pets: [] }));
+        sessionStorage.setItem('walkInClinicConfirmation', JSON.stringify({ appointment_reference: 'LOCAL-CLINIC', owner: { name: 'Private Confirmation Owner' }, pet: { name: 'Private Draft Pet' } }));
+      });
+      for (const file of ['walk-in-booking.html', 'walk-in-pet-details.html', 'walk-in-grooming-services.html', 'walk-in-booking-review.html', 'walk-in-consent.html', 'walk-in-booking-confirmed.html', 'walk-in-clinic-confirmed.html']) {
+        state.sessionHold = deferred();
+        const checks = state.requests.filter(p => p === '/api/session').length;
+        await visit(page, file);
+        await noCard();
+        assert.equal(await page.locator('[data-session-public]').first().isVisible(), true, file + ' safe layout');
+        assert.equal(await page.evaluate(() => document.activeElement?.id?.startsWith('session-') || false), false);
+        if (file.includes('confirmed')) assert.equal(await page.locator('#confirmationRoot').innerText().then(text => text.includes('Private Confirmation Owner')), false);
+        await release();
+        if (file.includes('confirmed')) await page.getByText('Private Confirmation Owner', { exact: true }).waitFor();
+        assert.equal(state.requests.filter(p => p === '/api/session').length, checks + 1);
+      }
+      state.statusFailure = true;
+      await visit(page, 'walk-in-pet-details.html');
+      await page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
+      assert.equal(await page.locator('#session-lock-form').isVisible(), false);
+      assert.equal(await page.locator('#selectedPetCards').innerText(), '');
+      state.statusFailure = false;
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await unlocked(); await page.getByText('Private Draft Pet', { exact: true }).waitFor();
+      state.expired = true;
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await page.waitForURL('**/pages/client/sign-in.html');
+      assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);
+      assert.deepEqual(errors, [], 'Walk-in browser errors');
+      console.log(`${profile}: Walk-in forward/back, retained drafts, locked/unlock, direct entry, refresh, mobile, failure/retry and revoked session passed`);
+    } finally { state.sessionHold?.resolve(); await f.context.close(); }
+  }
 }
 async function coldPaint(browser) {
   const f = await fixture(browser);
@@ -564,7 +702,7 @@ async function servicesMobileBackdrop(browser) {
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
-    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services'];
+    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services', 'walk-in'];
     if (cases.includes('cold')) await coldPaint(browser);
     if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
     if (cases.includes('security')) await securityTransitions(browser);
@@ -573,5 +711,6 @@ async function servicesMobileBackdrop(browser) {
     if (cases.includes('pre-alpine')) await cachedBeforeAlpine(browser);
     if (cases.includes('inventory')) await inventoryNavigation(browser);
     if (cases.includes('services')) await servicesMobileBackdrop(browser);
+    if (cases.includes('walk-in')) await walkInNavigation(browser);
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

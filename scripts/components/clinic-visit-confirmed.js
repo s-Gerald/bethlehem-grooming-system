@@ -21,8 +21,9 @@ export function clinicReasonConfirmation(appointment) {
   ]).replace('class="confirmation-fields"', 'class="confirmation-fields confirmation-fields--reason"');
 }
 
-export function initClinicVisitConfirmation() {
+export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";
+  if (walkIn && !await API.waitForSessionVerification()) return;
   if (!walkIn && !requireCustomerSession("./sign-in.html")) return;
   const appointment = readConfirmationData(walkIn ? "walkInClinicConfirmation" : CLINIC_VISIT_CONFIRMATION_KEY);
   const root = document.getElementById("confirmationRoot");

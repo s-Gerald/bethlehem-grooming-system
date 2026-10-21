@@ -39,12 +39,12 @@ function setup(preview) {
     return elements.get(id);
   };
   const body = { className: "" };
-  Object.defineProperty(body, "innerHTML", { set() { elements = new Map(); } });
+  const main = { set outerHTML(_) { elements = new Map(); } };
   const context = vm.createContext({
-    document: { body, addEventListener() {}, getElementById: get },
+    document: { body, addEventListener() {}, getElementById: get, querySelector: () => main },
     window: { history: { pushState(a, b, url) { navigation.push(url); } }, location: {} },
     sessionStorage: { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value) },
-    API: { previewWalkInCapacity: (data) => { calls.push(data); return preview(data); } },
+    API: { waitForSessionVerification: async () => true, previewWalkInCapacity: (data) => { calls.push(data); return preview(data); } },
     buildWalkInPets: consent.buildWalkInPets,
     buildBookingReviewPayload: () => payload,
     hasRequiredGroomingPreference: () => true,
@@ -68,7 +68,7 @@ const capacity = (fits) => ({ capacity: { fits,
 async function main() {
   let resolve;
   const pending = setup(() => new Promise((done) => { resolve = done; }));
-  pending.render();
+  await pending.render();
   assert.equal(pending.get("confirmBookingBtn").disabled, true);
   pending.context.handleConfirmClick();
   assert.equal(pending.consentCalls.length, 0);
@@ -92,7 +92,7 @@ async function main() {
 
   let fits = true;
   const allowed = setup(() => Promise.resolve(capacity(fits)));
-  allowed.render();
+  await allowed.render();
   await flush();
   assert.equal(allowed.get("confirmBookingBtn").disabled, false);
   assert.equal(allowed.get("reviewActionNotice").classList.contains("hidden"), true);
@@ -108,7 +108,7 @@ async function main() {
 
   let fail = true;
   const retry = setup(() => fail ? Promise.reject(new Error("Unable to check grooming capacity.")) : Promise.resolve(capacity(true)));
-  retry.render();
+  await retry.render();
   await flush();
   assert.equal(retry.get("confirmBookingBtn").disabled, true);
   assert.match(retry.get("reviewActionNotice").innerHTML, /Retry/);
@@ -118,7 +118,7 @@ async function main() {
 
   const stale = setup(() => new Promise((done) => { resolve = done; }));
   let back = 0;
-  stale.render({ onBack: () => { back++; } });
+  await stale.render({ onBack: () => { back++; } });
   stale.context.handleBackClick();
   assert.equal(back, 1);
   resolve(capacity(true));
@@ -127,7 +127,7 @@ async function main() {
 
   const multiple = setup(() => Promise.resolve(capacity(false)));
   multiple.payload.items.push({ ...multiple.payload.items[0], pet: { petName: "Bruno" } });
-  multiple.render();
+  await multiple.render();
   await flush();
   assert.equal(multiple.calls[0].pets.length, 2);
   assert.match(multiple.get("reviewActionNotice").innerHTML, /These pets cannot be completed/);

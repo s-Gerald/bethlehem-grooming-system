@@ -263,12 +263,20 @@ async function testInitialPageShowDoesNotRestartVerification() {
   const standaloneFixture = {pauseStatus: true, shell: false};
   const standalone = createIdleBrowser("admin", standaloneFixture);
   assert.equal(standalone.root.attributes["data-session-gate"], "checking");
-  assert.equal(standalone.elements.get("bethlehem-session-lock")?.hidden, false, "Standalone forms retain secure entry presentation when no safe shell exists");
-  assert.equal(standalone.elements.get("session-lock-form").hidden, true);
+  assert.equal(standalone.elements.has("bethlehem-session-lock"), false, "Standalone workflows verify without creating a checking card");
+  assert.equal(standalone.document.activeElement, standalone.dashboard, "Checking must not steal workflow focus");
+  let initialized = false;
+  const initialization = standalone.API.waitForSessionVerification().then(allowed => { initialized = allowed; });
+  assert.equal(initialized, false, "Stored tokens cannot initialize sensitive workflow state");
   await assert.rejects(standalone.API.adminStopToday(), error => error.status === 503);
   standaloneFixture.releaseStatus();
   await standalone.settle();
-  assert.equal(standalone.elements.get("bethlehem-session-lock").hidden, true);
+  await initialization;
+  assert.equal(initialized, true);
+  assert.equal(standalone.elements.has("bethlehem-session-lock"), false);
+  const revoked = createIdleBrowser("staff", {statusFailure: 401, shell: false});
+  assert.equal(await revoked.API.waitForSessionVerification(), false, "Revoked sessions cannot initialize retained workflow data");
+  assert.equal(revoked.API.getAdminToken(), null);
 }
 
 async function testTabReturnKeepsUnlockedWorkflow(role) {
@@ -315,7 +323,10 @@ async function testVerificationFailuresAreNotPasswordLocks() {
   for (const statusFailure of [0, 500, 200]) {
     const fixture = {statusFailure};
     const browser = createIdleBrowser("admin", fixture);
+    let initialized = false;
+    const initialization = browser.API.waitForSessionVerification().then(allowed => { initialized = allowed; });
     await browser.settle();
+    assert.equal(initialized, false, "Verification failure cannot initialize the workflow");
     assert.equal(browser.API.isSessionLocked(), false);
     assert.equal(browser.root.attributes["data-session-gate"], "unavailable");
     assert.equal(browser.elements.get("session-lock-form").hidden, true);
@@ -333,6 +344,8 @@ async function testVerificationFailuresAreNotPasswordLocks() {
     fixture.pauseStatus = false;
     await browser.settle();
     assert.equal(browser.root.attributes["data-session-gate"], undefined, "Explicit retry restores server-verified access");
+    await initialization;
+    assert.equal(initialized, true, "A successful retry initializes the waiting workflow");
     fixture.statusFailure = statusFailure;
     browser.root.changes.length = 0;
     browser.dispatchWindow("focus");

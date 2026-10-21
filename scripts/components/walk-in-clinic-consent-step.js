@@ -25,7 +25,7 @@ function getMarkup(pet, commonConcerns, chiefComplaint) {
         &larr; Back to Chief Complaint
       </button>
 
-      <section class="mt-4">
+      <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Review &amp; Confirm</h1>
 
         <div class="mt-6">
@@ -39,7 +39,7 @@ function getMarkup(pet, commonConcerns, chiefComplaint) {
         </div>
       </section>
 
-      <section class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
+      <section data-session-surface class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-[#2f4b66]">Clinic Visit Summary</h2>
         </div>
@@ -254,7 +254,8 @@ function bindEvents() {
   elements.backButtons.forEach((btn) => btn.addEventListener("click", handleBackClick));
 }
 
-export function renderWalkInClinicConsentStep({ pet = null, commonConcerns = [], chiefComplaint = "", onBack = null } = {}) {
+export async function renderWalkInClinicConsentStep({ pet = null, commonConcerns = [], chiefComplaint = "", onBack = null } = {}) {
+  if (!await API.waitForSessionVerification()) return;
   state.pet = pet;
   state.chiefComplaint = chiefComplaint;
   state.commonConcerns = commonConcerns;
@@ -262,24 +263,19 @@ export function renderWalkInClinicConsentStep({ pet = null, commonConcerns = [],
 
   document.title = "Walk-in Clinic — Review & Confirm";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";
-  document.body.innerHTML = getMarkup(pet, commonConcerns, chiefComplaint);
+  document.querySelector("main").outerHTML = getMarkup(pet, commonConcerns, chiefComplaint);
 
   refreshElements();
   bindEvents();
   syncSubmitButton();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   if (!document.getElementById("clinicConsentForm")) {
     return;
   }
 
-  const token = API.getAdminToken?.();
-  const role = API.getUserRole?.();
-  if (!token || (role !== "admin" && role !== "staff")) {
-    window.location.href = "../client/sign-in.html";
-    return;
-  }
+  if (!await API.waitForSessionVerification()) return;
 
   // Loaded directly — try to restore from sessionStorage
   try {
@@ -291,7 +287,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // ignore
   }
 
-  document.body.innerHTML = getMarkup(state.pet, state.commonConcerns, state.chiefComplaint);
+  document.querySelector("main").outerHTML = getMarkup(state.pet, state.commonConcerns, state.chiefComplaint);
   refreshElements();
   bindEvents();
   syncSubmitButton();

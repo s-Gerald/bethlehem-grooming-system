@@ -217,12 +217,13 @@ class GroomingWorkloadCapacity
         $finishes = array_column($projections, 'completion_timestamp');
         $unknown = in_array(null, $finishes, true);
         $last = $finishes && ! $unknown ? max($finishes) : null;
+        // An empty workload is neutral, but admission must still respect closing.
         $fits = ! $unknown && ($last ?? $base) <= $close;
         return ['groomers_on_duty' => $count, 'waiting' => count($waiting), 'in_progress' => count($activeEnds),
             'closing_time' => $this->time($close),
             'projected_last_completion' => $last !== null ? $this->time($last) : null,
             'remaining_lane_minutes' => array_sum(array_map(fn ($end) => $end !== null ? max(0, ($close - $end) / 60) : 0, $lanes)),
-            'fits' => $fits, 'state' => $this->state($unknown ? null : ($last ?? $base), $close), 'pets' => $projections];
+            'fits' => $fits, 'state' => $projections === [] ? 'On track' : $this->state($last, $close), 'pets' => $projections];
     }
 
     private function projection(?int $start, ?int $finish, int $base, int $close): array

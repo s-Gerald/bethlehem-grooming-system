@@ -185,8 +185,8 @@ for (const walkIn of [false, true]) {
     save('walkInReviewStep', { items: [{ pet: { petName: 'Coco', petType: 'cat', size: 'Small' }, selection: {}, pricing: { lineItems: [{ serviceId: 'partial_grooming' }] } }] });
     let submitted, navigated, ready, submissions = 0;
     const api = {
+      waitForSessionVerification: async () => true,
       getMe: async () => ({ user: { first_name: 'Ana', last_name: 'Cruz' } }),
-      getAdminToken: () => 'test', getUserRole: () => 'staff',
       storeBooking: async payload => { submissions++; submitted = payload; return { booking: { booking_id: 1, pets: [] }, consent: { signer_name: payload.signer_name } }; },
       submitWalkIn: async payload => { submissions++; submitted = payload; return { booking_id: 1, consent: { signer_name: payload.signer_name } }; },
     };
@@ -199,7 +199,7 @@ for (const walkIn of [false, true]) {
       isEligibleForGrooming,
     });
     vm.runInContext(source(walkIn ? 'walk-in-consent-step' : 'booking-consent-step'), context);
-    if (walkIn) ready(); else context.initBookingConsentStep();
+    if (walkIn) await ready(); else context.initBookingConsentStep();
     await new Promise(resolve => setImmediate(resolve));
     const form = get(walkIn ? 'walkInConsentForm' : 'bookingConsentForm');
     get('mainConsentCheckbox').checked = true;

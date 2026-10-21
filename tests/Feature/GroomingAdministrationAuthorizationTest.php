@@ -2951,6 +2951,52 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 1, 'grooming_estimate_max' => 60, 'confirmed_size' => null]);
     }
 
+    public function test_incoming_reservation_keeps_live_workload_neutral_and_cannot_check_in_after_closing(): void
+    {
+        $payload = $this->prepareReservationDay();
+        Sanctum::actingAs(User::findOrFail(101), ['*']);
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $workload = app(\App\Services\GroomingWorkloadCapacity::class);
+        $this->assertCount(1, $workload->reservedJobs(now()->toDateString()));
+        $this->authenticateAs('staff');
+
+        foreach (['15:00:00', '16:45:00', '17:00:00', '17:01:00'] as $time) {
+            Carbon::setTestNow('2026-10-16 '.$time);
+            $this->getJson('/api/admin/bookings?view=board')->assertOk()
+                ->assertJsonCount(1, 'incomingList')
+                ->assertJsonCount(0, 'queuedList')->assertJsonCount(0, 'inProgressList')
+                ->assertJsonPath('groomingWorkload.state', 'On track')
+                ->assertJsonPath('groomingWorkload.projected_last_completion', null)
+                ->assertJsonPath('groomingWorkload.pets', [])
+                ->assertJsonPath('groomingWorkload.waiting', 0)
+                ->assertJsonPath('groomingWorkload.in_progress', 0)
+                ->assertJsonPath('groomingWorkload.fits', $time !== '17:01:00');
+        }
+
+        $this->postJson("/api/admin/bookings/{$id}/check-in")->assertUnprocessable()
+            ->assertJsonValidationErrors('check_in');
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'waiting_to_arrive',
+            'queue_number' => null, 'dropped_off_at' => null]);
+        $this->assertSame(0, DB::table('booking_pets')->whereNotNull('pet_queue_number')->count());
+        $this->assertDatabaseCount('customer_notifications', 0);
+    }
+
+    public function test_finished_grooming_does_not_create_live_workload_after_closing(): void
+    {
+        $this->authenticateAs('staff');
+        $this->seedMultiPetBooking();
+        Carbon::setTestNow(now()->setTime(17, 1));
+        DB::table('booking_pets')->update(['grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        foreach (['checked_in', 'in_progress', 'for_payment', 'released', 'archived'] as $status) {
+            DB::table('bookings')->update(['status' => $status]);
+            $snapshot = app(\App\Services\GroomingWorkloadCapacity::class)->snapshot();
+            $this->assertSame('On track', $snapshot['state'], $status);
+            $this->assertSame([], $snapshot['pets']);
+            $this->assertNull($snapshot['projected_last_completion']);
+            $this->assertFalse($snapshot['fits']);
+        }
+    }
+
     public function test_workload_warnings_do_not_interrupt_active_sessions_or_block_admitted_starts(): void
     {
         $this->authenticateAs('staff');

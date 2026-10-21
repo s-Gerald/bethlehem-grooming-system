@@ -177,6 +177,64 @@ async function ready(page, name, property) {
         assert.deepEqual(errors, [], name + ' browser errors');
         console.log(key + ' ' + name + ': authorized shell, title, loader, content and mobile passed');
       }
+      if (process.env.LOCAL_REVIEW_WALK_IN) {
+        const entries = key === 'admin' ? ['dashboard.html', 'appointments.html', 'clinic.html']
+          : [key === 'clinic' ? 'clinic.html' : 'appointments.html'];
+        for (const entry of entries) {
+          await page.goto(origin + '/pages/admin/' + entry, { waitUntil: 'domcontentloaded' });
+          await page.waitForFunction(() => document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready') && !document.documentElement.hasAttribute('data-session-gate'));
+          let release;
+          const held = new Promise(resolve => { release = resolve; });
+          await page.route('**/api/session', async route => { await held; await route.continue(); });
+          const before = requests.length;
+          const started = Date.now();
+          try {
+            await Promise.all([page.waitForEvent('domcontentloaded'), page.getByRole('button', { name: 'Walk-in', exact: true }).click()]);
+            assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false);
+            assert.equal(await page.locator('#walkInPageTitle').isVisible(), true);
+            assert.equal(await page.locator('#walkInOwnerForm').isVisible(), false);
+            assert.equal(await page.evaluate(async () => { try { await API.submitWalkIn({}); } catch (error) { return error.status; } }), 503);
+          } finally { release(); }
+          await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+          await page.unroute('**/api/session');
+          assert.equal(requests.slice(before).filter(url => url === '/api/session').length, 1);
+          assert.equal(requests.slice(before).filter(url => url === '/api/me').length, 0);
+          const flow = entry === 'clinic.html' ? 'clinic' : 'grooming';
+          assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('walkInOwnerStep')).appointmentType), flow);
+          console.log(`${key} ${entry} → ${flow} Walk-in: real API verified in ${Date.now() - started}ms, one /session, zero /me, no checking card`);
+          if (process.env.LOCAL_REVIEW_LOCK_HELPER && process.env.LOCAL_REVIEW_PASSWORD) {
+            await page.locator('#ownerFirstName').fill('Retained local draft');
+            execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, 'lock', key]);
+            await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+            await page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
+            await page.getByLabel('Password', { exact: true }).fill('IncorrectLocalPassword');
+            await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+            await page.getByText('Incorrect password.', { exact: true }).waitFor();
+            await page.getByLabel('Password', { exact: true }).fill(process.env.LOCAL_REVIEW_PASSWORD);
+            await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+            await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+            assert.equal(await page.locator('#ownerFirstName').inputValue(), 'Retained local draft');
+          }
+          await page.evaluate(flow => {
+            sessionStorage.setItem('walkInOwnerStep', JSON.stringify({ appointmentType: flow, firstName: 'Local', lastName: 'Review' }));
+            sessionStorage.setItem('walkInPetStep', JSON.stringify({ pets: [{ id: 'local-review', petName: 'Private Local Pet', petType: 'Dog', breed: 'Poodle', furType: 'Curly', weight: 8, size: 'Small' }], newPetForm: {} }));
+          }, flow);
+          await page.goto(origin + '/pages/admin/walk-in-pet-details.html', { waitUntil: 'domcontentloaded' });
+          await page.getByText('Private Local Pet', { exact: true }).waitFor();
+          const stepChecks = requests.filter(url => url === '/api/session').length;
+          await page.locator('#nextBtn').click();
+          await page.locator(flow === 'clinic' ? '#clinicComplaintForm' : '#walkInServicesForm').waitFor();
+          assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false);
+          assert.equal(requests.filter(url => url === '/api/session').length, stepChecks);
+          await page.setViewportSize({ width: 375, height: 844 });
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+          await page.setViewportSize({ width: 1440, height: 1000 });
+        }
+        assert.deepEqual(errors, [], 'Real Walk-in session/navigation errors');
+        console.log(key + ': real Walk-in lock/unlock, retained form and pet draft, dynamic step and mobile passed');
+        await context.close();
+        continue;
+      }
       if (process.env.LOCAL_REVIEW_VERIFY_GATE) {
         let release;
         const held = new Promise(resolve => { release = resolve; });

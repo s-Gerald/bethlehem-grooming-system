@@ -25,7 +25,7 @@ function getConsentMainMarkup() {
         <span>Back to Review</span>
       </button>
 
-      <section class="mt-4">
+      <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Consent &amp; Agreement</h1>
 
         <div class="mt-6">
@@ -39,7 +39,7 @@ function getConsentMainMarkup() {
         </div>
       </section>
 
-      <section class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
+      <section data-session-surface class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8">
         <div class="mb-6 grid gap-4 md:grid-cols-2">
           <div class="rounded-2xl border border-slate-200 bg-white p-4">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -428,23 +428,6 @@ function bindEvents() {
   });
 }
 
-function guardAdminAccess() {
-  /*
-    BACKEND TEAMMATE + CLAUDE CODE:
-    This only redirects unauthenticated users in the UI. Backend walk-in submit
-    and draft endpoints should still validate the admin/staff token.
-  */
-  const token = API.getAdminToken?.();
-  const role = API.getUserRole?.();
-
-  if (token && (role === "admin" || role === "staff")) {
-    return true;
-  }
-
-  window.location.href = "../client/sign-in.html";
-  return false;
-}
-
 function initSignature() {
   const owner = getStoredData(WALK_IN_OWNER_STORAGE_KEY);
   consent = initGroomingConsent({
@@ -461,10 +444,11 @@ function initConsentState({ reviewPayload = null, onBack = null } = {}) {
   state.onBack = onBack;
 }
 
-export function renderWalkInConsentStep(options = {}) {
+export async function renderWalkInConsentStep(options = {}) {
+  if (!await API.waitForSessionVerification()) return;
   document.title = "Walk-in - Consent & Agreement";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";
-  document.body.innerHTML = getConsentMainMarkup();
+  document.querySelector("main").outerHTML = getConsentMainMarkup();
 
   refreshElements();
   initConsentState(options);
@@ -474,12 +458,12 @@ export function renderWalkInConsentStep(options = {}) {
   validateConsentForm();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   if (!document.getElementById("walkInConsentForm")) {
     return;
   }
 
-  if (!guardAdminAccess()) {
+  if (!await API.waitForSessionVerification()) {
     return;
   }
 

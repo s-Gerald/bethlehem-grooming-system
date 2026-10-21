@@ -18,7 +18,6 @@ html[data-admin-role="staff"] [data-admin-title-admin] { display: none; }
    presentation only; protected data and operations still await session verification. */
 html:not([data-session-gate]) [data-admin-shell] :is([data-session-surface], [data-session-public], [data-session-public] *) { visibility: visible; }
 html[data-session-gate="checking"] body > [data-admin-shell] :is(
-  [data-session-surface], [data-session-public], [data-session-public] *,
   .admin-sidebar-menu [data-admin-navigation], .admin-sidebar-menu [data-admin-navigation] *,
   admin-loader, admin-loader *
 ) {
