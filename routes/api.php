@@ -61,17 +61,6 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
 Route::get('/timeslots', [BookingController::class,   'getTimeslots']);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
-Route::get('/system/clock', function () {
-    $testClockActive = app()->environment(['local', 'testing']) && filled(config('app.test_now'));
-
-    return response()->json([
-        'success' => true,
-        'now' => now()->toIso8601String(),
-        'today' => now()->toDateString(),
-        'timezone' => config('app.timezone'),
-        'test_clock_active' => $testClockActive,
-    ]);
-});
 
 // ── PROTECTED ROUTES (token required) ────────────────
 Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(function () {

@@ -37,18 +37,17 @@ async function customersStartupAndSearchRace() {
     old.resolve({ customers: [{ id: 4 }] }); await a; assert.equal(next.customers[0].id, 3);
   });
 }
-async function dashboardDoesNotWaitForClock() {
-  const e = environment(), clock = deferred();
-  e.c.window.AppClock = { load: () => clock.promise, todayKey: () => '2026-10-19' };
+async function dashboardLoadsSummaryDirectly() {
+  const e = environment();
   e.c.Intl = Intl;
   vm.runInContext(read('scripts/components/admin-dashboard.js'), e.c);
   const ui = e.c.adminDashboard(); ui.pageMode = 'dashboard';
   for (const method of ['registerBridge', 'loadConfig', 'startContentPolling', 'dispatchDashboardEvent']) ui[method] = () => {};
   const p = ui.init(); await new Promise(r => setImmediate(r));
-  assert.ok(e.calls.some(c => c.endpoint === '/admin/dashboard/summary'), 'Summary starts without an unresolved clock');
+  assert.ok(e.calls.some(c => c.endpoint === '/admin/dashboard/summary'), 'Summary starts directly on entry');
   assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/bookings')), false);
   assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/notifications')), false, 'Dashboard content does not own notification loading');
-  clock.resolve(null); await p;
+  await p;
 }
 async function customerDetailsFormatWeightWithoutPetEditor() {
   const e = environment();
@@ -66,28 +65,26 @@ async function customerDetailsFormatWeightWithoutPetEditor() {
     assert.deepEqual(e.calls.map(call => call.endpoint), ['/admin/customers/1'], 'Opening details makes one on-demand request');
   });
 }
-async function groomingWaitsForVerifiedTestClock() {
-  const e = environment(), clock = deferred();
+async function groomingUsesManilaDateDirectly() {
+  const e = environment();
   e.c.Intl = Intl;
-  e.respond(endpoint => endpoint === '/system/clock' ? clock.promise : {});
-  vm.runInContext(read('scripts/services/app-clock.js'), e.c);
-  e.c.window.AppClock = e.c.AppClock;
+  e.c.Date = class extends Date {
+    constructor(...args) { super(...(args.length ? args : ['2026-12-31T16:00:00Z'])); }
+  };
+  e.respond(() => ({}));
   vm.runInContext(read('scripts/components/admin-dashboard.js'), e.c);
   const ui = e.c.adminDashboard(); ui.pageMode = 'grooming';
   ui.config.includeFutureAppointments = true;
   for (const method of ['registerBridge', 'loadConfig', 'startContentPolling', 'dispatchDashboardEvent']) ui[method] = () => {};
   ui.bootstrapDashboard = ui.restoreGroomingOnlinePayment = async () => {};
-  const p = ui.init(); await new Promise(r => setImmediate(r));
-  assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/bookings')), false, 'Date-dependent board waits for the server clock');
-  clock.resolve({test_clock_active: true, now: '2099-05-10T10:00:00+08:00', timezone: 'Asia/Manila'});
-  await p;
-  assert.equal(ui.selectedDate, '2099-05-10');
-  assert.ok(e.calls.some(c => c.endpoint === '/admin/bookings?date=2099-05-10&include_future=1&view=board'));
-  assert.equal(e.calls.some(c => c.endpoint.startsWith('/admin/notifications')), false, 'Grooming content does not fetch notification history');
-  assert.equal(e.c.AppClock.isTestClockActive(), true);
-  e.respond(() => ({test_clock_active: false, now: '2026-10-19T10:00:00+08:00'}));
-  await e.c.AppClock.load({force: true});
-  assert.equal(e.c.AppClock.isTestClockActive(), false, 'A forced clock verification can leave test mode');
+  await ui.init();
+  assert.equal(ui.selectedDate, '2027-01-01');
+  assert.equal(ui.todayDate, '2027-01-01');
+  assert.equal(ui.maxDate, '2027-01-04');
+  assert.match(ui.formatDateGroupLabel('2027-01-01'), /^Today/);
+  assert.match(ui.formatDateGroupLabel('2027-01-02'), /^Tomorrow/);
+  assert.deepEqual(e.calls.map(c => c.endpoint), ['/admin/bookings?date=2027-01-01&include_future=1&view=board'],
+    'Grooming needs only its board request on entry');
 }
 async function dashboardDoesNotRequestIntakeStatus() {
   const e = environment(), summary = deferred();
@@ -203,6 +200,6 @@ async function staffServicesWaitForAuthorizedActiveTab() {
   assert.equal(mounted,'','Staff Clinic functionality waits for permission verification');
   permission.resolve(); await pending; assert.equal(mounted,'clinic');
 }
-(async () => { for (const test of [scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardDoesNotWaitForClock, dashboardDoesNotRequestIntakeStatus, groomingWaitsForVerifiedTestClock, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
+(async () => { for (const test of [scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardLoadsSummaryDirectly, dashboardDoesNotRequestIntakeStatus, groomingUsesManilaDateDirectly, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
   await test(); console.log(test.name+' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

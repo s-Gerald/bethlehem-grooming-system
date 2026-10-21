@@ -18,7 +18,7 @@
 ## File responsibilities
 
 - `scripts/components/admin-loading.js`, `css/admin-loading.css`: shared markup, local sprite, motion/accessibility and scoped shell behavior.
-- `scripts/components/admin-sidebar.js`: authenticated navigation readiness without clock/page-data blocking.
+- `scripts/components/admin-sidebar.js`: authenticated navigation readiness without page-data blocking.
 - `pages/admin/*.html`, Inventory/Services/Clinic fragments: static headers and affected-region loaders.
 - Relevant `scripts/components/admin-*.js`: data readiness and retained refreshes; lazy panel/header handling where necessary.
 - Focused Node/browser regressions and `docs/admin-loading-performance.md`: behavior, preserved request counts and verification evidence.

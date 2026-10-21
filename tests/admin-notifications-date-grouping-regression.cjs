@@ -10,7 +10,9 @@ const source = fs.readFileSync(
 );
 const context = {
   console,
-  Date,
+  Date: class extends Date {
+    constructor(...args) { super(...(args.length ? args : ["2026-08-21T00:00:00+08:00"])); }
+  },
   Intl,
   Map,
   Object,
@@ -18,13 +20,7 @@ const context = {
   Number,
   Boolean,
   String,
-  window: {
-    AppClock: {
-      now: () => new Date("2026-08-21T12:30:00+08:00"),
-      todayKey: () => "2026-08-21",
-      dateKeyWithOffset: (offset) => offset === -1 ? "2026-08-20" : "2026-08-21",
-    },
-  },
+  window: {},
 };
 
 vm.runInNewContext(source, context);

@@ -70,7 +70,7 @@ const elements = {
 // =========================
 
 function getManilaNowParts() {
-  const currentDate = window.AppClock?.now?.() || new Date();
+  const currentDate = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
     year: "numeric",
@@ -647,8 +647,6 @@ export async function initBookingCalendar(options = {}) {
     ...state.options,
     ...options,
   };
-
-  await window.AppClock?.load?.();
 
   const now = getManilaNowParts();
   state.currentMonth = new Date(now.year, now.month - 1, 1);

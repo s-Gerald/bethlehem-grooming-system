@@ -8,7 +8,10 @@ let bookings = {};
 const requests = [];
 const listeners = new Map();
 const context = {
-  Date, Intl, URLSearchParams, console,
+  Date: class extends Date {
+    constructor(...args) { super(...(args.length ? args : [today + 'T00:00:01+08:00'])); }
+  },
+  Intl, URLSearchParams, console,
   document: {},
   API: {
     loadAdminData: (key, load, render) => load().then(render),
@@ -20,7 +23,6 @@ const context = {
   },
   window: {
     location: { pathname: '/pages/admin/dashboard.html' },
-    AppClock: { todayKey: () => today },
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name) => listeners.delete(name),
     dispatchEvent: (event) => listeners.get(event.type)?.(event),
@@ -101,7 +103,7 @@ async function run() {
   await sidebar.loadIncomingAppointmentCount();
   assert.equal(sidebar.hasIncomingAppointments, false);
 
-  // The existing AppClock defines today, including rollover/test-clock changes.
+  // Manila midnight changes today's activity even while the UTC date is still yesterday.
   bookings = { ...emptyLists(), incomingList: [record('2026-10-06', 'incoming')] };
   await sidebar.loadIncomingAppointmentCount();
   assert.equal(sidebar.hasIncomingAppointments, false);

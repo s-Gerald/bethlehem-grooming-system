@@ -599,7 +599,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
       await loadDashboardPets();
       scheduleDashboardDataIdle(async () => {
         await loadGroomingCapacity();
-        await Promise.resolve(window.AppClock?.load?.()).catch(() => {});
         setRescheduleDateRange(getRescheduleTodayKey());
       });
     });
@@ -713,9 +712,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   function getRescheduleTodayKey() {
-    const appClockDate = window.AppClock?.todayKey?.();
-    if (appClockDate) return appClockDate;
-
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Manila",
       year: "numeric",
@@ -1229,7 +1225,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
     rescheduleModal.classList.add("flex");
 
     try {
-      await window.AppClock?.load?.();
       const data = await API.getClinicStatus();
       if (requestId !== rescheduleLoadId || activeBookingId !== booking.booking_id) return;
 
@@ -1347,18 +1342,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (windowData.is_past) return true;
     if (dateKey !== getRescheduleTodayKey()) return false;
 
-    const currentTime = window.AppClock?.now?.();
-    if (currentTime && windowData.end_time) {
-      const end = new Date(`${dateKey}T${windowData.end_time}+08:00`);
-      return windowData.latest_arrival_time ? currentTime > end : currentTime >= end;
-    }
-
-    const [hours, minutes] = String(windowData.end_time || "").split(":").map(Number);
-    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;
-
-    const currentMinutes = window.AppClock?.currentMinutes?.();
-    return Number.isFinite(currentMinutes)
-      && (windowData.latest_arrival_time ? currentMinutes > (hours * 60 + minutes) : currentMinutes >= (hours * 60 + minutes));
+    const currentTime = new Date();
+    const end = new Date(`${dateKey}T${windowData.end_time}+08:00`);
+    return windowData.latest_arrival_time ? currentTime > end : currentTime >= end;
   }
 
   function isCurrentRescheduleSelection(dateKey, windowId, windowLabel = null) {

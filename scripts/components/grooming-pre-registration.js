@@ -92,7 +92,6 @@ async function navigate(requested, historyAction = "push") {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await globalThis.AppClock?.load();
   let requested = new URLSearchParams(window.location.search).get("step") || "pets";
   if (requested !== "confirmed" || !stored("bookingConfirmation")) {
     const blocked = await initBookingFormAccessGuard({ dashboardPath: "./dashboard.html" });

@@ -378,28 +378,16 @@ function adminDashboard() {
     groomingMenuBookingId: null,
     _groomingMenuTrigger: null,
     _pollFailures: {},
-    // Use local date (not UTC) so the calendar defaults to the correct day in PH
-    selectedDate: (() => {
-      const today = window.AppClock?.todayKey?.();
-      if (today) return today;
-
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    })(),
+    selectedDate: new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date()),
     get todayDate() {
-      const today = window.AppClock?.todayKey?.();
-      if (today) return today;
-
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return this.localToday();
     },
     get maxDate() {
-      const maxDate = window.AppClock?.dateKeyWithOffset?.(3);
-      if (maxDate) return maxDate;
-
-      const d = new Date();
-      d.setDate(d.getDate() + 3);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const d = new Date(`${this.todayDate}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 3);
+      return d.toISOString().slice(0, 10);
     },
     forPaymentList: [],
     activeGroomers: 2,
@@ -520,7 +508,6 @@ function adminDashboard() {
         return;
       }
 
-      if (this.pageMode !== 'dashboard') await window.AppClock?.load?.();
       if (this._destroyed) return;
       this.selectedDate = this.todayDate;
 
@@ -3126,13 +3113,11 @@ function adminDashboard() {
 
     // ── Incoming list grouped by date (today first) ───────────────────────
 
-    // Returns YYYY-MM-DD in local time (avoids UTC off-by-one at midnight PH)
+    // Use the clinic's calendar day regardless of the browser's timezone.
     localToday() {
-      const today = window.AppClock?.todayKey?.();
-      if (today) return today;
-
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
     },
 
     groupedIncoming() {
@@ -3157,11 +3142,9 @@ function adminDashboard() {
 
     formatDateGroupLabel(dateStr) {
       const today    = this.localToday();
-      const tomorrow = window.AppClock?.dateKeyWithOffset?.(1) || (() => {
-        const tomorrowDate = new Date();
-        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-        return `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, "0")}-${String(tomorrowDate.getDate()).padStart(2, "0")}`;
-      })();
+      const tomorrowDate = new Date(`${today}T00:00:00Z`);
+      tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+      const tomorrow = tomorrowDate.toISOString().slice(0, 10);
 
       const formatted = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-PH', {
         weekday: 'long',

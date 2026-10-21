@@ -855,7 +855,6 @@ function bindEvents() {
 }
 
 async function initStepState() {
-  if (!IS_CLINIC_VISIT) await globalThis.AppClock?.load();
   renderScheduleSummary();
   initializeWeightField(elements.weight);
   syncWeightAndSize();

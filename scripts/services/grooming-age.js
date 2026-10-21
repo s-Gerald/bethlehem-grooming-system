@@ -1,7 +1,7 @@
 export const GROOMING_MINIMUM_AGE_MESSAGE = "Pet must be at least 6 months old for grooming.";
 
 function todayKey() {
-  return globalThis.AppClock?.todayKey() || new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
 }

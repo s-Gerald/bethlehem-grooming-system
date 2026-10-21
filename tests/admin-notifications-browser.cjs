@@ -44,7 +44,6 @@ async function fixture(browser, role = 'admin') {
       data = {locked: state.locked, user_id: 7, role: user.role, sidebar_revision: 'notification-fixture-1',
         server_now: new Date().toISOString(), idle_at: new Date(Date.now() + 1800000).toISOString(), expires_at: new Date(Date.now() + 43200000).toISOString()};
     }
-    if (path === '/api/system/clock') data = {now: new Date().toISOString(), timezone: 'Asia/Manila'};
     if (path === '/api/admin/notifications') {
       if (params.get('service') === 'grooming') await state.hold?.promise;
       const unread_count = state.rows.filter(n => !n.is_read).length;

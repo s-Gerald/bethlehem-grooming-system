@@ -227,7 +227,6 @@ function adminSidebar() {
       const ownsGroomingData = window.location.pathname.endsWith('/notifications.html')
         || ['dashboard', 'appointments'].includes(this.activePage);
       await this.loadLoggedInIdentity();
-      if (!API.getAdminGroomingActivity) await window.AppClock?.load?.();
       if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) await this.loadIncomingAppointmentCount();
       if (this._destroyed) return;
       const refresh = () => {
@@ -307,11 +306,9 @@ function adminSidebar() {
     },
 
     todayDate() {
-      const today = window.AppClock?.todayKey?.();
-      if (today) return today;
-
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
     },
 
     setIncomingAppointmentCount(data, today = this.todayDate()) {

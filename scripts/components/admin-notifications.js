@@ -76,7 +76,6 @@ function adminNotifications(mode = 'full') {
     init() {
       this._unsubscribe = AdminNotificationService.subscribe(event => this.onNotificationChange(event), {loadCount: this.mode !== 'full'});
       if (this.mode === 'full') {
-        void window.AppClock?.load?.();
         return this.loadNotifications(true);
       }
     },
@@ -197,11 +196,9 @@ function adminNotifications(mode = 'full') {
     },
 
     notificationGroups() {
-      const currentDate = window.AppClock?.now?.() || new Date();
-      const todayKey = window.AppClock?.todayKey?.()
-        || this.manilaDateKey(currentDate);
-      const yesterdayKey = window.AppClock?.dateKeyWithOffset?.(-1)
-        || this.manilaDateKey(new Date(currentDate.getTime() - 86400000));
+      const currentDate = new Date();
+      const todayKey = this.manilaDateKey(currentDate);
+      const yesterdayKey = this.manilaDateKey(new Date(currentDate.getTime() - 86400000));
       const groupedByDate = new Map();
 
       for (const notification of this.notifications) {

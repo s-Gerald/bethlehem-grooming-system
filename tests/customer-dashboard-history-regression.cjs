@@ -83,7 +83,7 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
       callback();
       return 0;
     },
-    window: { AppClock: null, location: {} },
+    window: { location: {} },
   };
 
   vm.createContext(context);
@@ -92,6 +92,33 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
   await new Promise((resolve) => setImmediate(resolve));
 
   return { element, consoleErrors, refresh: context.window._refreshAppointments };
+}
+
+function testRescheduleArrivalExpiryInManila() {
+  let now = '2026-10-09T15:59:59Z';
+  const context = vm.createContext({
+    Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : [now])); }
+    },
+    Intl, window: {},
+  });
+  vm.runInContext(
+    source.slice(source.indexOf('  function getRescheduleTodayKey()'), source.indexOf('  function addDaysToDateKey('))
+    + source.slice(source.indexOf('  function isRescheduleSlotPast('), source.indexOf('  function isCurrentRescheduleSelection(')),
+    context,
+  );
+  assert.equal(context.getRescheduleTodayKey(), '2026-10-09');
+  assert.equal(context.isRescheduleSlotPast({ end_time: '23:59:59' }, '2026-10-09'), true);
+  assert.equal(context.isRescheduleSlotPast({ end_time: '23:59:59', latest_arrival_time: '23:59:59' }, '2026-10-09'), false);
+  now = '2026-10-09T16:00:00Z';
+  assert.equal(context.getRescheduleTodayKey(), '2026-10-10');
+  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00' }, '2026-10-10'), true);
+  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:01' }, '2026-10-10'), false);
+  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00', latest_arrival_time: '00:00:00' }, '2026-10-10'), false);
+  now = '2026-10-09T16:00:01Z';
+  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00', latest_arrival_time: '00:00:00' }, '2026-10-10'), true);
+  assert.equal(context.isRescheduleSlotPast({ is_past: true }, '2026-10-11'), true);
+  assert.equal(context.isRescheduleSlotPast({ end_time: '08:00:00' }, '2026-10-11'), false);
 }
 
 async function testCompletedHistoryDoesNotBreakEmptySchedule() {
@@ -463,6 +490,7 @@ async function testVisitSummaryFollowsVisitState() {
 }
 
 (async () => {
+  testRescheduleArrivalExpiryInManila();
   await testVisitSummaryFollowsVisitState();
   await testTrackerOverallStateAndIndividualCards();
   await testTrackerDisclosureAndPrioritySurviveRefresh();

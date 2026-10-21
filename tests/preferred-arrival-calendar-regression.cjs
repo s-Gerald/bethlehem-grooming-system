@@ -41,10 +41,13 @@ async function checkCalendar(service) {
     { window_id: 3, window_label: '1:00 PM - 2:00 PM', start_time: '13:00:00', end_time: '14:00:00', is_closed: true },
   ];
   const context = vm.createContext({
-    Date, Intl, console,
+    Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : [currentTime])); }
+    },
+    Intl, console,
     formatBookingSchedule: (date, label) => `${date} · ${label}`,
     document: { getElementById: get, createElement: element },
-    window: { AppClock: { now: () => currentTime, load: async () => {} }, location: {} },
+    window: { location: {} },
     sessionStorage: { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) },
     API: { getClinicStatus: async () => status, getTimeslots: async () => ({ day_full: true, windows }) },
   });

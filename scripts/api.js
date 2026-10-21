@@ -1942,10 +1942,6 @@ var API = (() => {
     }
   }
 
-  async function getSystemClock() {
-    return request("GET", "/system/clock");
-  }
-
   async function getTimeslots(date, bookingId = null) {
     // Public browsing; an owned booking enables authenticated reschedule forecasts.
     return request("GET", `/timeslots?date=${date}${bookingId ? `&booking_id=${encodeURIComponent(bookingId)}` : ""}`,
@@ -2866,7 +2862,6 @@ var API = (() => {
     requestNewStaffPasswordSetupLink,
     logout,
     getMe,
-    getSystemClock,
     // Timeslots
     getTimeslots,
     forecastGroomingWindows,

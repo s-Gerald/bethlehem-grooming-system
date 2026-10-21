@@ -41,18 +41,18 @@ async function reportRefresh() {
   assert.equal(ui.report, null, 'A different reporting period must not display old-period data'); await changed;
 }
 async function sidebarReadiness() {
-  const clock = deferred(); let identityCalls = 0;
+  let identityCalls = 0;
   const API = { getUserRole: () => 'admin', enforceAdminPageAccess: () => true,
     getMe: async () => ({}), getStaffIdentity: async () => { identityCalls++; return { user: { role: 'admin', clinic_permissions: {} } }; },
     getAdminGroomingActivity: async () => ({}), getAdminToken: () => 'local', getAdminBookings() {} };
   const { ui } = component('admin-sidebar.js', 'adminSidebar', API, {
-    window: { API, AppClock: { load: () => clock.promise }, location: { pathname: '/pages/admin/dashboard.html' }, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
+    window: { API, location: { pathname: '/pages/admin/dashboard.html' }, addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
     document: { querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
     setInterval: () => 1, clearInterval() {}, CustomEvent: class {},
   });
   const start = ui.init();
-  assert.equal(identityCalls, 1, 'Sidebar authorization must not wait for the unrelated clock');
-  clock.resolve(); await start;
+  assert.equal(identityCalls, 1, 'Sidebar starts authorization immediately');
+  await start;
   assert.equal(ui.sidebarReady, true, 'Navigation is ready only after authenticated identity'); ui.destroy();
 }
 async function historyTabs() {

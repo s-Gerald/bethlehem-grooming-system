@@ -61,7 +61,9 @@ async function calendar(service, time, date = '2026-10-09', restriction = null, 
   const run = harness('booking-calendar.js');
   const { context, storage } = run;
   let now = new Date(`2026-10-09T${time}+08:00`);
-  context.window.AppClock = { now: () => now, load: async () => {} };
+  context.Date = class extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+  };
   const availability = {
     pre_registration_cutoff_time: restriction === 'cutoff' ? '19:00' : '22:00',
     pre_registration_cutoff_label: '10:00 PM', operating_hours_label: '6:00 PM – 10:00 PM',

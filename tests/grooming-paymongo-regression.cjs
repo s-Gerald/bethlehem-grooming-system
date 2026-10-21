@@ -15,7 +15,7 @@ const storage = (entries = []) => {
 };
 const context = {
   console, Date, Intl, URLSearchParams,
-  window: { AppClock: { todayKey: () => '2026-10-16' }, addEventListener() {},
+  window: { addEventListener() {},
     location: { protocol: 'http:', hostname: 'localhost', port: '5173', origin: 'http://localhost:5173', pathname: '/tests' } },
   localStorage: storage([['admin_token', 'test-admin-session'], ['user_role', 'admin']]),
   sessionStorage: storage(),

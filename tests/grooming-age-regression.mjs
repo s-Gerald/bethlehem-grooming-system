@@ -6,7 +6,10 @@ import * as petService from "../scripts/services/pet-service.js";
 import * as tabs from "../scripts/components/pet-selection-tabs.js";
 import * as weight from "../scripts/components/pet-weight-size.js";
 
-globalThis.AppClock = { todayKey: () => "2026-10-16" };
+const NativeDate = Date;
+globalThis.Date = class extends NativeDate {
+  constructor(...args) { super(...(args.length ? args : ["2026-10-16T00:00:00+08:00"])); }
+};
 for (const [birthdate, today, eligible] of [
   [null, "2026-10-16", true], ["", "2026-10-16", true],
   ["invalid", "2026-10-16", true], ["2026-02-30", "2026-10-16", true],

@@ -18,22 +18,22 @@ DevTools Network/CDP recorded a cache-bypassing Dashboard reload, then normal si
 | Repeat Clinic | 4 | 1 |
 | **Total** | **37** | **21** |
 
-These are observed request counts, not a controlled wall-clock benchmark. The investigation had longer dwell times than the rapid final verification. Freshness policies deliberately produce additional requests when their short lifetimes expire; an earlier rapid verification produced 19 requests. The final run above includes a necessary notifications revalidation on first Grooming and a status revalidation on repeat Grooming. The eight `/session` checks remain necessary and unchanged. Repeat Grooming still verifies `/system/clock` before its selected-date request when one is needed.
+These are observed request counts, not a controlled wall-clock benchmark. The investigation had longer dwell times than the rapid final verification. Freshness policies deliberately produce additional requests when their short lifetimes expire; an earlier rapid verification produced 19 requests. The final run above includes a necessary notifications revalidation on first Grooming and a status revalidation on repeat Grooming. The eight `/session` checks remain necessary and unchanged.
 
-Before, cold Dashboard summary/activity waited about 1,222 ms after the clock request started. Dashboard no longer requests the clock. In the final cold run the API order was session → summary → activity → notifications → Clinic status. Summary renders independently of secondary results, and the sidebar's cold Dashboard status read waits for primary readiness. Shared status callers still produce one network request.
+In the final cold run the API order was session → summary → activity → notifications → Clinic status. Summary renders independently of secondary results, and the sidebar's cold Dashboard status read waits for primary readiness. Shared status callers still produce one network request.
 
 All four repeat pages had their primary content loaded and no visible loader at the verification snapshots. Clinic's first Patient Records request started after active cases completed, through the viewport observer. Its own cold secondary loader remains valid while that directory loads. Confined was absent from ordinary startup and fetched once when its tab was opened.
 
 Normal navigation recorded **127 static browser-cache hits** in the final flow. No HTTP cache headers were changed. No `/me`, full Grooming board request on Dashboard, identical concurrent API duplicates, application exceptions, failed requests or HTTP errors appeared in the final flow.
 
-Sanitized endpoint/request metadata is in [the Network evidence JSON](admin-navigation-2026-10-19-network.json). It excludes bearer tokens, request headers and response bodies.
+Sanitized endpoint/request metadata is in [the Network evidence JSON](admin-navigation-2026-10-19-network.json). It excludes bearer tokens, request headers and response bodies. Obsolete development-only request entries were subsequently removed from the evidence; the aggregate counts above remain the original historical measurements, not current request counts.
 
 ## Causes and implementation
 
 - The previous Admin cache discarded entries at the fresh TTL, leaving nothing to render during a subsequent network read. It now separates freshness from retention and renders retained data before revalidation.
 - Customers' `_customerCache` disappeared on HTML navigation and overlapped the API cache. It and its page-local invalidation bookkeeping were removed; the shared API cache owns list/filter/search reuse.
 - Six pet editor dependencies and the form markup loaded during directory startup. They now load only for pet editing. Opening a customer profile uses a lightweight shared weight formatter, extracted into the existing presentation-format service, without importing pet form controls.
-- Forced sidebar Grooming activity reads bypassed recent results. The force flag and its unnecessary clock prerequisite were removed. Dashboard/Grooming keep their existing authoritative badge event bridge.
+- Forced sidebar Grooming activity reads bypassed recent results. The force flag and its unnecessary prerequisite were removed. Dashboard/Grooming keep their existing authoritative badge event bridge.
 - Normal Grooming entry and its 30-second visible polling no longer force fresh requests. Successful relevant mutations invalidate its group, so subsequent reads are authoritative. Explicit force remains supported for a true forced refresh.
 - Clinic operational cases use the same retained-render helper, with visibility-aware 30-second refreshes. Its former eager Patient Records load now uses an IntersectionObserver with a 200px margin after primary cases load. Only the first records page is cached; pagination remains on demand.
 - Successful mutations invalidate resource groups, rather than clearing all Admin presentation data. In-flight reads carry session/epoch/group revision guards; a superseded response cannot refill the cache or replace a newer mutation result.
@@ -102,14 +102,14 @@ Clinic active/expected/payment lists no longer eager-load vitals, medical record
 
 - Focused PHP suite: **243 passed, 2,656 assertions**, using forced in-memory SQLite. Covers Customers, Dashboard, Clinic cases/services/confinement and authorization.
 - Full frontend regression runner: **69/72 scripts passed**. Three failures also reproduce with source from the original `HEAD`: `clinic-case-workspace-regression.cjs` expects an obsolete Billing icon string; `frontend-pos-regression.cjs` expects an obsolete barcode SVG URL; `grooming-paymongo-regression.cjs` fails checkout-recovery error clearing. They were not weakened or fixed as unrelated work.
-- Added behavioral regressions cover ownership/logout/session replacement, fresh/retained reads, deduplication, mutation races, 5xx/network retention, authorization propagation, precise and cross-tab invalidation, bounded searches, Customers startup/search races, weight display without the editor, Dashboard priority, verified Grooming/test-clock dates, viewport-deferred records and on-demand Confined behavior.
+- Added behavioral regressions cover ownership/logout/session replacement, fresh/retained reads, deduplication, mutation races, 5xx/network retention, authorization propagation, precise and cross-tab invalidation, bounded searches, Customers startup/search races, weight display without the editor, Dashboard priority, Manila Grooming dates, viewport-deferred records and on-demand Confined behavior.
 - Browser: a throttled repeat Customers visit displayed all 17 existing customers while its refresh remained pending, with zero full loaders. Dashboard and Clinic retained their primary data under delayed refreshes. A simulated local Clinic 503 preserved visible content. The real already-read notification PATCH invalidated notifications while keeping Customers, Dashboard and Clinic cached.
 - Browser: Add Pet and Edit Pet controls worked with existing records, without saving. A full existing Clinic workspace loaded its saved vitals and Billing total only after Open Case. Confined requested its dataset on tab entry. The final four-page flow had no application console/network errors.
-- Authentication, inactivity and Clinic role regressions passed. AppClock's verified Grooming date and transitions out of test-clock mode are covered; AppClock itself was not changed or persisted.
+- Authentication, inactivity and Clinic role regressions passed.
 
 No new sample customer, pet, booking or Clinic case was inserted into the running local database. Destructive/operational transitions such as completing a real patient or collecting payment were exercised by isolated regression fixtures rather than changing existing local clinical work.
 
-Remaining costs are deliberate: each document still verifies the protected session; Grooming still verifies the server/test clock; cold reads and short-lived operational revalidation remain real requests. PHP's local single-process server magnifies serial request timings. Dashboard summary/activity and the Grooming payload were preserved after profiling rather than rewritten without a demonstrated new query-growth problem. No Core Web Vitals field-performance claim is made from this local request-count test.
+Remaining costs are deliberate: each document still verifies the protected session; cold reads and short-lived operational revalidation remain real requests. PHP's local single-process server magnifies serial request timings. Dashboard summary/activity and the Grooming payload were preserved after profiling rather than rewritten without a demonstrated new query-growth problem. No Core Web Vitals field-performance claim is made from this local request-count test.
 
 Shared-script URL versions were updated on other Admin HTML consumers so they use the same cache/invalidation protocol; those pages received no UI or workflow changes.
 

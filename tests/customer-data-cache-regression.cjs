@@ -415,7 +415,6 @@ function serveBrowserFixture() {
         case "/api/customer/notifications": data = { notifications: [], unread_count: 0 }; break;
         case "/api/pre-registration/access": data = { allowed: true }; break;
         case "/api/booking/grooming-capacity": data = { capacity: { max: 20, used: 0, remaining: 20 }, queue: { active: 0 } }; break;
-        case "/api/system/clock": data = { now: new Date().toISOString(), test_clock_active: false }; break;
         default: res.statusCode = 404; data = { message: "Unknown fixture endpoint" };
       }
       res.setHeader("Content-Type", "application/json");

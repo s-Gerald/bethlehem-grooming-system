@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../scripts/components/admin-dashboard.js"), "utf8");
-const context = { window: { AppClock: { todayKey: () => "2026-10-03" } }, console, Date, Intl };
+const context = { window: {}, console, Date, Intl };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/payment-invoice.js"), "utf8"), context);
 vm.runInNewContext(source, context);
 const ui = context.adminDashboard();

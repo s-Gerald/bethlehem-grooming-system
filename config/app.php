@@ -100,18 +100,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Development Test Clock
-    |--------------------------------------------------------------------------
-    |
-    | Set APP_TEST_NOW locally to make the app behave as if it is a specific
-    | Manila date/time. This is ignored outside local/testing environments.
-    |
-    */
-
-    'test_now' => env('APP_TEST_NOW'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |
