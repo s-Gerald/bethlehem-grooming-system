@@ -48,14 +48,23 @@ async function fixture(browser, profile = 'admin', inventory = false) {
     if (url.pathname === '/api/me') await state.identityHold?.promise;
     if (url.pathname === '/api/logout') await state.logoutHold?.promise;
     let data = {};
+    if (url.pathname === '/api/session' && state.statusFailure) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Temporarily unavailable' }) });
+    }
     if (url.pathname === '/api/inventory/summary') data = { total_items: 0, low_stock_count: 0, expiry_alert_count: 0, recent_transactions: [], low_stock_items: [], expiry_items: [] };
     if (['/api/inventory/items', '/api/inventory/transactions', '/api/inventory/alerts/expiry'].includes(url.pathname)) data = { data: [], page: 1, last_page: 1, total: 0 };
     if (url.pathname === '/api/pos/online-payment') data = { payment: null };
     if (url.pathname === '/api/me') data = { user: state.user, sidebar_revision: state.revision };
     if (url.pathname.startsWith('/api/session')) {
-      if (url.pathname === '/api/session/unlock') state.locked = false;
+      if (url.pathname === '/api/session/unlock') {
+        if (route.request().postDataJSON().password !== 'LocalFixturePassword') {
+          return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ message: 'Incorrect password.' }) });
+        }
+        state.locked = false;
+      }
+      const now = state.now ?? Date.now();
       data = { locked: state.locked, user_id: 7, role: state.user.role, sidebar_revision: state.revision,
-        server_now: new Date().toISOString(), idle_at: new Date(Date.now() + 1800000).toISOString(), expires_at: new Date(Date.now() + 43200000).toISOString() };
+        server_now: new Date(now).toISOString(), idle_at: new Date(now + 1800000).toISOString(), expires_at: new Date(now + 43200000).toISOString() };
     }
     await route.fulfill({ status: state.expired ? 401 : 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
@@ -214,6 +223,95 @@ async function securityTransitions(browser) {
     assert.equal(await g.page.evaluate(() => sessionStorage.getItem('bethlehem.admin.navigation.v1')), null);
     console.log('revision invalidation, logout clearing, full lock/unlock, expired-session redirect passed');
   } finally { g.state.identityHold?.resolve(); await g.context.close(); }
+}
+async function sessionTabReturn(browser) {
+  for (const profile of ['admin', 'grooming']) {
+    const f = await fixture(browser, profile);
+    try {
+      await f.page.clock.install();
+      f.state.sessionHold = deferred();
+      await visit(f.page, 'appointments.html');
+      assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), 'checking');
+      assert.equal(await f.page.locator('#session-lock-form').isVisible(), false);
+      assert.equal(await f.page.locator('main').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Fresh verification never exposes protected content');
+      f.state.sessionHold.resolve(); await ready(f.page);
+      // Exercise the established idle deadline without a real 30-minute wait.
+      f.state.now = await f.page.evaluate(() => Date.now() + 30 * 60000);
+      f.state.locked = true;
+      await f.page.clock.fastForward(30 * 60000);
+      await f.page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
+      if (process.env.LOCAL_REVIEW_SCREENSHOTS && profile === 'admin') await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/session-locked.png` });
+      await f.page.getByLabel('Password', { exact: true }).fill('wrong');
+      await f.page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+      await f.page.getByText('Incorrect password.', { exact: true }).waitFor();
+      await f.page.getByLabel('Password', { exact: true }).fill('LocalFixturePassword');
+      await f.page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+      await ready(f.page);
+      await f.page.clock.resume();
+      const input = f.page.getByPlaceholder('Search customers, pets, or phone...', { exact: true });
+      await input.fill('Unsaved workflow');
+      await f.page.evaluate(() => {
+        window.sessionWorkflow = document.querySelector('main');
+        window.sessionCard = document.getElementById('bethlehem-session-lock');
+        window.sessionPaintChanges = [];
+        new MutationObserver(records => window.sessionPaintChanges.push(...records.map(r => r.attributeName)))
+          .observe(document.documentElement, { attributes: true, attributeFilter: ['data-session-gate'] });
+        new MutationObserver(records => window.sessionPaintChanges.push(...records.map(r => r.attributeName)))
+          .observe(window.sessionCard, { attributes: true, attributeFilter: ['hidden'] });
+      });
+      const sibling = await f.context.newPage();
+      for (let cycle = 0; cycle < 3; cycle++) {
+        await sibling.bringToFront();
+        // Headless Edge keeps tabs visible; dispatch controlled lifecycle events.
+        await f.page.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await f.page.waitForFunction(() => document.visibilityState === 'hidden');
+        const checks = f.state.requests.filter(p => p === '/api/session').length;
+        f.state.sessionHold = deferred();
+        const request = f.page.waitForRequest(r => r.url().endsWith('/api/session'));
+        await f.page.bringToFront();
+        await f.page.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        await request;
+        await f.page.evaluate(() => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); });
+        assert.equal(f.state.requests.filter(p => p === '/api/session').length, checks + 1, 'Resume events share a pending request');
+        assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), null);
+        assert.equal(await f.page.locator('#bethlehem-session-lock').isVisible(), false);
+        assert.equal(await input.inputValue(), 'Unsaved workflow');
+        const response = f.page.waitForResponse(r => r.url().endsWith('/api/session'));
+        f.state.sessionHold.resolve();
+        await response;
+        await f.page.evaluate(() => new Promise(requestAnimationFrame));
+        assert.deepEqual(await f.page.evaluate(() => window.sessionPaintChanges), [], 'No transient gate or lock-card paint');
+        assert.equal(await f.page.evaluate(() => window.sessionWorkflow === document.querySelector('main') && window.sessionCard === document.getElementById('bethlehem-session-lock')), true);
+      }
+      await sibling.close();
+      f.state.statusFailure = true;
+      const unavailable = f.page.waitForResponse(r => r.url().endsWith('/api/session') && r.status() === 503);
+      await f.page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await unavailable;
+      assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), null, 'Background failure keeps the active workflow visible');
+      await f.page.evaluate(() => { window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })); window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); });
+      await f.page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
+      assert.equal(await f.page.locator('#session-lock-form').isVisible(), false);
+      for (const width of [320, 375, 414, 768]) {
+        await f.page.setViewportSize({ width, height: 844 });
+        assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        if (process.env.LOCAL_REVIEW_SCREENSHOTS && profile === 'admin' && width === 375) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/session-verification-unavailable.png` });
+      }
+      await f.page.keyboard.press('Shift+Tab');
+      assert.equal(await f.page.locator('#session-other-account').evaluate(el => el === document.activeElement), true, 'Retry focus wraps within visible controls');
+      f.state.statusFailure = false;
+      await f.page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await ready(f.page);
+      assert.equal(await input.inputValue(), 'Unsaved workflow');
+      console.log(`${profile}: visibility/focus after password unlock, stable slow verification, failure/retry and responsive gate passed`);
+    } finally { f.state.sessionHold?.resolve(); await f.context.close(); }
+  }
 }
 async function invalidCaches(browser) {
   for (const kind of ['cold', 'malformed', 'expired', 'other-account']) {
@@ -439,10 +537,11 @@ async function servicesMobileBackdrop(browser) {
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
-    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'invalid', 'pre-alpine', 'inventory', 'services'];
+    const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services'];
     if (cases.includes('cold')) await coldPaint(browser);
     if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
     if (cases.includes('security')) await securityTransitions(browser);
+    if (cases.includes('session')) await sessionTabReturn(browser);
     if (cases.includes('invalid')) await invalidCaches(browser);
     if (cases.includes('pre-alpine')) await cachedBeforeAlpine(browser);
     if (cases.includes('inventory')) await inventoryNavigation(browser);

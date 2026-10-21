@@ -47,7 +47,7 @@ function createIdleBrowser(role, fixture = {}) {
   const replacements = [];
   const requests = [];
   const tokenKey = role === "customer" ? "customer_token" : "admin_token";
-  const token = `${role}-token`;
+  const token = options.token || `${role}-token`;
   const localStorage = options.storage || new MemoryStorage({
     [tokenKey]: token,
     user_role: role,
@@ -92,9 +92,9 @@ function createIdleBrowser(role, fixture = {}) {
 
   function element() {
     const handlers = new Map();
-    return {style: {}, attributes: {}, hidden: false, value: "", disabled: false,
-      setAttribute(name, value) { this.attributes[name] = String(value); },
-      removeAttribute(name) { delete this.attributes[name]; },
+    return {style: {}, attributes: {}, changes: [], hidden: false, value: "", disabled: false,
+      setAttribute(name, value) { this.attributes[name] = String(value); this.changes.push([name, String(value)]); },
+      removeAttribute(name) { delete this.attributes[name]; this.changes.push([name, null]); },
       addEventListener(name, handler) { handlers.set(name, handler); },
       focus() { document.activeElement = this; },
       querySelector(selector) { return elements.get(selector.replace("#", "")) || null; },
@@ -103,7 +103,7 @@ function createIdleBrowser(role, fixture = {}) {
       contains(target) { return [...elements.values()].includes(target); },
     };
   }
-  for (const id of ["session-password", "session-unlock", "session-error", "session-password-toggle", "session-other-account", "session-lock-form", "session-lock-heading", "session-lock-description"]) elements.set(id, element());
+  for (const id of ["session-password", "session-unlock", "session-error", "session-password-toggle", "session-other-account", "session-lock-form", "session-lock-heading", "session-lock-description", "session-retry"]) elements.set(id, element());
   const dashboard = element();
   const root = element();
   const body = {
@@ -165,6 +165,10 @@ function createIdleBrowser(role, fixture = {}) {
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (url.endsWith("/logout") && fixture.failLogout) throw new Error("Offline");
+      if (url.endsWith("/session") && fixture.statusFailure !== undefined) {
+        if (fixture.statusFailure === 0) throw new Error("Offline");
+        return jsonResponse(fixture.statusFailure, {message: "Status unavailable"});
+      }
       if (now >= server.expiresAt || (role === "customer" && now >= server.idleAt)) return jsonResponse(401, {code: "session_expired"});
       if (now >= server.idleAt) server.locked = true;
       if (url.endsWith("/logout")) return jsonResponse(200, {success: true});
@@ -179,9 +183,11 @@ function createIdleBrowser(role, fixture = {}) {
         if (server.locked) return jsonResponse(423, {code: "session_locked", locked: true});
         server.idleAt = now + 30 * 60000;
       }
+      if (fixture.protectedLocked && !url.includes("/session")) return jsonResponse(423, {code: "session_locked"});
       const response = jsonResponse(200, {success: true, locked: server.locked, server_now: new Date(now).toISOString(),
         idle_at: new Date(server.idleAt).toISOString(), expires_at: new Date(server.expiresAt).toISOString()});
       if (url.endsWith("/session") && fixture.pauseStatus) return new Promise(resolve => { fixture.releaseStatus = () => resolve(response); });
+      if (url.endsWith("/session/activity") && fixture.pauseActivity) return new Promise(resolve => { fixture.releaseActivity = () => resolve(response); });
       return response;
     },
     localStorage,
@@ -200,9 +206,11 @@ function createIdleBrowser(role, fixture = {}) {
     sleep(minutes) { now += minutes * 60000; },
     root,
     dashboard,
+    document,
     elements,
     get unlockRequests() { return unlockedRequests; },
     dispatchWindow(name, event = {}) { for (const handler of windowListeners.get(name) || []) handler(event); },
+    listenerCount(name) { return (windowListeners.get(name) || documentListeners.get(name) || []).length; },
     dispatchSynthetic(name) { for (const handler of documentListeners.get(name) || []) handler({type:name, isTrusted:false}); },
     async submit(password) { elements.get("session-password").value = password; await elements.get("session-lock-form").dispatch("submit"); },
     async settle() { for (let i = 0; i < 30; i++) await Promise.resolve(); },
@@ -236,6 +244,178 @@ async function testInitialPageShowDoesNotRestartVerification() {
   assert.equal(checks(), initialChecks + 1);
 }
 
+async function testTabReturnKeepsUnlockedWorkflow(role) {
+  const fixture = {token: "17|local-session-fixture"};
+  const browser = createIdleBrowser(role, fixture);
+  await browser.settle();
+  await browser.advance(30);
+  await browser.submit("correct");
+  const card = browser.elements.get("bethlehem-session-lock");
+  const revision = browser.API.getAdminDataRevision();
+  browser.dashboard.value = "Unsaved appointment";
+  browser.dashboard.scrollTop = 240;
+  assert.equal(browser.document.activeElement, browser.dashboard, "Unlock restores workflow focus");
+  browser.root.changes.length = 0;
+  fixture.pauseStatus = true;
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const before = browser.requests.filter(request => request.url.endsWith("/session")).length;
+    browser.document.visibilityState = "hidden";
+    browser.dispatchDocument("visibilitychange");
+    browser.document.visibilityState = "visible";
+    browser.dispatchDocument("visibilitychange");
+    browser.dispatchWindow("focus");
+    browser.dispatchWindow("focus");
+    await browser.settle();
+    assert.equal(browser.requests.filter(request => request.url.endsWith("/session")).length, before + 1,
+      "Visibility and focus share one pending verification");
+    assert.equal(browser.root.attributes["data-session-gate"], undefined, "Pending resume verification keeps the page visible");
+    assert.equal(card.hidden, true, "A mounted password card stays hidden during verification");
+    await browser.API.adminStopToday();
+    fixture.releaseStatus();
+    await browser.settle();
+  }
+  assert.deepEqual(browser.root.changes, [], "Tab switching never changes the global gate");
+  assert.equal(browser.elements.get("bethlehem-session-lock"), card);
+  assert.equal(browser.API.getAdminDataRevision(), revision, "Resume preserves cached admin data");
+  assert.equal(browser.document.activeElement, browser.dashboard);
+  assert.equal(browser.dashboard.value, "Unsaved appointment");
+  assert.equal(browser.dashboard.scrollTop, 240);
+  assert.deepEqual(browser.replacements, []);
+  for (const event of ["focus", "visibilitychange", "pagehide", "pageshow"]) assert.equal(browser.listenerCount(event), 1);
+}
+
+async function testVerificationFailuresAreNotPasswordLocks() {
+  for (const statusFailure of [0, 500, 200]) {
+    const fixture = {statusFailure};
+    const browser = createIdleBrowser("admin", fixture);
+    await browser.settle();
+    assert.equal(browser.API.isSessionLocked(), false);
+    assert.equal(browser.root.attributes["data-session-gate"], "unavailable");
+    assert.equal(browser.elements.get("session-lock-form").hidden, true);
+    assert.equal(browser.elements.get("session-retry").hidden, false);
+    await assert.rejects(browser.API.adminStopToday(), error => error.status === 503 && error.code === "session_verification_unavailable");
+    assert.equal(browser.requests.some(request => request.url.endsWith("/admin/clinic/stop-today")), false);
+    delete fixture.statusFailure;
+    await browser.elements.get("session-retry").dispatch("click");
+    await browser.settle();
+    assert.equal(browser.root.attributes["data-session-gate"], undefined, "Explicit retry restores server-verified access");
+    fixture.statusFailure = statusFailure;
+    browser.root.changes.length = 0;
+    browser.dispatchWindow("focus");
+    await browser.settle();
+    assert.equal(browser.API.isSessionLocked(), false);
+    assert.deepEqual(browser.root.changes, [], "Background failure preserves a verified, unexpired workflow");
+    browser.sleep(30);
+    browser.dispatchWindow("focus");
+    await browser.settle();
+    assert.equal(browser.API.isSessionLocked(), true, "Connectivity cannot postpone the established lock deadline");
+    assert.equal(browser.elements.get("session-lock-form").hidden, false);
+  }
+}
+
+async function testRestorationRequiresFreshVerification() {
+  const fixture = {};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  fixture.pauseStatus = true;
+  browser.dispatchWindow("focus");
+  const releaseOldStatus = fixture.releaseStatus;
+  browser.dispatchWindow("pagehide");
+  assert.equal(browser.root.attributes["data-session-gate"], "checking");
+  assert.equal(browser.elements.get("session-lock-form").hidden, true, "Checking never asks for a password");
+  browser.dispatchWindow("pageshow", {persisted: true});
+  const releaseRestoredStatus = fixture.releaseStatus;
+  assert.notEqual(releaseOldStatus, releaseRestoredStatus, "Restoration cannot reuse a pre-suspension request");
+  releaseOldStatus();
+  await browser.settle();
+  assert.equal(browser.root.attributes["data-session-gate"], "checking", "A pre-suspension response cannot authorize restoration");
+  await assert.rejects(browser.API.adminStopToday(), error => error.status === 503);
+  releaseRestoredStatus();
+  await browser.settle();
+  assert.equal(browser.root.attributes["data-session-gate"], undefined);
+}
+
+async function testOlderActivityCannotDismissConfirmedLock() {
+  const fixture = {pauseActivity: true};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  await browser.advance(1);
+  browser.dispatchDocument("pointerdown");
+  fixture.protectedLocked = true;
+  await assert.rejects(browser.API.adminStopToday(), error => error.status === 423);
+  assert.equal(browser.API.isSessionLocked(), true);
+  fixture.releaseActivity();
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true, "Activity started before a 423 cannot unlock the page");
+}
+
+async function testDelayedVerificationCannotExtendDeadlines() {
+  for (const minutes of [30, 12 * 60]) {
+    const fixture = {};
+    const browser = createIdleBrowser("admin", fixture);
+    await browser.settle();
+    fixture.pauseStatus = true;
+    browser.dispatchWindow("focus");
+    browser.sleep(minutes);
+    fixture.releaseStatus();
+    await browser.settle();
+    if (minutes === 30) assert.equal(browser.API.isSessionLocked(), true, "Response latency cannot move the established idle deadline");
+    else {
+      assert.equal(browser.API.getAdminToken(), null, "Response latency cannot extend absolute authentication");
+      assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+    }
+  }
+}
+
+async function testCrossTabVerificationPreservesActivePresentation() {
+  const fixture = {};
+  const browser = createIdleBrowser("admin", fixture);
+  await browser.settle();
+  fixture.pauseStatus = true;
+  browser.root.changes.length = 0;
+  const notice = () => browser.dispatchWindow("storage", {storageArea: browser.localStorage,
+    key: "bethlehem.auth.session_state", newValue: "changed"});
+  notice();
+  assert.equal(browser.root.attributes["data-session-gate"], undefined);
+  await assert.rejects(browser.API.adminStopToday(), error => error.status === 503,
+    "Writes wait for authoritative cross-tab verification");
+  fixture.releaseStatus();
+  await browser.settle();
+  assert.deepEqual(browser.root.changes, []);
+  browser.dispatchWindow("focus");
+  const releaseOlderActiveStatus = fixture.releaseStatus;
+  browser.server.locked = true;
+  notice();
+  fixture.releaseStatus();
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true);
+  releaseOlderActiveStatus();
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true, "Cross-tab state supersedes checks started before the signal");
+  notice();
+  assert.equal(browser.API.isSessionLocked(), true, "A storage signal alone never unlocks");
+  fixture.releaseStatus();
+  await browser.settle();
+  assert.equal(browser.API.isSessionLocked(), true);
+}
+
+async function testResumeExpirationAndCustomerPolicy() {
+  for (const role of ["admin", "staff", "customer"]) {
+    const fixture = {};
+    const browser = createIdleBrowser(role, fixture);
+    await browser.settle();
+    browser.dispatchWindow("focus");
+    await browser.settle();
+    assert.equal(browser.root.attributes["data-session-gate"], undefined);
+    assert.equal(browser.API.isSessionLocked(), false);
+    fixture.statusFailure = 401;
+    browser.dispatchWindow("focus");
+    await browser.settle();
+    assert.equal(browser.API.getUserRole(), null);
+    assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  }
+}
+
 async function testPrivilegedLockAndUnlock(role) {
   const browser = createIdleBrowser(role);
   const policy = browser.API.getSessionInactivityPolicy(role);
@@ -260,6 +440,7 @@ async function testPrivilegedLockAndUnlock(role) {
   await wrongAttempt;
   assert.equal(browser.elements.get("session-unlock").disabled, false);
   assert.equal(browser.elements.get("session-error").textContent, "Incorrect password.");
+  assert.equal(browser.elements.get("session-password").attributes["aria-invalid"], "true");
   assert.equal(browser.API.isSessionLocked(), true);
   const dataRevision = browser.API.getAdminDataRevision();
   await browser.submit("correct");
@@ -373,27 +554,32 @@ async function testDelayedStatusCannotRelockAfterPasswordUnlock() {
   fixture.releaseUnlock();
   await pendingUnlock;
   assert.equal(browser.API.isSessionLocked(), false);
+  await browser.API.adminStopToday();
   fixture.releaseStatus();
   await browser.settle();
   assert.equal(browser.API.isSessionLocked(), false, "an older status response cannot undo successful password verification");
 }
 
 async function testFailedLogoutRetainsRevocationRetry() {
-  const fixture = {failLogout:true};
-  const browser = createIdleBrowser("admin", fixture);
-  await browser.settle();
-  await browser.advance(30);
-  await browser.elements.get("session-other-account").dispatch("click");
-  assert.equal(browser.localStorage.getItem("admin_token"), "admin-token");
-  assert.deepEqual(browser.replacements, []);
-  assert.equal(browser.elements.get("session-error").textContent, "Unable to sign out. Please try again.");
-  fixture.failLogout = false;
-  await browser.elements.get("session-other-account").dispatch("click");
-  assert.equal(browser.localStorage.getItem("admin_token"), null);
+  for (const statusFailure of [undefined, 500]) {
+    const fixture = {failLogout:true, statusFailure};
+    const browser = createIdleBrowser("admin", fixture);
+    await browser.settle();
+    if (statusFailure === undefined) await browser.advance(30);
+    await browser.elements.get("session-other-account").dispatch("click");
+    assert.equal(browser.localStorage.getItem("admin_token"), "admin-token");
+    assert.deepEqual(browser.replacements, []);
+    const message = browser.elements.get(statusFailure === undefined ? "session-error" : "session-lock-description");
+    assert.equal(message.textContent, "Unable to sign out. Please try again.", "Revocation failure stays visible even when the password form is hidden");
+    fixture.failLogout = false;
+    await browser.elements.get("session-other-account").dispatch("click");
+    assert.equal(browser.localStorage.getItem("admin_token"), null);
+  }
 }
 
 async function testCustomerThirtyMinuteTimeout() {
   const browser = createIdleBrowser("customer");
+  await browser.settle();
   const policy = browser.API.getSessionInactivityPolicy("customer");
   assert.equal(policy.warningMs, 29 * 60 * 1000);
   assert.equal(policy.timeoutMs, 30 * 60 * 1000);
@@ -408,6 +594,14 @@ async function testCustomerThirtyMinuteTimeout() {
 }
 
 (async () => {
+  await testTabReturnKeepsUnlockedWorkflow("admin");
+  await testTabReturnKeepsUnlockedWorkflow("staff");
+  await testVerificationFailuresAreNotPasswordLocks();
+  await testRestorationRequiresFreshVerification();
+  await testOlderActivityCannotDismissConfirmedLock();
+  await testDelayedVerificationCannotExtendDeadlines();
+  await testCrossTabVerificationPreservesActivePresentation();
+  await testResumeExpirationAndCustomerPolicy();
   await testInitialPageShowDoesNotRestartVerification();
   await testPrivilegedLockAndUnlock("admin");
   await testPrivilegedLockAndUnlock("staff");

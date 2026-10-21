@@ -503,14 +503,18 @@ async function testPricingAuthFailuresStayLocalToTheRequestingSession() {
 }
 
 function testBackForwardCacheGuard() {
-  const browser = createBrowser({
-    pathname: "/pages/admin/dashboard.html",
-    local: { admin_token: "admin-token", user_role: "admin" },
-  });
-
-  browser.API.clearAuthState();
-  browser.dispatch("pageshow", { persisted: true });
-  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  for (const role of ["admin", "staff", "customer"]) {
+    const browser = createBrowser({
+      pathname: `/pages/${role === "customer" ? "client" : "admin"}/dashboard.html`,
+      local: { [role === "customer" ? "customer_token" : "admin_token"]: "token", user_role: role },
+    });
+    browser.dispatch("pageshow", { persisted: false });
+    browser.dispatch("focus");
+    assert.deepEqual(browser.replacements, [], "Ordinary lifecycle events preserve an authenticated page");
+    browser.API.clearAuthState();
+    browser.dispatch("pageshow", { persisted: true });
+    assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html", "BFCache restoration cannot restore signed-out access");
+  }
 }
 
 function verificationPageHarness({ search, hash, pendingLogin = false, role = 'customer', deliveryStatus = null }) {

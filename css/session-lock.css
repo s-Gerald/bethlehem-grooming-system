@@ -6,7 +6,7 @@ html[data-session-gate] body > :not(#bethlehem-session-lock):not(script):not(sty
   visibility: hidden !important;
   pointer-events: none !important;
 }
-.session-lock[hidden] { display: none; }
+.session-lock[hidden], .session-lock [hidden] { display: none; }
 .session-lock {
   position: fixed;
   inset: 0;

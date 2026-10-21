@@ -76,6 +76,18 @@ class SessionLockTest extends TestCase
             $this->api($token, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertOk()
                 ->assertJsonPath('locked', false);
             $this->api($token, 'GET', '/me')->assertOk()->assertJsonPath('user.role', $role);
+            $unlocked = $this->api($token, 'GET', '/session')->assertOk()->json();
+            $this->travel(29)->minutes();
+            // Resume/status verification after password recovery must leave both
+            // deadlines unchanged and report an active session until idle expires.
+            for ($check = 0; $check < 3; $check++) {
+                $this->api($token, 'GET', '/session')->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+                    ->assertJsonPath('locked', false)->assertJsonPath('idle_at', $unlocked['idle_at'])
+                    ->assertJsonPath('expires_at', $unlocked['expires_at']);
+            }
+            $this->travel(1)->minutes();
+            $this->api($token, 'GET', '/session')->assertOk()->assertJsonPath('locked', true);
+            $this->api($token, 'POST', '/pets', [])->assertStatus(423);
             $this->assertSame($created, DB::table('personal_access_tokens')->latest('id')->value('created_at'));
             Notification::assertNothingSent();
         }

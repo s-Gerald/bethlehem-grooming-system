@@ -1078,7 +1078,15 @@ var API = (() => {
       region.inert = Boolean(state);
     });
     const card = document.getElementById("bethlehem-session-lock");
-    if (card) card.hidden = !state;
+    if (!card) return;
+    card.hidden = !state;
+    card.querySelector("#session-lock-form").hidden = state !== "locked";
+    card.querySelector("#session-retry").hidden = state !== "unavailable";
+    card.querySelector("#session-lock-heading").textContent = state === "locked" ? "Session locked"
+      : state === "unavailable" ? "Unable to verify session" : "Checking session…";
+    card.querySelector("#session-lock-description").textContent = state === "locked" ? "Your session was locked due to inactivity."
+      : state === "unavailable" ? "Check your connection and try again." : "Verifying your access.";
+    card.setAttribute("aria-busy", String(state === "checking" || (state === "locked" && card.querySelector("#session-unlock").disabled)));
   }
 
   function ensureSessionLockCard() {
@@ -1087,6 +1095,7 @@ var API = (() => {
     card = document.createElement("section");
     card.id = "bethlehem-session-lock";
     card.className = "portal-theme session-lock";
+    card.hidden = true;
     card.setAttribute("role", "dialog");
     card.setAttribute("aria-modal", "true");
     card.setAttribute("aria-labelledby", "session-lock-heading");
@@ -1094,7 +1103,7 @@ var API = (() => {
     card.innerHTML = `
       <div class="session-lock__card">
         <span class="session-lock__icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg></span>
-        <h1 id="session-lock-heading">Session locked</h1>
+        <h1 id="session-lock-heading" tabindex="-1">Session locked</h1>
         <p id="session-lock-description">Your session was locked due to inactivity.</p>
         <form id="session-lock-form">
           <label for="session-password">Password</label>
@@ -1105,9 +1114,15 @@ var API = (() => {
           <p id="session-error" role="alert" hidden></p>
           <button id="session-unlock" class="session-lock__primary" type="submit">Unlock session</button>
         </form>
+        <button id="session-retry" class="session-lock__primary" type="button" hidden>Retry</button>
         <button id="session-other-account" class="session-lock__secondary" type="button">Sign in with another account</button>
       </div>`;
     document.body.appendChild(card);
+    card.querySelector("#session-retry").addEventListener("click", () => {
+      sessionGate("checking");
+      document.getElementById("session-lock-heading")?.focus();
+      return syncSessionState();
+    });
     const password = card.querySelector("#session-password");
     const toggle = card.querySelector("#session-password-toggle");
     toggle.addEventListener("click", () => {
@@ -1132,9 +1147,6 @@ var API = (() => {
         const data = await networkRequest("POST", "/session/unlock", { password: password.value }, token);
         if (getAuthSession()?.token !== token) return;
         if (revision === sessionRevision) {
-          // Status requests started during password verification may still
-          // carry the pre-unlock state when their responses arrive later.
-          sessionRevision += 1;
           applyServerSession(data, token);
         }
         broadcastSessionState();
@@ -1163,16 +1175,17 @@ var API = (() => {
     });
     card.addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
-      const controls = [...card.querySelectorAll("input:not(:disabled), button:not(:disabled)")];
+      const controls = [...card.querySelectorAll("input:not(:disabled), button:not(:disabled)")]
+        .filter(control => !control.closest("[hidden]"));
       const first = controls[0], last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      if (event.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement))) { event.preventDefault(); first?.focus(); }
     });
     return card;
   }
 
   function sessionLockError(message) {
-    const error = document.getElementById("session-error");
+    const error = document.getElementById(sessionChecking && !sessionLocked ? "session-lock-description" : "session-error");
     if (error) { error.textContent = message; error.hidden = !message; }
   }
 
@@ -1194,18 +1207,24 @@ var API = (() => {
 
   function concealSession() {
     if (!isAdminRole(getAuthSession()?.role) || !isManagedProtectedSession()) return;
-    sessionChecking = true;
+    // Navigation/BFCache restoration requires a response newer than suspension.
+    sessionRevision += 1;
+    if (!sessionLocked && !sessionChecking) previousSessionFocus = document.activeElement;
+    sessionChecking = !sessionLocked;
+    ensureSessionLockCard();
     sessionGate(sessionLocked ? "locked" : "checking");
+    if (!sessionLocked) document.getElementById("session-lock-heading")?.focus();
   }
 
   function showSessionLock() {
     if (!isAdminRole(getAuthSession()?.role) || !isManagedProtectedSession()) return;
     const wasLocked = sessionLocked;
+    if (!wasLocked) sessionRevision += 1;
     sessionLocked = true;
     sessionChecking = false;
     if (!wasLocked && typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('admin-session:locked'));
     pauseInactivityTracking();
-    if (!wasLocked) previousSessionFocus = document.activeElement;
+    if (!wasLocked && !previousSessionFocus) previousSessionFocus = document.activeElement;
     ensureSessionLockCard();
     if (!wasLocked) resetSessionPassword();
     sessionGate("locked");
@@ -1219,9 +1238,9 @@ var API = (() => {
   }
 
   function applyServerSession(data, token) {
-    if (getAuthSession()?.token !== token || typeof data.locked !== "boolean") return;
+    if (getAuthSession()?.token !== token || typeof data?.locked !== "boolean") return false;
     if (isAdminRole(getAuthSession()?.role) && data.sidebar_revision) {
-      if (data.role !== getUserRole()) { invalidateSession(null, 'permissions_changed'); return; }
+      if (data.role !== getUserRole()) { invalidateSession(null, 'permissions_changed'); return true; }
       const cached = getCachedStaffIdentity();
       verifiedSidebarRevision = data.sidebar_revision;
       if (cached && (cached.sidebar_revision !== data.sidebar_revision || cached.user.user_id !== data.user_id)) {
@@ -1230,18 +1249,26 @@ var API = (() => {
     }
     const timestamp = Date.now();
     const serverNow = Date.parse(data.server_now);
-    const idleAt = timestamp + Date.parse(data.idle_at) - serverNow;
-    const expiresAt = timestamp + Date.parse(data.expires_at) - serverNow;
-    if (!Number.isFinite(idleAt) || !Number.isFinite(expiresAt)) return;
-    serverSession = { token, idleAt, expiresAt };
+    // Keep the verified clock offset: later response latency must not move deadlines.
+    const clockOffset = serverSession?.token === token ? serverSession.clockOffset : timestamp - serverNow;
+    const idleAt = Date.parse(data.idle_at) + clockOffset;
+    const expiresAt = Date.parse(data.expires_at) + clockOffset;
+    if (!Number.isFinite(serverNow) || !Number.isFinite(idleAt) || !Number.isFinite(expiresAt)) return false;
+    serverSession = { token, idleAt, expiresAt, clockOffset };
+    if (expiresAt <= timestamp) { expireSessionForInactivity(getAuthSession()); return true; }
     if (isAdminRole(getAuthSession()?.role)) {
-      if (data.locked || idleAt <= timestamp) { showSessionLock(); return; }
+      if (data.locked || idleAt <= timestamp) { showSessionLock(); return true; }
       const wasLocked = sessionLocked;
+      const wasChecking = sessionChecking;
       sessionLocked = sessionChecking = false;
-      resetSessionPassword();
-      sessionGate(null);
-      if (wasLocked) {
-        clearAdminCache();
+      if (wasLocked || wasChecking) {
+        resetSessionPassword();
+        sessionGate(null);
+        if (wasLocked) {
+          // Discard responses that still carry the state from before recovery.
+          sessionRevision += 1;
+          clearAdminCache();
+        }
         previousSessionFocus?.focus?.();
         previousSessionFocus = null;
       }
@@ -1251,30 +1278,36 @@ var API = (() => {
       }
     }
     evaluateSessionInactivity(timestamp);
+    return true;
   }
 
-  function syncSessionState() {
+  function syncSessionState(force = false) {
     const session = getAuthSession();
     if (!isManagedProtectedSession(session)) return Promise.resolve();
-    if (sessionSync) return sessionSync;
+    if (!force && sessionSync?.revision === sessionRevision) return sessionSync.promise;
     const revision = sessionRevision;
     let pending;
     pending = networkRequest("GET", "/session", null, session.token, { cache: "no-store" })
-      .then((data) => { if (revision === sessionRevision) applyServerSession(data, session.token); })
+      .then((data) => {
+        if (sessionSync?.promise === pending && revision === sessionRevision && !applyServerSession(data, session.token)) throw new Error("Invalid session status.");
+      })
       .catch(() => {
-        if (revision === sessionRevision && getAuthSession()?.token === session.token && isAdminRole(session.role)) {
-          showSessionLock();
-          sessionLockError("Unable to check session. Please unlock to continue.");
+        if (sessionSync?.promise === pending && revision === sessionRevision && getAuthSession()?.token === session.token && isAdminRole(session.role)) {
+          if (sessionLocked) sessionLockError("Unable to check session. Please try again.");
+          else if (sessionChecking) {
+            sessionGate("unavailable");
+            document.getElementById("session-retry")?.focus();
+          }
         }
       }).finally(() => {
-        if (sessionSync !== pending) return;
+        if (sessionSync?.promise !== pending) return;
         sessionSync = null;
         if (sessionPollTimer) clearTimeout(sessionPollTimer);
         if (getAuthSession()?.token === session.token) sessionPollTimer = setTimeout(() => {
           if (document.visibilityState !== "hidden") void syncSessionState();
         }, 60000);
       });
-    sessionSync = pending;
+    sessionSync = { revision, promise: pending, verifyChange: force };
     return pending;
   }
 
@@ -1318,19 +1351,8 @@ var API = (() => {
       document.addEventListener("keydown", onActivity);
       document.addEventListener("touchstart", onActivity, { passive: true });
       document.addEventListener("wheel", onActivity, { passive: true, capture: true });
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden" && isAdminRole(getAuthSession()?.role)) concealSession();
-        if (document.visibilityState === "visible") {
-          evaluateSessionInactivity();
-          concealSession();
-          void syncSessionState();
-        }
-      });
-      window.addEventListener("focus", () => {
-        evaluateSessionInactivity();
-        concealSession();
-        void syncSessionState();
-      });
+      document.addEventListener("visibilitychange", resumeSession);
+      window.addEventListener("focus", resumeSession);
       window.addEventListener("pagehide", () => concealSession());
       inactivityManagerInstalled = true;
     }
@@ -1339,6 +1361,12 @@ var API = (() => {
     concealSession();
     void syncSessionState();
     return true;
+  }
+
+  function resumeSession() {
+    if (document.visibilityState === "hidden") return;
+    evaluateSessionInactivity();
+    void syncSessionState();
   }
 
   if (typeof window !== "undefined") {
@@ -1365,8 +1393,9 @@ var API = (() => {
         return;
       }
       if (event.key === AUTH_SESSION_STATE_KEY && event.newValue) {
-        concealSession();
-        void syncSessionState();
+        evaluateSessionInactivity();
+        // A signal may describe a change newer than an already pending check.
+        void syncSessionState(true);
         return;
       }
 
@@ -1448,10 +1477,11 @@ var API = (() => {
   async function networkRequest(method, endpoint, body = null, token = null, requestOptions = {}) {
     const sessionControl = endpoint === "/session" || endpoint.startsWith("/session/") || endpoint === "/logout";
     if (!sessionControl && token && token === getAdminToken() && isManagedProtectedSession()
-      && (sessionLocked || sessionChecking)) {
+      && (sessionLocked || sessionChecking || (sessionSync?.verifyChange && sessionSync.revision === sessionRevision && method !== "GET"))) {
       if (method !== "GET") {
-        const error = new Error("Unlock your session to continue.");
-        error.status = 423;
+        const error = new Error(sessionLocked ? "Unlock your session to continue." : "Verify your session before continuing.");
+        error.status = sessionLocked ? 423 : 503;
+        error.code = sessionLocked ? "session_locked" : "session_verification_unavailable";
         throw error;
       }
       await new Promise((resolve, reject) => sessionWaiters.push({ resolve, reject }));
