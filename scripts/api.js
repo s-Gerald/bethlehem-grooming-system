@@ -1079,14 +1079,17 @@ var API = (() => {
     });
     const card = document.getElementById("bethlehem-session-lock");
     if (!card) return;
-    card.hidden = !state;
+    // Sidebar documents already expose safe structure and scoped loaders.
+    const standaloneCheck = state === "checking" && !document.querySelector('[data-admin-shell]');
+    card.hidden = state !== "locked" && state !== "unavailable" && !standaloneCheck;
+    if (card.hidden) return;
     card.querySelector("#session-lock-form").hidden = state !== "locked";
     card.querySelector("#session-retry").hidden = state !== "unavailable";
     card.querySelector("#session-lock-heading").textContent = state === "locked" ? "Session locked"
-      : state === "unavailable" ? "Unable to verify session" : "Checking session…";
+      : standaloneCheck ? "Checking session…" : "Unable to verify session";
     card.querySelector("#session-lock-description").textContent = state === "locked" ? "Your session was locked due to inactivity."
-      : state === "unavailable" ? "Check your connection and try again." : "Verifying your access.";
-    card.setAttribute("aria-busy", String(state === "checking" || (state === "locked" && card.querySelector("#session-unlock").disabled)));
+      : standaloneCheck ? "Verifying your access." : "Check your connection and try again.";
+    card.setAttribute("aria-busy", String(standaloneCheck || (state === "locked" && card.querySelector("#session-unlock").disabled)));
   }
 
   function ensureSessionLockCard() {
@@ -1118,10 +1121,19 @@ var API = (() => {
         <button id="session-other-account" class="session-lock__secondary" type="button">Sign in with another account</button>
       </div>`;
     document.body.appendChild(card);
-    card.querySelector("#session-retry").addEventListener("click", () => {
-      sessionGate("checking");
-      document.getElementById("session-lock-heading")?.focus();
-      return syncSessionState();
+    card.querySelector("#session-retry").addEventListener("click", async () => {
+      const button = card.querySelector("#session-retry");
+      if (button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Retrying…";
+      card.setAttribute("aria-busy", "true");
+      try { await syncSessionState(); }
+      finally {
+        button.disabled = false;
+        button.textContent = "Retry";
+        card.setAttribute("aria-busy", "false");
+        if (!card.hidden && !button.hidden) button.focus();
+      }
     });
     const password = card.querySelector("#session-password");
     const toggle = card.querySelector("#session-password-toggle");
@@ -1211,9 +1223,10 @@ var API = (() => {
     sessionRevision += 1;
     if (!sessionLocked && !sessionChecking) previousSessionFocus = document.activeElement;
     sessionChecking = !sessionLocked;
-    ensureSessionLockCard();
+    const standalone = !document.querySelector('[data-admin-shell]');
+    if (standalone) ensureSessionLockCard();
     sessionGate(sessionLocked ? "locked" : "checking");
-    if (!sessionLocked) document.getElementById("session-lock-heading")?.focus();
+    if (standalone && !sessionLocked) document.getElementById("session-lock-heading")?.focus();
   }
 
   function showSessionLock() {
@@ -1295,6 +1308,7 @@ var API = (() => {
         if (sessionSync?.promise === pending && revision === sessionRevision && getAuthSession()?.token === session.token && isAdminRole(session.role)) {
           if (sessionLocked) sessionLockError("Unable to check session. Please try again.");
           else if (sessionChecking) {
+            ensureSessionLockCard();
             sessionGate("unavailable");
             document.getElementById("session-retry")?.focus();
           }
@@ -1357,8 +1371,8 @@ var API = (() => {
       inactivityManagerInstalled = true;
     }
 
-    evaluateSessionInactivity();
     concealSession();
+    evaluateSessionInactivity();
     void syncSessionState();
     return true;
   }

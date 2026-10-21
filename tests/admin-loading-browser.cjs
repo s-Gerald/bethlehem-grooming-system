@@ -6,7 +6,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const sessions = JSON.parse(fs.readFileSync(process.env.LOCAL_REVIEW_SESSIONS, 'utf8').replace(/^\uFEFF/, ''));
-const origin = 'http://127.0.0.1:8000';
+const origin = process.env.LOCAL_REVIEW_ORIGIN || 'http://127.0.0.1:8000';
+if (!['127.0.0.1', 'localhost'].includes(new URL(origin).hostname)) throw new Error('Browser review requires a local server.');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const pages = [
   ['dashboard', 'dashboard.html', 'summaryLoaded'], ['customers', 'clients.html', 'customersLoaded'],
@@ -34,11 +35,12 @@ async function ready(page, name, property) {
     for (const key of Object.keys(sessions)) {
       const session = sessions[key];
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-      await context.addInitScript(({ token, role }) => {
+      await context.addInitScript(({ token, role, origin }) => {
+        window.BETHLEHEM_API_BASE_URL = origin;
         if (sessionStorage.getItem('local-ui-test')) return;
         localStorage.setItem('admin_token', token); localStorage.setItem('user_role', role);
         sessionStorage.setItem('local-ui-test', '1');
-      }, session);
+      }, { ...session, origin });
       const page = await context.newPage(); page.setDefaultTimeout(20000);
       const errors = [], requests = [];
       page.on('pageerror', error => { errors.push(error.message); console.log('Browser error: ' + error.message); });
@@ -184,7 +186,10 @@ async function ready(page, name, property) {
           assert.equal(await page.locator('aside nav').isVisible(), true, 'Pending session validation preserves navigation');
           assert.equal(await page.locator('.admin-sidebar-footer').isVisible(), true, 'Pending session validation preserves the footer');
           assert.equal(await page.locator('aside nav').evaluate(el => el.inert), true, 'Pending navigation stays non-interactive');
+          assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false, 'Verification leaves the safe shell visible without a checking card');
+          assert.equal(await page.locator('main').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Cached protected content remains concealed');
           assert.equal(await page.locator('main [data-session-public]').filter({ hasText: /^Settings$/ }).isVisible(), true, 'Static title is visible independently');
+          if (process.env.LOCAL_REVIEW_SCREENSHOTS) await page.screenshot({ path: path.join(process.env.LOCAL_REVIEW_SCREENSHOTS, 'navigation-pending-' + key + '.png') });
         } finally { release(); }
         await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate') && document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
         await page.unroute('**/api/session');
@@ -198,6 +203,50 @@ async function ready(page, name, property) {
         await page.getByLabel('Password', { exact: true }).fill('DeliberatelyIncorrectLocalTest!');
         await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
         await page.getByText('Incorrect password.', { exact: true }).waitFor();
+        assert.equal(await page.evaluate(async () => {
+          try { await API.adminStopToday(); return null; } catch (error) { return error.status; }
+        }), 423, 'Locked writes stay blocked');
+        if (process.env.LOCAL_REVIEW_PASSWORD) {
+          await page.getByLabel('Password', { exact: true }).fill(process.env.LOCAL_REVIEW_PASSWORD);
+          await page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+          await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+          const destinations = key === 'clinic' ? ['Customers', 'Clinic', 'Services', 'Inventory', 'History']
+            : ['Dashboard', 'Grooming', ...(session.role === 'admin' ? ['Clinic'] : []), 'Dashboard', 'Customers',
+              ...(session.role === 'admin' ? ['Services'] : []), 'Inventory', 'History'];
+          for (const label of destinations) {
+            const before = requests.length;
+            await Promise.all([page.waitForEvent('domcontentloaded', { timeout: 30000 }), (async () => {
+              if (label === 'Inventory') {
+                await page.getByRole('button', { name: 'Inventory', exact: true }).click();
+                await page.getByRole('link', { name: 'Overview', exact: true }).click();
+              } else await page.locator('aside').getByRole('link', { name: label, exact: true }).click();
+            })()]);
+            await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate') && document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
+            assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false, 'Real navigation after unlocking has no authentication popup');
+            assert.equal(requests.slice(before).filter(url => url === '/api/session').length, 1);
+            assert.equal(requests.slice(before).filter(url => url === '/api/me').length, 0);
+            assert.equal((await page.locator('aside nav [aria-current="page"]').innerText()).trim(), label === 'Inventory' ? 'Overview' : label);
+          }
+          await page.goBack({waitUntil: 'domcontentloaded'});
+          await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+          await page.goForward({waitUntil: 'domcontentloaded'});
+          await page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
+          assert.equal(await page.locator('#bethlehem-session-lock').isVisible(), false);
+          assert.deepEqual(errors, [], 'Real navigation after unlock produces no JavaScript errors');
+          console.log(key + ' real sidebar navigation after unlock, back/forward, one /session and zero /me per document passed');
+          if (process.env.LOCAL_REVIEW_VERIFY_REVOCATION && key !== 'clinic') {
+            execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, key === 'admin' ? 'expire' : 'revoke', key]);
+            await page.goto(origin + '/pages/admin/settings.html', {waitUntil: 'domcontentloaded'});
+            await page.waitForURL('**/sign-in.html');
+            assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);
+            console.log(key + ' real ' + (key === 'admin' ? 'expiration' : 'revocation') + ' redirect passed');
+            await context.close();
+            continue;
+          }
+          execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, 'lock', key]);
+          await page.goto(origin + '/pages/admin/settings.html', {waitUntil: 'domcontentloaded'});
+          await page.getByRole('heading', {name: 'Session locked', exact: true}).waitFor();
+        }
         await page.getByRole('button', { name: 'Sign in with another account', exact: true }).click();
         await page.waitForURL('**/sign-in.html');
         assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);

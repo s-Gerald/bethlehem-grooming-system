@@ -119,7 +119,7 @@ function createIdleBrowser(role, fixture = {}) {
     head: {appendChild() {}},
     querySelectorAll: () => [dashboard],
     visibilityState: "visible",
-    querySelector: () => null,
+    querySelector: selector => selector === '[data-admin-shell]' && options.shell !== false ? dashboard : null,
     getElementById(id) {
       return elements.get(id) || null;
     },
@@ -230,8 +230,24 @@ function createIdleBrowser(role, fixture = {}) {
 }
 
 async function testInitialPageShowDoesNotRestartVerification() {
-  const browser = createIdleBrowser("admin");
+  const fixture = {pauseStatus: true, now: 4_000_000, storage: new MemoryStorage({
+    admin_token: "admin-token", user_role: "admin",
+    "bethlehem.auth.last_activity": JSON.stringify({session: "admin:admin-token", at: 1}),
+  })};
+  const browser = createIdleBrowser("admin", fixture);
+  assert.equal(browser.root.attributes["data-session-gate"], "checking", "New documents still require server verification");
+  assert.equal(browser.elements.has("bethlehem-session-lock"), false, "Pending verification uses the safe page shell without creating a modal");
+  assert.equal(browser.document.activeElement, browser.dashboard, "Verification does not steal focus");
+  await assert.rejects(browser.API.adminStopToday(), error => error.status === 503);
+  const pendingRead = browser.API.getMe("admin");
+  browser.dispatchWindow("pageshow", {persisted: false});
+  browser.dispatchWindow("focus");
+  browser.dispatchDocument("visibilitychange");
+  assert.equal(browser.requests.filter(request => request.url.endsWith("/session")).length, 1);
+  assert.equal(browser.requests.some(request => request.url.endsWith("/me")), false, "Protected data waits for authorization");
+  fixture.releaseStatus();
   await browser.settle();
+  await pendingRead;
   const checks = () => browser.requests.filter(request => request.url.endsWith("/session")).length;
   const initialChecks = checks();
   browser.dispatchWindow("pageshow", { persisted: false });
@@ -240,8 +256,19 @@ async function testInitialPageShowDoesNotRestartVerification() {
   assert.equal(checks(), initialChecks);
   browser.dispatchWindow("pageshow", { persisted: true });
   assert.equal(browser.root.attributes["data-session-gate"], "checking", "Restored pages must verify access again");
+  assert.equal(browser.elements.has("bethlehem-session-lock"), false, "BFCache checking also keeps recovery UI out of the page");
+  fixture.releaseStatus();
   await browser.settle();
   assert.equal(checks(), initialChecks + 1);
+  const standaloneFixture = {pauseStatus: true, shell: false};
+  const standalone = createIdleBrowser("admin", standaloneFixture);
+  assert.equal(standalone.root.attributes["data-session-gate"], "checking");
+  assert.equal(standalone.elements.get("bethlehem-session-lock")?.hidden, false, "Standalone forms retain secure entry presentation when no safe shell exists");
+  assert.equal(standalone.elements.get("session-lock-form").hidden, true);
+  await assert.rejects(standalone.API.adminStopToday(), error => error.status === 503);
+  standaloneFixture.releaseStatus();
+  await standalone.settle();
+  assert.equal(standalone.elements.get("bethlehem-session-lock").hidden, true);
 }
 
 async function testTabReturnKeepsUnlockedWorkflow(role) {
@@ -296,7 +323,14 @@ async function testVerificationFailuresAreNotPasswordLocks() {
     await assert.rejects(browser.API.adminStopToday(), error => error.status === 503 && error.code === "session_verification_unavailable");
     assert.equal(browser.requests.some(request => request.url.endsWith("/admin/clinic/stop-today")), false);
     delete fixture.statusFailure;
-    await browser.elements.get("session-retry").dispatch("click");
+    fixture.pauseStatus = true;
+    const retry = browser.elements.get("session-retry").dispatch("click");
+    assert.equal(browser.elements.get("session-retry").disabled, true);
+    assert.equal(browser.root.attributes["data-session-gate"], "unavailable", "Retry retains recovery feedback instead of another checking screen");
+    await assert.rejects(browser.API.adminStopToday(), error => error.status === 503);
+    fixture.releaseStatus();
+    await retry;
+    fixture.pauseStatus = false;
     await browser.settle();
     assert.equal(browser.root.attributes["data-session-gate"], undefined, "Explicit retry restores server-verified access");
     fixture.statusFailure = statusFailure;
@@ -322,7 +356,7 @@ async function testRestorationRequiresFreshVerification() {
   const releaseOldStatus = fixture.releaseStatus;
   browser.dispatchWindow("pagehide");
   assert.equal(browser.root.attributes["data-session-gate"], "checking");
-  assert.equal(browser.elements.get("session-lock-form").hidden, true, "Checking never asks for a password");
+  assert.equal(browser.elements.has("bethlehem-session-lock"), false, "Checking never creates a recovery modal");
   browser.dispatchWindow("pageshow", {persisted: true});
   const releaseRestoredStatus = fixture.releaseStatus;
   assert.notEqual(releaseOldStatus, releaseRestoredStatus, "Restoration cannot reuse a pre-suspension request");

@@ -130,12 +130,37 @@ async function cachedRefresh(browser, profile) {
   const f = await fixture(browser, profile);
   try {
     await visit(f.page, 'dashboard.html'); await ready(f.page);
+    const errors = [];
+    f.page.on('pageerror', error => errors.push(error.message));
+    f.state.locked = true;
+    await f.page.reload({ waitUntil: 'domcontentloaded' });
+    await f.page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
+    await f.page.getByLabel('Password', { exact: true }).fill('LocalFixturePassword');
+    await f.page.getByRole('button', { name: 'Unlock session', exact: true }).click();
+    await ready(f.page);
     const count = () => f.state.requests.filter(p => p === '/api/me').length;
     assert.equal(count(), 1);
     for (const [file, active] of pages.filter(([file]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(file))) {
-      if (profile !== 'admin' && (['Reports', 'Services'].includes(active) || (active === 'Clinic' && profile === 'grooming'))) continue;
+      if ((profile !== 'admin' && active === 'Reports')
+        || (profile === 'grooming' && ['Clinic', 'Services'].includes(active))
+        || (profile === 'vet' && active === 'Grooming')) continue;
       f.state.sessionHold = deferred();
-      await visit(f.page, file);
+      const started = Date.now();
+      const before = f.state.requests.length;
+      const destination = `${origin}/pages/admin/${file}`;
+      await Promise.all([f.page.waitForEvent('domcontentloaded', { timeout: 30000 }), (async () => {
+        if (active === 'Inventory') {
+          await f.page.getByRole('button', { name: 'Inventory', exact: true }).click();
+          await f.page.getByRole('link', { name: 'Overview', exact: true }).click();
+        } else if (active) await f.page.locator('aside').getByRole('link', { name: active, exact: true }).click();
+        else await f.page.goto(destination, { waitUntil: 'domcontentloaded' });
+      })()]);
+      const checkingVisible = await f.page.locator('#bethlehem-session-lock').isVisible();
+      console.log(JSON.stringify({ profile, file, shell_ms: Date.now() - started,
+        session_requests: f.state.requests.slice(before).filter(p => p === '/api/session').length,
+        identity_requests: f.state.requests.slice(before).filter(p => p === '/api/me').length, checking_popup: checkingVisible }));
+      assert.equal(checkingVisible, false, 'Navigation verifies the session without a full-screen card');
+      assert.equal(f.state.requests.slice(before).filter(p => p === '/api/session').length, 1, 'One status check per document');
       await visibleShell(f.page, active);
       if (profile === 'admin' && file === 'dashboard.html' && process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/sidebar-cached-checking.png` });
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
@@ -156,8 +181,9 @@ async function cachedRefresh(browser, profile) {
         await cdp.send('Page.reload', { ignoreCache: true });
         await loaded;
       } else await f.page.reload({ waitUntil: 'domcontentloaded' });
-      await visibleShell(f.page, '');
+      await visibleShell(f.page, pages.find(([file]) => new URL(f.page.url()).pathname.endsWith('/' + file))?.[1] || '');
       assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), 'checking');
+      assert.equal(await f.page.locator('#bethlehem-session-lock').isVisible(), false, 'Refresh keeps safe structure visible without a checking modal');
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       assert.equal(count(), 1, 'Valid cached reload avoids /me');
       f.state.sessionHold.resolve(); await ready(f.page);
@@ -168,13 +194,14 @@ async function cachedRefresh(browser, profile) {
       await f.page.setViewportSize({ width, height: 844 });
       await f.page.evaluate(() => Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarOpen = true);
       await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().left >= 0);
-      await visibleShell(f.page, '');
+      await visibleShell(f.page, pages.find(([file]) => new URL(f.page.url()).pathname.endsWith('/' + file))?.[1] || '');
       await f.page.getByRole('link', { name: 'Customers', exact: true }).click();
       await ready(f.page);
       await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().right <= 1);
       await visit(f.page, 'notifications.html'); await ready(f.page);
     }
     console.log(`${profile}: page sweep, normal/hard reload, no redundant /me, mobile drawer passed`);
+    assert.deepEqual(errors, [], 'Sidebar navigation produces no JavaScript errors');
   } finally { f.state.sessionHold?.resolve(); await f.context.close(); }
 }
 async function securityTransitions(browser) {
@@ -232,7 +259,7 @@ async function sessionTabReturn(browser) {
       f.state.sessionHold = deferred();
       await visit(f.page, 'appointments.html');
       assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), 'checking');
-      assert.equal(await f.page.locator('#session-lock-form').isVisible(), false);
+      assert.equal(await f.page.locator('#bethlehem-session-lock').count(), 0, 'Fresh verification does not construct recovery UI');
       assert.equal(await f.page.locator('main').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Fresh verification never exposes protected content');
       f.state.sessionHold.resolve(); await ready(f.page);
       // Exercise the established idle deadline without a real 30-minute wait.

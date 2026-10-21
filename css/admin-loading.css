@@ -14,21 +14,15 @@ html[data-admin-role="staff"] [data-admin-title-staff] { display: inline; }
 html[data-admin-role="staff"] [data-admin-title-admin] { display: none; }
 [data-admin-shell]:not([data-admin-ready]) main { visibility: hidden; }
 .admin-sidebar-menu:not([data-admin-navigation-ready]) [data-admin-permission] { display: none !important; }
-/* Static branding, titles and surfaces are public during verification.
-   Permission-based navigation and account details require authenticated identity.
-   The locked state has no exceptions. */
-html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-surface],
-html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public],
-html:not([data-session-gate="locked"]) [data-admin-shell] [data-session-public] * { visibility: visible; }
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-surface],
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public],
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) [data-session-public] * { visibility: visible !important; pointer-events: none !important; }
-/* The shell and verified presentation stay visible during security validation. The central
-   session gate still blocks all interaction and fully conceals locked sessions. */
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu [data-admin-navigation],
-html[data-session-gate="checking"] body > [data-admin-shell]:not(#bethlehem-session-lock) .admin-sidebar-menu [data-admin-navigation] * {
+/* Safe structure is visible before identity resolves. Cached navigation is
+   presentation only; protected data and operations still await session verification. */
+html:not([data-session-gate]) [data-admin-shell] :is([data-session-surface], [data-session-public], [data-session-public] *) { visibility: visible; }
+html[data-session-gate="checking"] body > [data-admin-shell] :is(
+  [data-session-surface], [data-session-public], [data-session-public] *,
+  .admin-sidebar-menu [data-admin-navigation], .admin-sidebar-menu [data-admin-navigation] *,
+  admin-loader, admin-loader *
+) {
   visibility: visible !important;
-  pointer-events: none !important;
 }
 [data-admin-account] > [x-text] { flex-shrink: 0; }
 [data-admin-account][aria-busy="true"] [x-text] { color: transparent; }

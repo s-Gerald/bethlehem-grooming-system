@@ -200,6 +200,31 @@ async function staffServicesWaitForAuthorizedActiveTab() {
   assert.equal(mounted,'','Staff Clinic functionality waits for permission verification');
   permission.resolve(); await pending; assert.equal(mounted,'clinic');
 }
-(async () => { for (const test of [scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardLoadsSummaryDirectly, dashboardDoesNotRequestIntakeStatus, groomingUsesManilaDateDirectly, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
+async function retainedDataWaitsForNavigationAuthorization() {
+  const e = environment();
+  await e.API.getCustomers();
+  const verification = deferred();
+  e.respond(endpoint => endpoint === '/session' ? verification.promise : {customers: []});
+  const next = e.page();
+  next.c.window.location.pathname = '/pages/admin/clients.html';
+  next.c.document.documentElement = {setAttribute() {}, removeAttribute() {}};
+  next.c.document.querySelector = selector => selector === '[data-admin-shell]' ? {} : null;
+  next.c.document.createElement = () => ({});
+  next.c.setTimeout = () => 1;
+  next.c.clearTimeout = () => {};
+  next.API.startSessionInactivityManager();
+  let presented = false;
+  const pending = next.API.loadAdminData('/admin/customers?status=active', () => next.API.getCustomers(), () => { presented = true; });
+  assert.equal(presented, false, 'A navigation cache cannot authorize protected content');
+  await assert.rejects(next.API.adminStopToday(), error => error.status === 503);
+  next.events.get('focus')();
+  assert.equal(e.calls.filter(call => call.endpoint === '/session').length, 1, 'Startup and focus share verification');
+  verification.resolve({locked: false, role: 'admin', user_id: 7, sidebar_revision: 'navigation-test',
+    server_now: '1970-01-01T00:16:40Z', idle_at: '1970-01-01T00:46:40Z', expires_at: '1970-01-01T12:16:40Z'});
+  await pending;
+  assert.equal(presented, true, 'Verified navigation immediately reuses retained data');
+  assert.equal(e.calls.filter(call => call.endpoint === '/admin/customers?status=active').length, 1, 'Verification does not discard or refetch a fresh directory');
+}
+(async () => { for (const test of [retainedDataWaitsForNavigationAuthorization, scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardLoadsSummaryDirectly, dashboardDoesNotRequestIntakeStatus, groomingUsesManilaDateDirectly, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
   await test(); console.log(test.name+' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,8 +1,8 @@
 /* Hallmark component guidance: existing Bethlehem portal tokens and restrained states. */
-html[data-session-gate] { background: #f2f7fc; }
-html[data-session-gate] body { overflow: hidden; }
-html[data-session-gate] body > :not(#bethlehem-session-lock):not(script):not(style),
-html[data-session-gate] body > :not(#bethlehem-session-lock):not(script):not(style) * {
+html:is([data-session-gate="locked"], [data-session-gate="unavailable"]) { background: #f2f7fc; }
+html:is([data-session-gate="locked"], [data-session-gate="unavailable"]) body { overflow: hidden; }
+html[data-session-gate] body > :where(:not(#bethlehem-session-lock):not(script):not(style)),
+html[data-session-gate] body > :where(:not(#bethlehem-session-lock):not(script):not(style)) * {
   visibility: hidden !important;
   pointer-events: none !important;
 }
