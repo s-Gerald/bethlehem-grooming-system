@@ -12,11 +12,10 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 class PrivilegedCredentialChangeService
 {
-    private const MAX_CODE_ATTEMPTS = 5;
+    public const MAX_CODE_ATTEMPTS = 5;
 
     private const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -54,36 +53,35 @@ class PrivilegedCredentialChangeService
 
         EmailVerificationController::assertMailCanBeDelivered();
 
-        $plainCode = $this->generateCode();
-        $change = PrivilegedCredentialChange::query()->create([
-            'requested_by_user_id' => $requester->user_id,
-            'target_user_id' => $target->user_id,
-            'target_role' => $target->role,
-            'new_username' => $newUsername,
-            'new_password_hash' => $changesPassword
-                ? Hash::make((string) $newPassword)
-                : null,
-            'changes_password' => $changesPassword,
-            'code_hash' => Hash::make($plainCode),
-            'failed_attempts' => 0,
-            'last_sent_at' => now(),
-            'expires_at' => now()->addMinutes($this->codeTtlMinutes()),
-        ]);
+        return DB::transaction(function () use ($requester, $target, $newUsername, $newPassword, $changesPassword): array {
+            $target = User::query()->whereKey($target->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertRequesterAndTargetAreEligible($requester, $target);
+            $plainCode = $this->generateCode();
+            $change = PrivilegedCredentialChange::query()->create([
+                'requested_by_user_id' => $requester->user_id,
+                'target_user_id' => $target->user_id,
+                'target_role' => $target->role,
+                'new_username' => $newUsername,
+                'new_password_hash' => $changesPassword
+                    ? Hash::make((string) $newPassword)
+                    : null,
+                'changes_password' => $changesPassword,
+                'code_hash' => Hash::make($plainCode),
+                'failed_attempts' => 0,
+                'last_sent_at' => now(),
+                'expires_at' => now()->addMinutes($this->codeTtlMinutes()),
+            ]);
 
-        try {
-            $this->sendCode($requester, $target, $change, $plainCode);
-        } catch (Throwable $exception) {
-            $change->delete();
-            throw $exception;
-        }
+            $receipt = $this->sendCode($requester, $target, $change, $plainCode);
 
-        PrivilegedCredentialChange::query()
-            ->where('target_user_id', $target->user_id)
-            ->whereNull('confirmed_at')
-            ->whereKeyNot($change->getKey())
-            ->delete();
+            PrivilegedCredentialChange::query()
+                ->where('target_user_id', $target->user_id)
+                ->whereNull('confirmed_at')
+                ->whereKeyNot($change->getKey())
+                ->delete();
 
-        return $this->challengePayload($change, $requester, $target);
+            return $this->challengePayload($change, $requester, $target) + ['email_delivery_token' => $receipt];
+        }, 3);
     }
 
     public function confirm(
@@ -102,9 +100,7 @@ class PrivilegedCredentialChangeService
                 return ['status' => 'invalid'];
             }
 
-            if (now()->isAfter($change->expires_at)) {
-                $change->update(['code_hash' => null]);
-
+            if (now()->greaterThanOrEqualTo($change->expires_at)) {
                 return ['status' => 'expired'];
             }
 
@@ -117,7 +113,6 @@ class PrivilegedCredentialChangeService
                 $locked = $failedAttempts >= self::MAX_CODE_ATTEMPTS;
                 $change->update([
                     'failed_attempts' => $failedAttempts,
-                    'code_hash' => $locked ? null : $change->code_hash,
                 ]);
 
                 return [
@@ -220,16 +215,22 @@ class PrivilegedCredentialChangeService
                 ];
             }
 
-            $plainCode = $this->generateCode();
+            $attempts = now()->isBefore($change->expires_at) ? $change->failed_attempts : 0;
+            if ($attempts >= self::MAX_CODE_ATTEMPTS) {
+                return ['status' => 'cooldown', 'retry_after' => max(1, $change->expires_at->timestamp - now()->timestamp)];
+            }
+            do {
+                $plainCode = $this->generateCode();
+            } while ($change->code_hash && Hash::check($plainCode, $change->code_hash));
             $change->update([
                 'code_hash' => Hash::make($plainCode),
-                'failed_attempts' => 0,
+                'failed_attempts' => $attempts,
                 'last_sent_at' => now(),
                 'expires_at' => now()->addMinutes($this->codeTtlMinutes()),
             ]);
-            $this->sendCode($requester, $target, $change, $plainCode);
+            $receipt = $this->sendCode($requester, $target, $change, $plainCode);
 
-            return ['status' => 'resent'] + $this->challengePayload($change, $requester, $target);
+            return ['status' => 'resent', 'email_delivery_token' => $receipt] + $this->challengePayload($change, $requester, $target);
         });
     }
 
@@ -238,13 +239,13 @@ class PrivilegedCredentialChangeService
         User $target,
         PrivilegedCredentialChange $change,
         string $plainCode,
-    ): void {
-        $requester->notify(new ConfirmPrivilegedCredentialChangeCodeNotification(
+    ): string {
+        return AuthenticationMailDelivery::queue($requester, new ConfirmPrivilegedCredentialChangeCodeNotification(
             $plainCode,
             $this->purposeLabel($change),
             $this->displayName($target),
             $target->role === 'admin',
-        ));
+        ), $change, 'code_hash');
     }
 
     private function challengePayload(
@@ -258,6 +259,7 @@ class PrivilegedCredentialChangeService
             'target_name' => $this->displayName($target),
             'confirmation_email' => $this->maskEmail($requester->email),
             'expires_at' => $change->expires_at->toIso8601String(),
+            'resend_after' => max(0, ($change->last_sent_at?->timestamp ?? 0) + self::RESEND_COOLDOWN_SECONDS - now()->timestamp),
         ];
     }
 

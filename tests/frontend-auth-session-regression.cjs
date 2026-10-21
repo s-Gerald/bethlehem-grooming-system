@@ -703,6 +703,26 @@ async function testLoginCodeResendCooldownAndLimit() {
   page.advanceSeconds(1);
   assert.equal(resend.disabled, false);
 
+  for (const digits of ['123456', '12']) {
+    const input = page.elements.get('loginCode');
+    input.value = digits;
+    await page.dispatch('loginCode', 'input');
+    let reject;
+    let requests = 0;
+    const original = page.API.resendLoginCode;
+    page.API.resendLoginCode = () => { requests++; return new Promise((_resolve, fail) => { reject = fail; }); };
+    const sending = page.dispatch('loginCodeResendBtn', 'click');
+    assert.equal(input.value, '', 'Resend clears login input immediately');
+    for (let i = 0; i < 6; i++) assert.equal(page.elements.get(`cell${i}`).textContent, '');
+    assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
+    await page.dispatch('loginCodeResendBtn', 'click');
+    assert.equal(requests, 1);
+    reject({ status: 503 });
+    await sending;
+    assert.equal(input.value, '');
+    page.API.resendLoginCode = original;
+  }
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     await page.dispatch("loginCodeResendBtn", "click");
     assert.equal(resend.disabled, true);
@@ -751,7 +771,10 @@ async function testPasswordResetEmailHandoff() {
   const requests = [];
   let resetRequestError = null;
   let maskedResponse = "c***@example.com";
+  let resetResendAfter = 75;
   function loadPage(script) {
+    let now = 100000;
+    const intervals = new Map();
     const elements = new Map();
     const getElement = (id) => {
       if (!elements.has(id)) {
@@ -761,6 +784,7 @@ async function testPasswordResetEmailHandoff() {
           handlers: {},
           addEventListener(name, handler) { this.handlers[name] = handler; },
           setAttribute() {}, focus() {},
+          setSelectionRange() {},
         });
       }
       return elements.get(id);
@@ -768,20 +792,21 @@ async function testPasswordResetEmailHandoff() {
     const location = { search: "", href: "http://localhost/pages/client/sign-in.html" };
     const context = {
       URLSearchParams,
+      Date: { now: () => now },
       sessionStorage: storage,
-      window: { location, setInterval: () => 1, clearInterval() {} },
+      window: { location, setInterval(callback) { intervals.set(1, callback); return 1; }, clearInterval(id) { intervals.delete(id); } },
       API: {
         async signIn() { throw { message: "Invalid credentials", status: 401 }; },
         async requestPasswordReset(email) {
           requests.push(email);
           if (resetRequestError) throw resetRequestError;
-          return { email: maskedResponse };
+          return { email: maskedResponse, resend_after: resetResendAfter };
         },
       },
       document: {
         getElementById: getElement,
         querySelector: () => null,
-        querySelectorAll: () => [],
+        querySelectorAll: () => script.includes('forgot-password') ? Array.from({ length: 6 }, (_, i) => getElement(`cell${i}`)) : [],
         createElement: () => ({
           value: "",
           // Stand-in for the browser's native email constraint validation.
@@ -792,7 +817,7 @@ async function testPasswordResetEmailHandoff() {
     };
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "scripts/auth/verification-code.js"), "utf8"), context);
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, script), "utf8"), context);
-    return { getElement, location };
+    return { getElement, location, API: context.API, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
   }
 
   const signIn = loadPage("scripts/auth/sign-in.js");
@@ -810,6 +835,28 @@ async function testPasswordResetEmailHandoff() {
   await forgot.getElement("forgotPasswordForm").handlers.submit({ preventDefault() {} });
   assert.deepEqual(requests, ["customer@example.com"], "Send Code still submits normally");
   assert.equal(forgot.getElement("verifyEmail").textContent, "c***@example.com");
+  assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1:15');
+  forgot.advance(74000);
+  assert.equal(forgot.getElement('resendCode').disabled, true);
+  forgot.advance(1000);
+  assert.equal(forgot.getElement('resendCode').disabled, false);
+  for (const digits of ['123456', '12']) {
+    const input = forgot.getElement('verificationCode');
+    input.value = digits;
+    input.handlers.input();
+    forgot.getElement('resendCode').disabled = false;
+    let reject;
+    const original = forgot.API.requestPasswordReset;
+    forgot.API.requestPasswordReset = () => new Promise((_resolve, fail) => { reject = fail; });
+    const sending = forgot.getElement('resendCode').handlers.click();
+    assert.equal(input.value, '', 'Recovery input clears before the response');
+    for (let i = 0; i < 6; i++) assert.equal(forgot.getElement(`cell${i}`).textContent, '');
+    assert.equal(forgot.getElement('verifyCodeSubmit').disabled, true);
+    reject({ status: 503 });
+    await sending;
+    assert.equal(input.value, '');
+    forgot.API.requestPasswordReset = original;
+  }
 
   signIn.getElement("password").value = "wrong-password";
   await signIn.getElement("signin").handlers.submit({ preventDefault() {} });

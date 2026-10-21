@@ -27,8 +27,9 @@ document.addEventListener("DOMContentLoaded", () => {
     stopDeliveryCheck();
     if (!receipt) return;
     stopDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
-      if (!completed && status === "failed" && !message.textContent) {
-        setMessage("Couldn't send the code. Try again.", false);
+      const text = window.AuthenticationEmailDelivery.failureMessage(status);
+      if (!completed && text) {
+        setMessage(text, false);
       }
     });
   }
@@ -93,11 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (resend.disabled || busy || !resolveEmail()) return;
     busy = "send";
     stopDeliveryCheck();
-    setMessage();
+    otp.clear();
+    input.focus();
     updateControls();
     try {
       const result = await API.resendVerification(email);
-      otp.clear();
+      if (result?.email_delivery_token) write("pendingVerificationDeliveryFailed", "0");
       startCooldown(result?.resend_after ?? 45);
       checkDelivery(result?.email_delivery_token);
     } catch (error) {

@@ -4,7 +4,12 @@ namespace App\Jobs\Middleware;
 
 use App\Http\Controllers\EmailVerificationController;
 use App\Services\AuthenticationMailDelivery;
+use App\Services\LoginEmailChallengeService;
+use App\Services\PasswordResetService;
+use App\Services\PrivilegedCredentialChangeService;
+use App\Services\RegistrationEmailCodeService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
 
 class TrackAuthenticationMailDelivery
@@ -39,11 +44,23 @@ class TrackAuthenticationMailDelivery
             AuthenticationMailDelivery::record($this->receipt, 'superseded');
             return;
         }
-        // Old serialized middleware has no issuance metadata; preserve its format.
+        // Receipt-only OTP jobs predate issuance guards and cannot prove validity.
+        if (isset($job->notification->code) && ! isset($this->issuance)) {
+            AuthenticationMailDelivery::record($this->receipt, 'superseded');
+            return;
+        }
         if (isset($this->issuance)) {
             $guard = $this->issuance;
             $current = $guard['model']::query()->find($guard['key']);
             if (! $current || ! $guard['hash']
+                || $current->getAttribute('approved_at')
+                || $current->getAttribute('confirmed_at')
+                || $current->getAttribute('verified_token_hash')
+                || $current->getAttribute('email_verification_attempts') >= RegistrationEmailCodeService::MAX_ATTEMPTS
+                || $current->getAttribute('verification_attempts') >= PasswordResetService::MAX_ATTEMPTS
+                || $current->getAttribute('failed_attempts') >= PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS
+                || ($current->getAttribute('poll_token_hash') && RateLimiter::tooManyAttempts(
+                    'login-code:'.$current->getAttribute('poll_token_hash'), LoginEmailChallengeService::MAX_ATTEMPTS))
                 || ! hash_equals($guard['hash'], (string) $current->getAttribute($guard['hash_column']))
                 || ! $current->getAttribute($guard['expiry_column'])
                 || now()->greaterThanOrEqualTo($current->getAttribute($guard['expiry_column']))) {

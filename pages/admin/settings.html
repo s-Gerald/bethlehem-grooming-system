@@ -1359,20 +1359,19 @@
                       </fieldset>
 
                       <p x-show="securityVerification.error" x-text="securityVerification.error" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
-                      <p x-show="securityVerification.notice" x-text="securityVerification.notice" class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700" role="status"></p>
 
                       <div class="flex flex-col-reverse gap-3 border-t border-[#e8f0f8] pt-4 sm:flex-row sm:items-center sm:justify-between">
                         <button
                           type="button"
                           @click="resendSecurityCredentialChangeCode()"
-                          :disabled="securityVerification.resending || securityVerification.submitting"
+                          :disabled="securityVerification.resending || securityVerification.submitting || securityVerification.resendRemaining > 0"
                           class="text-sm font-semibold text-[#315b7e] transition hover:text-[#284a67] disabled:cursor-not-allowed disabled:opacity-60"
-                        ><span x-show="isStaff">Didn't receive a code? </span><span x-text="securityVerification.resending ? 'Sending...' : 'Resend code'">Resend code</span></button>
+                        ><span x-text="securityVerification.resending ? 'Sending...' : securityVerification.resendRemaining > 0 ? 'Resend in ' + Math.floor(securityVerification.resendRemaining / 60) + ':' + String(securityVerification.resendRemaining % 60).padStart(2, '0') : 'Resend code'">Resend code</span></button>
                         <div class="flex gap-3">
                           <button type="button" @click="closeSecurityVerification()" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Cancel</button>
                           <button
                             type="submit"
-                            :disabled="!securityCodeComplete || securityVerification.submitting"
+                            :disabled="!securityCodeComplete || securityVerification.submitting || securityVerification.resending"
                             class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
@@ -1412,6 +1411,7 @@
 
 
     <script src="../../scripts/components/success-toast.js"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019"></script>
+    <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021"></script>
   </body>
 </html>

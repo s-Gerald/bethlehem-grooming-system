@@ -44,6 +44,18 @@ class AuthenticationMailDelivery
             if (config('mail.authentication.delivery') === 'immediate') {
                 $notification->onConnection('database');
             }
+            $connection = $notification->connection ?? config('queue.default');
+            $settings = config('queue.connections.'.$connection, []);
+            if (($settings['driver'] ?? null) === 'database') {
+                // Insert the encrypted job on the issuance transaction, not in an
+                // after-commit callback that can fail after invalidating the code.
+                if (($settings['connection'] ?? config('database.default')) !== DB::getDefaultConnection()) {
+                    throw new \RuntimeException('Authentication mail must share the issuance database.');
+                }
+                $notification->beforeCommit();
+            } elseif (! app()->environment('testing')) {
+                throw new \RuntimeException('Authentication mail requires the durable database queue.');
+            }
             // Persist encrypted work before responding, even in immediate mode.
             $recipient->notify($notification);
             if (config('mail.authentication.delivery') === 'immediate') {

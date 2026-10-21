@@ -875,8 +875,8 @@ class EmailVerificationTest extends TestCase
         });
 
         $this->postJson('/api/email/resend', ['email' => $user->email])
-            ->assertStatus(503)
-            ->assertJsonPath('success', false);
+            ->assertOk()
+            ->assertJsonPath('email_delivery_token', null);
 
         $user->refresh();
         $this->assertSame($oldTokenHash, $user->email_verification_token);
@@ -888,6 +888,7 @@ class EmailVerificationTest extends TestCase
         for ($attempt = 1; $attempt <= 3; $attempt++) {
             $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
                 ->assertOk();
+            $this->travel(46)->seconds();
         }
 
         $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
@@ -942,16 +943,22 @@ class EmailVerificationTest extends TestCase
     public function test_attempt_limit_and_resend_rotation_are_enforced(): void
     {
         Notification::fake();
-        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $pending = PendingCustomerRegistration::firstOrFail();
         $oldCode = $this->verificationCodeSentTo($pending);
         for ($attempt = 0; $attempt < 5; $attempt++) {
             $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => '000000'])->assertUnprocessable();
         }
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $oldCode])
-            ->assertTooManyRequests()->assertJsonPath('message', 'Too many attempts. Please request a new verification code.');
+            ->assertTooManyRequests()->assertJsonPath('message', 'Too many attempts. Try again later.');
         $this->travel(46)->seconds();
         Notification::fake();
+        $hash = $pending->fresh()->email_verification_code_hash;
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $response->json('registration_token')])
+            ->assertTooManyRequests()->assertHeader('Retry-After');
+        $this->assertSame($hash, $pending->fresh()->email_verification_code_hash);
+        Notification::assertNothingSent();
+        $this->travel(15)->minutes();
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertOk();
         $newCode = $this->verificationCodeSentTo($pending);
         $this->assertNotSame($oldCode, $newCode);
@@ -964,11 +971,11 @@ class EmailVerificationTest extends TestCase
     public function test_resend_cooldown_is_enforced_across_different_ips(): void
     {
         Notification::fake();
-        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $pending = PendingCustomerRegistration::firstOrFail();
         $hash = $pending->email_verification_code_hash;
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.52']);
-        $this->postJson('/api/email/resend', ['email' => $pending->email])
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $response->json('registration_token')])
             ->assertTooManyRequests()->assertHeader('Retry-After')
             ->assertJsonPath('message', 'Please wait before requesting another code.');
         $this->assertSame($hash, $pending->fresh()->email_verification_code_hash);
@@ -1022,7 +1029,7 @@ class EmailVerificationTest extends TestCase
     public function test_failed_resend_preserves_the_previous_code_and_attempts(): void
     {
         Notification::fake();
-        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $pending = PendingCustomerRegistration::firstOrFail();
         $code = $this->verificationCodeSentTo($pending);
         $pending->update(['email_verification_attempts' => 2]);
@@ -1031,7 +1038,7 @@ class EmailVerificationTest extends TestCase
         $this->mock(Dispatcher::class, function ($mock) {
             $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('Queue unavailable'));
         });
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertStatus(503);
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $response->json('registration_token')])->assertStatus(503);
         $this->assertSame($hash, $pending->fresh()->email_verification_code_hash);
         $this->assertSame(2, $pending->fresh()->email_verification_attempts);
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $code])->assertOk();
@@ -1197,6 +1204,10 @@ class EmailVerificationTest extends TestCase
             ->postJson('/api/email/login/resend', ['poll_token' => $pollToken])->assertOk();
         $newCode = $this->loginCodeSentTo($user);
         $this->assertNotSame($oldCode, $newCode);
+        $hash = LoginEmailChallenge::query()->sole()->token_hash;
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.2'])
+            ->postJson('/api/email/login/resend', ['poll_token' => $pollToken])->assertTooManyRequests();
+        $this->assertSame($hash, LoginEmailChallenge::query()->sole()->token_hash);
         $this->postJson('/api/email/login/confirm', ['poll_token' => $pollToken, 'code' => $oldCode])->assertStatus(422);
         $this->postJson('/api/email/login/confirm', ['poll_token' => $pollToken, 'code' => $oldCode])->assertStatus(429);
         $this->postJson('/api/email/login/confirm', ['poll_token' => $pollToken, 'code' => $newCode])->assertStatus(429);
@@ -1482,6 +1493,77 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('jobs', 0);
         $this->assertDatabaseCount('failed_jobs', 0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_queue_insert_failure_rolls_back_the_registration_issuance(): void
+    {
+        $this->useDatabaseMailQueue();
+        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $pending = PendingCustomerRegistration::query()->sole();
+        $before = $pending->getAttributes();
+        $this->travel(46)->seconds();
+        DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        try {
+            DB::transaction(fn () => app(\App\Services\RegistrationEmailCodeService::class)->send($pending));
+            $this->fail('Queue submission should fail.');
+        } catch (\Illuminate\Database\QueryException) {
+            $this->assertSame($before, $pending->fresh()->getAttributes());
+            $this->assertDatabaseCount('jobs', 1);
+        }
+    }
+
+    public function test_consumed_login_issuance_cannot_be_resent_or_mailed(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        $challenge = LoginEmailChallenge::query()->sole();
+        $challenge->update(['approved_at' => now()]);
+        $this->travel(61)->seconds();
+        $this->postJson('/api/email/login/resend', ['poll_token' => $response->json('login_poll_token')])->assertUnprocessable();
+        $this->assertSame($challenge->token_hash, $challenge->fresh()->token_hash);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_receipt_only_legacy_otp_jobs_are_suppressed(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create();
+        $notification = new ConfirmLoginNotification('123456');
+        $notification->deliveryReceipt = str_repeat('r', 64);
+        $notification->through([new \App\Jobs\Middleware\TrackAuthenticationMailDelivery($notification->deliveryReceipt)]);
+        $user->notify($notification);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($notification->deliveryReceipt));
+    }
+
+    public function test_locked_registration_and_login_issuances_are_not_mailed(): void
+    {
+        $this->useDatabaseMailQueue();
+        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        PendingCustomerRegistration::query()->update(['email_verification_attempts' => 5]);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        $key = 'login-code:'.hash('sha256', $response->json('login_poll_token'));
+        foreach (range(1, 5) as $attempt) \Illuminate\Support\Facades\RateLimiter::hit($key, 900);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_login_queue_insert_failure_cannot_commit_a_replacement(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $response = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        $before = LoginEmailChallenge::query()->sole()->getAttributes();
+        $this->travel(61)->seconds();
+        DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson('/api/email/login/resend', ['poll_token' => $response->json('login_poll_token')])->assertStatus(503);
+        $this->assertSame($before, LoginEmailChallenge::query()->sole()->getAttributes());
+        $this->assertDatabaseCount('jobs', 1);
     }
 
     private function registrationPayload(): array

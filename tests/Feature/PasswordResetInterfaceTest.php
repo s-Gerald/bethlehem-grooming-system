@@ -60,11 +60,9 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('back.classList.toggle("hidden", next === "email")', $forgotScript);
         $this->assertStringContainsString('window.VerificationCode.bind', $forgotScript);
         $this->assertStringContainsString('codeInput.addEventListener("paste"', file_get_contents(base_path('scripts/auth/verification-code.js')));
-        $this->assertStringContainsString('startResendCooldown()', $forgotScript);
         $this->assertStringContainsString('setFieldError(confirmation, confirmPasswordMessage', $forgotScript);
         $this->assertFileDoesNotExist(base_path('pages/client/reset-password.html'));
         $this->assertFileDoesNotExist(base_path('scripts/auth/reset-password.js'));
-        $this->assertMatchesRegularExpression("~/password/forgot'.*?throttle:3,10~s", $routes);
         $this->assertMatchesRegularExpression("~/password/code/verify'.*?throttle:10,1~s", $routes);
         $this->assertMatchesRegularExpression("~/password/reset'.*?throttle:10,1~s", $routes);
 

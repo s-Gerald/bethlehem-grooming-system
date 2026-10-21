@@ -16,7 +16,13 @@ let statusRequest;
 let cancelRequest;
 let roleRequest;
 const focusedFields = [];
+const cooldownTicks = new Map();
+const deliveryChecks = new Map();
 global.window = {
+  setInterval(callback) { cooldownTicks.set(1, callback); return 1; },
+  clearInterval(id) { cooldownTicks.delete(id); },
+  setTimeout(callback) { deliveryChecks.set(1, callback); return 1; },
+  clearTimeout(id) { deliveryChecks.delete(id); },
   lucide: null,
   showSuccessToast(message) {
     assert.equal(settings.staffStatusModal.open, false);
@@ -30,6 +36,7 @@ global.document = {
   },
 };
 global.API = {
+  async emailDeliveryStatus() { return { status: 'failed' }; },
   async getAdminSecurityAccounts() {
     return {
       admin: {
@@ -150,6 +157,7 @@ global.API = {
   redirectToSignIn() {},
 };
 
+vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/email-delivery.js'), 'utf8'));
 vm.runInThisContext(componentSource, {
   filename: "scripts/components/admin-settings.js",
 });
@@ -203,6 +211,47 @@ vm.runInThisContext(componentSource, {
   assert.deepEqual(calls[1], ["confirm", 11, "123456"]);
   assert.equal(settings.securityVerification.open, false);
   assert.equal(settings.staffNotice, "Admin username change confirmed.");
+
+  for (const digits of [['1', '2', '3', '4', '5', '6'], ['1', '2', '', '', '', '']]) {
+    settings.openSecurityVerification({ change_id: 12, resend_after: 0 });
+    settings.securityVerification.digits = digits;
+    settings.securityVerification.error = 'Invalid code';
+    let reject;
+    let requests = 0;
+    const original = API.resendSecurityCredentialChangeCode;
+    API.resendSecurityCredentialChangeCode = () => { requests++; return new Promise((_resolve, fail) => { reject = fail; }); };
+    const sending = settings.resendSecurityCredentialChangeCode();
+    assert.deepEqual(settings.securityVerification.digits, ['', '', '', '', '', '']);
+    assert.equal(settings.securityCodeComplete, false);
+    assert.equal(settings.securityVerification.error, '');
+    await settings.resendSecurityCredentialChangeCode();
+    assert.equal(requests, 1);
+    reject({ status: 429, retryAfter: 128, message: 'Please wait.' });
+    await sending;
+    assert.equal(settings.securityVerification.resendRemaining, 128);
+    API.resendSecurityCredentialChangeCode = original;
+    settings.closeSecurityVerification();
+    assert.equal(cooldownTicks.size, 0);
+  }
+  settings.openSecurityVerification({ change_id: 13, resend_after: 0, email_delivery_token: 'private-admin-receipt' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(settings.securityVerification.error, /Couldn't send the code/);
+  settings.closeSecurityVerification();
+  assert.equal(deliveryChecks.size, 0);
+
+  settings.openSecurityVerification({ change_id: 14, resend_after: 0 });
+  let finishResend;
+  const originalResend = API.resendSecurityCredentialChangeCode;
+  API.resendSecurityCredentialChangeCode = () => new Promise(resolve => { finishResend = resolve; });
+  const oldResend = settings.resendSecurityCredentialChangeCode();
+  settings.closeSecurityVerification();
+  settings.openSecurityVerification({ change_id: 15, resend_after: 0, confirmation_email: 'n***@example.test' });
+  finishResend({ confirmation_email: 'o***@example.test', resend_after: 90 });
+  await oldResend;
+  assert.equal(settings.securityVerification.email, 'n***@example.test', 'A stale resend must not update another challenge');
+  assert.equal(settings.securityVerification.resendRemaining, 0);
+  API.resendSecurityCredentialChangeCode = originalResend;
+  settings.closeSecurityVerification();
 
   settings.openAddStaffAccount();
   settings.chooseStaffType("clinic");

@@ -201,25 +201,25 @@ class EmailVerificationController extends Controller
             ->where('is_archived', false)
             ->first();
 
+        $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
+            && is_string($request->input('registration_token'))
+            && $registrant->registration_edit_token_hash
+            && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')));
+
         if ($registrant) {
             try {
                 $receipt = self::sendVerificationEmail($registrant);
             } catch (HttpResponseException $exception) {
-                throw $exception;
+                if ($canInspectDelivery) throw $exception;
             } catch (Throwable $exception) {
                 report($exception);
 
-                return response()->json([
+                if ($canInspectDelivery) return response()->json([
                     'success' => false,
                     'message' => 'Verification email could not be queued right now. Please try again later.',
                 ], 503);
             }
         }
-
-        $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
-            && is_string($request->input('registration_token'))
-            && $registrant->registration_edit_token_hash
-            && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')));
 
         return response()->json([
             'success' => true,
@@ -259,7 +259,7 @@ class EmailVerificationController extends Controller
         if ($registrant->email_verification_attempts >= RegistrationEmailCodeService::MAX_ATTEMPTS) {
             return response()->json([
                 'success' => false,
-                'message' => 'Too many attempts. Please request a new verification code.',
+                'message' => 'Too many attempts. Try again later.',
             ], 429);
         }
         if (! $registrant->email_verification_code_hash

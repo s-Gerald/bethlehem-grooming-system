@@ -106,6 +106,25 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   p.advance(45000);
   assert.equal(p.element('signupResend').disabled, false);
   assert.equal([...p.storage.values()].includes('123456'), false, 'OTP must never enter storage');
+  for (const digits of ['123456', '12']) {
+    const pending = page({ deliveryFailed: true });
+    pending.type(digits);
+    let reject;
+    let requests = 0;
+    pending.API.resendVerification = () => { requests++; return new Promise((_resolve, fail) => { reject = fail; }); };
+    const sending = pending.dispatch('signupResend', 'click');
+    assert.equal(pending.element('signupCode').value, '', 'Clear before the network responds');
+    assert.deepEqual(pending.cells.map(cell => cell.textContent), ['', '', '', '', '', '']);
+    assert.equal(pending.element('signupCodeSubmit').disabled, true);
+    assert.equal(pending.element('signupCode').attributes['aria-invalid'], 'false');
+    assert.equal(pending.element('signupResend').textContent, 'Sending...');
+    await pending.dispatch('signupResend', 'click');
+    assert.equal(requests, 1);
+    reject({ status: 503 });
+    await sending;
+    assert.equal(pending.element('signupCode').value, '');
+    assert.match(pending.element('signupCodeMessage').textContent, /Couldn't send/);
+  }
   await p.dispatch('signupResend', 'click');
   assert.deepEqual(p.calls, [['send', 'customer@example.test']]);
   assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
@@ -152,13 +171,27 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await recovery.dispatch('signupResend', 'click');
   assert.deepEqual(recovery.calls, [['send', 'restore@example.test']]);
 
-  for (const status of ['queued', 'sending', 'retrying', 'delayed', 'sent']) {
+  const recoveredDelivery = page({ deliveryFailed: true, deliveryStatus: 'sent' });
+  recoveredDelivery.API.resendVerification = async () => ({ resend_after: 45, email_delivery_token: 'new-private-receipt' });
+  await recoveredDelivery.dispatch('signupResend', 'click');
+  assert.notEqual(recoveredDelivery.storage.get('pendingVerificationDeliveryFailed'), '1', 'A successful private resend must clear the persisted failure of the initial request');
+
+  for (const status of ['queued', 'sending', 'retrying', 'sent']) {
     const quiet = page({ deliveryStatus: status });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(quiet.element('signupCodeMessage').textContent, '', `${status} must not show a warning`);
     quiet.type('123456');
     assert.equal(quiet.element('signupCodeSubmit').disabled, false, 'Tracking cannot block OTP entry');
   }
+  const delayed = page({ deliveryStatus: 'queued' });
+  await new Promise(resolve => setImmediate(resolve));
+  for (let i = 1; i < 24; i++) {
+    delayed.advance(5000);
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.match(delayed.element('signupCodeMessage').textContent, /Email is delayed/);
+  delayed.type('123456');
+  assert.equal(delayed.element('signupCodeSubmit').disabled, false);
   const expiredTab = page();
   expiredTab.advance(120000);
   assert.equal(expiredTab.element('signupResend').disabled, false, 'Countdown uses elapsed time, including background tabs');

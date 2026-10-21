@@ -139,8 +139,8 @@ function adminSettings() {
       digits: ["", "", "", "", "", ""],
       submitting: false,
       resending: false,
+      resendRemaining: 0,
       error: "",
-      notice: "",
     },
 
     get activeAvailability() {
@@ -203,6 +203,7 @@ function adminSettings() {
     },
 
     destroy() {
+      this.stopSecurityVerificationFeedback();
       window.removeEventListener?.('focus', this._intakeRefreshListener);
       window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
       document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
@@ -966,20 +967,58 @@ function adminSettings() {
         digits: ["", "", "", "", "", ""],
         submitting: false,
         resending: false,
+        resendRemaining: 0,
         error: "",
-        notice: "",
       };
     },
 
     openSecurityVerification(challenge) {
+      this.stopSecurityVerificationFeedback();
       this.securityVerification = this.emptySecurityVerification(true, challenge);
+      this.startSecurityResendCountdown(challenge.resend_after ?? 60);
+      this.watchSecurityCodeDelivery(challenge.email_delivery_token);
 
       this.$nextTick(() => document.getElementById("securityCodeDigit0")?.focus());
     },
 
     closeSecurityVerification() {
       if (this.securityVerification.submitting) return;
+      this.stopSecurityVerificationFeedback();
       this.securityVerification = this.emptySecurityVerification(false);
+    },
+
+    stopSecurityVerificationFeedback() {
+      window.clearInterval(this._securityResendTimer);
+      this._securityResendTimer = null;
+      this._stopSecurityDeliveryCheck?.();
+      this._stopSecurityDeliveryCheck = null;
+    },
+
+    startSecurityResendCountdown(seconds) {
+      window.clearInterval(this._securityResendTimer);
+      const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+      const tick = () => {
+        this.securityVerification.resendRemaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        if (!this.securityVerification.resendRemaining) {
+          window.clearInterval(this._securityResendTimer);
+          this._securityResendTimer = null;
+        }
+      };
+      this._securityResendTimer = window.setInterval(tick, 1000);
+      tick();
+    },
+
+    watchSecurityCodeDelivery(receipt) {
+      this._stopSecurityDeliveryCheck?.();
+      if (!receipt) return;
+      const verification = this.securityVerification;
+      this._stopSecurityDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
+        if (this.securityVerification !== verification || !verification.open) return;
+        const text = window.AuthenticationEmailDelivery.failureMessage(status);
+        if (text) {
+          verification.error = text;
+        }
+      });
     },
 
     focusSecurityCodeDigit(index) {
@@ -1027,10 +1066,10 @@ function adminSettings() {
     },
 
     async confirmSecurityCredentialChange() {
-      if (!this.securityCodeComplete || !this.securityVerification.changeId) return;
+      if (!this.securityCodeComplete || !this.securityVerification.changeId
+        || this.securityVerification.resending || this.securityVerification.submitting) return;
 
       this.securityVerification.error = "";
-      this.securityVerification.notice = "";
       this.securityVerification.submitting = true;
       try {
         const confirmChange = this.isStaff
@@ -1047,6 +1086,7 @@ function adminSettings() {
           return;
         }
 
+        this.stopSecurityVerificationFeedback();
         this.securityVerification = this.emptySecurityVerification(false);
         if (this.isStaff) {
           this.staffPassword.success = "Password updated successfully.";
@@ -1066,23 +1106,29 @@ function adminSettings() {
     },
 
     async resendSecurityCredentialChangeCode() {
-      if (!this.securityVerification.changeId || this.securityVerification.resending) return;
+      if (!this.securityVerification.changeId || this.securityVerification.resending
+        || this.securityVerification.submitting || this.securityVerification.resendRemaining > 0) return;
 
+      const verification = this.securityVerification;
+      this._stopSecurityDeliveryCheck?.();
       this.securityVerification.error = "";
-      this.securityVerification.notice = "";
       this.securityVerification.resending = true;
+      this.clearSecurityCode();
       try {
         const resendCode = this.isStaff
           ? API.resendStaffPasswordChangeCode
           : API.resendSecurityCredentialChangeCode;
         const response = await resendCode(this.securityVerification.changeId);
+        if (this.securityVerification !== verification) return;
         this.securityVerification.email = response.confirmation_email;
-        this.securityVerification.notice = response.message;
-        this.clearSecurityCode();
+        this.startSecurityResendCountdown(response.resend_after ?? 60);
+        this.watchSecurityCodeDelivery(response.email_delivery_token);
       } catch (error) {
+        if (this.securityVerification !== verification) return;
         this.securityVerification.error = this.firstApiError(error);
+        if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter);
       } finally {
-        this.securityVerification.resending = false;
+        verification.resending = false;
       }
     },
   };

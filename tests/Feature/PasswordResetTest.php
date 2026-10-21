@@ -88,7 +88,7 @@ class PasswordResetTest extends TestCase
             ->assertJsonPath('email', 'c***@example.test')
             ->assertJsonPath(
                 'message',
-                'If eligible, a verification code has been sent.',
+                'If eligible, a new code was requested. Check your email.',
             );
 
         $code = $this->resetCodeSentTo($user);
@@ -161,7 +161,7 @@ class PasswordResetTest extends TestCase
                 ->assertJsonPath('email', $email[0].'***@example.test')
                 ->assertJsonPath(
                     'message',
-                    'If eligible, a verification code has been sent.',
+                    'If eligible, a new code was requested. Check your email.',
                 );
             $this->assertStringNotContainsString($email, $response->getContent());
         }
@@ -186,7 +186,7 @@ class PasswordResetTest extends TestCase
         $deleted->update(['account_deleted_at' => now()]);
         $this->postJson('/api/password/forgot', ['email' => $deleted->email])
             ->assertAccepted()
-            ->assertJsonPath('message', 'If eligible, a verification code has been sent.');
+            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
         Notification::assertNothingSent();
         $this->assertDatabaseCount('password_reset_requests', 0);
     }
@@ -288,7 +288,7 @@ class PasswordResetTest extends TestCase
             'email' => $staff->email,
         ])
             ->assertAccepted()
-            ->assertJsonPath('message', 'If eligible, a verification code has been sent.');
+            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
 
         Notification::assertNotSentTo($staff, PasswordResetCodeNotification::class);
         $this->postJson('/api/password/code/verify', [
@@ -421,6 +421,7 @@ class PasswordResetTest extends TestCase
         $this->useDatabaseMailQueue();
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $this->travel(46)->seconds();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
@@ -436,6 +437,7 @@ class PasswordResetTest extends TestCase
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $oldCode = $this->resetCodeSentTo($user);
+        $this->travel(46)->seconds();
         Notification::fake();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $newCode = $this->resetCodeSentTo($user);
@@ -475,6 +477,76 @@ class PasswordResetTest extends TestCase
         (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
         config()->set('mail.default', 'array');
+    }
+
+    public function test_password_resend_cannot_bypass_the_cooldown_by_changing_ip(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 45);
+        $before = PasswordResetRequest::query()->sole()->getAttributes();
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.40'])
+            ->postJson('/api/password/forgot', ['email' => strtoupper($user->email)])
+            ->assertTooManyRequests()->assertHeader('Retry-After');
+        $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
+    }
+
+    public function test_password_resend_reports_the_longer_endpoint_limit_after_the_last_allowed_request(): void
+    {
+        foreach (range(1, 2) as $attempt) {
+            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 45);
+            $this->travel(45)->seconds();
+        }
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 510);
+        $this->travel(45)->seconds();
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '465');
+    }
+
+    public function test_password_resend_preserves_failed_attempts_and_queue_failure_preserves_state(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        $request = PasswordResetRequest::query()->sole();
+        $request->update(['verification_attempts' => 2]);
+        $this->travel(46)->seconds();
+        $service->sendCode($user->email);
+        $this->assertSame(2, $request->fresh()->verification_attempts);
+        $before = $request->fresh()->getAttributes();
+        $this->travel(46)->seconds();
+        $this->mock(\Illuminate\Contracts\Notifications\Dispatcher::class, fn ($mock) => $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('queue unavailable')));
+        try {
+            $service->sendCode($user->email);
+            $this->fail('Expected queue failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame($before, $request->fresh()->getAttributes());
+        }
+    }
+
+    public function test_password_queue_insert_failure_keeps_the_previous_issuance_and_generic_response(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $before = PasswordResetRequest::query()->sole()->getAttributes();
+        $this->travel(46)->seconds();
+        \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
+        $unknown = $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
+        $this->assertSame($known->json('message'), $unknown->json('message'));
+        $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
+        $this->assertDatabaseCount('jobs', 1);
+    }
+
+    public function test_locked_password_reset_issuance_is_not_mailed(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        PasswordResetRequest::query()->update(['verification_attempts' => 5]);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
     private function setupTokenSentTo(User $user): string

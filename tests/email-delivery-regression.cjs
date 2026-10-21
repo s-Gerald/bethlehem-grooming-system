@@ -50,6 +50,18 @@ function harness(statuses) {
   assert.deepEqual(failed.events, ['queued', 'failed']);
   assert.equal(failed.scheduled, 0);
 
+  const retrying = harness(['sending', 'retrying', 'sent']);
+  await new Promise(resolve => setImmediate(resolve));
+  await retrying.tick();
+  await retrying.tick();
+  assert.deepEqual(retrying.events, ['queued', 'sent'], 'Recoverable attempts continue existing tracking without extra watchers');
+  assert.equal(retrying.scheduled, 0);
+
+  const superseded = harness(['superseded']);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(superseded.events, ['queued', 'superseded']);
+  assert.equal(superseded.scheduled, 0, 'Obsolete receipts stop polling');
+
   const delayed = harness(['offline']);
   await new Promise(resolve => setImmediate(resolve));
   for (let i = 1; i < 24; i++) await delayed.tick();

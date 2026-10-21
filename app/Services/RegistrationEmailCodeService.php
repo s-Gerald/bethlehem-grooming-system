@@ -9,7 +9,6 @@ use App\Notifications\VerifyEmailNotification;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Throwable;
 
 class RegistrationEmailCodeService
 {
@@ -21,7 +20,7 @@ class RegistrationEmailCodeService
     {
         self::assertMailerDoesNotLogCodes();
         EmailVerificationController::assertMailCanBeDelivered();
-        [$code, $hash, $previous, $recipient] = DB::transaction(function () use ($registrant): array {
+        return DB::transaction(function () use ($registrant): string {
             $locked = $registrant->newQuery()->whereKey($registrant->getKey())->lockForUpdate()->firstOrFail();
             if ($locked instanceof User && ($locked->email_verified_at || ! $locked->is_active || $locked->is_archived)) {
                 throw new \RuntimeException('Account is not eligible for verification.');
@@ -36,40 +35,27 @@ class RegistrationEmailCodeService
                     'retry_after' => $remaining,
                 ], 429)->header('Retry-After', (string) $remaining));
             }
+            $attempts = $locked->email_verification_expires_at && now()->isBefore($locked->email_verification_expires_at)
+                ? $locked->email_verification_attempts : 0;
+            if ($attempts >= self::MAX_ATTEMPTS) {
+                $remaining = max(1, $locked->email_verification_expires_at->timestamp - now()->timestamp);
+                throw new HttpResponseException(response()->json([
+                    'success' => false, 'message' => 'Too many attempts. Try again later.', 'retry_after' => $remaining,
+                ], 429)->header('Retry-After', (string) $remaining));
+            }
             do {
                 $code = (string) random_int(100000, 999999);
             } while ($locked->email_verification_code_hash && Hash::check($code, $locked->email_verification_code_hash));
-            $hash = Hash::make($code);
-            $previous = $locked->only([
-                'email_verification_code_hash', 'email_verification_token',
-                'email_verification_expires_at', 'email_verification_attempts',
-                'email_verification_last_sent_at',
-            ]);
             $locked->update([
                 'email_verification_token' => null,
-                'email_verification_code_hash' => $hash,
+                'email_verification_code_hash' => Hash::make($code),
                 'email_verification_expires_at' => now()->addMinutes(self::TTL_MINUTES),
-                'email_verification_attempts' => 0,
+                'email_verification_attempts' => $attempts,
                 'email_verification_last_sent_at' => now(),
             ]);
-            return [$code, $hash, $previous, $locked];
-        });
-        try {
-            return AuthenticationMailDelivery::queue($recipient, new VerifyEmailNotification($code), $recipient,
+            return AuthenticationMailDelivery::queue($locked, new VerifyEmailNotification($code), $locked,
                 'email_verification_code_hash', 'email_verification_expires_at');
-        } catch (Throwable $exception) {
-            // Restore only our issuance; never overwrite a newer resend or a
-            // consumed registration. Queue jobs are encrypted and retry delivery.
-            DB::transaction(function () use ($registrant, $hash, $previous): void {
-                $locked = $registrant->newQuery()->whereKey($registrant->getKey())
-                    ->where('email_verification_code_hash', $hash)->lockForUpdate()->first();
-                if (! $locked) return;
-                $previous['email_verification_attempts'] = min(self::MAX_ATTEMPTS,
-                    $previous['email_verification_attempts'] + $locked->email_verification_attempts);
-                $locked->update($previous);
-            });
-            throw $exception;
-        }
+        });
     }
 
     public static function assertMailerDoesNotLogCodes(): void

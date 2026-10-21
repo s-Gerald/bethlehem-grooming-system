@@ -1,5 +1,12 @@
 // A queued notification is not yet accepted by the mail transport.
 window.AuthenticationEmailDelivery = {
+  failureMessage(status) {
+    return {
+      failed: "Couldn't send the code. Try again.",
+      delayed: "Email is delayed. Try again shortly.",
+      superseded: "Code replaced or expired. Request a new code.",
+    }[status] || "";
+  },
   watch(receipt, onStatus) {
     let stopped = false;
     let timer;

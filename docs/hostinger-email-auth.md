@@ -6,6 +6,115 @@ SMTP relay. Commit `5c12883` commented out the login challenge; the restored
 flow requires a six-digit code for customer, staff, and admin password sign-ins.
 Registration still requires email verification before creating the account.
 
+## Local OTP resend review — 2026-10-21
+
+This review and its changes are local to `gerald-frontend`. No commit, push,
+deployment, live inspection, production migration, or real email send was made.
+The historical host inspections below do not establish the current deployed state
+or the cause of the beta tester's latest delivery failure.
+
+Confirmed source defects were delayed input clearing, credential-change mail
+bypassing shared issuance guards/tracking, replacement state committing before
+queue insertion (including Laravel after-commit insertion failures), resettable
+attempt counters, missing account-level password-recovery cooldowns, and success
+responses omitting longer endpoint throttle deadlines. Approved or attempt-locked
+codes could also remain eligible for queued delivery. These paths now use row
+locks, transactional encrypted database-job insertion, the existing receipt
+tracker, and server deadlines. No compensating OTP-state restoration remains.
+Staff setup links retain their existing separate workflow.
+
+No migration is needed. Atomic issuance requires the existing `database` queue
+connection to use the same Laravel database connection as the OTP records.
+`AUTH_MAIL_DELIVERY=queued` and optional `immediate` delivery remain supported;
+immediate mode retains one persisted job as fallback and performs SMTP only after
+commit/response. Non-durable queue drivers are rejected outside PHPUnit's testing
+environment. Keep any `AUTH_MAIL_QUEUE` name in the existing worker's queue list;
+this change does not require another queue, worker, or cron.
+
+Registration/password resends retain 45-second cooldowns; sign-in/credential
+changes retain 60 seconds. Existing endpoint limits remain, with public recovery
+limits also keyed by a normalized email hash across IP addresses. Success
+`resend_after` includes an exhausted endpoint's longer wait, and rejected requests
+retain `Retry-After`. Resending preserves incorrect-attempt counts until expiry;
+an exhausted issuance cannot use resend to reset its counter. Credential hashes
+remain available for comparing replacement codes even after expiry/lockout, but
+verification and delivery both reject those invalid issuances.
+
+Private signup credentials, sign-in browser challenges, and authenticated
+credential changes receive delivery receipts. Public registration recovery and
+forgot-password requests cannot prove email ownership, so they receive generic
+responses and no private receipt, including when queue insertion fails. This is
+an intentional privacy limit: their UI cannot disclose eligibility-specific mail
+failures. Unknown/ineligible addresses follow the same public request cooldowns.
+The existing sign-in lost-response recovery remains available until the browser
+acknowledges session storage; approval blocks resend/mail, and acknowledgement
+removes the challenge so its code cannot establish another session.
+
+Local verification used fake notifications, array transports, SQLite in memory,
+actual encrypted database jobs, insert-failure triggers, and fake failing
+transports. These checks establish application behavior, not Brevo acceptance,
+inbox receipt, or real concurrent MySQL lock timing. Run the affected suites:
+
+```powershell
+php vendor/phpunit/phpunit/phpunit --filter 'EmailVerificationTest|PasswordResetTest|AdminCredentialChangeTest|IndependentAuthenticationSessionsTest|TestingEnvironmentTest|PasswordResetInterfaceTest|StaffSettingsInterfaceTest|AdminStaffAccountManagementTest|SessionLockTest' tests/Feature
+node tests/customer-signup-verification-regression.cjs
+node tests/frontend-auth-session-regression.cjs
+node tests/email-delivery-regression.cjs
+node tests/admin-security-settings-regression.cjs
+node tests/session-inactivity-regression.cjs
+```
+
+Final results: 174 PHP tests, 2,213 assertions, and all five JavaScript scripts
+passed; no remaining failures in these suites. `git diff --check` passed.
+Obsolete fixed-cooldown source assertions, OTP rollback restoration, the
+credential modal's redundant success notice, and stale initial-delivery failure
+state after a successful private resend were removed or corrected.
+
+Login/password issuance reuses locked models instead of querying again to locate
+the notification guard. Additional reads are bounded throttle/cache checks, one
+target-account lock on credential requests, and the credential worker's issuance
+guard. Credential screens now reuse the existing authorized receipt watcher
+(up to 24 checks, five seconds apart); other workflows gain no extra polling.
+There is no new polling endpoint, SMTP call inside an issuance transaction, or
+new worker/queue. Production API latency and Core Web Vitals were not measured.
+
+Headless Edge additionally exercised the customer OTP screens at 390px and 1280px
+with a fake API: full/partial clearing while requests are unresolved, disabled
+verification, duplicate clicks, failed resend recovery, paste, Backspace, typing,
+focus, and horizontal overflow. No Laravel API or SMTP transport was connected.
+
+### Owner's later production verification
+
+Read-only inspection first; do not print secrets, OTPs, notification payloads,
+tokens, or full receipts:
+
+1. Inspect Laravel's **effective cached configuration**, not just `.env`: mailer
+   and nested failover transports must be deliverable; verify Brevo SMTP host,
+   port/TLS, verified sender, and that credentials are configured privately.
+2. Confirm the existing Hostinger cron or supervised worker, its last execution,
+   selected PHP binary/project path, `database` connection, queue names, shared
+   persistent cache, SMTP/worker timeout ordering, and shared encryption key.
+   Inspect backlog/reservations without dumping payloads; do not add a worker.
+3. Correlate redacted authentication delivery IDs and timestamps in application
+   logs: `queued` means accepted work; `sending` is an attempt; `retrying` is
+   recoverable; `sent` means transport acceptance; `failed` means exhaustion;
+   `superseded` means obsolete, consumed, expired, or locked. `delayed` is the
+   browser's bounded tracking timeout, not proof of delivery failure.
+4. Inspect `php artisan queue:failed` and sanitized failure summaries. Do not bulk
+   retry expired authentication jobs or expose their encrypted payloads/secrets.
+5. Inspect Brevo transactional events for the controlled request: accepted,
+   deferred, delivered, bounced, or blocked. Compare timestamps with Laravel;
+   transport acceptance alone does not establish inbox delivery.
+
+Then use only owner-controlled inboxes and dedicated test accounts for a
+controlled application test: request a code, wait for the returned cooldown,
+resend with full and partial input, confirm immediate clearing and receipt of
+the replacement email, reject the previous code, verify the new code, and check
+single-use completion and role redirect. Repeat registration, each sign-in role,
+forgot password, and admin/staff credential changes. Keep codes out of reports.
+Configuration corrections, worker restarts, or deployment remain owner actions;
+none were performed during this review.
+
 ## Confirmed test-host inspection — 2026-10-18
 
 Read-only checks through the authenticated Hostinger connector confirmed:
@@ -278,8 +387,8 @@ Never log or commit OTPs, passwords, queue payloads, or mail credentials.
 
 New jobs include a private delivery receipt in their encrypted queue middleware.
 The UI polls every five seconds for at most two minutes. Normal queued, sending,
-retrying, accepted, and delayed states do not display banners or delivery claims.
-Only terminal failure prompts the user; OTP entry never waits for the receipt.
+retrying, and accepted states remain quiet. Failed, delayed, or superseded
+requests use one short existing message area; OTP entry never waits for a receipt.
 The status endpoint never returns
 email addresses, codes, exception details, or credentials. Public email recovery
 resends expose no receipt unless the private pending-registration edit credential

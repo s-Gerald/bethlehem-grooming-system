@@ -375,7 +375,7 @@ class AdminSecurityController extends Controller
                 'success' => false,
                 'message' => 'Please wait before requesting another code.',
                 'retry_after' => $result['retry_after'],
-            ], 429);
+            ], 429)->header('Retry-After', (string) $result['retry_after']);
         }
 
         if ($result['status'] !== 'resent') {
@@ -387,12 +387,14 @@ class AdminSecurityController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'A new security code was sent.',
+            'message' => 'New code requested. Check your email.',
             'change_id' => $result['change_id'],
             'purpose' => $result['purpose'],
             'target_name' => $result['target_name'],
             'confirmation_email' => $result['confirmation_email'],
             'expires_at' => $result['expires_at'],
+            'resend_after' => $result['resend_after'],
+            'email_delivery_token' => $result['email_delivery_token'],
         ]);
     }
 
@@ -437,12 +439,14 @@ class AdminSecurityController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'A six-digit security code was sent.',
+            'message' => 'New code requested. Check your email.',
             'change_id' => $result['change_id'],
             'purpose' => $result['purpose'],
             'target_name' => $result['target_name'],
             'confirmation_email' => $result['confirmation_email'],
             'expires_at' => $result['expires_at'],
+            'resend_after' => $result['resend_after'],
+            'email_delivery_token' => $result['email_delivery_token'],
         ], 202);
     }
 

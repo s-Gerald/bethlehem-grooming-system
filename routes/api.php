@@ -29,6 +29,7 @@ use App\Http\Controllers\PosController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\WalkinController;
 use App\Http\Controllers\GroomingPricingController;
+use App\Http\Middleware\ThrottleAuthenticationResends;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/paymongo/webhook', \App\Http\Controllers\PayMongoWebhookController::class);
@@ -37,7 +38,7 @@ Route::post('/register', [AuthController::class, 'register'])->middleware('throt
 Route::put('/register/pending', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/sign-in', [AuthController::class, 'signIn']);
 Route::post('/password/forgot', [PasswordResetController::class, 'requestCode'])
-    ->middleware('throttle:3,10');
+    ->middleware(ThrottleAuthenticationResends::class.':password-resend');
 Route::post('/password/code/verify', [PasswordResetController::class, 'verifyCode'])
     ->middleware('throttle:10,1');
 Route::post('/password/reset', [PasswordResetController::class, 'reset'])
@@ -49,13 +50,13 @@ Route::post('/staff/password-setup/complete', [PasswordResetController::class, '
 Route::post('/staff/password-setup/request-new-link', [PasswordResetController::class, 'requestNewStaffSetupLink'])
     ->middleware('throttle:3,10');
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:registration-verify');
-Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:registration-resend');
+Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware(ThrottleAuthenticationResends::class.':registration-resend');
 Route::post('/email/delivery-status', [EmailVerificationController::class, 'deliveryStatus'])
     ->middleware('throttle:email-delivery-status');
 Route::post('/email/login/confirm', [LoginEmailChallengeController::class, 'confirm'])
     ->middleware('throttle:10,1');
 Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resend'])
-    ->middleware('throttle:3,5');
+    ->middleware(ThrottleAuthenticationResends::class.':3,5');
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
 Route::get('/timeslots', [BookingController::class,   'getTimeslots']);
@@ -146,7 +147,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/settings/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])
             ->middleware(['role:staff', 'throttle:10,1']);
         Route::post('/settings/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
-            ->middleware(['role:staff', 'throttle:3,10']);
+            ->middleware(['role:staff', ThrottleAuthenticationResends::class.':3,10']);
         Route::get('/admin/transactions', [PaymentController::class, 'index']);
         Route::middleware('grooming')->group(function () {
             Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary']);
@@ -304,7 +305,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/admin/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])
             ->middleware('throttle:10,1');
         Route::post('/admin/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
-            ->middleware('throttle:3,10');
+            ->middleware(ThrottleAuthenticationResends::class.':3,10');
 
         Route::post('/admin/clinic/stop-today', [ClinicClosureController::class, 'stopToday']);
         Route::post('/admin/clinic/reopen-today', [ClinicClosureController::class, 'reopenToday']);

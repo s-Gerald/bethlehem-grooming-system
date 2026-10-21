@@ -11,6 +11,7 @@ use Illuminate\Notifications\Notification;
 class ConfirmPrivilegedCredentialChangeCodeNotification extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
+    use \App\Notifications\Concerns\TracksAuthenticationMail;
 
     public int $tries = 3;
 
@@ -21,11 +22,6 @@ class ConfirmPrivilegedCredentialChangeCodeNotification extends Notification imp
         public readonly bool $targetsAdmin,
     ) {
         $this->afterCommit();
-    }
-
-    public function backoff(): array
-    {
-        return [60, 300, 900];
     }
 
     public function via(object $notifiable): array

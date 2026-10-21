@@ -27,8 +27,9 @@ class PasswordResetController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'If eligible, a verification code has been sent.',
+            'message' => 'If eligible, a new code was requested. Check your email.',
             'email' => $passwordResets->maskEmail($data['email']),
+            'resend_after' => PasswordResetService::COOLDOWN_SECONDS,
         ], 202);
     }
 

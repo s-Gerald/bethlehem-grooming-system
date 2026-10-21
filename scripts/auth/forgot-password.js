@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let resendUntil = 0;
   let resendTimer = null;
   let resendBusy = false;
+  let codeBusy = false;
 
   installVisibilityToggle("toggleNewPassword", password, ".new-password-icon-closed", ".new-password-icon-open", "new password");
   installVisibilityToggle("toggleConfirmNewPassword", confirmation, ".confirm-password-icon-closed", ".confirm-password-icon-open", "password confirmation");
@@ -68,20 +69,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (step === "password") {
       showStep("code");
     } else if (step === "code") {
-      codeInput.value = "";
+      otp.clear();
       resetGrant = "";
       verifiedCode = "";
       showStep("email");
     }
   });
 
-  const otp = window.VerificationCode.bind(codeInput, codeCells, () => setError(codeMessage));
-  const updateCodeCells = otp.refresh;
+  const otp = window.VerificationCode.bind(codeInput, codeCells, () => {
+    setError(codeMessage);
+    codeInput.setAttribute("aria-invalid", "false");
+    codeSubmit.disabled = resendBusy || codeBusy || codeInput.value.length !== 6;
+  });
+  codeSubmit.disabled = true;
 
   function updateResend() {
     const remaining = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000));
-    resend.disabled = resendBusy || remaining > 0;
-    resend.textContent = resendBusy ? "Sending..." : remaining > 0 ? `Resend code in ${remaining}s` : "Resend Code";
+    resend.disabled = resendBusy || codeBusy || remaining > 0;
+    codeInput.disabled = codeBusy;
+    back.disabled = resendBusy || codeBusy;
+    resend.textContent = resendBusy ? "Sending..." : remaining > 0 ? `Resend in ${window.VerificationCode.formatCountdown(remaining)}` : "Resend code";
     if (remaining === 0 && resendTimer) {
       window.clearInterval(resendTimer);
       resendTimer = null;
@@ -89,7 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function startResendCooldown(seconds = 45) {
-    resendUntil = Date.now() + Math.max(45, Number(seconds) || 0) * 1000;
+    resendUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
     if (resendTimer) window.clearInterval(resendTimer);
     resendTimer = window.setInterval(updateResend, 1000);
     updateResend();
@@ -97,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   emailForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (emailSubmit.disabled) return;
     requestedEmail = emailInput.value.trim().toLowerCase();
     maskedEmail = "";
     if (!requestedEmail) return;
@@ -107,17 +115,13 @@ document.addEventListener("DOMContentLoaded", () => {
       maskedEmail = response?.email || "";
       resetGrant = "";
       verifiedCode = "";
-      codeInput.value = "";
-      startResendCooldown();
+      otp.clear();
+      startResendCooldown(response?.resend_after ?? 45);
       showStep("code");
     } catch (error) {
-      // Account eligibility must not be inferred from an error response.
-      if (error?.status === 429) {
-        setError(codeMessage, "Too many requests. Please wait before trying again.");
-      } else {
-        setError(codeMessage);
-      }
-      startResendCooldown(error?.retryAfter);
+      otp.clear();
+      setError(codeMessage, error?.status === 429 ? "Too many attempts. Try again later." : "Couldn't send the code. Try again.");
+      startResendCooldown(error?.retryAfter ?? 0);
       showStep("code");
     } finally {
       emailSubmit.disabled = false;
@@ -126,32 +130,33 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   resend.addEventListener("click", async () => {
-    if (resend.disabled || !requestedEmail) return;
+    if (resend.disabled || resendBusy || codeBusy || !requestedEmail) return;
     resendBusy = true;
+    otp.clear();
+    codeInput.focus();
+    resetGrant = "";
+    verifiedCode = "";
     updateResend();
     try {
       const response = await API.requestPasswordReset(requestedEmail);
       maskedEmail = response?.email || maskedEmail;
       verifyEmail.textContent = maskedEmail || "your email address";
-      resetGrant = "";
-      verifiedCode = "";
-      codeInput.value = "";
-      setError(codeMessage);
-      updateCodeCells();
-      startResendCooldown();
+      startResendCooldown(response?.resend_after ?? 45);
     } catch (error) {
       setError(codeMessage, error?.status === 429
         ? "Too many requests. Please wait before trying again."
         : "The code could not be sent. Please try again.");
-      startResendCooldown(error?.retryAfter);
+      if (error?.retryAfter) startResendCooldown(error.retryAfter);
     } finally {
       resendBusy = false;
+      codeSubmit.disabled = codeInput.value.length !== 6;
       updateResend();
     }
   });
 
   codeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (resendBusy || codeBusy) return;
     setError(codeMessage);
     if (!/^[0-9]{6}$/.test(codeInput.value)) {
       setError(codeMessage, "Invalid or expired verification code.");
@@ -163,6 +168,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     codeSubmit.disabled = true;
+    codeBusy = true;
+    updateResend();
     try {
       const response = await API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim());
       resetGrant = response.token;
@@ -173,7 +180,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       setError(codeMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : "Invalid or expired verification code.");
     } finally {
-      codeSubmit.disabled = false;
+      codeBusy = false;
+      codeSubmit.disabled = codeInput.value.length !== 6;
+      updateResend();
     }
   });
 

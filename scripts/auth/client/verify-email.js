@@ -33,8 +33,9 @@ document.addEventListener("DOMContentLoaded", () => {
     stopDeliveryCheck();
     if (!receipt) return;
     stopDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
-      if (status === "failed" && !loginCodeMessage.textContent) {
-        showLoginCodeMessage("Couldn't send the code. Try again.", false);
+      const text = window.AuthenticationEmailDelivery.failureMessage(status);
+      if (text) {
+        showLoginCodeMessage(text, false);
       }
     });
   }
@@ -181,12 +182,13 @@ document.addEventListener("DOMContentLoaded", () => {
     clearLoginCodeMessage();
     stopDeliveryCheck();
     loginBusy = true;
+    loginOtp.clear();
+    loginCodeInput.focus();
     loginCodeResendBtn.disabled = true;
     loginCodeResendBtn.textContent = "Sending...";
     loginCodeSubmit.disabled = true;
     try {
       const result = await API.resendLoginCode();
-      loginOtp.clear();
       startResendCountdown(result?.resend_after ?? 60);
       checkDelivery(result?.email_delivery_token);
     } catch (error) {

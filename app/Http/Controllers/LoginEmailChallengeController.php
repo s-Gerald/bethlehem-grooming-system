@@ -49,7 +49,7 @@ class LoginEmailChallengeController extends Controller
         $pollTokenHash = hash('sha256', $data['poll_token']);
         $attemptKey = 'login-code:'.$pollTokenHash;
 
-        if (RateLimiter::tooManyAttempts($attemptKey, 5)) {
+        if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
             return $this->attemptsExceededResponse($attemptKey);
         }
 
@@ -58,6 +58,10 @@ class LoginEmailChallengeController extends Controller
                 ->where('poll_token_hash', $pollTokenHash)
                 ->lockForUpdate()
                 ->first();
+
+            if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
+                return $this->attemptsExceededResponse($attemptKey);
+            }
 
             if (! $challenge) {
                 RateLimiter::hit($attemptKey, $this->defaultAttemptDecaySeconds());
@@ -90,7 +94,7 @@ class LoginEmailChallengeController extends Controller
                     $challenge->expires_at->getTimestamp() - now()->getTimestamp(),
                 ));
 
-                if (RateLimiter::tooManyAttempts($attemptKey, 5)) {
+                if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
                     return $this->attemptsExceededResponse($attemptKey);
                 }
 
@@ -150,7 +154,7 @@ class LoginEmailChallengeController extends Controller
 
     private function expiredResponse(LoginEmailChallenge $challenge)
     {
-        if (! now()->isAfter($challenge->expires_at)) {
+        if (now()->isBefore($challenge->expires_at)) {
             return null;
         }
 
