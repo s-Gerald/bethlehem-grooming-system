@@ -83,19 +83,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     clearMessage();
 
-    if (!phone) {
-      showMessage("error", "Mobile number is required.");
-      phoneInput.focus();
-      return;
-    }
-
     if (!email) {
       showMessage("error", "Email address is required.");
       emailInput.focus();
       return;
     }
 
-    if (!/^09\d{9}$/.test(phone)) {
+    if (phone && !/^09\d{9}$/.test(phone)) {
       showMessage("error", "Phone number must start with 09 and be exactly 11 digits (e.g. 09XXXXXXXXX).");
       phoneInput.focus();
       return;

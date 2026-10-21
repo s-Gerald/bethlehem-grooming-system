@@ -984,6 +984,23 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
     }
 
+    public function test_phone_less_customer_uses_visit_contact_without_updating_account(): void
+    {
+        $this->authenticateAs('staff');
+        DB::table('users')->insert(['user_id' => 50, 'first_name' => 'Test', 'last_name' => 'Owner', 'role' => 'customer', 'phone' => null]);
+        $payload = [
+            'fname' => 'Test', 'lname' => 'Owner', 'phone' => '',
+            'owner_record_type' => 'registered', 'customer_user_id' => 50,
+            'pet_name' => 'Buddy', 'species' => 'Dog', 'common_concerns' => ['Routine check-up'], 'terms_agreed' => true,
+        ];
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $payload['phone'] = '09179998888';
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated();
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09179998888']);
+        $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
+    }
+
     public function test_staff_can_create_a_clinic_walk_in(): void
     {
         $this->authenticateAs('staff');

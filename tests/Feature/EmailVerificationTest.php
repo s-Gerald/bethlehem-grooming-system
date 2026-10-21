@@ -26,7 +26,7 @@ class EmailVerificationTest extends TestCase
             $table->string('first_name', 100);
             $table->string('last_name', 100);
             $table->string('username', 50)->nullable()->unique();
-            $table->string('phone', 20)->unique();
+            $table->string('phone', 20)->nullable()->unique();
             $table->string('email', 150)->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('email_verification_token', 64)->nullable()->unique();
@@ -44,7 +44,7 @@ class EmailVerificationTest extends TestCase
             $table->string('first_name', 100);
             $table->string('last_name', 100);
             $table->string('username', 50)->nullable()->unique();
-            $table->string('phone', 20)->unique();
+            $table->string('phone', 20)->nullable()->unique();
             $table->string('email', 150)->unique();
             $table->string('password_hash');
             $table->string('email_verification_token', 64)->nullable()->unique();
@@ -895,15 +895,149 @@ class EmailVerificationTest extends TestCase
             ->assertTooManyRequests();
     }
 
-    public function test_signup_requires_both_contact_fields(): void
+    public function test_signup_requires_email(): void
     {
-        foreach (['email', 'phone'] as $field) {
+        foreach ([null, '', 'invalid-email'] as $email) {
             $payload = $this->registrationPayload();
-            unset($payload[$field]);
-            $this->postJson('/api/register', $payload)->assertUnprocessable()->assertJsonValidationErrors($field);
+            $payload['email'] = $email;
+            $this->postJson('/api/register', $payload)->assertUnprocessable()->assertJsonValidationErrors('email');
         }
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('pending_customer_registrations', 0);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('optionalPhones')]
+    public function test_optional_phone_variants_complete_only_after_email_verification(array $phoneInput, ?string $expectedPhone): void
+    {
+        Notification::fake();
+        User::factory()->create(['phone' => null]);
+        $payload = $this->registrationPayload();
+        unset($payload['phone']);
+        $payload = [...$payload, ...$phoneInput];
+        $payload['email'] = 'new.customer@example.test';
+        $this->postJson('/api/register', $payload)->assertCreated()
+            ->assertJsonPath('requires_verification', true)->assertJsonMissingPath('token');
+        $pending = PendingCustomerRegistration::where('email', $payload['email'])->firstOrFail();
+        $this->assertSame($expectedPhone, $pending->phone);
+        $this->assertDatabaseMissing('users', ['email' => $payload['email']]);
+        $this->postJson('/api/email/verify', ['email' => $pending->email])->assertUnprocessable();
+        $verified = $this->postJson('/api/email/verify', [
+            'email' => $pending->email, 'code' => $this->verificationCodeSentTo($pending),
+        ])->assertOk()->assertJsonStructure(['token']);
+        $user = User::where('email', $payload['email'])->firstOrFail();
+        $this->assertSame($expectedPhone, $user->phone);
+        $this->assertNull($user->phone_verified_at);
+        $this->assertNotNull($user->email_verified_at);
+        $this->withToken($verified->json('token'))->getJson('/api/me')
+            ->assertOk()->assertJsonPath('user.phone', $expectedPhone);
+        $this->assertDatabaseCount('users', 2);
+    }
+
+    public static function optionalPhones(): array
+    {
+        return [
+            'null' => [['phone' => null], null],
+            'empty' => [['phone' => ''], null],
+            'omitted' => [[], null],
+            'whitespace' => [['phone' => '   '], null],
+            'valid' => [['phone' => '09170000001'], '09170000001'],
+        ];
+    }
+
+    public function test_nullable_phone_migration_preserves_records_and_unique_indexes(): void
+    {
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            Schema::table($name, fn (Blueprint $table) => $table->string('phone', 20)->nullable(false)->change());
+        }
+        $user = User::factory()->create(['phone' => '09170000001']);
+        $pending = PendingCustomerRegistration::create([
+            'first_name' => 'Pending', 'last_name' => 'Customer', 'phone' => '09170000002',
+            'email' => 'pending@example.test', 'password_hash' => Hash::make('password'),
+        ]);
+        $migration = require base_path('database/migrations/2026_10_21_000001_make_customer_phone_nullable.php');
+        $migration->up();
+        $this->assertSame('09170000001', $user->fresh()->phone);
+        $this->assertSame('09170000002', $pending->fresh()->phone);
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertTrue(Schema::hasIndex($name, ['phone'], 'unique'));
+            $this->assertTrue(Schema::hasIndex($name, ['email'], 'unique'));
+            foreach (['one', 'two'] as $suffix) {
+                DB::table($name)->insert([
+                    'first_name' => 'Optional', 'last_name' => 'Customer', 'phone' => null,
+                    'email' => "$name-$suffix@example.test", 'password_hash' => 'unchanged-hash',
+                ]);
+            }
+            try {
+                DB::table($name)->insert([
+                    'first_name' => 'Duplicate', 'last_name' => 'Customer',
+                    'phone' => $name === 'users' ? '09170000001' : '09170000002',
+                    'email' => "$name-duplicate@example.test", 'password_hash' => 'unchanged-hash',
+                ]);
+                $this->fail('Non-null phone uniqueness must remain enforced.');
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+                $this->assertStringContainsString('phone', $exception->getMessage());
+            }
+        }
+        DB::table('users')->whereNull('phone')->delete();
+        try {
+            $migration->down();
+            $this->fail('Rollback must not destroy phone-less records.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('NULL values exist', $exception->getMessage());
+        }
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertTrue(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
+            DB::table($name)->whereNull('phone')->delete();
+        }
+        $migration->down();
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertFalse(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
+        }
+    }
+
+    public function test_multiple_phone_less_registrations_can_remain_pending(): void
+    {
+        Notification::fake();
+        foreach (['first', 'second'] as $name) {
+            $this->postJson('/api/register', [
+                ...$this->registrationPayload(), 'email' => "$name@example.test", 'phone' => null, 'username' => null,
+            ])->assertCreated();
+        }
+        $this->assertDatabaseCount('pending_customer_registrations', 2);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidSignupPhones')]
+    public function test_invalid_signup_phones_are_rejected(mixed $phone): void
+    {
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'phone' => $phone])
+            ->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+    }
+
+    public static function invalidSignupPhones(): array
+    {
+        return [['09123'], ['08123456789'], ['091234567890'], ['not-a-phone'], [9123456789], [[]]];
+    }
+
+    public function test_pending_phone_can_be_removed_and_added_with_rotating_edit_credentials(): void
+    {
+        Notification::fake();
+        $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        foreach (['', '09178889999'] as $phone) {
+            $pending = PendingCustomerRegistration::firstOrFail();
+            $oldCode = $this->verificationCodeSentTo($pending);
+            $this->travel(46)->seconds();
+            Notification::fake();
+            $payload = [...$this->registrationPayload(), 'phone' => $phone, 'registration_token' => $response->json('registration_token')];
+            $response = $this->putJson('/api/register/pending', $payload)->assertCreated();
+            $this->assertSame($phone ?: null, $pending->fresh()->phone);
+            $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
+            $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $oldCode])->assertUnprocessable();
+        }
+        $pending = PendingCustomerRegistration::firstOrFail();
+        $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $this->verificationCodeSentTo($pending)])
+            ->assertOk();
+        $this->assertDatabaseHas('users', ['phone' => '09178889999', 'phone_verified_at' => null]);
     }
 
     public function test_signup_code_is_single_use_and_never_verifies_the_phone(): void

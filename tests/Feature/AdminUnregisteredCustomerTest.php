@@ -381,5 +381,10 @@ class AdminUnregisteredCustomerTest extends TestCase
             ->assertJsonPath('pets.0.ownerName', 'Walkin Active')
             ->assertJsonPath('pets.0.ownerRecordType', 'registered')
             ->assertJsonPath('pets.0.ownerStatus', 'Active');
+
+        DB::table('users')->where('user_id', 10)->update(['phone' => null]);
+        $this->getJson('/api/admin/walk-in/customers?q=Walkin')
+            ->assertOk()->assertJsonPath('customers.0.phone', null)
+            ->assertJsonPath('customers.0.pets.0.petName', 'Buddy');
     }
 }

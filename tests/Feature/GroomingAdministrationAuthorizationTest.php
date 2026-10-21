@@ -1836,6 +1836,25 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ];
     }
 
+    public function test_phone_less_customer_uses_visit_contact_without_updating_account(): void
+    {
+        $this->authenticateAs('admin');
+        DB::table('users')->insert(['user_id' => 50, 'first_name' => 'Test', 'last_name' => 'Owner', 'role' => 'customer', 'phone' => null]);
+        $payload = [
+            'fname' => 'Test', 'lname' => 'Owner', 'phone' => '',
+            'owner_record_type' => 'registered', 'customer_user_id' => 50,
+            'pets' => [['pet_name' => 'Buddy', 'species' => 'Dog', 'weight' => 8,
+                'groomer_id' => 1, 'services' => [['service_slug' => 'partial_grooming']]]],
+            'terms_agreed' => true, 'sedation_consent' => false,
+        ];
+        $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $payload['phone'] = '09179998888';
+        $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated();
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09179998888']);
+        $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
+    }
+
     public function test_existing_registered_and_unregistered_owners_keep_pet_ownership_on_walk_in(): void
     {
         $this->authenticateAs('admin');

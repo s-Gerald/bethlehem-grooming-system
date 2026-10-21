@@ -39,7 +39,7 @@
             </div>
             <div class="flex items-start gap-3">
               <div class="mt-1 h-3 w-3 rounded-full bg-[#315b7e]"></div>
-              <p>Track pre-registrations and visit status</p>
+              <p>Track your pet’s grooming status</p>
             </div>
             <div class="flex items-start gap-3">
               <div class="mt-1 h-3 w-3 rounded-full bg-[#315b7e]"></div>
@@ -96,6 +96,27 @@
                 </div>
               </div>
 
+              <!-- Email -->
+              <div>
+                <div>
+                  <label
+                    for="email"
+                    class="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    Email Address <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="Enter your email"
+                    class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
+                    aria-describedby="emailHelp"
+                    required
+                  />
+                </div>
+              </div>
+
               <!-- Username + Phone -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -121,7 +142,8 @@
                     for="phone"
                     class="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Mobile Number <span class="text-red-500">*</span>
+                    Mobile Number
+                    <span class="font-normal text-gray-400">(Optional)</span>
                   </label>
                   <input
                     type="tel"
@@ -131,29 +153,6 @@
                     maxlength="11"
                     inputmode="numeric"
                     class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
-                    aria-describedby="phoneHelp"
-                    required
-                  />
-                </div>
-              </div>
-
-              <!-- Email -->
-              <div>
-                <div>
-                  <label
-                    for="email"
-                    class="block text-sm font-medium text-gray-700 mb-2"
-                  >
-                    Email Address <span class="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    placeholder="Enter your email"
-                    class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
-                    aria-describedby="emailHelp"
-                    required
                   />
                 </div>
               </div>
@@ -165,7 +164,7 @@
                     for="password"
                     class="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Password
+                    Password <span class="text-red-500">*</span>
                   </label>
                   <div class="relative">
                     <input
@@ -194,7 +193,7 @@
                     for="confirmPassword"
                     class="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Confirm Password
+                    Confirm Password <span class="text-red-500">*</span>
                   </label>
                   <div class="relative">
                     <input
@@ -275,6 +274,6 @@
     </div>
 
     <script src="../../scripts/api.js?v=email-auth-20261018&auth=session-scope-20261006&session=lock-20261018" defer></script>
-    <script src="../../scripts/auth/client/signup.js?v=signup-code-20261005" defer></script>
+    <script src="../../scripts/auth/client/signup.js?v=optional-phone-20261021" defer></script>
   </body>
 </html>

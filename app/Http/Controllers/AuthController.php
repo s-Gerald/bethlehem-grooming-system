@@ -25,11 +25,13 @@ class AuthController extends Controller
             )))
             ->delete();
 
+        $phone = $request->input('phone');
         $request->merge([
             'email' => Str::lower(trim((string) $request->input('email'))),
             'username' => filled($request->input('username'))
                 ? trim((string) $request->input('username'))
                 : null,
+            'phone' => is_string($phone) && trim($phone) === '' ? null : $phone,
         ]);
 
         [$pendingRegistration, $editToken] = DB::transaction(function () use ($request): array {
@@ -55,7 +57,7 @@ class AuthController extends Controller
                     Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey()),
                 ],
                 'phone' => [
-                    'required',
+                    'nullable',
                     'string',
                     'regex:/^09\d{9}$/',
                     Rule::unique('users', 'phone'),

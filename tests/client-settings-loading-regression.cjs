@@ -110,11 +110,12 @@ async function testSettingsWaitsForProfile() {
   assert.equal(element("settingsLoadingScreen").classList.contains("hidden"), false);
   assert.equal(element("accountDisplayName").textContent, "Loading...");
 
-  request.resolve({ user: { first_name: "Gerald", last_name: "Senining", email: "gerald@example.com" } });
+  request.resolve({ user: { first_name: "Gerald", last_name: "Senining", email: "gerald@example.com", phone: null } });
   await flush();
 
   assert.equal(element("accountDisplayName").textContent, "Gerald Senining");
   assert.equal(element("settingsFirstName").value, "Gerald");
+  assert.equal(element("settingsPhone").value, "Not provided");
   assert.equal(element("settingsContent").hasAttribute("inert"), false);
   assert.equal(element("settingsContent").classList.contains("hidden"), false);
   assert.equal(element("settingsLoadingScreen").classList.contains("hidden"), true);

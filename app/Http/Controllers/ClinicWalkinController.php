@@ -319,7 +319,7 @@ class ClinicWalkinController extends Controller
                 'lname' => $user->last_name,
                 'mname' => null,
                 'email' => $user->email,
-                'phone' => $user->phone,
+                'phone' => $user->phone ?? $data['phone'],
             ]
             : ($unregisteredCustomer
                 ? [

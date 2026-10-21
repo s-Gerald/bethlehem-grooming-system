@@ -65,8 +65,11 @@ class EmailVerificationController extends Controller
 
                     $conflictingUser = User::query()
                         ->where(function ($query) use ($pendingRegistration) {
-                            $query->where('email', $pendingRegistration->email)
-                                ->orWhere('phone', $pendingRegistration->phone);
+                            $query->where('email', $pendingRegistration->email);
+
+                            if ($pendingRegistration->phone !== null) {
+                                $query->orWhere('phone', $pendingRegistration->phone);
+                            }
 
                             if ($pendingRegistration->username) {
                                 $query->orWhere('username', $pendingRegistration->username);

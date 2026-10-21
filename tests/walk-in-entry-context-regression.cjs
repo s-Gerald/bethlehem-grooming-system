@@ -123,6 +123,22 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
     await resume.initialization;
     assert.equal(JSON.parse(resume.storage.get("walkInOwnerStep")).firstName, "Saved");
     assert.equal(resume.storage.get("walkInPetStep"), "stale", "Returning from pet step preserves draft");
+
+    const missing = ownerFlow(type);
+    await missing.initialization;
+    missing.context.customer = { ...values, id: 17, recordType: 'registered', phone: null, pets: [{ petId: 14 }] };
+    missing.context.API.validateWalkInNewOwner = () => { throw Error('Selected customers are not new owners'); };
+    vm.runInContext('selectExistingCustomer(customer)', missing.context);
+    assert.equal(missing.window.location.href, '', 'Collect a missing contact in the existing form');
+    assert.equal(missing.get('ownerFirstName').value, 'Test');
+    assert.equal(missing.get('walkInOwnerNextBtn').disabled, true);
+    missing.get('ownerPhoneNumber').value = '09179998888';
+    await vm.runInContext('handleSubmit({ preventDefault() {} })', missing.context);
+    const completed = JSON.parse(missing.storage.get('walkInOwnerStep'));
+    assert.equal(completed.customerUserId, 17);
+    assert.equal(completed.phone, '09179998888');
+    assert.equal(completed.existingPets[0].petId, 14);
+    assert.equal(missing.window.location.href, './walk-in-pet-details.html');
   }
 
   const clinic = vm.createContext({ document: { addEventListener() {} }, window: { location: {} } });

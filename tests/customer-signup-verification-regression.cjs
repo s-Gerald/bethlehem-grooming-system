@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, phone = '' } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -16,6 +16,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     ['pendingVerificationResendUntil', String(now + (deliveryFailed ? 0 : 45000))],
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
+  if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone }));
   let nextId = 0;
   let ready;
   const elements = new Map();
@@ -41,6 +42,8 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         focus() { document.activeElement = this; handlers.focus?.(); },
         checkValidity() { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
         reportValidity() {},
+        setCustomValidity(message) { this.validationMessage = message; },
+        querySelector() { return null; },
         querySelectorAll() { return cells; },
       });
     }
@@ -48,13 +51,15 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   const cells = Array.from({ length: 6 }, (_, i) => element(`cell${i}`));
   const window = {
-    location: { search: '', hash: '', replace(target) { calls.push(['redirect', target]); } },
+    location: { search: editing ? '?edit=1' : '', hash: '', replace(target) { calls.push(['redirect', target]); } },
     setInterval(callback) { const id = ++nextId; intervals.set(id, callback); return id; },
     clearInterval(id) { intervals.delete(id); },
     clearTimeout(id) { timeouts.delete(id); },
     setTimeout(callback, ms) { const id = ++nextId; timeouts.set(id, { callback, at: now + ms }); return id; },
   };
   const API = {
+    async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_token: 'rotated-edit-token' }; },
+    async updatePendingRegistration(payload, token) { calls.push(['update', payload, token]); return { requires_verification: true, registration_token: 'rotated-edit-token' }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 45 }; },
@@ -69,13 +74,16 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       removeItem(key) { if (noStorage) throw Error('blocked'); storage.delete(key); },
     },
   });
-  for (const source of ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', 'scripts/auth/client/signup-verification.js']) {
+  if (signup) {
+    for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
+  }
+  for (const source of signup ? ['scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   ready();
   return {
     element, cells, API, calls, storage,
-    dispatch(id, event, extra = {}) { return element(id).handlers[event]({ preventDefault() {}, ...extra }); },
+    dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
     advance(ms) {
       now += ms;
       for (const [id, timeout] of [...timeouts]) if (timeout.at <= now) { timeouts.delete(id); timeout.callback(); }
@@ -86,6 +94,52 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const signupHtml = fs.readFileSync(path.join(root, 'pages/client/signup.html'), 'utf8');
+  const requiredFields = { firstName: 'First Name', lastName: 'Last Name', email: 'Email Address', password: 'Password', confirmPassword: 'Confirm Password' };
+  const optionalFields = { username: 'Username', phone: 'Mobile Number' };
+  for (const [id, title] of Object.entries({ ...requiredFields, ...optionalFields })) {
+    const label = signupHtml.match(new RegExp(`<label\\s+for="${id}"[^>]*>([\\s\\S]*?)</label>`))[1];
+    const text = label.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const input = signupHtml.match(new RegExp(`<input\\s[^>]*id="${id}"[^>]*>`))[0];
+    if (id in requiredFields) {
+      assert.equal(text, `${title} *`);
+      assert.match(label, /<span class="text-red-500">\*<\/span>/);
+      assert.match(input, /\srequired(?:\s|\/|>)/);
+    } else {
+      assert.equal(text, `${title} (Optional)`);
+      assert.doesNotMatch(label, /text-red|\*/);
+      assert.doesNotMatch(input, /\srequired(?:\s|\/|>)/);
+    }
+  }
+  assert.match(signupHtml, /Track your pet’s grooming status/);
+  assert.doesNotMatch(signupHtml, /Track pre-registrations and visit status/);
+  assert.ok(signupHtml.indexOf('for="email"') < signupHtml.indexOf('for="username"'));
+
+  for (const editing of [false, true]) {
+    for (const phone of ['', '09171234567']) {
+      const signup = page({ signup: true, editing, phone });
+      signup.dispatch('phone', 'input');
+      assert.equal(signup.element('phone').validationMessage, '');
+      await signup.dispatch('signupForm', 'submit');
+      assert.equal(signup.calls[0]?.[0], editing ? 'update' : 'register');
+      assert.equal(signup.calls[0][1].phone, phone || null);
+      assert.equal(signup.calls[0][1].email, 'customer@example.test');
+      if (editing) assert.equal(signup.calls[0][2], 'private-edit-credential');
+      assert.equal(signup.storage.get('pendingRegistrationEditToken'), 'rotated-edit-token');
+      assert.deepEqual(signup.calls.at(-1), ['redirect', './verify-email.html']);
+      assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
+    }
+  }
+  const invalidPhone = page({ signup: true, phone: '08123456789' });
+  await invalidPhone.dispatch('signupForm', 'submit');
+  assert.equal(invalidPhone.calls.length, 0);
+  assert.match(invalidPhone.element('signupMessage').textContent, /Phone number must/);
+  invalidPhone.element('phone').value = '';
+  invalidPhone.dispatch('phone', 'input');
+  assert.equal(invalidPhone.element('phone').validationMessage, '');
+  await invalidPhone.dispatch('signupForm', 'submit');
+  assert.equal(invalidPhone.calls[0][1].phone, null);
+
   const p = page();
   assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
   assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code sent to');

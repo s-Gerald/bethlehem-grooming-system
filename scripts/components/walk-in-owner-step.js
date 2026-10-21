@@ -43,6 +43,7 @@ let customerSearchRequestId = 0;
 let customerSearchResults = [];
 let ownerValidationInProgress = false;
 let pendingSimilarOwnerValues = null;
+let selectedCustomer = null;
 
 /*
   BACKEND TEAMMATE + CLAUDE CODE:
@@ -224,6 +225,7 @@ function handleExistingCustomerSearchInput() {
 
 function selectExistingCustomer(customer) {
   if (!customer) return;
+  selectedCustomer = customer;
 
   const values = {
     firstName: normalizeText(customer.firstName),
@@ -235,6 +237,18 @@ function selectExistingCustomer(customer) {
 
   clearWalkInContinuationDraft();
   saveOwnerDraft(values, customer);
+  if (!values.phone) {
+    elements.firstName.value = values.firstName;
+    elements.lastName.value = values.lastName;
+    elements.middleInitial.value = values.middleInitial;
+    elements.phone.value = "";
+    elements.email.value = values.email;
+    hideSimilarOwnerWarning();
+    hideMessage();
+    syncNextButtonState();
+    elements.phone.focus();
+    return;
+  }
   window.location.href = "./walk-in-pet-details.html";
 }
 
@@ -364,6 +378,7 @@ function syncNextButtonState() {
 
 function handleInput(event) {
   hideSimilarOwnerWarning();
+  if (event.target !== elements.phone) selectedCustomer = null;
   const values = getFormValues();
   const fieldName = event.target?.name;
 
@@ -444,6 +459,13 @@ async function handleSubmit(event) {
   if (Object.keys(errors).length > 0) {
     renderValidationErrors(values, { showAll: true });
     syncNextButtonState();
+    return;
+  }
+
+  if (selectedCustomer) {
+    clearWalkInContinuationDraft();
+    saveOwnerDraft(values, selectedCustomer);
+    window.location.href = "./walk-in-pet-details.html";
     return;
   }
 
