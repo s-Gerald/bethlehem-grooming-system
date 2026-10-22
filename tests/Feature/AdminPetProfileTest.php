@@ -316,7 +316,10 @@ class AdminPetProfileTest extends TestCase
         $this->getJson('/api/admin/pets/101/profile?history=confinement')->assertForbidden();
     }
 
-    public function test_service_case_summary_uses_saved_line_totals_and_handles_empty_history(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('fractionalServiceTotals')]
+    public function test_service_case_summary_uses_saved_line_totals_and_handles_empty_history(
+        float $quantity, float $price, string $expectedTotal,
+    ): void
     {
         $this->insertPet(101, 'Mochi'); $this->authenticate(20, 'admin'); $this->createCaseHistoryTables();
         $this->getJson('/api/admin/pets/101/profile?history=services')->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
@@ -326,10 +329,22 @@ class AdminPetProfileTest extends TestCase
         foreach ([1, 2] as $id) {
             DB::table('clinic_case_services')->insert(['id' => $id, 'clinic_appointment_id' => 1, 'clinic_service_id' => 1,
                 'status' => 'performed', 'service_snapshot' => json_encode(['name' => 'Saved service']),
-                'quantity' => 0.5, 'applied_price' => 0.03, 'performed_at' => '2026-10-14 10:00:00']);
+                'quantity' => $quantity, 'applied_price' => $price, 'performed_at' => '2026-10-14 10:00:00']);
         }
         $this->getJson('/api/admin/pets/101/profile?history=services')->assertOk()->assertJsonPath('total', 1)
-            ->assertJsonPath('data.0.service_count', 2)->assertJsonPath('data.0.service_total', '0.04');
+            ->assertJsonPath('data.0.service_count', 2)->assertJsonPath('data.0.service_total', $expectedTotal);
+    }
+
+    public static function fractionalServiceTotals(): array
+    {
+        return [
+            'original half cent per line' => [0.5, 0.03, '0.04'],
+            'fifteen cents per line' => [0.5, 0.29, '0.30'],
+            'twenty-nine cents per line' => [0.5, 0.57, '0.58'],
+            'smallest half cent' => [0.5, 0.01, '0.02'],
+            'below half cent' => [0.33, 0.01, '0.00'],
+            'whole quantity' => [3, 0.07, '0.42'],
+        ];
     }
 
     public function test_case_details_share_existing_formats_and_are_case_and_pet_scoped(): void

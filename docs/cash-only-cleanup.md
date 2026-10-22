@@ -65,7 +65,16 @@ Dedicated gateway-only tests were deleted after reusable coverage was moved into
 - Static checks: no active frontend provider API calls, checkout URLs, payment return handlers, storage/polling state or script dependencies. All local script references on affected pages exist; changed PHP/JavaScript syntax and diff whitespace checks pass. Remaining provider names are historical reporting/labels, preserved migrations, negative-method/route tests and this report.
 - No localhost browser workflows or browser Core Web Vitals measurements were performed. Browser workflow verification remains with the developer as requested.
 
-The unresolved PHP test is `InventorySecurityRegressionTest::test_simultaneous_stock_in_requests_preserve_exact_stock_and_unique_references` at its status assertion. Its two-process disposable SQLite fixture reports `database is locked`. Local PHP is 8.2.12. The installed Laravel `SQLiteConnection::executeBeginTransactionStatement()` applies configured `IMMEDIATE` transactions only for PHP >=8.4; this fixture requests that mode. Its stock-in production path and concurrency assertions were not weakened or changed. Run this concurrency test on a compatible PHP/SQLite runner or address its runner compatibility separately. The full PHP suite is therefore not green on this machine. No runtime/caching performance regression was identified by the automated checks; browser performance was not measured.
+The initial Phase 1 PHP 8.2 run failed the stock-in concurrency test because its
+Laravel SQLite connection did not acquire the requested `IMMEDIATE` writer lock.
+That runtime issue was resolved in the subsequent PHP 8.4 validation: the
+strengthened stock-in test passes 35 assertions, and the complete suite passes
+1,460 tests with eight explicitly reported MySQL-fixture skips and no failures.
+A newer-SQLite history rounding discrepancy was also corrected without altering
+stored amounts or cash settlement. See [PHP runtime setup, current results and
+manual deployment steps](../README.md#php-runtime-and-tests). The original Phase 1
+counts above remain a record of that earlier PHP 8.2 run. No browser performance
+measurements or localhost browser workflows were performed.
 
 ## Files deleted
 

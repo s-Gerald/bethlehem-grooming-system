@@ -1420,6 +1420,7 @@ class InventorySecurityRegressionTest extends TestCase
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                Illuminate\Support\Facades\DB::purge('sqlite');
                 $connection = Illuminate\Support\Facades\DB::connection();
                 if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
                     throw new RuntimeException('Unexpected receipt database.');
@@ -1431,9 +1432,20 @@ class InventorySecurityRegressionTest extends TestCase
                     while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
                     if (!is_file($file)) throw new RuntimeException('Receipt barrier timed out.');
                 };
-                $connection->beforeStartingTransaction(function () use ($directory, $role, $wait) {
+                $contended = false;
+                $connection->beforeStartingTransaction(function () use ($directory, $database, $role, $wait, &$contended) {
                     if ($role === 'second') {
                         $wait($directory.'/locked');
+                        $probe = new PDO('sqlite:'.$database);
+                        $probe->exec('PRAGMA busy_timeout=0');
+                        try {
+                            $probe->exec('BEGIN IMMEDIATE');
+                            $probe->exec('ROLLBACK');
+                            throw new RuntimeException('The first receipt must still own the SQLite writer lock.');
+                        } catch (PDOException $error) {
+                            if (($error->errorInfo[1] ?? null) !== 5) throw $error;
+                            $contended = true;
+                        }
                         file_put_contents($directory.'/attempted', '1');
                     }
                 });
@@ -1448,7 +1460,8 @@ class InventorySecurityRegressionTest extends TestCase
                     ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
                     json_encode(['items' => [['item_id' => (int) $argv[3], 'quantity' => 2, 'reason' => 'purchase']]]));
                 $response = $kernel->handle($request);
-                echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pid' => getmypid()]);
+                echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pid' => getmypid(),
+                    'php' => PHP_VERSION, 'binary' => PHP_BINARY, 'contended' => $contended, 'transaction_mode' => $connection->getConfig('transaction_mode')]);
                 PHP;
             foreach (['first', 'second'] as $role) {
                 $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, (string) $actor->user_id, (string) $id, $role], base_path(), [
@@ -1467,11 +1480,30 @@ class InventorySecurityRegressionTest extends TestCase
                 $results[] = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
             }
             $this->assertNotSame($results[0]['pid'], $results[1]['pid']);
-            foreach ($results as $result) $this->assertSame(201, $result['status'], json_encode($result['body']));
+            $this->assertTrue($results[1]['contended'], 'The second request must observe the first receipt writer lock.');
+            foreach ($results as $result) {
+                $this->assertSame(PHP_VERSION, $result['php']);
+                $this->assertSame(PHP_BINARY, $result['binary']);
+                $this->assertSame('IMMEDIATE', $result['transaction_mode']);
+                $this->assertSame(201, $result['status'], json_encode($result['body']));
+            }
             $this->assertNotSame($results[0]['body']['data'][0]['stock_in_reference'], $results[1]['body']['data'][0]['stock_in_reference']);
             $pdo = new \PDO('sqlite:'.$database);
             $this->assertEquals(4, $pdo->query('SELECT quantity_on_hand FROM inventory_items WHERE item_id = '.$id)->fetchColumn());
             $this->assertEquals(2, $pdo->query('SELECT COUNT(DISTINCT stock_in_reference) FROM inventory_transactions')->fetchColumn());
+            $rows = $pdo->query('SELECT * FROM inventory_transactions ORDER BY transaction_id')->fetchAll(\PDO::FETCH_ASSOC);
+            $this->assertCount(2, $rows, 'Exactly one ledger receipt is recorded for each successful request.');
+            foreach ($rows as $index => $row) {
+                $this->assertSame($id, (int) $row['item_id']);
+                $this->assertSame($actor->user_id, (int) $row['performed_by']);
+                $this->assertSame('stock_in', $row['type']);
+                $this->assertSame('purchase', $row['reason']);
+                $this->assertSame('manual', $row['reference_type']);
+                $this->assertEquals(2, $row['quantity']);
+                $this->assertEquals(50, $row['unit_cost_at_time']);
+                $this->assertSame($row['stock_in_reference'], $results[$index]['body']['data'][0]['stock_in_reference']);
+                $this->assertSame((int) $row['transaction_id'], $results[$index]['body']['data'][0]['transaction_id']);
+            }
             $pdo = null;
         } finally {
             foreach ($processes as $process) if ($process->isRunning()) $process->stop();

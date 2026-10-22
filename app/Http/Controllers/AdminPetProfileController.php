@@ -56,11 +56,14 @@ class AdminPetProfileController extends Controller
             'page' => 'sometimes|integer|min:1',
         ]);
         if (($data['history'] ?? null) === 'services') {
+            // Round each two-decimal quantity/price pair in cents before summing;
+            // SQLite's binary product can otherwise round a half cent down.
             return response()->json(ClinicAppointment::query()
                 ->join('clinic_case_services as services', 'services.clinic_appointment_id', '=', 'clinic_appointments.id')
                 ->where('clinic_appointments.pet_id', $petId)->where('services.status', 'performed')
                 ->selectRaw('clinic_appointments.id as appointment_id, clinic_appointments.appointment_reference,
-                    COUNT(*) as service_count, SUM(ROUND(services.quantity * services.applied_price, 2)) as service_total')
+                    COUNT(*) as service_count,
+                    SUM(ROUND(ROUND(services.quantity * 100, 0) * ROUND(services.applied_price * 100, 0) / 100, 0)) / 100 as service_total')
                 ->groupBy('clinic_appointments.id', 'clinic_appointments.appointment_reference')
                 ->orderByRaw('MAX(services.performed_at) DESC')->orderByDesc('clinic_appointments.id')
                 ->withCasts(['appointment_id' => 'integer', 'service_count' => 'integer', 'service_total' => 'decimal:2'])

@@ -18,6 +18,7 @@
         </include>
     </source>
     <php>
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="IPROGSMS_API_TOKEN" value="" force="true"/>
         <env name="SMS_VERIFICATION_AVAILABLE" value="false" force="true"/>
