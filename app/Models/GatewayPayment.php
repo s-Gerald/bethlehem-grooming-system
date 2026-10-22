@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 
+/** Historical payment metadata and unresolved holds; no active checkout or settlement. */
 class GatewayPayment extends Model
 {
     protected $fillable = [
@@ -21,48 +22,25 @@ class GatewayPayment extends Model
         'livemode' => 'boolean', 'paid_at' => 'datetime',
     ];
 
-    public function payable()
-    {
-        return $this->morphTo();
-    }
-
-    public static function forGrooming(Booking $booking)
-    {
-        return static::forPayable($booking, 'grooming');
-    }
-
     public static function forPayable(Model $payable, string $context)
     {
-        return static::query()->where('provider', 'paymongo')->where('context', $context)
+        return static::query()->where('context', $context)
             ->where('payable_type', $payable->getMorphClass())->where('payable_id', $payable->getKey());
     }
 
     public static function assertClinicUnlocked(ClinicAppointment $appointment): void
     {
         if (Schema::hasTable('gateway_payments') && static::forPayable($appointment, 'clinic')->where('status', 'pending')->exists()) {
-            throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
+            throw ValidationException::withMessages(['payment' => 'An unresolved historical payment requires manual reconciliation before this action.']);
         }
     }
 
-    /** Items must be locked before reserving, consuming or releasing stock. */
+    /** Read-only historical holds. Never release stock based on a local attempt status alone. */
     public static function reservedQuantities(iterable $ids): array
     {
         if (! Schema::hasTable('gateway_stock_reservations')) return [];
         return DB::table('gateway_stock_reservations')->whereIn('item_id', collect($ids)->all())
             ->selectRaw('item_id, SUM(quantity) as quantity')->groupBy('item_id')->pluck('quantity', 'item_id')->all();
-    }
-
-    public function releaseStock(): void
-    {
-        if (! Schema::hasTable('gateway_stock_reservations')) return;
-        $ids = DB::table('gateway_stock_reservations')->where('gateway_payment_id', $this->id)->pluck('item_id');
-        InventoryItem::whereIn('item_id', $ids)->orderBy('item_id')->lockForUpdate()->get();
-        DB::table('gateway_stock_reservations')->where('gateway_payment_id', $this->id)->delete();
-    }
-
-    public function methodLabel(): string
-    {
-        return self::labelFor($this->provider_method ?? 'online');
     }
 
     public static function labelFor(?string $method): string
@@ -76,8 +54,8 @@ class GatewayPayment extends Model
     /** Call while holding the booking row lock, also used by existing correction actions. */
     public static function assertGroomingUnlocked(Booking $booking): void
     {
-        if (Schema::hasTable('gateway_payments') && static::forGrooming($booking)->where('status', 'pending')->exists()) {
-            throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
+        if (Schema::hasTable('gateway_payments') && static::forPayable($booking, 'grooming')->where('status', 'pending')->exists()) {
+            throw ValidationException::withMessages(['payment' => 'An unresolved historical payment requires manual reconciliation before this action.']);
         }
     }
 }

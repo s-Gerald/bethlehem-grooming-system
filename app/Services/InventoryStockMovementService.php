@@ -172,7 +172,7 @@ class InventoryStockMovementService
             abort_unless($item, 404);
             $reserved = $reservations[$item->item_id] ?? 0;
             if ($reserved > 0 && (float) $item->quantity_on_hand - $reserved < (float) $entry['quantity']) {
-                abort(422, "Stock for \"{$item->item_name}\" is reserved for an online payment.");
+                abort(422, "Stock for \"{$item->item_name}\" is held for an unresolved historical payment.");
             }
 
             if ((float) $item->quantity_on_hand < (float) $entry['quantity']) {

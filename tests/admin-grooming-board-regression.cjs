@@ -203,7 +203,7 @@ async function startGroomingConfirmation() {
   const start = e.c.adminDashboard();
   start.$nextTick = () => {};
   start.pageMode = 'appointments';
-  for (const method of ['registerBridge', 'loadConfig', 'bootstrapDashboard', 'startContentPolling', 'restoreGroomingOnlinePayment', 'dispatchDashboardEvent']) {
+  for (const method of ['registerBridge', 'loadConfig', 'bootstrapDashboard', 'startContentPolling', 'dispatchDashboardEvent']) {
     start[method] = () => {};
   }
   let refreshes = 0;

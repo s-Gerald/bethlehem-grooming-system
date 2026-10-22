@@ -6,7 +6,6 @@ use App\Models\InventoryItem;
 use App\Models\PosTransaction;
 use App\Models\PosTransactionItem;
 use App\Models\User;
-use App\Models\GatewayPayment;
 
 class PosSaleService
 {
@@ -114,7 +113,7 @@ class PosSaleService
             }
 
             if ($snapshots->get($item->item_id)['saleable_quantity'] < $line['quantity']) {
-                abort(422, 'Stock is reserved for an online payment.');
+                abort(422, 'Stock is held for an unresolved historical payment.');
             }
 
             $priceAtSale = round((float) $item->selling_price, 2);
@@ -143,7 +142,7 @@ class PosSaleService
         return [$preparedLines, $computedTotal];
     }
 
-    public function settle(User $actor, array $preparedLines, float $computedTotal, float $amountTendered, ?string $notes, ?GatewayPayment $gateway = null): PosTransaction
+    public function settle(User $actor, array $preparedLines, float $computedTotal, float $amountTendered, ?string $notes): PosTransaction
     {
         $pos = PosTransaction::create([
             'cashier_id' => $actor->user_id,
@@ -151,7 +150,6 @@ class PosSaleService
             'amount_tendered' => $amountTendered,
             'change_amount' => ((int) round($amountTendered * 100) - (int) round($computedTotal * 100)) / 100,
             'notes' => $notes,
-            ...($gateway ? ['payment_method' => $gateway->provider_method ?? 'online', 'gateway_payment_id' => $gateway->id] : []),
         ]);
 
         $stockOutEntries = [];

@@ -32,7 +32,6 @@ use App\Http\Controllers\GroomingPricingController;
 use App\Http\Middleware\ThrottleAuthenticationResends;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/paymongo/webhook', \App\Http\Controllers\PayMongoWebhookController::class);
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::put('/register/pending', [AuthController::class, 'register'])->middleware('throttle:5,1');
@@ -179,9 +178,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
             Route::post('/admin/bookings/{id}/pay', [PaymentController::class, 'store']);
             Route::post('/admin/bookings/{id}/pay-now', [PaymentController::class, 'payNow']);
-            Route::post('/admin/bookings/{id}/online-payment', [PaymentController::class, 'createOnlineCheckout']);
-            Route::get('/admin/bookings/{id}/online-payment', [PaymentController::class, 'onlinePaymentStatus']);
-            Route::delete('/admin/bookings/{id}/online-payment', [PaymentController::class, 'cancelOnlineCheckout']);
             Route::post('/admin/bookings/{id}/release', [PaymentController::class, 'release']);
 
             Route::post('/admin/walk-in/capacity-preview', [WalkinController::class, 'previewCapacity']);
@@ -235,9 +231,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/admin/clinic-appointments/{id}/check-in', [AdminClinicController::class, 'checkIn'])->middleware('clinic:intake');
         Route::post('/admin/clinic-appointments/{id}/start-consultation', [AdminClinicController::class, 'startConsultation'])->middleware('clinic:clinical');
         Route::post('/admin/clinic-appointments/{id}/finish-consultation', [AdminClinicController::class, 'finishConsultation'])->middleware('clinic:clinical');
-        Route::post('/admin/clinic-appointments/{id}/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'createClinic'])->middleware('clinic:payment');
-        Route::get('/admin/clinic-appointments/{id}/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'clinicStatus'])->middleware('clinic:payment');
-        Route::delete('/admin/clinic-appointments/{id}/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'cancelClinic'])->middleware('clinic:payment');
         Route::post('/admin/clinic-appointments/{id}/pay', [AdminClinicController::class, 'markPaid'])->middleware('clinic:payment');
         Route::post('/admin/clinic-appointments/{id}/cancel', [AdminClinicController::class, 'cancel'])->middleware('clinic:queue');
         Route::post('/admin/clinic-appointments/{id}/record', [AdminClinicController::class, 'saveRecord'])->middleware('clinic:clinical');
@@ -283,9 +276,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/inventory/summary', [InventoryController::class, 'summary']);
 
         // Admin — POS
-        Route::post('/pos/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'createPos']);
-        Route::get('/pos/online-payment/{id?}', [\App\Http\Controllers\OnlinePaymentController::class, 'posStatus'])->whereNumber('id');
-        Route::delete('/pos/online-payment/{id}', [\App\Http\Controllers\OnlinePaymentController::class, 'cancelPos'])->whereNumber('id');
         Route::post('/pos/validate-cart', [PosController::class, 'validateCart']);
         Route::post('/pos/transactions', [PosController::class, 'processSale']);
         Route::get('/pos/transactions', [PosController::class, 'getTransactions']);

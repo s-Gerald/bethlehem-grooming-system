@@ -53,7 +53,6 @@ async function fixture(browser, profile = 'admin', inventory = false, workspaces
     }
     if (url.pathname === '/api/inventory/summary') data = { total_items: 0, low_stock_count: 0, expiry_alert_count: 0, recent_transactions: [], low_stock_items: [], expiry_items: [] };
     if (['/api/inventory/items', '/api/inventory/transactions', '/api/inventory/alerts/expiry'].includes(url.pathname)) data = { data: [], page: 1, last_page: 1, total: 0 };
-    if (url.pathname === '/api/pos/online-payment') data = { payment: null };
     if (url.pathname === '/api/me') data = { user: state.user, sidebar_revision: state.revision };
     if (url.pathname.startsWith('/api/session')) {
       if (url.pathname === '/api/session/unlock') {

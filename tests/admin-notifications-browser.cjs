@@ -63,7 +63,6 @@ async function fixture(browser, role = 'admin') {
     if (path === '/api/admin/bookings') data = {bookings: []};
     if (path === '/api/admin/clinic-cases') data = {cases: []};
     if (path === '/api/admin/clinic-records') data = {records: [], pagination: {has_more: false}};
-    if (path === '/api/pos/online-payment') data = {payment: null};
     await route.fulfill({status: state.expired ? 401 : 200, contentType: 'application/json', body: JSON.stringify(data)});
   });
   const page = await context.newPage(); page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(45000);

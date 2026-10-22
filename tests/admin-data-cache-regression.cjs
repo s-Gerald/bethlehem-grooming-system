@@ -181,7 +181,7 @@ async function scopedPresentationPolicies() {
     assert.equal(e.calls.filter(c => c.endpoint === key).length, 1, key + ' memory reuse');
     assert.ok(!e.sessionStorage.getItem('bethlehem.admin.presentation.v2')?.includes(key), key + ' must not persist');
   }
-  for (const key of ['/pos/online-payment', '/inventory/search?q=retail&sale_context=pos', '/inventory/items/1', '/admin/bookings/1/signed-consent', '/admin/clinic-cases/1']) {
+  for (const key of ['/inventory/search?q=retail&sale_context=pos', '/inventory/items/1', '/admin/bookings/1/signed-consent', '/admin/clinic-cases/1']) {
     await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
     assert.equal(e.calls.filter(c => c.endpoint === key).length, 2, key + ' operational reads stay current');
   }
@@ -209,17 +209,15 @@ async function scopedMutationInvalidation() {
     keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), mutation + ' invalidates precisely ' + key));
   }
 }
-async function inventoryReadMutationRaceAndOnlineSettlement() {
+async function inventoryReadMutationRace() {
   const e=environment(), old=deferred(), key='/inventory/items?page=1';
   e.respond(()=>old.promise); const a=e.API.adminRequest('GET',key), b=e.API.adminRequest('GET',key);
   assert.equal(e.calls.length,1);
   e.respond(()=>({})); await e.API.adminRequest('POST','/inventory/stock-out',{});
   old.resolve({version:1}); await Promise.all([assert.rejects(a,/changed/),assert.rejects(b,/changed/)]);
   await e.API.adminRequest('GET',key);
-  e.respond(()=>({online_payment:{status:'paid'},receipt:{id:3}}));
-  await e.API.adminRequest('GET','/pos/online-payment/3');
-  assert.equal(e.API.readAdminCache(key),null,'Confirmed online settlement invalidates presentation while status stays uncached');
+
 }
 if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
   await test(); console.log(test.name+' passed');
-} for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, inventoryReadMutationRaceAndOnlineSettlement]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });
+} for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, inventoryReadMutationRace]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });

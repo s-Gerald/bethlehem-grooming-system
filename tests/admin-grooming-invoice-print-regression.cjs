@@ -5,6 +5,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../scripts/components/admin-dashboard.js"), "utf8");
 const context = { window: {}, console, Date, Intl };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/cash-payment.js"), "utf8"), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/payment-invoice.js"), "utf8"), context);
 vm.runInNewContext(source, context);
 const ui = context.adminDashboard();
@@ -92,3 +93,35 @@ fallback();
 assert.equal(removed, 2, "Fallback cleans up when afterprint is unavailable");
 assert.ok(!printingClasses.has("payment-invoice-printing"));
 console.log("Admin grooming invoice print regression tests passed.");
+
+(async () => {
+  const {applyGroomingCatalogue} = await import('../scripts/services/grooming-service.js');
+  context.applyPaymentCatalogue(applyGroomingCatalogue(JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8').replace(/^\uFEFF/, '')).data));
+  ui.$nextTick = () => {};
+  ui.loadAdminBookings = async () => {};
+  ui.setTab = () => {};
+  const submissions = [];
+  context.API = {
+    payNow: async (id, payload) => {submissions.push({id, payload, flow: 'early'}); return {final_price: 500, amount_paid: 600, change: 100, payment_method: 'cash', booking_status: 'checked_in'};},
+    processPayment: async (id, payload) => {submissions.push({id, payload, flow: 'final'}); return {final_price: 500, amount_paid: 600, change: 100, payment_method: 'cash', booking_status: 'released'};},
+  };
+  const booking = {id: 1, ownerName: 'Cash Customer', bookingReference: 'TEST-CASH',
+    pets: [{bookingPetId: 1, petName: 'Mochi', species: 'Cat', size: 'small'}],
+    services: [{bookingServiceId: 1, bookingPetId: 1, slug: 'cat_full_grooming', priceAtBooking: '500.00'}]};
+  for (const early of [true, false]) {
+    ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
+      petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: ''};
+    assert.equal(ui.canSubmitPayment, false, 'Cash requires tendered money');
+    ui.paymentModal.amountPaid = '600';
+    assert.equal(ui.canSubmitPayment, true);
+    const pending = ui.submitPayment();
+    await ui.submitPayment();
+    await pending;
+    assert.equal(ui.receiptModal.paymentMethod, 'Cash');
+    assert.equal(ui.receiptModal.change, 100);
+    assert.equal(submissions.at(-1).payload.amount_paid, 600);
+    assert.equal(submissions.at(-1).payload.payment_method, 'cash');
+    assert.equal(submissions.at(-1).flow, early ? 'early' : 'final');
+  }
+  assert.equal(submissions.length, 2, 'Repeated clicks submit once per payment');
+})().catch(error => {console.error(error); process.exitCode = 1;});

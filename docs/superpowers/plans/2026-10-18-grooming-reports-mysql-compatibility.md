@@ -67,7 +67,7 @@
 
 ## References
 
-- Local project deployment conventions: `docs/paymongo-grooming.md`, `docs/hostinger-email-auth.md`.
+- Local project deployment conventions: `docs/hostinger-email-auth.md`.
 - [MariaDB GROUP BY rules and aliases](https://mariadb.com/docs/server/reference/sql-statements/data-manipulation/selecting-data/group-by).
 - [MariaDB's reported expression-grouping issue](https://jira.mariadb.org/browse/MDEV-25133).
 - [Laravel 12 deployment guidance](https://laravel.com/framework/docs/12.x/deployment).

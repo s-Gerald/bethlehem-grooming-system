@@ -25,7 +25,7 @@ All policies, storage, request sharing, ownership checks, retention and cross-ta
 
 History is deliberately **not persisted across documents**. Its existing responses include payment fields and Clinic medical detail fields. Persisting them to improve request counts would violate the requested restriction. This also avoids putting the roughly 1 MB archive response in session storage. A separate slim History-list/detail contract is a possible later server task, not part of this fetching cleanup.
 
-Item detail, barcode/POS search, cart validation, online-payment state, signed consent and case detail remain outside presentation retention. Successful inventory/product/stock/POS mutations invalidate Inventory presentation; failed mutations do not. Confirmed online POS settlement invalidates presentation without caching the payment response. Relevant service and History mutations invalidate their groups. Existing owner/session/role isolation and invalidation-race rejection remain enforced.
+Item detail, barcode/POS search, cart validation, signed consent and case detail remain outside presentation retention. Successful inventory/product/stock/POS mutations invalidate Inventory presentation; failed mutations do not. Relevant service and History mutations invalidate their groups. Existing owner/session/role isolation and invalidation-race rejection remain enforced.
 
 ## Before/after browser measurements
 

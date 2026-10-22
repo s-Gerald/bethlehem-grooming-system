@@ -54,7 +54,7 @@ class PosController extends Controller
             $actor = User::whereKey($request->user()->user_id)->lockForUpdate()->firstOrFail();
             if (Schema::hasTable('gateway_payments')
                 && GatewayPayment::forPayable($actor, 'pos')->where('status', 'pending')->exists()) {
-                throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
+                throw ValidationException::withMessages(['payment' => 'An unresolved historical payment requires manual reconciliation before another sale.']);
             }
             [$preparedLines, $computedTotal] = app(PosSaleService::class)->prepare($validated);
             $amountTendered = round((float) $validated['amount_tendered'], 2);

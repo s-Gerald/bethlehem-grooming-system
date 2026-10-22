@@ -51,10 +51,6 @@ function page() {
   state.payment.amountPaid = '500';
   assert.equal(state.paymentChange, 149.5);
   assert.equal(state.canConfirmPayment, true);
-  state.payment.method = 'online';
-  await state.recordPayment();
-  assert.equal(submissions.length, 0);
-  state.payment.method = 'cash';
   const pending = state.recordPayment();
   assert.equal(state.canConfirmPayment, false);
   await state.recordPayment();

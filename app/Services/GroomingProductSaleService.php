@@ -97,17 +97,4 @@ class GroomingProductSaleService
         $this->movements->remove($actor, $entries);
     }
 
-    /** Check availability again, while retaining the exact prices/names charged online. */
-    public function prepareFrozen(array $frozen): array
-    {
-        [$lines] = $this->prepare($frozen);
-        $snapshots = collect($frozen)->keyBy('item_id');
-        foreach ($lines as &$line) {
-            $snapshot = $snapshots->get($line['item']->item_id);
-            $line['priceCents'] = $snapshot['priceCents'];
-            $line['subtotalCents'] = $snapshot['subtotalCents'];
-            $line['item']->item_name = $snapshot['name'];
-        }
-        return $lines;
-    }
 }

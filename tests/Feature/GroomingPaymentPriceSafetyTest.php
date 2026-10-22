@@ -239,6 +239,21 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->assertSame(0, Payment::count());
     }
 
+    public function test_cash_pay_now_preserves_unfinished_workflow_and_prevents_duplicate_payment(): void
+    {
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        $response = $this->submit('payNow', 850)->getData(true);
+        $this->assertTrue($response['success']);
+        $this->assertSame('cash', $response['payment_method']);
+        $this->assertFalse($response['all_pets_finished']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => 'in_progress']);
+        $this->assertDatabaseHas('payments', ['payment_method' => 'cash', 'total_amount' => 850, 'amount_tendered' => 855, 'change_amount' => 5]);
+        $this->assertSame(409, $this->submit('payNow', 850)->getStatusCode());
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('notifications', 1);
+    }
+
     private function seedService(string $slug, string $size, int $minimum, bool $fixed = false): void
     {
         DB::table('bookings')->insert(['booking_id' => 1, 'booking_reference' => 'TEST-PRICE', 'status' => 'for_payment']);

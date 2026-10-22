@@ -17,7 +17,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=cash-only-20261023" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -218,7 +218,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=cash-only-20261023"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
       <!-- Main Content -->
@@ -772,7 +772,7 @@
 
               <!-- Body -->
               <div class="payment-modal-body px-6 py-5 space-y-4">
-                <fieldset x-show="!paymentModal.onlinePayment" :disabled="paymentModal.busy || !!paymentModal.onlinePayment" class="min-w-0 space-y-4">
+                <fieldset :disabled="paymentModal.busy" class="min-w-0 space-y-4">
                 <section>
                   <p class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Services &amp; Breakdown</p>
                   <!--
@@ -917,18 +917,9 @@
                   <h5 class="text-xs font-bold uppercase tracking-widest text-[#2f4b66]">Payment</h5>
                   <div>
                     <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</p>
-                    <div class="space-y-2">
-                      <label class="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold text-[#2f4b66]" :class="paymentModal.paymentMethod === 'cash' ? 'border-[#bad4e8] bg-[#f2f8fc]' : 'border-slate-200'">
-                        <input type="radio" name="grooming-payment-method" value="cash" x-model="paymentModal.paymentMethod" @change="clearPaymentError()" class="accent-[#315b7e]" />
-                        Cash
-                      </label>
-                      <label class="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold text-[#2f4b66]" :class="paymentModal.paymentMethod === 'online' ? 'border-[#bad4e8] bg-[#f2f8fc]' : 'border-slate-200'">
-                        <input type="radio" name="grooming-payment-method" value="online" x-model="paymentModal.paymentMethod" @change="clearPaymentError()" class="accent-[#315b7e]" />
-                        Online Payment
-                      </label>
-                    </div>
+                    <p class="text-sm font-semibold text-[#2f4b66]">Cash</p>
                   </div>
-                  <div x-show="paymentModal.paymentMethod === 'cash'">
+                  <div>
                   <label for="grooming-cash-received" class="mb-1 block text-xs font-semibold text-slate-600">Cash Received</label>
                   <input
                     id="grooming-cash-received"
@@ -945,7 +936,7 @@
                   <p x-show="paymentModal.amountPaid !== '' && Number(paymentModal.amountPaid) < paymentTotalDue" class="mt-1 text-xs text-red-600">Cash received is less than the amount due.</p>
                   </div>
 
-                  <div x-show="paymentModal.paymentMethod === 'cash'" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <p class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Change</p>
                     <p class="payment-change-amount text-2xl text-[#2f4b66]" x-text="formatPeso(Math.max(0, paymentChange))"></p>
                   </div>
@@ -964,20 +955,11 @@
                 </div>
 
                 </fieldset>
-                <section x-show="paymentModal.onlinePayment" class="space-y-4" aria-live="polite">
-                  <h5 class="font-semibold text-[#2f4b66]" x-text="paymentModal.verifying ? 'Verifying payment…' : 'Awaiting online payment'"></h5>
-                  <p class="text-2xl font-bold text-[#2f4b66]" x-text="formatPeso(paymentModal.onlinePayment?.amount || 0)"></p>
-                  <div class="flex flex-wrap gap-3">
-                    <a x-show="paymentModal.onlinePayment?.checkout_url" :href="paymentModal.onlinePayment?.checkout_url" @click.prevent="openGroomingCheckout()" class="rounded-xl px-4 py-2 text-sm font-semibold text-white btn-confirm-payment">Open Checkout</a>
-                    <button x-show="paymentModal.onlinePayment?.checkout_url" type="button" @click="copyOnlinePaymentLink()" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Copy Link</button>
-                  </div>
-                  <button type="button" @click="cancelOnlinePayment()" :disabled="paymentModal.busy" class="text-sm font-semibold text-red-600 disabled:opacity-50">Cancel Online Payment</button>
-                </section>
                 <p x-show="paymentModal.error" role="alert" class="text-sm text-red-600" x-text="paymentModal.error"></p>
               </div>
 
               <!-- Footer -->
-              <div x-show="!paymentModal.onlinePayment" class="flex gap-3 border-t border-slate-100 px-6 py-4">
+              <div class="flex gap-3 border-t border-slate-100 px-6 py-4">
                 <button
                   type="button"
                   @click="closePaymentModal()"
@@ -992,7 +974,7 @@
                   class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white transition btn-confirm-payment"
                   :class="!canSubmitPayment ? 'opacity-50 cursor-not-allowed' : ''"
                 >
-                  <span x-text="paymentModal.busy ? 'Processing...' : paymentModal.paymentMethod === 'online' ? 'Create Online Payment' : 'Confirm Cash Payment'"></span>
+                  <span x-text="paymentModal.busy ? 'Processing...' : 'Confirm Cash Payment'"></span>
                 </button>
               </div>
             </div>
@@ -1026,7 +1008,6 @@
                   <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg>
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
-                <p x-show="receiptModal.reconciliationMessage" x-text="receiptModal.reconciliationMessage" class="mt-2 text-sm text-red-600" role="status"></p>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
                 <p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
                 <div class="receipt-success-reference">
@@ -1502,7 +1483,7 @@
     ></script>
 
 
-    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=20261018-shared"></script>
+    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=cash-only-20261023"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261020-2"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261020-3"></script>
@@ -1517,10 +1498,9 @@
     </script>
 
     <!-- Shared dashboard content script -->
-    <script src="../../scripts/components/online-payment.js?v=20261018"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=20261018-shared"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&paymongo=20261018&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=20261018-shared&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=cash-only-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
   </body>
 </html>

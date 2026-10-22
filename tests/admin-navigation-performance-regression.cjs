@@ -76,7 +76,7 @@ async function groomingUsesManilaDateDirectly() {
   const ui = e.c.adminDashboard(); ui.pageMode = 'grooming';
   ui.config.includeFutureAppointments = true;
   for (const method of ['registerBridge', 'loadConfig', 'startContentPolling', 'dispatchDashboardEvent']) ui[method] = () => {};
-  ui.bootstrapDashboard = ui.restoreGroomingOnlinePayment = async () => {};
+  ui.bootstrapDashboard = async () => {};
   await ui.init();
   assert.equal(ui.selectedDate, '2027-01-01');
   assert.equal(ui.todayDate, '2027-01-01');
@@ -108,7 +108,7 @@ async function clinicDefersRecordsAndKeepsConfinedOnDemand() {
   e.c.CustomEvent = class {};
   vm.runInContext(read('scripts/components/admin-clinic.js'), e.c);
   const ui = e.c.adminClinicPage(); ui.$root = { querySelector: () => ({}) };
-  ui.$nextTick = fn => fn(); ui.restoreOnlinePayment = async () => {};
+  ui.$nextTick = fn => fn();
   e.c.API.getStaffIdentity = async () => ({ user: { clinic_permissions: { access: true } } });
   await ui.init();
   assert.ok(ui.activeCasesLoaded);

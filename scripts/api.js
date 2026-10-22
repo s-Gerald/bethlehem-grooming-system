@@ -1569,14 +1569,6 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
-    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
-      && /^\/pos\/online-payment(?:\/\d+)?(?:\?|$)/.test(endpoint)
-      && data.online_payment?.status === 'paid' && data.receipt) invalidateAdminCache(['inventory']);
-    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
-      && /^\/admin\/(bookings|clinic-appointments)\/[^/]+\/online-payment(?:\?|$)/.test(endpoint)
-      && (data.online_payment?.status === "paid" || data.appointment?.paid || data.booking?.paid || data.booking_status === "released")) {
-      invalidateAdminMutation(endpoint);
-    }
     if (response.status === 423 && responseBelongsToCurrentSession && data.code === "session_locked") {
       if (requestRevision !== sessionRevision && method === "GET" && !sessionControl) {
         return networkRequest(method, endpoint, body, token, requestOptions);
@@ -2547,27 +2539,6 @@ var API = (() => {
     return request("POST", `/admin/bookings/${bookingId}/pay-now`, payload, getAdminToken());
   }
 
-  function createGroomingOnlinePayment(bookingId, payload) {
-    return request("POST", `/admin/bookings/${bookingId}/online-payment`, payload, getAdminToken());
-  }
-
-  function groomingOnlinePaymentStatus(bookingId, attemptId = null) {
-    return request("GET", `/admin/bookings/${bookingId}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
-  }
-
-  function createClinicOnlinePayment(id) {
-    return request("POST", `/admin/clinic-appointments/${id}/online-payment`, {}, getAdminToken());
-  }
-  function clinicOnlinePaymentStatus(id, attemptId = null) {
-    return request("GET", `/admin/clinic-appointments/${id}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
-  }
-  function cancelClinicOnlinePayment(id) {
-    return request("DELETE", `/admin/clinic-appointments/${id}/online-payment`, null, getAdminToken());
-  }
-
-  function cancelGroomingOnlinePayment(bookingId) {
-    return request("DELETE", `/admin/bookings/${bookingId}/online-payment`, null, getAdminToken());
-  }
 
   async function releaseBooking(bookingId) {
     // POST /api/admin/bookings/{id}/release  (protected — admin token)
@@ -3030,12 +3001,6 @@ var API = (() => {
     markAllCustomerNotificationsRead,
     // Payments
     processPayment,
-    createClinicOnlinePayment,
-    clinicOnlinePaymentStatus,
-    cancelClinicOnlinePayment,
-    createGroomingOnlinePayment,
-    groomingOnlinePaymentStatus,
-    cancelGroomingOnlinePayment,
     payNow,
     releaseBooking,
     markPickedUp,
