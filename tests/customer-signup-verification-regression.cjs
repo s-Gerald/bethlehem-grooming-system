@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, reviewing = false, phone = '' } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, reviewing = false, missingGrant = false, phone = '' } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -19,7 +19,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone }));
   if (reviewing) {
     storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@example.test', phone }));
-    storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
+    if (!missingGrant) storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
   }
   let nextId = 0;
   let ready;
@@ -86,7 +86,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   ready();
   return {
-    element, cells, API, calls, storage,
+    element, cells, API, calls, storage, activeElement: () => document.activeElement,
     dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
     advance(ms) {
       now += ms;
@@ -145,24 +145,31 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(invalidPhone.calls[0][1].phone, null);
 
   const abandoned = page({ signup: true });
-  abandoned.API.register = async () => ({ requires_verification: true, requires_registration_recovery: true });
+  abandoned.API.register = async () => ({ requires_verification: true, resend_after: 0 });
   await abandoned.dispatch('signupForm', 'submit');
-  assert.equal(abandoned.element('signupRecovery').classList.contains('hidden'), false);
+  assert.equal(abandoned.element('signupRecovery').classList.contains('hidden'), true, 'A public response cannot establish an unfinished registration');
   assert.equal(abandoned.element('firstName').value, 'Test');
   assert.equal(abandoned.element('password').value, 'strong-password');
-  assert.deepEqual(abandoned.calls, [], 'Offer recovery without silently navigating or sending mail');
-  await abandoned.dispatch('signupRecoveryContinue', 'click');
-  assert.deepEqual(abandoned.calls, [['send', 'customer@example.test'], ['redirect', './verify-email.html']]);
+  assert.deepEqual(abandoned.calls, [['redirect', './verify-email.html']], 'Reuse verification without a second request or status-specific panel');
   assert.equal(abandoned.storage.has('pendingRegistrationEditToken'), false);
+  assert.equal(abandoned.storage.has('pendingSignupDetails'), false, 'Unproven submitted details cannot become recovered account details');
 
   const reviewing = page({ signup: true, reviewing: true });
   assert.equal(reviewing.element('firstName').value, 'Saved');
   assert.equal(reviewing.element('email').readOnly, true);
+  assert.equal(reviewing.element('signupRecovery').classList.contains('hidden'), false, 'Email-proven recovery retains its existing panel design');
+  await reviewing.dispatch('signupRecoveryContinue', 'click');
+  assert.equal(reviewing.activeElement(), reviewing.element('firstName'));
+  assert.equal(reviewing.calls.length, 0, 'The confirmed email needs no second verification email');
   await reviewing.dispatch('signupForm', 'submit');
   assert.equal(reviewing.calls[0][0], 'update');
   assert.equal(reviewing.calls[0][3], 'ownership-grant');
   assert.deepEqual(reviewing.calls.at(-1), ['redirect', './dashboard.html']);
   assert.equal(reviewing.storage.has('pendingRegistrationRecoveryToken'), false);
+
+  const unprovenReview = page({ signup: true, reviewing: true, missingGrant: true });
+  assert.equal(unprovenReview.element('signupRecovery').classList.contains('hidden'), true);
+  assert.deepEqual(unprovenReview.calls, [['redirect', './verify-email.html?recover=1']], 'A lost recovery grant returns to email proof');
 
   const ownership = page();
   ownership.API.verifyEmail = async () => ({ requires_registration_review: true, registration_recovery_token: 'ownership-grant',
@@ -198,7 +205,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
   const p = page();
   assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
-  assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code sent to');
+  assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code for');
   assert.equal(p.element('verifyCodeEmail').textContent, 'c***@example.test');
   assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   assert.equal(p.element('signupCodeSubmit').disabled, true);

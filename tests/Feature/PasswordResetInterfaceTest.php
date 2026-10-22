@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 class PasswordResetInterfaceTest extends TestCase
 {
-    public function test_forgot_password_has_all_three_code_flow_steps_in_one_page(): void
+    public function test_forgot_password_keeps_request_confirmation_and_reset_steps_on_one_page(): void
     {
         $signIn = file_get_contents(base_path('pages/client/sign-in.html'));
         $forgot = file_get_contents(base_path('pages/client/forgot-password.html'));

@@ -29,37 +29,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (recoveryToken) {
         emailInput.readOnly = true;
-        document.getElementById("signupTitle").textContent = "Complete your registration";
         document.getElementById("signupDescription").textContent = "Review your details and choose a password to finish.";
         document.getElementById("signupBtnLabel").textContent = "Complete registration";
-        showMessage("success", "Review your details and choose a password. Your email is confirmed.");
-      } else if (params.get("review") === "1") {
-        showMessage("error", "Verify your email again to recover your registration.");
         recoveryPanel.classList.remove("hidden");
+      } else if (params.get("review") === "1") {
+        window.location.replace("./verify-email.html?recover=1");
+        return;
       }
     }
   } catch { /* storage unavailable; signup remains usable */ }
 
-  recoveryContinue.addEventListener("click", async () => {
-    if (busy || !emailInput.checkValidity() || !emailInput.value.trim()) {
-      emailInput.reportValidity();
-      return;
-    }
-    setBusyState(true);
-    recoveryContinue.textContent = "Sending...";
-    try {
-      const email = emailInput.value.trim().toLowerCase();
-      const result = await API.resendVerification(email);
-      sessionStorage.setItem("pendingVerificationEmail", email);
-      sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (result?.resend_after ?? 45) * 1000));
-      for (const key of ["pendingRegistrationEditToken", "pendingRegistrationRecoveryToken", "pendingVerificationDeliveryFailed"]) sessionStorage.removeItem(key);
-      window.location.replace("./verify-email.html");
-    } catch (error) {
-      showMessage("error", error?.status === 429 ? "Too many attempts. Try again later." : "Couldn't send the code. Try again.");
-    } finally {
-      setBusyState(false);
-      recoveryContinue.textContent = "Continue with verification";
-    }
+  recoveryContinue.addEventListener("click", () => {
+    if (!busy && recoveryToken) document.getElementById("firstName").focus();
   });
 
   // Independent toggle — each button only controls its own field and icons.
@@ -124,13 +105,13 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const id of ["firstName", "lastName", "email", "username", "phone", "password"]) document.getElementById(id).setAttribute("aria-invalid", "false");
 
     if (!email) {
-      showMessage("error", "Email address is required.");
+      showMessage("Email address is required.");
       emailInput.focus();
       return;
     }
 
     if (phone && !/^09\d{9}$/.test(phone)) {
-      showMessage("error", "Phone number must start with 09 and be exactly 11 digits (e.g. 09XXXXXXXXX).");
+      showMessage("Phone number must start with 09 and be exactly 11 digits (e.g. 09XXXXXXXXX).");
       phoneInput.focus();
       return;
     }
@@ -142,12 +123,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (password !== confirmPassword) {
-      showMessage("error", "Passwords do not match.");
+      showMessage("Passwords do not match.");
       return;
     }
 
     if (password.length < 8) {
-      showMessage("error", "Password must be at least 8 characters long.");
+      showMessage("Password must be at least 8 characters long.");
       return;
     }
 
@@ -167,12 +148,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ? await API.updatePendingRegistration(payload, editingToken, recoveryToken)
         : await API.register(payload);
 
-      if (data?.requires_registration_recovery) {
-        recoveryPanel.classList.remove("hidden");
-        recoveryPanel.focus();
-        setBusyState(false);
-        return;
-      }
       if (recoveryToken && data?.token && data?.user?.role === "customer") {
         for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
           try { sessionStorage.removeItem(key); } catch { /* session already established */ }
@@ -185,8 +160,14 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           sessionStorage.setItem("pendingVerificationEmail", data.email ?? email);
           sessionStorage.setItem("pendingVerificationPhone", phone);
-          sessionStorage.setItem("pendingRegistrationEditToken", data.registration_token || "");
-          sessionStorage.setItem("pendingSignupDetails", JSON.stringify({ firstName, lastName, username, email, phone }));
+          sessionStorage.removeItem("pendingRegistrationRecoveryToken");
+          if (data.registration_token) {
+            sessionStorage.setItem("pendingRegistrationEditToken", data.registration_token);
+            sessionStorage.setItem("pendingSignupDetails", JSON.stringify({ firstName, lastName, username, email, phone }));
+          } else {
+            sessionStorage.removeItem("pendingRegistrationEditToken");
+            sessionStorage.removeItem("pendingSignupDetails");
+          }
           sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (data.resend_after || 0) * 1000));
           if (data.email_delivery_queued === false) {
             sessionStorage.setItem("pendingVerificationDeliveryFailed", "1");
@@ -204,7 +185,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       if (error.errors) {
         const [field, firstError] = Object.entries(error.errors)[0];
-        showMessage("error", Array.isArray(firstError) ? firstError[0] : firstError);
+        showMessage(Array.isArray(firstError) ? firstError[0] : firstError);
         const id = { first_name: "firstName", last_name: "lastName", password: "password", email: "email", username: "username", phone: "phone" }[field];
         if (id) {
           const input = document.getElementById(id);
@@ -212,7 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
           input.focus();
         }
       } else {
-        showMessage("error", error.message);
+        showMessage(error.message);
       }
       setBusyState(false);
     }
@@ -232,12 +213,8 @@ document.addEventListener("DOMContentLoaded", () => {
     signupMessage.textContent = "";
   }
 
-  function showMessage(type, text) {
-    const styles = {
-      error:   "border-red-200 bg-red-50 text-red-700",
-      success: "border-green-200 bg-green-50 text-green-700",
-    };
-    signupMessage.className = `mt-5 rounded-xl border px-4 py-3 text-sm ${styles[type] || styles.error}`;
+  function showMessage(text) {
+    signupMessage.className = "mt-5 rounded-xl border px-4 py-3 text-sm border-red-200 bg-red-50 text-red-700";
     signupMessage.textContent = text;
   }
 });

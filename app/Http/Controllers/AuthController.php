@@ -43,12 +43,12 @@ class AuthController extends Controller
                 $pendingMatches = PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->get(['id', 'email']);
                 $userMatches = User::query()->where($identifiers)->lockForUpdate()->get(['user_id', 'email']);
                 $sameEmail = fn ($registrant) => Str::lower($registrant->email) === $request->input('email');
-                // An email alone only selects recovery, never changes stored details.
+                // An email alone cannot disclose recovery eligibility or change stored details.
                 if (! $request->isMethod('put')
                     && ($userMatches->contains($sameEmail) || $pendingMatches->contains($sameEmail))) {
                     return response()->json([
-                        'success' => true, 'requires_verification' => true, 'requires_registration_recovery' => true,
-                        'message' => 'You may have started signing up with this email. Continue with verification, or sign in if your account is ready.',
+                        'success' => true, 'requires_verification' => true,
+                        'message' => 'Continue with email verification, or sign in if your account is ready.',
                         'resend_after' => 0,
                     ], 202);
                 }

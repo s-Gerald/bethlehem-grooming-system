@@ -1153,13 +1153,13 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()
-            ->assertJsonPath('requires_registration_recovery', true)->assertJsonMissingPath('registration_token');
+            ->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('registration_token');
         $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@example.test'])
             ->assertUnprocessable()->assertJsonValidationErrors(['phone', 'username']);
         PendingCustomerRegistration::query()->delete();
         User::factory()->create(['email' => 'new.customer@example.test', 'phone' => '09123456789', 'username' => 'newcustomer']);
         $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()
-            ->assertJsonPath('requires_registration_recovery', true)->assertJsonMissingPath('registration_token');
+            ->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('registration_token');
         $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@example.test'])
             ->assertUnprocessable()->assertJsonValidationErrors(['phone', 'username']);
     }
@@ -1757,17 +1757,71 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
-    public function test_abandoned_signup_returns_a_recovery_action_without_overwriting_details(): void
+    public function test_existing_signup_responses_do_not_disclose_recovery_eligibility_or_overwrite_details(): void
     {
         Notification::fake();
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $pending = PendingCustomerRegistration::query()->sole();
         $before = $pending->getAttributes();
+        $payload = [...$this->registrationPayload(), 'first_name' => 'Attacker',
+            'password' => 'attacker-password', 'password_confirmation' => 'attacker-password'];
+        $publicResponse = $this->postJson('/api/register', $payload)
+            ->assertAccepted()->assertJsonPath('requires_verification', true)
+            ->assertJsonMissingPath('requires_registration_recovery')
+            ->assertJsonMissingPath('registration_token')->assertJsonMissingPath('details')->assertJsonMissingPath('token')->json();
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        $this->assertDatabaseCount('users', 0);
+        PendingCustomerRegistration::query()->delete();
+
+        foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true], ['role' => 'staff']] as $attributes) {
+            $this->travel(61)->seconds();
+            $user = User::factory()->create(['email' => 'new.customer@example.test', ...$attributes]);
+            $before = $user->fresh()->getAttributes();
+            Notification::fake();
+            $this->postJson('/api/register', $payload)->assertAccepted()->assertExactJson($publicResponse);
+            Notification::assertNothingSent();
+            $this->assertSame($before, $user->fresh()->getAttributes());
+            $this->assertDatabaseCount('pending_customer_registrations', 0);
+            $this->assertDatabaseCount('personal_access_tokens', 0);
+            $user->delete();
+        }
+    }
+
+    public function test_public_recovery_is_identical_for_unknown_expired_pending_and_existing_accounts(): void
+    {
+        Notification::fake();
+        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $pending = PendingCustomerRegistration::query()->sole();
+        $pending->forceFill(['created_at' => now()->subHours(48)])->save();
+        $publicResponse = $this->postJson('/api/email/resend', ['email' => 'unknown@example.test'])->assertOk()->json();
+        foreach ([$pending->email, 'unknown@example.test'] as $email) {
+            $this->travel(601)->seconds();
+            Notification::fake();
+            $this->postJson('/api/email/resend', ['email' => $email])->assertOk()->assertExactJson($publicResponse);
+            Notification::assertNothingSent();
+        }
+        foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true]] as $index => $attributes) {
+            $this->travel(601)->seconds();
+            $user = User::factory()->create(['email' => "recovery{$index}@example.test", ...$attributes]);
+            $this->postJson('/api/email/resend', ['email' => $user->email])->assertOk()->assertExactJson($publicResponse);
+        }
+    }
+
+    public function test_email_proof_is_required_before_recovery_guidance_and_saved_details_are_returned(): void
+    {
+        Notification::fake();
+        $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $pending = PendingCustomerRegistration::query()->sole();
         $this->postJson('/api/register', [...$this->registrationPayload(), 'first_name' => 'Attacker',
             'password' => 'attacker-password', 'password_confirmation' => 'attacker-password'])
             ->assertAccepted()->assertJsonPath('requires_verification', true)
+            ->assertJsonMissingPath('requires_registration_recovery')
             ->assertJsonMissingPath('registration_token')->assertJsonMissingPath('details')->assertJsonMissingPath('token');
-        $this->assertSame($before, $pending->fresh()->getAttributes());
+        $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => 'invalid'])
+            ->assertUnprocessable()->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('details');
+        $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $this->verificationCodeSentTo($pending)])
+            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonPath('details.first_name', 'New')
+            ->assertJsonStructure(['registration_recovery_token'])->assertJsonMissingPath('token');
         $this->assertDatabaseCount('users', 0);
     }
 
@@ -1919,10 +1973,14 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $this->assertSame(0, User::registeredCustomer()->count());
-        Notification::fake();
         $pending = PendingCustomerRegistration::query()->sole();
+        $code = $this->verificationCodeSentTo($pending);
+        Notification::fake();
         $this->postJson('/api/password/forgot', ['email' => $pending->email])->assertAccepted()
             ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
+        $this->postJson('/api/password/code/verify', ['email' => $pending->email,
+            'code' => $code])->assertUnprocessable()
+            ->assertJsonPath('message', 'Invalid or expired verification code.');
         Notification::assertNothingSent();
         $this->assertDatabaseCount('users', 0);
     }

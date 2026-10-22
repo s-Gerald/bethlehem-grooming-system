@@ -24,14 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let stopDeliveryCheck = () => {};
   const edit = document.getElementById("signupVerificationEdit");
   edit.classList.toggle("hidden", !read("pendingRegistrationEditToken"));
-  document.getElementById("verificationChangeEmail").addEventListener("click", () => {
-    if (busy || completed) return;
-    email = "";
-    recoveryEmail.value = "";
-    otp.clear();
-    renderEmail();
-    recoveryEmail.focus();
-  });
 
   function checkDelivery(receipt) {
     stopDeliveryCheck();
@@ -84,8 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderEmail() {
-    description.textContent = email ? "Enter the 6-digit code sent to" : "Enter your email and request a code to continue.";
-    maskedEmail.textContent = window.VerificationCode.maskEmail(email);
+    description.textContent = email ? "Enter the 6-digit code for" : "Enter your email and request a code to continue.";
+    maskedEmail.textContent = email ? window.VerificationCode.maskEmail(email) : "";
     recovery.classList.toggle("hidden", !!email);
   }
 

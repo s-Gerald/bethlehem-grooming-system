@@ -34,8 +34,8 @@ held the reported address.
 | State | Outcome |
 | --- | --- |
 | Neither table | Signup saves hashed credentials and details in pending only. No customer session. |
-| Pending only | Repeat signup offers recovery without changing stored details. Email ownership proof permits review and completion. |
-| Verified user only | Repeat signup uses the same public recovery wording as other existing emails. Resend sends no registration code; use sign-in or normal password recovery. |
+| Pending only | Repeat signup continues to generic email verification without changing stored details. Email ownership proof permits the registration panel, review, and completion. |
+| Verified user only | Repeat signup uses the same public verification response as other existing emails. Resend sends no registration code; use sign-in or normal password recovery. |
 | Unverified user only | Eligible legacy customers receive a registration code. Ownership proof permits review; explicit completion updates the existing user ID. |
 | Both tables | The existing user takes precedence. Verified/disabled/deleted/noncustomer users cannot be activated through pending codes. An eligible legacy user's own code authorizes review; completion preserves its ID/history and removes the same-email pending row atomically. |
 
@@ -60,8 +60,10 @@ final protection against duplicate users.
 
 ## API and UI behavior
 
-- `POST /api/register` creates a pending row or returns HTTP 202 with
-  `requires_registration_recovery`. An email-only request cannot overwrite any
+- `POST /api/register` creates a pending row or returns HTTP 202 with the generic
+  `requires_verification` response. Public responses never claim recovery eligibility;
+  only the successful OTP's existing `requires_registration_review` grant permits
+  the conditional signup recovery panel. An email-only request cannot overwrite any
   existing details/password, retrieve details, activate a user, or create a session.
 - Original-tab edits continue using the hashed private `registration_token` at
   `PUT /api/register/pending`. Edits rotate that credential, invalidate the old
@@ -86,9 +88,12 @@ final protection against duplicate users.
   the existing tab-scoped session storage. Clearing that storage requires fresh
   email proof, rather than losing access permanently. Browsers must permit
   session storage for the cross-page review step.
-- Signup preserves entered fields on errors, focuses server-invalid fields, and
-  distinguishes the recovery action from validation errors. Recovery is linked
-  from signup, sign-in feedback, and Forgot Password. Code entry retains masked
+- Signup preserves entered fields on errors and focuses server-invalid fields.
+  Repeat signup uses the existing verification page without saving unproven input
+  as recovered account details. The permanent unfinished-registration signup link
+  is removed; recovery remains accessible through sign-in feedback and Forgot
+  Password. The conditional signup panel appears after email proof and reuses the
+  saved details. Code entry retains masked
   email, autofill/paste support, visible focus, accessible alerts, resend cooldown,
   and duplicate-submission guards. No extra expiry countdown, modal, or page was added.
 - Pending and unverified customer sign-in cannot issue sessions. Verified customer
@@ -96,7 +101,11 @@ final protection against duplicate users.
 - Normal password-reset eligibility now requires verified email for customers at
   request, code verification, and final reset. Pending customers do not qualify.
   Legacy unverified customers must use registration recovery. Forgot Password
-  keeps its generic response and does not activate accounts. Eligible admin/staff
+  keeps its generic response and first shows neutral confirmation with an explicit
+  Enter code action; generic API success cannot automatically open reset OTP entry.
+  The registration recovery entry remains visible on the request and confirmation
+  screens. Signup verification no longer has a Use another email button or handler;
+  login verification and existing links retain their separate handlers. Eligible admin/staff
   reset and staff setup behavior remain intact.
 
 ## OTP and queued mail policy
@@ -247,7 +256,8 @@ Hostinger staging, apply the migration/config/worker steps above first.
 1. Submit a new signup. Confirm only one pending row and no user/session; verify
    absence from Admin Customers Active. Receive both HTML/text email versions.
 2. Abandon signup, open another browser/device or clear tab session storage, and
-   repeat signup with the same email. Choose Continue with verification. Confirm
+   repeat signup with the same email. On the verification screen, request a code
+   if needed. Confirm
    names/password are unchanged before proof, then review saved details, choose a
    password, and explicitly complete. Confirm one verified active user and no pending row.
 3. Use an unrelated browser to POST the same email with different details/password
@@ -347,3 +357,43 @@ the original tab was returned to the application's homepage. Source is suitable
 to push for review; this UI pass does not establish deployment readiness. Apply
 the existing migration and complete controlled end-to-end/mail and staging MySQL
 checks before treating deployment validation as complete.
+
+## Recovery eligibility and UI cleanup follow-up — October 22, 2026
+
+Public repeat signup no longer returns `requires_registration_recovery` for either
+verified or unfinished accounts. Both retain the same neutral response. The
+existing OTP-authorized review grant controls the conditional registration panel;
+unknown, expired, disabled, and verified accounts cannot obtain that grant.
+Repeat signup preserves stored account details and clears stale local edit/review
+credentials before generic verification. Losing the review grant returns to email
+verification. The original-tab signup/edit and legacy recovery paths are retained.
+
+Forgot Password preserves its initial description, blue styling, and shared OTP
+component. Generic success shows a neutral confirmation before explicit Enter code;
+reload, cooldown, change-email, keyboard focus, and OTP/reset states remain covered.
+The unfinished-registration entry remains available. The permanent signup recovery
+link and signup verification's Use another email control/handler were removed.
+The recovery link display selector now respects hidden controls, preventing the
+back action from appearing on the initial email screen.
+No endpoint, database migration, account-status polling, or additional request was
+introduced; existing asset caching remains in place with revised script versions.
+
+Current automated verification:
+
+- PHP 8.4: **152 tests, 1,851 assertions**, all passing, filtered to
+  `EmailVerificationTest`, `PasswordResetTest`, `PasswordResetInterfaceTest`,
+  `IndependentAuthenticationSessionsTest`, `SessionLockTest`, and
+  `TestingEnvironmentTest`. These use isolated SQLite and fake/test mail, including
+  the existing overlapping-verification regression.
+- `customer-signup-verification-regression.cjs`,
+  `frontend-auth-session-regression.cjs`, and `email-delivery-regression.cjs` passed.
+  Existing tests were updated for the removed public recovery flag, ownership-gated
+  panel, neutral reset confirmation, preserved cooldown/focus, and lost grants.
+- Changed JavaScript syntax checks and `git diff --check` passed.
+
+Browser work in this pass was limited to static desktop UI inspection. No forms,
+OTP submissions, actual registration, password reset, live email delivery, database
+migration, or viewport-based functional testing were performed. Those manual
+workflows remain with the user. Earlier full-suite and browser results above are
+historical and were not repeated in this pass. Work remains on `gerald-frontend`;
+no branch, commit, push, or deployment was created.

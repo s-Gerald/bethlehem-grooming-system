@@ -792,7 +792,7 @@ async function testPasswordResetRecovery() {
           addEventListener(name, handler) { this.handlers[name] = handler; },
           attributes: {},
           setAttribute(name, value) { this.attributes[name] = value; },
-          focus() { context.document.activeElement = this; this.handlers.focus?.(); },
+          focus() { if (!this.disabled) { context.document.activeElement = this; this.handlers.focus?.(); } },
           setSelectionRange() {},
         });
       }
@@ -828,7 +828,7 @@ async function testPasswordResetRecovery() {
     };
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "scripts/auth/verification-code.js"), "utf8"), context);
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, script), "utf8"), context);
-    return { getElement, location, API: context.API, lifecycle, intervals, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
+    return { getElement, location, API: context.API, lifecycle, intervals, activeElement: () => context.document.activeElement, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
   }
 
   const signIn = loadPage("scripts/auth/sign-in.js");
@@ -845,6 +845,19 @@ async function testPasswordResetRecovery() {
   assert.equal(openForgot().getElement("resetEmail").value, "", "Reload must not reuse the email");
   await forgot.getElement("forgotPasswordForm").handlers.submit({ preventDefault() {} });
   assert.deepEqual(requests, ["customer@example.com"], "Send Code still submits normally");
+  assert.equal(forgot.getElement('verifyCodeForm').classList.contains('hidden'), true, 'Generic success must not automatically open reset OTP entry');
+  assert.equal(forgot.getElement('passwordResetConfirmation').classList.contains('hidden'), false);
+  assert.equal(forgot.activeElement(), forgot.getElement('enterResetCode'), 'Confirmation must focus its enabled next action');
+  assert.equal(forgot.getElement('registrationRecovery').classList.contains('hidden'), false);
+  const confirmed = openForgot();
+  assert.equal(confirmed.getElement('passwordResetConfirmation').classList.contains('hidden'), false, 'Reload preserves neutral confirmation');
+  assert.equal(confirmed.getElement('verifyCodeForm').classList.contains('hidden'), true);
+  confirmed.getElement('forgotBack').handlers.click();
+  assert.equal(confirmed.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.equal(confirmed.getElement('forgotPasswordSubmit').disabled, true, 'Changing email preserves the resend cooldown');
+  assert.deepEqual(requests, ['customer@example.com'], 'Leaving confirmation never requests another code');
+  forgot.getElement('enterResetCode').handlers.click();
+  assert.deepEqual(requests, ['customer@example.com'], 'Entering a received code needs no extra request');
   assert.equal(forgot.getElement("verifyEmail").textContent, "c***@example.com");
   assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1:15');
   forgot.advance(74000);
@@ -906,6 +919,8 @@ async function testPasswordResetRecovery() {
   resetRequestError = null;
   maskedResponse = "u***@example.com";
   await throttled.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(throttled.getElement('verifyCodeForm').classList.contains('hidden'), true);
+  throttled.getElement('enterResetCode').handlers.click();
   assert.equal(throttled.getElement("verifyEmail").textContent, "u***@example.com");
   assert.equal(requests.at(-1), "unknown@example.com", "Masking must not alter the reset request identity");
 
@@ -935,6 +950,8 @@ async function testPasswordResetRecovery() {
     const page = openForgot();
     page.getElement('resetEmail').value = 'customer@example.com';
     await page.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+    assert.equal(page.getElement('verifyCodeForm').classList.contains('hidden'), true);
+    page.getElement('enterResetCode').handlers.click();
     return page;
   }
   function enterCode(page, value = '123456') {
@@ -989,6 +1006,7 @@ async function testPasswordResetRecovery() {
   assert.equal(resumed.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Back/forward cache cannot restore a consumed grant');
   resumed.advance(75000);
   await resumed.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  resumed.getElement('enterResetCode').handlers.click();
   enterCode(resumed);
   await resumed.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
   resumed.getElement('newPassword').value = resumed.getElement('confirmNewPassword').value = 'AnotherPass!234';
@@ -1007,6 +1025,7 @@ async function testPasswordResetRecovery() {
   assert.match(expired.getElement('forgotPasswordMessage').textContent, /session expired/i);
   expired.advance(900000);
   await expired.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  expired.getElement('enterResetCode').handlers.click();
   assert.equal(expired.getElement('verifyCodeForm').classList.contains('hidden'), false);
 
   const locked = await requestRecovery();

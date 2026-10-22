@@ -222,7 +222,7 @@
   font-size: 1rem;
 }
 .password-recovery-page .recovery-password { padding-right: 3rem; }
-.password-recovery-page .verification-link { display: inline-block; }
+.password-recovery-page .verification-link:not(.hidden) { display: inline-block; }
 .password-recovery-page .recovery-input:focus-visible {
   outline: 2px solid #315b7e;
   outline-offset: 2px;

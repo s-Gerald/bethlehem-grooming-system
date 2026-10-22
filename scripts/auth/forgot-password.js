@@ -16,6 +16,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const description = document.getElementById("forgotDescription");
   const verifyDescription = document.getElementById("verifyDescription");
   const verifyEmail = document.getElementById("verifyEmail");
+  const requestConfirmation = document.getElementById("passwordResetConfirmation");
+  const enterCode = document.getElementById("enterResetCode");
   const codeCells = [...document.querySelectorAll(".verification-code-cell")];
   const resend = document.getElementById("resendCode");
   const emailMessage = document.getElementById("forgotPasswordMessage");
@@ -40,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Only recovery credentials and deadlines survive reloads; never passwords or OTPs.
   try {
     const saved = JSON.parse(sessionStorage.getItem(recoveryKey) || "null");
-    if (saved && typeof saved.requestedEmail === "string" && ["email", "code", "password"].includes(saved.step)) {
+    if (saved && typeof saved.requestedEmail === "string" && ["email", "confirmation", "code", "password"].includes(saved.step)) {
       ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step } = saved);
       emailInput.value = requestedEmail;
     } else {
@@ -69,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     step = next;
     const content = {
       email: ["Forgot Password", "Enter your email address to request a verification code."],
+      confirmation: ["Check Your Email", "If you receive a code, enter it to continue."],
       code: ["Check Your Email", ""],
       password: ["Create New Password", "Set a strong password to secure your account."],
     }[next];
@@ -79,10 +82,12 @@ document.addEventListener("DOMContentLoaded", () => {
     verifyEmail.classList.toggle("hidden", next !== "code");
     if (next === "code") verifyEmail.textContent = maskedEmail || window.VerificationCode.maskEmail(requestedEmail);
     emailForm.classList.toggle("hidden", next !== "email");
+    requestConfirmation.classList.toggle("hidden", next !== "confirmation");
     codeForm.classList.toggle("hidden", next !== "code");
     passwordForm.classList.toggle("hidden", next !== "password");
-    back.classList.toggle("hidden", next !== "code");
-    document.getElementById("registrationRecovery").classList.toggle("hidden", next !== "email");
+    back.classList.toggle("hidden", !["confirmation", "code"].includes(next));
+    document.getElementById("registrationRecovery").classList.toggle("hidden", !["email", "confirmation"].includes(next));
+    if (next === "confirmation") enterCode.focus();
     if (next === "code") codeInput.focus();
     if (next === "password") password.focus();
     if (next === "email") emailInput.focus();
@@ -110,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
     codeSubmit.textContent = busy && step === "code" ? "Verifying..." : remaining(verifyUntil) > 0
       ? `Continue in ${window.VerificationCode.formatCountdown(remaining(verifyUntil))}` : "Continue";
     back.disabled = busy;
+    enterCode.disabled = busy;
     passwordSubmit.disabled = busy || remaining(resetUntil) > 0;
     passwordSubmit.textContent = busy && step === "password" ? "Resetting..." : remaining(resetUntil) > 0
       ? `Reset Password in ${window.VerificationCode.formatCountdown(remaining(resetUntil))}` : "Reset Password";
@@ -150,25 +156,32 @@ document.addEventListener("DOMContentLoaded", () => {
     tick();
   }
 
-  function acceptRequest(response) {
+  function acceptRequest(response, next = "code") {
     if (expiresAt <= Date.now()) failedAttempts = 0;
     maskedEmail = response?.email || window.VerificationCode.maskEmail(requestedEmail);
     expiresAt = Date.now() + response.expires_in * 1000;
     resendUntil = Date.now() + (response.resend_after ?? 45) * 1000;
     otp.clear();
     setError(codeMessage);
-    showStep("code");
+    showStep(next);
     saveRecovery();
     startTimer();
   }
 
   back.addEventListener("click", () => {
-    if (step !== "code" || busy || resetGrant) return;
+    if (!["confirmation", "code"].includes(step) || busy || resetGrant) return;
     otp.clear();
     setError(emailMessage);
     showStep("email");
     saveRecovery();
     updateControls();
+  });
+
+  enterCode.addEventListener("click", () => {
+    if (step !== "confirmation" || busy || !requestedEmail) return;
+    showStep("code");
+    saveRecovery();
+    tick();
   });
 
   emailForm.addEventListener("submit", async (event) => {
@@ -182,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setError(emailMessage);
     updateControls();
     try {
-      acceptRequest(await API.requestPasswordReset(requestedEmail));
+      acceptRequest(await API.requestPasswordReset(requestedEmail), "confirmation");
     } catch (error) {
       setError(emailMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
         : error?.status === 0 ? error.message : "Couldn't request a code. Try again.");
@@ -192,6 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } finally {
       busy = false;
       tick();
+      if (step === "confirmation") enterCode.focus();
     }
   });
 
