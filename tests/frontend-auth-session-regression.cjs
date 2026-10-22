@@ -765,7 +765,7 @@ async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
   }
 }
 
-async function testPasswordResetEmailHandoff() {
+async function testPasswordResetRecovery() {
   const key = "pendingPasswordResetEmail";
   const storage = new MemoryStorage();
   const requests = [];
@@ -775,37 +775,48 @@ async function testPasswordResetEmailHandoff() {
   function loadPage(script) {
     let now = 100000;
     const intervals = new Map();
+    const lifecycle = {};
     const elements = new Map();
     const getElement = (id) => {
       if (!elements.has(id)) {
+        const classes = new Set();
         elements.set(id, {
-          value: "", textContent: "", innerHTML: "", disabled: false,
-          classList: { toggle() {} },
+          value: "", textContent: "", innerHTML: "", disabled: false, type: "password",
+          get className() { return [...classes].join(' '); },
+          set className(value) { classes.clear(); value.split(/\s+/).filter(Boolean).forEach(c => classes.add(c)); },
+          classList: {
+            toggle(name, force) { const enabled = force ?? !classes.has(name); if (enabled) classes.add(name); else classes.delete(name); },
+            contains(name) { return classes.has(name); },
+          },
           handlers: {},
           addEventListener(name, handler) { this.handlers[name] = handler; },
-          setAttribute() {}, focus() {},
+          attributes: {},
+          setAttribute(name, value) { this.attributes[name] = value; },
+          focus() { context.document.activeElement = this; this.handlers.focus?.(); },
           setSelectionRange() {},
         });
       }
       return elements.get(id);
     };
-    const location = { search: "", href: "http://localhost/pages/client/sign-in.html" };
+    const location = { search: "", href: "http://localhost/pages/client/sign-in.html", replace(target) { this.href = target; } };
     const context = {
       URLSearchParams,
       Date: { now: () => now },
       sessionStorage: storage,
-      window: { location, setInterval(callback) { intervals.set(1, callback); return 1; }, clearInterval(id) { intervals.delete(id); } },
+      window: { location, addEventListener(name, handler) { lifecycle[name] = handler; }, setInterval(callback) { intervals.set(1, callback); return 1; }, clearInterval(id) { intervals.delete(id); } },
       API: {
         async signIn() { throw { message: "Invalid credentials", status: 401 }; },
         async requestPasswordReset(email) {
           requests.push(email);
           if (resetRequestError) throw resetRequestError;
-          return { email: maskedResponse, resend_after: resetResendAfter };
+          return { email: maskedResponse, resend_after: resetResendAfter, expires_in: 900 };
         },
+        async verifyPasswordResetCode() { return { token: 'g'.repeat(64), expires_in: 900 }; },
+        async resetPassword() { return { success: true }; },
       },
       document: {
         getElementById: getElement,
-        querySelector: () => null,
+        querySelector: (selector) => script.includes('forgot-password') ? getElement(selector) : null,
         querySelectorAll: () => script.includes('forgot-password') ? Array.from({ length: 6 }, (_, i) => getElement(`cell${i}`)) : [],
         createElement: () => ({
           value: "",
@@ -817,7 +828,7 @@ async function testPasswordResetEmailHandoff() {
     };
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "scripts/auth/verification-code.js"), "utf8"), context);
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, script), "utf8"), context);
-    return { getElement, location, API: context.API, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
+    return { getElement, location, API: context.API, lifecycle, intervals, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
   }
 
   const signIn = loadPage("scripts/auth/sign-in.js");
@@ -869,6 +880,7 @@ async function testPasswordResetEmailHandoff() {
   assert.equal(openForgot().getElement("resetEmail").value, "updated@example.com",
     "Use the current identifier after a failed sign-in");
   for (const value of ["customer", "09171234567", "invalid@", "a@@example.com", ""]) {
+    storage.removeItem('passwordResetRecovery');
     storage.setItem(key, "stale@example.com");
     identifier.value = value;
     clickForgot();
@@ -878,18 +890,229 @@ async function testPasswordResetEmailHandoff() {
   assert.equal(signIn.location.href, "http://localhost/pages/client/sign-in.html");
   const html = fs.readFileSync(path.join(projectRoot, "pages/client/sign-in.html"), "utf8");
   assert.match(html, /id="forgotPasswordLink" href="\.\/forgot-password\.html"/);
-  resetRequestError = { status: 429 };
+  storage.removeItem('passwordResetRecovery');
+  resetRequestError = { status: 429, retryAfter: 120 };
   const throttled = openForgot();
   throttled.getElement("resetEmail").value = "unknown@example.com";
   await throttled.getElement("forgotPasswordForm").handlers.submit({ preventDefault() {} });
-  assert.equal(throttled.getElement("verifyEmail").textContent, "your email address",
-    "A failed request must never fall back to displaying the full email");
+  assert.equal(throttled.getElement('verifyCodeForm').classList.contains('hidden'), true, 'Failed requests stay on email');
+  assert.equal(throttled.getElement('resetEmail').value, 'unknown@example.com');
+  assert.match(throttled.getElement('forgotPasswordMessage').textContent, /wait/i);
+  assert.equal(throttled.getElement('forgotPasswordSubmit').disabled, true);
+  const beforeRetry = requests.length;
+  await throttled.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(requests.length, beforeRetry, 'Do not repeat throttled requests');
+  throttled.advance(120000);
   resetRequestError = null;
   maskedResponse = "u***@example.com";
-  throttled.getElement("resendCode").disabled = false;
-  await throttled.getElement("resendCode").handlers.click();
+  await throttled.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
   assert.equal(throttled.getElement("verifyEmail").textContent, "u***@example.com");
   assert.equal(requests.at(-1), "unknown@example.com", "Masking must not alter the reset request identity");
+
+  storage.removeItem('passwordResetRecovery');
+  resetRequestError = { status: 0, message: 'Unable to reach the server. Check your connection.' };
+  const offline = openForgot();
+  offline.getElement('resetEmail').value = 'customer@example.com';
+  await offline.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(offline.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.equal(offline.getElement('forgotPasswordSubmit').disabled, false);
+  assert.match(offline.getElement('forgotPasswordMessage').textContent, /connection/i);
+  resetRequestError = { status: 503 };
+  await offline.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(offline.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'HTTP failures also stay on email');
+  let finishRequest;
+  let requestCalls = 0;
+  offline.API.requestPasswordReset = () => { requestCalls++; return new Promise(resolve => { finishRequest = resolve; }); };
+  const pendingRequest = offline.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  await offline.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(requestCalls, 1, 'Initial requests cannot be double submitted');
+  finishRequest({ email: 'c***@example.com', resend_after: 45, expires_in: 900 });
+  await pendingRequest;
+  resetRequestError = null;
+
+  async function requestRecovery() {
+    storage.removeItem('passwordResetRecovery');
+    const page = openForgot();
+    page.getElement('resetEmail').value = 'customer@example.com';
+    await page.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+    return page;
+  }
+  function enterCode(page, value = '123456') {
+    page.getElement('verificationCode').value = value;
+    page.getElement('verificationCode').handlers.input();
+  }
+  const recovering = await requestRecovery();
+  assert.equal(recovering.getElement('forgotTitle').textContent, 'Check Your Email');
+  assert.equal(recovering.getElement('forgotBack').classList.contains('hidden'), false);
+  await recovering.getElement('verificationCode').handlers.paste({ preventDefault() {}, clipboardData: { getData: () => '01 23a45' } });
+  assert.equal(recovering.getElement('verificationCode').value, '012345');
+  assert.equal(recovering.getElement('verifyCodeSubmit').disabled, false);
+  assert.deepEqual(Array.from({ length: 6 }, (_, i) => recovering.getElement(`cell${i}`).textContent), ['0', '1', '2', '3', '4', '5']);
+  let finishVerification;
+  let verificationCalls = 0;
+  recovering.API.verifyPasswordResetCode = () => { verificationCalls++; return new Promise(resolve => { finishVerification = resolve; }); };
+  const verifying = recovering.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  await recovering.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  assert.equal(verificationCalls, 1);
+  finishVerification({ token: 'g'.repeat(64), expires_in: 60 });
+  await verifying;
+  assert.equal(recovering.getElement('resetPasswordForm').classList.contains('hidden'), false);
+  assert.equal(recovering.getElement('forgotBack').classList.contains('hidden'), true, 'Consumed OTP cannot be revisited');
+  recovering.getElement('forgotBack').handlers.click();
+  assert.equal(recovering.getElement('resetPasswordForm').classList.contains('hidden'), false);
+  const afterVerifyRequests = requests.length;
+  await recovering.getElement('resendCode').handlers.click();
+  assert.equal(requests.length, afterVerifyRequests, 'Consumed OTP cannot be resent');
+  const resumed = openForgot();
+  assert.equal(resumed.getElement('resetPasswordForm').classList.contains('hidden'), false, 'Reload preserves the grant');
+  assert.equal(resumed.getElement('newPassword').value, '', 'Passwords are never stored');
+  resumed.getElement('newPassword').value = 'UpdatedPass!234';
+  resumed.getElement('confirmNewPassword').value = 'DifferentPass!234';
+  await resumed.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.match(resumed.getElement('confirmPasswordMessage').textContent, /do not match/);
+  assert.equal(resumed.getElement('newPassword').value, 'UpdatedPass!234');
+  resumed.getElement('confirmNewPassword').value = 'UpdatedPass!234';
+  let resetCalls = 0;
+  let finishReset;
+  resumed.API.resetPassword = (grant, value, confirm) => {
+    assert.equal(grant, 'g'.repeat(64)); assert.equal(value, confirm);
+    resetCalls++; return new Promise(resolve => { finishReset = resolve; });
+  };
+  const resetting = resumed.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  await resumed.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(resetCalls, 1);
+  assert.match(resumed.getElement('resetPasswordSubmit').textContent, /Resetting/);
+  finishReset({ success: true }); await resetting;
+  assert.equal(resumed.location.href, './sign-in.html?password_reset=1');
+  assert.equal(storage.getItem('passwordResetRecovery'), null);
+  resumed.lifecycle.pageshow();
+  assert.equal(resumed.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Back/forward cache cannot restore a consumed grant');
+  resumed.advance(75000);
+  await resumed.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  enterCode(resumed);
+  await resumed.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  resumed.getElement('newPassword').value = resumed.getElement('confirmNewPassword').value = 'AnotherPass!234';
+  let restartedResetCalls = 0;
+  resumed.API.resetPassword = async () => { restartedResetCalls++; return { success: true }; };
+  await resumed.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(restartedResetCalls, 1, 'A fresh recovery still works after restoring a completed page');
+
+  const expired = await requestRecovery();
+  enterCode(expired);
+  await expired.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  expired.API.resetPassword = async () => { throw { status: 422, expired: true }; };
+  expired.getElement('newPassword').value = expired.getElement('confirmNewPassword').value = 'UpdatedPass!234';
+  await expired.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(expired.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.match(expired.getElement('forgotPasswordMessage').textContent, /session expired/i);
+  expired.advance(900000);
+  await expired.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(expired.getElement('verifyCodeForm').classList.contains('hidden'), false);
+
+  const locked = await requestRecovery();
+  locked.API.verifyPasswordResetCode = async () => { throw { status: 422 }; };
+  for (let i = 0; i < 5; i++) {
+    enterCode(locked);
+    await locked.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+    assert.equal(locked.getElement('verificationCode').attributes['aria-invalid'], 'true');
+  }
+  assert.equal(locked.getElement('resendCode').disabled, true, 'Five failures cannot be bypassed with resend');
+  assert.match(locked.getElement('verifyCodeMessage').textContent, /too many/i);
+  const stillLocked = openForgot();
+  assert.equal(stillLocked.getElement('resendCode').disabled, true, 'Reload must retain the lockout');
+  stillLocked.advance(900000);
+  assert.equal(stillLocked.getElement('resendCode').disabled, false, 'Expiry permits a new request');
+  await stillLocked.getElement('resendCode').handlers.click();
+  assert.equal(stillLocked.getElement('verificationCode').disabled, false);
+  assert.equal(stillLocked.getElement('verifyCodeMessage').textContent, '');
+  enterCode(stillLocked, 'abc12');
+  assert.equal(stillLocked.getElement('verificationCode').value, '12');
+  assert.equal(stillLocked.getElement('verifyCodeSubmit').disabled, true);
+  stillLocked.lifecycle.pagehide?.();
+  assert.equal(stillLocked.intervals.size, 0, 'Leaving the page cleans up timers');
+
+  const codeExpired = await requestRecovery();
+  codeExpired.advance(900000);
+  assert.match(codeExpired.getElement('verifyCodeMessage').textContent, /code expired/i);
+  assert.equal(codeExpired.getElement('verificationCode').disabled, true);
+  assert.equal(codeExpired.getElement('resendCode').disabled, false);
+  await codeExpired.getElement('resendCode').handlers.click();
+  assert.equal(codeExpired.getElement('verificationCode').disabled, false);
+
+  const resendLimited = await requestRecovery();
+  resendLimited.advance(75000);
+  resetRequestError = { status: 429, retryAfter: 510 };
+  await resendLimited.getElement('resendCode').handlers.click();
+  assert.match(resendLimited.getElement('verifyCodeMessage').textContent, /wait/i);
+  assert.equal(resendLimited.getElement('resendCode').textContent, 'Resend in 8:30');
+  const limitedRequests = requests.length;
+  await resendLimited.getElement('resendCode').handlers.click();
+  assert.equal(requests.length, limitedRequests);
+  resendLimited.advance(510000);
+  assert.equal(resendLimited.getElement('resendCode').disabled, false);
+  resetRequestError = null;
+
+  const attemptsSurviveResend = await requestRecovery();
+  attemptsSurviveResend.API.verifyPasswordResetCode = async () => { throw { status: 422 }; };
+  for (let i = 0; i < 2; i++) {
+    enterCode(attemptsSurviveResend);
+    await attemptsSurviveResend.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  }
+  enterCode(attemptsSurviveResend);
+  assert.equal(attemptsSurviveResend.getElement('verifyCodeMessage').textContent, '', 'Editing clears the outdated error');
+  assert.equal(attemptsSurviveResend.getElement('verificationCode').attributes['aria-invalid'], 'false');
+  assert.equal(attemptsSurviveResend.getElement('cell5').classList.contains('is-active'), true);
+  attemptsSurviveResend.advance(75000);
+  await attemptsSurviveResend.getElement('resendCode').handlers.click();
+  for (let i = 0; i < 3; i++) {
+    enterCode(attemptsSurviveResend);
+    await attemptsSurviveResend.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  }
+  assert.equal(attemptsSurviveResend.getElement('verificationCode').disabled, true, 'Resending does not reset failed attempts');
+
+  const verifyLimited = await requestRecovery();
+  enterCode(verifyLimited);
+  verifyLimited.API.verifyPasswordResetCode = async () => { throw { status: 429, retryAfter: 60 }; };
+  await verifyLimited.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, true);
+  assert.equal(verifyLimited.getElement('verificationCode').attributes['aria-invalid'], 'false', 'Transport limits are not invalid codes');
+  verifyLimited.advance(60000);
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, false);
+  verifyLimited.API.verifyPasswordResetCode = async () => { throw { status: 429, retryAfter: 120 }; };
+  await verifyLimited.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  verifyLimited.advance(75000);
+  await verifyLimited.getElement('resendCode').handlers.click();
+  enterCode(verifyLimited);
+  assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, true, 'Resend cannot erase the verification endpoint retry delay');
+
+  const passwordErrors = await requestRecovery();
+  enterCode(passwordErrors);
+  await passwordErrors.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  const newPassword = passwordErrors.getElement('newPassword');
+  const confirmPassword = passwordErrors.getElement('confirmNewPassword');
+  newPassword.value = confirmPassword.value = 'UpdatedPass!234';
+  passwordErrors.getElement('toggleNewPassword').handlers.click();
+  assert.equal(newPassword.type, 'text');
+  assert.equal(passwordErrors.getElement('toggleNewPassword').attributes['aria-label'], 'Hide new password');
+  passwordErrors.getElement('toggleNewPassword').handlers.click();
+  assert.equal(newPassword.type, 'password');
+  passwordErrors.API.resetPassword = async () => { throw { status: 422, errors: { password: ['Choose a different password.'] } }; };
+  await passwordErrors.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(passwordErrors.getElement('newPasswordMessage').textContent, 'Choose a different password.');
+  assert.equal(newPassword.value, 'UpdatedPass!234');
+  assert.equal(confirmPassword.value, 'UpdatedPass!234');
+  newPassword.handlers.input();
+  assert.equal(newPassword.attributes['aria-invalid'], 'false');
+  passwordErrors.API.resetPassword = async () => { throw { status: 429, retryAfter: 30 }; };
+  await passwordErrors.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, true);
+  passwordErrors.advance(30000);
+  assert.equal(passwordErrors.getElement('resetPasswordSubmit').disabled, false);
+  passwordErrors.advance(870000);
+  assert.equal(passwordErrors.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Grant expiry restarts without polling');
+  assert.equal(passwordErrors.getElement('resetEmail').value, 'customer@example.com');
+  assert.equal(newPassword.value, '');
+  assert.equal(storage.getItem('passwordResetRecovery').includes('UpdatedPass!234'), false);
 }
 
 function testStaticAuthContracts() {
@@ -1131,7 +1354,7 @@ async function testStaffSetupUsernameForm() {
   await testStaffSetupUsernameAndResetApiContracts();
   await testStaffSetupUsernameForm();
   if (process.argv.includes("--staff-setup")) {
-    await testPasswordResetEmailHandoff();
+    await testPasswordResetRecovery();
     console.log("Staff setup username and password-reset API regression checks passed");
     return;
   }
@@ -1156,7 +1379,7 @@ async function testStaffSetupUsernameForm() {
   await testLoginCodeIsEnteredOnTheOriginalTab();
   await testLoginCodeResendCooldownAndLimit();
   await testLoginDeliveryErrorsAndPrivilegedRedirects();
-  await testPasswordResetEmailHandoff();
+  await testPasswordResetRecovery();
   testStaticAuthContracts();
   console.log("frontend auth/session regression checks passed");
 })().catch((error) => {

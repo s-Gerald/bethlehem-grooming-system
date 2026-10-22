@@ -1,4 +1,4 @@
-/* Bethlehem authentication: shared code cells from Forgot Password. */
+/* Bethlehem authentication: shared verification screens and code cells. */
 .verification-code-cells {
   position: relative;
   display: grid;
@@ -208,6 +208,27 @@
   }
   .verification-heading h1 { font-size: 1.625rem; }
 }
+
+/* Recovery fields share the verification card, actions, and OTP states above. */
+.password-recovery-page .recovery-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3rem;
+  padding: .75rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: .5rem;
+  background: #fff;
+  color: #1e293b;
+  font-size: 1rem;
+}
+.password-recovery-page .recovery-password { padding-right: 3rem; }
+.password-recovery-page .verification-link { display: inline-block; }
+.password-recovery-page .recovery-input:focus-visible {
+  outline: 2px solid #315b7e;
+  outline-offset: 2px;
+}
+.password-recovery-page .recovery-input[aria-invalid="true"] { border-color: #b91c1c; }
+.password-recovery-page .verification-message.text-left { text-align: left; }
 
 /* Hallmark advisory: component scope, existing Bethlehem OTP styling. */
 .phone-verification-dialog {

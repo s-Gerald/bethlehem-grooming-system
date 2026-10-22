@@ -7,6 +7,7 @@ use App\Models\PasswordResetRequest;
 use App\Models\PendingCustomerRegistration;
 use App\Models\PendingStaffAccount;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\SetUpStaffPasswordNotification;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -96,7 +97,11 @@ class PasswordResetService
                 'token_hash' => Hash::make(Str::random(64)),
                 'verified_token_hash' => hash('sha256', $grant),
             ]);
-            return ['status' => 'valid', 'token' => $grant];
+            return [
+                'status' => 'valid',
+                'token' => $grant,
+                'expires_in' => max(0, $request->expires_at->timestamp - now()->timestamp),
+            ];
         });
     }
 
@@ -117,7 +122,7 @@ class PasswordResetService
                 return ['status' => 'invalid'];
             }
 
-            if (now()->isAfter($request->expires_at)) {
+            if (now()->greaterThanOrEqualTo($request->expires_at)) {
                 $request->delete();
 
                 return ['status' => 'expired'];
@@ -137,6 +142,15 @@ class PasswordResetService
             $user->save();
             $user->tokens()->delete();
             $request->delete();
+
+            DB::afterCommit(function () use ($user): void {
+                try {
+                    $user->notify(new PasswordChangedNotification);
+                } catch (Throwable $exception) {
+                    // The password change is committed even if queueing fails.
+                    report($exception);
+                }
+            });
 
             return [
                 'status' => 'reset',
@@ -367,7 +381,7 @@ class PasswordResetService
             && $user->requiresPasswordSetup();
     }
 
-    private function ttlMinutes(): int
+    public function ttlMinutes(): int
     {
         return max(1, (int) config('auth.passwords.users.expire', 15));
     }

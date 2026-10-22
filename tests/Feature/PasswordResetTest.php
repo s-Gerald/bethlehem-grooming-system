@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\PasswordResetRequest;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\SetUpStaffPasswordNotification;
 use Illuminate\Database\Schema\Blueprint;
@@ -135,12 +136,14 @@ class PasswordResetTest extends TestCase
         $this->assertSame($username, $user->fresh()->username);
         $this->assertDatabaseCount('password_reset_requests', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
+        Notification::assertSentToTimes($user, PasswordChangedNotification::class, 1);
 
         $this->postJson('/api/password/reset', [
             'token' => $grant,
             'password' => 'AnotherPass!234',
             'password_confirmation' => 'AnotherPass!234',
         ])->assertUnprocessable();
+        Notification::assertSentToTimes($user, PasswordChangedNotification::class, 1);
     }
 
     public static function passwordResetRoles(): array
@@ -257,6 +260,11 @@ class PasswordResetTest extends TestCase
         $this->postJson('/api/password/forgot', [
             'email' => $user->email,
         ])->assertAccepted();
+        $code = $this->resetCodeSentTo($user);
+        $this->travelTo(PasswordResetRequest::query()->sole()->expires_at);
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])
+            ->assertUnprocessable();
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $code = $this->resetCodeSentTo($user);
         $grant = $this->postJson('/api/password/code/verify', [
             'email' => $user->email,
@@ -568,6 +576,101 @@ class PasswordResetTest extends TestCase
         PasswordResetRequest::query()->update(['verification_attempts' => 5]);
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_verified_grant_survives_resend_and_expires_at_its_exact_deadline(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()
+            ->assertJsonPath('expires_in', 900);
+        $code = $this->resetCodeSentTo($user);
+        $verified = $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])
+            ->assertOk()->assertJsonStructure(['token', 'expires_in']);
+        $grant = $verified->json('token');
+        $before = PasswordResetRequest::query()->sole();
+        $this->travel(46)->seconds();
+        app(\App\Services\PasswordResetService::class)->sendCode($user->email);
+        $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
+        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
+        $this->travelTo($before->expires_at);
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
+            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable()->assertJsonPath('expired', true);
+        Notification::assertNotSentTo($user, PasswordChangedNotification::class);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $this->resetCodeSentTo($user)])->assertOk();
+    }
+
+    public function test_five_failures_cannot_be_bypassed_by_resending_but_expiry_allows_recovery(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $service->verifyCode($user->email, '000000');
+        }
+        $before = PasswordResetRequest::query()->sole();
+        $this->travel(46)->seconds();
+        $service->sendCode($user->email);
+        $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
+        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
+        $this->travelTo($before->expires_at);
+        $service->sendCode($user->email);
+        $this->assertSame(0, $before->fresh()->verification_attempts);
+        $this->assertSame('valid', $service->verifyCode($user->email, $this->resetCodeSentTo($user))['status']);
+    }
+
+    public function test_password_change_confirmation_is_encrypted_queued_and_contains_no_credentials(): void
+    {
+        $this->useDatabaseMailQueue();
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        $code = $this->resetCodeSentTo($user);
+        $grant = $service->verifyCode($user->email, $code)['token'];
+        Notification::swap(new \Illuminate\Notifications\ChannelManager(app()));
+        config()->set('mail.authentication.delivery', 'immediate');
+        \Illuminate\Support\Facades\DB::beginTransaction();
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+        $this->assertSame(0, \Illuminate\Support\Facades\DB::table('jobs')->count(),
+            'Confirmation must wait for the outer transaction to commit.');
+        \Illuminate\Support\Facades\DB::rollBack();
+        $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $job = \Illuminate\Support\Facades\DB::table('jobs')->sole();
+        $payload = json_decode($job->payload, true);
+        $this->assertSame(PasswordChangedNotification::class, $payload['displayName']);
+        $this->assertStringNotContainsString('PasswordChangedNotification', $payload['data']['command']);
+        $queued = unserialize(app('encrypter')->decrypt($payload['data']['command']));
+        $this->assertInstanceOf(PasswordChangedNotification::class, $queued->notification);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $body = $messages[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringContainsString('Your password was changed', $body);
+        foreach ([$code, $grant, 'UpdatedPass!234', 'CurrentPass!234'] as $secret) {
+            $this->assertStringNotContainsString($secret, $body);
+        }
+    }
+
+    public function test_confirmation_queue_failure_does_not_undo_the_password_reset(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $user->createToken('auth_token');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        $grant = $service->verifyCode($user->email, $this->resetCodeSentTo($user))['token'];
+        $this->mock(\Illuminate\Contracts\Notifications\Dispatcher::class, fn ($mock) =>
+            $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('queue unavailable')));
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
+            'password_confirmation' => 'UpdatedPass!234'])->assertOk();
+        $this->assertTrue(Hash::check('UpdatedPass!234', $user->fresh()->password_hash));
+        $this->assertDatabaseCount('password_reset_requests', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
     private function setupTokenSentTo(User $user): string

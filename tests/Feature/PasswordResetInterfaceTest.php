@@ -21,6 +21,15 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('API.requestPasswordReset(requestedEmail)', $forgotScript);
         $this->assertStringNotContainsString('min-height: 36rem', $forgot);
         $this->assertSame(6, substr_count($forgot, 'class="verification-code-cell"'));
+        // Recovery must inherit the same OTP geometry and states as email/login verification.
+        $verification = file_get_contents(base_path('pages/client/verify-email.html'));
+        foreach (['verification-page', 'verification-layout', 'verification-card', 'verification-logo',
+            'verification-heading', 'verification-primary', 'verification-resend', 'verification-link'] as $sharedClass) {
+            $this->assertMatchesRegularExpression('/class="[^"]*\b'.$sharedClass.'\b/', $forgot);
+            $this->assertMatchesRegularExpression('/class="[^"]*\b'.$sharedClass.'\b/', $verification);
+        }
+        $this->assertStringContainsString('verification-code.css?', $forgot);
+        $this->assertStringContainsString('verification-code.css?', $verification);
         $this->assertStringContainsString('id="verifyEmail"', $forgot);
         $this->assertStringNotContainsString('verifyEmail.textContent = requestedEmail', $forgotScript);
         $this->assertStringContainsString('verifyEmail.textContent = maskedEmail', $forgotScript);
@@ -51,13 +60,11 @@ class PasswordResetInterfaceTest extends TestCase
 
         $this->assertStringContainsString('showStep("code")', $forgotScript);
         $this->assertStringContainsString('showStep("password")', $forgotScript);
-        $this->assertStringContainsString('"Verify Your Code"', $forgotScript);
+        $this->assertStringContainsString('"Check Your Email"', $forgotScript);
         $this->assertStringContainsString('"Create New Password"', $forgotScript);
         $this->assertStringContainsString('API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim())', $forgotScript);
         $this->assertStringContainsString('await API.resetPassword(', $forgotScript);
         $this->assertStringContainsString('"./sign-in.html?password_reset=1"', $forgotScript);
-        $this->assertStringContainsString('signIn.classList.toggle("hidden", next !== "email")', $forgotScript);
-        $this->assertStringContainsString('back.classList.toggle("hidden", next === "email")', $forgotScript);
         $this->assertStringContainsString('window.VerificationCode.bind', $forgotScript);
         $this->assertStringContainsString('codeInput.addEventListener("paste"', file_get_contents(base_path('scripts/auth/verification-code.js')));
         $this->assertStringContainsString('setFieldError(confirmation, confirmPasswordMessage', $forgotScript);

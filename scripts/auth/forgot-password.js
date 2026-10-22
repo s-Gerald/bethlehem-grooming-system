@@ -2,42 +2,65 @@ document.addEventListener("DOMContentLoaded", () => {
   const emailForm = document.getElementById("forgotPasswordForm");
   const codeForm = document.getElementById("verifyCodeForm");
   const passwordForm = document.getElementById("resetPasswordForm");
+  if (!emailForm || !codeForm || !passwordForm) return;
   const emailInput = document.getElementById("resetEmail");
   const codeInput = document.getElementById("verificationCode");
   const password = document.getElementById("newPassword");
   const confirmation = document.getElementById("confirmNewPassword");
   const emailSubmit = document.getElementById("forgotPasswordSubmit");
+  const emailLabel = document.getElementById("forgotPasswordSubmitLabel");
   const codeSubmit = document.getElementById("verifyCodeSubmit");
   const passwordSubmit = document.getElementById("resetPasswordSubmit");
   const back = document.getElementById("forgotBack");
-  const signIn = document.getElementById("backToSignIn");
   const title = document.getElementById("forgotTitle");
   const description = document.getElementById("forgotDescription");
   const verifyDescription = document.getElementById("verifyDescription");
   const verifyEmail = document.getElementById("verifyEmail");
   const codeCells = [...document.querySelectorAll(".verification-code-cell")];
   const resend = document.getElementById("resendCode");
+  const emailMessage = document.getElementById("forgotPasswordMessage");
   const codeMessage = document.getElementById("verifyCodeMessage");
   const newPasswordMessage = document.getElementById("newPasswordMessage");
   const confirmPasswordMessage = document.getElementById("confirmPasswordMessage");
   const passwordMessage = document.getElementById("resetPasswordMessage");
-  if (!emailForm || !codeForm || !passwordForm) return;
-
-  try {
-    const email = sessionStorage.getItem("pendingPasswordResetEmail");
-    sessionStorage.removeItem("pendingPasswordResetEmail");
-    if (email) emailInput.value = email;
-  } catch { /* storage unavailable; leave the email field empty */ }
-
+  const recoveryKey = "passwordResetRecovery";
   let step = "email";
   let requestedEmail = "";
   let maskedEmail = "";
   let resetGrant = "";
-  let verifiedCode = "";
+  let expiresAt = 0;
   let resendUntil = 0;
-  let resendTimer = null;
-  let resendBusy = false;
-  let codeBusy = false;
+  let verifyUntil = 0;
+  let resetUntil = 0;
+  let failedAttempts = 0;
+  let timer = null;
+  let busy = false;
+  let completed = false;
+
+  // Only recovery credentials and deadlines survive reloads; never passwords or OTPs.
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(recoveryKey) || "null");
+    if (saved && typeof saved.requestedEmail === "string" && ["email", "code", "password"].includes(saved.step)) {
+      ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step } = saved);
+      emailInput.value = requestedEmail;
+    } else {
+      sessionStorage.removeItem(recoveryKey);
+    }
+    const email = sessionStorage.getItem("pendingPasswordResetEmail");
+    sessionStorage.removeItem("pendingPasswordResetEmail");
+    if (email && !resetGrant) {
+      emailInput.value = email;
+      step = "email";
+    }
+  } catch { /* Storage is optional; server-side limits remain authoritative. */ }
+
+  function saveRecovery() {
+    try {
+      sessionStorage.setItem(recoveryKey, JSON.stringify({
+        requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step,
+      }));
+    } catch { /* Continue in memory when storage is unavailable. */ }
+  }
 
   installVisibilityToggle("toggleNewPassword", password, ".new-password-icon-closed", ".new-password-icon-open", "new password");
   installVisibilityToggle("toggleConfirmNewPassword", confirmation, ".confirm-password-icon-closed", ".confirm-password-icon-open", "password confirmation");
@@ -45,183 +68,242 @@ document.addEventListener("DOMContentLoaded", () => {
   function showStep(next) {
     step = next;
     const content = {
-      email: ["Forgot Password", "Enter your email address to receive a verification code."],
-      code: ["Verify Your Code", ""],
+      email: ["Forgot Password", "Enter your email address to request a verification code."],
+      code: ["Check Your Email", ""],
       password: ["Create New Password", "Set a strong password to secure your account."],
     }[next];
     title.textContent = content[0];
     description.textContent = content[1];
     description.classList.toggle("hidden", next === "code");
     verifyDescription.classList.toggle("hidden", next !== "code");
-    if (next === "code") verifyEmail.textContent = maskedEmail || "your email address";
+    verifyEmail.classList.toggle("hidden", next !== "code");
+    if (next === "code") verifyEmail.textContent = maskedEmail || window.VerificationCode.maskEmail(requestedEmail);
     emailForm.classList.toggle("hidden", next !== "email");
     codeForm.classList.toggle("hidden", next !== "code");
     passwordForm.classList.toggle("hidden", next !== "password");
-    back.classList.toggle("hidden", next === "email");
-    signIn.classList.toggle("hidden", next !== "email");
+    back.classList.toggle("hidden", next !== "code");
+    document.getElementById("registrationRecovery").classList.toggle("hidden", next !== "email");
     if (next === "code") codeInput.focus();
     if (next === "password") password.focus();
+    if (next === "email") emailInput.focus();
+  }
+
+  const otp = window.VerificationCode.bind(codeInput, codeCells, () => {
+    if (failedAttempts < 5 && expiresAt > Date.now()) setError(codeMessage);
+    codeInput.setAttribute("aria-invalid", "false");
+    updateControls();
+  });
+
+  function remaining(until) { return Math.max(0, Math.ceil((until - Date.now()) / 1000)); }
+
+  function updateControls() {
+    const cooldown = remaining(resendUntil);
+    const codeUnavailable = expiresAt <= Date.now() || failedAttempts >= 5;
+    emailSubmit.disabled = busy || cooldown > 0;
+    emailLabel.textContent = busy && step === "email" ? "Sending..." : cooldown > 0
+      ? `Send Code in ${window.VerificationCode.formatCountdown(cooldown)}` : "Send Code";
+    resend.disabled = step !== "code" || busy || cooldown > 0 || (failedAttempts >= 5 && remaining(expiresAt) > 0);
+    resend.textContent = busy && step === "code" ? "Please wait..." : cooldown > 0
+      ? `Resend in ${window.VerificationCode.formatCountdown(cooldown)}` : "Resend code";
+    codeInput.disabled = busy || codeUnavailable || remaining(verifyUntil) > 0;
+    codeSubmit.disabled = step !== "code" || codeInput.disabled || !/^[0-9]{6}$/.test(codeInput.value);
+    codeSubmit.textContent = busy && step === "code" ? "Verifying..." : remaining(verifyUntil) > 0
+      ? `Continue in ${window.VerificationCode.formatCountdown(remaining(verifyUntil))}` : "Continue";
+    back.disabled = busy;
+    passwordSubmit.disabled = busy || remaining(resetUntil) > 0;
+    passwordSubmit.textContent = busy && step === "password" ? "Resetting..." : remaining(resetUntil) > 0
+      ? `Reset Password in ${window.VerificationCode.formatCountdown(remaining(resetUntil))}` : "Reset Password";
+  }
+
+  function restartRecovery(message) {
+    completed = false;
+    resetGrant = "";
+    expiresAt = 0;
+    failedAttempts = 0;
+    otp.clear();
+    password.value = "";
+    confirmation.value = "";
+    setError(passwordMessage);
+    setFieldError(password, newPasswordMessage);
+    setFieldError(confirmation, confirmPasswordMessage);
+    showStep("email");
+    setError(emailMessage, message);
+    saveRecovery();
+  }
+
+  function tick() {
+    if (!busy && expiresAt && remaining(expiresAt) === 0) {
+      if (resetGrant) restartRecovery("Your reset session expired. Request a new code.");
+      else if (step === "code") setError(codeMessage, "Code expired. Request a new code.");
+    }
+    updateControls();
+    if (![expiresAt, resendUntil, verifyUntil, resetUntil].some(until => remaining(until) > 0)) stopTimer();
+  }
+
+  function stopTimer() {
+    if (timer !== null) window.clearInterval(timer);
+    timer = null;
+  }
+
+  function startTimer() {
+    if (timer === null) timer = window.setInterval(tick, 1000);
+    tick();
+  }
+
+  function acceptRequest(response) {
+    if (expiresAt <= Date.now()) failedAttempts = 0;
+    maskedEmail = response?.email || window.VerificationCode.maskEmail(requestedEmail);
+    expiresAt = Date.now() + response.expires_in * 1000;
+    resendUntil = Date.now() + (response.resend_after ?? 45) * 1000;
+    otp.clear();
+    setError(codeMessage);
+    showStep("code");
+    saveRecovery();
+    startTimer();
   }
 
   back.addEventListener("click", () => {
-    setError(codeMessage);
-    setError(passwordMessage);
-    if (step === "password") {
-      showStep("code");
-    } else if (step === "code") {
-      otp.clear();
-      resetGrant = "";
-      verifiedCode = "";
-      showStep("email");
-    }
+    if (step !== "code" || busy || resetGrant) return;
+    otp.clear();
+    setError(emailMessage);
+    showStep("email");
+    saveRecovery();
+    updateControls();
   });
-
-  const otp = window.VerificationCode.bind(codeInput, codeCells, () => {
-    setError(codeMessage);
-    codeInput.setAttribute("aria-invalid", "false");
-    codeSubmit.disabled = resendBusy || codeBusy || codeInput.value.length !== 6;
-  });
-  codeSubmit.disabled = true;
-
-  function updateResend() {
-    const remaining = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000));
-    resend.disabled = resendBusy || codeBusy || remaining > 0;
-    codeInput.disabled = codeBusy;
-    back.disabled = resendBusy || codeBusy;
-    resend.textContent = resendBusy ? "Sending..." : remaining > 0 ? `Resend in ${window.VerificationCode.formatCountdown(remaining)}` : "Resend code";
-    if (remaining === 0 && resendTimer) {
-      window.clearInterval(resendTimer);
-      resendTimer = null;
-    }
-  }
-
-  function startResendCooldown(seconds = 45) {
-    resendUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
-    if (resendTimer) window.clearInterval(resendTimer);
-    resendTimer = window.setInterval(updateResend, 1000);
-    updateResend();
-  }
 
   emailForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (emailSubmit.disabled) return;
-    requestedEmail = emailInput.value.trim().toLowerCase();
-    maskedEmail = "";
-    if (!requestedEmail) return;
-    emailSubmit.disabled = true;
-    document.getElementById("forgotPasswordSubmitLabel").textContent = "Sending...";
+    if (busy || step !== "email" || emailSubmit.disabled) return;
+    const email = emailInput.value.trim().toLowerCase();
+    if (!email) return;
+    if (email !== requestedEmail) failedAttempts = 0;
+    requestedEmail = email;
+    busy = true;
+    setError(emailMessage);
+    updateControls();
     try {
-      const response = await API.requestPasswordReset(requestedEmail);
-      maskedEmail = response?.email || "";
-      resetGrant = "";
-      verifiedCode = "";
-      otp.clear();
-      startResendCooldown(response?.resend_after ?? 45);
-      showStep("code");
+      acceptRequest(await API.requestPasswordReset(requestedEmail));
     } catch (error) {
-      otp.clear();
-      setError(codeMessage, error?.status === 429 ? "Too many attempts. Try again later." : "Couldn't send the code. Try again.");
-      startResendCooldown(error?.retryAfter ?? 0);
-      showStep("code");
+      setError(emailMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
+        : error?.status === 0 ? error.message : "Couldn't request a code. Try again.");
+      resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
+      saveRecovery();
+      startTimer();
     } finally {
-      emailSubmit.disabled = false;
-      document.getElementById("forgotPasswordSubmitLabel").textContent = "Send Code";
+      busy = false;
+      tick();
     }
   });
 
   resend.addEventListener("click", async () => {
-    if (resend.disabled || resendBusy || codeBusy || !requestedEmail) return;
-    resendBusy = true;
+    if (step !== "code" || resetGrant || resend.disabled || busy || !requestedEmail) return;
+    busy = true;
     otp.clear();
-    codeInput.focus();
-    resetGrant = "";
-    verifiedCode = "";
-    updateResend();
+    setError(codeMessage);
+    updateControls();
     try {
-      const response = await API.requestPasswordReset(requestedEmail);
-      maskedEmail = response?.email || maskedEmail;
-      verifyEmail.textContent = maskedEmail || "your email address";
-      startResendCooldown(response?.resend_after ?? 45);
+      acceptRequest(await API.requestPasswordReset(requestedEmail));
     } catch (error) {
-      setError(codeMessage, error?.status === 429
-        ? "Too many requests. Please wait before trying again."
-        : "The code could not be sent. Please try again.");
-      if (error?.retryAfter) startResendCooldown(error.retryAfter);
+      setError(codeMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
+        : "Couldn't request a code. Try again.");
+      resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
+      saveRecovery();
+      startTimer();
     } finally {
-      resendBusy = false;
-      codeSubmit.disabled = codeInput.value.length !== 6;
-      updateResend();
+      busy = false;
+      tick();
+      if (!codeInput.disabled) codeInput.focus();
     }
   });
 
   codeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (resendBusy || codeBusy) return;
+    if (busy || step !== "code" || codeSubmit.disabled || resetGrant) return;
     setError(codeMessage);
-    if (!/^[0-9]{6}$/.test(codeInput.value)) {
-      setError(codeMessage, "Invalid or expired verification code.");
-      return;
-    }
-    if (resetGrant) {
-      if (codeInput.value.trim() === verifiedCode) showStep("password");
-      else setError(codeMessage, "Invalid or expired verification code.");
-      return;
-    }
-    codeSubmit.disabled = true;
-    codeBusy = true;
-    updateResend();
+    busy = true;
+    updateControls();
     try {
       const response = await API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim());
       resetGrant = response.token;
-      verifiedCode = codeInput.value.trim();
+      expiresAt = Date.now() + response.expires_in * 1000;
+      otp.clear();
       password.value = "";
       confirmation.value = "";
       showStep("password");
     } catch (error) {
-      setError(codeMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : "Invalid or expired verification code.");
+      if (error?.status === 422) failedAttempts++;
+      if (failedAttempts >= 5) resendUntil = Math.max(resendUntil, expiresAt);
+      if (error?.retryAfter) verifyUntil = Date.now() + error.retryAfter * 1000;
+      setError(codeMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again."
+        : error?.status !== 422 ? "Couldn't verify the code. Try again."
+        : failedAttempts >= 5 ? "Too many incorrect attempts. Wait before requesting a new code."
+        : "Invalid or expired code. Check it or request a new code.");
+      codeInput.setAttribute("aria-invalid", error?.status === 422 ? "true" : "false");
     } finally {
-      codeBusy = false;
-      codeSubmit.disabled = codeInput.value.length !== 6;
-      updateResend();
+      busy = false;
+      saveRecovery();
+      startTimer();
     }
   });
 
   password.addEventListener("input", () => setFieldError(password, newPasswordMessage));
   confirmation.addEventListener("input", () => setFieldError(confirmation, confirmPasswordMessage));
+  emailInput.addEventListener("input", () => setError(emailMessage));
 
   passwordForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (completed || busy || step !== "password" || passwordSubmit.disabled) return;
+    if (!resetGrant || remaining(expiresAt) === 0) {
+      restartRecovery("Your reset session expired. Request a new code.");
+      tick();
+      return;
+    }
     setError(passwordMessage);
     setFieldError(password, newPasswordMessage);
     setFieldError(confirmation, confirmPasswordMessage);
     const validationError = validatePasswords(password.value, confirmation.value);
     if (validationError) {
-      if (validationError.field === "confirmation") {
-        setFieldError(confirmation, confirmPasswordMessage, validationError.message);
-      } else {
-        setFieldError(password, newPasswordMessage, validationError.message);
-      }
+      if (validationError.field === "confirmation") setFieldError(confirmation, confirmPasswordMessage, validationError.message);
+      else setFieldError(password, newPasswordMessage, validationError.message);
       return;
     }
-    passwordSubmit.disabled = true;
+    busy = true;
+    updateControls();
     try {
       await API.resetPassword(resetGrant, password.value, confirmation.value);
+      completed = true;
       resetGrant = "";
-      verifiedCode = "";
+      expiresAt = 0;
+      password.value = "";
+      confirmation.value = "";
+      stopTimer();
+      try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage unavailable. */ }
       window.location.replace("./sign-in.html?password_reset=1");
     } catch (error) {
       const message = firstApiError(error);
-      if (error?.errors?.password_confirmation) {
-        setFieldError(confirmation, confirmPasswordMessage, error.errors.password_confirmation[0] || message);
-      } else if (error?.errors?.password || message === "Choose a password that is different from the current password.") {
+      if (error?.expired) restartRecovery("Your reset session expired. Request a new code.");
+      else if (error?.errors?.password_confirmation) setFieldError(confirmation, confirmPasswordMessage, error.errors.password_confirmation[0] || message);
+      else if (error?.errors?.password || message === "Choose a password that is different from the current password.") {
         setFieldError(password, newPasswordMessage, error?.errors?.password?.[0] || message);
-      } else {
-        setError(passwordMessage, message);
-      }
+      } else setError(passwordMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : message);
+      if (error?.retryAfter) resetUntil = Date.now() + error.retryAfter * 1000;
+      saveRecovery();
     } finally {
-      passwordSubmit.disabled = false;
+      busy = false;
+      if (!completed) startTimer();
     }
   });
+
+  window.addEventListener("pagehide", stopTimer);
+  window.addEventListener("pageshow", () => {
+    // A completed reset must not be restored from the browser's back/forward cache.
+    try {
+      if (completed || (resetGrant && !sessionStorage.getItem(recoveryKey))) restartRecovery("");
+    } catch { /* In-memory recovery remains available. */ }
+    startTimer();
+  });
+  showStep(resetGrant ? "password" : step);
+  startTimer();
 
   function validatePasswords(value, confirmationValue) {
     if (!value) return { field: "password", message: "Complete both password fields." };
@@ -240,13 +322,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setError(element, message = "") {
     element.className = message
-      ? "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-      : "hidden rounded-2xl border px-4 py-3 text-sm";
+      ? "verification-message"
+      : "hidden verification-message";
     element.textContent = message;
   }
 
   function setFieldError(input, element, message = "") {
-    element.className = message ? "mt-2 text-sm text-red-700" : "hidden";
+    element.className = message ? "verification-message text-left" : "hidden";
     element.textContent = message;
     input.setAttribute("aria-invalid", message ? "true" : "false");
   }

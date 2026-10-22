@@ -30,6 +30,8 @@ class PasswordResetController extends Controller
             'message' => 'If eligible, a new code was requested. Check your email.',
             'email' => $passwordResets->maskEmail($data['email']),
             'resend_after' => PasswordResetService::COOLDOWN_SECONDS,
+            // Public policy, identical for eligible and ineligible accounts.
+            'expires_in' => $passwordResets->ttlMinutes() * 60,
         ], 202);
     }
 
@@ -58,6 +60,7 @@ class PasswordResetController extends Controller
         return response()->json([
             'success' => true,
             'token' => $result['token'],
+            'expires_in' => $result['expires_in'],
         ]);
     }
 
@@ -135,18 +138,11 @@ class PasswordResetController extends Controller
             ], 422);
         }
 
-        if ($result['status'] === 'expired') {
+        if (in_array($result['status'], ['expired', 'invalid'], true)) {
             return response()->json([
                 'success' => false,
                 'expired' => true,
-                'message' => 'Invalid or expired verification code.',
-            ], 422);
-        }
-
-        if ($result['status'] !== 'reset') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid or expired verification code.',
+                'message' => 'Your reset session expired. Request a new code.',
             ], 422);
         }
 
