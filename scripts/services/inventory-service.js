@@ -67,7 +67,7 @@ var InventoryAPI = (() => {
   // ── Stock movements ───────────────────────────────────────────────────────
 
   function stockIn(items) {
-    // items: [{ item_id, quantity, reason, unit_cost?, batch_number?, expiry_date?, notes? }]
+    // items: [{ item_id, quantity, reason, unit_cost?, batch_number?, batch_unavailable_reason?, expiry_date?, notes? }]
     return request("POST", "/inventory/stock-in", {
       items,
     });

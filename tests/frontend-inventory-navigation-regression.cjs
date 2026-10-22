@@ -17,7 +17,8 @@ function setup() {
   const context={
     console,URL,URLSearchParams,Date,clearTimeout,setTimeout,CustomEvent:class {constructor(type){this.type=type;}},
     location:{hash:'#overview'},
-    scrollTo:()=>{},
+    scrollY: 0,
+    scrollTo:(_, y)=>{context.scrollY = y;},
     addEventListener:(type,listener)=>{listeners.set(type,listener);},
     removeEventListener:(type)=>listeners.delete(type),
     dispatchEvent:(event)=>listeners.get(event.type)?.(event),
@@ -80,7 +81,7 @@ async function testLazyNavigationAndMutationRefresh() {
   products.q='Medicine';products.currentPage=2;
   await app.visit('#stock-in');
   const stockIn=app.state('stock-in');
-  stockIn.selected={...app.stockItem};stockIn.qty='3';stockIn.expiryDate='2030-01-01';stockIn.notes='Keep this draft';
+  stockIn.selected={...app.stockItem};stockIn.qty='3';stockIn.batchNumber='LOT-001';stockIn.expiryDate='2030-01-01';stockIn.notes='Keep this draft';
   assert.equal(stockIn.needsExpiry,true,'the needsExpiry getter must survive adaptation');
   stockIn.addToPending();
   assert.equal(stockIn.pending.length,1);
@@ -138,12 +139,94 @@ async function testDeepLinksAndAlertPaging() {
   assert.equal(app.context.location.hash,'#overview');
 }
 
+async function testPreselectionPreservesContextAndDoesNotDuplicateRequests() {
+  const app = setup();
+  await app.visit('#products?filter=low-stock');
+  const products = app.state('products');
+  products.q = 'Medicine'; products.currentPage = 2;
+  app.context.scrollY = 480;
+  await app.visit('#stock-in?item=1&from=products&filter=low-stock');
+  const stock = app.state('stock-in');
+  assert.equal(stock.selected?.item_id, 1);
+  assert.equal(app.calls.filter(c => c[1] === '/inventory/items/1').length, 1);
+  assert.equal(app.shell.stockReturnHref, '#products?filter=low-stock');
+  stock.qty = '4'; stock.notes = 'Draft';
+  await app.visit('#products?filter=low-stock');
+  const count = app.calls.length;
+  await app.visit('#stock-in?item=1&from=products&filter=low-stock');
+  assert.equal(stock.qty, '4'); assert.equal(stock.notes, 'Draft');
+  assert.equal(app.calls.length, count + 1, 'Revalidate a preselected item once on returning');
+  await app.visit(app.shell.stockReturnHref);
+  assert.equal(products.q, 'Medicine'); assert.equal(products.currentPage, 2);
+  assert.equal(app.context.scrollY, 480, 'Returning restores the prior list position');
+  assert.equal(app.calls.length, count + 1, 'Returning to unchanged Products reuses its mounted list');
+  app.stockItem.is_active = false;
+  app.context.showToast = () => {};
+  await app.visit('#stock-out?item=1&from=overview');
+  assert.equal(app.state('stock-out').selected, null);
+  assert.match(app.state('stock-out').error, /inactive/i);
+  app.stockItem.is_active = true;
+  await app.visit('#stock-out?item=1&from=overview');
+  assert.equal(app.state('stock-out').selected.item_id, 1);
+  assert.equal(app.shell.stockReturnHref, '#overview');
+}
+
+async function testProductDetailsActionsUseTheCurrentProductAndFilter() {
+  const app = setup();
+  await app.visit('#products?filter=expiry');
+  const products = app.state('products');
+  for (const section of ['stock-in', 'stock-out']) {
+    products.details = { open: true, item: { ...app.stockItem } };
+    products.stockDetails(section);
+    assert.equal(app.context.location.hash, `#${section}?item=1&from=products&filter=expiry`);
+    assert.equal(products.details.open, false);
+    await app.shell.showSection();
+    assert.equal(app.state(section).selected.item_id, 1);
+    await app.visit(app.shell.stockReturnHref);
+    assert.equal(products.alertFilter, 'expiry');
+  }
+  products.details = { open: true, item: { ...app.stockItem, is_active: false } };
+  const before = app.context.location.hash;
+  products.stockDetails('stock-in');
+  assert.equal(app.context.location.hash, before);
+  assert.equal(products.details.open, true, 'Inactive products must not open a stock workflow');
+}
+
+async function testPreselectionRejectsMissingAndForbiddenProductsAndIgnoresStaleResponses() {
+  const app = setup();
+  await app.visit('#stock-in');
+  const read = app.context.InventoryAPI.getItem;
+  const errors = [];
+  app.context.showToast = (message, variant) => errors.push({message, variant});
+  for (const message of ['Product not found', 'Forbidden']) {
+    app.context.InventoryAPI.getItem = async () => { throw new Error(message); };
+    await app.visit('#stock-in?item=1&from=overview');
+    assert.equal(app.state('stock-in').selected, null);
+    assert.equal(app.state('stock-in').error, message);
+    assert.equal(errors.at(-1).variant, 'error');
+  }
+  let release;
+  app.context.InventoryAPI.getItem = () => new Promise(resolve => { release = resolve; });
+  const first = app.visit('#stock-in?item=1&from=overview');
+  while (!release) await new Promise(setImmediate);
+  assert.equal(app.shell.sectionLoading, true, 'A preselected workflow must wait for the fresh product before accepting entry');
+  app.context.InventoryAPI.getItem = async id => ({data:{...app.stockItem, item_id:Number(id)}});
+  const second = app.visit('#stock-in?item=2&from=overview');
+  release(await read(1));
+  await Promise.all([first, second]);
+  assert.equal(app.state('stock-in').selected.item_id, 2, 'A stale item must not replace the latest selection');
+  assert.equal(app.calls.filter(c=>c[0]==='GET' && c[1].startsWith('/inventory/summary')).length, 0);
+}
+
 async function testDefaultAndDirectActionRoutes() {
   const overview=setup();
   overview.context.location.hash='';
   await overview.shell.init();
   assert.equal(overview.context.location.hash,'#overview');
   assert.equal(overview.shell.activeSection,'overview');
+  const invalid = setup();
+  await invalid.visit('#invalid');
+  assert.equal(invalid.state('overview').loaded, true, 'Invalid deep links must render the default section');
 
   for (const [section,title] of [['stock-in','Stock In'],['stock-out','Stock Out']]) {
     const app=setup();
@@ -339,17 +422,21 @@ function testUnifiedEntryAndSectionMarkup() {
   assert.match(header,/Monitor products, stock levels, alerts, and recent activity\./);
   assert.match(header,/href="#stock-in"[^>]*>Stock In<\/a>/);
   assert.match(header,/href="#stock-out"[^>]*>Stock Out<\/a>/);
-  assert.match(overview,/href="#stock-in"[^>]*>Restock<\/a>/);
+  assert.match(overview,/:href="inventoryStockHref\('stock-in', item.item_id\)"[^>]*>Restock<\/a>/);
   assert.doesNotMatch(overview,/New Sale|href=["'][^"']*pos\.html|scannerActive|pending\.length/i);
   for (const section of ['stock-in','stock-out']) {
     const start=shell.indexOf(`activeSection === '${section}'`);
     const header=shell.slice(start, shell.indexOf('</section>',start));
-    assert.match(header,/href="#overview"[^>]*>.*Back to Overview<\/a>/);
+    assert.match(header,/:href="stockReturnHref"/);
+    assert.match(header,/x-text="stockReturnLabel"/);
     assert.match(header,/focus-visible:outline/);
   }
 }
 
 (async()=>{
+  await testPreselectionPreservesContextAndDoesNotDuplicateRequests();
+  await testProductDetailsActionsUseTheCurrentProductAndFilter();
+  await testPreselectionRejectsMissingAndForbiddenProductsAndIgnoresStaleResponses();
   await testLazyNavigationAndMutationRefresh();
   await testDeepLinksAndAlertPaging();
   await testDefaultAndDirectActionRoutes();

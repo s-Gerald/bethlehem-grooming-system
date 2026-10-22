@@ -18,6 +18,8 @@ function adminStockIn() {
     unitCost: "",
     reason: "purchase",
     batchNumber: "",
+    batchUnavailable: false,
+    batchUnavailableReason: "",
     expiryDate: "",
     today: (() => {
       const now = new Date();
@@ -33,7 +35,6 @@ function adminStockIn() {
     // ── Submit state ──────────────────────────────────────────────────────────
     submitting: false,
     error: "",
-    receipts: [],
 
     // ── Camera scanner ────────────────────────────────────────────────────────
     scannerActive: false,
@@ -84,6 +85,8 @@ function adminStockIn() {
       this.unitCost       = item.unit_cost ?? "";
       this.qty            = "";
       this.batchNumber    = "";
+      this.batchUnavailable = false;
+      this.batchUnavailableReason = "";
       this.expiryDate     = "";
       this.notes          = "";
       this.entryError     = "";
@@ -101,6 +104,8 @@ function adminStockIn() {
       this.qty         = "";
       this.unitCost    = "";
       this.batchNumber = "";
+      this.batchUnavailable = false;
+      this.batchUnavailableReason = "";
       this.expiryDate  = "";
       this.notes       = "";
       this.entryError  = "";
@@ -108,6 +113,10 @@ function adminStockIn() {
 
     get needsExpiry() {
       return !!this.selected && !["pet_shop", "miscellaneous"].includes(this.selected.category);
+    },
+
+    get needsManufacturerLot() {
+      return !!this.selected && ['medicine', 'vaccine'].includes(this.selected.category);
     },
 
     // ── Inline create product ─────────────────────────────────────────────────
@@ -148,10 +157,12 @@ function adminStockIn() {
         const res     = await InventoryAPI.createItem(payload);
         const newItem = { ...res.data, _newly_created: true };
         this.pickItem(newItem);
+        window.showSuccessToast('Product added.');
       } catch (err) {
         this.createError = err.errors
           ? Object.values(err.errors).flat().join(" ")
           : (err.message || "Failed to create product.");
+        window.showToast('Unable to create product.', 'error');
       } finally {
         this.createBusy = false;
       }
@@ -196,10 +207,23 @@ function adminStockIn() {
         this.entryError = "Expiry date cannot be in the past.";
         return;
       }
+      const batch = this.batchUnavailable ? '' : this.batchNumber.trim();
+      const unavailable = this.batchUnavailable ? this.batchUnavailableReason.trim() : '';
+      if (this.needsManufacturerLot && ((!batch && !unavailable)
+        || /^(?:N\/?A|NONE|UNKNOWN|UNAVAILABLE|NOT AVAILABLE|NOT APPLICABLE|-)$/i.test(batch))) {
+        this.entryError = 'Enter the manufacturer lot or explain why it is unavailable.';
+        return;
+      }
+      if (batch.length > 100 || unavailable.length > 255) {
+        this.entryError = 'Lot must be at most 100 characters; reason at most 255.';
+        return;
+      }
 
       const existing = this.pending.find(p =>
         p.item_id === this.selected.item_id
-        && (p.batch_number ?? "") === this.batchNumber.trim()
+        && (p.batch_number ?? "") === batch
+        && (p.batch_unavailable_reason ?? "") === unavailable
+        && p.reason === this.reason
         && (p.expiry_date ?? "") === this.expiryDate
       );
       if (existing) {
@@ -215,7 +239,8 @@ function adminStockIn() {
           quantity:       qty,
           unit_cost:      this.unitCost !== "" ? parseFloat(this.unitCost) : null,
           reason:         this.reason,
-          batch_number:   this.batchNumber.trim() || null,
+          batch_number:   batch || null,
+          batch_unavailable_reason: unavailable || null,
           expiry_date:    this.needsExpiry ? (this.expiryDate || null) : null,
           notes:          this.notes.trim() || null,
           _newly_created: this.selected._newly_created ?? false,
@@ -232,26 +257,28 @@ function adminStockIn() {
     // ── Submit ────────────────────────────────────────────────────────────────
 
     async submit() {
+      if (this.submitting) return;
       this.error = "";
       if (!this.pending.length) { this.error = "Add at least one item first."; return; }
 
       this.submitting = true;
       try {
-        const res = await InventoryAPI.stockIn(this.pending.map(p => ({
+        await InventoryAPI.stockIn(this.pending.map(p => ({
           item_id:      p.item_id,
           quantity:     p.quantity,
           reason:       p.reason,
           unit_cost:    p.unit_cost,
           batch_number: p.batch_number,
+          batch_unavailable_reason: p.batch_unavailable_reason ?? null,
           expiry_date:  p.expiry_date,
           notes:        p.notes,
         })));
-        this.receipts = res?.data ?? [];
         window.showSuccessToast("Stock-in recorded successfully.");
         this.pending    = [];
         this.clearSelected();
       } catch (err) {
         this.error = err.message || "Failed to record stock-in.";
+        window.showToast(this.error, 'error');
       } finally {
         this.submitting = false;
       }

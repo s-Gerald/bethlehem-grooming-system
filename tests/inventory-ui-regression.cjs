@@ -3,6 +3,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+
+function testSharedToastRendering() {
+  const nodes = new Map(), timers = new Map(); let timer = 0;
+  const document = {
+    getElementById: id => nodes.get(id),
+    createElement: () => ({ attrs: {}, children: new Map(), style: {},
+      classList: { values: new Set(), add(value) { this.values.add(value); }, remove(value) { this.values.delete(value); } },
+      setAttribute(key, value) { this.attrs[key] = value; },
+      querySelector(selector) { if (!this.children.has(selector)) this.children.set(selector, { textContent: '', style: {} }); return this.children.get(selector); },
+    }),
+    body: { appendChild: node => nodes.set(node.id, node) },
+  };
+  const scope = { window: {}, document, setTimeout: (fn, duration) => { timers.set(++timer, { fn, duration }); return timer; }, clearTimeout: id => timers.delete(id) };
+  vm.runInNewContext(read('scripts/components/success-toast.js'), scope);
+  scope.window.showSuccessToast('Product saved');
+  const toast = nodes.get('success-toast');
+  assert.match(toast.className, /app-toast--success/);
+  assert.equal(toast.attrs.role, 'status');
+  assert.equal(toast.querySelector('.app-toast__message').textContent, 'Product saved');
+  scope.window.showToast('<img src=x>Request failed', 'error');
+  assert.equal(nodes.size, 1, 'Success and error notifications reuse one shared toast');
+  assert.match(toast.className, /app-toast--error/);
+  assert.equal(toast.attrs.role, 'alert'); assert.equal(toast.attrs['aria-live'], 'assertive');
+  assert.equal(toast.querySelector('.app-toast__message').textContent, '<img src=x>Request failed');
+  assert.equal(timers.size, 1, 'Replacement cancels the previous dismissal');
+  [...timers.values()][0].fn();
+  assert.equal(toast.classList.values.has('is-visible'), false);
+}
 const listeners = new Map();
 const context = {
   window: {},
@@ -77,18 +105,20 @@ async function testSave(editing) {
   page.modal.open = true;
   context.InventoryAPI = { createItem: async () => calls.push('create'), updateItem: async () => calls.push('update') };
   page.load = async () => { assert.equal(page.modal.open, false); calls.push('refresh'); };
-  page.showToast = message => { assert.equal(page.modal.open, false); calls.push(message); };
+  page.showToast = (message, ok = true) => { assert.equal(page.modal.open, !ok); calls.push({ message, ok }); };
   await page.submitForm();
   assert.deepEqual(calls, [editing ? 'update' : 'create', 'refresh',
-    editing ? 'Product updated successfully.' : 'Product added successfully.']);
+    { message: editing ? 'Product updated successfully.' : 'Product added successfully.', ok: true }]);
   context.InventoryAPI.createItem = context.InventoryAPI.updateItem = async () => { throw { errors: { item_name: ['Save rejected'] } }; };
   page.modal.open = true; calls.length = 0;
   await page.submitForm();
-  assert.equal(page.modal.open, true); assert.equal(page.modal.error, 'Save rejected'); assert.equal(calls.length, 0);
+  assert.equal(page.modal.open, true); assert.equal(page.modal.error, 'Save rejected');
+  assert.deepEqual(calls, [{ message: 'Unable to save product.', ok: false }]);
   page.confirmDeactivate({ item_id: 1 }); assert.equal(page.deactivateModal.open, true);
   assert.match(read('pages/admin/inventory/sections/products.html'), /Deactivate Product\?/);
 }
 (async () => {
+  testSharedToastRendering();
   await testSave(false); await testSave(true);
   console.log('Inventory money editing, field coverage, dashboard loader reuse, toast ordering and failure/destructive feedback passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

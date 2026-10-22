@@ -1,7 +1,7 @@
 // The shell owns navigation and resource loading; each workflow keeps its own state.
 const InventorySections = {
   overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js"] },
-  products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js"] },
+  products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js", "success-toast.js"] },
   "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "payment-invoice.js", "product-sale-invoice.js"] },
   "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js"] },
   "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js"] },
@@ -11,8 +11,23 @@ const InventorySections = {
 function inventoryRoute(hash = window.location.hash) {
   const [name, query = ""] = hash.replace(/^#/, "").split("?");
   const section = Object.hasOwn(InventorySections, name) ? name : "overview";
-  const filter = new URLSearchParams(query).get("filter");
-  return { section, filter: section === "products" && ["low-stock", "expiry"].includes(filter) ? filter : "" };
+  const params = new URLSearchParams(query);
+  const filter = ["low-stock", "expiry"].includes(params.get('filter')) ? params.get('filter') : '';
+  const stock = ['stock-in', 'stock-out'].includes(section);
+  const item = params.get('item') || '';
+  return {
+    section, filter: section === 'products' ? filter : '',
+    itemId: stock && /^[1-9]\d{0,9}$/.test(item) ? item : '',
+    from: stock && params.get('from') === 'products' ? 'products' : 'overview',
+    returnFilter: stock ? filter : '',
+    key: Object.hasOwn(InventorySections, name) ? hash : '#overview',
+  };
+}
+
+function inventoryStockHref(section, itemId, from = 'overview', filter = '') {
+  const params = new URLSearchParams({ item: itemId, from });
+  if (from === 'products' && filter) params.set('filter', filter);
+  return `#${section}?${params}`;
 }
 
 const inventoryScripts = new Map();
@@ -22,7 +37,7 @@ function loadInventoryScript(name) {
       const script = document.createElement("script");
       script.src = name === "scanner"
         ? "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
-        : `../../../scripts/components/${name}?v=product-details-20261002&release=paymongo-20261018&icons=20261018&fetching=20261019`;
+        : `../../../scripts/components/${name}?v=product-details-20261002&release=paymongo-20261018&icons=20261018&fetching=20261019&inventory=20261023`;
       script.onload = resolve;
       script.onerror = () => {
         script.remove();
@@ -44,6 +59,10 @@ function adminInventory() {
     sectionLoading: false,
     sectionError: "",
     inventoryRevision: 0,
+    stockReturnHref: '#overview',
+    stockReturnLabel: 'Back to Overview',
+    _navigation: 0,
+    _scrollPositions: {},
     _hashListener: null,
     _changeListener: null,
 
@@ -74,7 +93,7 @@ function adminInventory() {
         const mount = async () => {
           const config = InventorySections[section];
           const [response] = await Promise.all([
-            fetch(`./sections/${section}.html?v=inventory-actions-20261007&release=paymongo-20261018&icons=20261018`),
+            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=paymongo-20261018&icons=20261018`),
             ...config.dependencies.map(loadInventoryScript),
             loadInventoryScript(config.script),
           ]);
@@ -100,35 +119,45 @@ function adminInventory() {
     },
 
     async showSection() {
+      const navigation = ++this._navigation;
       const route = inventoryRoute();
       if (!Object.hasOwn(InventorySections, window.location.hash.slice(1).split("?")[0])) {
         history.replaceState(null, "", "#overview");
       }
       const previous = this.$refs.panels.querySelector(`[data-inventory-section="${this.activeSection}"]`);
+      if (this.activeSection !== route.section && this.activeSection) this._scrollPositions[this.activeSection] = window.scrollY || 0;
       if (previous && this.activeSection !== route.section) Alpine.$data(previous).leave();
       if (this.activeSection !== route.section) window.scrollTo(0, 0);
       this.activeSection = route.section;
+      if (['stock-in', 'stock-out'].includes(route.section)) {
+        this.stockReturnHref = route.from === 'products'
+          ? '#products' + (route.returnFilter ? '?filter=' + route.returnFilter : '') : '#overview';
+        this.stockReturnLabel = route.from === 'products' ? 'Back to Products' : 'Back to Overview';
+      }
       this.sectionError = "";
       const existing = this.$refs.panels.querySelector(`[data-inventory-section="${route.section}"]`);
-      this.sectionLoading = !existing || Alpine.$data(existing)._loadedRevision === -1;
+      this.sectionLoading = !existing || Alpine.$data(existing)._loadedRevision === -1 || !!route.itemId;
       document.title = `${({ overview: "Inventory", products: "Products", "sell-product": "Point of Sale", "stock-in": "Stock In", "stock-out": "Stock Out", history: "Stock Movements" })[route.section]} | Bethlehem Animal Clinic`;
       try {
         const panel = await this.mountSection(route.section);
         // A slower first visit must not override a more recent navigation.
         const current = inventoryRoute();
-        if (current.section !== route.section || current.filter !== route.filter) return;
+        if (navigation !== this._navigation || current.key !== route.key) return;
         const state = Alpine.$data(panel);
         state._onPresentation = () => {
           const current = inventoryRoute();
-          if (current.section === route.section && current.filter === route.filter) this.sectionLoading = false;
+          if (navigation === this._navigation && current.key === route.key) this.sectionLoading = false;
         };
         await state.activate(route, `${this.inventoryRevision}:${API.getAdminDataRevision?.('inventory') || ''}`);
+        if (navigation === this._navigation) this.$nextTick(() => {
+          if (navigation === this._navigation) window.scrollTo(0, this._scrollPositions[route.section] || 0);
+        });
       } catch (err) {
-        if (inventoryRoute().section === route.section) {
+        if (navigation === this._navigation) {
           this.sectionError = err.message || "Unable to open this inventory section.";
         }
       } finally {
-        if (inventoryRoute().section === route.section) this.sectionLoading = false;
+        if (navigation === this._navigation) this.sectionLoading = false;
       }
     },
   };
@@ -154,8 +183,7 @@ function adminInventorySection(section) {
       }
       if (this._activation) {
         await this._activation;
-        if (inventoryRoute().section !== section) return;
-        route = inventoryRoute();
+        if (inventoryRoute().key !== route.key) return;
       }
       if (section === "sell-product" && (!this._paymentInitialized || this.onlinePayment)) {
         await originalInit?.call(this);
@@ -163,7 +191,8 @@ function adminInventorySection(section) {
       }
       const filterChanged = section === "products" && this.alertFilter !== route.filter;
       if (section === "products") this.alertFilter = route.filter;
-      if (this._loadedRevision === revision && !filterChanged) return;
+      const stock = ['stock-in', 'stock-out'].includes(section);
+      if (this._loadedRevision === revision && !filterChanged && !(stock && route.itemId)) return;
       const refresh = async () => {
         if (section === "sell-product") {
           this.searchResults = [];
@@ -175,10 +204,23 @@ function adminInventorySection(section) {
           // and price after a mutation in another inventory section.
           this.searchResults = [];
           this.noResults = false;
-          if (this.selected) {
-            const response = await InventoryAPI.getItem(this.selected.item_id);
-            this.selected = { ...response.data, _newly_created: this.selected._newly_created };
-            if (section === "stock-out") this.sellingPrice = this.selected.selling_price ?? "";
+          const itemId = route.itemId || this.selected?.item_id;
+          if (itemId) {
+            try {
+              const response = await InventoryAPI.getItem(itemId);
+              if (inventoryRoute().key !== route.key) return;
+              if (!response.data?.is_active) throw new Error('This product is inactive.');
+              this.error = '';
+              if (String(this.selected?.item_id) === String(itemId)) {
+                this.selected = { ...response.data, _newly_created: this.selected._newly_created };
+                if (section === 'stock-out') this.sellingPrice = this.selected.selling_price ?? '';
+              } else this.pickItem(response.data);
+            } catch (error) {
+              if (inventoryRoute().key !== route.key) return;
+              this.clearSelected();
+              this.error = error.message || 'This product is unavailable.';
+              window.showToast(this.error, 'error');
+            }
           }
           if (this.searchQuery.length >= 2) this.onSearchInput();
         }

@@ -65,6 +65,7 @@ class InventoryBatchBalanceService
                         'transaction_id' => (int) $transaction->transaction_id,
                         'stock_in_reference' => $transaction->stock_in_reference,
                         'batch_number' => $transaction->batch_number,
+                        'batch_unavailable_reason' => $transaction->batch_unavailable_reason,
                         'expiry_date' => $transaction->expiry_date?->format('Y-m-d'),
                         'received_quantity' => $quantity,
                         'remaining_quantity' => $quantity,

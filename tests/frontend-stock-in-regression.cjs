@@ -28,7 +28,9 @@ function createPage(inventoryApi = {}, toastMessages = []) {
     setTimeout,
     window: {
       showSuccessToast: (message) => toastMessages.push(message),
+      showToast: (message, variant) => { if (variant === 'error') context.errors.push(message); },
     },
+    errors: [],
   };
 
   vm.createContext(context);
@@ -43,6 +45,8 @@ function createPage(inventoryApi = {}, toastMessages = []) {
   const page = context.adminStockIn();
   page.$nextTick = (callback) => callback();
   page.toastMessages = toastMessages;
+  page.errorToasts = context.errors;
+  page.$el = { querySelector: () => null };
   return page;
 }
 
@@ -56,6 +60,7 @@ function pendingItem() {
     unit_cost: 100,
     reason: "purchase",
     batch_number: "BATCH-001",
+    batch_unavailable_reason: null,
     expiry_date: "2030-01-01",
     notes: null,
   };
@@ -226,6 +231,7 @@ async function testSuccessfulStockInUsesSupplierFreePayloadAndShowsToast() {
     reason: "purchase",
     unit_cost: 100,
     batch_number: "BATCH-001",
+    batch_unavailable_reason: null,
     expiry_date: "2030-01-01",
     notes: null,
   }]));
@@ -245,19 +251,18 @@ async function testFailedStockInDoesNotShowSuccessToast() {
 
   assert.deepEqual(page.toastMessages, []);
   assert.equal(page.error, "Stock In failed");
+  assert.deepEqual(page.errorToasts, ['Stock In failed']);
 }
 
-async function testStockInWithoutManufacturerBatchKeepsDistinctExpiriesAndShowsReferences() {
+async function testStockInWithUnavailableLotsKeepsDistinctExpiries() {
   let payload;
-  const receipts = [
-    { transaction_id: 152, stock_in_reference: 'SI-2026-00152', item_name: 'Vaccine' },
-    { transaction_id: 187, stock_in_reference: 'SI-2026-00187', item_name: 'Vaccine' },
-  ];
-  const page = createPage({ stockIn: async items => { payload = items; return { data: receipts }; } });
+  const page = createPage({ stockIn: async items => { payload = items; return { data: [] }; } });
   for (const expiry of ['2030-03-15', '2030-08-20']) {
     page.selected = { item_id: 1, item_name: 'Vaccine', category: 'vaccine', unit: 'vial' };
     page.qty = '2';
     page.expiryDate = expiry;
+    page.batchUnavailable = true;
+    page.batchUnavailableReason = 'Manufacturer did not supply a lot';
     page.addToPending();
   }
   assert.equal(page.pending.length, 2);
@@ -266,10 +271,32 @@ async function testStockInWithoutManufacturerBatchKeepsDistinctExpiriesAndShowsR
   assert.equal(payload[0].batch_number, null);
   assert.equal(payload[1].batch_number, null);
   assert.notEqual(payload[0].expiry_date, payload[1].expiry_date);
-  assert.equal(page.receipts, receipts);
+  assert.equal(payload[0].batch_unavailable_reason, 'Manufacturer did not supply a lot');
+  assert.equal(payload[1].batch_unavailable_reason, 'Manufacturer did not supply a lot');
+  assert.equal(Object.hasOwn(payload[0], 'stock_in_reference'), false, 'References are generated only by the backend');
+  assert.equal(page.toastMessages.length, 1);
+}
+
+function testMedicalLotValidation() {
+  const page = createPage();
+  for (const category of ['medicine', 'vaccine']) {
+    page.pickItem({ item_id: 1, item_name: 'Medical', category, unit: 'vial', is_active: true });
+    page.qty = '1'; page.expiryDate = '2030-01-01';
+    page.addToPending();
+    assert.equal(page.pending.length, 0, 'Medical receipts require a manufacturer lot');
+    page.batchNumber = 'N/A'; page.addToPending();
+    assert.equal(page.pending.length, 0, 'Placeholder lots must not be saved as manufacturer data');
+    page.batchNumber = ''; page.batchUnavailable = true;
+    page.addToPending(); assert.equal(page.pending.length, 0, 'Unavailable lots require an explanation');
+    page.batchUnavailableReason = 'Label has no lot'; page.addToPending();
+    assert.equal(page.pending.length, 1);
+    assert.equal(page.pending[0].batch_number, null);
+    page.pending = [];
+  }
 }
 
 (async () => {
+  testMedicalLotValidation();
   testClientRejectsDecimalStockInQuantity();
   testExpiryDateIsRequired();
   testPetShopAndMiscellaneousDoNotRequireAnExpiryDate();
@@ -281,7 +308,7 @@ async function testStockInWithoutManufacturerBatchKeepsDistinctExpiriesAndShowsR
   await testNewProductUsesSharedValidationMessages();
   await testSuccessfulStockInUsesSupplierFreePayloadAndShowsToast();
   await testFailedStockInDoesNotShowSuccessToast();
-  await testStockInWithoutManufacturerBatchKeepsDistinctExpiriesAndShowsReferences();
+  await testStockInWithUnavailableLotsKeepsDistinctExpiries();
   console.log("frontend stock-in regression checks passed");
 })().catch((error) => {
   console.error(error);

@@ -71,7 +71,7 @@
                 <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
               </td>
               <td class="px-4 py-3 text-right hidden sm:table-cell">
-                <a href="#stock-in" class="text-xs font-semibold text-[#315b7e] hover:underline">Restock</a>
+                <a :href="inventoryStockHref('stock-in', item.item_id)" class="text-xs font-semibold text-[#315b7e] hover:underline">Restock</a>
               </td>
             </tr>
           </template>

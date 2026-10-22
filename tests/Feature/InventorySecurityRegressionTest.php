@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\InventoryTransaction;
 use App\Services\InventoryStockMovementService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -75,6 +76,8 @@ class InventorySecurityRegressionTest extends TestCase
             $table->unsignedInteger('performed_by')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        (require database_path('migrations/2026_10_23_000001_add_inventory_receipt_references.php'))->up();
 
         Schema::create('pos_transactions', function (Blueprint $table) {
             $table->unsignedInteger('pos_id')->autoIncrement();
@@ -287,6 +290,7 @@ class InventorySecurityRegressionTest extends TestCase
                 'item_id' => $itemId,
                 'quantity' => 2,
                 'reason' => 'purchase',
+                'batch_number' => 'ACTOR-LOT',
                 'expiry_date' => now()->addYear()->toDateString(),
             ]],
         ])->assertCreated();
@@ -399,6 +403,7 @@ class InventorySecurityRegressionTest extends TestCase
                 'item_id' => $itemId,
                 'quantity' => 5,
                 'reason' => 'purchase',
+                'batch_number' => 'EXPIRY-LOT',
                 'expiry_date' => now()->subDay()->toDateString(),
             ]],
         ])->assertUnprocessable()
@@ -1268,15 +1273,16 @@ class InventorySecurityRegressionTest extends TestCase
         $itemId = $this->createInventoryItem('Vaccine without manufacturer lot', 0, 150);
         $entry = ['item_id' => $itemId, 'quantity' => 20, 'reason' => 'purchase'];
         $receipts = $this->postJson('/api/inventory/stock-in', ['items' => [
-            [...$entry, 'expiry_date' => now()->addMonths(5)->toDateString()],
-            [...$entry, 'quantity' => 15, 'expiry_date' => now()->addMonths(10)->toDateString()],
+            [...$entry, 'expiry_date' => now()->addMonths(5)->toDateString(), 'batch_unavailable_reason' => 'Manufacturer did not supply a lot'],
+            [...$entry, 'quantity' => 15, 'expiry_date' => now()->addMonths(10)->toDateString(), 'batch_unavailable_reason' => 'Manufacturer did not supply a lot'],
             [...$entry, 'quantity' => 2, 'expiry_date' => now()->addMonths(10)->toDateString(), 'batch_number' => 'ABR240912'],
         ]])->assertCreated()->json('data');
 
         $references = array_column($receipts, 'stock_in_reference');
         $this->assertCount(3, array_unique($references));
         foreach ($receipts as $receipt) {
-            $this->assertSame(sprintf('SI-%s-%05d', now()->format('Y'), $receipt['transaction_id']), $receipt['stock_in_reference']);
+            $this->assertMatchesRegularExpression('/^VACMANLO-[A-HJ-NP-Z2-9]{10}$/', $receipt['stock_in_reference']);
+            $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipt['transaction_id'], 'stock_in_reference' => $receipt['stock_in_reference']]);
         }
         $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipts[0]['transaction_id'], 'batch_number' => null]);
         $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipts[2]['transaction_id'], 'batch_number' => 'ABR240912']);
@@ -1290,6 +1296,188 @@ class InventorySecurityRegressionTest extends TestCase
         $this->getJson("/api/inventory/items/{$itemId}")->assertOk()
             ->assertJsonPath('data.current_batches.0.stock_in_reference', $references[0]);
         $this->travelBack();
+    }
+
+    public function test_medical_receipts_require_a_lot_or_documented_unavailability_and_reject_reference_overrides(): void
+    {
+        Sanctum::actingAs($this->createUser('staff', '09170000091'));
+        foreach (['medicine', 'vaccine'] as $category) {
+            $id = $this->createInventoryItem('Medical product', 0, 50);
+            DB::table('inventory_items')->where('item_id', $id)->update(['category' => $category]);
+            $entry = ['item_id' => $id, 'quantity' => 1, 'reason' => 'purchase', 'expiry_date' => now()->addYear()->toDateString()];
+            foreach ([[], ['batch_number' => 'N/A'], ['batch_number' => 'UNKNOWN'], ['batch_unavailable_reason' => ' ']] as $fields) {
+                $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, ...$fields]]])
+                    ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_number');
+            }
+            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_number' => 'LOT-REAL', 'stock_in_reference' => 'MY-REF']]])
+                ->assertUnprocessable()->assertJsonValidationErrors('items.0.stock_in_reference');
+            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_number' => 'LOT-REAL', 'batch_unavailable_reason' => 'Not supplied']]])
+                ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_unavailable_reason');
+            $receipt = $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => 'Manufacturer label has no lot']]])
+                ->assertCreated()->json('data.0');
+            $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipt['transaction_id'], 'batch_number' => null, 'batch_unavailable_reason' => 'Manufacturer label has no lot']);
+            $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.current_batches.0.batch_unavailable_reason', 'Manufacturer label has no lot');
+            $this->getJson('/api/inventory/transactions?item_id='.$id)->assertOk()->assertJsonPath('data.0.batch_unavailable_reason', 'Manufacturer label has no lot');
+        }
+    }
+
+    public function test_receipt_prefix_uses_product_words_and_identifiers_with_readable_random_suffixes(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000096'));
+        foreach (['Antibiotic' => 'ANTIBIOT', '2-in-1 Distemper Parvo' => '21DISPAR', 'Dog Collar Large' => 'DOGCOLLA'] as $name => $prefix) {
+            $id = $this->createInventoryItem($name, 0, 50);
+            DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+            $entry = ['item_id' => $id, 'quantity' => 1, 'reason' => 'purchase'];
+            $receipts = $this->postJson('/api/inventory/stock-in', ['items' => [$entry, $entry]])->assertCreated()->json('data');
+            foreach ($receipts as $receipt) $this->assertMatchesRegularExpression('/^'.$prefix.'-[A-HJ-NP-Z2-9]{10}$/', $receipt['stock_in_reference']);
+            $this->assertNotSame($receipts[0]['stock_in_reference'], $receipts[1]['stock_in_reference']);
+        }
+    }
+
+    public function test_receipt_reference_survives_rename_and_model_updates_cannot_replace_it(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000092'));
+        $id = $this->createInventoryItem('Dog Collar', 0, 50);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $legacy = $this->recordInventoryTransaction($id, 'stock_in', 1, ['transaction_id' => 57, 'created_at' => '2026-01-02 10:00:00']);
+        $reference = $this->postJson('/api/inventory/stock-in', ['items' => [['item_id' => $id, 'quantity' => 1, 'reason' => 'purchase']]])
+            ->assertCreated()->json('data.0.stock_in_reference');
+        $this->assertMatchesRegularExpression('/^DOGCOL-[A-HJ-NP-Z2-9]{10}$/', $reference);
+        DB::table('inventory_items')->where('item_id', $id)->update(['item_name' => 'Renamed']);
+        $this->assertSame('SI-2026-00057', InventoryTransaction::findOrFail($legacy)->stock_in_reference);
+        $transaction = InventoryTransaction::where('stock_in_reference', $reference)->firstOrFail();
+        $this->assertSame($reference, $transaction->fresh()->stock_in_reference);
+        $this->getJson('/api/inventory/items/'.$id)->assertOk()
+            ->assertJsonFragment(['stock_in_reference' => $reference]);
+        $transaction->stock_in_reference = 'REPLACED-REF';
+        try {
+            $transaction->save();
+            $this->fail('Receipt reference was changed');
+        } catch (\LogicException $error) {
+            $this->assertSame($reference, $transaction->fresh()->stock_in_reference);
+        }
+    }
+
+    public function test_receipt_collision_retries_the_insert_without_double_incrementing_stock(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000093'));
+        $id = $this->createInventoryItem('Dog Collar', 1, 50);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $this->recordInventoryTransaction($id, 'stock_in', 1, ['stock_in_reference' => 'DOGCOL-AAAAAAAAAA']);
+        $service = \Mockery::mock(InventoryStockMovementService::class, [app(\App\Services\InventoryBatchBalanceService::class)])
+            ->makePartial()->shouldAllowMockingProtectedMethods();
+        $service->shouldReceive('generateReceiptReference')->with('Dog Collar')->twice()->andReturn('DOGCOL-AAAAAAAAAA', 'DOGCOL-BBBBBBBBBB');
+        $this->app->instance(InventoryStockMovementService::class, $service);
+        DB::enableQueryLog();
+        $this->postJson('/api/inventory/stock-in', ['items' => [['item_id' => $id, 'quantity' => 3, 'reason' => 'purchase']]])
+            ->assertCreated()->assertJsonPath('data.0.stock_in_reference', 'DOGCOL-BBBBBBBBBB')->assertJsonPath('data.0.quantity_on_hand', '4.00');
+        $queries = collect(DB::getQueryLog());
+        DB::disableQueryLog();
+        $this->assertCount(0, $queries->filter(fn ($query) => str_starts_with(strtolower($query['query']), 'select') && str_contains($query['query'], 'stock_in_reference')));
+        $this->assertDatabaseCount('inventory_transactions', 2);
+    }
+
+    public function test_receipt_retry_exhaustion_rolls_back_all_items_and_the_unique_index_rejects_duplicates(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000094'));
+        $id = $this->createInventoryItem('Collar', 1, 50);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $this->recordInventoryTransaction($id, 'stock_in', 1, ['stock_in_reference' => 'COLLAR-AAAAAAAAAA']);
+        $service = \Mockery::mock(InventoryStockMovementService::class, [app(\App\Services\InventoryBatchBalanceService::class)])
+            ->makePartial()->shouldAllowMockingProtectedMethods();
+        $service->shouldReceive('generateReceiptReference')->times(6)->andReturn('COLLAR-BBBBBBBBBB', ...array_fill(0, 5, 'COLLAR-AAAAAAAAAA'));
+        $this->app->instance(InventoryStockMovementService::class, $service);
+        $entry = ['item_id' => $id, 'quantity' => 2, 'reason' => 'purchase'];
+        $this->postJson('/api/inventory/stock-in', ['items' => [$entry, $entry]])->assertStatus(503);
+        $this->assertDatabaseCount('inventory_transactions', 1);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 1]);
+        $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
+        $this->recordInventoryTransaction($id, 'stock_in', 1, ['stock_in_reference' => 'COLLAR-AAAAAAAAAA']);
+    }
+
+    public function test_simultaneous_stock_in_requests_preserve_exact_stock_and_unique_references(): void
+    {
+        $actor = $this->createUser('admin', '09170000095');
+        $id = $this->createInventoryItem('Concurrent Collar', 0, 50);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $directory = sys_get_temp_dir().'/bethlehem-receipts-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/receipts.sqlite';
+        $processes = [];
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                $database = $argv[1];
+                $directory = realpath(dirname($database));
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-receipts-[a-f0-9]{12}\z/', basename($directory))
+                    || basename($database) !== 'receipts.sqlite' || !is_file($database)) {
+                    throw new RuntimeException('An owned disposable receipt database is required.');
+                }
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                $connection = Illuminate\Support\Facades\DB::connection();
+                if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
+                    throw new RuntimeException('Unexpected receipt database.');
+                }
+                Laravel\Sanctum\Sanctum::actingAs(App\Models\User::findOrFail((int) $argv[2]));
+                $role = $argv[4];
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('Receipt barrier timed out.');
+                };
+                $connection->beforeStartingTransaction(function () use ($directory, $role, $wait) {
+                    if ($role === 'second') {
+                        $wait($directory.'/locked');
+                        file_put_contents($directory.'/attempted', '1');
+                    }
+                });
+                $connection->listen(function ($query) use ($directory, $role, $wait) {
+                    if ($role === 'first' && str_starts_with(strtolower($query->sql), 'insert into "inventory_transactions"')) {
+                        file_put_contents($directory.'/locked', '1');
+                        $wait($directory.'/attempted');
+                    }
+                });
+                $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+                $request = Illuminate\Http\Request::create('/api/inventory/stock-in', 'POST', [], [], [],
+                    ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+                    json_encode(['items' => [['item_id' => (int) $argv[3], 'quantity' => 2, 'reason' => 'purchase']]]));
+                $response = $kernel->handle($request);
+                echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pid' => getmypid()]);
+                PHP;
+            foreach (['first', 'second'] as $role) {
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, (string) $actor->user_id, (string) $id, $role], base_path(), [
+                    'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => base_path('storage/framework/testing-config-unused.php'),
+                    'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                    'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+                ]);
+                $process->setTimeout(15);
+                $process->start();
+                $processes[] = $process;
+            }
+            $results = [];
+            foreach ($processes as $process) {
+                $process->wait();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+                $results[] = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            }
+            $this->assertNotSame($results[0]['pid'], $results[1]['pid']);
+            foreach ($results as $result) $this->assertSame(201, $result['status'], json_encode($result['body']));
+            $this->assertNotSame($results[0]['body']['data'][0]['stock_in_reference'], $results[1]['body']['data'][0]['stock_in_reference']);
+            $pdo = new \PDO('sqlite:'.$database);
+            $this->assertEquals(4, $pdo->query('SELECT quantity_on_hand FROM inventory_items WHERE item_id = '.$id)->fetchColumn());
+            $this->assertEquals(2, $pdo->query('SELECT COUNT(DISTINCT stock_in_reference) FROM inventory_transactions')->fetchColumn());
+            $pdo = null;
+        } finally {
+            foreach ($processes as $process) if ($process->isRunning()) $process->stop();
+            foreach (glob($directory.'/*') ?: [] as $file) unlink($file);
+            rmdir($directory);
+        }
     }
 
     public function test_details_preserves_non_expiring_categories_and_deactivated_products(): void

@@ -9,7 +9,8 @@
     <link rel="stylesheet" href="../../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019" />
     <link rel="stylesheet" href="../../../css/components/admin-pos.css?v=paymongo-20261018" />
     <link rel="stylesheet" href="../../../css/components/print-information.css?v=pos-20261007" />
-    <link rel="stylesheet" href="../../../css/components/admin-inventory.css?v=inventory-ux-20261011-v3" />
+    <link rel="stylesheet" href="../../../css/components/admin-inventory.css?v=inventory-receipts-20261023" />
+    <link rel="stylesheet" href="../../../css/components/toast.css?v=semantic-toast-20261015" />
     <link rel="stylesheet" href="../../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../../scripts/components/admin-loading.js?v=universal-20261018"></script>
@@ -53,7 +54,7 @@
           <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen=true" aria-label="Open navigation"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg></button>
         </header>
 
-        <main x-data="adminInventory()" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0" aria-label="Inventory">
+        <main x-data="adminInventory()" :data-active-section="activeSection" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0" aria-label="Inventory">
 <section data-admin-heading x-cloak x-show="activeSection === 'overview'" class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-6 lg:backdrop-blur" data-session-surface>
   <div class="rounded-[28px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-5 lg:px-6 lg:py-6" data-session-surface>
     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -99,7 +100,7 @@
         <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Stock In</h2>
         <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]" data-session-public>Record received inventory</p>
       </div>
-      <a href="#overview" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> Back to Overview</a>
+      <a :href="stockReturnHref" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> <span x-text="stockReturnLabel">Back to Overview</span></a>
     </div>
   </div>
 </section>
@@ -110,7 +111,7 @@
         <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl" data-session-public>Stock Out</h2>
         <p class="mt-1 text-xs font-medium tracking-[0.18em] text-[#355674]" data-session-public>Record inventory reductions</p>
       </div>
-      <a href="#overview" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> Back to Overview</a>
+      <a :href="stockReturnHref" class="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-[#1f3850] hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"><span aria-hidden="true">←</span> <span x-text="stockReturnLabel">Back to Overview</span></a>
     </div>
   </div>
 </section>
@@ -141,7 +142,7 @@
     <script src="../../../scripts/services/inventory-service.js?v=unified-inventory-20261001b&release=pos-cart-20261007&payments=20261018-shared&fetching=20261019"></script>
 
     <script src="../../../scripts/components/inventory-money-input.js?v=inventory-ux-20261011"></script>
-    <script src="../../../scripts/components/admin-inventory.js?v=product-details-20261002&release=pos-cart-20261007&clinic-products=physical-stock-units-20261012&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&fetching=20261019"></script>
+    <script src="../../../scripts/components/admin-inventory.js?v=product-details-20261002&release=pos-cart-20261007&clinic-products=physical-stock-units-20261012&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&fetching=20261019&inventory=20261023"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   </body>
 </html>

@@ -51,6 +51,7 @@ function adminStockOut() {
     },
 
     pickItem(item) {
+      if (item.is_active === false) return;
       this.selected      = item;
       this.sellingPrice  = item.selling_price ?? "";
       if (this.reason === "expired" && !this.canUseExpired(item)) this.reason = "used";
@@ -155,6 +156,7 @@ function adminStockOut() {
     // ── Submit ────────────────────────────────────────────────────────────────
 
     async submit() {
+      if (this.submitting) return;
       this.error = "";
       if (!this.pending.length) { this.error = "Add at least one item first."; return; }
 
@@ -169,11 +171,12 @@ function adminStockOut() {
             notes:         p.notes,
           }))
         );
-        window.showSuccessToast(`Stock-out recorded for ${this.pending.length} item(s).`);
+        window.showSuccessToast('Stock-out recorded successfully.');
         this.pending    = [];
         this.clearSelected();
       } catch (err) {
         this.error = err.message || "Failed to record stock-out.";
+        window.showToast(this.error, 'error');
       } finally {
         this.submitting = false;
       }

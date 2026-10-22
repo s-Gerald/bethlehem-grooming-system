@@ -1,4 +1,23 @@
 /* Inventory keeps Bethlehem's existing palette, inputs and focus styles. */
+.inventory-stock-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+.inventory-stock-layout > * { min-width: 0; }
+.inventory-stock-submit { max-width: 100%; }
+body:has([data-active-section="stock-in"]) .app-toast,
+body:has([data-active-section="stock-out"]) .app-toast { bottom: 6rem; }
+@media (min-width: 1200px) {
+  .inventory-stock-layout { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 1.5rem; }
+}
+@media (max-width: 374px) {
+  .inventory-stock-submit { flex-wrap: wrap; gap: .5rem; }
+  .inventory-stock-submit > button { width: 100%; justify-content: center; }
+  body:has([data-active-section="stock-in"]) .app-toast,
+  body:has([data-active-section="stock-out"]) .app-toast { bottom: 8rem; }
+}
 .inventory-weight-row {
   display: grid;
   grid-template-columns: 3.5rem minmax(0, 1fr) 8.5rem 2rem;

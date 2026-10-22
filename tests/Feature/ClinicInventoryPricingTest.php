@@ -42,6 +42,7 @@ class ClinicInventoryPricingTest extends TestCase
             $table->string('reference_type')->default('manual'); $table->unsignedInteger('reference_id')->nullable();
             $table->text('notes')->nullable(); $table->unsignedInteger('performed_by')->nullable(); $table->timestamp('created_at')->nullable();
         });
+        (require database_path('migrations/2026_10_23_000001_add_inventory_receipt_references.php'))->up();
         Sanctum::actingAs(User::create(['role' => 'admin']));
     }
 

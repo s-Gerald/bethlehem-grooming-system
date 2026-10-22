@@ -153,6 +153,7 @@ class InventoryController extends Controller
             'selling_price_at_time' => $t->selling_price_at_time,
             'reason'                => $t->reason,
             'batch_number'          => $t->batch_number,
+            'batch_unavailable_reason' => $t->batch_unavailable_reason,
             'expiry_date'           => $t->expiry_date?->format('Y-m-d'),
             'reference_type'        => $t->reference_type,
             'reference_id'          => $t->reference_id,
@@ -248,17 +249,15 @@ class InventoryController extends Controller
         $balance = $this->batchBalances->forItem($itemId);
         $tracksExpiry = ! in_array($item->category, ['pet_shop', 'miscellaneous'], true);
         $cutoff = now()->startOfDay()->addDays(30)->toDateString();
-        $batches = $tracksExpiry
-            ? collect($balance['batches'])
-                ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0)
-                ->sortBy(fn (array $batch) => [$batch['expiry_date'] ?? '9999-12-31', $batch['transaction_id']])
-                ->map(fn (array $batch) => [
-                    ...$batch,
-                    'expiry_status' => $batch['is_expired'] ? 'Expired'
-                        : ($batch['expiry_date'] === null ? 'Expiry unknown'
-                            : ($batch['expiry_date'] <= $cutoff ? 'Expiring Soon' : 'Valid')),
-                ])->values()->all()
-            : [];
+        $batches = collect($balance['batches'])
+            ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0)
+            ->sortBy(fn (array $batch) => [$batch['expiry_date'] ?? '9999-12-31', $batch['transaction_id']])
+            ->map(fn (array $batch) => [
+                ...$batch,
+                'expiry_status' => ! $tracksExpiry ? 'Not applicable' : ($batch['is_expired'] ? 'Expired'
+                    : ($batch['expiry_date'] === null ? 'Expiry unknown'
+                        : ($batch['expiry_date'] <= $cutoff ? 'Expiring Soon' : 'Valid'))),
+            ])->values()->all();
 
         return response()->json(['data' => [
             ...$this->formatItem($item, $balance),
@@ -486,6 +485,8 @@ class InventoryController extends Controller
             'items.*.reason'       => 'required|in:purchase,return,adjustment',
             'items.*.unit_cost'    => 'nullable|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,
             'items.*.batch_number' => 'nullable|string|max:100',
+            'items.*.batch_unavailable_reason' => 'nullable|string|max:255',
+            'items.*.stock_in_reference' => 'prohibited',
             'items.*.expiry_date'  => 'nullable',
             'items.*.notes'        => 'nullable|string|max:500',
         ]);
@@ -496,6 +497,7 @@ class InventoryController extends Controller
 
         foreach ($validated['items'] as $index => $item) {
             $doesNotExpire = in_array($categories[$item['item_id']] ?? null, ['pet_shop', 'miscellaneous'], true);
+            $this->stockMovements->validateManufacturerLot($item, $categories[$item['item_id']] ?? '', "items.{$index}.");
 
             if ($doesNotExpire) {
                 $validated['items'][$index]['expiry_date'] = null;

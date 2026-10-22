@@ -20,7 +20,9 @@ function createPage(inventoryApi = {}, toastMessages = []) {
     setTimeout,
     window: {
       showSuccessToast: (message) => toastMessages.push(message),
+      showToast: (message, variant) => context.notifications.push({ message, variant }),
     },
+    notifications: [],
   };
   vm.createContext(context);
   vm.runInContext(source, context, {
@@ -31,6 +33,7 @@ function createPage(inventoryApi = {}, toastMessages = []) {
   page.$nextTick = (callback) => callback();
   page.$el = { querySelector: () => null };
   page.toastMessages = toastMessages;
+  page.notifications = context.notifications;
   return page;
 }
 
@@ -131,8 +134,17 @@ async function testSuccessfulStockOutShowsReusableSuccessToast() {
 
   await page.submit();
 
-  assert.deepEqual(page.toastMessages, ["Stock-out recorded for 1 item(s)."]);
+  assert.deepEqual(page.toastMessages, ["Stock-out recorded successfully."]);
   assert.equal(page.pending.length, 0);
+}
+
+async function testFailedStockOutKeepsPendingAndShowsError() {
+  const page = createPage({ stockOut: async () => { throw new Error('Stock is reserved'); } });
+  page.pending = [{ item_id: 1, quantity: 2, reason: 'used' }];
+  await page.submit();
+  assert.equal(page.pending.length, 1);
+  assert.deepEqual(page.toastMessages, []);
+  assert.deepEqual(page.notifications, [{ message: 'Stock is reserved', variant: 'error' }]);
 }
 
 (async () => {
@@ -141,6 +153,7 @@ async function testSuccessfulStockOutShowsReusableSuccessToast() {
   testExpiredReasonDependsOnProductCategory();
   testSellingPriceOnlyAppliesToSoldReason();
   await testSuccessfulStockOutShowsReusableSuccessToast();
+  await testFailedStockOutKeepsPendingAndShowsError();
   console.log("frontend stock-out regression checks passed");
 })().catch((error) => {
   console.error(error);

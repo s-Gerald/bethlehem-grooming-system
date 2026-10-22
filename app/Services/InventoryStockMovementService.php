@@ -6,6 +6,10 @@ use App\Models\InventoryItem;
 use App\Models\GatewayPayment;
 use App\Models\InventoryTransaction;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class InventoryStockMovementService
 {
@@ -39,20 +43,25 @@ class InventoryStockMovementService
                 abort(422, "Stock-in would exceed the maximum supported quantity for \"{$item->item_name}\".");
             }
 
-            $item->increment('quantity_on_hand', $entry['quantity']);
+            $batch = trim($entry['batch_number'] ?? '');
+            $unavailable = trim($entry['batch_unavailable_reason'] ?? '');
+            $this->validateManufacturerLot($entry, $item->category);
 
-            $transaction = InventoryTransaction::create([
+            $attributes = [
                 'item_id' => $item->item_id,
                 'type' => 'stock_in',
                 'quantity' => $entry['quantity'],
                 'unit_cost_at_time' => $entry['unit_cost'] ?? $item->unit_cost,
                 'reason' => $entry['reason'],
-                'batch_number' => $entry['batch_number'] ?? null,
+                'batch_number' => $batch !== '' ? $batch : null,
+                'batch_unavailable_reason' => $unavailable !== '' ? $unavailable : null,
                 'expiry_date' => $entry['expiry_date'] ?? null,
                 'notes' => $entry['notes'] ?? null,
                 'reference_type' => 'manual',
                 'performed_by' => $actor->user_id,
-            ]);
+            ];
+            $transaction = $this->createReceipt($attributes, $item->item_name);
+            $item->increment('quantity_on_hand', $entry['quantity']);
 
             $results[] = [
                 'item_id' => $item->item_id,
@@ -67,6 +76,65 @@ class InventoryStockMovementService
         }
 
         return $results;
+    }
+
+    public function validateManufacturerLot(array $entry, string $category, string $keyPrefix = ''): void
+    {
+        $batch = trim($entry['batch_number'] ?? '');
+        $unavailable = trim($entry['batch_unavailable_reason'] ?? '');
+        if (in_array($category, ['medicine', 'vaccine'], true)
+            && ($batch === '' || preg_match('/^(?:N\/?A|NONE|UNKNOWN|UNAVAILABLE|NOT AVAILABLE|NOT APPLICABLE|-)$/i', $batch))
+            && ($batch !== '' || $unavailable === '')) {
+            throw ValidationException::withMessages([
+                $keyPrefix.'batch_number' => 'Enter the manufacturer lot or explain why it is unavailable.',
+            ]);
+        }
+        if ($batch !== '' && $unavailable !== '') {
+            throw ValidationException::withMessages([
+                $keyPrefix.'batch_unavailable_reason' => 'Use either a manufacturer lot or an unavailable reason.',
+            ]);
+        }
+    }
+
+    private function createReceipt(array $attributes, string $itemName): InventoryTransaction
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $reference = $this->generateReceiptReference($itemName);
+            try {
+                $insert = function () use ($attributes, $reference) {
+                    $receipt = new InventoryTransaction($attributes);
+                    $receipt->stock_in_reference = $reference;
+                    $receipt->save();
+                    return $receipt;
+                };
+                // PostgreSQL needs a savepoint after a constraint error. MySQL
+                // and SQLite can retry the insert without extra round trips.
+                return DB::connection()->getDriverName() === 'pgsql'
+                    ? DB::transaction($insert) : $insert();
+            } catch (UniqueConstraintViolationException $error) {
+                if (! str_contains($error->getMessage(), 'inventory_transactions_stock_in_reference_unique')
+                    && ! str_contains($error->getMessage(), 'inventory_transactions.stock_in_reference')) {
+                    throw $error;
+                }
+            }
+        }
+        abort(503, 'Unable to generate a receipt reference. Please try again.');
+    }
+
+    protected function generateReceiptReference(string $itemName): string
+    {
+        $words = preg_split('/[^A-Z0-9]+/', strtoupper(Str::ascii($itemName)), -1, PREG_SPLIT_NO_EMPTY);
+        $meaningful = array_values(array_diff($words, ['THE', 'AND', 'FOR', 'WITH', 'WITHOUT', 'OF', 'IN']));
+        $words = $meaningful ?: $words;
+        $prefix = count($words) > 1
+            ? implode('', array_map(fn ($word) => substr($word, 0, 3), array_slice($words, 0, 4)))
+            : ($words[0] ?? 'ITEM');
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $suffix = '';
+        for ($index = 0; $index < 10; $index++) {
+            $suffix .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        return substr($prefix, 0, 8).'-'.$suffix;
     }
 
     /**

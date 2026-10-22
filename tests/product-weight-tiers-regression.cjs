@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const context = { window: {}, document: { addEventListener() {} } };
+const context = { window: { showSuccessToast() {}, showToast() {} }, document: { addEventListener() {} } };
 vm.createContext(context);
 for (const name of ['product-form', 'admin-clinic', 'admin-inventory-items', 'admin-stock-in'])
   vm.runInContext(fs.readFileSync(`scripts/components/${name}.js`, 'utf8'), context);

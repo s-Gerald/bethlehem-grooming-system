@@ -23,7 +23,7 @@ function createPage(inventoryApi = {}) {
     InventoryAPI: inventoryApi,
     clearTimeout,
     setTimeout,
-    window: {},
+    window: { showToast: () => {} },
   };
 
   vm.createContext(context);

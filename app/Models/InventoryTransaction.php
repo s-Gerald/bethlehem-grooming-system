@@ -20,6 +20,7 @@ class InventoryTransaction extends Model
         'selling_price_at_time',
         'reason',
         'batch_number',
+        'batch_unavailable_reason',
         'expiry_date',
         'reference_type',
         'reference_id',
@@ -41,20 +42,25 @@ class InventoryTransaction extends Model
         static::creating(function (self $model) {
             $model->created_at = now();
         });
+        static::updating(function (self $model) {
+            if ($model->isDirty('stock_in_reference')) {
+                throw new \LogicException('Stock receipt references cannot be changed.');
+            }
+        });
     }
 
     // ── Relationships ──────────────────────────────────────────────────────────
 
-    // The saved receipt id is unique even when no manufacturer batch is supplied.
-    // Deriving the reference also gives historical receipts an identifier without
-    // rewriting the inventory ledger.
+    // Persisted references belong to the receipt, independent of product renames.
+    // Historical SI references remain unchanged without rewriting the ledger.
     public function getStockInReferenceAttribute(): ?string
     {
         if ($this->type !== 'stock_in') {
             return null;
         }
 
-        return sprintf('SI-%s-%05d', $this->created_at?->format('Y') ?? '0000', $this->transaction_id);
+        return $this->attributes['stock_in_reference']
+            ?? sprintf('SI-%s-%05d', $this->created_at?->format('Y') ?? '0000', $this->transaction_id);
     }
 
     public function item()

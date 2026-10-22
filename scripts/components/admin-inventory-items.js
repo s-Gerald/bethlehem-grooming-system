@@ -6,7 +6,6 @@ function adminInventoryItems() {
     _loadedQuery: "",
     _listRequest: 0,
     error: "",
-    toast: { show: false, msg: "", ok: true },
 
     // Filters + pagination
     q: "",
@@ -151,6 +150,13 @@ function adminInventoryItems() {
       this.$nextTick(() => this.$refs?.productForm?.querySelector("input")?.focus());
     },
 
+    stockDetails(section) {
+      if (!['stock-in', 'stock-out'].includes(section) || !this.details.item?.is_active) return;
+      const itemId = this.details.item.item_id;
+      this.closeDetails(false);
+      window.location.hash = inventoryStockHref(section, itemId, 'products', this.alertFilter);
+    },
+
     detailsKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -232,6 +238,7 @@ function adminInventoryItems() {
         this.modal.error = err.errors
           ? Object.values(err.errors).flat().join(" ")
           : (err.message || "Failed to save");
+        this.showToast('Unable to save product.', false);
       } finally {
         this.modal.busy = false;
       }
@@ -255,6 +262,7 @@ function adminInventoryItems() {
         await this.load(this.currentPage);
       } catch (err) {
         this.deactivateModal.error = err.message || "Failed to deactivate.";
+        this.showToast(this.deactivateModal.error, false);
       } finally {
         this.deactivateModal.busy = false;
       }
@@ -350,8 +358,7 @@ function adminInventoryItems() {
     },
 
     showToast(msg, ok = true) {
-      this.toast = { show: true, msg, ok };
-      setTimeout(() => { this.toast.show = false; }, 3000);
+      window.showToast(msg, ok ? 'success' : 'error');
     },
   };
 }

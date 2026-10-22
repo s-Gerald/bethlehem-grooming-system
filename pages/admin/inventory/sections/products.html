@@ -208,8 +208,8 @@
               <p x-show="details.item.untracked_quantity > 0" class="text-amber-700" x-text="fmtQty(details.item.untracked_quantity) + ' ' + details.item.unit + ' have no tracked stock receipt and are excluded from Saleable Stock.'"></p>
             </div>
           </section>
-          <section x-show="details.item.tracks_expiry" aria-labelledby="product-expiry-heading">
-            <h4 id="product-expiry-heading" class="mb-3 text-sm font-bold text-[#355674]">Current Stock by Expiry</h4>
+          <section aria-labelledby="product-expiry-heading">
+            <h4 id="product-expiry-heading" class="mb-3 text-sm font-bold text-[#355674]" x-text="details.item.tracks_expiry ? 'Current Stock by Expiry' : 'Current Stock Receipts'">Current Stock Receipts</h4>
             <div class="overflow-x-auto rounded-xl border border-[#e6eef7]">
               <table class="w-full min-w-[580px] table-fixed text-left text-xs">
                 <caption class="sr-only">Stock receipts with remaining physical quantity, including expired stock</caption>
@@ -221,7 +221,7 @@
                   <template x-for="batch in details.item.current_batches" :key="batch.transaction_id">
                     <tr class="align-middle">
                       <td class="break-words px-3 py-3 font-mono text-[#315b7e]" x-text="batch.stock_in_reference"></td>
-                      <td class="break-words px-3 py-3 font-mono text-slate-600" x-text="batch.batch_number || '—'"></td>
+                      <td class="break-words px-3 py-3 text-slate-600"><span class="font-mono" x-text="batch.batch_number || (batch.batch_unavailable_reason ? 'Unavailable' : '—')"></span><p x-show="batch.batch_unavailable_reason" class="mt-1 text-xs" x-text="batch.batch_unavailable_reason"></p></td>
                       <td class="break-words px-3 py-3 text-right tabular-nums text-slate-800" x-text="fmtQty(batch.remaining_quantity) + ' ' + details.item.unit"></td>
                       <td class="px-3 py-3 text-slate-600" x-text="fmtExpiry(batch.expiry_date)"></td>
                       <td class="px-3 py-3"><span class="inline-block rounded-full px-2 py-1 font-semibold" :style="batchStatusStyle(batch.expiry_status)" x-text="batch.expiry_status"></span></td>
@@ -231,7 +231,7 @@
                 </tbody>
               </table>
             </div>
-            <p class="mt-2 text-xs text-slate-500">Expiring Soon: within 30 days. Exhausted stock receipts remain available in Stock Movements.</p>
+            <p x-show="details.item.tracks_expiry" class="mt-2 text-xs text-slate-500">Expiring Soon: within 30 days. Exhausted stock receipts remain available in Stock Movements.</p>
           </section>
           <section aria-labelledby="product-pricing-heading">
             <h4 id="product-pricing-heading" class="mb-3 text-sm font-bold text-[#355674]">Pricing</h4>
@@ -254,6 +254,8 @@
       <button type="button" @click="closeDetails()" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Close</button>
       <template x-if="details.item && !details.loading">
         <div class="flex flex-wrap gap-3">
+          <button x-show="details.item.is_active" type="button" @click="stockDetails('stock-in')" :disabled="details.busy" class="rounded-xl border border-[#315b7e] px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-[#eaf4fb] disabled:opacity-50">Stock In</button>
+          <button x-show="details.item.is_active" type="button" @click="stockDetails('stock-out')" :disabled="details.busy" class="rounded-xl border border-[#315b7e] px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-[#eaf4fb] disabled:opacity-50">Stock Out</button>
           <button x-show="!details.item.is_active" type="button" @click="doReactivate(details.item)" :disabled="details.busy" class="rounded-xl border border-[#315b7e] px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-[#eaf4fb] disabled:opacity-50" x-text="details.busy ? 'Reactivating…' : 'Reactivate'"></button>
           <button type="button" @click="editDetails()" :disabled="details.busy" class="rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] disabled:opacity-50">Edit Product</button>
         </div>
@@ -462,16 +464,4 @@
       <p class="mt-3 text-center text-xs text-slate-400">Point camera at barcode or QR code</p>
     </div>
   </div>
-</div>
-
-<!-- Reusable success toast -->
-<div x-show="toast.show" x-transition
-  class="app-success-toast"
-  :class="{ 'is-visible': toast.show }"
-  role="status" aria-live="polite">
-
-  <span class="app-success-toast__message" x-text="toast.msg"></span>
-  <span class="app-success-toast__progress" aria-hidden="true">
-    <span class="app-success-toast__progress-fill"></span>
-  </span>
 </div>
