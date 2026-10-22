@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\CustomerPhoneVerificationService;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -49,6 +51,104 @@ class PhoneVerificationTest extends TestCase
         Schema::dropIfExists('pending_customer_registrations');
         Schema::dropIfExists('users');
         parent::tearDown();
+    }
+
+    public function test_pending_migration_supports_local_mysql_timestamp_defaults(): void
+    {
+        if (getenv('PHONE_VERIFICATION_MYSQL_TEST') !== '1') {
+            $this->markTestSkipped('Opt in with PHONE_VERIFICATION_MYSQL_TEST=1 to create an owned disposable local MySQL database.');
+        }
+
+        require_once __DIR__.'/../Support/CapacityMysqlHarness.php';
+        $settings = \Tests\Support\capacityMysqlSettings(getenv());
+        $server = new \PDO("mysql:host={$settings['host']};port={$settings['port']};charset=utf8mb4",
+            $settings['username'], $settings['password'],
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION, \PDO::ATTR_TIMEOUT => 3]);
+        $identity = $server->query('SELECT @@hostname AS hostname, @@port AS port')->fetch(\PDO::FETCH_ASSOC);
+        $this->assertSame(strtolower(explode('.', gethostname())[0]), strtolower(explode('.', $identity['hostname'])[0]));
+        $this->assertSame((int) $settings['port'], (int) $identity['port']);
+        $database = 'bethlehem_sms_schema_'.bin2hex(random_bytes(6));
+        $this->assertMatchesRegularExpression('/\Abethlehem_sms_schema_[a-f0-9]{12}\z/', $database);
+        $schema = Schema::getFacadeRoot();
+        $created = false;
+        try {
+            // No IF NOT EXISTS: only a successfully created, randomly named schema is owned.
+            $server->exec("CREATE DATABASE `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $created = true;
+            config(['database.connections.phone_schema_mysql' => [
+                'driver' => 'mysql', 'host' => $settings['host'], 'port' => $settings['port'],
+                'database' => $database, 'username' => $settings['username'], 'password' => $settings['password'],
+                'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci', 'prefix' => '', 'strict' => true,
+            ]]);
+            $connection = DB::connection('phone_schema_mysql');
+            $this->assertSame($database, $connection->selectOne('SELECT DATABASE() AS name')->name);
+            $builder = $connection->getSchemaBuilder();
+            Schema::swap($builder);
+            $migration = require database_path('migrations/2026_10_22_000002_create_phone_verification_attempts.php');
+            $migration->up();
+            $this->assertTrue($builder->hasTable('phone_verification_attempts'));
+            $columns = collect($connection->select('SHOW COLUMNS FROM phone_verification_attempts'))->keyBy('Field');
+            foreach (['expires_at', 'resend_at', 'attempts_reset_at'] as $name) {
+                $this->assertSame('datetime', $columns[$name]->Type);
+                $this->assertSame('NO', $columns[$name]->Null);
+                $this->assertNull($columns[$name]->Default);
+            }
+            foreach (['original_verified_at', 'created_at', 'updated_at'] as $name) {
+                $this->assertSame('YES', $columns[$name]->Null);
+                $this->assertNull($columns[$name]->Default);
+                $this->assertSame('', $columns[$name]->Extra);
+            }
+            $indexes = collect($builder->getIndexes('phone_verification_attempts'));
+            foreach (['user_id', 'generation'] as $name) {
+                $this->assertTrue($indexes->first(fn ($index) => $index['columns'] === [$name])['unique']);
+            }
+            $this->assertFalse($indexes->first(fn ($index) => $index['columns'] === ['phone'])['unique']);
+            $time = Carbon::parse('2026-10-22 12:00:00', config('app.timezone'));
+            $values = ['user_id' => 1, 'phone' => '09171234567', 'generation' => (string) Str::uuid(),
+                'status' => 'active', 'expires_at' => $time->copy()->addMinutes(5), 'resend_at' => $time->copy()->addSeconds(60),
+                'attempts_reset_at' => $time->copy()->addHour(), 'created_at' => $time, 'updated_at' => $time];
+            $connection->table('phone_verification_attempts')->insert($values);
+            $row = $connection->table('phone_verification_attempts')->first();
+            $this->assertSame('2026-10-22 12:05:00', $row->expires_at);
+            $this->assertSame('2026-10-22 12:01:00', $row->resend_at);
+            $this->assertSame('2026-10-22 13:00:00', $row->attempts_reset_at);
+            $this->assertSame($time->copy()->addMinutes(5)->getTimestamp(), Carbon::parse($row->expires_at, config('app.timezone'))->getTimestamp());
+            $this->assertNull($row->original_verified_at);
+            $this->assertSame(0, $row->failed_attempts);
+            foreach (['expires_at', 'resend_at', 'attempts_reset_at'] as $name) {
+                try {
+                    $connection->table('phone_verification_attempts')->insert([
+                        ...$values, 'user_id' => 2, 'generation' => (string) Str::uuid(), $name => null,
+                    ]);
+                    $this->fail("{$name} must remain required.");
+                } catch (QueryException $exception) {
+                    $this->assertSame(1048, $exception->errorInfo[1]);
+                }
+            }
+            $this->assertTrue($connection->table('phone_verification_attempts')->where('expires_at', '>', $time->copy()->addSeconds(299))->exists());
+            $this->assertFalse($connection->table('phone_verification_attempts')->where('expires_at', '>', $time->copy()->addMinutes(5))->exists());
+            $this->assertTrue($connection->table('phone_verification_attempts')->where('resend_at', '>', $time->copy()->addSeconds(59))->exists());
+            $this->assertFalse($connection->table('phone_verification_attempts')->where('resend_at', '>', $time->copy()->addSeconds(60))->exists());
+            $connection->table('phone_verification_attempts')->where('user_id', 1)->update(['status' => 'consumed']);
+            $this->assertEquals($row->created_at, $connection->table('phone_verification_attempts')->value('created_at'));
+            $this->assertEquals($row->updated_at, $connection->table('phone_verification_attempts')->value('updated_at'));
+            $migration->down();
+            $this->assertFalse($builder->hasTable('phone_verification_attempts'));
+            $migration->up();
+            $this->assertSame(0, $connection->table('phone_verification_attempts')->count());
+            $connection->table('phone_verification_attempts')->insert($values);
+            $this->assertSame(1, $connection->table('phone_verification_attempts')->count());
+            Http::assertNothingSent();
+        } finally {
+            Schema::swap($schema);
+            DB::purge('phone_schema_mysql');
+            if ($created) {
+                $server->exec("DROP DATABASE `{$database}`");
+                $check = $server->prepare('SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?');
+                $check->execute([$database]);
+                $this->assertSame(0, (int) $check->fetchColumn());
+            }
+        }
     }
 
     private function fakeSend(string $code = '123456'): void

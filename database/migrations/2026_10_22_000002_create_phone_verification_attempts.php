@@ -17,10 +17,11 @@ return new class extends Migration
             $table->timestamp('original_verified_at')->nullable();
             $table->string('code_fingerprint', 64)->nullable();
             $table->string('status', 24);
-            $table->timestamp('expires_at');
-            $table->timestamp('resend_at');
+            // Application-managed deadlines must not inherit legacy TIMESTAMP defaults.
+            $table->dateTime('expires_at');
+            $table->dateTime('resend_at');
             $table->unsignedSmallInteger('failed_attempts')->default(0);
-            $table->timestamp('attempts_reset_at');
+            $table->dateTime('attempts_reset_at');
             $table->timestamps();
         });
     }
