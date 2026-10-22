@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, phone = '' } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, reviewing = false, phone = '' } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -17,6 +17,10 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
   if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone }));
+  if (reviewing) {
+    storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@example.test', phone }));
+    storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
+  }
   let nextId = 0;
   let ready;
   const elements = new Map();
@@ -51,7 +55,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   const cells = Array.from({ length: 6 }, (_, i) => element(`cell${i}`));
   const window = {
-    location: { search: editing ? '?edit=1' : '', hash: '', replace(target) { calls.push(['redirect', target]); } },
+    location: { search: reviewing ? '?review=1' : editing ? '?edit=1' : '', hash: '', replace(target) { calls.push(['redirect', target]); } },
     setInterval(callback) { const id = ++nextId; intervals.set(id, callback); return id; },
     clearInterval(id) { intervals.delete(id); },
     clearTimeout(id) { timeouts.delete(id); },
@@ -59,7 +63,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   };
   const API = {
     async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_token: 'rotated-edit-token' }; },
-    async updatePendingRegistration(payload, token) { calls.push(['update', payload, token]); return { requires_verification: true, registration_token: 'rotated-edit-token' }; },
+    async updatePendingRegistration(payload, token, grant) { calls.push(['update', payload, token, grant]); return grant ? { token: 'session', user: { role: 'customer' } } : { requires_verification: true, registration_token: 'rotated-edit-token' }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 45 }; },
@@ -140,6 +144,58 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await invalidPhone.dispatch('signupForm', 'submit');
   assert.equal(invalidPhone.calls[0][1].phone, null);
 
+  const abandoned = page({ signup: true });
+  abandoned.API.register = async () => ({ requires_verification: true, requires_registration_recovery: true });
+  await abandoned.dispatch('signupForm', 'submit');
+  assert.equal(abandoned.element('signupRecovery').classList.contains('hidden'), false);
+  assert.equal(abandoned.element('firstName').value, 'Test');
+  assert.equal(abandoned.element('password').value, 'strong-password');
+  assert.deepEqual(abandoned.calls, [], 'Offer recovery without silently navigating or sending mail');
+  await abandoned.dispatch('signupRecoveryContinue', 'click');
+  assert.deepEqual(abandoned.calls, [['send', 'customer@example.test'], ['redirect', './verify-email.html']]);
+  assert.equal(abandoned.storage.has('pendingRegistrationEditToken'), false);
+
+  const reviewing = page({ signup: true, reviewing: true });
+  assert.equal(reviewing.element('firstName').value, 'Saved');
+  assert.equal(reviewing.element('email').readOnly, true);
+  await reviewing.dispatch('signupForm', 'submit');
+  assert.equal(reviewing.calls[0][0], 'update');
+  assert.equal(reviewing.calls[0][3], 'ownership-grant');
+  assert.deepEqual(reviewing.calls.at(-1), ['redirect', './dashboard.html']);
+  assert.equal(reviewing.storage.has('pendingRegistrationRecoveryToken'), false);
+
+  const ownership = page();
+  ownership.API.verifyEmail = async () => ({ requires_registration_review: true, registration_recovery_token: 'ownership-grant',
+    details: { first_name: 'Saved', last_name: 'Customer', email: 'customer@example.test', phone: null, username: null } });
+  ownership.type('123456');
+  await ownership.dispatch('signupCodeForm', 'submit');
+  assert.deepEqual(ownership.calls, [['redirect', './signup.html?review=1']]);
+  assert.equal(ownership.storage.get('pendingRegistrationRecoveryToken'), 'ownership-grant');
+  assert.equal(JSON.parse(ownership.storage.get('pendingSignupDetails')).firstName, 'Saved');
+
+  const interrupted = page({ signup: true });
+  let failSignup;
+  let submissions = 0;
+  interrupted.API.register = () => { submissions++; return new Promise((_resolve, reject) => { failSignup = reject; }); };
+  const pendingSignup = interrupted.dispatch('signupForm', 'submit');
+  await interrupted.dispatch('signupForm', 'submit');
+  assert.equal(submissions, 1);
+  assert.equal(interrupted.element('signupSubmit').disabled, true);
+  failSignup({ status: 422, errors: { email: ['Enter a valid email address.'] } });
+  await pendingSignup;
+  assert.equal(interrupted.element('signupSubmit').disabled, false);
+  assert.equal(interrupted.element('email').value, 'customer@example.test');
+  assert.equal(interrupted.element('password').value, 'strong-password');
+  assert.equal(interrupted.element('email').attributes['aria-invalid'], 'true');
+  assert.equal(interrupted.element('signupMessage').textContent, 'Enter a valid email address.');
+
+  const expiredCode = page();
+  expiredCode.API.verifyEmail = async () => { throw { status: 422, expired: true }; };
+  expiredCode.type('123456');
+  await expiredCode.dispatch('signupCodeForm', 'submit');
+  assert.equal(expiredCode.element('signupCodeMessage').textContent, 'This code has expired. Request a new one.');
+  assert.deepEqual(expiredCode.calls, []);
+
   const p = page();
   assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
   assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code sent to');
@@ -180,6 +236,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     assert.match(pending.element('signupCodeMessage').textContent, /Couldn't send/);
   }
   await p.dispatch('signupResend', 'click');
+  assert.equal(p.element('signupCodeMessage').attributes.role, 'status', 'A successful resend is a status confirmation, not an error alert');
   assert.deepEqual(p.calls, [['send', 'customer@example.test']]);
   assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   p.type('654321');
@@ -208,6 +265,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await throttled.dispatch('signupResend', 'click');
   assert.equal(throttled.element('signupResend').textContent, 'Resend in 1:30');
   assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Try again later.');
+  assert.equal(throttled.element('signupCodeMessage').attributes.role, 'alert', 'A failed resend must still announce its error');
   throttled.advance(90000);
   throttled.API.resendVerification = async () => { throw { status: 503 }; };
   await throttled.dispatch('signupResend', 'click');

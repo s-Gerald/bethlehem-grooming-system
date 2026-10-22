@@ -14,15 +14,53 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!signupForm || !phoneInput || !emailInput) return;
 
   let editingToken = "";
+  let recoveryToken = "";
+  let busy = false;
+  const recoveryPanel = document.getElementById("signupRecovery");
+  const recoveryContinue = document.getElementById("signupRecoveryContinue");
   try {
-    if (new URLSearchParams(window.location.search).get("edit") === "1") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("edit") === "1" || params.get("review") === "1") {
       const draft = JSON.parse(sessionStorage.getItem("pendingSignupDetails") || "null");
-      editingToken = sessionStorage.getItem("pendingRegistrationEditToken") || "";
-      if (draft && editingToken) {
+      recoveryToken = params.get("review") === "1" ? sessionStorage.getItem("pendingRegistrationRecoveryToken") || "" : "";
+      editingToken = recoveryToken ? "" : sessionStorage.getItem("pendingRegistrationEditToken") || "";
+      if (draft && (editingToken || recoveryToken)) {
         for (const [id, value] of Object.entries(draft)) document.getElementById(id).value = value;
+      }
+      if (recoveryToken) {
+        emailInput.readOnly = true;
+        document.getElementById("signupTitle").textContent = "Complete your registration";
+        document.getElementById("signupDescription").textContent = "Review your details and choose a password to finish.";
+        document.getElementById("signupBtnLabel").textContent = "Complete registration";
+        showMessage("success", "Review your details and choose a password. Your email is confirmed.");
+      } else if (params.get("review") === "1") {
+        showMessage("error", "Verify your email again to recover your registration.");
+        recoveryPanel.classList.remove("hidden");
       }
     }
   } catch { /* storage unavailable; signup remains usable */ }
+
+  recoveryContinue.addEventListener("click", async () => {
+    if (busy || !emailInput.checkValidity() || !emailInput.value.trim()) {
+      emailInput.reportValidity();
+      return;
+    }
+    setBusyState(true);
+    recoveryContinue.textContent = "Sending...";
+    try {
+      const email = emailInput.value.trim().toLowerCase();
+      const result = await API.resendVerification(email);
+      sessionStorage.setItem("pendingVerificationEmail", email);
+      sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (result?.resend_after ?? 45) * 1000));
+      for (const key of ["pendingRegistrationEditToken", "pendingRegistrationRecoveryToken", "pendingVerificationDeliveryFailed"]) sessionStorage.removeItem(key);
+      window.location.replace("./verify-email.html");
+    } catch (error) {
+      showMessage("error", error?.status === 429 ? "Too many attempts. Try again later." : "Couldn't send the code. Try again.");
+    } finally {
+      setBusyState(false);
+      recoveryContinue.textContent = "Continue with verification";
+    }
+  });
 
   // Independent toggle — each button only controls its own field and icons.
   const toggleMap = [
@@ -72,6 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
+    if (busy) return;
 
     const firstName      = document.getElementById("firstName").value.trim();
     const lastName       = document.getElementById("lastName").value.trim();
@@ -82,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const confirmPassword = confirmPasswordInput.value;
 
     clearMessage();
+    for (const id of ["firstName", "lastName", "email", "username", "phone", "password"]) document.getElementById(id).setAttribute("aria-invalid", "false");
 
     if (!email) {
       showMessage("error", "Email address is required.");
@@ -123,9 +163,23 @@ document.addEventListener("DOMContentLoaded", () => {
         password,
         password_confirmation: confirmPassword,
       };
-      const data = editingToken
-        ? await API.updatePendingRegistration(payload, editingToken)
+      const data = editingToken || recoveryToken
+        ? await API.updatePendingRegistration(payload, editingToken, recoveryToken)
         : await API.register(payload);
+
+      if (data?.requires_registration_recovery) {
+        recoveryPanel.classList.remove("hidden");
+        recoveryPanel.focus();
+        setBusyState(false);
+        return;
+      }
+      if (recoveryToken && data?.token && data?.user?.role === "customer") {
+        for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
+          try { sessionStorage.removeItem(key); } catch { /* session already established */ }
+        }
+        window.location.replace("./dashboard.html");
+        return;
+      }
 
       if (data?.requires_verification) {
         try {
@@ -149,8 +203,14 @@ document.addEventListener("DOMContentLoaded", () => {
       window.location.replace("./sign-in.html?registered=1");
     } catch (error) {
       if (error.errors) {
-        const firstError = Object.values(error.errors)[0];
+        const [field, firstError] = Object.entries(error.errors)[0];
         showMessage("error", Array.isArray(firstError) ? firstError[0] : firstError);
+        const id = { first_name: "firstName", last_name: "lastName", password: "password", email: "email", username: "username", phone: "phone" }[field];
+        if (id) {
+          const input = document.getElementById(id);
+          input.setAttribute("aria-invalid", "true");
+          input.focus();
+        }
       } else {
         showMessage("error", error.message);
       }
@@ -159,9 +219,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   function setBusyState(isBusy) {
+    busy = isBusy;
     submitButton.disabled = isBusy;
+    recoveryContinue.disabled = isBusy;
+    signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
-    if (label) label.textContent = isBusy ? "Submitting Registration..." : "Create Account";
+    if (label) label.textContent = isBusy ? "Submitting Registration..." : recoveryToken ? "Complete registration" : "Create Account";
   }
 
   function clearMessage() {

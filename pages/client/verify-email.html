@@ -8,7 +8,7 @@
     <title>Verify Your Email | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
-    <link rel="stylesheet" href="../../css/components/verification-code.css?v=auth-speed-20261018" />
+    <link rel="stylesheet" href="../../css/components/verification-code.css?v=registration-status-20261022" />
   </head>
   <body class="verification-page">
     <main class="verification-layout">
@@ -39,6 +39,7 @@
               <h1 id="verificationTitle">Verify your email</h1>
               <p id="verificationDescription">Enter the 6-digit code sent to</p>
               <p id="verifyCodeEmail" class="verification-email"></p>
+              <p id="registrationExpiry">This code expires in 10 minutes.</p>
             </div>
             <form id="signupCodeForm" class="space-y-5" novalidate>
               <div id="verificationEmailRecovery" class="hidden">
@@ -48,7 +49,7 @@
               <div>
                 <label for="signupCode" class="sr-only">6-digit email verification code</label>
                 <div class="verification-code-cells">
-                  <input id="signupCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="verificationDescription verifyCodeEmail signupCodeMessage" required />
+                  <input id="signupCode" class="verification-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" aria-describedby="verificationDescription verifyCodeEmail registrationExpiry signupCodeMessage" required />
                   <span class="verification-code-cell" aria-hidden="true"></span>
                   <span class="verification-code-cell" aria-hidden="true"></span>
                   <span class="verification-code-cell" aria-hidden="true"></span>
@@ -64,6 +65,10 @@
                 <button id="signupResend" type="button" class="verification-link">Resend code</button>
               </div>
             </form>
+            <div class="verification-resend">
+              <a id="signupVerificationEdit" href="./signup.html?edit=1" class="hidden verification-link">Update registration details</a>
+              <button id="verificationChangeEmail" type="button" class="verification-link">Use another email</button>
+            </div>
           </div>
 
           <!-- Login code state -->
@@ -109,6 +114,7 @@
           <div id="resendSection" class="hidden mt-8 border-t border-slate-100 pt-6">
             <p class="mb-3 text-center text-sm font-semibold text-slate-600">Didn't receive the email?</p>
             <form id="resendForm" class="space-y-3">
+              <label for="resendEmail" class="sr-only">Email address</label>
               <input
                 id="resendEmail"
                 type="email"
@@ -139,10 +145,10 @@
       </div>
     </main>
 
-    <script src="../../scripts/api.js?v=auth-speed-20261018&auth=session-scope-20261006&session=lock-20261018" defer></script>
+    <script src="../../scripts/api.js?v=registration-recovery-20261022&auth=session-scope-20261006&session=lock-20261018" defer></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021" defer></script>
     <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018" defer></script>
-    <script src="../../scripts/auth/client/signup-verification.js?v=otp-resend-20261021" defer></script>
-    <script src="../../scripts/auth/client/verify-email.js?v=otp-resend-20261021" defer></script>
+    <script src="../../scripts/auth/client/signup-verification.js?v=registration-status-20261022" defer></script>
+    <script src="../../scripts/auth/client/verify-email.js?v=registration-recovery-20261022" defer></script>
   </body>
 </html>

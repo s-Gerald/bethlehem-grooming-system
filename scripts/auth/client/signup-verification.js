@@ -16,12 +16,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const recoveryEmail = document.getElementById("verificationEmail");
   const read = (key) => { try { return sessionStorage.getItem(key) || ""; } catch { return ""; } };
   const write = (key, value) => { try { sessionStorage.setItem(key, value); } catch { /* UX only */ } };
-  let email = read("pendingVerificationEmail");
+  let email = params.get("recover") === "1" ? "" : read("pendingVerificationEmail");
   let busy = "";
   let completed = false;
   let until = Number(read("pendingVerificationResendUntil")) || 0;
   let timer = null;
   let stopDeliveryCheck = () => {};
+  const edit = document.getElementById("signupVerificationEdit");
+  edit.classList.toggle("hidden", !read("pendingRegistrationEditToken"));
+  document.getElementById("verificationChangeEmail").addEventListener("click", () => {
+    if (busy || completed) return;
+    email = "";
+    recoveryEmail.value = "";
+    otp.clear();
+    renderEmail();
+    recoveryEmail.focus();
+  });
 
   function checkDelivery(receipt) {
     stopDeliveryCheck();
@@ -34,9 +44,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function setMessage(text = "", invalid = true) {
+  function setMessage(text = "", invalid = true, role = "alert") {
     message.textContent = text;
     message.className = text ? "verification-message" : "hidden";
+    message.setAttribute("role", role);
     input.setAttribute("aria-invalid", text && invalid ? "true" : "false");
   }
   const otp = window.VerificationCode.bind(input, [...view.querySelectorAll(".verification-code-cell")], () => {
@@ -49,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
     input.disabled = busy === "verify" || completed;
     recoveryEmail.disabled = !!busy || completed;
     submit.disabled = !!busy || completed || input.value.length !== 6;
+    form.setAttribute("aria-busy", String(!!busy));
     resend.disabled = !!busy || completed || remaining > 0;
     submit.textContent = busy === "verify" ? "Verifying..." : "Verify and continue";
     resend.textContent = busy === "send" ? "Sending..." : remaining > 0
@@ -72,7 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderEmail() {
-    description.textContent = "Enter the 6-digit code sent to";
+    description.textContent = email ? "Enter the 6-digit code sent to" : "Enter your email and request a code to continue.";
     maskedEmail.textContent = window.VerificationCode.maskEmail(email);
     recovery.classList.toggle("hidden", !!email);
   }
@@ -99,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateControls();
     try {
       const result = await API.resendVerification(email);
+      setMessage("If your registration is unfinished, check your inbox for a new code.", false, "status");
       if (result?.email_delivery_token) write("pendingVerificationDeliveryFailed", "0");
       startCooldown(result?.resend_after ?? 45);
       checkDelivery(result?.email_delivery_token);
@@ -120,11 +133,27 @@ document.addEventListener("DOMContentLoaded", () => {
     updateControls();
     try {
       const result = await API.verifyEmail(email, input.value);
+      if (result?.requires_registration_review && result?.registration_recovery_token && result?.details) {
+        const details = result.details;
+        // Ownership has been proved; only now may saved details be shown.
+        sessionStorage.setItem("pendingRegistrationRecoveryToken", result.registration_recovery_token);
+        sessionStorage.setItem("pendingSignupDetails", JSON.stringify({
+          firstName: details.first_name, lastName: details.last_name,
+          email: details.email, username: details.username || "", phone: details.phone || "",
+        }));
+        sessionStorage.removeItem("pendingRegistrationEditToken");
+        completed = true;
+        stopDeliveryCheck();
+        otp.clear();
+        if (timer) window.clearInterval(timer);
+        window.location.replace("./signup.html?review=1");
+        return;
+      }
       if (!result?.token || result?.user?.role !== "customer") throw new Error("Invalid session");
       completed = true;
       stopDeliveryCheck();
       otp.clear();
-      for (const key of ["pendingVerificationEmail", "pendingVerificationPhone", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationResendUntil", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
+      for (const key of ["pendingVerificationEmail", "pendingVerificationPhone", "pendingRegistrationEditToken", "pendingRegistrationRecoveryToken", "pendingSignupDetails", "pendingVerificationResendUntil", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
         try { sessionStorage.removeItem(key); } catch { /* storage unavailable */ }
       }
       if (timer) window.clearInterval(timer);
@@ -134,8 +163,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       setMessage(error?.status === 429 ? "Too many attempts. Try again later."
         : error?.status >= 500 || !error?.status ? "Couldn't verify the code. Try again."
-        : error?.message === "These registration details are no longer available. Please register again."
-          ? error.message : "Invalid or expired code.");
+        : error?.expired ? "This code has expired. Request a new one."
+        : error?.message || "Incorrect code. Try again.");
     } finally {
       busy = "";
       updateControls();

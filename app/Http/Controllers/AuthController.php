@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use App\Services\LoginEmailChallengeService;
+use App\Services\CustomerRegistrationService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -18,12 +20,7 @@ class AuthController extends Controller
     // ── REGISTER ──────────────────────────────────────────
     public function register(Request $request)
     {
-        PendingCustomerRegistration::query()
-            ->where('updated_at', '<', now()->subDays(max(
-                1,
-                (int) config('app.pending_registration_retention_days', 7),
-            )))
-            ->delete();
+        PendingCustomerRegistration::pruneExpired();
 
         $phone = $request->input('phone');
         $request->merge([
@@ -34,65 +31,91 @@ class AuthController extends Controller
             'phone' => is_string($phone) && trim($phone) === '' ? null : $phone,
         ]);
 
-        [$pendingRegistration, $editToken] = DB::transaction(function () use ($request): array {
-            $pendingRegistration = null;
-            if ($request->isMethod('put')) {
-                $credential = $request->validate(['registration_token' => 'required|string|size:64']);
-                $pendingRegistration = PendingCustomerRegistration::query()
-                    ->where('registration_edit_token_hash', hash('sha256', $credential['registration_token']))
-                    ->lockForUpdate()->first();
-                if (! $pendingRegistration) {
-                    abort(422, 'This registration is no longer available. Please sign up again.');
+        $request->validate(['email' => 'required|email|max:150']);
+
+        try {
+            $result = DB::transaction(function () use ($request) {
+                $identifiers = function ($query) use ($request) {
+                    $query->where('email', $request->input('email'));
+                    if ($request->filled('phone')) $query->orWhere('phone', $request->input('phone'));
+                    if ($request->filled('username')) $query->orWhere('username', $request->input('username'));
+                };
+                $pendingMatches = PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->get(['id', 'email']);
+                $userMatches = User::query()->where($identifiers)->lockForUpdate()->get(['user_id', 'email']);
+                $sameEmail = fn ($registrant) => Str::lower($registrant->email) === $request->input('email');
+                // An email alone only selects recovery, never changes stored details.
+                if (! $request->isMethod('put')
+                    && ($userMatches->contains($sameEmail) || $pendingMatches->contains($sameEmail))) {
+                    return response()->json([
+                        'success' => true, 'requires_verification' => true, 'requires_registration_recovery' => true,
+                        'message' => 'You may have started signing up with this email. Continue with verification, or sign in if your account is ready.',
+                        'resend_after' => 0,
+                    ], 202);
                 }
-            }
-            $editToken = Str::random(64);
-            $data = $request->validate([
-                'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
-                'last_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
-                'username' => [
-                    'nullable',
-                    'string',
-                    'max:50',
-                    Rule::unique('users', 'username'),
-                    Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey()),
-                ],
-                'phone' => [
-                    'nullable',
-                    'string',
-                    'regex:/^09\d{9}$/',
-                    Rule::unique('users', 'phone'),
-                    Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey()),
-                ],
-                'email' => [
-                    'required',
-                    'email',
-                    Rule::unique('users', 'email'),
-                    Rule::unique('pending_customer_registrations', 'email')->ignore($pendingRegistration?->getKey()),
-                ],
-                'password' => 'required|string|min:8|max:100|confirmed',
-            ]);
+                $pendingRegistration = null;
+                if ($request->isMethod('put') && $request->has('registration_recovery_token')) {
+                    $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
+                    $hash = hash('sha256', $credential['registration_recovery_token']);
+                    $legacy = User::query()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
+                    $registrant = $legacy ?? PendingCustomerRegistration::query()
+                        ->unexpired()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
+                    if (! $registrant || ! $registrant->registration_recovery_expires_at
+                        || now()->greaterThanOrEqualTo($registrant->registration_recovery_expires_at)
+                        || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {
+                        abort(422, 'This registration review has expired. Verify your email again.');
+                    }
+                    if ($request->input('email') !== $registrant->email) {
+                        abort(422, 'Use the email address you verified.');
+                    }
+                    $pendingRegistration = $legacy
+                        ? PendingCustomerRegistration::query()->where('email', $legacy->email)->lockForUpdate()->first()
+                        : $registrant;
+                    $data = $this->registrationData($request, $pendingRegistration, $legacy);
+                    unset($data['password']);
+                    $data['password_hash'] = Hash::make($request->input('password'));
+                    return app(CustomerRegistrationService::class)->complete($registrant, $data);
+                }
+                if ($request->isMethod('put')) {
+                    $credential = $request->validate(['registration_token' => 'required|string|size:64']);
+                    $pendingRegistration = PendingCustomerRegistration::query()->unexpired()
+                        ->where('registration_edit_token_hash', hash('sha256', $credential['registration_token']))
+                        ->lockForUpdate()->first();
+                    if (! $pendingRegistration) {
+                        abort(422, 'This registration is no longer available. Please verify your email again.');
+                    }
+                }
+                $editToken = Str::random(64);
+                $data = $this->registrationData($request, $pendingRegistration);
 
-            $values = [
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'username' => $data['username'] ?? null,
-                'email' => $data['email'],
-                'phone' => $data['phone'],
-                'password_hash' => Hash::make($data['password']),
-                'registration_edit_token_hash' => hash('sha256', $editToken),
-                'email_verification_token' => null,
-                'email_verification_code_hash' => null,
-                'email_verification_expires_at' => null,
-                'email_verification_attempts' => 0,
-            ];
-            if ($pendingRegistration) {
-                $pendingRegistration->update($values);
-            } else {
-                $pendingRegistration = PendingCustomerRegistration::create($values);
-            }
-            return [$pendingRegistration, $editToken];
+                $values = [
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'username' => $data['username'] ?? null,
+                    'email' => $data['email'],
+                    'phone' => $data['phone'] ?? null,
+                    'password_hash' => Hash::make($data['password']),
+                    'registration_edit_token_hash' => hash('sha256', $editToken),
+                    'email_verification_token' => null,
+                    'email_verification_code_hash' => null,
+                    'email_verification_expires_at' => $pendingRegistration?->email_verification_expires_at,
+                    'registration_recovery_token_hash' => null,
+                    'registration_recovery_expires_at' => null,
+                    // Editing must not reset the attempt budget or resend cooldown.
+                    'email_verification_attempts' => $pendingRegistration?->email_verification_attempts ?? 0,
+                ];
+                if ($pendingRegistration) {
+                    $pendingRegistration->update($values);
+                } else {
+                    $pendingRegistration = PendingCustomerRegistration::create($values);
+                }
+                return [$pendingRegistration, $editToken];
 
-        });
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            return response()->json(['success' => false, 'message' => 'These details are already in use. Continue with email verification or update your details.'], 422);
+        }
+        if (! is_array($result)) return $result;
+        [$pendingRegistration, $editToken] = $result;
 
         try {
             $receipt = EmailVerificationController::sendVerificationEmail($pendingRegistration);
@@ -108,7 +131,7 @@ class AuthController extends Controller
                 'email_delivery_queued' => false,
                 'email' => $pendingRegistration->email,
                 'registration_token' => $editToken,
-                'resend_after' => max(0, ($pendingRegistration->fresh()->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
+                'resend_after' => max(0, ($pendingRegistration->fresh()?->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
             ], 201);
         }
 
@@ -120,8 +143,38 @@ class AuthController extends Controller
             'email_delivery_token' => $receipt,
             'email' => $pendingRegistration->email,
             'registration_token' => $editToken,
-            'resend_after' => max(0, ($pendingRegistration->fresh()->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
+            'resend_after' => max(0, ($pendingRegistration->fresh()?->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
         ], 201);
+    }
+
+    private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null): array
+    {
+        return $request->validate([
+            'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
+            'last_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
+            'username' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('users', 'username')->ignore($legacy?->getKey(), 'user_id'),
+                Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey()),
+            ],
+            'phone' => [
+                'nullable',
+                'string',
+                'regex:/^09\d{9}$/',
+                Rule::unique('users', 'phone')->ignore($legacy?->getKey(), 'user_id'),
+                Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey()),
+            ],
+            'email' => [
+                'required',
+                'email',
+                'max:150',
+                Rule::unique('users', 'email')->ignore($legacy?->getKey(), 'user_id'),
+                Rule::unique('pending_customer_registrations', 'email')->ignore($pendingRegistration?->getKey()),
+            ],
+            'password' => 'required|string|min:8|max:100|confirmed',
+        ]);
     }
 
     // ── UNIFIED SIGN-IN ───────────────────────────────────
@@ -171,7 +224,7 @@ class AuthController extends Controller
         $user = User::where($field, $lookupIdentifier)->first();
         $pendingRegistration = $user
             ? null
-            : PendingCustomerRegistration::where($field, $lookupIdentifier)->first();
+            : PendingCustomerRegistration::query()->unexpired()->where($field, $lookupIdentifier)->first();
 
         if ($user?->requiresPasswordSetup()) {
             RateLimiter::clear($throttleKey);

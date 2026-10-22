@@ -145,7 +145,28 @@ class PasswordResetTest extends TestCase
 
     public static function passwordResetRoles(): array
     {
-        return [['customer'], ['admin']];
+        return [['customer'], ['admin'], ['staff']];
+    }
+
+    public function test_unverified_customer_cannot_request_verify_or_complete_normal_password_reset(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $code = $this->resetCodeSentTo($user);
+        $grant = $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])
+            ->assertOk()->json('token');
+        $user->update(['email_verified_at' => null]);
+        Notification::fake();
+        $this->travel(46)->seconds();
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()
+            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
+        Notification::assertNothingSent();
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
+            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable();
+        $this->assertNull($user->fresh()->email_verified_at);
+        $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
     }
 
     public function test_unknown_and_disabled_accounts_receive_the_same_generic_response_without_email(): void

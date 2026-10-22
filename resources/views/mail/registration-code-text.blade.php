@@ -4,6 +4,6 @@ Use the verification code below to finish creating your Bethlehem Animal Clinic 
 
 {{ $code }}
 
-This code expires in 15 minutes.
+This code expires in {{ $ttlMinutes }} minutes.
 
-If you did not create a Bethlehem account, you can ignore this email.
+If you did not request registration, you can ignore this email.

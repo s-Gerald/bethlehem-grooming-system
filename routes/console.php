@@ -25,12 +25,7 @@ Schedule::command('sanctum:prune-expired --hours=24')->daily();
 // Pending signups are not customer accounts and are retained only long enough
 // for email verification and resend recovery.
 Schedule::call(function (): void {
-    PendingCustomerRegistration::query()
-        ->where('updated_at', '<', now()->subDays(max(
-            1,
-            (int) config('app.pending_registration_retention_days', 7),
-        )))
-        ->delete();
+    PendingCustomerRegistration::pruneExpired();
 })
     ->name('pending-customer-registrations:prune')
     ->daily()

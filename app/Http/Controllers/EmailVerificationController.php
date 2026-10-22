@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use App\Services\RegistrationEmailCodeService;
+use App\Services\CustomerRegistrationService;
 use App\Services\AuthenticationMailDelivery;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Hash;
@@ -36,7 +37,17 @@ class EmailVerificationController extends Controller
         $tokenHash = $plainToken ? hash('sha256', $plainToken) : null;
 
         try {
-            return DB::transaction(function () use ($plainToken, $tokenHash, $codeMode, $data, $code) {
+            return DB::transaction(function () use ($request, $plainToken, $tokenHash, $codeMode, $data, $code) {
+                // A legacy user takes precedence over any inconsistent pending row.
+                // Never apply the pending password to an existing account.
+                if ($codeMode) {
+                    $existingUser = User::query()->where('email', $data['email'])->lockForUpdate()->first();
+                    if ($existingUser) {
+                        if (! CustomerRegistrationService::recoverableUser($existingUser)) return self::invalidCode();
+                        if ($error = self::validateCode($existingUser, $code)) return $error;
+                        return app(CustomerRegistrationService::class)->authorizeReview($existingUser);
+                    }
+                }
                 $pendingRegistration = PendingCustomerRegistration::query()
                     ->where(function ($query) use ($plainToken, $tokenHash, $codeMode, $data) {
                         if ($codeMode) {
@@ -50,11 +61,12 @@ class EmailVerificationController extends Controller
                     ->first();
 
                 if ($pendingRegistration) {
+                    if ($pendingRegistration->retentionExpired()) return self::invalidCode();
                     if ($codeMode && ($error = self::validateCode($pendingRegistration, $code))) {
                         return $error;
                     }
-                    if ($pendingRegistration->email_verification_expires_at
-                        && now()->isAfter($pendingRegistration->email_verification_expires_at)) {
+                    if (! $pendingRegistration->email_verification_expires_at
+                        || now()->greaterThanOrEqualTo($pendingRegistration->email_verification_expires_at)) {
                         return response()->json([
                             'success' => false,
                             'message' => 'This verification link has expired. Please request a new one.',
@@ -63,74 +75,24 @@ class EmailVerificationController extends Controller
                         ], 422);
                     }
 
-                    $conflictingUser = User::query()
-                        ->where(function ($query) use ($pendingRegistration) {
-                            $query->where('email', $pendingRegistration->email);
-
-                            if ($pendingRegistration->phone !== null) {
-                                $query->orWhere('phone', $pendingRegistration->phone);
-                            }
-
-                            if ($pendingRegistration->username) {
-                                $query->orWhere('username', $pendingRegistration->username);
-                            }
-                        })
-                        ->lockForUpdate()
-                        ->exists();
-
-                    if ($conflictingUser) {
-                        $pendingRegistration->delete();
-
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'These registration details are no longer available. Please register again.',
-                        ], 422);
-                    }
-
-                    $user = User::create([
-                        'first_name' => $pendingRegistration->first_name,
-                        'last_name' => $pendingRegistration->last_name,
-                        'username' => $pendingRegistration->username,
-                        'email' => $pendingRegistration->email,
-                        'phone' => $pendingRegistration->phone,
-                        'password_hash' => $pendingRegistration->password_hash,
-                        'role' => 'customer',
-                        'customer_tier' => 'new',
-                        'is_active' => true,
-                        'is_archived' => false,
-                        'email_verified_at' => now(),
-                    ]);
-                    $pendingRegistration->delete();
-
-                    $token = $user->createToken('auth_token')->plainTextToken;
-
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Email verified and account registered successfully.',
-                        'token' => $token,
-                        'user' => self::customerPayload($user),
-                    ]);
-                }
-
-                // Existing accounts may consume already-issued links. New sends
-                // exclusively issue codes and clear the legacy token.
-                $user = User::query()
-                    ->whereNull('email_verified_at')
-                    ->where(function ($query) use ($plainToken, $tokenHash, $codeMode, $data) {
-                        if ($codeMode) {
-                            $query->where('email', $data['email']);
-                        } else {
-                            $query->where('email_verification_token', $tokenHash)
-                                ->orWhere('email_verification_token', $plainToken);
+                    if ($codeMode) {
+                        $credential = $request->input('registration_token');
+                        if (! is_string($credential) || ! $pendingRegistration->registration_edit_token_hash
+                            || ! hash_equals($pendingRegistration->registration_edit_token_hash, hash('sha256', $credential))) {
+                            return app(CustomerRegistrationService::class)->authorizeReview($pendingRegistration);
                         }
-                    })
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($codeMode) {
-                    if (! $user) return self::invalidCode();
-                    if ($error = self::validateCode($user, $code)) return $error;
+                    }
+                    return app(CustomerRegistrationService::class)->complete($pendingRegistration);
                 }
+
+                if ($codeMode) return self::invalidCode();
+
+                // Consume only links issued before the OTP rollout.
+                $user = User::query()->whereNull('email_verified_at')
+                    ->where(function ($query) use ($plainToken, $tokenHash) {
+                        $query->where('email_verification_token', $tokenHash)
+                            ->orWhere('email_verification_token', $plainToken);
+                    })->lockForUpdate()->first();
 
                 if (! $user) {
                     return response()->json([
@@ -147,7 +109,7 @@ class EmailVerificationController extends Controller
                     ], 403);
                 }
 
-                if ($user->email_verification_expires_at && now()->isAfter($user->email_verification_expires_at)) {
+                if (! $user->email_verification_expires_at || now()->greaterThanOrEqualTo($user->email_verification_expires_at)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'This verification link has expired. Please request a new one.',
@@ -156,27 +118,17 @@ class EmailVerificationController extends Controller
                     ], 422);
                 }
 
-                $user->update([
-                    'email_verified_at' => now(),
-                    'email_verification_token' => null,
-                    'email_verification_expires_at' => null,
-                    'email_verification_code_hash' => null,
-                    'email_verification_last_sent_at' => null,
-                    'email_verification_attempts' => 0,
-                ]);
-
-                $response = [
-                    'success' => true,
-                    'message' => 'Email verified successfully.',
-                ];
-
                 if ($user->role === 'customer') {
-                    $response['token'] = $user->createToken('auth_token')->plainTextToken;
-                    $response['user'] = self::customerPayload($user);
+                    return app(CustomerRegistrationService::class)->complete($user);
                 }
 
-                return response()->json($response);
-            });
+                $user->update([...CustomerRegistrationService::clearedVerification(), 'email_verified_at' => now()]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Email verified successfully.',
+                ]);
+            }, 3);
         } catch (UniqueConstraintViolationException $exception) {
             return response()->json([
                 'success' => false,
@@ -193,16 +145,11 @@ class EmailVerificationController extends Controller
         ]);
         $data = $request->validate(['email' => 'required|email']);
 
-        $registrant = PendingCustomerRegistration::query()
-            ->where('email', $data['email'])
-            ->first();
-
-        $registrant ??= User::query()
-            ->where('email', $data['email'])
-            ->whereNull('email_verified_at')
-            ->where('is_active', true)
-            ->where('is_archived', false)
-            ->first();
+        // Existing users always win collisions, including verified/disabled users.
+        $user = User::query()->where('email', $data['email'])->first();
+        $registrant = $user
+            ? (CustomerRegistrationService::recoverableUser($user) ? $user : null)
+            : PendingCustomerRegistration::query()->unexpired()->where('email', $data['email'])->first();
 
         $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
             && is_string($request->input('registration_token'))
@@ -231,7 +178,7 @@ class EmailVerificationController extends Controller
             // responses must not reveal whether an address is registered.
             'email_delivery_token' => $canInspectDelivery ? ($receipt ?? null) : null,
             'resend_after' => $canInspectDelivery && isset($receipt)
-                ? max(0, ($registrant->fresh()->email_verification_last_sent_at?->timestamp ?? 0)
+                ? max(0, ($registrant->fresh()?->email_verification_last_sent_at?->timestamp ?? 0)
                     + RegistrationEmailCodeService::COOLDOWN_SECONDS - now()->timestamp)
                 : RegistrationEmailCodeService::COOLDOWN_SECONDS,
         ]);
@@ -252,9 +199,10 @@ class EmailVerificationController extends Controller
         return app(RegistrationEmailCodeService::class)->send($registrant);
     }
 
-    private static function invalidCode()
+    private static function invalidCode(bool $expired = false)
     {
-        return response()->json(['success' => false, 'message' => 'Invalid or expired verification code.'], 422);
+        return response()->json(['success' => false, 'expired' => $expired,
+            'message' => $expired ? 'This code has expired. Request a new one.' : 'Incorrect code. Try again.'], 422);
     }
 
     private static function validateCode(User|PendingCustomerRegistration $registrant, string $code)
@@ -265,15 +213,13 @@ class EmailVerificationController extends Controller
                 'message' => 'Too many attempts. Try again later.',
             ], 429);
         }
-        if (! $registrant->email_verification_code_hash
-            || ! $registrant->email_verification_expires_at
-            || now()->greaterThanOrEqualTo($registrant->email_verification_expires_at)) {
-            return self::invalidCode();
-        }
+        if (! $registrant->email_verification_code_hash) return self::invalidCode();
+        $expired = RegistrationEmailCodeService::codeExpired($registrant);
         if (! Hash::check($code, $registrant->email_verification_code_hash)) {
-            $registrant->increment('email_verification_attempts');
+            if (! $expired) $registrant->increment('email_verification_attempts');
             return self::invalidCode();
         }
+        if ($expired) return self::invalidCode(true);
         return null;
     }
 
@@ -305,15 +251,4 @@ class EmailVerificationController extends Controller
         }
     }
 
-    private static function customerPayload(User $user): array
-    {
-        return [
-            'user_id' => $user->user_id,
-            'first_name' => $user->first_name,
-            'last_name' => $user->last_name,
-            'email' => $user->email,
-            'phone' => $user->phone,
-            'role' => $user->role,
-        ];
-    }
 }

@@ -1752,9 +1752,11 @@ var API = (() => {
     return request("POST", "/staff/password-setup/request-new-link", { token });
   }
 
-  async function updatePendingRegistration(payload, registrationToken) {
-    const data = await request("PUT", "/register/pending", { ...payload, registration_token: registrationToken });
+  async function updatePendingRegistration(payload, registrationToken, recoveryToken = "") {
+    const credential = recoveryToken ? { registration_recovery_token: recoveryToken } : { registration_token: registrationToken };
+    const data = await request("PUT", "/register/pending", { ...payload, ...credential });
     storeEmailDelivery("registration", data.email_delivery_token);
+    acceptRegistrationSession(data);
     return data;
   }
 
@@ -1762,8 +1764,14 @@ var API = (() => {
     // POST /api/email/verify { email, code }; token is only for existing links.
     // Successful customer signup verification also establishes the first
     // authenticated browser session.
-    const payload = code === undefined ? { token: emailOrLegacyToken } : { email: emailOrLegacyToken, code };
+    const payload = code === undefined ? { token: emailOrLegacyToken } : { email: emailOrLegacyToken, code,
+      registration_token: safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || undefined };
     const data = await request("POST", "/email/verify", payload);
+    acceptRegistrationSession(data);
+    return data;
+  }
+
+  function acceptRegistrationSession(data) {
     if (data?.token && data?.user?.role === "customer") {
       // Presentation-only session cookie: shared across tabs, never used for auth.
       // Leave it through sign-out/sign-in so the initial browser session stays new.
@@ -1774,7 +1782,6 @@ var API = (() => {
       setAuthSession(data.token, "customer", true);
       rememberCustomerProfileName(data.user.first_name, data.user.last_name);
     }
-    return data;
   }
 
   async function adminGetPetProfile(petId, history = null, page = 1) {

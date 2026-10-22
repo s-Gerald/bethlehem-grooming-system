@@ -337,7 +337,7 @@ class PrivilegedCredentialChangeService
             return true;
         }
 
-        $pendingQuery = PendingCustomerRegistration::query()
+        $pendingQuery = PendingCustomerRegistration::query()->unexpired()
             ->whereRaw('LOWER(username) = ?', [$normalized]);
         if ($lockForUpdate) {
             $pendingQuery->lockForUpdate();

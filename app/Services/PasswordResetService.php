@@ -248,7 +248,7 @@ class PasswordResetService
         }
 
         if (Schema::hasTable('pending_customer_registrations')
-            && PendingCustomerRegistration::query()->whereRaw('LOWER(username) = ?', [$normalized])
+            && PendingCustomerRegistration::query()->unexpired()->whereRaw('LOWER(username) = ?', [$normalized])
                 ->lockForUpdate()->exists()) {
             return false;
         }
@@ -355,6 +355,7 @@ class PasswordResetService
             && ! (bool) $user->is_archived
             && $user->account_deleted_at === null
             && password_get_info((string) $user->password_hash)['algoName'] !== 'unknown'
+            && ($user->role !== 'customer' || $user->email_verified_at !== null)
             && in_array($user->role, ['customer', 'staff', 'admin'], true);
     }
 

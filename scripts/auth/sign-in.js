@@ -114,7 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
           `Your email address hasn't been verified yet. ` +
           `<a href="./verify-email.html" ` +
           `style="font-weight:600;text-decoration:underline">` +
-          `Resend verification email →</a>`,
+          `Complete registration →</a>`,
           email
         );
       } else {

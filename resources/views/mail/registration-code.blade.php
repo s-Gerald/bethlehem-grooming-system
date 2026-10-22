@@ -8,8 +8,8 @@
       <h1 style="margin:0 0 16px;font-size:24px;line-height:1.3">Verify your Bethlehem account</h1>
       <p style="font-size:16px;line-height:1.5">Use the verification code below to finish creating your Bethlehem Animal Clinic account.</p>
       <p style="font-size:32px;font-weight:700;text-align:center;color:#315b7e">{{ $code }}</p>
-      <p style="font-size:16px;line-height:1.5">This code expires in 15 minutes.</p>
-      <p style="font-size:14px;line-height:1.5;color:#64748b">If you did not create a Bethlehem account, you can ignore this email.</p>
+      <p style="font-size:16px;line-height:1.5">This code expires in {{ $ttlMinutes }} minutes.</p>
+      <p style="font-size:14px;line-height:1.5;color:#64748b">If you did not request registration, you can ignore this email.</p>
     </td></tr>
   </table>
 </body>

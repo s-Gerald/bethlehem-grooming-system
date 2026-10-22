@@ -491,6 +491,8 @@ class AdminStaffAccountManagementTest extends TestCase
             'email' => 'pending.customer@example.test',
             'phone' => '09170003001',
             'password_hash' => Hash::make('CreatedPassword!234'),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $token,

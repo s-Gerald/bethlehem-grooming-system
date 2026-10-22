@@ -119,7 +119,7 @@ class PendingStaffAccountService
             return false;
         }
 
-        return ! PendingCustomerRegistration::query()
+        return ! PendingCustomerRegistration::query()->unexpired()
             ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
             ->exists();
     }

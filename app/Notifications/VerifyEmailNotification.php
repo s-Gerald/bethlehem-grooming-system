@@ -43,7 +43,7 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
 
         return (new MailMessage)
             ->subject('Your Bethlehem verification code')
-            ->view('mail.registration-code', ['code' => $this->code])
-            ->text('mail.registration-code-text', ['code' => $this->code]);
+            ->view('mail.registration-code', ['code' => $this->code, 'ttlMinutes' => \App\Services\RegistrationEmailCodeService::TTL_MINUTES])
+            ->text('mail.registration-code-text', ['code' => $this->code, 'ttlMinutes' => \App\Services\RegistrationEmailCodeService::TTL_MINUTES]);
     }
 }

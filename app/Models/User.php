@@ -44,6 +44,8 @@ class User extends Authenticatable
         'email_verification_code_hash',
         'email_verification_attempts',
         'email_verification_last_sent_at',
+        'registration_recovery_token_hash',
+        'registration_recovery_expires_at',
         'phone_verified_at',
     ];
 
@@ -51,6 +53,7 @@ class User extends Authenticatable
         'password_hash',
         'email_verification_token',
         'email_verification_code_hash',
+        'registration_recovery_token_hash',
     ];
 
     protected $casts = [
@@ -59,6 +62,7 @@ class User extends Authenticatable
         'email_verification_last_sent_at' => 'datetime',
         'email_verification_attempts' => 'integer',
         'email_verification_expires_at' => 'datetime',
+        'registration_recovery_expires_at' => 'datetime',
         'is_active' => 'boolean',
         'is_archived' => 'boolean',
         'account_deleted_at' => 'datetime',

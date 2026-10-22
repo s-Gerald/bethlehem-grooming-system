@@ -188,6 +188,9 @@
   text-align: center;
 }
 .verification-page #verificationBackLink { margin-top: 1.75rem; }
+.verification-page .verification-message[role="status"] {
+  color: #64748b;
+}
 .verification-page #verificationBackLink a {
   color: #64748b;
   font-weight: 400;
