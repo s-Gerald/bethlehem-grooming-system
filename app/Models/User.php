@@ -71,6 +71,13 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (User $user): void {
+            if ($user->exists && $user->isDirty('phone')) {
+                $user->phone_verified_at = null;
+                if (Schema::hasTable('phone_verification_attempts')) {
+                    \Illuminate\Support\Facades\DB::table('phone_verification_attempts')
+                        ->where('user_id', $user->getKey())->update(['status' => 'superseded', 'code_fingerprint' => null]);
+                }
+            }
             if ($user->role === 'staff'
                 && $user->isDirty(['role', 'staff_type', 'staff_subrole'])
                 && ($user->staff_type !== null || $user->staff_subrole !== null

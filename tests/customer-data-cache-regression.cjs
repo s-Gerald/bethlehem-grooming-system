@@ -186,6 +186,19 @@ async function testInvalidation() {
     assert.ok(env.API.readCustomerCache("/pets?archived=0"));
   }
   await seed(env);
+  const phoneCalls = env.calls.length;
+  env.respond(() => ({ success: true, challenge_id: 'challenge', expires_in: 300, resend_after: 60 }));
+  await env.API.sendPhoneVerification('09171234567');
+  await env.API.resendPhoneVerification('challenge');
+  assert.ok(env.API.readCustomerCache('/me'), 'Sending must not change account verification.');
+  await env.API.verifyPhoneVerification('challenge', '123456');
+  assert.equal(env.API.readCustomerCache('/me'), null);
+  assert.equal(env.API.readCustomerCache('/pre-registration/access'), null);
+  assert.ok(env.API.readCustomerCache('/pets?archived=0'), 'Verification must preserve unrelated cached data.');
+  assert.equal(env.calls.length, phoneCalls + 3, 'Each explicit action makes exactly one request.');
+  assert.deepEqual(env.calls.slice(-3).map(call => call.endpoint), ['/phone-verification/send', '/phone-verification/resend', '/phone-verification/verify']);
+  env.respond((endpoint) => endpoint === '/me' ? profile : endpoint.startsWith('/pets?') ? pets : bookings);
+  await seed(env);
   env.API.invalidateCustomerCache("profile");
   assert.equal(env.API.readCustomerCache("/me"), null);
   await seed(env);

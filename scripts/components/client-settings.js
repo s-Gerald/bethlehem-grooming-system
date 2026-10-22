@@ -38,6 +38,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let serverUser = null;
   let profileLoadPromise = null;
+  window.addEventListener("customer-phone:verified", (event) => {
+    serverUser = event.detail.user;
+    applyUserToAccount(serverUser);
+  });
 
   function scheduleSettingsIdleTask(task) {
     if (typeof window.requestIdleCallback === "function") {

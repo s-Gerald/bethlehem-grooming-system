@@ -13,6 +13,20 @@ const storage = {
 const save = (key, value) => storage.setItem(key, JSON.stringify(value));
 
 async function main() {
+  // Direct Grooming/Clinic entry uses the server's enforcement decision.
+  for (const [enforced, required, allowed, blocked] of [
+    [false, true, true, false], [true, true, true, true],
+    [true, false, true, false], [false, false, false, true],
+  ]) {
+    let redirected = false;
+    const guard = vm.createContext({ URLSearchParams, sessionStorage: storage, console,
+      API: { getPreRegistrationAccess: async () => ({ allowed, phone_verification_required: required, sms_verification: { enforced } }) },
+      window: { location: { search: '', replace() { redirected = true; } } },
+    });
+    vm.runInContext(script('scripts/services/booking-form-access-guard.js'), guard);
+    assert.equal(await guard.enforceBookingFormAccessGuard(), blocked);
+    assert.equal(redirected, blocked);
+  }
   global.sessionStorage = storage;
   const draft = await import('../scripts/services/booking-draft-service.js');
   const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006');

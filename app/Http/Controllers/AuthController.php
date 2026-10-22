@@ -369,6 +369,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
+            'sms_verification' => \App\Services\CustomerPhoneVerificationService::flags(),
             'sidebar_revision' => in_array($user->role, ['admin', 'staff'], true) ? $user->sidebarRevision() : null,
             'user' => [
                 'user_id' => $user->user_id,

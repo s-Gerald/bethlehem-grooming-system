@@ -10,6 +10,7 @@ const source = fs.readFileSync(
 
 function createPage(getMe) {
   const elements = new Map();
+  const windowEvents = new Map();
   const pageHtml = fs.readFileSync(
     path.resolve(__dirname, "../pages/client/settings.html"),
     "utf8",
@@ -76,6 +77,7 @@ function createPage(getMe) {
       },
     },
     window: {
+      addEventListener(name, callback) { windowEvents.set(name, callback); },
       matchMedia: () => ({ matches: false, addEventListener() {} }),
       requestAnimationFrame(callback) { callback(); },
       requestIdleCallback(callback) { callback(); },
@@ -84,6 +86,7 @@ function createPage(getMe) {
   };
 
   vm.runInNewContext(source, context);
+  element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   return element;
 }
 
@@ -166,10 +169,24 @@ async function testPhoneVerificationBadgesUseServerStatus() {
   }
 }
 
+async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
+  let requests = 0;
+  const element = createPage(async () => {
+    requests++;
+    return { user: { phone: null, phone_verification_status: 'not_added' } };
+  });
+  await flush();
+  element.emitVerified({ phone: '09171234567', phone_verification_status: 'verified' });
+  assert.equal(element('settingsPhoneStatus').textContent, 'Verified');
+  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(requests, 1, 'Settings reuses the refreshed server profile without another request.');
+}
+
 (async () => {
   await testSettingsWaitsForProfile();
   await testSettingsFailureKeepsFormHiddenUntilRetry();
   await testPhoneVerificationBadgesUseServerStatus();
+  await testConfirmedPhoneRefreshUpdatesExistingSettingsFields();
   console.log("Client settings loading regression tests passed.");
 })().catch((error) => {
   console.error(error);

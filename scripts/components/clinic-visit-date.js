@@ -5,7 +5,7 @@ import {
   updateClinicVisitDraft,
   clearClinicVisitArrival,
 } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3";
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=customer-cache-20261005-v1";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=phone-20261022";
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (!requireCustomerSession("./sign-in.html")) {

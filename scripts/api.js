@@ -450,7 +450,8 @@ var API = (() => {
   }
 
   function invalidateCustomerMutation(endpoint) {
-    if (/^\/pets(?:\/|$)/.test(endpoint)) invalidateCustomerCache("pets", "bookings", "notifications", "access");
+    if (endpoint === "/phone-verification/verify") invalidateCustomerCache("profile", "access");
+    else if (/^\/pets(?:\/|$)/.test(endpoint)) invalidateCustomerCache("pets", "bookings", "notifications", "access");
     else if (/^\/(?:booking\/(?:store|cancel|reschedule)|clinic\/pre-register)$/.test(endpoint)) {
       invalidateCustomerCache("bookings", "capacity", "notifications", "access");
       // Grooming pre-registration can create pets inside the same transaction.
@@ -1926,6 +1927,18 @@ var API = (() => {
     return response;
   }
 
+  function sendPhoneVerification(phone) {
+    return request("POST", "/phone-verification/send", { phone }, getCustomerToken());
+  }
+
+  function verifyPhoneVerification(challengeId, code) {
+    return request("POST", "/phone-verification/verify", { challenge_id: challengeId, code }, getCustomerToken());
+  }
+
+  function resendPhoneVerification(challengeId) {
+    return request("POST", "/phone-verification/resend", { challenge_id: challengeId }, getCustomerToken());
+  }
+
   function getStaffIdentity() {
     const cached = getCachedStaffIdentity();
     if (cached) return Promise.resolve(cached);
@@ -2919,6 +2932,9 @@ var API = (() => {
     requestNewStaffPasswordSetupLink,
     logout,
     getMe,
+    sendPhoneVerification,
+    verifyPhoneVerification,
+    resendPhoneVerification,
     // Timeslots
     getTimeslots,
     forecastGroomingWindows,

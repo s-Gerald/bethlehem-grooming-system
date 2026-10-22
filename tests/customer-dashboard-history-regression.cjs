@@ -490,10 +490,17 @@ async function testVisitSummaryFollowsVisitState() {
   assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco/);
 }
 
-async function testPhonePreviewPreservesAccessAndNeverVerifies() {
+async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   const previous = { window: global.window, document: global.document, API: global.API };
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
   const elements = new Map();
-  const calls = { access: 0, dialogs: 0, navigation: [] };
+  const calls = { access: 0, dialogs: 0, navigation: [], sends: 0, verifies: 0, resends: 0, profiles: 0 };
+  let flags = { available: false, enforced: false };
+  let sendError = null, verifyError = null, pendingSend = null;
+  let timer;
+  let expectedGeneration = 'generation-one';
   let eligible = true;
   function element(id) {
     if (elements.has(id)) return elements.get(id);
@@ -512,8 +519,8 @@ async function testPhonePreviewPreservesAccessAndNeverVerifies() {
       getAttribute(name) { return attributes.get(name) ?? null; },
       hasAttribute(name) { return attributes.has(name); },
       addEventListener(name, handler) { (listeners[name] ??= []).push(handler); },
-      async dispatch(name) {
-        const event = { target: node, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      async dispatch(name, extra = {}) {
+        const event = { target: node, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
         for (const handler of listeners[name] || []) await handler(event);
         return event;
       },
@@ -530,7 +537,7 @@ async function testPhonePreviewPreservesAccessAndNeverVerifies() {
   }
   const cells = Array.from({ length: 6 }, (_, index) => element(`cell${index}`));
   const trigger = element('preRegisterButton');
-  trigger.setAttribute('data-phone-verification-preview', '');
+  trigger.parentElement = { appendChild() {} };
   const user = { phone: '09171234567', phone_verification_status: 'unverified' };
   trigger.customerProfileReady = Promise.resolve(user);
   const scheduled = [];
@@ -543,104 +550,144 @@ async function testPhonePreviewPreservesAccessAndNeverVerifies() {
     addEventListener() {},
   };
   global.window = {
-    location: { hostname: 'clinic.example', search: '?smsPreview=1', assign(url) { calls.navigation.push(url); } },
+    location: { hostname: 'clinic.example', search: '', assign(url) { calls.navigation.push(url); } },
     requestAnimationFrame(callback) { scheduled.push(callback); },
     requestIdleCallback(callback) { return callback(); },
-    setInterval() {},
+    setInterval(callback) { timer = callback; return 1; }, clearInterval() {},
+    dispatchEvent() {},
   };
   global.API = {
-    readCustomerCache: () => ({ fresh: true, data: { allowed: true } }),
-    async getPreRegistrationAccess() { calls.access++; return { allowed: eligible }; },
+    readCustomerCache: () => ({ fresh: true, data: { allowed: true, sms_verification: flags } }),
+    async getPreRegistrationAccess() { calls.access++; return { allowed: eligible, sms_verification: flags }; },
+    async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
+    async sendPhoneVerification(phone) {
+      calls.sends++;
+      assert.match(phone, /^09\d{9}$/);
+      if (pendingSend) await pendingSend;
+      if (sendError) throw sendError;
+      return { success: true, challenge_id: 'generation-one', expires_in: 300, resend_after: 60 };
+    },
+    async verifyPhoneVerification(id, code) {
+      calls.verifies++; assert.equal(id, expectedGeneration); assert.equal(code, '123456');
+      if (verifyError) throw verifyError;
+      return { success: true };
+    },
+    async resendPhoneVerification() { calls.resends++; return { success: true, challenge_id: 'generation-two', expires_in: 300, resend_after: 60 }; },
   };
   try {
     const context = { window: global.window, document: global.document };
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/auth/verification-code.js'), 'utf8'), context);
     await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-pre-registration-button.js')).href);
-    assert.equal((await trigger.dispatch('click')).defaultPrevented, false, 'Production navigation stays native even with a preview parameter.');
-    global.window.location.hostname = '127.0.0.1';
-    global.window.location.search = '';
-    assert.equal((await trigger.dispatch('click')).defaultPrevented, false, 'Local preview must be opt-in.');
-    global.window.location.search = '?smsPreview=1';
+    await trigger.dispatch('click');
+    assert.equal(calls.navigation.length, 1, 'Unavailable optional SMS preserves navigation.');
+    flags = { available: true, enforced: false };
+    await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
     trigger.setAttribute('aria-disabled', 'true');
     await trigger.dispatch('click');
-    assert.equal(calls.dialogs, 0, 'Disabled pre-registration never opens a modal.');
+    assert.equal(calls.dialogs, 0);
     trigger.setAttribute('aria-disabled', 'false');
     trigger.customerProfileReady = Promise.resolve({ ...user, phone_verification_status: 'verified' });
     await trigger.dispatch('click');
-    assert.equal(calls.dialogs, 0, 'Server-confirmed verified customers continue directly.');
-    assert.equal(calls.navigation.length, 1);
+    assert.equal(calls.navigation.length, 2);
     trigger.customerProfileReady = Promise.resolve(user);
     await trigger.dispatch('click');
     const dialog = element('phoneVerificationDialog');
-    assert.equal(dialog.open, true, 'Unverified customers see the local preview.');
-    assert.equal(element('phoneVerificationNumber').textContent, '0917 •••• 567');
+    assert.equal(dialog.open, true);
+    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationPhoneField').hidden, false, 'Saved numbers remain editable.');
     assert.equal(element('phoneVerificationEntry').hidden, false);
-    await trigger.dispatch('click');
-    assert.equal(calls.dialogs, 1, 'Repeated clicks reuse the open modal.');
-    await dialog.dispatch('click');
-    assert.equal(dialog.open, true, 'Backdrop clicks do not dismiss.');
-    assert.equal((await dialog.dispatch('cancel')).defaultPrevented, true, 'Escape dismissal is prevented.');
+    await trigger.dispatch('click'); assert.equal(calls.dialogs, 1);
+    await dialog.dispatch('click'); assert.equal(dialog.open, true);
+    assert.equal((await dialog.dispatch('cancel')).defaultPrevented, true);
+    sendError = new Error('SMS unavailable');
     await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(element('phoneVerificationOtp').hidden, true, 'Failed sends never claim a sent code.');
+    assert.match(element('phoneVerificationMessage').textContent, /unavailable/i);
+    sendError = null;
+    let finishSend;
+    pendingSend = new Promise(resolve => { finishSend = resolve; });
+    const sending = element('phoneVerificationForm').dispatch('submit');
+    assert.equal(element('phoneVerificationNext').disabled, true);
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(calls.sends, 2, 'Repeated submit does not duplicate a pending send.');
+    finishSend(); await sending; pendingSend = null;
     assert.equal(element('phoneVerificationOtp').hidden, false);
+    assert.equal(element('phoneVerificationNumber').textContent, '0917 \u2022\u2022\u2022\u2022 567');
     assert.equal(global.document.activeElement, element('phoneVerificationCode'));
+    assert.equal(element('phoneVerificationVerify').disabled, true);
+    assert.equal(element('phoneVerificationResend').disabled, true);
+    assert.match(element('phoneVerificationResend').textContent, /1:00/);
+    await element('phoneVerificationResend').dispatch('click'); assert.equal(calls.resends, 0);
     const code = element('phoneVerificationCode');
-    code.value = '12a345678';
-    await code.dispatch('input');
+    await code.dispatch('paste', { clipboardData: { getData: () => '12a345678' } });
     assert.equal(code.value, '123456');
     assert.equal(cells.map(cell => cell.textContent).join(''), '123456');
-    element('phoneVerificationState').value = 'loading';
-    await element('phoneVerificationState').dispatch('change');
-    assert.equal(element('phoneVerificationVerify').disabled, true);
-    assert.equal(element('phoneVerificationVerify').getAttribute('aria-busy'), 'true');
-    assert.equal(element('phoneVerificationSpinner').hasAttribute('hidden'), false, 'Loading preview exposes the spinner.');
-    element('phoneVerificationState').value = 'error';
-    await element('phoneVerificationState').dispatch('change');
-    assert.match(element('phoneVerificationMessage').textContent, /unavailable/i);
-    element('phoneVerificationState').value = 'ready';
-    await element('phoneVerificationState').dispatch('change');
+    assert.equal(element('phoneVerificationVerify').disabled, false);
+    verifyError = new Error('Incorrect code');
     await element('phoneVerificationForm').dispatch('submit');
-    assert.equal(user.phone_verification_status, 'unverified');
-    assert.match(element('phoneVerificationMessage').textContent, /unavailable/i);
+    assert.equal(calls.navigation.length, 2);
+    assert.match(element('phoneVerificationMessage').textContent, /Incorrect/);
+    verifyError = null;
+    now += 60000; timer();
+    assert.equal(element('phoneVerificationResend').disabled, false);
     await element('phoneVerificationResend').dispatch('click');
-    assert.match(element('phoneVerificationMessage').textContent, /unavailable/i);
-    assert.equal(calls.navigation.length, 1, 'No entered code produces successful verification.');
-    await element('phoneVerificationCancel').dispatch('click');
+    assert.equal(calls.resends, 1);
+    assert.equal(element('phoneVerificationCode').value, '');
+    expectedGeneration = 'generation-two';
+    await code.dispatch('paste', { clipboardData: { getData: () => '123456' } });
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(calls.navigation.length, 3, 'Only confirmed verification navigates.');
+    assert.equal(calls.profiles, 1, 'One profile refresh follows confirmation.');
     assert.equal(dialog.open, false);
     assert.equal(global.document.activeElement, trigger);
     trigger.customerProfileReady = Promise.resolve({ phone: null, phone_verification_status: 'not_added' });
     await trigger.dispatch('click');
     assert.equal(element('phoneVerificationTitle').textContent, 'Add Phone Number');
-    assert.equal(element('phoneVerificationPhone').value, '');
     element('phoneVerificationPhone').value = '123';
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(element('phoneVerificationOtp').hidden, true);
     assert.equal(element('phoneVerificationPhone').getAttribute('aria-invalid'), 'true');
     element('phoneVerificationPhone').value = '09179876543';
     await element('phoneVerificationForm').dispatch('submit');
-    assert.equal(element('phoneVerificationOtp').hidden, false);
-    assert.equal(element('phoneVerificationNumber').textContent, '0917 •••• 543');
-    await element('phoneVerificationClose').dispatch('click');
+    assert.equal(element('phoneVerificationNumber').textContent, '0917 \u2022\u2022\u2022\u2022 543');
+    await element('phoneVerificationCancel').dispatch('click');
     assert.equal(dialog.open, false);
+    assert.equal(calls.navigation.length, 3);
     await trigger.dispatch('click');
+    await element('phoneVerificationClose').dispatch('click'); assert.equal(dialog.open, false);
+    await trigger.dispatch('click');
+    element('phoneVerificationPhone').value = '09179876543';
+    let finishLateSend;
+    pendingSend = new Promise(resolve => { finishLateSend = resolve; });
+    const lateSend = element('phoneVerificationForm').dispatch('submit');
+    await element('phoneVerificationCancel').dispatch('click');
+    finishLateSend(); await lateSend; pendingSend = null;
+    assert.equal(dialog.open, false);
+    assert.equal(calls.navigation.length, 3, 'A late response after cancellation cannot navigate.');
+    await trigger.dispatch('click');
+    element('phoneVerificationPhone').value = '09179876543';
+    await element('phoneVerificationForm').dispatch('submit');
+    now += 301000; timer();
+    assert.equal(element('phoneVerificationVerify').disabled, true);
+    assert.match(element('phoneVerificationMessage').textContent, /expired/i);
+    await element('phoneVerificationClose').dispatch('click');
+    flags = { available: false, enforced: true };
+    await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
+    await trigger.dispatch('click');
+    assert.equal(dialog.open, false);
+    assert.equal(calls.navigation.length, 3, 'An unavailable enforced flow has no navigation fallback.');
     eligible = false;
-    await scheduled[0]();
-    await new Promise(resolve => setImmediate(resolve));
-    await element('phoneVerificationContinue').dispatch('click');
-    assert.equal(calls.navigation.length, 1, 'Continuation respects an eligibility change while the modal is open.');
-    eligible = true;
-    await scheduled[0]();
-    await new Promise(resolve => setImmediate(resolve));
-    await element('phoneVerificationContinue').dispatch('click');
-    assert.equal(calls.navigation.length, 2, 'Explicit preview continuation uses existing navigation.');
-    assert.equal(calls.access, 2, 'Preview actions add no access requests.');
-    assert.equal(user.phone_verification_status, 'unverified');
+    await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
+    await trigger.dispatch('click'); assert.equal(dialog.open, false, 'Ongoing registrations still block entry.');
+    assert.equal(calls.access, 3, 'Modal actions add no eligibility polling.');
   } finally {
+    Date.now = originalNow;
     Object.assign(global, previous);
   }
 }
 
 (async () => {
-  await testPhonePreviewPreservesAccessAndNeverVerifies();
+  await testPhoneVerificationUsesServerProofAndPreservesAccess();
   testRescheduleArrivalExpiryInManila();
   await testVisitSummaryFollowsVisitState();
   await testTrackerOverallStateAndIndividualCards();

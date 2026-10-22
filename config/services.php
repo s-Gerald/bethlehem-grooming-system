@@ -2,10 +2,23 @@
 
 return [
 
-    // Preparation only: a real provider and backend enforcement do not exist yet.
+    'iprogsms' => [
+        'base_url' => 'https://www.iprogsms.com',
+        'api_token' => env('IPROGSMS_API_TOKEN'),
+        'otp_expires_in_minutes' => 5,
+    ],
+
     'sms_verification' => [
-        'available' => false,
-        'enforced' => false,
+        'available' => env('SMS_VERIFICATION_AVAILABLE', false),
+        'enforced' => env('SMS_VERIFICATION_ENFORCED', false),
+        'resend_seconds' => 60,
+        'max_attempts' => 5,
+        'attempt_window_seconds' => 3600,
+        'user_hourly_limit' => 5,
+        'phone_hourly_limit' => 5,
+        'ip_hourly_limit' => 20,
+        'global_hourly_limit' => 100,
+        'global_daily_limit' => 500,
     ],
 
     'paymongo' => [

@@ -62,7 +62,8 @@ class ClinicWalkinController extends Controller
         ) {
             $data = $request->validated();
             $user = $request->user();
-            User::query()->whereKey($user->user_id)->lockForUpdate()->first();
+            $lockedUser = User::query()->whereKey($user->user_id)->lockForUpdate()->first();
+            \App\Services\CustomerPhoneVerificationService::assertPreRegistration($lockedUser);
 
             $access = $preRegistrationAccess->forUser((int) $user->user_id);
             if (! $access['allowed']) {

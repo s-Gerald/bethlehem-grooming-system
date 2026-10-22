@@ -4,7 +4,7 @@ import { initBookingServicesStep, refreshBookingServicesStep } from "./booking-s
 import { initBookingReviewStep, refreshBookingReviewStep, refreshBookingWorkloadForecast } from "./booking-review-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2";
 import { initBookingConsentStep } from "./booking-consent-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2";
 import { initBookingConfirmedStep } from "./booking-confirmed-step.js?copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261016&catalog=services-20261017-2";
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=customer-cache-20261005-v1";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=phone-20261022";
 import { hasCompletedRequiredServiceSelection, loadGroomingCatalogue } from "../services/grooming-service.js?v=managed-services-20261017-2";
 import { groomingForecastPets } from "../services/grooming-workload-forecast.js?pet-weight=pet-weight-size-20261011-v3&flow=grooming-order-20261016";
 import { loadPetGroomers, hasPetGroomerSelection } from "./pet-groomer-selection.js";

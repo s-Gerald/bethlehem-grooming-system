@@ -133,7 +133,8 @@ class BookingController extends Controller
         ) {
 
             $user = $request->user();
-            User::query()->whereKey($user->user_id)->lockForUpdate()->first();
+            $lockedUser = User::query()->whereKey($user->user_id)->lockForUpdate()->first();
+            \App\Services\CustomerPhoneVerificationService::assertPreRegistration($lockedUser);
 
             $access = $preRegistrationAccess->forUser((int) $user->user_id);
             if (! $access['allowed']) {
@@ -380,6 +381,8 @@ class BookingController extends Controller
         return response()->json([
             'success' => true,
             ...$preRegistrationAccess->forUser((int) $request->user()->user_id),
+            'sms_verification' => \App\Services\CustomerPhoneVerificationService::flags(),
+            'phone_verification_required' => \App\Services\CustomerPhoneVerificationService::required($request->user()),
         ]);
     }
 

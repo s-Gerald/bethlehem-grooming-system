@@ -81,6 +81,11 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::middleware('role:customer')->prefix('phone-verification')->group(function () {
+        Route::post('/send', [\App\Http\Controllers\PhoneVerificationController::class, 'send'])->middleware('throttle:20,1');
+        Route::post('/resend', [\App\Http\Controllers\PhoneVerificationController::class, 'resend'])->middleware('throttle:20,1');
+        Route::post('/verify', [\App\Http\Controllers\PhoneVerificationController::class, 'verify'])->middleware('throttle:20,1');
+    });
 
     // Pets
     Route::get('/pets', [PetController::class, 'index']);
@@ -98,7 +103,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::get('/admin/pets/{petId}/profile', [AdminPetProfileController::class, 'show']);
 
     // Booking
-    Route::post('/booking/store', [BookingController::class, 'store']);
+    Route::post('/booking/store', [BookingController::class, 'store'])->middleware(\App\Http\Middleware\EnsureCustomerPhoneVerified::class);
     Route::post('/booking/workload-forecast', [BookingController::class, 'forecastTimeslots']);
     Route::get('/pre-registration/access', [BookingController::class, 'preRegistrationAccess']);
     Route::get('/booking/history', [BookingController::class, 'history']);
@@ -108,7 +113,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/booking/reschedule', [BookingController::class, 'reschedule']);
 
     // Customer — Clinic visit pre-registration
-    Route::post('/clinic/pre-register', [ClinicWalkinController::class, 'preRegister']);
+    Route::post('/clinic/pre-register', [ClinicWalkinController::class, 'preRegister'])->middleware(\App\Http\Middleware\EnsureCustomerPhoneVerified::class);
 
     // Admin — Customer management (staff can view, admin can manage)
     Route::get('/admin/dashboard/search', [CustomerController::class, 'dashboardSearch']);

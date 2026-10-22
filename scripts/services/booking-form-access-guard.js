@@ -35,12 +35,13 @@ export async function enforceBookingFormAccessGuard(options = {}) {
 
   // Entry decisions require a server check even when a recent header result exists.
   const access = await API.getPreRegistrationAccess({ force: true });
-  if (access.allowed) {
+  const phoneRequired = access.sms_verification?.enforced && access.phone_verification_required;
+  if (access.allowed && !phoneRequired) {
     return false;
   }
 
   try {
-    sessionStorage.setItem(ACCESS_MESSAGE_KEY, access.message || "");
+    sessionStorage.setItem(ACCESS_MESSAGE_KEY, access.message || (phoneRequired ? "Use Pre-register to verify your phone number." : ""));
   } catch (error) {
     console.error("Failed to save the pre-registration access message:", error);
   }

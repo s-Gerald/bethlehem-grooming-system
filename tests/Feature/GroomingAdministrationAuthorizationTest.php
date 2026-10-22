@@ -468,8 +468,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         bool $accepted,
         ?string $expectedSource,
         bool $expectsRecordedAt,
+        bool $phoneEnforced = false,
     ): void {
         $this->authenticateAs('customer');
+        if ($phoneEnforced) {
+            config(['services.sms_verification.available' => true, 'services.sms_verification.enforced' => true]);
+            Schema::table('users', fn (Blueprint $table) => $table->timestamp('phone_verified_at')->nullable());
+            DB::table('users')->insert(['user_id' => 3, 'role' => 'customer', 'phone' => '09171234567', 'phone_verified_at' => now()]);
+            Sanctum::actingAs(User::findOrFail(3));
+        }
         DB::table('time_windows')->insert([
             'window_id' => 1,
             'window_label' => '11:00 AM - 12:00 PM',
@@ -509,6 +516,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         return [
             'unchecked' => [false, null, false],
             'checked' => [true, 'customer_online', true],
+            'verified phone unchecked' => [false, null, false, true],
+            'verified phone checked' => [true, 'customer_online', true, true],
         ];
     }
 

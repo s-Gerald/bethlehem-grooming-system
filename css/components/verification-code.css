@@ -176,7 +176,7 @@
 }
 .verification-page button:focus-visible,
 .verification-page a:focus-visible,
-.phone-verification-dialog :is(button, input, select):focus-visible {
+.phone-verification-dialog :is(button, input):focus-visible {
   outline: 2px solid #315b7e;
   outline-offset: 4px;
 }
@@ -188,7 +188,7 @@
   text-align: center;
 }
 .verification-page #verificationBackLink { margin-top: 1.75rem; }
-.verification-page .verification-message[role="status"] {
+:is(.verification-page, .phone-verification-dialog) .verification-message[role="status"] {
   color: #64748b;
 }
 .verification-page #verificationBackLink a {
@@ -260,13 +260,6 @@ body:has(.phone-verification-dialog[open]) { overflow: hidden; }
 }
 .phone-verification-close:hover { background: #f1f5f9; color: #315b7e; }
 .phone-verification-close svg { fill: currentColor; }
-.phone-verification-notice {
-  margin: 0 0 1.5rem;
-  color: #64748b;
-  font-size: .8125rem;
-  line-height: 1.6;
-  text-align: center;
-}
 .phone-verification-label { display: block; margin-bottom: .5rem; font-size: .875rem; font-weight: 600; }
 .phone-verification-phone {
   box-sizing: border-box;
@@ -281,17 +274,6 @@ body:has(.phone-verification-dialog[open]) { overflow: hidden; }
 .phone-verification-dialog .verification-primary svg { display: inline-block; margin-right: .25rem; vertical-align: middle; fill: currentColor; }
 .phone-verification-dialog .verification-primary svg[hidden] { display: none; }
 .phone-verification-dialog .verification-resend { margin-top: 1rem; }
-.phone-verification-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: .5rem;
-  margin-top: 1rem;
-  color: #64748b;
-  font-size: .8125rem;
-}
-.phone-verification-state select { border: 1px solid #cbd5e1; border-radius: .5rem; padding: .25rem .5rem; }
 .phone-verification-actions {
   display: flex;
   flex-wrap: wrap;

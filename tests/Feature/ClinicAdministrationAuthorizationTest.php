@@ -1606,9 +1606,16 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
     }
 
-    public function test_customer_can_pre_register_an_owned_pet_without_reentering_owner_information(): void
+    #[DataProvider('phoneEnforcementModes')]
+    public function test_customer_can_pre_register_an_owned_pet_without_reentering_owner_information(bool $phoneEnforced): void
     {
         $this->authenticateAs('customer', 10);
+        if ($phoneEnforced) {
+            config(['services.sms_verification.available' => true, 'services.sms_verification.enforced' => true]);
+            Schema::table('users', fn (Blueprint $table) => $table->timestamp('phone_verified_at')->nullable());
+            DB::table('users')->where('user_id', 10)->update(['phone' => '09171234567', 'phone_verified_at' => now()]);
+            Sanctum::actingAs(User::findOrFail(10));
+        }
         $appointmentDate = now()->addDay()->toDateString();
         DB::table('pets')->insert([
             'pet_id' => 101,
@@ -1654,6 +1661,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             json_decode(DB::table('clinic_appointments')->value('common_concerns'), true),
         );
         $this->assertDatabaseCount('walkins', 0);
+    }
+
+    public static function phoneEnforcementModes(): array
+    {
+        return ['optional' => [false], 'verified and enforced' => [true]];
     }
 
     public function test_pre_registration_requires_common_concerns_and_allows_optional_details(): void
