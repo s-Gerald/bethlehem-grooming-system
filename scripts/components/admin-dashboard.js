@@ -412,6 +412,8 @@ function adminDashboard() {
       error: "",
     },
     paymentModal: {
+      paymentMethod: 'cash',
+      qr: null,
       open: false,
       booking: null,
       isEarlyPayment: false,
@@ -667,6 +669,7 @@ function adminDashboard() {
       document.removeEventListener('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
       this.closePaymentScanner();
+      this.paymentModal.qr?.dispose();
     },
 
     loadDashboardSummary({ force = false } = {}) {
@@ -3194,16 +3197,18 @@ function adminDashboard() {
     get canSubmitPayment() {
       return (
         !this.paymentModal.busy &&
-        !this.paymentModal.error &&
         this.paymentModal.petBreakdown.length > 0 &&
         this.paymentTotalDue > 0 &&
         !this.hasMissingPaymentPrices() &&
         !this.getInvalidPaymentLine() &&
-        !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue)
+        (this.paymentModal.paymentMethod === 'qrph'
+          ? this.paymentModal.qr && !this.paymentModal.qr.validationError(this.paymentTotalDue)
+          : !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue))
       );
     },
 
     async openPaymentModal(booking, isEarlyPayment = false) {
+      if (this.paymentModal.open) return;
       if (!isEarlyPayment && booking?.paymentReady === false) {
         alert(booking?.paymentBlockedReason || "This visit is not ready for final payment.");
         return;
@@ -3224,6 +3229,8 @@ function adminDashboard() {
       if (!this.paymentModal.open) return;
       const petBreakdown = this.buildPaymentBreakdown(booking, { lockFixedPrices: true });
       this.paymentModal = {
+        paymentMethod: 'cash',
+        qr: null,
         open: true,
         booking,
         isEarlyPayment,
@@ -3241,12 +3248,32 @@ function adminDashboard() {
         busy: false,
         error: "",
       };
+      const modal = this.paymentModal;
+      try {
+        const {createQrPayment} = await import('./qr-payment.js?v=qrph-20261023');
+        if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
+        modal.qr = createQrPayment();
+        await modal.qr.load();
+      } catch (error) {
+        if (modal.open && this.paymentModal === modal) modal.error = 'QR settings could not load. Cash remains available.';
+      }
+    },
+
+    selectPaymentMethod(method) {
+      if (this.paymentModal.busy || !['cash', 'qrph'].includes(method)) return;
+      if (method === 'qrph' && !this.paymentModal.qr?.settings?.enabled) return;
+      this.paymentModal.paymentMethod = method;
+      this.paymentModal.error = '';
+      if (this.paymentModal.qr) this.paymentModal.qr.verified = false;
+      if (method === 'qrph') void this.paymentModal.qr.showImage();
     },
 
     closePaymentModal(force = false) {
       if (this.paymentModal.busy && !force) return;
       this.closePaymentScanner();
+      this.paymentModal.qr?.dispose();
       this.paymentModal = {
+        paymentMethod: 'cash', qr: null,
         open: false, booking: null, isEarlyPayment: false,
         finalPrice: "", petBreakdown: [], products: [], showProductSearch: false,
         productQuery: "", productResults: [], productSearchError: "", scannerActive: false, _scanner: null,
@@ -3850,8 +3877,8 @@ function adminDashboard() {
       const modal = this.paymentModal;
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = Number(this.paymentTotalDue.toFixed(2));
-      const ap = parseFloat(amountPaid);
-      const paymentMethod = "cash";
+      const paymentMethod = modal.paymentMethod || 'cash';
+      const ap = Number(paymentMethod === 'qrph' ? modal.qr?.amount : amountPaid);
 
       if (this.paymentModal.petBreakdown.length === 0) {
         this.paymentModal.error = "No booked services were found for this payment.";
@@ -3873,7 +3900,9 @@ function adminDashboard() {
         this.paymentModal.error = "Please enter service prices before confirming payment.";
         return;
       }
-      const cashError = window.CashPayment.error(amountPaid, fp);
+      const cashError = paymentMethod === 'qrph'
+        ? modal.qr?.validationError(fp) || (!modal.qr ? 'QR payments are unavailable.' : '')
+        : window.CashPayment.error(amountPaid, fp);
       if (cashError) {
         this.paymentModal.error = cashError;
         return;
@@ -3900,6 +3929,7 @@ function adminDashboard() {
           service_prices:  servicePrices,
           pet_sizes:       petSizes,
           products:        this.paymentModal.products.map((line) => ({ item_id: line.item_id, quantity: line.quantity })),
+          ...(paymentMethod === 'qrph' ? modal.qr.payload() : {}),
         };
         const res = isEarlyPayment
           ? await API.payNow(booking.id, payload)
@@ -3918,7 +3948,7 @@ function adminDashboard() {
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = this.paymentTotalDue;
       const ap = Number(amountPaid || 0);
-      const paymentMethod = "cash";
+      const paymentMethod = res.payment_method || 'cash';
       const receiptPets = this.buildServerPaymentReceiptPets(
         res?.payment_summary,
         this.paymentModal.petBreakdown,
@@ -3959,6 +3989,7 @@ function adminDashboard() {
         amountPaid:    Number(res.amount_paid ?? ap),
         change:        res.change ?? (ap - fp),
         paymentMethod: res.payment_method_label ?? (res.payment_method === "cash" ? "Cash" : res.payment_method ?? paymentMethod),
+        qrPayment: res.qr_payment || null,
         notes:         res.notes ?? notes ?? "",
         paidAt:        res.paid_at ?? new Date().toLocaleString("en-PH"),
         isEarlyPayment,
@@ -3983,6 +4014,7 @@ function adminDashboard() {
     },
 
     printReceipt() {
+      if (this.receiptModal.qrPayment || this.receiptModal.paymentMethod === 'QR Ph') return;
       window.PaymentInvoice.print();
     },
 

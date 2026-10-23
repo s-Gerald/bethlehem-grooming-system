@@ -124,4 +124,31 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(submissions.at(-1).flow, early ? 'early' : 'final');
   }
   assert.equal(submissions.length, 2, 'Repeated clicks submit once per payment');
+  const {createQrPayment} = await import('../scripts/components/qr-payment.js');
+  global.API = {getUserRole: () => 'staff'};
+  for (const early of [true, false]) {
+    const qr = createQrPayment();
+    Object.assign(qr, {settings: {enabled: true, version: 2}, amount: '500.00',
+      externalReference: 'BANK123456', transactionAt: '2026-10-23T10:30', verified: false});
+    ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
+      petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: '', paymentMethod: 'qrph', qr};
+    assert.equal(ui.canSubmitPayment, false, 'QR requires explicit verification');
+    qr.verified = true;
+    assert.equal(ui.canSubmitPayment, true, 'Verified QR does not require Cash Received');
+    context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
+      submissions.push({id, payload});
+      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: 'QR Ph',
+        qr_payment: {external_reference: 'BANK123456', verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
+    };
+    await ui.submitPayment();
+    assert.equal(submissions.at(-1).payload.payment_method, 'qrph');
+    assert.equal(submissions.at(-1).payload.amount_paid, 500);
+    assert.equal(submissions.at(-1).payload.qr_verified, true);
+    assert.equal(ui.receiptModal.paymentMethod, 'QR Ph');
+    assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
+    const printCount = printed;
+    ui.printReceipt();
+    assert.equal(printed, printCount, 'QR success cannot print a Cash invoice');
+  }
+  delete global.API;
 })().catch(error => {console.error(error); process.exitCode = 1;});

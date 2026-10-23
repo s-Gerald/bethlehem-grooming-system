@@ -206,7 +206,7 @@ function adminTransactions() {
     openDetails(tx, trigger) {
       this.selectedTransaction = tx;
       // Build the invoice once from the transaction being inspected.
-      this.receiptModal = this.isProductSale(tx) ? null : {
+      this.receiptModal = this.isProductSale(tx) || tx.qrPayment ? null : {
         isTest: tx.isTest === true,
         bookingReference: tx.reference,
         ownerName: tx.ownerName,
@@ -298,6 +298,7 @@ function adminTransactions() {
     },
 
     printInvoice() {
+      if (this.selectedTransaction?.qrPayment) return;
       if (!this.selectedTransaction) return;
       if (this.isProductSale(this.selectedTransaction)) window.ProductSaleInvoice.print();
       else if (this.isClinicPayment(this.selectedTransaction)) window.PaymentInvoice.print("clinicPaymentInvoice");

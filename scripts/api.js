@@ -243,7 +243,7 @@ var API = (() => {
       groups = ["grooming", "history-grooming"];
       if (!/\/(internal-staff-note|grooming-visit-notes|sedation-consent)$/.test(path)) {
         groups.push("dashboard");
-        if (/\/(mark-done|cancel|pay)$/.test(path)) groups.push("notifications");
+        if (/\/(mark-done|cancel|pay|pay-now)$/.test(path)) groups.push("notifications");
         if (/\/(check-in|revert-check-in|cancel)$/.test(path)) groups.push("customers");
       }
     }
@@ -263,7 +263,7 @@ var API = (() => {
       groups = ["grooming", "dashboard"];
       if (path.startsWith('/admin/grooming/services')) groups.push('services-grooming');
     }
-    if (/^\/admin\/bookings\/[^/]+\/pay$/.test(path)) groups.push('inventory');
+    if (/^\/admin\/bookings\/[^/]+\/(pay|pay-now)$/.test(path)) groups.push('inventory');
     invalidateAdminCache(groups);
   }
 
@@ -2533,6 +2533,22 @@ var API = (() => {
     return request("POST", `/admin/bookings/${bookingId}/pay`, payload, getAdminToken());
   }
 
+  function getQrPaymentConfig() {
+    return request('GET', '/admin/qr-payments/config', null, getAdminToken(), {cache: 'no-store'});
+  }
+
+  function getQrPaymentSettings() {
+    return request('GET', '/admin/qr-payments/settings', null, getAdminToken(), {cache: 'no-store'});
+  }
+
+  function saveQrPaymentSettings(payload) {
+    return request('POST', '/admin/qr-payments/settings', payload, getAdminToken());
+  }
+
+  function getQrPaymentImage(version) {
+    return request('GET', `/admin/qr-payments/image?version=${encodeURIComponent(version)}`, null, getAdminToken(), {responseType: 'blob', cache: 'no-store'});
+  }
+
   async function payNow(bookingId, payload) {
     // POST /api/admin/bookings/{id}/pay-now  (protected — admin token)
     // Early payment while booking is still checked_in; accepts the same payload as processPayment.
@@ -3000,6 +3016,10 @@ var API = (() => {
     markCustomerNotificationRead,
     markAllCustomerNotificationsRead,
     // Payments
+    getQrPaymentConfig,
+    getQrPaymentSettings,
+    saveQrPaymentSettings,
+    getQrPaymentImage,
     processPayment,
     payNow,
     releaseBooking,

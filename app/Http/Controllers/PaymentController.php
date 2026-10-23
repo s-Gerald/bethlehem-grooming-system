@@ -14,6 +14,7 @@ use App\Services\GroomingPaymentReadinessService;
 use App\Services\GroomingServicePriceResolver;
 use App\Services\GroomingPaymentSettlementService;
 use App\Services\GroomingProductSaleService;
+use App\Services\QrPaymentVerificationService;
 use App\Support\PaymentAmountLimit;
 use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -29,7 +30,7 @@ class PaymentController extends Controller
         $data = $request->validate([
             'final_price' => 'required|numeric|decimal:0,2|min:0',
             'amount_paid' => 'nullable|numeric|decimal:0,2|min:0',
-            'payment_method' => 'nullable|in:cash',
+            'payment_method' => 'nullable|in:cash,qrph',
             'notes' => 'nullable|string|max:500',
             'service_prices' => 'nullable|array',
             'service_prices.*.booking_service_id' => 'required_with:service_prices|integer',
@@ -40,7 +41,7 @@ class PaymentController extends Controller
             'products' => 'nullable|array',
             'products.*.item_id' => 'required|integer|distinct|exists:inventory_items,item_id',
             'products.*.quantity' => 'required|integer|min:1|max:99999999',
-        ]);
+        ] + QrPaymentVerificationService::rules());
 
         if ((float) ($data['final_price'] ?? 0) > PaymentLimitExceededException::MAX_VALUE) {
             throw new PaymentLimitExceededException('final price');
@@ -271,6 +272,7 @@ class PaymentController extends Controller
     public function store(Request $request, $bookingId)
     {
         $data = $this->validatePayload($request);
+        $this->authorizeQrPayment($request, $data);
 
         try {
             $result = DB::transaction(function () use ($request, $bookingId, $data) {
@@ -295,7 +297,7 @@ class PaymentController extends Controller
                     $data,
                     $serverTotal,
                 );
-                $settled = $this->paymentSettlement()->settle(
+                $settled = $this->settleGroomingPayment($request, $data,
                     $booking, $serverTotal, $amountTendered, $paymentMethod, $notes,
                     $request->user(), false, $productLines,
                 );
@@ -306,7 +308,7 @@ class PaymentController extends Controller
         } catch (UniqueConstraintViolationException) {
             return response()->json([
                 'success' => false,
-                'message' => 'This visit was paid by another request. Refresh to view the completed payment.',
+                'message' => 'This visit or external reference was paid by another request. Refresh Transactions before retrying.',
             ], 409);
         }
 
@@ -324,7 +326,8 @@ class PaymentController extends Controller
             'final_price' => $payment->total_amount,
             'amount_paid' => $payment->amount_tendered,
             'payment_method' => $payment->payment_method,
-            'payment_method_label' => 'Cash',
+            'payment_method_label' => $payment->payment_method === 'qrph' ? 'QR Ph' : 'Cash',
+            'qr_payment' => $payment->relationLoaded('qrPayment') ? $payment->qrPayment?->verificationDetails() : null,
             'paid_at' => Carbon::parse($payment->paid_at)->format('M j, Y g:i A'),
             'payment_summary' => $result['summary'],
             'product_addons' => $this->formatProductLines($result['productLines']),
@@ -335,6 +338,7 @@ class PaymentController extends Controller
     public function payNow(Request $request, $bookingId)
     {
         $data = $this->validatePayload($request);
+        $this->authorizeQrPayment($request, $data);
 
         try {
             $result = DB::transaction(function () use ($request, $bookingId, $data) {
@@ -362,7 +366,7 @@ class PaymentController extends Controller
                     $data,
                     $serverTotal,
                 );
-                $settled = $this->paymentSettlement()->settle(
+                $settled = $this->settleGroomingPayment($request, $data,
                     $booking, $serverTotal, $amountTendered, $paymentMethod, $notes,
                     $request->user(), true, $productLines,
                 );
@@ -373,7 +377,7 @@ class PaymentController extends Controller
         } catch (UniqueConstraintViolationException) {
             return response()->json([
                 'success' => false,
-                'message' => 'This visit was paid by another request. Refresh to view the completed payment.',
+                'message' => 'This visit or external reference was paid by another request. Refresh Transactions before retrying.',
             ], 409);
         }
 
@@ -392,6 +396,8 @@ class PaymentController extends Controller
             'final_price' => $payment->total_amount,
             'amount_paid' => $payment->amount_tendered,
             'payment_method' => $payment->payment_method,
+            'payment_method_label' => $payment->payment_method === 'qrph' ? 'QR Ph' : 'Cash',
+            'qr_payment' => $payment->relationLoaded('qrPayment') ? $payment->qrPayment?->verificationDetails() : null,
             'paid_at' => Carbon::parse($payment->paid_at)->format('M j, Y g:i A'),
             'all_pets_finished' => $result['allPetsFinished'],
             'remaining_pets' => $result['remainingPets'],
@@ -435,6 +441,7 @@ class PaymentController extends Controller
 
     public function index(Request $request)
     {
+        $hasQrPayments = Schema::hasTable('qr_payments');
         $search = trim((string) $request->query('search', ''));
         $period = (string) $request->query('period', 'day');
         $date = (string) $request->query('date', '');
@@ -470,7 +477,7 @@ class PaymentController extends Controller
         if ($search !== '') {
             $search = mb_strtolower($search);
             $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
-            $query->where(function ($query) use ($search, $nameTerms) {
+            $query->where(function ($query) use ($search, $nameTerms, $hasQrPayments) {
                 $query->whereHas('booking.user', function ($userQuery) use ($search, $nameTerms) {
                     $userQuery->where(function ($nameQuery) use ($search, $nameTerms) {
                         $nameQuery->whereRaw('LOWER(first_name) LIKE ?', ["%{$search}%"])
@@ -488,6 +495,10 @@ class PaymentController extends Controller
                 )->orWhereHas('booking', fn ($bookingQuery) => $bookingQuery->whereRaw(
                     'LOWER(booking_reference) LIKE ?', ["%{$search}%"],
                 ))->orWhereHas('products', fn ($products) => $products->whereRaw('LOWER(item_name) LIKE ?', ["%{$search}%"]));
+                if ($hasQrPayments) {
+                    $reference = strtolower(QrPaymentVerificationService::normalizeReference($search) ?? '');
+                    if ($reference !== '') $query->orWhereHas('qrPayment', fn ($qr) => $qr->whereRaw('LOWER(external_reference) LIKE ?', ["%{$reference}%"]));
+                }
             });
         }
 
@@ -550,7 +561,9 @@ class PaymentController extends Controller
         $dateTotals = (clone $combined)->whereIn(DB::raw($dateGroup), $rows->pluck('paid_at')->map(fn ($at) => $at ? substr($at, 0, 10) : 'unknown')->unique())
             ->selectRaw("{$dateGroup} as date_key, SUM(CASE WHEN is_test = 0 THEN total_amount ELSE 0 END) as total")
             ->groupByRaw($dateGroup)->pluck('total', 'date_key');
-        $payments = Payment::with(['booking.user', 'products', 'processedBy', 'gatewayPayment'])
+        $paymentRelations = ['booking.user', 'products', 'processedBy', 'gatewayPayment'];
+        if ($hasQrPayments) $paymentRelations[] = 'qrPayment';
+        $payments = Payment::with($paymentRelations)
             ->whereKey($rows->where('transaction_type', 'grooming_payment')->pluck('transaction_id'))->get()->keyBy($paymentKey);
         $sales = PosTransaction::with(['items.item', 'cashier', 'gatewayPayment'])
             ->whereKey($rows->where('transaction_type', 'product_sale')->pluck('transaction_id'))->get()->keyBy('pos_id');
@@ -661,7 +674,10 @@ class PaymentController extends Controller
             'providerMethod' => $payment->provider_method,
             'isTest' => $gateway ? ! $gateway->livemode : false,
             'reconciliationReason' => $gateway?->reconciliation_reason,
-            'paymentMethodLabel' => $payment->payment_method === 'online' ? 'Online Payment' : ucfirst((string) $payment->payment_method),
+            'paymentMethodLabel' => match ($payment->payment_method) {
+                'qrph' => 'QR Ph', 'online' => 'Online Payment', default => ucfirst((string) $payment->payment_method),
+            },
+            'qrPayment' => $payment->relationLoaded('qrPayment') ? $payment->qrPayment?->verificationDetails() : null,
             'notes' => $payment->notes,
             'paidAt' => $payment->paid_at?->format('Y-m-d H:i:s'),
             'paidAtFormatted' => $payment->paid_at?->format('g:i A') ?? '—',
@@ -814,6 +830,28 @@ class PaymentController extends Controller
     private function paymentReadiness(): GroomingPaymentReadinessService
     {
         return app(GroomingPaymentReadinessService::class);
+    }
+
+    private function authorizeQrPayment(Request $request, array $data): void
+    {
+        if (($data['payment_method'] ?? 'cash') === 'qrph') {
+            abort_unless($request->user()?->canAccessGrooming(), 403);
+        }
+    }
+
+    private function settleGroomingPayment(
+        Request $request, array $data, Booking $booking, string $total, string $tendered,
+        string $method, ?string $notes, ?\App\Models\User $actor, bool $early, array $productLines,
+    ): array {
+        $qr = $method === 'qrph'
+            ? app(QrPaymentVerificationService::class)->verify($booking, $data, $total, $request->user())
+            : null;
+        $settled = $this->paymentSettlement()->settle($booking, $total, $tendered, $method, $notes, $actor, $early, $productLines);
+        if ($qr) {
+            $settled['payment']->update(['qr_payment_id' => $qr->id]);
+            $settled['payment']->setRelation('qrPayment', $qr);
+        }
+        return $settled;
     }
 
     private function paymentSettlement(): GroomingPaymentSettlementService

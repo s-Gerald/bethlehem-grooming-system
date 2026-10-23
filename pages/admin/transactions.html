@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=cash-only-20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -128,7 +128,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=cash-only-20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
 
       <!-- Main Content -->
@@ -415,6 +415,13 @@
                       <div><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>External reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — administrator exception'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Transaction time</dt><dd x-text="selectedTransaction.qrPayment.transaction_at"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Receiving account</dt><dd x-text="selectedTransaction.qrPayment.merchant_name + ' · ' + selectedTransaction.qrPayment.provider_name"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Verified by</dt><dd x-text="selectedTransaction.qrPayment.verified_by_name"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Verified at</dt><dd x-text="selectedTransaction.qrPayment.verified_at"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Verified using</dt><dd x-text="selectedTransaction.qrPayment.verification_source === 'receiving_history' ? 'Receiving account history' : 'Official merchant notification'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment?.reference_unavailable_reason"><div><dt>Reference exception</dt><dd x-text="selectedTransaction.qrPayment.reference_unavailable_reason"></dd></div></template>
                       <div x-show="selectedTransaction.paymentMethod === 'online' && selectedTransaction.providerMethod"><dt>Provider Method</dt><dd x-text="selectedTransaction.providerMethod"></dd></div>
                       <div x-show="isClinicPayment(selectedTransaction) || selectedTransaction.processedByName"><dt>Processed By</dt><dd x-text="selectedTransaction.processedByName || '—'"></dd></div>
                       <div><dt>Paid At</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
@@ -424,12 +431,12 @@
                     <div x-show="selectedTransaction.notes" class="transaction-notes"><h4>Notes</h4><p x-text="selectedTransaction.notes"></p></div>
                   </section>
                 </div>
-                <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.template"></div></template>
+                <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction) && !selectedTransaction.qrPayment"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.template"></div></template>
                 <template x-if="isClinicPayment(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.clinicTemplate"></div></template>
                 <template x-if="isProductSale(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-data="{ receipt: selectedTransaction.receipt }" x-html="window.ProductSaleInvoice.template"></div></template>
                 <footer class="transaction-dialog-footer">
                   <button type="button" class="transaction-button transaction-button-secondary" @click="closeDetails()">Close</button>
-                  <button type="button" class="transaction-button transaction-button-primary" @click="printInvoice()">
+                  <button type="button" x-show="!selectedTransaction.qrPayment" class="transaction-button transaction-button-primary" @click="printInvoice()">
                     <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><path d="M64 80V40h128v40M64 176H40a16 16 0 0 1-16-16v-64a16 16 0 0 1 16-16h176a16 16 0 0 1 16 16v64a16 16 0 0 1-16 16h-24M64 144h128v72H64Z" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><circle cx="188" cy="112" r="12" fill="currentColor"/></svg>
                     Print Invoice
                   </button>
@@ -447,6 +454,6 @@
 
     <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023"></script>
     <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=cash-only-20261023&loading-ui=universal-20261018&icons=20261018"></script>
+    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018"></script>
   </body>
 </html>

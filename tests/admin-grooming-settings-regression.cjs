@@ -26,6 +26,30 @@ async function main() {
     assert.equal(ui.availabilityError, '');
   }
   assert.equal(typeof ui.loadGroomingPrices, 'undefined', 'Grooming prices are managed in Services');
+  context.URL = URL;
+  context.FormData = FormData;
+  let qrReads = 0, qrSaves = 0;
+  context.API.getQrPaymentSettings = async () => { qrReads++; return {settings: {enabled: false, version: 1, has_image: false}}; };
+  context.API.saveQrPaymentSettings = async payload => {
+    qrSaves++;
+    assert.equal(payload.get('enabled'), '0');
+    return {settings: {enabled: false, version: 2, has_image: false, merchant_name: 'Bethlehem', provider_name: 'Bank'}};
+  };
+  await ui.selectSettingsTab('general');
+  await ui.selectSettingsTab('capacity');
+  assert.equal(qrReads, 0, 'Unrelated tabs never request QR configuration');
+  await ui.selectSettingsTab('qr-payments');
+  await ui.selectSettingsTab('qr-payments');
+  assert.equal(qrReads, 1, 'The QR tab reuses its loaded configuration');
+  ui.qrSettings.merchant_name = 'Bethlehem';
+  ui.qrSettings.provider_name = 'Bank';
+  await ui.saveQrSettings();
+  assert.equal(qrSaves, 1);
+  assert.equal(ui.qrSettings.version, 2);
+  assert.equal(ui.qrSettings.error, '');
+  context.API.saveQrPaymentSettings = async () => { throw new Error('Save rejected'); };
+  await ui.saveQrSettings();
+  assert.match(ui.qrSettings.error, /rejected/);
   const calls = [];
   let reject = false;
   let serverRows = catalogue;

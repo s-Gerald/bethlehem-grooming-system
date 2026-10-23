@@ -19,6 +19,8 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
+    qrSettings: {enabled: false, version: 1, merchant_name: '', provider_name: '', has_image: false,
+      loaded: false, loading: false, saving: false, file: null, preview: '', officialConfirmed: false, error: '', success: ''},
     availabilityService: "clinic",
     availability: clone(defaultAvailability),
     savedAvailability: clone(defaultAvailability),
@@ -189,8 +191,10 @@ function adminSettings() {
     },
 
     selectSettingsTab(tab) {
+      if (tab === 'qr-payments' && !this.isAdmin) return Promise.resolve();
       const changed = this.activeSettingsTab !== tab;
       this.activeSettingsTab = tab;
+      if (tab === 'qr-payments') return this.loadQrSettings();
       if (tab === "availability") {
         if (!changed && (this.intakeLoaded || this._intakeRequest)) return this._intakeRequest || Promise.resolve();
         return Promise.all([this.loadIntakeStatus(), this.loadBlockedDates()]);
@@ -203,10 +207,68 @@ function adminSettings() {
     },
 
     destroy() {
+      if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
       this.stopSecurityVerificationFeedback();
       window.removeEventListener?.('focus', this._intakeRefreshListener);
       window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
       document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
+    },
+
+    async loadQrSettings(force = false) {
+      const state = this.qrSettings;
+      if (!this.isAdmin || state.loading || (state.loaded && !force)) return;
+      state.loading = true;
+      state.error = '';
+      state.success = '';
+      try {
+        const {settings} = await API.getQrPaymentSettings();
+        Object.assign(state, settings, {merchant_name: settings.merchant_name || '', provider_name: settings.provider_name || '', file: null, officialConfirmed: false, loaded: true});
+        if (state.preview) URL.revokeObjectURL(state.preview);
+        state.preview = '';
+        if (settings.has_image) state.preview = URL.createObjectURL((await API.getQrPaymentImage(settings.version)).blob);
+      } catch (error) { state.error = error.message || 'Could not load QR settings.'; }
+      finally { state.loading = false; }
+    },
+
+    chooseQrImage(event) {
+      const state = this.qrSettings;
+      const file = event.target.files?.[0];
+      if (!file) return;
+      state.error = '';
+      state.success = '';
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) {
+        state.error = 'Select a PNG, JPEG or WebP image up to 3 MB.';
+        event.target.value = '';
+        return;
+      }
+      if (state.preview) URL.revokeObjectURL(state.preview);
+      state.preview = URL.createObjectURL(file);
+      state.file = file;
+      state.officialConfirmed = false;
+    },
+
+    async saveQrSettings() {
+      const state = this.qrSettings;
+      if (!this.isAdmin || !state.loaded || state.saving || state.loading) return;
+      state.saving = true;
+      state.error = '';
+      state.success = '';
+      const payload = new FormData();
+      payload.append('enabled', state.enabled ? '1' : '0');
+      payload.append('version', String(state.version));
+      payload.append('merchant_name', state.merchant_name);
+      payload.append('provider_name', state.provider_name);
+      if (state.file) {
+        payload.append('image', state.file);
+        payload.append('official_qr_confirmed', state.officialConfirmed ? '1' : '0');
+      }
+      try {
+        const {settings} = await API.saveQrPaymentSettings(payload);
+        Object.assign(state, settings, {file: null, officialConfirmed: false});
+        if (this.$refs?.qrImageInput) this.$refs.qrImageInput.value = '';
+        state.success = 'QR payment settings saved.';
+      } catch (error) { state.error = Object.values(error.errors || {}).flat().join(' ') || error.message || 'Could not save QR settings.'; }
+      finally { state.saving = false; }
     },
 
     refreshIntakeStatus() {

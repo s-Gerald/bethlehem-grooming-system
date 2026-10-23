@@ -1040,6 +1040,11 @@ video {
   margin-bottom: 0.75rem;
 }
 
+.my-4 {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
 .mb-1 {
   margin-bottom: 0.25rem;
 }
@@ -1323,6 +1328,10 @@ video {
   max-height: 16rem;
 }
 
+.max-h-72 {
+  max-height: 18rem;
+}
+
 .max-h-80 {
   max-height: 20rem;
 }
@@ -1361,6 +1370,10 @@ video {
 
 .min-h-12 {
   min-height: 3rem;
+}
+
+.min-h-48 {
+  min-height: 12rem;
 }
 
 .min-h-5 {

@@ -136,6 +136,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Shared staff functionality, with grooming operations restricted separately.
     Route::middleware('role:admin,staff')->group(function () {
+        Route::get('/admin/qr-payments/config', [\App\Http\Controllers\QrPaymentSettingController::class, 'configuration'])->middleware('grooming');
+        Route::get('/admin/qr-payments/image', [\App\Http\Controllers\QrPaymentSettingController::class, 'image'])->middleware('grooming');
         Route::get('/admin/notifications', [NotificationController::class, 'index']);
         Route::patch('/admin/notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::patch('/admin/notifications/{id}/read', [NotificationController::class, 'markRead']);
@@ -284,6 +286,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Administrator-only clinic availability and closure actions.
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'show']);
+        Route::post('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'save'])->middleware('throttle:10,1');
         Route::get('/admin/security/accounts', [AdminSecurityController::class, 'accounts']);
         Route::post('/admin/security/account/credential-change', [AdminSecurityController::class, 'requestOwnChange'])
             ->middleware('throttle:3,10');

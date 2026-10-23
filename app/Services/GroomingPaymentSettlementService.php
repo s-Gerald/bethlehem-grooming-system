@@ -15,7 +15,7 @@ class GroomingPaymentSettlementService
         private readonly GroomingPaymentReadinessService $paymentReadiness,
     ) {}
 
-    /** Cash settlement; caller holds the booking lock and transaction. */
+    /** Caller holds the booking lock and transaction; payment input is already validated. */
     public function settle(
         Booking $booking, string $total, string $tendered, string $method,
         ?string $notes, ?User $actor, bool $early, array $productLines,

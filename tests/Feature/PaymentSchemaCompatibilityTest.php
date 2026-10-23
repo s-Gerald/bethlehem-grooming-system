@@ -117,6 +117,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $this->createHistoricalPaymentSchema();
         foreach (['online', 'qrph', 'gcash', 'card', 'other'] as $method) {
             foreach (['/api/admin/bookings/1/pay', '/api/admin/bookings/1/pay-now'] as $url) {
+                if ($method === 'qrph') continue; // Grooming now validates QR verification separately.
                 $this->postJson($url, ['final_price' => 850, 'amount_paid' => 1000, 'payment_method' => $method])
                     ->assertUnprocessable()->assertJsonValidationErrors('payment_method');
             }
@@ -130,6 +131,171 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $this->assertDatabaseCount('inventory_transactions', 0);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => false]);
         Http::assertNothingSent();
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('qrFlows')]
+    public function test_qr_settlement_preserves_multiple_pets_stock_and_legacy_gateway_records(string $flow): void
+    {
+        $this->createHistoricalPaymentSchema();
+        $this->configureQr();
+        DB::table('pets')->insert(['pet_id' => 5, 'pet_name' => 'Mochi', 'species' => 'Dog', 'size' => 'small']);
+        DB::table('booking_pets')->insert(['booking_pet_id' => 6, 'booking_id' => 1, 'pet_id' => 5,
+            'registered_size' => 'small', 'confirmed_size' => 'small', 'grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        DB::table('services')->insert(['service_id' => 7, 'slug' => 'facial_trimming', 'service_name' => 'Facial Trimming']);
+        DB::table('booking_services')->insert(['booking_service_id' => 8, 'booking_id' => 1, 'booking_pet_id' => 6,
+            'service_id' => 7, 'price_at_booking' => 150]);
+        if ($flow === 'pay-now') {
+            DB::table('bookings')->update(['status' => 'in_progress']);
+            DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        }
+        $historical = $this->historicalAttempt('pos', User::class, 7);
+        $before = $historical->fresh()->getAttributes();
+        $payload = ['final_price' => 1160, 'amount_paid' => 1160, 'payment_method' => 'qrph',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850], ['booking_service_id' => 8, 'amount' => 150]],
+            'products' => [['item_id' => 10, 'quantity' => 2]], 'qr_settings_version' => 1,
+            'qr_verified' => true, 'external_reference' => 'REAL123456', 'transaction_at' => now()->format('Y-m-d\TH:i'), 'verification_source' => 'receiving_history'];
+        $url = '/api/admin/bookings/1/'.$flow;
+        foreach ([['qr_verified' => false], ['final_price' => 1161], ['amount_paid' => 1161]] as $invalid) {
+            $this->postJson($url, array_replace($payload, $invalid))->assertUnprocessable();
+            $this->assertDatabaseCount('payments', 0);
+            $this->assertDatabaseCount('qr_payments', 0);
+            $this->assertDatabaseCount('inventory_transactions', 0);
+            $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
+        }
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('payment_method_label', 'QR Ph')->assertJsonPath('final_price', '1160.00');
+        $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
+        $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => $flow === 'pay' ? 'released' : 'in_progress']);
+        $this->assertDatabaseHas('grooming_payment_products', ['item_id' => 10, 'quantity' => 2, 'subtotal' => 160]);
+        $this->assertDatabaseCount('inventory_transactions', 1);
+        $this->postJson($url, $payload)->assertStatus($flow === 'pay' ? 422 : 409);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('qr_payments', 1);
+        $this->assertDatabaseCount('inventory_transactions', 1);
+        $this->assertDatabaseCount('notifications', 1);
+        $this->assertSame($before, $historical->fresh()->getAttributes());
+        $this->assertNull(Payment::first()->gateway_payment_id);
+        $this->assertEquals(1160, Payment::realCollections()->sum('total_amount'));
+        Http::assertNothingSent();
+    }
+
+    public static function qrFlows(): array
+    {
+        return [['pay'], ['pay-now']];
+    }
+
+    public function test_concurrent_qr_confirmations_record_one_payment_and_one_stock_deduction(): void
+    {
+        $this->createHistoricalPaymentSchema();
+        $this->configureQr();
+        DB::table('bookings')->update(['status' => 'in_progress']);
+        DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        $directory = sys_get_temp_dir().'/bethlehem-qr-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/qr.sqlite';
+        $processes = [];
+        $worker = <<<'PHP'
+            require 'tests/bootstrap.php';
+            $database = $argv[1];
+            $directory = realpath(dirname($database));
+            if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                || !preg_match('/\Abethlehem-qr-[a-f0-9]{12}\z/', basename($directory))
+                || basename($database) !== 'qr.sqlite' || !is_file($database)) {
+                throw new RuntimeException('An owned disposable QR database is required.');
+            }
+            $app = require 'bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
+                'filesystems.disks.local.root' => $argv[3]]);
+            Illuminate\Support\Facades\DB::purge('sqlite');
+            $connection = Illuminate\Support\Facades\DB::connection();
+            if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
+                throw new RuntimeException('Unexpected QR database.');
+            }
+            $role = $argv[2];
+            $wait = function ($file) {
+                $deadline = microtime(true) + 5;
+                while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                if (!is_file($file)) throw new RuntimeException('QR concurrency barrier timed out.');
+            };
+            $contended = false;
+            $connection->beforeStartingTransaction(function () use ($directory, $database, $role, $wait, &$contended) {
+                if ($role !== 'second') return;
+                $wait($directory.'/locked');
+                $probe = new PDO('sqlite:'.$database);
+                $probe->exec('PRAGMA busy_timeout=0');
+                try {
+                    $probe->exec('BEGIN IMMEDIATE');
+                    $probe->exec('ROLLBACK');
+                    throw new RuntimeException('The first confirmation must still own the writer lock.');
+                } catch (PDOException $error) {
+                    if (($error->errorInfo[1] ?? null) !== 5) throw $error;
+                    $contended = true;
+                }
+                file_put_contents($directory.'/attempted', '1');
+            });
+            $connection->listen(function ($query) use ($directory, $role, $wait) {
+                if ($role === 'first' && str_starts_with(strtolower($query->sql), 'insert into "qr_payments"')) {
+                    file_put_contents($directory.'/locked', '1');
+                    $wait($directory.'/attempted');
+                }
+            });
+            $request = Illuminate\Http\Request::create('/payment', 'POST', [
+                'final_price' => 1010, 'amount_paid' => 1010, 'payment_method' => 'qrph',
+                'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+                'products' => [['item_id' => 10, 'quantity' => 2]],
+                'qr_settings_version' => 1, 'qr_verified' => true,
+                'external_reference' => $role === 'first' ? 'RACE000001' : 'RACE000002',
+                'transaction_at' => now()->format('Y-m-d\TH:i'), 'verification_source' => 'receiving_history',
+            ]);
+            $request->setUserResolver(fn () => App\Models\User::findOrFail(7));
+            $response = (new App\Http\Controllers\PaymentController)->payNow($request, 1);
+            echo json_encode(['status' => $response->getStatusCode(), 'body' => $response->getData(true), 'contended' => $contended]);
+            PHP;
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            foreach (['first', 'second'] as $role) {
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $role,
+                    \Illuminate\Support\Facades\Storage::disk('local')->path('')], base_path(), [
+                    'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => storage_path('framework/testing-config-unused.php'),
+                    'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                    'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+                ]);
+                $process->setTimeout(15);
+                $process->start();
+                $processes[] = $process;
+            }
+            $results = [];
+            foreach ($processes as $process) {
+                $process->wait();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
+                $results[] = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            }
+            $this->assertTrue($results[1]['contended'], 'The second request observed an overlapping writer lock.');
+            $this->assertSame(200, $results[0]['status'], json_encode($results));
+            $this->assertSame(409, $results[1]['status'], json_encode($results));
+            $pdo = new \PDO('sqlite:'.$database);
+            foreach (['payments', 'qr_payments', 'inventory_transactions', 'grooming_payment_products', 'notifications'] as $table) {
+                $this->assertEquals(1, $pdo->query('SELECT COUNT(*) FROM '.$table)->fetchColumn(), $table);
+            }
+            $this->assertEquals(1, $pdo->query('SELECT quantity_on_hand FROM inventory_items WHERE item_id = 10')->fetchColumn());
+            $this->assertEquals(1010, $pdo->query('SELECT SUM(total_amount) FROM payments')->fetchColumn());
+            $pdo = null;
+        } finally {
+            foreach ($processes as $process) if ($process->isRunning()) $process->stop();
+            foreach (glob($directory.'/*') ?: [] as $file) unlink($file);
+            rmdir($directory);
+        }
+    }
+
+    private function configureQr(): void
+    {
+        (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
+        DB::table('qr_payment_settings')->where('id', 1)->update(['enabled' => true, 'merchant_name' => 'Bethlehem',
+            'provider_name' => 'Receiving bank', 'image_path' => 'qr-payments/code.png', 'image_hash' => hash('sha256', 'fixture')]);
     }
 
     public function test_historical_unresolved_attempts_keep_billing_and_stock_locked(): void

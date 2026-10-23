@@ -14,9 +14,14 @@ use Tests\TestCase;
 
 class GroomingPaymentPriceSafetyTest extends TestCase
 {
+    private bool $fixtureDatabaseVerified = false;
+
     protected function setUp(): void
     {
         parent::setUp();
+        require_once __DIR__.'/../Support/QrPaymentMysqlHarness.php';
+        \Tests\Support\assertQrPaymentTestDatabase();
+        $this->fixtureDatabaseVerified = true;
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');
             $table->string('booking_reference');
@@ -65,7 +70,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             $table->string('payment_method');
             $table->string('payment_status');
             $table->text('notes')->nullable();
-            $table->timestamp('paid_at');
+            $table->timestamp('paid_at')->nullable();
             $table->timestamp('created_at')->nullable();
         });
         Schema::create('notifications', function (Blueprint $table) {
@@ -80,8 +85,11 @@ class GroomingPaymentPriceSafetyTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings'] as $table) {
-            Schema::dropIfExists($table);
+        if ($this->fixtureDatabaseVerified) {
+            \Tests\Support\assertQrPaymentTestDatabase();
+            foreach (['qr_payments', 'qr_payment_settings', 'notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings'] as $table) {
+                Schema::dropIfExists($table);
+            }
         }
         parent::tearDown();
     }
@@ -269,6 +277,173 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             'service_id' => 3, 'price_at_booking' => $minimum,
             'price_min_at_booking' => $fixed ? null : $minimum,
         ]);
+    }
+
+    public function test_verified_qr_final_payment_reuses_settlement_and_normalizes_reference(): void
+    {
+        \Carbon\Carbon::withTestNow('2026-10-23 15:20:30', function () {
+            $this->configureQr();
+            $this->seedService('regular_dog_grooming', 'large', 850);
+            $response = $this->submitQr('store', [
+                'transaction_at' => '2026-10-22T13:14', 'verified_at' => '2000-01-01 00:00:00',
+            ])->getData(true);
+            $this->assertTrue($response['success']);
+            $this->assertSame('QR Ph', $response['payment_method_label']);
+            $this->assertSame('123456AB', $response['qr_payment']['external_reference']);
+            $this->assertEquals(7, $response['qr_payment']['verified_by']);
+            $this->assertSame('2026-10-22 13:14:00', $response['qr_payment']['transaction_at']);
+            $this->assertSame('2026-10-23 15:20:30', $response['qr_payment']['verified_at']);
+            $this->assertDatabaseHas('payments', ['payment_method' => 'qrph', 'total_amount' => 850, 'change_amount' => 0]);
+            $this->assertDatabaseHas('payments', ['paid_at' => '2026-10-23 15:20:30']);
+            $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => 'released']);
+            $this->assertDatabaseCount('notifications', 1);
+            $this->assertEquals(850, Payment::realCollections()->sum('total_amount'));
+        });
+    }
+
+    public function test_qr_early_payment_preserves_unfinished_visit_and_rejects_repeated_submission(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        DB::table('bookings')->update(['status' => 'in_progress']);
+        DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        $response = $this->submitQr('payNow')->getData(true);
+        $this->assertFalse($response['all_pets_finished']);
+        $this->assertDatabaseHas('bookings', ['paid' => true, 'status' => 'in_progress']);
+        $this->assertSame(409, $this->submitQr('payNow')->getStatusCode());
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('qr_payments', 1);
+        $this->assertDatabaseCount('notifications', 1);
+    }
+
+    public function test_qr_validation_rolls_back_prices_payments_and_notifications_and_allows_retry(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $cases = [
+            ['amount_paid' => 851], ['amount_paid' => 849], ['amount_paid' => null],
+            ['qr_verified' => false], ['qr_settings_version' => 99],
+            ['external_reference' => '!!!'], ['external_reference' => ''],
+            ['external_reference' => 'AB@123456'], ['transaction_at' => '2099-01-01T12:00'],
+            ['transaction_at' => null], ['verification_source' => 'customer_screenshot'],
+        ];
+        foreach ($cases as $override) {
+            try {
+                $this->submitQr('store', $override);
+                $this->fail('Unverified or mismatched payment must be rejected: '.json_encode($override));
+            } catch (ValidationException) {
+                $this->assertDatabaseCount('payments', 0);
+                $this->assertDatabaseCount('qr_payments', 0);
+                $this->assertDatabaseCount('notifications', 0);
+                $this->assertDatabaseHas('bookings', ['paid' => false, 'status' => 'for_payment']);
+            }
+        }
+        $this->assertTrue($this->submitQr('store')->getData(true)['success']);
+    }
+
+    public function test_duplicate_normalized_qr_reference_does_not_create_another_collection(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $this->submitQr('store');
+        // Another unpaid visit with the same reference must not settle.
+        DB::table('bookings')->insert(['booking_id' => 9, 'booking_reference' => 'TEST-SECOND', 'status' => 'for_payment']);
+        DB::table('booking_pets')->update(['booking_id' => 9]);
+        DB::table('booking_services')->update(['booking_id' => 9]);
+        try {
+            $this->submitQr('store', ['external_reference' => '1234 56ab'], bookingId: 9);
+            $this->fail('Duplicate reference should be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('external_reference', $exception->errors());
+        }
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('qr_payments', 1);
+        $this->assertDatabaseHas('bookings', ['booking_id' => 9, 'paid' => false]);
+    }
+
+    public function test_disabled_qr_and_unauthorized_actor_cannot_settle(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        DB::table('qr_payment_settings')->update(['enabled' => false]);
+        try {
+            $this->submitQr('store');
+            $this->fail('Disabled QR must be rejected.');
+        } catch (ValidationException) {}
+        DB::table('qr_payment_settings')->update(['enabled' => true]);
+        try {
+            $this->submitQr('store', role: 'customer');
+            $this->fail('Customers cannot verify payments.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_missing_reference_exception_requires_admin_reason_and_additional_acknowledgment(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $exception = ['external_reference' => null, 'reference_unavailable_reason' => 'Official receiving history has no reference; matched the account credit.', 'exception_verified' => true];
+        foreach ([['exception_verified' => false], ['reference_unavailable_reason' => 'short'],
+            ['reference_unavailable_reason' => str_repeat('x', 19).' ']] as $invalid) {
+            try {
+                $this->submitQr('store', array_replace($exception, $invalid));
+                $this->fail('Incomplete exception must be rejected.');
+            } catch (ValidationException) {}
+        }
+        try {
+            $this->submitQr('store', $exception, role: 'staff');
+            $this->fail('Only administrators can approve missing references.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) {
+            $this->assertSame(403, $error->getStatusCode());
+        }
+        $response = $this->submitQr('store', $exception)->getData(true);
+        $this->assertNull($response['qr_payment']['external_reference']);
+        $this->assertSame($exception['reference_unavailable_reason'], $response['qr_payment']['reference_unavailable_reason']);
+    }
+
+    public function test_database_uniqueness_stops_duplicate_external_references_even_without_a_precheck(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $this->submitQr('store');
+        $duplicate = \App\Models\QrPayment::firstOrFail()->replicate();
+        $duplicate->payable_id = 99;
+        try {
+            $duplicate->save();
+            $this->fail('The database must arbitrate duplicate-reference races.');
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $this->assertDatabaseCount('qr_payments', 1);
+            $this->assertDatabaseCount('payments', 1);
+        }
+    }
+
+    private function configureQr(): void
+    {
+        (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        \Illuminate\Support\Facades\Storage::fake('local');
+        \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
+        DB::table('qr_payment_settings')->where('id', 1)->update([
+            'enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Receiving bank',
+            'image_path' => 'qr-payments/code.png', 'image_hash' => hash('sha256', 'fixture'),
+        ]);
+    }
+
+    private function submitQr(string $action, array $override = [], string $role = 'admin', int $bookingId = 1)
+    {
+        $request = Request::create('/payment', 'POST', array_replace([
+            'final_price' => 850, 'amount_paid' => 850, 'payment_method' => 'qrph',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+            'qr_settings_version' => 1, 'qr_verified' => true,
+            'external_reference' => '1234-56 ab', 'transaction_at' => now()->format('Y-m-d\TH:i'),
+            'verification_source' => 'receiving_history',
+        ], $override));
+        $actor = new \App\Models\User;
+        $actor->forceFill(['user_id' => 7, 'role' => $role, 'first_name' => 'Staff', 'last_name' => 'Verifier',
+            'staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
+        $request->setUserResolver(fn () => $actor);
+        return (new PaymentController)->{$action}($request, $bookingId);
     }
 
     private function submit(string $action, mixed $amount, ?float $total = null, array $sizes = [])

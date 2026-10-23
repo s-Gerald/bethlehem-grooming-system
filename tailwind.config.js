@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss-v3').Config} */
 export default {
-  content: ["./*.html", "./pages/**/*.html", "./scripts/**/*.js"],
+  content: ["./*.html", "./pages/**/*.html", "./scripts/**/*.js", "!./scripts/vendor/**"],
   theme: {
     extend: {
       // Opt-in theme values live in css/themes/portal.css. Existing Tailwind

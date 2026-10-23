@@ -3,7 +3,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "npm run build:css && vite build",
+        "build": "npm run build:ocr && npm run build:css && vite build",
+        "build:ocr": "node scripts/build-ocr-assets.mjs",
         "build:css": "node node_modules/tailwindcss-v3/lib/cli.js -c tailwind.config.js -i css/input.css -o css/output.css",
         "watch:css": "npm run build:css -- --watch",
         "dev": "vite",
@@ -12,8 +13,8 @@
         "test:clinic-inventory": "node tests/clinic-inventory-pricing-regression.cjs && node tests/product-weight-tiers-regression.cjs",
         "test:pet-weight-size": "node tests/pet-weight-size-regression.mjs && node --experimental-vm-modules tests/walk-in-pet-step-regression.mjs && node tests/clinic-subrole-workflow-regression.cjs",
         "test:clinic-roles": "node tests/clinic-subrole-workflow-regression.cjs && node tests/admin-clinic-vaccination-reconciliation-regression.cjs",
-    "test:grooming-estimates": "node tests/grooming-estimates-regression.cjs && node tests/customer-dashboard-history-regression.cjs",
-    "test": "node tests/run-regressions.cjs"
+        "test:grooming-estimates": "node tests/grooming-estimates-regression.cjs && node tests/customer-dashboard-history-regression.cjs",
+        "test": "node tests/run-regressions.cjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
@@ -23,5 +24,9 @@
         "tailwindcss": "^4.0.0",
         "tailwindcss-v3": "npm:tailwindcss@3.4.19",
         "vite": "^7.0.7"
+    },
+    "dependencies": {
+        "@tesseract.js-data/eng": "1.0.0",
+        "tesseract.js": "6.0.1"
     }
 }

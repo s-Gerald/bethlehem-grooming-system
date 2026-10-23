@@ -28,6 +28,7 @@ class Payment extends Model
         'payment_provider',
         'provider_method',
         'gateway_payment_id',
+        'qr_payment_id',
     ];
 
     protected $casts = [
@@ -84,6 +85,11 @@ class Payment extends Model
     public function gatewayPayment()
     {
         return $this->belongsTo(GatewayPayment::class);
+    }
+
+    public function qrPayment()
+    {
+        return $this->belongsTo(QrPayment::class);
     }
 
     public function products()

@@ -34,7 +34,7 @@ class PaymentAmountValidationTest extends TestCase
     {
         $cases = [];
         foreach (['pay', 'pay-now'] as $action) {
-            foreach (['online', 'qrph', 'gcash', 'maya', 'card', 'others'] as $method) {
+            foreach (['online', 'gcash', 'maya', 'card', 'others'] as $method) {
                 $cases["{$action} {$method}"] = [$action, $method];
             }
         }
