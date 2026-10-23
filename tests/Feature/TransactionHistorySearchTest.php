@@ -311,13 +311,14 @@ class TransactionHistorySearchTest extends TestCase
         return (new PaymentController)->index(Request::create('/api/admin/transactions', 'GET', $query))->getData(true);
     }
 
-    public function test_qr_history_includes_verification_and_searchable_reference_without_changing_totals(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('historicalVerificationSources')]
+    public function test_qr_history_includes_verification_and_searchable_reference_without_changing_totals(string $source): void
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         $qr = \App\Models\QrPayment::create([
             'payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
             'external_reference' => 'BANK123456', 'received_amount' => 850, 'transaction_at' => '2026-10-03 11:59:00',
-            'verification_source' => 'receiving_history', 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
+            'verification_source' => $source, 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
             'verified_at' => '2026-10-03 12:00:00', 'settings_version' => 1,
             'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank', 'qr_image_hash' => hash('sha256', 'fixture'),
         ]);
@@ -328,12 +329,19 @@ class TransactionHistorySearchTest extends TestCase
         $data = $this->search(['search' => 'bAnK123456']);
         $this->assertSame(1, $data['total']);
         $transaction = $data['transactions'][0];
-        $this->assertSame('QR Ph', $transaction['paymentMethodLabel']);
+        $this->assertSame('QR Payment', $transaction['paymentMethodLabel']);
         $this->assertSame('Staff Verifier', $transaction['qrPayment']['verified_by_name']);
+        $this->assertSame($source, $transaction['qrPayment']['verification_source']);
+        $this->assertSame($source, $qr->fresh()->verification_source);
         $this->assertSame('BANK123456', $transaction['qrPayment']['external_reference']);
         $this->assertSame(1, $transaction['qrPayment']['settings_version']);
         $this->assertArrayNotHasKey('image_path', $transaction['qrPayment']);
         $this->assertArrayNotHasKey('proof_url', $transaction['qrPayment']);
         $this->assertEquals(850, $data['collection_total']);
+    }
+
+    public static function historicalVerificationSources(): array
+    {
+        return [['receiving_history'], ['merchant_notification']];
     }
 }

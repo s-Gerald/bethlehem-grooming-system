@@ -137,14 +137,15 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(ui.canSubmitPayment, true, 'Verified QR does not require Cash Received');
     context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
       submissions.push({id, payload});
-      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: 'QR Ph',
+      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: 'QR Payment',
         qr_payment: {external_reference: 'BANK123456', verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
     };
     await ui.submitPayment();
     assert.equal(submissions.at(-1).payload.payment_method, 'qrph');
     assert.equal(submissions.at(-1).payload.amount_paid, 500);
     assert.equal(submissions.at(-1).payload.qr_verified, true);
-    assert.equal(ui.receiptModal.paymentMethod, 'QR Ph');
+    assert.equal(Object.hasOwn(submissions.at(-1).payload, 'verification_source'), false, 'Early and final submissions never send a source choice');
+    assert.equal(ui.receiptModal.paymentMethod, 'QR Payment');
     assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
     const printCount = printed;
     ui.printReceipt();

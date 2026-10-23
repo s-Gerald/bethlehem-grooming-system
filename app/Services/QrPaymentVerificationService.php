@@ -17,7 +17,6 @@ class QrPaymentVerificationService
             'qr_verified' => 'exclude_unless:payment_method,qrph|required|accepted',
             'external_reference' => 'nullable|string|max:100|regex:/^[A-Za-z0-9 -]+$/D',
             'transaction_at' => 'required_if:payment_method,qrph|nullable|date_format:Y-m-d\TH:i|before_or_equal:now',
-            'verification_source' => 'required_if:payment_method,qrph|nullable|in:receiving_history,merchant_notification',
             'reference_unavailable_reason' => 'nullable|string|min:20|max:500',
             'exception_verified' => 'nullable|boolean',
         ];
@@ -37,7 +36,7 @@ class QrPaymentVerificationService
             throw ValidationException::withMessages(['qr_settings_version' => 'QR payments are unavailable or the QR has changed. Reopen the payment before collecting funds.']);
         }
         if (! isset($data['amount_paid']) || (int) round((float) $data['amount_paid'] * 100) !== (int) round((float) $total * 100)) {
-            throw ValidationException::withMessages(['amount_paid' => 'Verified received amount must exactly match the amount due.']);
+            throw ValidationException::withMessages(['amount_paid' => 'Amount Received must exactly match the amount due.']);
         }
         $reference = self::normalizeReference($data['external_reference'] ?? null);
         $reason = trim($data['reference_unavailable_reason'] ?? '');
@@ -55,7 +54,7 @@ class QrPaymentVerificationService
         return QrPayment::create([
             'payable_type' => $payable->getMorphClass(), 'payable_id' => $payable->getKey(),
             'external_reference' => $reference, 'received_amount' => $total,
-            'transaction_at' => $data['transaction_at'], 'verification_source' => $data['verification_source'],
+            'transaction_at' => $data['transaction_at'], 'verification_source' => 'receiving_history',
             'verified_by' => $actor->user_id, 'verified_by_name' => trim($actor->first_name.' '.$actor->last_name),
             'verified_at' => now(), 'reference_unavailable_reason' => $reference ? null : $reason,
             'settings_version' => $settings->version, 'merchant_name' => $settings->merchant_name,

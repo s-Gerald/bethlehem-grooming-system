@@ -17,13 +17,23 @@ class QrPaymentSettings extends Model
 
     public function available(): bool
     {
-        return $this->enabled && $this->merchant_name && $this->provider_name
-            && $this->image_hash && $this->image_path && Storage::disk('local')->exists($this->image_path);
+        return $this->enabled && $this->missingFields() === [];
+    }
+
+    public function missingFields(): array
+    {
+        $missing = [];
+        if (! $this->image_hash || ! $this->image_path || ! Storage::disk('local')->exists($this->image_path)) $missing[] = 'image';
+        if (! trim($this->merchant_name ?? '')) $missing[] = 'merchant_name';
+        if (! trim($this->provider_name ?? '')) $missing[] = 'provider_name';
+        return $missing;
     }
 
     public function configuration(bool $admin = false): array
     {
-        $available = $this->available();
+        if (! $admin && (! $this->enabled || ! $this->merchant_name || ! $this->provider_name)) return ['enabled' => false];
+        $missing = $this->missingFields();
+        $available = $this->enabled && $missing === [];
         if (! $admin && ! $available) return ['enabled' => false];
 
         return [
@@ -31,7 +41,7 @@ class QrPaymentSettings extends Model
             'version' => $this->version,
             'merchant_name' => $this->merchant_name,
             'provider_name' => $this->provider_name,
-            'has_image' => (bool) $this->image_path && Storage::disk('local')->exists($this->image_path),
-        ];
+            'has_image' => ! in_array('image', $missing, true),
+        ] + ($admin ? ['status' => $missing ? 'not_ready' : ($available ? 'enabled' : 'disabled'), 'missing_fields' => $missing] : []);
     }
 }

@@ -288,8 +288,9 @@ class GroomingPaymentPriceSafetyTest extends TestCase
                 'transaction_at' => '2026-10-22T13:14', 'verified_at' => '2000-01-01 00:00:00',
             ])->getData(true);
             $this->assertTrue($response['success']);
-            $this->assertSame('QR Ph', $response['payment_method_label']);
+            $this->assertSame('QR Payment', $response['payment_method_label']);
             $this->assertSame('123456AB', $response['qr_payment']['external_reference']);
+            $this->assertSame('receiving_history', $response['qr_payment']['verification_source']);
             $this->assertEquals(7, $response['qr_payment']['verified_by']);
             $this->assertSame('2026-10-22 13:14:00', $response['qr_payment']['transaction_at']);
             $this->assertSame('2026-10-23 15:20:30', $response['qr_payment']['verified_at']);
@@ -308,6 +309,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         DB::table('bookings')->update(['status' => 'in_progress']);
         DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
         $response = $this->submitQr('payNow')->getData(true);
+        $this->assertSame('receiving_history', $response['qr_payment']['verification_source']);
         $this->assertFalse($response['all_pets_finished']);
         $this->assertDatabaseHas('bookings', ['paid' => true, 'status' => 'in_progress']);
         $this->assertSame(409, $this->submitQr('payNow')->getStatusCode());
@@ -322,10 +324,10 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->seedService('regular_dog_grooming', 'large', 850);
         $cases = [
             ['amount_paid' => 851], ['amount_paid' => 849], ['amount_paid' => null],
-            ['qr_verified' => false], ['qr_settings_version' => 99],
+            ['qr_verified' => false], ['qr_verified' => false, 'verification_source' => 'merchant_notification'], ['qr_settings_version' => 99],
             ['external_reference' => '!!!'], ['external_reference' => ''],
             ['external_reference' => 'AB@123456'], ['transaction_at' => '2099-01-01T12:00'],
-            ['transaction_at' => null], ['verification_source' => 'customer_screenshot'],
+            ['transaction_at' => null], ['qr_verified' => null],
         ];
         foreach ($cases as $override) {
             try {
@@ -339,6 +341,30 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             }
         }
         $this->assertTrue($this->submitQr('store')->getData(true)['success']);
+    }
+
+    #[DataProvider('clientVerificationSources')]
+    public function test_client_verification_source_cannot_change_the_receiving_account_audit(string $action, mixed $source): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        if ($action === 'payNow') {
+            DB::table('bookings')->update(['status' => 'in_progress']);
+            DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        }
+        $response = $this->submitQr($action, ['verification_source' => $source])->getData(true);
+        $this->assertTrue($response['success']);
+        $this->assertSame('receiving_history', $response['qr_payment']['verification_source']);
+        $this->assertDatabaseHas('qr_payments', ['verification_source' => 'receiving_history', 'verified_by' => 7]);
+    }
+
+    public static function clientVerificationSources(): array
+    {
+        $cases = [];
+        foreach (['store', 'payNow'] as $action) {
+            foreach (['merchant_notification', 'customer_screenshot', null, ['merchant_notification']] as $source) $cases[] = [$action, $source];
+        }
+        return $cases;
     }
 
     public function test_duplicate_normalized_qr_reference_does_not_create_another_collection(): void
@@ -437,7 +463,6 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
             'qr_settings_version' => 1, 'qr_verified' => true,
             'external_reference' => '1234-56 ab', 'transaction_at' => now()->format('Y-m-d\TH:i'),
-            'verification_source' => 'receiving_history',
         ], $override));
         $actor = new \App\Models\User;
         $actor->forceFill(['user_id' => 7, 'role' => $role, 'first_name' => 'Staff', 'last_name' => 'Verifier',

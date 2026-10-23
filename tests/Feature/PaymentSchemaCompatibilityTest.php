@@ -153,7 +153,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $payload = ['final_price' => 1160, 'amount_paid' => 1160, 'payment_method' => 'qrph',
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850], ['booking_service_id' => 8, 'amount' => 150]],
             'products' => [['item_id' => 10, 'quantity' => 2]], 'qr_settings_version' => 1,
-            'qr_verified' => true, 'external_reference' => 'REAL123456', 'transaction_at' => now()->format('Y-m-d\TH:i'), 'verification_source' => 'receiving_history'];
+            'qr_verified' => true, 'external_reference' => 'REAL123456', 'transaction_at' => now()->format('Y-m-d\TH:i')];
         $url = '/api/admin/bookings/1/'.$flow;
         foreach ([['qr_verified' => false], ['final_price' => 1161], ['amount_paid' => 1161]] as $invalid) {
             $this->postJson($url, array_replace($payload, $invalid))->assertUnprocessable();
@@ -162,7 +162,8 @@ class PaymentSchemaCompatibilityTest extends TestCase
             $this->assertDatabaseCount('inventory_transactions', 0);
             $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
         }
-        $this->postJson($url, $payload)->assertOk()->assertJsonPath('payment_method_label', 'QR Ph')->assertJsonPath('final_price', '1160.00');
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('payment_method_label', 'QR Payment')->assertJsonPath('final_price', '1160.00')
+            ->assertJsonPath('qr_payment.verification_source', 'receiving_history');
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => $flow === 'pay' ? 'released' : 'in_progress']);
         $this->assertDatabaseHas('grooming_payment_products', ['item_id' => 10, 'quantity' => 2, 'subtotal' => 160]);
@@ -247,7 +248,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
                 'products' => [['item_id' => 10, 'quantity' => 2]],
                 'qr_settings_version' => 1, 'qr_verified' => true,
                 'external_reference' => $role === 'first' ? 'RACE000001' : 'RACE000002',
-                'transaction_at' => now()->format('Y-m-d\TH:i'), 'verification_source' => 'receiving_history',
+                'transaction_at' => now()->format('Y-m-d\TH:i'),
             ]);
             $request->setUserResolver(fn () => App\Models\User::findOrFail(7));
             $response = (new App\Http\Controllers\PaymentController)->payNow($request, 1);

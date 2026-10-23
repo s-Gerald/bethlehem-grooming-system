@@ -5,9 +5,10 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qrph-20261023" />
+    <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qr-ux-20261023" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
+    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-ux" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
       #success-toast { z-index: 10002; }
@@ -217,34 +218,58 @@
           </section>
 
           <section class="mt-6 space-y-6">
-            <form x-cloak x-show="isAdmin && activeSettingsTab === 'qr-payments'" @submit.prevent="saveQrSettings()"
+            <form x-cloak x-show="isAdmin && activeSettingsTab === 'qr-payments'" @submit.prevent="saveQrSettings()" x-ref="qrSettingsForm" novalidate
               class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6" aria-labelledby="qr-settings-title" :aria-busy="qrSettings.loading || qrSettings.saving">
               <div class="flex flex-wrap items-center justify-between gap-3">
-                <h3 id="qr-settings-title" class="text-2xl font-bold text-[#1f3850]">QR Payments</h3>
-                <button type="button" @click="loadQrSettings(true)" :disabled="qrSettings.loading || qrSettings.saving" class="rounded-xl border border-[#cfe0ee] px-4 py-2 text-sm font-semibold text-[#315b7e] disabled:opacity-50">Reload</button>
+                <div class="flex flex-wrap items-center gap-3"><h3 id="qr-settings-title" class="text-2xl font-bold text-[#1f3850]">QR Payments</h3><span x-show="qrSettings.loaded" class="qr-config-status" :data-status="qrSettings.status" x-text="qrStatusLabel"></span></div>
+                <button type="button" @click="loadQrSettings(true)" :disabled="qrSettings.loading || qrSettings.saving || qrCrop.open" class="qr-secondary">Reload</button>
               </div>
               <p x-show="qrSettings.loading" role="status" class="mt-4 text-sm text-slate-500">Loading QR settings…</p>
-              <fieldset :disabled="!qrSettings.loaded || qrSettings.loading || qrSettings.saving" class="mt-5 grid min-w-0 gap-6 md:grid-cols-2">
+              <p x-show="qrSettings.loaded && qrSettings.status === 'not_ready' && qrMissingLabel" class="mt-3 text-sm text-slate-500">Missing: <span x-text="qrMissingLabel"></span></p>
+              <fieldset :disabled="!qrSettings.loaded || qrSettings.loading || qrSettings.saving" class="mt-5 grid min-w-0 gap-6 lg:grid-cols-2">
                 <div class="space-y-4">
-                  <div class="flex min-h-48 items-center justify-center rounded-2xl border border-[#d7e3ef] bg-[#f5f8fb] p-4">
-                    <template x-if="qrSettings.preview"><img :src="qrSettings.preview" alt="Official receiving account QR Ph code preview" class="max-h-72 max-w-full rounded-lg bg-white object-contain" /></template>
-                    <p x-show="!qrSettings.preview" class="text-sm text-slate-500">No QR image uploaded</p>
+                  <p class="text-sm font-semibold text-[#2f4b66]">QR Payment Image</p>
+                  <div x-show="!qrCrop.open" class="qr-upload" @dragover.prevent @drop.prevent="dropQrImage($event)">
+                    <template x-if="qrSettings.preview"><img :src="qrSettings.preview" alt="QR Payment image preview for Grooming" class="qr-official-preview" /></template>
+                    <p x-show="!qrSettings.preview" class="text-sm text-slate-500">Drop a QR image here</p>
+                    <button type="button" x-ref="qrImageBrowse" @click="$refs.qrImageInput.click()" :aria-invalid="!!qrSettings.fieldErrors.image" aria-describedby="qr-image-error qr-image-limit" class="qr-secondary" x-text="qrSettings.preview ? 'Replace Image' : 'Upload Image'"></button>
+                    <p id="qr-image-limit" class="text-xs text-slate-500">PNG, JPEG or WebP · up to 3 MB</p>
                   </div>
-                  <label class="block text-sm font-semibold text-[#2f4b66]">Official QR Ph image
-                    <input x-ref="qrImageInput" type="file" accept="image/png,image/jpeg,image/webp" @change="chooseQrImage($event)" class="mt-2 block w-full text-sm text-slate-600" aria-describedby="qr-image-limit" />
-                  </label>
-                  <p id="qr-image-limit" class="text-xs text-slate-500">PNG, JPEG or WebP · up to 3 MB · 128–4096 pixels per side</p>
-                  <label x-show="qrSettings.file" class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" x-model="qrSettings.officialConfirmed" class="mt-1" />I confirm this is the official QR for the receiving account.</label>
+                  <input x-ref="qrImageInput" type="file" accept="image/png,image/jpeg,image/webp" @change="chooseQrImage($event)" class="hidden" tabindex="-1" aria-label="Select QR image" />
+                  <div x-show="qrCrop.open" class="qr-crop-editor" :aria-busy="qrCrop.busy">
+                    <p x-show="qrCrop.busy" role="status" class="text-sm text-slate-500">Processing image…</p>
+                    <div class="qr-crop-stage" x-ref="qrCropControls" tabindex="0" aria-label="QR crop. Drag to reposition or use arrow keys."
+                      @keydown.left.prevent="moveQrCrop(-10, 0)" @keydown.right.prevent="moveQrCrop(10, 0)" @keydown.up.prevent="moveQrCrop(0, -10)" @keydown.down.prevent="moveQrCrop(0, 10)">
+                      <img x-ref="qrCropImage" alt="Adjust QR image crop" />
+                    </div>
+                    <div x-show="qrCrop.ready" class="qr-crop-tools">
+                      <button type="button" class="qr-secondary" @click="zoomQrCrop(-0.1)" :disabled="qrCrop.busy" aria-label="Zoom out">−</button>
+                      <button type="button" class="qr-secondary" @click="zoomQrCrop(0.1)" :disabled="qrCrop.busy" aria-label="Zoom in">+</button>
+                      <button type="button" class="qr-secondary" @click="resetQrCrop()" :disabled="qrCrop.busy">Reset</button>
+                    </div>
+                    <div x-show="qrCrop.ready" class="flex items-center gap-3"><div x-ref="qrCropPreview" class="qr-crop-preview"></div><p class="text-xs text-slate-500" x-text="qrCrop.detected ? 'Suggested QR crop. Adjust before applying.' : 'Select the entire QR and its white border.'"></p></div>
+                    <p x-show="qrCrop.error" x-text="qrCrop.error" role="alert" class="text-sm text-red-600"></p>
+                    <div class="qr-crop-tools">
+                      <button type="button" class="qr-secondary" @click="cancelQrCrop(); $refs.qrImageBrowse.focus()">Cancel</button>
+                      <button type="button" class="qr-secondary" @click="applyQrCrop(true)" :disabled="!qrCrop.ready || qrCrop.busy">Use Original</button>
+                      <button type="button" class="qr-primary" @click="applyQrCrop()" :disabled="!qrCrop.ready || qrCrop.busy">Apply Crop</button>
+                    </div>
+                  </div>
+                  <p id="qr-image-error" x-show="qrSettings.fieldErrors.image" x-text="qrSettings.fieldErrors.image" class="text-sm text-red-600"></p>
+                  <label x-show="qrSettings.file && !qrCrop.open" class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" x-model="qrSettings.officialConfirmed" :aria-invalid="!!qrSettings.fieldErrors.official_qr_confirmed" aria-describedby="qr-official-error" class="mt-1" />I confirm this is the official QR for the receiving account.</label>
+                  <p id="qr-official-error" x-show="qrSettings.fieldErrors.official_qr_confirmed" x-text="qrSettings.fieldErrors.official_qr_confirmed" class="text-sm text-red-600"></p>
                 </div>
                 <div class="space-y-5">
                   <label class="block text-sm font-semibold text-[#2f4b66]">Receiving merchant / account name
-                    <input type="text" x-model="qrSettings.merchant_name" maxlength="150" :required="qrSettings.enabled" class="mt-2 w-full rounded-xl border border-[#cfe0ee] px-4 py-3 text-sm outline-none focus:border-[#315b7e]" />
+                    <input type="text" x-model="qrSettings.merchant_name" maxlength="150" :required="qrSettings.enabled" :aria-invalid="!!qrSettings.fieldErrors.merchant_name" aria-describedby="qr-merchant-error" class="qr-field mt-2" />
+                    <span id="qr-merchant-error" x-show="qrSettings.fieldErrors.merchant_name" x-text="qrSettings.fieldErrors.merchant_name" class="qr-field-error"></span>
                   </label>
                   <label class="block text-sm font-semibold text-[#2f4b66]">Receiving bank or e-wallet
-                    <input type="text" x-model="qrSettings.provider_name" maxlength="100" :required="qrSettings.enabled" class="mt-2 w-full rounded-xl border border-[#cfe0ee] px-4 py-3 text-sm outline-none focus:border-[#315b7e]" />
+                    <input type="text" x-model="qrSettings.provider_name" maxlength="100" :required="qrSettings.enabled" :aria-invalid="!!qrSettings.fieldErrors.provider_name" aria-describedby="qr-provider-error" class="qr-field mt-2" />
+                    <span id="qr-provider-error" x-show="qrSettings.fieldErrors.provider_name" x-text="qrSettings.fieldErrors.provider_name" class="qr-field-error"></span>
                   </label>
-                  <label class="flex items-center gap-3 text-sm font-semibold text-[#2f4b66]"><input type="checkbox" x-model="qrSettings.enabled" />Enable QR Ph payments</label>
-                  <button type="submit" class="min-h-11 rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50" :disabled="qrSettings.saving" x-text="qrSettings.saving ? 'Saving…' : 'Save changes'"></button>
+                  <label class="flex items-center gap-3 text-sm font-semibold text-[#2f4b66]"><input type="checkbox" x-model="qrSettings.enabled" />Enable QR Payments</label>
+                  <button type="submit" class="qr-primary" :disabled="qrSettings.saving || qrCrop.open" x-text="qrSettings.saving ? 'Saving…' : (qrSettings.enabled && qrSettings.status !== 'enabled' ? 'Save & Enable' : 'Save Changes')"></button>
                 </div>
               </fieldset>
               <p x-show="qrSettings.error" x-text="qrSettings.error" class="mt-4 text-sm text-red-600" role="alert"></p>
@@ -1450,6 +1475,6 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qrph-20261023"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023"></script>
   </body>
 </html>

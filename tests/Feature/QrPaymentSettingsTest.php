@@ -58,12 +58,34 @@ class QrPaymentSettingsTest extends TestCase
     {
         $this->actor();
         $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 1])
-            ->assertUnprocessable();
+            ->assertUnprocessable()->assertJsonValidationErrors(['image', 'merchant_name', 'provider_name']);
         $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Maya', 'version' => 1];
         $this->postJson('/api/admin/qr-payments/settings', $payload)->assertUnprocessable();
         $this->post('/api/admin/qr-payments/settings', $payload + ['image' => $this->image()], ['Accept' => 'application/json'])
             ->assertUnprocessable();
         $this->assertDatabaseHas('qr_payment_settings', ['id' => 1, 'enabled' => false]);
+    }
+
+    public function test_incomplete_and_disabled_configuration_can_be_saved_without_becoming_available(): void
+    {
+        $this->actor();
+        $this->getJson('/api/admin/qr-payments/settings')->assertJsonPath('settings.status', 'not_ready');
+        $saved = $this->post('/api/admin/qr-payments/settings', [
+            'enabled' => false, 'version' => 1, 'image' => $this->image(), 'official_qr_confirmed' => true,
+        ], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('settings.status', 'not_ready')
+            ->assertJsonPath('settings.missing_fields', ['merchant_name', 'provider_name']);
+        $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 2, 'merchant_name' => 'Bethlehem'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['provider_name']);
+        $this->assertDatabaseHas('qr_payment_settings', ['version' => 2, 'enabled' => false]);
+        $this->postJson('/api/admin/qr-payments/settings', [
+            'enabled' => false, 'version' => 2, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank',
+        ])->assertOk()->assertJsonPath('settings.status', 'disabled')->assertJsonPath('settings.missing_fields', []);
+        $this->actor('staff');
+        $this->getJson('/api/admin/qr-payments/config')->assertExactJson(['settings' => ['enabled' => false]]);
+        $this->actor();
+        $this->postJson('/api/admin/qr-payments/settings', [
+            'enabled' => true, 'version' => 3, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank',
+        ])->assertOk()->assertJsonPath('settings.status', 'enabled')->assertJsonPath('message', 'QR Payments enabled');
     }
 
     public function test_private_image_and_versioned_settings_survive_reloads_replace_and_disable(): void

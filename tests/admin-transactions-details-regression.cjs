@@ -56,7 +56,7 @@ assert.equal(context.document.body.style.overflow, "auto");
 assert.equal(ui.selectedTransaction, null);
 ui.printInvoice();
 assert.equal(printed, 1, "Printing requires a selected transaction");
-const qrTransaction = { ...tx, id: 3, paymentMethod: 'qrph', paymentMethodLabel: 'QR Ph',
+const qrTransaction = { ...tx, id: 3, paymentMethod: 'qrph', paymentMethodLabel: 'QR Payment',
   qrPayment: {external_reference: 'BANK123456', verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:00:00'} };
 ui.openDetails(qrTransaction, {focus() {}});
 assert.equal(ui.selectedTransaction.qrPayment.external_reference, 'BANK123456');
@@ -64,7 +64,7 @@ assert.equal(ui.receiptModal, null, 'New QR payments must not build printable in
 ui.printInvoice();
 assert.equal(printed, 1, 'QR payments cannot print through the shared Cash invoice');
 ui.closeDetails();
-const legacyQr = {...tx, paymentMethod: 'qrph', paymentMethodLabel: 'QR Ph', isTest: true};
+const legacyQr = {...tx, paymentMethod: 'qrph', paymentMethodLabel: 'QR Payment', isTest: true};
 ui.openDetails(legacyQr, {focus() {}});
 assert.equal(ui.receiptModal.finalPrice, 2010, 'Historical gateway records retain their existing invoice behavior');
 context.window.PaymentInvoice.print = () => printed++;

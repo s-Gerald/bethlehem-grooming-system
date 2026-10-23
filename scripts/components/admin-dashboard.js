@@ -3250,7 +3250,7 @@ function adminDashboard() {
       };
       const modal = this.paymentModal;
       try {
-        const {createQrPayment} = await import('./qr-payment.js?v=qrph-20261023');
+        const {createQrPayment} = await import('./qr-payment.js?v=20261023-account-verification');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
         modal.qr = createQrPayment();
         await modal.qr.load();
@@ -4014,7 +4014,7 @@ function adminDashboard() {
     },
 
     printReceipt() {
-      if (this.receiptModal.qrPayment || this.receiptModal.paymentMethod === 'QR Ph') return;
+      if (this.receiptModal.qrPayment || this.receiptModal.paymentMethod === 'QR Payment') return;
       window.PaymentInvoice.print();
     },
 

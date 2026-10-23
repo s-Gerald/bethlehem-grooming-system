@@ -46,7 +46,7 @@ class GatewayPayment extends Model
     public static function labelFor(?string $method): string
     {
         return match ($method) {
-            'qrph' => 'QR Ph', 'gcash' => 'GCash', 'paymaya', 'maya' => 'Maya',
+            'qrph' => 'QR Payment', 'gcash' => 'GCash', 'paymaya', 'maya' => 'Maya',
             'card' => 'Card', 'online' => 'Online Payment', default => ucfirst($method ?? 'cash'),
         };
     }

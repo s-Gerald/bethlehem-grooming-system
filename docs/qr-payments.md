@@ -1,6 +1,87 @@
-# Grooming QR Ph implementation report
+# Grooming QR Payment implementation report
 
 Implemented October 23, 2026. QR collection is available in Grooming final payments and Pay Now. Cash remains the default. Clinic and POS collection are unchanged.
+
+## Receiving-account verification simplification
+
+The Grooming payment form no longer contains **Verified using**, **Transaction History** or **Payment Notification** choices. The selector, source-selection state, validation error, change handler and outgoing `verification_source` field were removed. The remaining fields use the existing spacing without replacement controls or helper text. **Verified in the clinic's receiving account** remains mandatory; OCR never checks it automatically. The QR image, amount, optional image/PDF receipt uploads, drop/paste, editable extraction, manual entry and administrator exception remain unchanged.
+
+`QrPaymentVerificationService` no longer requires or validates a client source choice. Newly verified payments record `receiving_history` explicitly on the server, representing staff's required check of the actual receiving-account transaction. The controller passes only validated inputs and the service ignores client source values, including legacy notification values or malformed values. Source input cannot substitute for the required `qr_verified` acknowledgment, reference, actual transaction time, exact amount, authorization or payment eligibility. Settlement, locks and duplicate protection are unchanged.
+
+The `verification_source` column, migrations, models and historical read-only source display were retained. Older `merchant_notification` and `receiving_history` entries remain readable with their original audit metadata; no data backfill or migration is needed.
+
+Files changed for this simplification: `pages/admin/appointments.html`, `scripts/components/qr-payment.js`, `scripts/components/admin-dashboard.js`, `app/Services/QrPaymentVerificationService.php`, `tests/Feature/GroomingPaymentPriceSafetyTest.php`, `tests/Feature/PaymentSchemaCompatibilityTest.php`, `tests/Feature/TransactionHistorySearchTest.php`, `tests/qr-payment-ocr-regression.mjs`, `tests/admin-grooming-invoice-print-regression.cjs`, and this report. No files, dependencies or migrations were added or deleted. Existing dirty changes from the preceding UX implementation were preserved.
+
+Existing regressions now submit early/final payments without a source field, assert the canonical server value, ignore tampered source inputs, require account acknowledgment, and read both historical source values without rewriting them. The existing multi-pet, product/stock, Cash, duplicate-reference, duplicate-submission, authorization and overlapping-process concurrency cases run with the simplified payload. Frontend checks cover the absent selector/state/payload field, required checkbox and existing real OCR/image/PDF upload behavior. No additional queries, API requests, listeners, polling or dependencies were introduced; OCR loading, configuration reads and data-cache invalidation are unchanged. Only the changed Grooming script/module URLs were versioned for deployment cache freshness.
+
+The current dashboard was opened and visually inspected in the ChatGPT browser without navigation or data entry. Practical payment/receipt uploads, OTP/password-reset workflows and real account verification were left to the user. Application databases, private environment files, commits and deployment were untouched.
+
+Validation for this simplification: PHP 8.4 `php artisan test --compact` passed **1,485 tests / 19,917 assertions**, with 8 existing opt-in skips. The focused QR/Grooming/schema/history/amount suite passed **89 tests / 1,805 assertions**, including authorization and isolated concurrent-confirmation coverage. `npm test` passed **75/75 scripts** and `npm run build` passed. JavaScript syntax and diff whitespace checks passed. No new test files replaced existing coverage. The concurrency fixture uses owned temporary SQLite storage; MySQL/Hostinger concurrency was not newly certified for this UI cleanup. Existing non-blocking Browserslist/Node VM notices and the deliberate corrupt-PDF fixture notice remain. No known failing checks remain. Logs: `storage/logs/qr-verification-php-tests.log`, `storage/logs/qr-verification-npm-tests.log`, and `storage/logs/qr-verification-build.log`.
+
+## QR Payment UX and upload follow-up
+
+The existing Grooming Record Payment modal now keeps the service breakdown, totals, add-ons, early/final collection, sticky header/footer and single scrollable body. QR collection shows the official image and amount due, followed by a collapsed **Scan Payment Details** control, Transaction Reference, Payment Date & Time, Amount Received and **Verified in the clinic's receiving account**. Administrator reference exceptions are inside **More Options**; Notes stays secondary. The ordinary recipient input was removed; extracted recipient information instead produces a mismatch warning. Amount Received is never initialized from Total Due, and OCR never acknowledges account verification.
+
+Receipt upload remains functional through browse, drop and clipboard paste. A selected-file indication and small image preview accompany progress, cancellation, success and manual-entry errors. Pasting opens the scan panel. PNG/JPEG/WebP use the existing local Tesseract engine without cropping. PDFs use full-page PDF.js rendering, loaded only for a selected PDF, with a 5 MB file limit, two-page limit, at most four million rendered pixels per page, a 16-million-pixel embedded-image limit and the existing 90-second overall OCR deadline. Password-protected or unreadable files fall back to manual entry. Receipt bytes and recipient suggestions remain local; only reviewed transaction fields and existing verification metadata reach the API. Missing OCR fields preserve manual entries, while every extraction clears verification acknowledgments.
+
+Settings now has a styled browse/drop uploader, immediate source preview and an inline square crop editor. Cropper.js 1.6.2 and jsQR 1.4.0 load only when an administrator selects an image. A detected region suggests a crop; the administrator may zoom, reposition, reset, cancel, apply the crop or explicitly retain a readable suitable original. The approved result is previewed before Save. Crops must retain the detected code, decode successfully and retain a quiet zone; output is capped at 2048 pixels and 3 MB and rechecked after resizing. Suitable originals remain unchanged and must satisfy the existing server limits. A decoder establishes readability, not official ownership or payment-network eligibility; the receiving-account acknowledgment remains required for replacements. Cropper, object URLs, canvases and workers are released when done.
+
+The API now reports administrator configuration status as **Not Ready**, **Disabled** or **Enabled**, with concise missing-field identifiers. Disabled partial configurations can be saved. Activation with missing image, account name or bank/e-wallet returns errors for the individual fields without changing persisted settings. A complete disabled setup stays unavailable in Grooming. Successful saves use the returned settings/version and fetch the authenticated persisted image once; no redundant settings GET is added. Loading and saving share one reconciliation method that normalizes null account values to empty fields, preventing a later submission from turning missing information into the literal string `null`. A preview failure retains the committed version and cannot cause an old image/version to be resubmitted accidentally. Version-conflict protection and private server-side file validation remain intact.
+
+Active method, success and history labels now say **QR Payment**. The shared gateway label helper supplies the QR label. Database columns, `qrph` values, supported network behavior and historical financial relationships are unchanged. No Clinic/POS collection interface, schema change, gateway, bank integration, environment edit, commit or deployment was added.
+
+Validation performed for this follow-up:
+
+| Check | Result |
+| --- | --- |
+| PHP 8.4 `php artisan test --compact` | 1,476 passed, 8 existing opt-in skips; 19,871 assertions |
+| Final focused Settings/QR/Cash/pricing/schema/history/amount suite | 87 passed; 1,833 assertions |
+| Owned isolated MySQL/MariaDB QR runner | 57 passed; 1,010 assertions; temporary schema removal verified |
+| `npm test` | 75/75 regression scripts passed |
+| `npm run build` | Local payment asset packaging, Tailwind and Vite passed |
+| `npm audit --omit=dev` | Zero reported production dependency vulnerabilities |
+| Focused final OCR/crop/settings checks | Passed, including actual OCR on image-based PDF pages, crop decoding, cancellation and local URL cleanup |
+
+Existing test files were updated directly for labels, configuration status, per-field errors, disabled availability, version/image reconciliation, approved-result submission, cancel/invalid replacement, permissions, receipt drop/paste, manual fallback and cleanup. The new focused crop regression uses controlled QR pixels and an actual decoder to test square suggestions, output readability, quiet-zone preservation and rejection of unreadable/cut-off crops. Existing authorization, Cash, multi-pet early/final settlement, historical gateway/invoice, stock integrity, duplicate-reference/submission and overlapping-process regression coverage passed. The eight full-suite skips remain unrelated opt-in MySQL integrations; the existing QR concurrent-confirmation test uses isolated SQLite locking, so this report does not certify concurrency on Hostinger.
+
+No additional configuration requests, polling or global clipboard listeners were introduced. OCR, QR detection/cropping and PDF rendering stay out of ordinary page navigation and financial database transactions. Existing data fetching, caches and invalidation remain in place, and unchanged API script cache URLs were retained across pages. The new scoped stylesheet is loaded only by Grooming and Settings. Core Web Vitals were not measured. `npm test` now packages ignored local dependencies before running, so a clean dependency install does not rely on previously generated browser assets.
+
+Modified existing files for this follow-up:
+
+```text
+.gitignore
+app/Http/Controllers/PaymentController.php
+app/Http/Controllers/QrPaymentSettingController.php
+app/Models/GatewayPayment.php
+app/Models/QrPaymentSettings.php
+app/Services/QrPaymentVerificationService.php
+css/output.css
+docs/qr-payments.md
+package.json
+package-lock.json
+pages/admin/appointments.html
+pages/admin/settings.html
+pages/admin/transactions.html
+scripts/build-ocr-assets.mjs
+scripts/components/admin-dashboard.js
+scripts/components/admin-settings.js
+scripts/components/qr-payment.js
+scripts/services/payment-proof-ocr.js
+tests/Feature/GroomingPaymentPriceSafetyTest.php
+tests/Feature/PaymentSchemaCompatibilityTest.php
+tests/Feature/QrPaymentSettingsTest.php
+tests/Feature/TransactionHistorySearchTest.php
+tests/admin-grooming-invoice-print-regression.cjs
+tests/admin-grooming-settings-regression.cjs
+tests/admin-transactions-details-regression.cjs
+tests/qr-payment-ocr-regression.mjs
+```
+
+Added: `css/components/qr-payment.css`, `scripts/services/qr-image-editor.js`, `scripts/services/payment-receipt-pdf.js`, `tests/qr-image-editor-regression.mjs`, and `docs/superpowers/plans/2026-10-23-qr-payment-ux.md`. Removed files: none. The obsolete recipient input, native visible file controls, expanded exception controls and old active display labels were replaced in place. Generated/ignored assets now also include `scripts/vendor/qr-image/` and `scripts/vendor/pdf/`; `npm run build` packages these locally with their licenses. Future deployments must include these generated static assets alongside the existing OCR assets.
+
+Actual localhost navigation, real receipt/GCash image uploads, QR scanning on a payment device and real receiving-account verification were left to the user. No application/production records were modified or migrated; only owned test databases and fake storage were used. The existing corrected QR migration must be applied by the user if still pending; no new migration is required for this follow-up. Normal settings configuration still requires the official receiving image and identity, plus explicit activation. Known non-blocking notices are the existing Browserslist data warning, Node VM warning, PDF.js recovery notice for the deliberately invalid PDF fixture, and development dependency audit advisories. No known failing automated checks remain.
+
+The integration uses the upstream [Cropper.js v1 API](https://github.com/fengyuanchen/cropperjs/tree/v1) and [PDF.js document/render API](https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib.html). Earlier implementation and migration history follows; the interface, cropping and PDF behavior above supersedes the original UI description below.
 
 ## MySQL migration correction
 
@@ -41,7 +122,7 @@ Settings → QR Payments is available to administrators. It supports private ima
 
 Grooming loads configuration only when its payment modal opens. When configured and enabled, QR Ph appears beside Cash. Selecting it displays the uploaded QR, receiving identity, exact amount due, editable verification fields and Confirm QR Payment. Customers scan and pay in their own app; no website visit, second QR or screenshot submission is required.
 
-Staff enter the exact amount received, actual external reference, transaction date/time in Philippine time and official verification source, then explicitly acknowledge receipt of funds in the clinic's account. The server recalculates the total and rejects mismatches, unavailable/stale configuration, ineligible visits, unauthorized actors, missing acknowledgment and reused references.
+Staff check the actual receiving-account transaction, enter or scan the exact amount received, actual external reference and transaction date/time in Philippine time, then explicitly acknowledge receipt of funds in the clinic's account. The backend records the receiving-account source. The server recalculates the total and rejects mismatches, unavailable/stale configuration, ineligible visits, unauthorized actors, missing acknowledgment and reused references.
 
 References normalize to uppercase letters/numbers with spaces and hyphens removed. Database unique constraints protect references, payable relationships and the financial-record link. Booking and inventory locks are retained. Verification and existing settlement execute in the same transaction; failure rolls back prices, stock, payment and notifications.
 
@@ -114,7 +195,7 @@ OCR's generated distribution is approximately 20.6 MB across all engine variants
 
 The running dashboard was visually inspected in the ChatGPT browser. Existing blue accents, rounded surfaces, typography and control patterns were followed. Manual page navigation, payment entry, bank/account checks, OTP and password-reset testing were left to the user. The newly added UI has automated state/build coverage, but no claim of manual browser workflow verification is made.
 
-Image validation and administrator attestation do not prove bank ownership, decode/validate a QR Ph payment payload, or establish settlement. OCR is functional extraction, not verification of funds. Staff must use the actual receiving account or official merchant notification; bank app formats and recognition accuracy still require practical review. A reference-free exception cannot provide the same cross-payment identity guarantee as a unique official reference. Verification records have no editing endpoint; any later correction workflow must retain the original audit information.
+Image validation and administrator attestation do not prove bank ownership, decode/validate a QR Ph payment payload, or establish settlement. OCR is functional extraction, not verification of funds. Staff must check the actual transaction in the clinic's receiving account; bank app formats and recognition accuracy still require practical review. A reference-free exception cannot provide the same cross-payment identity guarantee as a unique official reference. Verification records have no editing endpoint; any later correction workflow must retain the original audit information.
 
 The build reports the existing outdated Browserslist database notice, and Node's VM tests print their experimental-module notice. Installing dependencies also reports development-tool vulnerabilities; the production-only OCR dependency audit is clean. No unrelated dependency upgrades were performed.
 

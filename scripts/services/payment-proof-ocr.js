@@ -54,17 +54,21 @@ function parseReceiptDate(text) {
 
 export async function recognizePaymentProof(file, onProgress = () => {}, signal) {
   if (signal?.aborted) throw new Error('OCR cancelled.');
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file?.type)) throw new Error('Select a PNG, JPEG or WebP image.');
-  if (file.size > 5 * 1024 * 1024) throw new Error('Select an image smaller than 5 MB.');
-  if (typeof createImageBitmap !== 'function') throw new Error('Image reading is unavailable in this browser. Enter the details manually.');
-  const bitmap = await createImageBitmap(file).catch(() => { throw new Error('This image could not be read. Select another image or enter the details manually.'); });
-  if (bitmap.width * bitmap.height > 16000000) { bitmap.close(); throw new Error('Use a screenshot no larger than 16 megapixels.'); }
-  bitmap.close();
+  const pdf = file?.type === 'application/pdf';
+  if (!pdf && !['image/png', 'image/jpeg', 'image/webp'].includes(file?.type)) throw new Error('Select a PNG, JPEG, WebP or PDF receipt.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('Select a receipt smaller than 5 MB.');
+  if (!pdf) {
+    if (typeof createImageBitmap !== 'function') throw new Error('Image reading is unavailable in this browser. Enter the details manually.');
+    const bitmap = await createImageBitmap(file).catch(() => { throw new Error('This image could not be read. Select another image or enter the details manually.'); });
+    if (bitmap.width * bitmap.height > 16000000) { bitmap.close(); throw new Error('Use a screenshot no larger than 16 megapixels.'); }
+    bitmap.close();
+  }
   if (signal?.aborted) throw new Error('OCR cancelled.');
   let worker, expired = false, timer, cancel;
+  const processing = new AbortController();
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => { expired = true; reject(new Error('OCR timed out. Retry with a clearer image or enter the details manually.')); }, 90000);
-    cancel = () => { expired = true; reject(new Error('OCR cancelled.')); };
+    timer = setTimeout(() => { expired = true; processing.abort(); reject(new Error('OCR timed out. Retry with a clearer image or enter the details manually.')); }, 90000);
+    cancel = () => { expired = true; processing.abort(); reject(new Error('OCR cancelled.')); };
     signal?.addEventListener('abort', cancel, {once: true});
   });
   try {
@@ -80,8 +84,9 @@ export async function recognizePaymentProof(file, onProgress = () => {}, signal)
         errorHandler: () => {},
       });
       if (expired) { await worker.terminate(); return; }
-      const { data } = await worker.recognize(file);
-      return parsePaymentReceipt(data.text);
+      const recognize = async image => { const {data} = await worker.recognize(image); return data.text; };
+      const text = pdf ? await (await import('./payment-receipt-pdf.js')).readPdfReceipt(file, recognize, processing.signal) : await recognize(file);
+      return parsePaymentReceipt(text);
     })()]);
     return result;
   } catch (error) {

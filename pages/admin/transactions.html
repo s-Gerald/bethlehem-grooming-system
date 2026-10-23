@@ -415,8 +415,8 @@
                       <div><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>External reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — administrator exception'"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Transaction time</dt><dd x-text="selectedTransaction.qrPayment.transaction_at"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Transaction Reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — administrator exception'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="selectedTransaction.qrPayment.transaction_at"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Receiving account</dt><dd x-text="selectedTransaction.qrPayment.merchant_name + ' · ' + selectedTransaction.qrPayment.provider_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Verified by</dt><dd x-text="selectedTransaction.qrPayment.verified_by_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Verified at</dt><dd x-text="selectedTransaction.qrPayment.verified_at"></dd></div></template>

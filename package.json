@@ -14,19 +14,25 @@
         "test:pet-weight-size": "node tests/pet-weight-size-regression.mjs && node --experimental-vm-modules tests/walk-in-pet-step-regression.mjs && node tests/clinic-subrole-workflow-regression.cjs",
         "test:clinic-roles": "node tests/clinic-subrole-workflow-regression.cjs && node tests/admin-clinic-vaccination-reconciliation-regression.cjs",
         "test:grooming-estimates": "node tests/grooming-estimates-regression.cjs && node tests/customer-dashboard-history-regression.cjs",
-        "test": "node tests/run-regressions.cjs"
+        "test": "npm run build:ocr && node tests/run-regressions.cjs"
     },
     "devDependencies": {
+        "@napi-rs/canvas": "1.0.13",
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
+        "esbuild": "0.28.2",
         "laravel-vite-plugin": "^2.0.0",
+        "qrcode": "1.5.4",
         "tailwindcss": "^4.0.0",
         "tailwindcss-v3": "npm:tailwindcss@3.4.19",
         "vite": "^7.0.7"
     },
     "dependencies": {
         "@tesseract.js-data/eng": "1.0.0",
+        "cropperjs": "1.6.2",
+        "jsqr": "1.4.0",
+        "pdfjs-dist": "6.4.299",
         "tesseract.js": "6.0.1"
     }
 }
