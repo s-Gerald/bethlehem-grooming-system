@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -219,7 +219,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
       <!-- Main Content -->
@@ -773,7 +773,7 @@
 
               <!-- Body -->
               <div x-ref="paymentModalBody" class="payment-modal-body px-6 py-5 space-y-4">
-                <fieldset :disabled="paymentModal.busy" class="min-w-0 space-y-4">
+                <fieldset :disabled="paymentModal.busy || !!paymentModal.onlinePayment" class="min-w-0 space-y-4">
                 <section>
                   <p class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Services &amp; Breakdown</p>
                   <!--
@@ -920,9 +920,8 @@
                     <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</p>
                     <div class="flex flex-wrap gap-3">
                       <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="cash" :checked="paymentModal.paymentMethod === 'cash'" @change="selectPaymentMethod('cash')" />Cash</label>
-                      <template x-for="method in (paymentModal.qr?.settings?.enabled ? paymentModal.qr.settings.accepted_methods : [])" :key="method">
-                        <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" :value="method" :checked="paymentModal.paymentMethod === 'qrph' && paymentModal.qr.paymentSource === method" @change="selectPaymentMethod(method)" /><span class="break-words" x-text="method"></span></label>
-                      </template>
+                      <label x-show="paymentModal.qr?.settings?.enabled && paymentModal.qr.settings.accepted_methods.length" class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="qrph" :checked="paymentModal.paymentMethod === 'qrph'" @change="selectPaymentMethod(paymentModal.qr.paymentSource || paymentModal.qr.settings.accepted_methods[0])" />QR Payment</label>
+                      <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="online" :checked="paymentModal.paymentMethod === 'online'" @change="selectPaymentMethod('online')" />Online Payment</label>
                     </div>
                     <p x-show="paymentModal.qr?.loading" role="status" class="mt-2 text-xs text-slate-500">Loading payment options…</p>
                     <p x-show="paymentModal.paymentMethod === 'cash' && paymentModal.qr?.error" class="mt-2 text-xs text-slate-500" x-text="paymentModal.qr?.error"></p>
@@ -950,6 +949,9 @@
                   </div>
                   <template x-if="paymentModal.qr && paymentModal.paymentMethod === 'qrph'">
                     <div class="space-y-4" x-effect="paymentModal.qr.setExpectedAmount(paymentTotalDue)" @paste="paymentModal.qr.paste($event)">
+                      <fieldset class="min-w-0"><legend class="text-xs font-semibold text-slate-600">Receiving provider</legend><div class="mt-2 flex flex-wrap gap-2">
+                        <template x-for="method in paymentModal.qr.settings.accepted_methods" :key="method"><label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-qr-provider" :value="method" :checked="paymentModal.qr.paymentSource === method" @change="selectPaymentMethod(method)" /><span x-text="method"></span></label></template>
+                      </div></fieldset>
                       <div class="rounded-2xl border border-[#d7e3ef] bg-[#f5f8fb] p-4 text-center">
                         <p class="font-semibold text-[#1f3850]" x-text="paymentModal.qr.settings?.merchant_name"></p>
                         <p x-show="paymentModal.qr.imageLoading" class="py-6 text-sm text-slate-500" role="status">Loading official QR…</p>
@@ -1016,6 +1018,14 @@
                 </div>
 
                 </fieldset>
+                <section x-show="paymentModal.onlinePayment" class="space-y-3" aria-live="polite">
+                  <p class="font-semibold text-[#2f4b66]" x-text="paymentModal.onlinePayment?.status === 'paid' ? 'Payment requires reconciliation' : paymentModal.verifying ? 'Verifying payment…' : 'Awaiting Online Payment'"></p>
+                  <div class="flex flex-wrap gap-3">
+                    <button x-show="paymentModal.onlinePayment?.checkout_url && paymentModal.onlinePayment?.status === 'pending'" type="button" @click="openGroomingCheckout()" :disabled="paymentModal.busy" class="qr-secondary">Open Checkout</button>
+                    <button x-show="paymentModal.onlinePayment?.status === 'pending'" type="button" @click="checkGroomingPaymentStatus()" :disabled="paymentModal.busy" class="qr-secondary">Check Status</button>
+                    <button x-show="paymentModal.onlinePayment?.status === 'pending'" type="button" @click="cancelOnlinePayment()" :disabled="paymentModal.busy" class="qr-secondary">Cancel Online Payment</button>
+                  </div>
+                </section>
                 <p x-show="paymentModal.error" role="alert" class="text-sm text-red-600" x-text="paymentModal.error"></p>
               </div>
 
@@ -1031,11 +1041,12 @@
                 <button
                   type="button"
                   @click="submitPayment()"
+                  x-show="!paymentModal.onlinePayment"
                   :disabled="!canSubmitPayment"
                   class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white transition btn-confirm-payment"
                   :class="!canSubmitPayment ? 'opacity-50 cursor-not-allowed' : ''"
                 >
-                  <span x-text="paymentModal.busy ? 'Processing...' : 'Confirm ' + paymentMethodLabel + ' Payment'"></span>
+                  <span x-text="paymentModal.busy ? 'Processing...' : paymentModal.paymentMethod === 'online' ? 'Create Online Payment' : 'Confirm ' + paymentMethodLabel + ' Payment'"></span>
                 </button>
               </div>
             </div>
@@ -1548,7 +1559,7 @@
     ></script>
 
 
-    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=cash-only-20261023"></script>
+    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=combined-20261023&gateway=20261023-combined"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261020-2"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261020-3"></script>
@@ -1563,9 +1574,10 @@
     </script>
 
     <!-- Shared dashboard content script -->
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023"></script>
+    <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined"></script>
   </body>
 </html>

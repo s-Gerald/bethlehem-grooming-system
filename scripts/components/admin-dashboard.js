@@ -639,6 +639,7 @@ function adminDashboard() {
 
       this.startContentPolling();
       await this.loadAdminBookings({ force: false });
+      await this.restoreGroomingOnlinePayment();
     },
 
     startContentPolling() {
@@ -662,12 +663,14 @@ function adminDashboard() {
 
     destroy() {
       this._destroyed = true;
+      this.stopOnlinePaymentPoll();
       this._bookingRevision++;
       clearInterval(this._bookingInterval);
       this._bookingInterval = null;
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
+      this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
       this.paymentModal.qr?.dispose();
     },
@@ -3165,6 +3168,7 @@ function adminDashboard() {
     // ── Payment ───────────────────────────────────────────────────────────────
 
     get paymentTotalDue() {
+      if (this.paymentModal.onlinePayment) return Number(this.paymentModal.onlinePayment.amount);
       return this.paymentServicesTotal + this.paymentProductsTotal;
     },
 
@@ -3196,18 +3200,18 @@ function adminDashboard() {
 
     get canSubmitPayment() {
       return (
-        !this.paymentModal.busy &&
+        !this.paymentModal.busy && !this.paymentModal.onlinePayment &&
         this.paymentModal.petBreakdown.length > 0 &&
         this.paymentTotalDue > 0 &&
         !this.hasMissingPaymentPrices() &&
         !this.getInvalidPaymentLine() &&
-        (this.paymentModal.paymentMethod === 'qrph'
+        (this.paymentModal.paymentMethod === 'online' || (this.paymentModal.paymentMethod === 'qrph'
           ? this.paymentModal.qr && !this.paymentModal.qr.validationError(this.paymentTotalDue)
-          : !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue))
+          : !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue)))
       );
     },
 
-    async openPaymentModal(booking, isEarlyPayment = false) {
+    async openPaymentModal(booking, isEarlyPayment = false, attemptId = null, restoredResponse = null) {
       if (this.paymentModal.open) return;
       if (!isEarlyPayment && booking?.paymentReady === false) {
         alert(booking?.paymentBlockedReason || "This visit is not ready for final payment.");
@@ -3229,7 +3233,7 @@ function adminDashboard() {
       if (!this.paymentModal.open) return;
       const petBreakdown = this.buildPaymentBreakdown(booking, { lockFixedPrices: true });
       this.paymentModal = {
-        paymentMethod: 'cash',
+        paymentMethod: 'cash', onlinePayment: null, verifying: false,
         qr: null,
         open: true,
         booking,
@@ -3249,6 +3253,14 @@ function adminDashboard() {
         error: "",
       };
       const modal = this.paymentModal;
+      modal.busy = true;
+      try {
+        await this.applyOnlinePaymentStatus(restoredResponse || await API.groomingOnlinePaymentStatus(booking.id, attemptId));
+      } catch (error) {
+        modal.error = error.message || 'Could not check active payments. Reopen this payment to retry.';
+        return;
+      } finally { if (this.paymentModal === modal) modal.busy = false; }
+      if (!modal.open || this.paymentModal !== modal || modal.onlinePayment) return;
       try {
         const {createQrPayment} = await import('./qr-payment.js?v=20261023-inline-errors');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
@@ -3260,11 +3272,12 @@ function adminDashboard() {
     },
 
     get paymentMethodLabel() {
-      return this.paymentModal.paymentMethod === 'qrph' ? this.paymentModal.qr?.paymentSource || 'QR Payment' : 'Cash';
+      return this.paymentModal.paymentMethod === 'online' ? 'Online Payment' : this.paymentModal.paymentMethod === 'qrph' ? this.paymentModal.qr?.paymentSource || 'QR Payment' : 'Cash';
     },
     selectPaymentMethod(method) {
       const modal = this.paymentModal;
-      if (modal.busy) return;
+      if (modal.busy || modal.onlinePayment) return;
+      if (method === 'online') { modal.qr?.cancelScan?.(); modal.paymentMethod = 'online'; modal.error = ''; return; }
       const cash = method === 'cash';
       if (!cash && (!modal.qr?.settings?.enabled || !modal.qr.settings.accepted_methods.includes(method))) return;
       modal.paymentMethod = cash ? 'cash' : 'qrph';
@@ -3275,10 +3288,11 @@ function adminDashboard() {
 
     closePaymentModal(force = false) {
       if (this.paymentModal.busy && !force) return;
+      this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
       this.paymentModal.qr?.dispose();
       this.paymentModal = {
-        paymentMethod: 'cash', qr: null,
+        paymentMethod: 'cash', qr: null, onlinePayment: null, verifying: false,
         open: false, booking: null, isEarlyPayment: false,
         finalPrice: "", petBreakdown: [], products: [], showProductSearch: false,
         productQuery: "", productResults: [], productSearchError: "", scannerActive: false, _scanner: null,
@@ -3890,7 +3904,7 @@ function adminDashboard() {
     },
 
     async submitPayment() {
-      if (this.paymentModal.busy) return;
+      if (this.paymentModal.busy || this.paymentModal.onlinePayment) return;
       const modal = this.paymentModal;
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = Number(this.paymentTotalDue.toFixed(2));
@@ -3917,7 +3931,7 @@ function adminDashboard() {
         this.paymentModal.error = "Please enter service prices before confirming payment.";
         return;
       }
-      const cashError = paymentMethod === 'qrph'
+      const cashError = paymentMethod === 'online' ? '' : paymentMethod === 'qrph'
         ? modal.qr?.validationError(fp) || (!modal.qr ? 'QR payments are unavailable.' : '')
         : window.CashPayment.error(amountPaid, fp);
       if (cashError) {
@@ -3941,7 +3955,7 @@ function adminDashboard() {
       try {
         const payload = {
           final_price:     fp,
-          amount_paid:     ap,
+          ...(paymentMethod !== 'online' ? {amount_paid: ap} : {}),
           payment_method:  paymentMethod,
           notes:           notes || null,
           service_prices:  servicePrices,
@@ -3950,6 +3964,17 @@ function adminDashboard() {
           ...(paymentMethod === 'qrph' ? modal.qr.payload() : {}),
         };
         if (paymentMethod === 'qrph' && modal.qr.receiptFile) payload.receipt = modal.qr.receiptFile;
+        if (paymentMethod === 'online') {
+          window.OnlinePayment.remember('grooming', {}, booking.id);
+          const response = await API.createGroomingOnlinePayment(booking.id, {...payload, flow: isEarlyPayment ? 'early' : 'final'});
+          if (this.paymentModal !== modal || !modal.open) return;
+          if (response.success === false || !['pending', 'paid'].includes(response.online_payment?.status)) {
+            throw new Error(response.message || 'Unable to create online payment. Check its status before retrying.');
+          }
+          await this.applyOnlinePaymentStatus(response);
+          if (response.online_payment?.status === 'pending') this.openGroomingCheckout();
+          return;
+        }
         const res = isEarlyPayment
           ? await API.payNow(booking.id, payload)
           : await API.processPayment(booking.id, payload);
@@ -3957,6 +3982,12 @@ function adminDashboard() {
         await this.completeGroomingPayment(res);
       } catch (err) {
         if (this.paymentModal !== modal || !modal.open) return;
+        if (paymentMethod === 'online') {
+          try {
+            await this.applyOnlinePaymentStatus(await API.groomingOnlinePaymentStatus(booking.id));
+            if (modal.onlinePayment) return;
+          } catch { /* Preserve the original failure; the saved identity supports recovery. */ }
+        }
         const {external_reference: referenceErrors, ...otherErrors} = err.errors || {};
         const referenceError = [referenceErrors].flat().filter(Boolean).join(' ');
         if (paymentMethod === 'qrph' && referenceError) {
@@ -3994,6 +4025,7 @@ function adminDashboard() {
       ) / 100;
       const groomingSubtotal = (Math.round(finalPrice * 100) - Math.round(productsSubtotal * 100)) / 100;
 
+      window.OnlinePayment?.clear('grooming');
       this.closePaymentModal(true);
       this.receiptModal = {
         open: true,
@@ -4013,8 +4045,8 @@ function adminDashboard() {
         groomingSubtotal,
         productsSubtotal,
         finalPrice,
-        amountPaid:    Number(res.amount_paid ?? ap),
-        change:        res.change ?? (ap - fp),
+        amountPaid:    paymentMethod === 'online' ? null : Number(res.amount_paid ?? ap),
+        change:        paymentMethod === 'online' ? null : res.change ?? (ap - fp),
         paymentMethod: res.payment_method_label ?? (res.payment_method === "cash" ? "Cash" : res.payment_method ?? paymentMethod),
         qrPayment: res.qr_payment || null,
         notes:         res.notes ?? notes ?? "",
@@ -4032,6 +4064,118 @@ function adminDashboard() {
 
     formatQrDate(value) {
       return window.PaymentInvoice.formatPaymentDateTime(value);
+    },
+
+    stopOnlinePaymentPoll() {
+      this._groomingPaymentWatch?.stop();
+      this._groomingPaymentWatch = null;
+    },
+
+    scheduleOnlinePaymentPoll() {
+      const modal = this.paymentModal;
+      if (this._groomingPaymentWatch || !modal.open || modal.onlinePayment?.status !== 'pending') return;
+      this._groomingPaymentWatch = window.OnlinePayment.watch({
+        load: () => API.groomingOnlinePaymentStatus(modal.booking.id, modal.onlinePayment.id),
+        apply: response => this.applyOnlinePaymentStatus(response),
+        error: error => {modal.error = error.message || 'Could not check payment.';},
+        active: () => this.paymentModal === modal && modal.open && !this._destroyed && modal.onlinePayment?.status === 'pending',
+        exhausted: () => {modal.error = 'Payment is still unconfirmed. Check Status to continue; the checkout remains held.';},
+      });
+      this._groomingPaymentWatch.start();
+    },
+
+    async checkGroomingPaymentStatus() {
+      if (this.paymentModal.busy) return;
+      this.stopOnlinePaymentPoll();
+      this.scheduleOnlinePaymentPoll();
+      await this._groomingPaymentWatch?.check();
+    },
+
+    async applyOnlinePaymentStatus(response) {
+      const attempt = response.online_payment;
+      if (attempt?.status === "paid") {
+        this.stopOnlinePaymentPoll();
+        this.paymentModal.onlinePayment = attempt;
+        this.paymentModal.paymentMethod = "online";
+        this.paymentModal.isEarlyPayment = attempt.flow === "early";
+        if (attempt.reconciliation_reason || !response.payment) {
+          this.paymentModal.error = 'Payment received. Contact an administrator for reconciliation.';
+          return;
+        }
+        await this.completeGroomingPayment(response.payment);
+      } else if (attempt?.status === "pending") {
+        if (response.checkout_summary?.pets) {
+          const modal = this.paymentModal;
+          modal.notes = response.checkout_notes ?? modal.notes;
+          modal.checkoutDraft ||= {pets: modal.petBreakdown, products: modal.products};
+          modal.petBreakdown = this.normalizePaymentPets({pets: response.checkout_summary.pets.map(pet => ({
+            ...pet, species: pet.pet_species, confirmed_size: pet.confirmed_size,
+          }))}).map((pet, index) => ({...pet, isSizeEditing: false,
+            lines: (response.checkout_summary.pets[index].service_breakdown || []).map(line => ({
+              id: line.booking_service_id, bookingServiceId: line.booking_service_id, name: line.label,
+              amount: line.price_at_booking, pricingType: 'fixed', isFixedPriceLocked: true,
+              priceHint: this.formatPeso(line.price_at_booking), description: '', priceTouched: false,
+            })),
+          }));
+          modal.products = (response.checkout_products || []).map(line => ({
+            item_id: line.item_id, name: line.name, quantity: line.quantity, price: line.priceCents / 100,
+          }));
+        }
+        window.OnlinePayment?.remember('grooming', attempt, this.paymentModal.booking.id);
+        this.paymentModal.onlinePayment = attempt;
+        this.paymentModal.paymentMethod = "online";
+        this.paymentModal.isEarlyPayment = attempt.flow === "early";
+        this.paymentModal.error = attempt.reconciliation_reason
+          ? "Checkout creation needs reconciliation. Contact an administrator." : "";
+        this.scheduleOnlinePaymentPoll();
+      } else {
+        this.stopOnlinePaymentPoll();
+        if (this.paymentModal.checkoutDraft) {
+          this.paymentModal.petBreakdown = this.paymentModal.checkoutDraft.pets;
+          this.paymentModal.products = this.paymentModal.checkoutDraft.products;
+          this.paymentModal.checkoutDraft = null;
+        }
+        this.paymentModal.onlinePayment = null;
+        this.paymentModal.verifying = false;
+        window.OnlinePayment?.clear('grooming');
+        this.paymentModal.error = ({failed: 'Checkout could not be created. Try again.', cancelled: 'Online payment cancelled.', expired: 'Checkout expired. Choose a payment method to retry.'})[attempt?.status] || '';
+      }
+    },
+
+    openGroomingCheckout() {
+      window.OnlinePayment?.open('grooming', this.paymentModal.onlinePayment, this.paymentModal.booking.id);
+    },
+    async restoreGroomingOnlinePayment() {
+      const saved = window.OnlinePayment?.get('grooming');
+      if (!saved?.payable) return;
+      try {
+        const response = await API.groomingOnlinePaymentStatus(saved.payable, saved.id);
+        const booking = [this.incomingList, this.queuedList, this.inProgressList, this.forPaymentList, this.releasedList]
+          .flat().find(item => String(item?.id) === String(saved.payable)) || response.booking;
+        if (!booking) throw new Error('Payment context could not be restored.');
+        await this.openPaymentModal({...booking, paymentReady: true}, response.online_payment?.flow === 'early', saved.id, response);
+        if (this.paymentModal.open) {
+          this.paymentModal.verifying = saved.outcome === 'success';
+          if (saved.outcome === 'cancel' && this.paymentModal.onlinePayment?.status === 'pending') await this.cancelOnlinePayment();
+        }
+      } catch (error) {
+        this.paymentModal.open = true; this.paymentModal.error = error.message || 'Could not restore payment. Reopen this payment to retry.';
+      }
+    },
+
+    async cancelOnlinePayment() {
+      if (this.paymentModal.busy) return;
+      this.stopOnlinePaymentPoll();
+      this.paymentModal.busy = true;
+      try {
+        const response = await API.cancelGroomingOnlinePayment(this.paymentModal.booking.id);
+        await this.applyOnlinePaymentStatus(response);
+      } catch (error) {
+        this.paymentModal.error = error.message || "Online payment is still pending.";
+      } finally {
+        this.paymentModal.busy = false;
+        if (this.paymentModal.open && this.paymentModal.onlinePayment?.status === "pending") this.scheduleOnlinePaymentPoll();
+      }
     },
 
     closeReceiptModal() {

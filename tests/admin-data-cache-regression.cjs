@@ -195,6 +195,8 @@ async function scopedMutationInvalidation() {
     ['/admin/bookings/1/mark-done', [5,7,8]], ['/admin/clinic-appointments/1/finish', [2,3,4,6,7,8]],
     ['/admin/bookings/1/pay', [2,3,4,5,7,8]], ['/admin/clinic-appointments/1/pay', [2,3,4,6,7,8]],
     ['/pos/validate-cart', []],
+    ['/admin/bookings/1/online-payment', [2,3,4,5]], ['/pos/online-payment', [2,3,4]],
+    ['/admin/clinic-appointments/1/online-payment', [6]],
   ]) {
     const e = environment();
     for (const key of keys) await e.API.adminRequest('GET', key);
@@ -209,6 +211,36 @@ async function scopedMutationInvalidation() {
     keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), mutation + ' invalidates precisely ' + key));
   }
 }
+async function onlineSettlementInvalidation() {
+  const keys = ['/inventory/items?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count'];
+  for (const [endpoint, affected, receipt] of [
+    ['/admin/bookings/1/online-payment', [0, 1, 3], {payment: {product_addons: [{itemName: 'Treats'}]}}],
+    ['/admin/clinic-appointments/1/online-payment', [0, 2, 3], {appointment: {paid: true}}],
+    ['/pos/online-payment/1', [0], {receipt: {pos_id: 1}}],
+  ]) {
+    const e = environment();
+    for (const key of keys) await e.API.adminRequest('GET', key);
+    e.respond(() => ({online_payment: {status: 'pending'}}));
+    await e.API.adminRequest('GET', endpoint); await e.API.adminRequest('GET', endpoint);
+    assert.equal(e.calls.filter(call => call.endpoint === endpoint).length, 2, 'Payment status must never use presentation cache');
+    for (const key of keys) assert.ok(e.API.readAdminCache(key), 'Pending status preserves unrelated cached presentation');
+    e.respond(() => ({online_payment: {status: 'paid'}, ...receipt}));
+    await e.API.adminRequest('GET', endpoint);
+    keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), 'Settlement invalidates precisely ' + key));
+  }
+  for (const endpoint of ['/admin/bookings/1/online-payment', '/pos/online-payment/1']) {
+    const e = environment(), inventory = '/inventory/items?page=1';
+    await e.API.adminRequest('GET', inventory);
+    e.respond(() => ({online_payment: {id: 1, status: 'expired'}}));
+    await e.API.adminRequest('GET', endpoint);
+    assert.equal(e.API.readAdminCache(inventory), null, 'Confirmed expiry refreshes released stock availability');
+  }
+  const e = environment(), inventory = '/inventory/items?page=1';
+  await e.API.adminRequest('GET', inventory);
+  e.respond(() => response({online_payment: {id: 1, status: 'pending'}}, 502));
+  await assert.rejects(e.API.adminRequest('POST', '/pos/online-payment', {}));
+  assert.equal(e.API.readAdminCache(inventory), null, 'An uncertain creation response can still own a stock hold');
+}
 async function inventoryReadMutationRace() {
   const e=environment(), old=deferred(), key='/inventory/items?page=1';
   e.respond(()=>old.promise); const a=e.API.adminRequest('GET',key), b=e.API.adminRequest('GET',key);
@@ -220,4 +252,4 @@ async function inventoryReadMutationRace() {
 }
 if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
   await test(); console.log(test.name+' passed');
-} for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, inventoryReadMutationRace]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });
+} for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, onlineSettlementInvalidation, inventoryReadMutationRace]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });

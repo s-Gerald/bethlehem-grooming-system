@@ -30,7 +30,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=cash-only-20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -120,7 +120,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=cash-only-20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
       <!-- Main -->
@@ -368,21 +368,35 @@
                     <p x-show="!payment.case?.charges?.length" class="text-sm text-slate-500">No chargeable items recorded.</p>
                   </section>
                   <div class="payment-total-due"><span>Total Due</span><strong x-text="money(paymentTotalDue)"></strong></div>
-                  <div><p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</p><p class="text-sm font-semibold text-[#2f4b66]">Cash</p></div>
-                  <div class="grid gap-4 sm:grid-cols-2">
+                  <fieldset x-show="!payment.online" :disabled="payment.saving || !!payment.online">
+                    <legend class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</legend>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <label class="flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold" :class="payment.method === 'cash' ? 'border-[#315b7e] bg-[#eef5fb] text-[#315b7e]' : 'border-slate-200 text-slate-700'"><input type="radio" name="clinic-payment-method" value="cash" x-model="payment.method" class="accent-[#315b7e]" />Cash</label>
+                      <label class="flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold" :class="payment.method === 'online' ? 'border-[#315b7e] bg-[#eef5fb] text-[#315b7e]' : 'border-slate-200 text-slate-700'"><input type="radio" name="clinic-payment-method" value="online" x-model="payment.method" class="accent-[#315b7e]" /><span>Online Payment</span></label>
+                    </div>
+                  </fieldset>
+                  <div x-show="payment.method === 'cash' && !payment.online" class="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label for="clinic-cash-received" class="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Cash Received</label>
-                      <input id="clinic-cash-received" type="number" inputmode="decimal" step="0.01" :min="paymentTotalDue" :max="paymentMaximumAmount" required x-model="payment.amountPaid" @input="updatePaymentCash()" @blur="payment.touched = true" :disabled="payment.saving" :aria-invalid="payment.touched && !!paymentCashError" aria-describedby="clinic-cash-help clinic-cash-error" class="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm tabular-nums disabled:opacity-60" :class="payment.touched && paymentCashError ? 'border-red-400' : ''" placeholder="0.00" />
+                      <input id="clinic-cash-received" type="number" inputmode="decimal" step="0.01" :min="paymentTotalDue" :max="paymentMaximumAmount" :required="payment.method === 'cash' && !payment.online" x-model="payment.amountPaid" @input="updatePaymentCash()" @blur="payment.touched = true" :disabled="payment.saving || payment.method !== 'cash' || !!payment.online" :aria-invalid="payment.touched && !!paymentCashError" aria-describedby="clinic-cash-help clinic-cash-error" class="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm tabular-nums disabled:opacity-60" :class="payment.touched && paymentCashError ? 'border-red-400' : ''" placeholder="0.00" />
                       <p id="clinic-cash-help" class="mt-1 text-xs text-slate-500" x-text="'Maximum ' + money(paymentMaximumAmount)"></p>
                       <p id="clinic-cash-error" x-show="payment.touched && paymentCashError" class="mt-1 text-xs text-red-600" role="alert" x-text="paymentCashError"></p>
                     </div>
                     <div class="rounded-xl bg-slate-50 px-4 py-3"><p class="text-xs font-bold uppercase tracking-wide text-slate-500">Change</p><p class="mt-2 text-2xl font-bold tabular-nums text-[#2f4b66]" aria-live="polite" x-text="money(paymentChange)"></p></div>
                   </div>
+                  <section x-show="payment.online" class="space-y-3" aria-live="polite">
+                    <h4 class="font-semibold text-[#2f4b66]" x-text="payment.verifying ? 'Verifying payment…' : 'Awaiting Online Payment'"></h4>
+                    <div class="flex flex-wrap gap-3">
+                      <button x-show="payment.online?.checkout_url && payment.online?.status === 'pending'" type="button" @click="openClinicCheckout()" :disabled="payment.saving" class="rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Open Checkout</button>
+                      <button x-show="payment.online?.status === 'pending'" type="button" @click="checkClinicPaymentStatus()" :disabled="payment.saving" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-50">Check Status</button>
+                      <button x-show="payment.online?.status === 'pending'" type="button" @click="cancelClinicOnlinePayment()" :disabled="payment.saving" class="text-sm font-semibold text-red-600 disabled:opacity-50">Cancel Online Payment</button>
+                    </div>
+                  </section>
                   <p x-show="payment.error" class="text-sm text-red-600" role="alert" x-text="payment.error"></p>
                 </div>
                 <footer class="receipt-modal-actions flex flex-wrap justify-end gap-3 border-t border-slate-200 px-6 py-4">
-                  <button type="button" @click="closePayment()" :disabled="payment.saving" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-                  <button type="submit" :disabled="!canConfirmPayment" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864] disabled:cursor-not-allowed disabled:opacity-50" x-text="payment.saving ? 'Processing…' : 'Confirm Payment'"></button>
+                  <button type="button" @click="closePayment()" :disabled="payment.saving" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50" x-text="payment.online ? 'Close' : 'Cancel'"></button>
+                  <button type="submit" x-show="!payment.online" :disabled="!canConfirmPayment" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#274864] disabled:cursor-not-allowed disabled:opacity-50" x-text="payment.saving ? 'Processing…' : payment.method === 'online' ? 'Create Online Payment' : 'Confirm Payment'"></button>
                 </footer>
               </form>
             </template>
@@ -1681,12 +1695,13 @@
     <script src="../../scripts/services/admin-notification-service.js?v=20261020-2"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261020-3"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=cash-only-20261023"></script>
+    <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared"></script>
 
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=cash-only-20261023&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019"></script>
+    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
     <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019"></script>

@@ -63,7 +63,7 @@ class PosTransaction extends Model
             'reference' => self::referenceFor($this->pos_id),
             'transaction_type' => 'product_sale',
             'payment_method' => $this->payment_method ?? 'cash',
-            'payment_method_label' => GatewayPayment::labelFor($this->payment_method ?? 'cash'),
+            'payment_method_label' => $this->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($this->payment_method ?? 'cash'),
             'is_test' => $this->gatewayPayment ? ! $this->gatewayPayment->livemode : false,
             'cashier_id' => $this->cashier_id,
             'cashier_name' => $this->cashier

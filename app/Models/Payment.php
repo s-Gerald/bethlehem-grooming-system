@@ -94,6 +94,7 @@ class Payment extends Model
 
     public function methodLabel(): string
     {
+        if ($this->gateway_payment_id !== null) return 'Online Payment';
         if ($this->payment_method === 'qrph') {
             $source = $this->relationLoaded('qrPayment') ? $this->qrPayment?->payment_source : null;
             return $source !== null && trim($source) !== '' ? $source : 'QR Payment';

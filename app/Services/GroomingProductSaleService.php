@@ -97,4 +97,18 @@ class GroomingProductSaleService
         $this->movements->remove($actor, $entries);
     }
 
+    /** Recheck stock under lock while retaining the exact charged prices and names. */
+    public function prepareFrozen(array $frozen): array
+    {
+        [$lines] = $this->prepare($frozen);
+        $snapshots = collect($frozen)->keyBy('item_id');
+        foreach ($lines as &$line) {
+            $snapshot = $snapshots->get($line['item']->item_id);
+            $line['priceCents'] = $snapshot['priceCents'];
+            $line['subtotalCents'] = $snapshot['subtotalCents'];
+            $line['item']->item_name = $snapshot['name'];
+        }
+        return $lines;
+    }
+
 }

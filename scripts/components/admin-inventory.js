@@ -2,7 +2,7 @@
 const InventorySections = {
   overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js"] },
   products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js", "success-toast.js"] },
-  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "product-form.js", "payment-invoice.js", "product-sale-invoice.js"] },
+  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "payment-invoice.js", "product-sale-invoice.js"] },
   "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js"] },
   "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js"] },
   history: { script: "admin-inventory-transactions.js", factory: "adminInventoryTransactions", dependencies: [] },
@@ -37,7 +37,7 @@ function loadInventoryScript(name) {
       const script = document.createElement("script");
       script.src = name === "scanner"
         ? "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
-        : `../../../scripts/components/${name}?v=product-details-20261002&release=cash-only-20261023&icons=20261018&fetching=20261019&inventory=20261023`;
+        : `../../../scripts/components/${name}?v=product-details-20261002&release=combined-20261023&icons=20261018&fetching=20261019&inventory=20261023`;
       script.onload = resolve;
       script.onerror = () => {
         script.remove();
@@ -93,7 +93,7 @@ function adminInventory() {
         const mount = async () => {
           const config = InventorySections[section];
           const [response] = await Promise.all([
-            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=cash-only-20261023&icons=20261018`),
+            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=combined-20261023&icons=20261018`),
             ...config.dependencies.map(loadInventoryScript),
             loadInventoryScript(config.script),
           ]);
@@ -166,6 +166,7 @@ function adminInventory() {
 function adminInventorySection(section) {
   const component = window[InventorySections[section].factory]();
   const originalDestroy = component.destroy;
+  const originalInit = component.init;
   return Object.assign(component, {
     _loadedRevision: -1,
     _activation: null,
@@ -175,6 +176,7 @@ function adminInventorySection(section) {
     init() {},
 
     async activate(route, revision) {
+      if (section === 'sell-product') this._paymentVisible = true;
       if (section === "stock-in") {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -183,6 +185,10 @@ function adminInventorySection(section) {
       if (this._activation) {
         await this._activation;
         if (inventoryRoute().key !== route.key) return;
+      }
+      if (section === "sell-product" && (!this._paymentInitialized || this.onlinePayment)) {
+        await originalInit?.call(this);
+        this._paymentInitialized = !this.error;
       }
       const filterChanged = section === "products" && this.alertFilter !== route.filter;
       if (section === "products") this.alertFilter = route.filter;
@@ -230,6 +236,8 @@ function adminInventorySection(section) {
       if (this.scannerActive) this.closeScanner();
       if (this.details?.open) this.closeDetails(false);
       if (section === "sell-product") {
+        this._paymentVisible = false;
+        this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
         this.closeSuccess();
       }
     },

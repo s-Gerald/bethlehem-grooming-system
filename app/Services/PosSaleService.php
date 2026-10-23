@@ -113,7 +113,7 @@ class PosSaleService
             }
 
             if ($snapshots->get($item->item_id)['saleable_quantity'] < $line['quantity']) {
-                abort(422, 'Stock is held for an unresolved historical payment.');
+                abort(422, 'Stock is reserved for an unresolved payment.');
             }
 
             $priceAtSale = round((float) $item->selling_price, 2);
@@ -142,7 +142,7 @@ class PosSaleService
         return [$preparedLines, $computedTotal];
     }
 
-    public function settle(User $actor, array $preparedLines, float $computedTotal, float $amountTendered, ?string $notes): PosTransaction
+    public function settle(User $actor, array $preparedLines, float $computedTotal, float $amountTendered, ?string $notes, ?\App\Models\GatewayPayment $gateway = null): PosTransaction
     {
         $pos = PosTransaction::create([
             'cashier_id' => $actor->user_id,
@@ -150,6 +150,7 @@ class PosSaleService
             'amount_tendered' => $amountTendered,
             'change_amount' => ((int) round($amountTendered * 100) - (int) round($computedTotal * 100)) / 100,
             'notes' => $notes,
+            ...($gateway ? ['payment_method' => 'online', 'gateway_payment_id' => $gateway->id] : []),
         ]);
 
         $stockOutEntries = [];

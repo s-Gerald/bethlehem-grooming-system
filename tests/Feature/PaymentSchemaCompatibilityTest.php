@@ -104,12 +104,17 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $this->assertSame(0, $queryCount, 'Reading a hydrated payment key must not inspect the schema.');
     }
 
-    public function test_obsolete_gateway_routes_are_not_registered(): void
+    public function test_gateway_routes_are_registered_with_existing_payment_permissions(): void
     {
-        foreach (app('router')->getRoutes() as $route) {
-            $this->assertStringNotContainsString('online-payment', $route->uri());
-            $this->assertStringNotContainsString('paymongo', $route->uri());
+        $routes = collect(app('router')->getRoutes());
+        foreach (['api/admin/bookings/{id}/online-payment', 'api/admin/clinic-appointments/{id}/online-payment', 'api/pos/online-payment'] as $uri) {
+            $route = $routes->first(fn ($route) => $route->uri() === $uri && in_array('POST', $route->methods(), true));
+            $this->assertNotNull($route);
+            $this->assertContains('auth:sanctum', $route->gatherMiddleware());
         }
+        $webhook = $routes->first(fn ($route) => $route->uri() === 'api/paymongo/webhook');
+        $this->assertNotNull($webhook);
+        $this->assertNotContains('auth:sanctum', $webhook->gatherMiddleware());
     }
 
     public function test_all_cash_endpoints_reject_unsupported_methods_without_writes(): void

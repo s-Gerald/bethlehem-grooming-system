@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 
-/** Historical payment metadata and unresolved holds; no active checkout or settlement. */
+/** Hosted checkout attempts, historical metadata and unresolved financial holds. */
 class GatewayPayment extends Model
 {
     protected $fillable = [
@@ -22,6 +22,22 @@ class GatewayPayment extends Model
         'livemode' => 'boolean', 'paid_at' => 'datetime',
     ];
 
+    public function scopeUnresolved($query)
+    {
+        return $query->where(fn ($q) => $q->where('status', 'pending')
+            ->orWhere(fn ($q) => $q->where('status', 'paid')->whereNotNull('reconciliation_reason')));
+    }
+
+    public function payable()
+    {
+        return $this->morphTo();
+    }
+
+    public static function forGrooming(Booking $booking)
+    {
+        return static::forPayable($booking, 'grooming')->where('provider', 'paymongo');
+    }
+
     public static function forPayable(Model $payable, string $context)
     {
         return static::query()->where('context', $context)
@@ -30,12 +46,12 @@ class GatewayPayment extends Model
 
     public static function assertClinicUnlocked(ClinicAppointment $appointment): void
     {
-        if (Schema::hasTable('gateway_payments') && static::forPayable($appointment, 'clinic')->where('status', 'pending')->exists()) {
-            throw ValidationException::withMessages(['payment' => 'An unresolved historical payment requires manual reconciliation before this action.']);
+        if (Schema::hasTable('gateway_payments') && static::forPayable($appointment, 'clinic')->unresolved()->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
         }
     }
 
-    /** Read-only historical holds. Never release stock based on a local attempt status alone. */
+    /** Never release stock based on a local timeout or browser redirect. */
     public static function reservedQuantities(iterable $ids): array
     {
         if (! Schema::hasTable('gateway_stock_reservations')) return [];
@@ -51,11 +67,26 @@ class GatewayPayment extends Model
         };
     }
 
+    /** Caller holds the payable and attempt locks, within a database transaction. */
+    public function releaseStock(): void
+    {
+        if (! Schema::hasTable('gateway_stock_reservations')) return;
+        $ids = DB::table('gateway_stock_reservations')->where('gateway_payment_id', $this->id)->pluck('item_id');
+        InventoryItem::whereIn('item_id', $ids)->orderBy('item_id')->lockForUpdate()->get();
+        DB::table('gateway_stock_reservations')->where('gateway_payment_id', $this->id)->delete();
+    }
+
+    public function methodLabel(): string
+    {
+        $method = $this->provider_method;
+        return $method ? 'Online Payment · '.($method === 'qrph' ? 'QR Ph' : self::labelFor($method)) : 'Online Payment';
+    }
+
     /** Call while holding the booking row lock, also used by existing correction actions. */
     public static function assertGroomingUnlocked(Booking $booking): void
     {
-        if (Schema::hasTable('gateway_payments') && static::forPayable($booking, 'grooming')->where('status', 'pending')->exists()) {
-            throw ValidationException::withMessages(['payment' => 'An unresolved historical payment requires manual reconciliation before this action.']);
+        if (Schema::hasTable('gateway_payments') && static::forPayable($booking, 'grooming')->unresolved()->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Cancel the active online payment first.']);
         }
     }
 }

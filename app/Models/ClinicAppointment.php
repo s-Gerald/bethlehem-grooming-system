@@ -151,7 +151,7 @@ class ClinicAppointment extends Model
     public function clinicalContentEditableFor(User $actor): bool
     {
         if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
-            && GatewayPayment::forPayable($this, 'clinic')->where('status', 'pending')->exists()) return false;
+            && GatewayPayment::forPayable($this, 'clinic')->unresolved()->exists()) return false;
         return in_array($this->status, self::CLINICAL_CONTENT_EDITABLE_STATUSES, true)
             || ($actor->role === 'admin' && $this->status === 'for_payment');
     }

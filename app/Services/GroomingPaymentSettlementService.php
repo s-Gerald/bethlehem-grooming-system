@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking;
 use App\Models\BookingPet;
+use App\Models\GatewayPayment;
 use App\Models\Notification;
 use App\Models\Payment;
 use App\Models\User;
@@ -19,8 +20,13 @@ class GroomingPaymentSettlementService
     public function settle(
         Booking $booking, string $total, string $tendered, string $method,
         ?string $notes, ?User $actor, bool $early, array $productLines,
+        ?GatewayPayment $gateway = null,
     ): array {
         $payment = $this->recordPaidPayment($booking, $total, $tendered, $method, $notes, $actor?->user_id);
+        if ($gateway) {
+            $payment->update(['payment_provider' => 'paymongo', 'provider_method' => $gateway->provider_method,
+                'gateway_payment_id' => $gateway->id, 'paid_at' => $gateway->paid_at]);
+        }
         if ($productLines !== []) {
             app(GroomingProductSaleService::class)->record($payment, $actor, $productLines);
         }

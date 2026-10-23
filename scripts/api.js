@@ -236,7 +236,8 @@ var API = (() => {
   function invalidateAdminMutation(endpoint) {
     const path = endpoint.split("?")[0];
     let groups = [];
-    if (/^\/inventory\/(?:items|stock-in|stock-out)(?:\/|$)/.test(path) || path === '/pos/transactions') groups = ['inventory'];
+    if (/^\/inventory\/(?:items|stock-in|stock-out)(?:\/|$)/.test(path) || path === '/pos/transactions'
+      || /^\/pos\/online-payment(?:\/|$)/.test(path)) groups = ['inventory'];
     else if (/^\/admin\/clinic-services(?:\/|$)/.test(path)) groups = ['services-clinic'];
     else if (/^\/admin\/notifications\//.test(path)) groups = ["notifications"];
     else if (/^\/admin\/bookings\//.test(path)) {
@@ -263,7 +264,7 @@ var API = (() => {
       groups = ["grooming", "dashboard"];
       if (path.startsWith('/admin/grooming/services')) groups.push('services-grooming');
     }
-    if (/^\/admin\/bookings\/[^/]+\/(pay|pay-now)$/.test(path)) groups.push('inventory');
+    if (/^\/admin\/bookings\/[^/]+\/(pay|pay-now|online-payment)$/.test(path)) groups.push('inventory');
     invalidateAdminCache(groups);
   }
 
@@ -1569,6 +1570,22 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    // Creation can commit a stock hold before returning an uncertain HTTP 502;
+    // provider-confirmed expiry can release it during a GET status check.
+    if (responseBelongsToCurrentSession && token === getAdminToken() && data.online_payment?.id
+      && /^(?:\/pos\/online-payment|\/admin\/bookings\/[^/]+\/online-payment)(?:\/\d+)?(?:\?|$)/.test(endpoint)
+      && ((method === 'POST' && data.online_payment.status === 'pending')
+        || (method === 'GET' && ['expired', 'cancelled', 'failed'].includes(data.online_payment.status)))) {
+      invalidateAdminCache(['inventory']);
+    }
+    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
+      && /^\/pos\/online-payment(?:\/\d+)?(?:\?|$)/.test(endpoint)
+      && data.online_payment?.status === 'paid' && data.receipt) invalidateAdminCache(['inventory']);
+    if (response.ok && responseBelongsToCurrentSession && token === getAdminToken() && method === "GET"
+      && /^\/admin\/(bookings|clinic-appointments)\/[^/]+\/online-payment(?:\?|$)/.test(endpoint)
+      && (data.online_payment?.status === "paid" || data.appointment?.paid || data.booking?.paid || data.booking_status === "released")) {
+      invalidateAdminMutation(endpoint.replace(/\/online-payment(?=\?|$)/, '/pay'));
+    }
     if (response.status === 423 && responseBelongsToCurrentSession && data.code === "session_locked") {
       if (requestRevision !== sessionRevision && method === "GET" && !sessionControl) {
         return networkRequest(method, endpoint, body, token, requestOptions);
@@ -2574,6 +2591,28 @@ var API = (() => {
   }
 
 
+  function createGroomingOnlinePayment(bookingId, payload) {
+    return request("POST", `/admin/bookings/${bookingId}/online-payment`, payload, getAdminToken());
+  }
+
+  function groomingOnlinePaymentStatus(bookingId, attemptId = null) {
+    return request("GET", `/admin/bookings/${bookingId}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
+  }
+
+  function createClinicOnlinePayment(id) {
+    return request("POST", `/admin/clinic-appointments/${id}/online-payment`, {}, getAdminToken());
+  }
+  function clinicOnlinePaymentStatus(id, attemptId = null) {
+    return request("GET", `/admin/clinic-appointments/${id}/online-payment${attemptId ? `?gateway_payment=${attemptId}` : ""}`, null, getAdminToken());
+  }
+  function cancelClinicOnlinePayment(id) {
+    return request("DELETE", `/admin/clinic-appointments/${id}/online-payment`, null, getAdminToken());
+  }
+
+  function cancelGroomingOnlinePayment(bookingId) {
+    return request("DELETE", `/admin/bookings/${bookingId}/online-payment`, null, getAdminToken());
+  }
+
   async function releaseBooking(bookingId) {
     // POST /api/admin/bookings/{id}/release  (protected — admin token)
     // Moves an already-paid for_payment booking to released (To Be Picked Up)
@@ -3040,6 +3079,8 @@ var API = (() => {
     saveQrPaymentSettings,
     getQrPaymentImage,
     processPayment,
+    createClinicOnlinePayment, clinicOnlinePaymentStatus, cancelClinicOnlinePayment,
+    createGroomingOnlinePayment, groomingOnlinePaymentStatus, cancelGroomingOnlinePayment,
     payNow,
     releaseBooking,
     markPickedUp,
