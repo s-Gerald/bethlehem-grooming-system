@@ -1,4 +1,30 @@
-# PayMongo alongside manual QR/OCR and Cash — PHP 8.4
+# QR Ph-only PayMongo alongside manual QR/OCR and Cash — PHP 8.4
+
+## QR Ph-only refinement — October 24, 2026
+
+`PAYMONGO_PAYMENT_METHODS=qrph` already worked: the restored shared checkout service passed the configured array to Hosted Checkout. No provider restoration or checkout rewrite was needed. The fallback and `.env.example` now also default to `qrph`. Effective local configuration was checked read-only: methods `["qrph"]`, live mode `false`, localhost appointments return URL, test-key and signing-secret presence confirmed without printing credentials; configuration is not cached.
+
+New early/final Grooming, Clinic and POS attempts save `payment_methods` in their existing snapshots, then send that exact list as `payment_method_types`. A signed payment source must match the saved list, so a new QR Ph-only attempt cannot settle through GCash, Maya or Card. Historical snapshots without a list retain the supported historical channels and Maya alias. Saved lists remain authoritative after configuration changes. Invalid new-checkout method settings cannot block authenticated retrieval/expiry of existing sessions; credential/environment checks remain enforced.
+
+Hosted checkout remains labelled exactly **Online Payment**, including Clinic/POS receipts and transaction history. The redundant raw provider-method row was removed from transaction details. Provider identifiers and actual source methods remain stored for audit/reconciliation. Cash and manual QR/OCR implementation, receiving-provider labels, optional upload, private proof storage, verification and reference handling are unchanged. No schema, dependencies, private environment, caches, polling, frontend API calls or financial query counts changed.
+
+The official [Hosted Checkout quick start](https://docs.paymongo.com/docs/payment-channels-hosted-checkout-quick-start) uses `payment_method_types: ["qrph"]` and webhook payment confirmation. [QR Ph](https://docs.paymongo.com/docs/payment-acceptance-qr-ph) works with participating bank/e-wallet apps; those apps are not separate direct checkout channels. A QR code expiring does not establish checkout-session expiry, and browser returns never settle payments.
+
+Verification for this refinement (separate from the historical restoration results below):
+
+| Check | Result |
+| --- | --- |
+| Baseline restored payment suites | 51 tests, 363 assertions passed |
+| Focused new regressions before production fixes | Expected failures for missing method snapshots/enforcement, suffixed labels, malformed configuration and blocked historical recovery |
+| Payment, manual QR, cash amounts, schema, pricing, history and financial reporting suites | **206 tests, 2,313 assertions passed; zero failures/skips** |
+| Existing frontend regression runner, including actual local OCR/PDF and bounded payment navigation | **78/78 scripts passed** |
+| Production build, changed PHP 8.4 lint, JavaScript syntax and diff whitespace | Passed |
+
+The existing GroomingPayMongoTest, SharedPayMongoTest, PaymentSchemaCompatibilityTest, online-payment-flows and transaction-details regression files were updated; no duplicate regression file was added. New coverage includes historical QR Ph/GCash/Maya/Card settlement, exact labels and preserved provider data, method mismatch rejection before stock deduction, configuration changes, and invalid settings without financial side effects. Existing signature, identity, amount/currency, idempotency, concurrent webhook/Cash/manual QR, reservation, cancellation, expiry, recovery and test-revenue checks passed. Logs: `storage/logs/qrph-{red,green,php-tests,frontend-tests,build}.log`.
+
+The unrelated archive query-budget assertion was not changed or rerun; its prior 14-versus-13 failure remains documented below. The full PHP suite and opt-in MySQL tests were not rerun for this focused refinement. Build output retains the existing outdated Browserslist notice; frontend output retains VM-module/PDF fixture warnings. No provider requests or real payment records were created. No commits, pushes, migrations against an application database, or deployment actions were performed. Real browser checkout and webhook delivery remain user-run checks.
+
+## Restoration history — October 23, 2026
 
 Implementation date: October 23, 2026. Branch: `gerald-frontend`; starting HEAD: `bd45f36`.
 Historical references: `f572dfaa779d` and removal `fba4feac3434c4c13c268708ddf1255e7642552a`.
@@ -98,13 +124,17 @@ Set these yourself in the appropriate private environment; `.env.example` contai
 PAYMONGO_SECRET_KEY=your_test_secret_key
 PAYMONGO_WEBHOOK_SECRET=your_test_webhook_signing_secret
 PAYMONGO_LIVE_MODE=false
-PAYMONGO_PAYMENT_METHODS=qrph,gcash,paymaya,card
+PAYMONGO_PAYMENT_METHODS=qrph
 PAYMONGO_RETURN_URL=http://127.0.0.1:8000/pages/admin/appointments.html
 ```
 
-Use actual `sk_test_` credentials server-side only. Adjust the return URL to your real frontend origin/port and deployment subdirectory. Clinic/POS return paths derive from this anchor. Configure the account-supported method subset; hosted QR Ph can be omitted without affecting manual clinic QR. There is no frontend secret/public-key setting to add.
+Use actual `sk_test_` credentials server-side only. Keep `PAYMONGO_LIVE_MODE=false` and `PAYMONGO_PAYMENT_METHODS=qrph` for this QR Ph-only merchant account. Adjust the return URL to your real frontend origin/port and deployment subdirectory. Clinic/POS return paths derive from this anchor. Configurable channels are retained for future account capabilities; do not enable unsupported channels. There is no frontend secret/public-key setting to add.
 
-Register a **test-mode** webhook to `https://YOUR-API-HOST/api/paymongo/webhook`, subscribing to `checkout_session.payment.paid`. For localhost, use your own trusted HTTPS tunnel to the local API and its test webhook signing secret. Returning to localhost alone cannot deliver a provider webhook. Rebuild Laravel's configuration cache yourself after changing configuration.
+The currently registered **test-mode** webhook is `https://darkorchid-horse-104804.hostingersite.com/api/paymongo/webhook`. It can settle attempts stored in that Hostinger deployment's database; it cannot settle attempts created in the separate `http://127.0.0.1:8000` database. Returning to localhost alone does not deliver the webhook. Automated mocked tests do not prove real delivery.
+
+For a local end-to-end test, personally configure a trusted publicly reachable HTTPS endpoint routed to the local API, register that test webhook for `checkout_session.payment.paid`, and configure its own signing secret privately in that local environment. Alternatively, test checkout and webhook together on Hostinger using disposable records in its database, its matching signing secret and an HTTPS Hostinger return URL. No tunnel or endpoint was installed/changed by Codex. Before deployment, review the changes, refresh configuration caches yourself if applicable, verify QR Ph activation and test credentials, then confirm real signed delivery, duplicate-event safety, correct receipts, and test-versus-real revenue separation. Live payments remain intentionally disabled.
+
+For QR Ph tests, use the provider's simulation controls/test URL. The official [testing guidance](https://docs.paymongo.com/docs/payment-acceptance-testing) specifically warns that generated QR codes can process real payments even in Test Mode: do not scan/pay them with a real bank or e-wallet app. Hosted checkout and direct Payment Intent test controls may differ; verify the available test control in the actual hosted session.
 
 Before deployment, use disposable records to check:
 

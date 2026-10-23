@@ -422,7 +422,6 @@
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Verified by</dt><dd x-text="selectedTransaction.qrPayment.verified_by_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment?.paying_app"><div><dt>Scanned App</dt><dd x-text="selectedTransaction.qrPayment.paying_app"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment?.reference_unavailable_reason"><div><dt>Reference exception</dt><dd x-text="selectedTransaction.qrPayment.reference_unavailable_reason"></dd></div></template>
-                      <div x-show="selectedTransaction.paymentMethod === 'online' && selectedTransaction.providerMethod"><dt>Provider Method</dt><dd x-text="selectedTransaction.providerMethod"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment && (isClinicPayment(selectedTransaction) || selectedTransaction.processedByName)"><dt>Processed By</dt><dd x-text="selectedTransaction.processedByName || '—'"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment"><dt>Paid At</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
                     </dl>

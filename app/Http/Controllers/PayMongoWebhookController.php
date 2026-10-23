@@ -62,11 +62,14 @@ class PayMongoWebhookController extends Controller
                     (($attempt->snapshot['metadata_version'] ?? 1) < 2 && $key === 'context' && $attempt->context === 'grooming' && data_get($session, 'attributes.metadata.context') === null)
                     || data_get($session, 'attributes.metadata.'.$key) === $value),
                 422, 'Online payment details do not match.');
+            $method = data_get($attributes, 'source.type');
+            // Historical attempts predate method snapshots; retain their supported channels.
+            $allowedMethods = $attempt->snapshot['payment_methods'] ?? PayMongoService::SUPPORTED_PAYMENT_METHODS;
+            abort_unless(is_string($method) && in_array($method === 'maya' ? 'paymaya' : $method, $allowedMethods, true), 422, 'Online payment method does not match.');
             if ($attempt->status === 'paid') {
                 abort_unless($attempt->provider_payment_id === $payment['id'], 422, 'Payment identifier mismatch.');
                 return response()->json(['success' => true]);
             }
-            abort_unless(in_array(data_get($attributes, 'source.type'), ['qrph', 'gcash', 'paymaya', 'maya', 'card'], true), 422, 'Unknown payment method.');
             abort_if(GatewayPayment::where('provider_payment_id', $payment['id'])->exists()
                 || ($eventId && GatewayPayment::where('provider_event_id', $eventId)->exists()), 422, 'Duplicate provider identifier.');
             $wasClosed = in_array($attempt->status, ['failed', 'cancelled', 'expired'], true);

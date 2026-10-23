@@ -72,6 +72,15 @@ ui.printInvoice();
 assert.equal(printed, 2, 'Only the new verified QR record suppresses invoices');
 ui.closeDetails();
 const noProducts = { ...tx, id: 2, reference: "BAC-20261002-0002", dateKey: "2026-10-02", productAddons: [], finalPrice: 700 };
+const onlineTransaction = {...tx, paymentMethod: 'online', paymentMethodLabel: 'Online Payment',
+  paymentProvider: 'paymongo', providerMethod: 'qrph', isTest: true, amountPaid: null, changeGiven: null};
+ui.openDetails(onlineTransaction, {focus() {}});
+assert.equal(ui.receiptModal.paymentMethod, 'Online Payment');
+assert.equal(ui.receiptModal.isTest, true);
+assert.equal(ui.receiptModal.amountPaid, null);
+assert.equal(ui.receiptModal.change, null);
+assert.equal(onlineTransaction.paymentProvider, 'paymongo', 'Display labels preserve internal provider audit data');
+ui.closeDetails();
 ui.openDetails(noProducts, { focus() {} });
 assert.equal(ui.receiptModal.products.length, 0);
 assert.equal(ui.receiptModal.bookingReference, noProducts.reference, "Opening another record replaces the invoice source");

@@ -8,16 +8,31 @@ use Illuminate\Validation\ValidationException;
 
 class PayMongoService
 {
+    public const SUPPORTED_PAYMENT_METHODS = ['qrph', 'gcash', 'paymaya', 'card'];
+
     public function assertConfigured(): void
+    {
+        $this->assertCredentials();
+        $this->paymentMethods();
+    }
+
+    private function assertCredentials(): void
     {
         $key = (string) config('services.paymongo.secret_key');
         if ($this->livemode() || ! str_starts_with($key, 'sk_test_') || ! config('services.paymongo.webhook_secret')) {
             throw ValidationException::withMessages(['payment' => 'Online payment is not configured.']);
         }
+    }
+
+    public function paymentMethods(): array
+    {
         $methods = config('services.paymongo.payment_methods', []);
-        if (! is_array($methods) || $methods === [] || array_diff($methods, ['gcash', 'paymaya', 'card', 'qrph'])) {
+        if (! is_array($methods) || ! array_is_list($methods) || $methods === []
+            || ! collect($methods)->every(fn ($method) => is_string($method) && in_array($method, self::SUPPORTED_PAYMENT_METHODS, true))
+            || count(array_unique($methods)) !== count($methods)) {
             throw ValidationException::withMessages(['payment' => 'Online payment methods are not configured.']);
         }
+        return $methods;
     }
 
     public function livemode(): bool
@@ -27,6 +42,7 @@ class PayMongoService
 
     public function createCheckout(array $attributes): array
     {
+        $this->assertConfigured();
         return $this->request('post', '/v2/checkout_sessions', ['data' => ['attributes' => $attributes]]);
     }
 
@@ -42,7 +58,8 @@ class PayMongoService
 
     private function request(string $method, string $path, array $payload = []): array
     {
-        $this->assertConfigured();
+        // New checkout settings must not prevent recovery/expiry of older sessions.
+        $this->assertCredentials();
         try {
             $response = Http::withBasicAuth(config('services.paymongo.secret_key'), '')
                 ->acceptJson()->withoutRedirecting()->connectTimeout(5)->timeout(15)

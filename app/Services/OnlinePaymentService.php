@@ -63,7 +63,7 @@ class OnlinePaymentService
         if (! $attempt->wasRecentlyCreated) return $attempt;
         $result = $this->provider->createCheckout([
             'line_items' => $attempt->snapshot['line_items'],
-            'payment_method_types' => config('services.paymongo.payment_methods'),
+            'payment_method_types' => $attempt->snapshot['payment_methods'],
             'reference_number' => $attempt->reference, 'pass_on_fees' => false,
             'success_url' => $this->returnUrl($attempt, 'success'), 'cancel_url' => $this->returnUrl($attempt, 'cancel'),
             'show_line_items' => true, 'metadata' => $this->metadata($attempt),

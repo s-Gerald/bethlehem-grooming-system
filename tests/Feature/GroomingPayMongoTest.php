@@ -132,7 +132,8 @@ class GroomingPayMongoTest extends TestCase
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
         config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
-            'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
+            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false,
+            'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
         Http::preventStrayRequests();
         $this->fakeProvider();
     }
@@ -162,6 +163,7 @@ class GroomingPayMongoTest extends TestCase
     {
         $this->checkout(['final_price' => 1, 'amount_paid' => 999])->assertOk()->assertJsonPath('online_payment.amount', '850.00');
         Http::assertSent(fn ($request) => $request->url() === 'https://api.paymongo.com/v2/checkout_sessions'
+            && $request['data']['attributes']['payment_method_types'] === ['qrph']
             && $request['data']['attributes']['line_items'][0]['amount'] === 85000
             && $request['data']['attributes']['line_items'][0]['currency'] === 'PHP'
             && $request['data']['attributes']['pass_on_fees'] === false
@@ -170,6 +172,7 @@ class GroomingPayMongoTest extends TestCase
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => false]);
         $this->assertSame(7, GatewayPayment::first()->initiated_by);
         $this->assertSame('850.00', GatewayPayment::first()->snapshot['grooming_total']);
+        $this->assertSame(['qrph'], GatewayPayment::first()->snapshot['payment_methods']);
     }
 
     public function test_active_checkout_is_reused_and_its_prices_cannot_be_changed_or_paid_in_cash(): void
@@ -228,6 +231,7 @@ class GroomingPayMongoTest extends TestCase
         DB::table('bookings')->update(['status' => 'in_progress']);
         DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
         $this->checkout(['flow' => 'early'])->assertOk();
+        Http::assertSent(fn ($request) => $request['data']['attributes']['payment_method_types'] === ['qrph']);
         $this->webhook($this->event())->assertOk();
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => 'in_progress']);
         $this->assertSame('850.00', GatewayPayment::first()->snapshot['summary']['pets'][0]['final_pet_charge']);
@@ -595,6 +599,33 @@ class GroomingPayMongoTest extends TestCase
             foreach (glob($directory.'/*') ?: [] as $file) unlink($file);
             rmdir($directory);
         }
+    }
+
+    public function test_qrph_checkout_rejects_a_signed_payment_from_another_channel(): void
+    {
+        $this->addProduct();
+        $this->checkout(['products' => [['item_id' => 10, 'quantity' => 2]]])->assertOk();
+        $event = $this->event(101000);
+        $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = 'gcash';
+        $this->webhook($event)->assertUnprocessable();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending', 'provider_payment_id' => null]);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('inventory_transactions', 0);
+        $this->assertDatabaseCount('gateway_stock_reservations', 1);
+    }
+
+    public function test_historical_grooming_pending_payment_keeps_its_original_channel(): void
+    {
+        $this->checkout()->assertOk();
+        $attempt = GatewayPayment::firstOrFail();
+        $snapshot = $attempt->snapshot;
+        unset($snapshot['payment_methods']);
+        $attempt->update(['snapshot' => $snapshot]);
+        $event = $this->event();
+        $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = 'card';
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('payments', ['payment_method' => 'online', 'payment_provider' => 'paymongo', 'provider_method' => 'card']);
+        $this->getJson('/api/admin/bookings/1/online-payment')->assertOk()->assertJsonPath('payment.payment_method_label', 'Online Payment');
     }
 
     private function addProduct(): void

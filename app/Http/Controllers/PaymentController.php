@@ -466,6 +466,7 @@ class PaymentController extends Controller
                 'amount' => $prepared['serverTotal'], 'currency' => 'PHP', 'status' => 'pending',
                 'livemode' => $provider->livemode(), 'initiated_by' => $request->user()?->user_id,
                 'snapshot' => [
+                    'payment_methods' => $provider->paymentMethods(),
                     'metadata_version' => 2, 'services' => $services->map->only(['booking_service_id', 'booking_pet_id', 'service_id', 'addon_id', 'price_at_booking'])->all(),
                     'pet_sizes' => $pets->toArray(), 'products' => $products, 'line_items' => $lineItems,
                     'total' => $prepared['serverTotal'], 'summary' => $receiptSummary, 'notes' => $data['notes'] ?? null,

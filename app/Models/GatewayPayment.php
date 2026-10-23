@@ -78,8 +78,7 @@ class GatewayPayment extends Model
 
     public function methodLabel(): string
     {
-        $method = $this->provider_method;
-        return $method ? 'Online Payment · '.($method === 'qrph' ? 'QR Ph' : self::labelFor($method)) : 'Online Payment';
+        return 'Online Payment';
     }
 
     /** Call while holding the booking row lock, also used by existing correction actions. */

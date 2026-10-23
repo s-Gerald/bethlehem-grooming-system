@@ -25,8 +25,8 @@ for (const name of ['cash-payment', 'online-payment', 'admin-clinic', 'admin-pos
   await clinic.recordPayment();
   assert.equal(onlineCalls, 1); assert.equal(cashCalls, 0); assert.equal(opened, 'https://checkout.paymongo.com/cs_clinic');
   assert.equal(clinic.payment.recorded, false);
-  await clinic.applyClinicOnlineStatus({online_payment: {id: 2, status: 'paid'}, appointment: {id: 1, total_amount: 500, payment_method: 'online', payment_method_label: 'Online Payment · GCash', paid: true, status: 'completed'}});
-  assert.equal(clinic.payment.recorded, true); assert.equal(clinic.receiptModal.paymentMethod, 'Online Payment · GCash');
+  await clinic.applyClinicOnlineStatus({online_payment: {id: 2, status: 'paid'}, appointment: {id: 1, total_amount: 500, payment_method: 'online', payment_method_label: 'Online Payment', paid: true, status: 'completed'}});
+  assert.equal(clinic.payment.recorded, true); assert.equal(clinic.receiptModal.paymentMethod, 'Online Payment');
   const pos = context.adminPos(); pos.$nextTick = fn => fn(); pos.$refs = {};
   pos.cart = [{item_id: 1, item_name: 'Treats', unit: 'pack', price: 80, stock: 3, quantity: 2, subtotal: 160}]; pos.paymentMethod = 'online';
   assert.equal(pos.canProcess, true);
@@ -35,9 +35,10 @@ for (const name of ['cash-payment', 'online-payment', 'admin-clinic', 'admin-pos
   assert.equal(pos.receiptOpen, false); assert.equal(pos.cart.length, 1);
   await pos.processSale(); assert.equal(onlineCalls, 2, 'Pending payment prevents duplicate submissions');
   let receipts = 0; pos.$refs.successDialog = {showModal() {receipts++;}};
-  await pos.applyPosOnlineStatus({online_payment: {id: 3, status: 'paid'}, receipt: {pos_id: 8, payment_method: 'online', payment_method_label: 'Online Payment · QR Ph', total_amount: 160}});
+  await pos.applyPosOnlineStatus({online_payment: {id: 3, status: 'paid'}, receipt: {pos_id: 8, payment_method: 'online', payment_method_label: 'Online Payment', total_amount: 160}});
   assert.equal(pos.receiptOpen, true); assert.equal(receipts, 1); assert.equal(pos.cart.length, 0);
   assert.equal(pos.receipt.payment_method, 'online');
+  assert.equal(pos.receipt.payment_method_label, 'Online Payment');
   await pos.applyPosOnlineStatus({online_payment: {id: 4, status: 'expired'}, cart: [{item_id: 1, name: 'Treats', unit: 'pack', quantity: 2, price_at_sale: 80, subtotal: 160}]});
   assert.equal(pos.cart.length, 1, 'An expired return restores its cart for review');
   // Inventory defers component initialization until its section becomes visible.

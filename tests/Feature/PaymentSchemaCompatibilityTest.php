@@ -343,9 +343,11 @@ class PaymentSchemaCompatibilityTest extends TestCase
             'payment_method' => 'qrph', 'gateway_payment_id' => $attempt->id, 'created_at' => now()]);
         DB::table('pos_transaction_items')->insert(['pos_id' => 1, 'item_id' => 10, 'item_name' => 'Historical Treats', 'unit' => 'pack', 'quantity' => 2, 'price_at_sale' => 80, 'subtotal' => 160]);
         $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'qrph')->assertJsonPath('data.is_test', true)
+            ->assertJsonPath('data.payment_method_label', 'Online Payment')
             ->assertJsonPath('data.items.0.item_name', 'Historical Treats')->assertJsonPath('data.total_amount', '160.00');
         $this->getJson('/api/admin/transactions?transaction_type=product_sale')->assertOk()
             ->assertJsonPath('transactions.0.paymentMethod', 'qrph')->assertJsonPath('transactions.0.isTest', true)
+            ->assertJsonPath('transactions.0.paymentMethodLabel', 'Online Payment')
             ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 160);
         $this->getJson('/api/admin/transactions?transaction_type=product_sale&exclude_test=1')->assertOk()->assertJsonPath('total', 0)->assertJsonPath('collection_total', 0);
         $this->assertDatabaseCount('gateway_payments', 1);

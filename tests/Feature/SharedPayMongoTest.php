@@ -128,7 +128,7 @@ class SharedPayMongoTest extends TestCase
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
         config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
-            'services.paymongo.payment_methods' => ['qrph', 'gcash', 'paymaya', 'card'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
+            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
         Http::preventStrayRequests();
         $this->fakeProvider();
         Schema::create('clinic_appointments', function (Blueprint $table) {
@@ -178,6 +178,7 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => false]);
         $this->assertDatabaseCount('payments', 0);
         Http::assertSent(fn ($r) => $r['data']['attributes']['line_items'][0]['amount'] === 50000
+            && $r['data']['attributes']['payment_method_types'] === ['qrph']
             && str_contains($r['data']['attributes']['success_url'], '/pages/admin/clinic.html?')
             && str_contains($r['data']['attributes']['success_url'], 'gateway_payment=1'));
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 500, 'amount_paid' => 500])->assertUnprocessable();
@@ -191,6 +192,9 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => true, 'status' => 'completed', 'payment_method' => 'online', 'gateway_payment_id' => 1]);
         $this->assertDatabaseCount('gateway_payments', 1);
         $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseHas('gateway_payments', ['provider' => 'paymongo', 'provider_method' => 'qrph']);
+        $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
+            ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
     }
 
     public function test_clinic_checkout_preserves_whole_quantities_and_finalized_fractional_charges(): void
@@ -226,7 +230,7 @@ class SharedPayMongoTest extends TestCase
     public function test_pos_online_checkout_with_hosted_qrph_reserves_stock_and_only_signed_webhook_creates_sale(): void
     {
         $this->posCheckout('online')->assertOk()->assertJsonPath('online_payment.amount', '160.00');
-        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph', 'gcash', 'paymaya', 'card']
+        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph']
             && $r['data']['attributes']['line_items'][0]['quantity'] === 2
             && $r['data']['attributes']['line_items'][0]['amount'] === 8000);
         $this->assertDatabaseCount('pos_transactions', 0);
@@ -237,16 +241,17 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('pos_transactions', 1); $this->assertDatabaseCount('inventory_transactions', 1);
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
         $this->assertDatabaseCount('gateway_stock_reservations', 0);
-        $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'online')->assertJsonPath('data.is_test', true);
+        $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'online')
+            ->assertJsonPath('data.payment_method_label', 'Online Payment')->assertJsonPath('data.is_test', true);
     }
 
     public function test_pos_online_methods_duplicate_requests_and_frozen_prices(): void
     {
         $this->posCheckout()->assertOk(); $this->posCheckout()->assertOk();
         Http::assertSentCount(1);
-        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph', 'gcash', 'paymaya', 'card']);
+        Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph']);
         DB::table('inventory_items')->where('item_id', 10)->update(['selling_price' => 999]);
-        $event = $this->event(16000); $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = 'gcash';
+        $event = $this->event(16000);
         $this->webhook($event)->assertOk();
         $this->assertDatabaseHas('pos_transaction_items', ['price_at_sale' => 80, 'subtotal' => 160]);
         $repeated = $this->posCheckout();
@@ -309,6 +314,7 @@ class SharedPayMongoTest extends TestCase
         $this->posCheckout()->assertOk(); $this->webhook($this->event(16000))->assertOk();
         $this->getJson('/api/admin/transactions?transaction_type=product_sale')->assertOk()
             ->assertJsonPath('transactions.0.paymentMethod', 'online')->assertJsonPath('transactions.0.isTest', true)
+            ->assertJsonPath('transactions.0.paymentMethodLabel', 'Online Payment')
             ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 160);
         $this->getJson('/api/admin/transactions?transaction_type=product_sale&exclude_test=1')->assertOk()
             ->assertJsonPath('total', 0)->assertJsonPath('collection_total', 0);
@@ -402,6 +408,100 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->assertDatabaseCount('inventory_transactions', 0);
         $this->assertDatabaseCount('gateway_stock_reservations', 1);
+    }
+
+    public static function checkoutContexts(): array
+    {
+        return [['clinic', 50000], ['pos', 16000]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('checkoutContexts')]
+    public function test_qrph_checkout_rejects_other_signed_channels(string $context, int $amount): void
+    {
+        if ($context === 'clinic') $this->clinicCheckout();
+        else $this->posCheckout()->assertOk();
+        foreach (['gcash', 'paymaya', 'maya', 'card', 'unknown', null] as $method) {
+            $event = $this->event($amount);
+            $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = $method;
+            $this->webhook($event)->assertUnprocessable();
+        }
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'pending', 'provider_payment_id' => null]);
+        $this->assertDatabaseHas('clinic_appointments', ['paid' => false]);
+        $this->assertDatabaseCount('pos_transactions', 0);
+        $this->assertDatabaseCount('inventory_transactions', 0);
+        if ($context === 'pos') $this->assertDatabaseCount('gateway_stock_reservations', 1);
+        $this->webhook($this->event($amount))->assertOk();
+    }
+
+    public static function historicalChannels(): array
+    {
+        $cases = [];
+        foreach (['clinic' => 50000, 'pos' => 16000] as $context => $amount) {
+            foreach (['qrph', 'gcash', 'paymaya', 'maya', 'card'] as $method) $cases[] = [$context, $amount, $method];
+        }
+        return $cases;
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('historicalChannels')]
+    public function test_historical_pending_channels_settle_and_keep_the_online_label(string $context, int $amount, string $method): void
+    {
+        if ($context === 'clinic') $this->clinicCheckout();
+        else $this->posCheckout()->assertOk();
+        $attempt = GatewayPayment::firstOrFail();
+        $snapshot = $attempt->snapshot;
+        unset($snapshot['payment_methods']);
+        $attempt->update(['snapshot' => $snapshot]);
+        $event = $this->event($amount);
+        $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = $method;
+        $this->webhook($event)->assertOk(); $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'paid', 'provider_method' => $method]);
+        if ($context === 'clinic') {
+            $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
+                ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
+        } else {
+            $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method_label', 'Online Payment');
+            $this->assertDatabaseCount('inventory_transactions', 1);
+        }
+        Http::assertSentCount(1);
+    }
+
+    public function test_saved_checkout_methods_survive_configuration_changes(): void
+    {
+        config(['services.paymongo.payment_methods' => ['gcash', 'paymaya', 'card']]);
+        $this->posCheckout()->assertOk();
+        Http::assertSent(fn ($request) => $request['data']['attributes']['payment_method_types'] === ['gcash', 'paymaya', 'card']);
+        $this->assertSame(['gcash', 'paymaya', 'card'], GatewayPayment::firstOrFail()->snapshot['payment_methods']);
+        config(['services.paymongo.payment_methods' => ['qrph']]);
+        $event = $this->event(16000);
+        $event['data']['attributes']['data']['attributes']['payments'][0]['attributes']['source']['type'] = 'gcash';
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseHas('gateway_payments', ['status' => 'paid', 'provider_method' => 'gcash']);
+    }
+
+    public static function invalidMethods(): array
+    {
+        return [[[]], [null], ['qrph'], [['unknown']], [['qrph', 'unknown']], [[['qrph']]], [['channel' => 'qrph']], [['qrph', 'qrph']]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidMethods')]
+    public function test_invalid_checkout_configuration_has_no_financial_side_effects(mixed $methods): void
+    {
+        config(['services.paymongo.payment_methods' => $methods]);
+        $this->posCheckout()->assertUnprocessable()->assertJsonValidationErrors('payment');
+        $this->postJson('/api/admin/clinic-appointments/1/online-payment')->assertUnprocessable()->assertJsonValidationErrors('payment');
+        $this->assertDatabaseCount('gateway_payments', 0);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_invalid_new_checkout_methods_do_not_block_pending_recovery_or_cancellation(): void
+    {
+        $this->posCheckout()->assertOk();
+        config(['services.paymongo.payment_methods' => ['unsupported']]);
+        $this->getJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'pending');
+        $this->fakeProvider('expired');
+        $this->deleteJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'cancelled');
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
     }
 
     private function clinicCheckout(): void
