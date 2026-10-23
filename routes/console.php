@@ -39,3 +39,9 @@ Schedule::call(function (): void {
     ->name('login-email-challenges:prune')
     ->hourly()
     ->withoutOverlapping();
+
+Artisan::command('qr-payments:prune-orphans', function () {
+    $this->info('Removed '.app(\App\Services\QrPaymentProofService::class)->pruneOrphans().' abandoned payment proofs.');
+})->purpose('Remove unreferenced payment uploads older than 24 hours; retain recorded proofs');
+
+Schedule::command('qr-payments:prune-orphans')->daily()->withoutOverlapping();

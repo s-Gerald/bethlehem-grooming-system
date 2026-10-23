@@ -3250,7 +3250,7 @@ function adminDashboard() {
       };
       const modal = this.paymentModal;
       try {
-        const {createQrPayment} = await import('./qr-payment.js?v=20261023-account-verification');
+        const {createQrPayment} = await import('./qr-payment.js?v=20261023-workflow');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
         modal.qr = createQrPayment();
         await modal.qr.load();
@@ -3878,7 +3878,7 @@ function adminDashboard() {
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = Number(this.paymentTotalDue.toFixed(2));
       const paymentMethod = modal.paymentMethod || 'cash';
-      const ap = Number(paymentMethod === 'qrph' ? modal.qr?.amount : amountPaid);
+      const ap = Number(paymentMethod === 'qrph' ? fp : amountPaid);
 
       if (this.paymentModal.petBreakdown.length === 0) {
         this.paymentModal.error = "No booked services were found for this payment.";
@@ -3931,6 +3931,7 @@ function adminDashboard() {
           products:        this.paymentModal.products.map((line) => ({ item_id: line.item_id, quantity: line.quantity })),
           ...(paymentMethod === 'qrph' ? modal.qr.payload() : {}),
         };
+        if (paymentMethod === 'qrph' && modal.qr.receiptFile) payload.receipt = modal.qr.receiptFile;
         const res = isEarlyPayment
           ? await API.payNow(booking.id, payload)
           : await API.processPayment(booking.id, payload);
@@ -4001,6 +4002,10 @@ function adminDashboard() {
       if (isEarlyPayment && res?.all_pets_finished) {
         this.setTab("to-be-picked-up");
       }
+    },
+
+    formatQrDate(value) {
+      return window.PaymentInvoice.formatPaymentDateTime(value);
     },
 
     closeReceiptModal() {

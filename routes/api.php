@@ -136,6 +136,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Shared staff functionality, with grooming operations restricted separately.
     Route::middleware('role:admin,staff')->group(function () {
+        Route::get('/admin/qr-payments/{id}/proof', [\App\Http\Controllers\QrPaymentProofController::class, 'show'])->whereNumber('id')->middleware('grooming');
         Route::get('/admin/qr-payments/config', [\App\Http\Controllers\QrPaymentSettingController::class, 'configuration'])->middleware('grooming');
         Route::get('/admin/qr-payments/image', [\App\Http\Controllers\QrPaymentSettingController::class, 'image'])->middleware('grooming');
         Route::get('/admin/notifications', [NotificationController::class, 'index']);

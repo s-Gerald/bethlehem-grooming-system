@@ -323,7 +323,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->configureQr();
         $this->seedService('regular_dog_grooming', 'large', 850);
         $cases = [
-            ['amount_paid' => 851], ['amount_paid' => 849], ['amount_paid' => null],
+            ['amount_paid' => 851], ['amount_paid' => 849],
             ['qr_verified' => false], ['qr_verified' => false, 'verification_source' => 'merchant_notification'], ['qr_settings_version' => 99],
             ['external_reference' => '!!!'], ['external_reference' => ''],
             ['external_reference' => 'AB@123456'], ['transaction_at' => '2099-01-01T12:00'],
@@ -406,27 +406,44 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->assertDatabaseCount('payments', 0);
     }
 
-    public function test_missing_reference_exception_requires_admin_reason_and_additional_acknowledgment(): void
+    public function test_missing_reference_is_rejected_for_every_role_even_with_legacy_exception_fields(): void
     {
         $this->configureQr();
         $this->seedService('regular_dog_grooming', 'large', 850);
-        $exception = ['external_reference' => null, 'reference_unavailable_reason' => 'Official receiving history has no reference; matched the account credit.', 'exception_verified' => true];
-        foreach ([['exception_verified' => false], ['reference_unavailable_reason' => 'short'],
-            ['reference_unavailable_reason' => str_repeat('x', 19).' ']] as $invalid) {
+        foreach (['admin', 'staff'] as $role) {
             try {
-                $this->submitQr('store', array_replace($exception, $invalid));
-                $this->fail('Incomplete exception must be rejected.');
-            } catch (ValidationException) {}
+                $this->submitQr('store', ['external_reference' => null,
+                    'reference_unavailable_reason' => 'Official history has no reference; matched the account credit.',
+                    'exception_verified' => true], role: $role);
+                $this->fail('No role may settle without a provider reference.');
+            } catch (ValidationException $error) {
+                $this->assertArrayHasKey('external_reference', $error->errors());
+            }
         }
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_manual_verified_qr_uses_server_total_without_an_amount_input(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $response = $this->submitQr('store', ['amount_paid' => null])->getData(true);
+        $this->assertEquals(850, $response['amount_paid']);
+        $this->assertEquals(0, $response['change']);
+        $this->assertDatabaseHas('qr_payments', ['received_amount' => 850]);
+    }
+
+    public function test_ocr_mismatch_cannot_be_overwritten_by_expected_amount(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
         try {
-            $this->submitQr('store', $exception, role: 'staff');
-            $this->fail('Only administrators can approve missing references.');
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) {
-            $this->assertSame(403, $error->getStatusCode());
+            $this->submitQr('store', ['observed_amount' => 849]);
+            $this->fail('OCR mismatch must block settlement.');
+        } catch (ValidationException $error) {
+            $this->assertArrayHasKey('observed_amount', $error->errors());
         }
-        $response = $this->submitQr('store', $exception)->getData(true);
-        $this->assertNull($response['qr_payment']['external_reference']);
-        $this->assertSame($exception['reference_unavailable_reason'], $response['qr_payment']['reference_unavailable_reason']);
+        $this->assertDatabaseCount('payments', 0);
     }
 
     public function test_database_uniqueness_stops_duplicate_external_references_even_without_a_precheck(): void
@@ -445,9 +462,113 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         }
     }
 
+    public function test_receipt_is_private_linked_to_settlement_and_not_exposed_as_a_storage_path(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('customer.png', file_get_contents(base_path('tests/Fixtures/qr-payment-receipt.png')));
+        $response = $this->submitQr('store', ['receipt' => $file, 'paying_app' => 'Maya'])->getData(true);
+        $qr = \App\Models\QrPayment::firstOrFail();
+        $this->assertSame('customer.png', $response['qr_payment']['proof']['name']);
+        $this->assertSame('Maya', $response['qr_payment']['paying_app']);
+        $this->assertArrayNotHasKey('proof_path', $response['qr_payment']);
+        \Illuminate\Support\Facades\Storage::disk('local')->assertExists($qr->proof_path);
+        $this->assertSame(hash_file('sha256', $file->getRealPath()), $qr->proof_hash);
+        $actor = new \App\Models\User;
+        foreach (['customer' => 403, 'staff' => 200, 'admin' => 200] as $role => $status) {
+            $actor->forceFill(['user_id' => 7, 'role' => $role, 'staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
+            \Laravel\Sanctum\Sanctum::actingAs($actor);
+            $this->get('/api/admin/qr-payments/'.$qr->id.'/proof')->assertStatus($status);
+        }
+        $actor->forceFill(['role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'clinic_receptionist']);
+        \Laravel\Sanctum\Sanctum::actingAs($actor);
+        $this->get('/api/admin/qr-payments/'.$qr->id.'/proof')->assertForbidden();
+        $this->assertCount(1, \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
+    }
+
+    public function test_failed_settlement_and_retry_do_not_leave_receipt_files_or_duplicate_payments(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('receipt.png', file_get_contents(base_path('tests/Fixtures/qr-payment-receipt.png')));
+        try {
+            $this->submitQr('store', ['receipt' => $file, 'observed_amount' => 800]);
+            $this->fail('Mismatch must roll back the attachment and payment.');
+        } catch (ValidationException) {}
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
+        $this->assertDatabaseCount('payments', 0);
+        $this->submitQr('store', ['receipt' => $file]);
+        $this->assertSame(422, $this->submitQr('store', ['receipt' => $file])->getStatusCode());
+        $this->assertCount(1, \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
+        $this->assertDatabaseCount('payments', 1);
+    }
+
+    public function test_proof_validation_rejects_content_disguised_as_an_image(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $this->expectException(ValidationException::class);
+        $this->submitQr('store', ['receipt' => \Illuminate\Http\UploadedFile::fake()->createWithContent('receipt.png', '<script>unsafe</script>')]);
+    }
+
+    public function test_pdf_page_limits_image_dimensions_and_paying_app_validation_precede_settlement(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $chunk = fn ($type, $bytes) => pack('N', strlen($bytes)).$type.$bytes.pack('N', crc32($type.$bytes));
+        $wide = "\x89PNG\r\n\x1a\n".$chunk('IHDR', pack('NNCCCCC', 16001, 1, 8, 2, 0, 0, 0))
+            .$chunk('IDAT', gzcompress("\0".str_repeat("\xff", 16001 * 3))).$chunk('IEND', '');
+        foreach ([['receipt' => \Illuminate\Http\UploadedFile::fake()->createWithContent('wide.png', $wide)],
+            ['receipt' => $this->pdfReceipt(3)], ['paying_app' => 'Unverified App'],
+            ['receipt' => \Illuminate\Http\UploadedFile::fake()->create('too-large.pdf', 5121, 'application/pdf')]] as $data) {
+            try {
+                $this->submitQr('store', $data);
+                $this->fail('Invalid proof or paying-app data must not settle.');
+            } catch (ValidationException) {}
+        }
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
+        $response = $this->submitQr('store', ['receipt' => $this->pdfReceipt(2)])->getData(true);
+        $this->assertSame('application/pdf', $response['qr_payment']['proof']['mime']);
+        $this->assertNull($response['qr_payment']['paying_app']);
+    }
+
+    public function test_orphan_cleanup_retains_recorded_and_recent_proofs(): void
+    {
+        $this->configureQr();
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('receipt.png', file_get_contents(base_path('tests/Fixtures/qr-payment-receipt.png')));
+        $this->submitQr('store', ['receipt' => $file]);
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        $recorded = \App\Models\QrPayment::firstOrFail()->proof_path;
+        $disk->put('payment-proofs/old.png', 'orphan');
+        $disk->put('payment-proofs/recent.png', 'pending');
+        touch($disk->path('payment-proofs/old.png'), now()->subDays(2)->timestamp);
+        touch($disk->path($recorded), now()->subDays(2)->timestamp);
+        $this->assertSame(1, app(\App\Services\QrPaymentProofService::class)->pruneOrphans());
+        $disk->assertMissing('payment-proofs/old.png');
+        $disk->assertExists('payment-proofs/recent.png');
+        $disk->assertExists($recorded);
+        $this->assertDatabaseCount('payments', 1);
+    }
+
+    private function pdfReceipt(int $pages): \Illuminate\Http\UploadedFile
+    {
+        $objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Count '.$pages.' /Kids ['.implode(' ', array_map(fn ($i) => ($i + 3).' 0 R', range(0, $pages - 1))).'] >>'];
+        for ($i = 0; $i < $pages; $i++) $objects[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] >>';
+        $pdf = "%PDF-1.4\n"; $offsets = [0];
+        foreach ($objects as $i => $object) { $offsets[] = strlen($pdf); $pdf .= ($i + 1)." 0 obj\n".$object."\nendobj\n"; }
+        $xref = strlen($pdf);
+        $pdf .= 'xref'."\n0 ".count($offsets)."\n0000000000 65535 f \n";
+        foreach (array_slice($offsets, 1) as $offset) $pdf .= sprintf("%010d 00000 n \n", $offset);
+        $pdf .= 'trailer << /Size '.count($offsets)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+        return \Illuminate\Http\UploadedFile::fake()->createWithContent('receipt.pdf', $pdf);
+    }
+
     private function configureQr(): void
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update([
@@ -464,6 +585,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             'qr_settings_version' => 1, 'qr_verified' => true,
             'external_reference' => '1234-56 ab', 'transaction_at' => now()->format('Y-m-d\TH:i'),
         ], $override));
+        if (isset($override['receipt'])) { $request->files->set('receipt', $override['receipt']); $request->request->remove('receipt'); }
         $actor = new \App\Models\User;
         $actor->forceFill(['user_id' => 7, 'role' => $role, 'first_name' => 'Staff', 'last_name' => 'Verifier',
             'staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);

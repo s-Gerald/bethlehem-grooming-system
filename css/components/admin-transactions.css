@@ -98,3 +98,12 @@
 @media (max-width: 639px) {
   .transaction-search { flex-basis: 100%; }
 }
+
+.transaction-audit { margin-top: 1rem; }
+.transaction-audit > summary { cursor: pointer; font-weight: 600; }
+.transaction-audit > summary:focus-visible { outline: 2px solid var(--tx-blue); outline-offset: 3px; }
+.transaction-proof { margin-top: 1rem; display: grid; gap: .65rem; min-width: 0; }
+.transaction-proof h4 { font-weight: 600; }
+.transaction-proof p { overflow-wrap: anywhere; }
+.transaction-proof .transaction-button { justify-self: start; }
+.transaction-proof-image { display: block; max-height: 65vh; max-width: 100%; object-fit: contain; }

@@ -29,7 +29,7 @@ async function main() {
   context.URL = URL;
   context.FormData = FormData;
   let qrReads = 0, qrSaves = 0;
-  context.API.getQrPaymentSettings = async () => { qrReads++; return {settings: {enabled: false, version: 1, has_image: false}}; };
+  context.API.getQrPaymentSettings = async () => { qrReads++; return {providers: {gcash: 'GCash', maya: 'Maya'}, settings: {enabled: false, version: 1, has_image: false}}; };
   context.API.saveQrPaymentSettings = async payload => {
     qrSaves++;
     assert.equal(payload.get('enabled'), '0');
@@ -41,6 +41,16 @@ async function main() {
   await ui.selectSettingsTab('qr-payments');
   await ui.selectSettingsTab('qr-payments');
   assert.equal(qrReads, 1, 'The QR tab reuses its loaded configuration');
+  ui.qrSettings.providerChoice = 'Unlisted name'; ui.selectQrProvider();
+  await ui.saveQrSettings();
+  assert.equal(qrSaves, 0, 'Unlisted text needs the explicit fallback instead of erasing configuration');
+  assert.match(ui.qrSettings.fieldErrors.provider_id, /Select/);
+  ui.qrSettings.providerChoice = 'Maya';
+  ui.selectQrProvider();
+  assert.equal(ui.qrSettings.provider_id, 'maya');
+  assert.equal(ui.qrSettings.provider_name, 'Maya');
+  ui.qrSettings.providerChoice = 'Other supported provider'; ui.selectQrProvider();
+  assert.equal(ui.qrSettings.provider_id, 'other');
   ui.qrSettings.merchant_name = 'Bethlehem';
   ui.qrSettings.provider_name = 'Bank';
   await ui.saveQrSettings();

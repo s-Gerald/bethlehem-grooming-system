@@ -293,6 +293,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
     private function configureQr(): void
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update(['enabled' => true, 'merchant_name' => 'Bethlehem',

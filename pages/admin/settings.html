@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -131,7 +131,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
 
       <!-- Main Content -->
@@ -264,10 +264,12 @@
                     <input type="text" x-model="qrSettings.merchant_name" maxlength="150" :required="qrSettings.enabled" :aria-invalid="!!qrSettings.fieldErrors.merchant_name" aria-describedby="qr-merchant-error" class="qr-field mt-2" />
                     <span id="qr-merchant-error" x-show="qrSettings.fieldErrors.merchant_name" x-text="qrSettings.fieldErrors.merchant_name" class="qr-field-error"></span>
                   </label>
-                  <label class="block text-sm font-semibold text-[#2f4b66]">Receiving bank or e-wallet
-                    <input type="text" x-model="qrSettings.provider_name" maxlength="100" :required="qrSettings.enabled" :aria-invalid="!!qrSettings.fieldErrors.provider_name" aria-describedby="qr-provider-error" class="qr-field mt-2" />
-                    <span id="qr-provider-error" x-show="qrSettings.fieldErrors.provider_name" x-text="qrSettings.fieldErrors.provider_name" class="qr-field-error"></span>
-                  </label>
+                  <div class="block text-sm font-semibold text-[#2f4b66]"><label for="qr-provider-choice">Receiving bank or e-wallet</label>
+                    <input id="qr-provider-choice" type="text" list="qr-provider-catalog" x-model="qrSettings.providerChoice" @input="selectQrProvider()" :required="qrSettings.enabled" :aria-invalid="!!(qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id)" aria-describedby="qr-provider-error" class="qr-field mt-2" autocomplete="off" placeholder="Search bank or e-wallet" />
+                    <datalist id="qr-provider-catalog"><template x-for="(label, id) in qrProviders" :key="id"><option :value="label"></option></template><option value="Other supported provider"></option></datalist>
+                    <input x-show="qrSettings.provider_id === 'other'" type="text" x-model="qrSettings.provider_name" maxlength="100" :required="qrSettings.provider_id === 'other'" aria-label="Other receiving institution" placeholder="Receiving institution name" class="qr-field mt-2" />
+                    <span id="qr-provider-error" x-show="qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id" x-text="qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id" class="qr-field-error"></span>
+                  </div>
                   <label class="flex items-center gap-3 text-sm font-semibold text-[#2f4b66]"><input type="checkbox" x-model="qrSettings.enabled" />Enable QR Payments</label>
                   <button type="submit" class="qr-primary" :disabled="qrSettings.saving || qrCrop.open" x-text="qrSettings.saving ? 'Saving…' : (qrSettings.enabled && qrSettings.status !== 'enabled' ? 'Save & Enable' : 'Save Changes')"></button>
                 </div>
@@ -1475,6 +1477,6 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023"></script>
   </body>
 </html>

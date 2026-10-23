@@ -315,8 +315,10 @@ class TransactionHistorySearchTest extends TestCase
     public function test_qr_history_includes_verification_and_searchable_reference_without_changing_totals(string $source): void
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         $qr = \App\Models\QrPayment::create([
             'payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
+            'proof_path' => 'payment-proofs/private.png', 'proof_name' => 'receipt.png', 'proof_mime' => 'image/png', 'paying_app' => 'Maya',
             'external_reference' => 'BANK123456', 'received_amount' => 850, 'transaction_at' => '2026-10-03 11:59:00',
             'verification_source' => $source, 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
             'verified_at' => '2026-10-03 12:00:00', 'settings_version' => 1,
@@ -337,6 +339,9 @@ class TransactionHistorySearchTest extends TestCase
         $this->assertSame(1, $transaction['qrPayment']['settings_version']);
         $this->assertArrayNotHasKey('image_path', $transaction['qrPayment']);
         $this->assertArrayNotHasKey('proof_url', $transaction['qrPayment']);
+        $this->assertArrayNotHasKey('proof_path', $transaction['qrPayment']);
+        $this->assertSame('receipt.png', $transaction['qrPayment']['proof']['name']);
+        $this->assertSame('Maya', $transaction['qrPayment']['paying_app']);
         $this->assertEquals(850, $data['collection_total']);
     }
 

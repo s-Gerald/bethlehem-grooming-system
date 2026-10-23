@@ -12,7 +12,7 @@ class QrPaymentSettingController extends Controller
 {
     public function show()
     {
-        return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration(true)]);
+        return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration(true), 'providers' => config('qr_payments.providers')]);
     }
 
     public function configuration()
@@ -26,6 +26,7 @@ class QrPaymentSettingController extends Controller
             'version' => 'required|integer|min:1',
             'enabled' => 'required|boolean',
             'merchant_name' => 'nullable|string|max:150',
+            'provider_id' => ['nullable', \Illuminate\Validation\Rule::in([...array_keys(config('qr_payments.providers')), 'other'])],
             'provider_name' => 'nullable|string|max:100',
             'image' => 'nullable|file|image|mimes:png,jpg,jpeg,webp|mimetypes:image/png,image/jpeg,image/webp|max:3072|dimensions:min_width=128,min_height=128,max_width=4096,max_height=4096',
             'official_qr_confirmed' => 'exclude_without:image|required|accepted',
@@ -40,10 +41,21 @@ class QrPaymentSettingController extends Controller
                 $settings = QrPaymentSettings::whereKey(1)->lockForUpdate()->firstOrFail();
                 abort_if($settings->version !== (int) $data['version'], 409, 'QR settings changed. Reload the tab before saving.');
                 $oldPath = $settings->image_path;
+                $provider = $data['provider_id'] ?? null;
+                $providerName = trim($data['provider_name'] ?? '');
+                if ($provider && $provider !== 'other') $providerName = config('qr_payments.providers')[$provider];
+                if ($provider === 'other' && $providerName === '') {
+                    throw ValidationException::withMessages(['provider_name' => 'Enter the receiving institution name.']);
+                }
+                if (! $provider && $providerName !== '' && $providerName !== $settings->provider_name
+                    && ! in_array($providerName, config('qr_payments.providers'), true)) {
+                    throw ValidationException::withMessages(['provider_id' => 'Select a provider or Other supported provider.']);
+                }
+
                 $settings->fill([
                     'enabled' => $data['enabled'],
                     'merchant_name' => trim($data['merchant_name'] ?? '') ?: null,
-                    'provider_name' => trim($data['provider_name'] ?? '') ?: null,
+                    'provider_name' => $providerName ?: null,
                     'updated_by' => $request->user()->user_id,
                     'version' => $settings->version + 1,
                 ]);

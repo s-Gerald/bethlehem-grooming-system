@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -219,7 +219,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
 
       <!-- Main Content -->
@@ -947,7 +947,7 @@
                     <p class="payment-change-amount text-2xl text-[#2f4b66]" x-text="formatPeso(Math.max(0, paymentChange))"></p>
                   </div>
                   <template x-if="paymentModal.qr && paymentModal.paymentMethod === 'qrph'">
-                    <div class="space-y-4" @paste="paymentModal.qr.paste($event)">
+                    <div class="space-y-4" x-effect="paymentModal.qr.setExpectedAmount(paymentTotalDue)" @paste="paymentModal.qr.paste($event)">
                       <div class="rounded-2xl border border-[#d7e3ef] bg-[#f5f8fb] p-4 text-center">
                         <p class="font-semibold text-[#1f3850]" x-text="paymentModal.qr.settings?.merchant_name"></p>
                         <p class="mt-1 text-sm text-slate-500" x-text="paymentModal.qr.settings?.provider_name"></p>
@@ -961,43 +961,34 @@
                       <details class="qr-details" :open="paymentModal.qr.scanOpen" @toggle="paymentModal.qr.scanOpen = $el.open">
                         <summary>Scan Payment Details</summary>
                         <div class="qr-scan-upload" @dragover.prevent @drop.prevent="paymentModal.qr.drop($event)">
-                          <input x-ref="qrReceiptInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" :disabled="paymentModal.qr.ocrBusy" @change="paymentModal.qr.extract($event.target.files[0]); $event.target.value = ''" class="hidden" tabindex="-1" aria-label="Select payment receipt" />
-                          <button type="button" @click="$refs.qrReceiptInput.click()" :disabled="paymentModal.qr.ocrBusy" class="qr-secondary">Upload Receipt</button>
+                          <input x-ref="qrReceiptInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" @change="paymentModal.qr.extract($event.target.files[0]); $event.target.value = ''" class="hidden" tabindex="-1" aria-label="Select payment receipt" />
+                          <button type="button" @click="$refs.qrReceiptInput.click()" class="qr-secondary">Upload Receipt</button>
                           <button x-show="paymentModal.qr.ocrBusy" type="button" @click="paymentModal.qr.cancelScan()" class="qr-secondary">Cancel Scan</button>
                           <span class="text-xs text-slate-500">or drop an image / PDF, or paste a screenshot</span>
                           <template x-if="paymentModal.qr.receiptPreview"><img :src="paymentModal.qr.receiptPreview" alt="Selected receipt" class="qr-receipt-preview" /></template>
+                          <button x-show="paymentModal.qr.receiptName" type="button" @click="paymentModal.qr.removeReceipt(); clearPaymentError()" class="qr-secondary">Remove</button>
                           <span x-show="paymentModal.qr.receiptName" x-text="paymentModal.qr.receiptName" class="qr-receipt-name"></span>
                         </div>
-                        <p class="mt-2 text-xs text-slate-500">Up to 5 MB · PDF up to 2 pages · processed privately in this browser</p>
+                        <p class="mt-2 text-xs text-slate-500">Up to 5 MB · PDF up to 2 pages · saved with the recorded payment</p>
                         <p x-show="paymentModal.qr.ocrBusy" class="mt-2 text-sm text-slate-600" role="status" x-text="'Reading image… ' + paymentModal.qr.ocrProgress + '%'"></p>
                         <p x-show="paymentModal.qr.ocrMessage" class="mt-2 text-sm text-slate-600" role="status" x-text="paymentModal.qr.ocrMessage"></p>
                       </details>
                       <fieldset :disabled="paymentModal.qr.ocrBusy" class="min-w-0 space-y-3">
-                        <label x-show="!paymentModal.qr.missingReference" class="block text-xs font-semibold text-slate-600">Transaction Reference
-                          <input type="text" maxlength="100" x-model="paymentModal.qr.externalReference" @input="paymentModal.qr.verified = false; clearPaymentError()" class="qr-field mt-1" />
+                        <label class="block text-xs font-semibold text-slate-600">Transaction Reference
+                          <input type="text" maxlength="100" x-model="paymentModal.qr.externalReference" @input="paymentModal.qr.reviewField('externalReference'); clearPaymentError()" class="qr-field mt-1" />
                         </label>
                         <div class="grid gap-3 sm:grid-cols-2">
                           <label class="block text-xs font-semibold text-slate-600">Payment Date &amp; Time
-                            <input type="datetime-local" x-model="paymentModal.qr.transactionAt" @input="paymentModal.qr.verified = false; clearPaymentError()" class="qr-field mt-1" />
+                            <input type="datetime-local" x-model="paymentModal.qr.transactionAt" @input="paymentModal.qr.reviewField('transactionAt'); clearPaymentError()" class="qr-field mt-1" />
                           </label>
-                          <label class="block text-xs font-semibold text-slate-600">Amount Received
-                            <input type="number" min="0.01" step="0.01" x-model="paymentModal.qr.amount" @input="paymentModal.qr.verified = false; clearPaymentError()" class="qr-field mt-1" />
+                          <label x-show="paymentModal.qr.receiptAmountExtracted || paymentModal.qr.amount !== ''" class="block text-xs font-semibold text-slate-600">Receipt Amount
+                            <input type="number" min="0.01" step="0.01" x-model="paymentModal.qr.amount" @input="paymentModal.qr.reviewField('amount'); clearPaymentError()" class="qr-field mt-1" />
                           </label>
                         </div>
+                        <p x-show="paymentModal.qr.amount !== '' && Math.round(Number(paymentModal.qr.amount) * 100) !== Math.round(paymentTotalDue * 100)" class="text-sm text-amber-700" role="alert">Receipt amount differs from Total Due. Correct a scan error after checking the account credit, or leave payment unresolved.</p>
+                        <p x-show="paymentModal.qr.payingApp" class="text-sm text-slate-600">Paying app: <span x-text="paymentModal.qr.payingApp"></span> <button type="button" class="qr-secondary" @click="paymentModal.qr.payingApp = ''; paymentModal.qr.reviewField('payingApp')">Clear</button></p>
                         <p x-show="paymentModal.qr.recipientWarning" x-text="paymentModal.qr.recipientWarning" class="text-sm text-amber-700" role="status"></p>
-                        <template x-if="paymentModal.qr.isAdmin"><details class="qr-details">
-                          <summary>More Options</summary>
-                          <div class="mt-2 space-y-3">
-                          <label class="flex items-start gap-2 text-sm text-slate-600"><input type="checkbox" x-model="paymentModal.qr.missingReference" @change="paymentModal.qr.verified = false; paymentModal.qr.exceptionVerified = false; clearPaymentError()" class="mt-1" />Official reference unavailable</label>
-                          <div x-show="paymentModal.qr.missingReference" class="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                            <label class="block text-xs font-semibold text-slate-700">Reason and account-credit verification (20–500 characters)
-                              <textarea x-model="paymentModal.qr.exceptionReason" minlength="20" maxlength="500" @input="paymentModal.qr.exceptionVerified = false; paymentModal.qr.verified = false; clearPaymentError()" class="mt-1 w-full rounded-lg border border-amber-200 p-3 text-sm" rows="2"></textarea>
-                            </label>
-                            <label class="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" x-model="paymentModal.qr.exceptionVerified" class="mt-1" />I matched the exact account credit and checked it has not already been recorded.</label>
-                          </div>
-                          </div>
-                        </details></template>
-                        <label class="flex items-start gap-2 rounded-xl border border-[#cfe0ee] bg-[#f5f8fb] p-3 text-sm text-[#2f4b66]"><input type="checkbox" x-model="paymentModal.qr.verified" @change="clearPaymentError()" class="mt-1" />Verified in the clinic's receiving account</label>
+                        <label class="flex items-start gap-2 rounded-xl border border-[#cfe0ee] bg-[#f5f8fb] p-3 text-sm text-[#2f4b66]"><input type="checkbox" x-model="paymentModal.qr.verified" @change="clearPaymentError()" class="mt-1" /><span>I verified <strong x-text="formatPeso(paymentTotalDue)"></strong> was received in the clinic's official account.</span></label>
                       </fieldset>
                     </div>
                   </template>
@@ -1070,10 +1061,10 @@
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
-                <p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
+                <p class="receipt-success-label" x-text="receiptModal.qrPayment ? 'QR Payment' : receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
                 <div class="receipt-success-reference">
-                  <span>Reference</span>
-                  <strong x-text="receiptModal.bookingReference"></strong>
+                  <span x-text="receiptModal.qrPayment ? 'Transaction Reference' : 'Reference'"></span>
+                  <strong x-text="receiptModal.qrPayment ? receiptModal.qrPayment.external_reference : receiptModal.bookingReference"></strong>
                 </div>
               </header>
 
@@ -1122,14 +1113,12 @@
                   <h5>Payment Details</h5>
                   <dl class="receipt-success-details">
                     <div><dt>Pet owner</dt><dd x-text="receiptModal.ownerName"></dd></div>
-                    <div><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
+                    <div x-show="!receiptModal.qrPayment"><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Cash received</dt><dd x-text="formatPeso(receiptModal.amountPaid)"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Change</dt><dd x-text="formatPeso(receiptModal.change)"></dd></div>
-                    <div><dt>Paid at</dt><dd x-text="receiptModal.paidAt"></dd></div>
-                    <template x-if="receiptModal.qrPayment"><div><dt>Transaction Reference</dt><dd x-text="receiptModal.qrPayment.external_reference || 'Unavailable — administrator exception'"></dd></div></template>
-                    <template x-if="receiptModal.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="receiptModal.qrPayment.transaction_at"></dd></div></template>
+                    <div x-show="!receiptModal.qrPayment"><dt>Paid at</dt><dd x-text="receiptModal.paidAt"></dd></div>
+                    <template x-if="receiptModal.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="formatQrDate(receiptModal.qrPayment.transaction_at)"></dd></div></template>
                     <template x-if="receiptModal.qrPayment"><div><dt>Verified by</dt><dd x-text="receiptModal.qrPayment.verified_by_name"></dd></div></template>
-                    <template x-if="receiptModal.qrPayment"><div><dt>Verified at</dt><dd x-text="receiptModal.qrPayment.verified_at"></dd></div></template>
                     <div x-show="receiptModal.notes"><dt>Notes</dt><dd x-text="receiptModal.notes"></dd></div>
                   </dl>
                 </section>
@@ -1564,9 +1553,9 @@
     </script>
 
     <!-- Shared dashboard content script -->
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023"></script>
   </body>
 </html>

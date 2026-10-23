@@ -2530,7 +2530,25 @@ var API = (() => {
   async function processPayment(bookingId, payload) {
     // POST /api/admin/bookings/{id}/pay  (protected — admin token)
     // payload: { final_price, amount_paid, payment_method?, notes?, service_prices? }
-    return request("POST", `/admin/bookings/${bookingId}/pay`, payload, getAdminToken());
+    return request("POST", `/admin/bookings/${bookingId}/pay`, paymentPayload(payload), getAdminToken());
+  }
+
+  function paymentPayload(payload) {
+    if (!payload.receipt) return payload;
+    const form = new FormData();
+    const append = (key, value) => {
+      if (value == null) return;
+      if (Array.isArray(value)) value.forEach((item, index) => append(`${key}[${index}]`, item));
+      else if (typeof value === 'object' && !(value instanceof Blob)) Object.entries(value).forEach(([field, item]) => append(`${key}[${field}]`, item));
+      else if (value instanceof Blob) form.append(key, value, value.name || `Payment proof.${({'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'application/pdf': 'pdf'})[value.type] || 'bin'}`);
+      else form.append(key, typeof value === 'boolean' ? (value ? '1' : '0') : value);
+    };
+    Object.entries(payload).forEach(([key, value]) => append(key, value));
+    return form;
+  }
+
+  function getQrPaymentProof(id) {
+    return request('GET', `/admin/qr-payments/${encodeURIComponent(id)}/proof`, null, getAdminToken(), {responseType: 'blob', cache: 'no-store'});
   }
 
   function getQrPaymentConfig() {
@@ -2552,7 +2570,7 @@ var API = (() => {
   async function payNow(bookingId, payload) {
     // POST /api/admin/bookings/{id}/pay-now  (protected — admin token)
     // Early payment while booking is still checked_in; accepts the same payload as processPayment.
-    return request("POST", `/admin/bookings/${bookingId}/pay-now`, payload, getAdminToken());
+    return request("POST", `/admin/bookings/${bookingId}/pay-now`, paymentPayload(payload), getAdminToken());
   }
 
 
@@ -3016,6 +3034,7 @@ var API = (() => {
     markCustomerNotificationRead,
     markAllCustomerNotificationsRead,
     // Payments
+    getQrPaymentProof,
     getQrPaymentConfig,
     getQrPaymentSettings,
     saveQrPaymentSettings,

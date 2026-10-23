@@ -7,12 +7,12 @@
     <title>Transactions | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019" />
-    <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003" />
+    <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023" />
     <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -128,7 +128,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
 
       <!-- Main Content -->
@@ -343,7 +343,7 @@
                       <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
                   </div>
-                  <div class="transaction-dialog-subtitle">
+                  <div class="transaction-dialog-subtitle" x-show="!selectedTransaction.qrPayment">
                     <span class="transaction-reference" x-text="selectedTransaction.reference"></span>
                     <span x-text="formatTransactionDate(selectedTransaction)"></span>
                     <span class="transaction-method" x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></span>
@@ -355,9 +355,9 @@
                     <dl class="transaction-metadata">
                       <template x-if="!isProductSale(selectedTransaction)"><div><dt>Pet Owner</dt><dd x-text="selectedTransaction.ownerName || '—'"></dd></div></template>
                       <template x-if="!isProductSale(selectedTransaction)"><div><dt>Pet</dt><dd x-text="petNames(selectedTransaction).join(', ') || '—'"></dd></div></template>
-                      <div><dt x-text="isClinicPayment(selectedTransaction) ? 'Clinic Reference' : 'Reference'">Reference</dt><dd x-text="selectedTransaction.reference"></dd></div>
-                      <div><dt>Transaction Date</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
-                      <div x-show="!isClinicPayment(selectedTransaction)"><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
+                      <div><dt x-text="isClinicPayment(selectedTransaction) ? 'Clinic Reference' : selectedTransaction.qrPayment ? 'Grooming Reference' : 'Reference'">Reference</dt><dd x-text="selectedTransaction.reference"></dd></div>
+                      <div x-show="!selectedTransaction.qrPayment"><dt>Transaction Date</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
+                      <div x-show="!isClinicPayment(selectedTransaction) && !selectedTransaction.qrPayment"><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
                     </dl>
                   </section>
                   <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction)">
@@ -412,21 +412,35 @@
                     <h3 id="transaction-payment-title">Payment Details</h3>
                     <dl class="transaction-line-items transaction-payment">
                       <div><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
-                      <div><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
+                      <div x-show="!selectedTransaction.qrPayment"><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Transaction Reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — administrator exception'"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="selectedTransaction.qrPayment.transaction_at"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Receiving account</dt><dd x-text="selectedTransaction.qrPayment.merchant_name + ' · ' + selectedTransaction.qrPayment.provider_name"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>External Transaction Reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — historical record'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.transaction_at)"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Receiving Provider</dt><dd x-text="selectedTransaction.qrPayment.merchant_name + ' · ' + selectedTransaction.qrPayment.provider_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Verified by</dt><dd x-text="selectedTransaction.qrPayment.verified_by_name"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Verified at</dt><dd x-text="selectedTransaction.qrPayment.verified_at"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Verified using</dt><dd x-text="selectedTransaction.qrPayment.verification_source === 'receiving_history' ? 'Receiving account history' : 'Official merchant notification'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment?.paying_app"><div><dt>Paying App</dt><dd x-text="selectedTransaction.qrPayment.paying_app"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment?.reference_unavailable_reason"><div><dt>Reference exception</dt><dd x-text="selectedTransaction.qrPayment.reference_unavailable_reason"></dd></div></template>
                       <div x-show="selectedTransaction.paymentMethod === 'online' && selectedTransaction.providerMethod"><dt>Provider Method</dt><dd x-text="selectedTransaction.providerMethod"></dd></div>
-                      <div x-show="isClinicPayment(selectedTransaction) || selectedTransaction.processedByName"><dt>Processed By</dt><dd x-text="selectedTransaction.processedByName || '—'"></dd></div>
-                      <div><dt>Paid At</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
+                      <div x-show="!selectedTransaction.qrPayment && (isClinicPayment(selectedTransaction) || selectedTransaction.processedByName)"><dt>Processed By</dt><dd x-text="selectedTransaction.processedByName || '—'"></dd></div>
+                      <div x-show="!selectedTransaction.qrPayment"><dt>Paid At</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
                     </dl>
-                    <div class="transaction-paid-total"><span>Total Paid</span><strong x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></strong></div>
+                    <div class="transaction-paid-total"><span x-text="selectedTransaction.qrPayment ? 'Amount Paid' : 'Total Paid'">Total Paid</span><strong x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></strong></div>
+                    <template x-if="selectedTransaction.qrPayment"><details class="transaction-audit">
+                      <summary>Audit timestamps</summary>
+                      <dl class="transaction-line-items transaction-payment">
+                        <div><dt>Recorded at</dt><dd x-text="formatQrDate(selectedTransaction.paidAt)"></dd></div>
+                        <div><dt>Verified at</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.verified_at)"></dd></div>
+                      </dl>
+                    </details></template>
+                    <template x-if="selectedTransaction.qrPayment?.proof"><section class="transaction-proof" aria-label="Payment Proof">
+                      <h4>Payment Proof</h4>
+                      <p x-text="selectedTransaction.qrPayment.proof.name"></p>
+                      <button type="button" class="transaction-button" :disabled="proofBusy" @click="viewPaymentProof()" x-text="proofBusy ? 'Loading�' : 'View Payment Proof'"></button>
+                      <p x-show="proofError" x-text="proofError" role="alert"></p>
+                      <template x-if="proofUrl && selectedTransaction.qrPayment.proof.mime !== 'application/pdf'"><img :src="proofUrl" alt="Recorded payment proof" class="transaction-proof-image" /></template>
+                      <template x-for="(page, index) in proofPages" :key="page"><img :src="page" :alt="'Payment proof page ' + (index + 1)" class="transaction-proof-image" /></template>
+                    </section></template>
                     <p x-show="selectedTransaction.reconciliationReason" x-text="selectedTransaction.reconciliationReason === 'product_stock_conflict' ? 'Payment received. Product stock needs reconciliation. Contact an administrator.' : 'Payment received for an already-paid visit. Contact an administrator.'" class="text-sm text-red-600" role="status"></p>
                     <div x-show="selectedTransaction.notes" class="transaction-notes"><h4>Notes</h4><p x-text="selectedTransaction.notes"></p></div>
                   </section>
@@ -452,8 +466,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
     <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018"></script>
+    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023"></script>
   </body>
 </html>

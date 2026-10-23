@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const context = { window: {}, Date, Intl, URLSearchParams };
+const context = { window: {}, Date, Intl, URLSearchParams, AbortController };
 for (const file of ["payment-invoice.js", "admin-transactions.js"]) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components", file), "utf8"), context);
 }
@@ -167,5 +167,34 @@ assert.ok(!html.split('<!-- Transactions Content -->')[1].includes('data-lucide'
   const groomingLink = createPage('?payment=2&reference=CL-20261003-002');
   await groomingLink.init();
   assert.equal(groomingLink.selectedTransaction, null, 'A clinic appointment cannot substitute for a grooming payment');
+  await proofChecks();
   console.log('Admin transaction details regression tests passed.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
+
+assert.match(context.window.PaymentInvoice.formatPaymentDateTime('2026-10-22T17:30:00Z'), /Oct 23, 2026.*1:30 AM/);
+assert.match(context.window.PaymentInvoice.formatPaymentDateTime('2026-10-23 09:15:00'), /Oct 23, 2026.*9:15 AM/);
+async function proofChecks() {
+  context.URL = URL;
+  let reads = 0;
+  context.API = {getQrPaymentProof: async id => { reads++; assert.equal(id, 19); return {blob: new Blob(['receipt'], {type: 'image/png'})}; }};
+  const proofTx = {...qrTransaction, qrPayment: {...qrTransaction.qrPayment, id: 19, proof: {name: 'receipt.png', mime: 'image/png'}}};
+  ui.openDetails(proofTx, {focus() {}});
+  assert.equal(reads, 0, 'Opening transaction details never downloads the receipt');
+  await ui.viewPaymentProof();
+  assert.equal(reads, 1);
+  const url = ui.proofUrl;
+  assert.match(url, /^blob:/);
+  await ui.viewPaymentProof();
+  assert.equal(reads, 1, 'Repeated view reuses the current private preview');
+  ui.closeDetails();
+  assert.equal(ui.proofUrl, '');
+  await assert.rejects(fetch(url), /fetch failed/, 'Closing transaction details releases the attachment');
+  let resolve;
+  context.API.getQrPaymentProof = () => new Promise(done => { resolve = done; });
+  ui.openDetails(proofTx, {focus() {}});
+  const pending = ui.viewPaymentProof();
+  ui.closeDetails();
+  resolve({blob: new Blob(['late'], {type: 'image/png'})});
+  await pending;
+  assert.equal(ui.proofUrl, '', 'A late proof fetch cannot reopen a closed detail view');
+}

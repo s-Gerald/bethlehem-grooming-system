@@ -128,12 +128,13 @@ console.log("Admin grooming invoice print regression tests passed.");
   global.API = {getUserRole: () => 'staff'};
   for (const early of [true, false]) {
     const qr = createQrPayment();
-    Object.assign(qr, {settings: {enabled: true, version: 2}, amount: '500.00',
+    Object.assign(qr, {settings: {enabled: true, version: 2}, amount: '',
       externalReference: 'BANK123456', transactionAt: '2026-10-23T10:30', verified: false});
     ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
       petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: '', paymentMethod: 'qrph', qr};
     assert.equal(ui.canSubmitPayment, false, 'QR requires explicit verification');
     qr.verified = true;
+    if (early) qr.receiptFile = new Blob(['synthetic proof'], {type: 'image/png'});
     assert.equal(ui.canSubmitPayment, true, 'Verified QR does not require Cash Received');
     context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
       submissions.push({id, payload});
@@ -144,12 +145,32 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(submissions.at(-1).payload.payment_method, 'qrph');
     assert.equal(submissions.at(-1).payload.amount_paid, 500);
     assert.equal(submissions.at(-1).payload.qr_verified, true);
+    assert.equal(submissions.at(-1).payload.observed_amount, null);
+    if (early) assert.equal(await submissions.at(-1).payload.receipt.text(), 'synthetic proof');
     assert.equal(Object.hasOwn(submissions.at(-1).payload, 'verification_source'), false, 'Early and final submissions never send a source choice');
     assert.equal(ui.receiptModal.paymentMethod, 'QR Payment');
     assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
     const printCount = printed;
     ui.printReceipt();
     assert.equal(printed, printCount, 'QR success cannot print a Cash invoice');
+  }
+  const {environment} = require('./admin-data-cache-regression.cjs');
+  const apiEnvironment = environment();
+  apiEnvironment.c.Blob = Blob; apiEnvironment.c.FormData = FormData;
+  const uploaded = new Blob(['synthetic receipt'], {type: 'image/png'});
+  for (const method of ['processPayment', 'payNow']) {
+    apiEnvironment.respond((endpoint, options) => {
+      assert.match(endpoint, /bookings\/9\/pay/);
+      assert.equal(options.body.get('service_prices[0][booking_service_id]'), '3');
+      assert.equal(options.body.get('service_prices[0][amount]'), '850');
+      assert.equal(options.body.get('qr_verified'), '1');
+      assert.equal(options.body.get('observed_amount'), null);
+      assert.equal(options.body.get('receipt').name, 'Payment proof.png');
+      assert.equal(options.headers['Content-Type'], undefined, 'The browser supplies the multipart boundary');
+      return {success: true};
+    });
+    await apiEnvironment.API[method](9, {receipt: uploaded, qr_verified: true, observed_amount: null,
+      service_prices: [{booking_service_id: 3, amount: 850}]});
   }
   delete global.API;
 })().catch(error => {console.error(error); process.exitCode = 1;});

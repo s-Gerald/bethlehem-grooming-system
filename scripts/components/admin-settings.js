@@ -20,7 +20,8 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
-    qrSettings: {enabled: false, version: 1, merchant_name: '', provider_name: '', has_image: false,
+    qrProviders: {},
+    qrSettings: {provider_id: '', providerChoice: '', enabled: false, version: 1, merchant_name: '', provider_name: '', has_image: false,
       status: 'not_ready', missing_fields: [], fieldErrors: {},
       loaded: false, loading: false, saving: false, file: null, preview: '', officialConfirmed: false, error: '', success: ''},
     qrCrop: {open: false, busy: false, ready: false, error: '', detected: false},
@@ -231,7 +232,8 @@ function adminSettings() {
       state.error = '';
       state.success = '';
       try {
-        const {settings} = await API.getQrPaymentSettings();
+        const {settings, providers} = await API.getQrPaymentSettings();
+        this.qrProviders = providers || {};
         if (qrDestroyed) return;
         this.applyQrSettings(settings);
         await this.refreshQrPreview(settings);
@@ -239,9 +241,20 @@ function adminSettings() {
       finally { state.loading = false; }
     },
 
+    selectQrProvider() {
+      const state = this.qrSettings;
+      const match = Object.entries(this.qrProviders).find(([, label]) => label === state.providerChoice);
+      state.provider_id = match?.[0] || (state.providerChoice === 'Other supported provider' ? 'other' : '');
+      if (match) state.provider_name = match[1];
+      else if (state.provider_id !== 'other') state.provider_name = '';
+    },
+
     applyQrSettings(settings) {
       Object.assign(this.qrSettings, settings, {merchant_name: settings.merchant_name || '', provider_name: settings.provider_name || '',
         file: null, officialConfirmed: false, loaded: true, fieldErrors: {}});
+      const match = Object.entries(this.qrProviders).find(([, label]) => label === settings.provider_name);
+      this.qrSettings.provider_id = match?.[0] || (settings.provider_name ? 'other' : '');
+      this.qrSettings.providerChoice = match?.[1] || (settings.provider_name ? 'Other supported provider' : '');
     },
 
     async refreshQrPreview(settings) {
@@ -318,6 +331,11 @@ function adminSettings() {
     async saveQrSettings() {
       const state = this.qrSettings;
       if (!this.isAdmin || !state.loaded || state.saving || state.loading || this.qrCrop.open) return;
+      if (state.providerChoice.trim() && !state.provider_id) {
+        state.fieldErrors = {provider_id: 'Select a listed provider or Other supported provider.'};
+        state.error = 'Check the highlighted field.';
+        return;
+      }
       state.saving = true;
       state.error = '';
       state.success = '';
@@ -327,6 +345,7 @@ function adminSettings() {
       payload.append('version', String(state.version));
       payload.append('merchant_name', state.merchant_name);
       payload.append('provider_name', state.provider_name);
+      payload.append('provider_id', state.provider_id);
       if (state.file) {
         payload.append('image', state.file);
         payload.append('official_qr_confirmed', state.officialConfirmed ? '1' : '0');

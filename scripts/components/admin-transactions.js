@@ -22,6 +22,7 @@ function adminTransactions() {
     transactionsLoaded: false,
     _transactionsKey: "",
     errorMessage: "",
+    proofPages: [], _proofController: null, proofUrl: '', proofBusy: false, proofError: '', _proofVersion: 0,
     selectedTransaction: null,
     receiptModal: null,
     detailsTrigger: null,
@@ -204,6 +205,7 @@ function adminTransactions() {
     },
 
     openDetails(tx, trigger) {
+      this.clearPaymentProof();
       this.selectedTransaction = tx;
       // Build the invoice once from the transaction being inspected.
       this.receiptModal = this.isProductSale(tx) || tx.qrPayment ? null : {
@@ -258,6 +260,7 @@ function adminTransactions() {
     },
 
     closeDetails() {
+      this.clearPaymentProof();
       this.$refs.detailsDialog.close();
       document.body.style.overflow = this.previousBodyOverflow;
       this.selectedTransaction = null;
@@ -267,7 +270,46 @@ function adminTransactions() {
     },
 
     destroy() {
+      this.clearPaymentProof();
       if (this.selectedTransaction) document.body.style.overflow = this.previousBodyOverflow;
+    },
+
+    clearPaymentProof() {
+      this._proofVersion++;
+      this._proofController?.abort();
+      this._proofController = null;
+      for (const url of this.proofPages) URL.revokeObjectURL(url);
+      this.proofPages = [];
+      if (this.proofUrl) URL.revokeObjectURL(this.proofUrl);
+      this.proofUrl = this.proofError = '';
+      this.proofBusy = false;
+    },
+
+    async viewPaymentProof() {
+      const qr = this.selectedTransaction?.qrPayment;
+      if (!qr?.proof || this.proofBusy || this.proofUrl || this.proofPages.length) return;
+      const version = this._proofVersion;
+      const controller = new AbortController(); this._proofController = controller;
+      this.proofBusy = true; this.proofError = '';
+      try {
+        const {blob} = await API.getQrPaymentProof(qr.id);
+        if (version !== this._proofVersion) return;
+        if (qr.proof.mime === 'application/pdf') {
+          const {readPdfReceipt} = await import('../services/payment-receipt-pdf.js');
+          if (version !== this._proofVersion) return;
+          await readPdfReceipt(blob, async canvas => {
+            const page = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!page) throw new Error('Could not render payment proof.');
+            if (version === this._proofVersion) this.proofPages.push(URL.createObjectURL(page));
+            return '';
+          }, controller.signal);
+        } else this.proofUrl = URL.createObjectURL(blob);
+      } catch (error) { if (version === this._proofVersion) { this.clearPaymentProof(); this.proofError = error.message || 'Could not load payment proof.'; } }
+      finally { if (version === this._proofVersion) this.proofBusy = false; }
+    },
+
+    formatQrDate(value) {
+      return window.PaymentInvoice.formatPaymentDateTime(value);
     },
 
     formatTransactionDate(tx) {

@@ -275,7 +275,7 @@ class PaymentController extends Controller
         $this->authorizeQrPayment($request, $data);
 
         try {
-            $result = DB::transaction(function () use ($request, $bookingId, $data) {
+            $result = $this->withPaymentProof($request, $data, function (array $data) use ($request, $bookingId) {
                 $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->first();
                 if (! $booking) {
                     return $this->transactionError('Visit not found.', 404);
@@ -341,7 +341,7 @@ class PaymentController extends Controller
         $this->authorizeQrPayment($request, $data);
 
         try {
-            $result = DB::transaction(function () use ($request, $bookingId, $data) {
+            $result = $this->withPaymentProof($request, $data, function (array $data) use ($request, $bookingId) {
                 $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->first();
                 if (! $booking) {
                     return $this->transactionError('Visit not found.', 404);
@@ -773,6 +773,7 @@ class PaymentController extends Controller
     ): array {
         $money = $this->paymentReadiness();
         $totalCents = $money->moneyToCents($serverTotal);
+        if (($data['payment_method'] ?? 'cash') === 'qrph') $data['amount_paid'] = $serverTotal;
         $amountCents = $money->moneyToCents($data['amount_paid'] ?? 0);
 
         if ($totalCents <= 0) {
@@ -852,6 +853,21 @@ class PaymentController extends Controller
             $settled['payment']->setRelation('qrPayment', $qr);
         }
         return $settled;
+    }
+
+    private function withPaymentProof(Request $request, array $data, \Closure $settle): array
+    {
+        $proofs = app(\App\Services\QrPaymentProofService::class);
+        $proof = ($data['payment_method'] ?? 'cash') === 'qrph' ? $proofs->store($request->file('receipt')) : [];
+        $committed = false;
+        try {
+            $data['_proof'] = $proof;
+            $result = DB::transaction(fn () => $settle($data));
+            $committed = isset($result['payment']);
+            return $result;
+        } finally {
+            if (! $committed) $proofs->discard($proof);
+        }
     }
 
     private function paymentSettlement(): GroomingPaymentSettlementService

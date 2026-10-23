@@ -3,21 +3,45 @@ export function createQrPayment() {
     settings: null, loading: false, error: '', imageUrl: '', imageLoading: false,
     amount: '', externalReference: '', transactionAt: '', recipient: '',
     verified: false,
-    missingReference: false, exceptionReason: '', exceptionVerified: false,
-    isAdmin: API.getUserRole() === 'admin', ocrBusy: false, ocrProgress: 0, ocrMessage: '',
+    ocrBusy: false, ocrProgress: 0, ocrMessage: '',
     disposed: false,
     receiptName: '', receiptPreview: '', scanOpen: false,
-    _ocrController: null,
+    receiptAmountExtracted: false, expectedAmount: null,
+    receiptFile: null, payingApp: '', _derived: {}, _ocrController: null, _scanVersion: 0,
     get recipientWarning() {
       const normalize = value => String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '');
       const recipient = normalize(this.recipient), merchant = normalize(this.settings?.merchant_name);
       return recipient && merchant && !recipient.includes(merchant) && !merchant.includes(recipient)
         ? 'Receipt recipient differs from the receiving account. Check the account credit carefully.' : '';
     },
+    setExpectedAmount(total) {
+      const cents = Math.round(total * 100);
+      if (this.expectedAmount !== cents) this.verified = false;
+      this.expectedAmount = cents;
+    },
+    reviewField(key) {
+      delete this._derived[key];
+      this.verified = false;
+    },
     applyExtraction(result) {
-      for (const key of ['amount', 'externalReference', 'transactionAt']) if (result[key]) this[key] = result[key];
-      this.recipient = result.recipient || '';
-      this.verified = false; this.exceptionVerified = false;
+      if (result.amount) this.receiptAmountExtracted = true;
+      for (const key of ['amount', 'externalReference', 'transactionAt', 'recipient', 'payingApp']) {
+        if (result[key]) { this[key] = result[key]; this._derived[key] = result[key]; }
+      }
+      this.verified = false;
+    },
+    removeReceipt() {
+      this.cancelScan();
+      if (this.receiptPreview) URL.revokeObjectURL(this.receiptPreview);
+      if (!this.verified) {
+        for (const [key, value] of Object.entries(this._derived)) if (this[key] === value) this[key] = '';
+      }
+      this._derived = {};
+      this.receiptAmountExtracted = false;
+      this.receiptFile = null;
+      this.receiptName = this.receiptPreview = this.ocrMessage = '';
+      this.ocrProgress = 0;
+      this.verified = false;
     },
 
     async load() {
@@ -37,26 +61,31 @@ export function createQrPayment() {
       finally { this.imageLoading = false; }
     },
     async extract(file) {
-      if (!file || this.ocrBusy || this.disposed) return;
+      if (!file || this.disposed) return;
       this.scanOpen = true;
-      this.ocrBusy = true;
       this.verified = false;
-      this.exceptionVerified = false;
-      this._ocrController = new AbortController();
-      this.ocrMessage = '';
-      this.ocrProgress = 0;
+      if (!['image/png', 'image/jpeg', 'image/webp', 'application/pdf'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+        this.ocrMessage = 'Select a PNG, JPEG, WebP or PDF receipt up to 5 MB.';
+        return;
+      }
+      this.removeReceipt();
+      this.receiptFile = file;
+      this.receiptName = file.name || 'Clipboard receipt.png';
+      if (file instanceof Blob && file.type.startsWith('image/')) this.receiptPreview = URL.createObjectURL(file);
+      const controller = new AbortController();
+      this._ocrController = controller;
+      const version = ++this._scanVersion;
+      const current = () => !this.disposed && version === this._scanVersion && !controller.signal.aborted;
+      this.ocrBusy = true;
       try {
-        if (this.receiptPreview) URL.revokeObjectURL(this.receiptPreview);
-        this.receiptPreview = '';
-        this.receiptName = file.name || 'Clipboard receipt';
-        if (file instanceof Blob && ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) && file.size <= 5 * 1024 * 1024) this.receiptPreview = URL.createObjectURL(file);
-        const { recognizePaymentProof } = await import('../services/payment-proof-ocr.js?v=20261023-ux');
-        const result = await recognizePaymentProof(file, progress => { if (!this.disposed) this.ocrProgress = progress; }, this._ocrController.signal);
-        if (this.disposed) return;
+        const { recognizePaymentProof } = await import('../services/payment-proof-ocr.js?v=20261023-workflow');
+        if (!current()) return;
+        const result = await recognizePaymentProof(file, progress => { if (current()) this.ocrProgress = progress; }, controller.signal);
+        if (!current()) return;
         this.applyExtraction(result);
-        this.ocrMessage = Object.values(result).some(Boolean) ? 'Details scanned. Review the fields and verify the account credit.' : 'No payment details found. Enter them manually.';
-      } catch (error) { if (!this.disposed) this.ocrMessage = error.message || 'OCR failed. Enter the details manually.'; }
-      finally { this.ocrBusy = false; this._ocrController = null; }
+        this.ocrMessage = Object.values(result).some(Boolean) ? 'Details scanned. Review and verify the account credit.' : 'No payment details found. Enter them manually.';
+      } catch (error) { if (current()) this.ocrMessage = error.message || 'OCR failed. Enter the details manually.'; }
+      finally { if (version === this._scanVersion) { this.ocrBusy = false; this._ocrController = null; } }
     },
     paste(event) {
       const image = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'));
@@ -66,32 +95,28 @@ export function createQrPayment() {
       event.preventDefault();
       return this.extract(event.dataTransfer?.files?.[0]);
     },
-    cancelScan() { this._ocrController?.abort(); },
+    cancelScan() { this._ocrController?.abort(); this._scanVersion++; this.ocrBusy = false; },
     validationError(total) {
       if (!this.settings?.enabled) return 'QR payments are unavailable.';
       if (this.ocrBusy) return 'Wait for OCR to finish.';
-      if (!/^\d+(?:\.\d{1,2})?$/.test(String(this.amount)) || Math.round(Number(this.amount) * 100) !== Math.round(total * 100)) return 'Amount Received must exactly match the amount due.';
+      if ((this.receiptAmountExtracted || this.amount !== '') && (!/^\d+(?:\.\d{1,2})?$/.test(String(this.amount)) || Math.round(Number(this.amount) * 100) !== Math.round(total * 100))) return 'Receipt amount differs from Total Due. Check the account credit and correct a scan error, or leave payment unresolved.';
       if (!this.transactionAt) return 'Enter the transaction date and time.';
-      if (this.missingReference) {
-        if (!this.isAdmin || this.exceptionReason.trim().length < 20 || !this.exceptionVerified) return 'An administrator must document and verify the missing reference.';
-      } else if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/i.test(this.externalReference.replace(/[ -]/g, ''))) return 'Enter the official external transaction reference.';
+      if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/i.test(this.externalReference.replace(/[ -]/g, ''))) return 'Enter the official external transaction reference.';
       return this.verified ? '' : 'Verify receipt of funds in the clinic’s official receiving account.';
     },
     payload() {
       return {
         qr_settings_version: this.settings?.version, qr_verified: this.verified,
-        external_reference: this.missingReference ? null : this.externalReference,
+        external_reference: this.externalReference,
         transaction_at: this.transactionAt,
-        reference_unavailable_reason: this.missingReference ? this.exceptionReason.trim() : null,
-        exception_verified: this.missingReference && this.exceptionVerified,
+        observed_amount: this.amount || null,
+        paying_app: this.payingApp || null,
       };
     },
     dispose() {
       this.disposed = true;
-      this._ocrController?.abort();
+      this.removeReceipt();
       if (this.imageUrl) URL.revokeObjectURL(this.imageUrl);
-      if (this.receiptPreview) URL.revokeObjectURL(this.receiptPreview);
-      this.receiptPreview = '';
       this.imageUrl = '';
     },
   };

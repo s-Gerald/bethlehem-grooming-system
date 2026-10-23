@@ -24,7 +24,11 @@ export function parsePaymentReceipt(text) {
     const recipientLabel = /^(?:paid\s+to|sent\s+to|recipient|merchant|receiver)(?:\s+name)?\s*:?\s*/i;
     if (recipientLabel.test(line)) recipient = (line.replace(recipientLabel, '') || lines[index + 1] || '').slice(0, 150);
   }
-  return { amount: amounts.size === 1 ? [...amounts][0] : '', externalReference, transactionAt: parseReceiptDate(lines.join(' ')), recipient };
+  const apps = [...new Set(lines.flatMap(line => {
+    const match = line.match(/^(?:paying app|paid using|sent using|payment app)\s*:\s*(GCash|Maya)\s*$/i);
+    return match ? [match[1].toLowerCase() === 'gcash' ? 'GCash' : 'Maya'] : [];
+  }))];
+  return { payingApp: apps.length === 1 ? apps[0] : '', amount: amounts.size === 1 ? [...amounts][0] : '', externalReference, transactionAt: parseReceiptDate(lines.join(' ')), recipient };
 }
 
 function parseReceiptDate(text) {

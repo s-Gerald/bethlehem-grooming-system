@@ -2,6 +2,113 @@
 
 Implemented October 23, 2026. QR collection is available in Grooming final payments and Pay Now. Cash remains the default. Clinic and POS collection are unchanged.
 
+## Current workflow, proof storage and provider configuration
+
+This section supersedes the earlier implementation reports below, including their descriptions of Amount Received, missing-reference exceptions and migration requirements.
+
+### Payment workflow and presentation
+
+- Normal full QR payments use the authoritative server-calculated total. Staff no longer retype Amount Received. The existing acknowledgment explicitly confirms that the displayed amount reached the official receiving account; it is never checked by OCR. Changing Total Due resets acknowledgment.
+- An extracted receipt amount remains editable for OCR correction and is sent separately as `observed_amount`. Discrepancies block settlement on both client and server. Clearing an extracted amount does not bypass the client discrepancy check. Staff can correct a scan error after checking the account, or leave a genuine discrepancy unresolved. Removing an unsubmitted receipt returns to verified manual entry.
+- Every new QR payment requires a normalized official external reference. Administrator exceptions, their controls/state/payloads and active backend branches were removed. Historical nullable references and reasons remain readable without any data rewrite. Duplicate references, payable uniqueness and existing settlement locks remain enforced.
+- Receipt upload, drop, screenshot paste and optional manual entry remain in the Record Payment modal. Remove aborts OCR, invalidates pending completions, releases preview URLs and clears unreviewed extraction while preserving independent edits. Replacement cannot apply old results or clear a newer scan's loading state.
+- QR success emphasizes the amount, QR Payment and external transfer reference, followed by the service breakdown, owner, actual payment date/time and verifier. Internal Grooming references remain in transaction details. Cash success and printable invoices retain their existing behavior; QR creates no automatic invoice.
+- QR transaction details distinguish Grooming Reference, External Transaction Reference, Receiving Provider, optional Paying App, Amount Paid, actual payment time and verifier. Settlement and verification times remain under Audit timestamps. Shared formatting explicitly uses Asia/Manila.
+
+### Providers and optional paying app
+
+`config/qr_payments.php` is the receiving-provider catalog. Its GCash, Maya, BPI, BDO, Metrobank, RCBC, UnionBank, LandBank, PNB, Security Bank and AUB names were verified against the [BSP/BancNet participant list dated 30 September 2026](https://www.bsp.gov.ph/PaymentAndSettlement/QR%20Ph%20P2M%20Participants.pdf). This identifies receiving institutions; it does not certify that every institution supports every QR type. Continue uploading official institution-issued QR images.
+
+Settings uses a searchable native provider list with an explicit Other supported provider fallback. The existing Settings request supplies the catalog, so no additional request is needed. Server validation canonicalizes catalog choices and preserves an existing unmatched provider name. No settings backfill or multi-account manager was added. Grooming retains one QR Payment choice.
+
+Paying App is stored separately and remains optional. OCR recognizes only explicit, unambiguous `Paying app:`, `Paid using:`, `Sent using:` or `Payment app:` labels for GCash/Maya. A logo, receiving institution, recipient name or conflicting labels never establishes the paying app. Unsupported or ambiguous receipt formats remain unspecified. Staff can clear the extracted suggestion; no persistent dropdown was added.
+
+### Attachment security, integrity and retention
+
+Optional proof files are written under the existing private local disk, using random server filenames. QR rows contain only metadata: private path, display filename, MIME, size and SHA-256 hash. APIs omit raw paths and hashes. Uploaded filenames never determine storage paths.
+
+Validation checks real MIME/content and a 5 MB size limit. PNG/JPEG/WebP receipts are limited to 16 megapixels and 16,000 pixels per side. PDFs require a successful bounded `pdfinfo` parse, no encryption and at most two pages; parsing has a five-second timeout. Browser PDF processing retains the existing two-page/four-megapixel rendering limits, disabled scripting/XFA and cancellation cleanup. Proof PDF previews reuse that renderer to display inert page images.
+
+Validation, PDF parsing and file writes happen before financial locks. Metadata commits with the QR record and existing settlement in the same database transaction. Rejected settlements, duplicate retries and exceptions discard their uploaded file. A daily `qr-payments:prune-orphans` task handles interrupted requests or failed cleanup, deleting only unreferenced uploads older than 24 hours. Reference lookups are batched in groups of 200.
+
+Recorded proofs are retained indefinitely with their official payment record and backups. No replacement/removal endpoint for recorded attachments is introduced. Any later retention/removal workflow must include authorization and an audit trail and must preserve the financial record.
+
+Proof access is authenticated, restricted to staff with Grooming access and scoped to Grooming QR records. The endpoint accepts a record ID rather than a path and returns private/no-store, nosniff and sandbox headers. A private-directory Apache deny file protects deployments that expose the repository root; production should still use Laravel's `public` document root. Transactions carry compact metadata only. Viewing details never downloads proof; View Payment Proof starts the protected request. Closing/replacing details releases previews and discards stale responses.
+
+### Files changed
+
+Existing implementation files modified:
+
+```text
+app/Http/Controllers/PaymentController.php
+app/Http/Controllers/QrPaymentSettingController.php
+app/Models/QrPayment.php
+app/Services/QrPaymentVerificationService.php
+routes/api.php
+routes/console.php
+pages/admin/appointments.html
+pages/admin/settings.html
+pages/admin/transactions.html
+scripts/api.js
+scripts/components/admin-dashboard.js
+scripts/components/admin-settings.js
+scripts/components/admin-transactions.js
+scripts/components/payment-invoice.js
+scripts/components/qr-payment.js
+scripts/services/payment-proof-ocr.js
+css/components/admin-transactions.css
+storage/app/private/.gitignore
+docs/qr-payments.md
+```
+
+Existing tests updated in place:
+
+```text
+tests/Feature/GroomingPaymentPriceSafetyTest.php
+tests/Feature/PaymentSchemaCompatibilityTest.php
+tests/Feature/QrPaymentSettingsTest.php
+tests/Feature/TransactionHistorySearchTest.php
+tests/admin-grooming-invoice-print-regression.cjs
+tests/admin-grooming-settings-regression.cjs
+tests/admin-transactions-details-regression.cjs
+tests/qr-payment-ocr-regression.mjs
+```
+
+New files, each used by the implementation or its delivery:
+
+```text
+app/Http/Controllers/QrPaymentProofController.php
+app/Services/QrPaymentProofService.php
+config/qr_payments.php
+database/migrations/2026_10_23_000002_add_qr_payment_proofs.php
+storage/app/private/.htaccess
+docs/superpowers/plans/2026-10-23-qr-payment-workflow.md
+```
+
+No files were deleted. Obsolete exception UI, state, outgoing fields, validation branches and success-modal audit rows were removed in place. Historical exception columns and read-only details remain. Existing test expectations were revised rather than replaced with parallel suites. QR metadata now uses an explicit model field list, preventing schema-column caching from silently dropping newly migrated proof fields.
+
+### Validation and performance
+
+- PHP 8.4 `php artisan test --compact`: **1,494 passed, 8 existing opt-in skips, 19,967 assertions**.
+- Guarded `php tests/qr-payments-mysql.php`: **74 passed, 1,082 assertions** on local MariaDB 10.4.32 in an owned disposable database; cleanup verified. Actual payment/verification dates remain required DATETIME fields without automatic updates. This run covers schema, settlement, provider validation, receipt access/storage, PDF limits and rollback behavior. The overlapping-process settlement/stock regression remains covered by the full suite's isolated SQLite test; this does not certify Hostinger concurrency.
+- `npm test`: **75/75 regression scripts passed**, including actual local OCR/PDF rendering, stale OCR completion races, multipart requests, early/final payment, Cash invoice, provider selection, transaction proof fetch/release and date formatting.
+- `npm run build`: passed. Changed PHP/JavaScript syntax checks and `git diff --check`: passed.
+
+Logs: `storage/logs/qr-workflow-php-tests.log`, `qr-workflow-mysql.log`, `qr-workflow-npm-tests.log`, `qr-workflow-build.log` and `qr-workflow-focused.log`.
+
+OCR and PDF libraries remain lazy-loaded. No polling, eager attachment download, extra settings calls on unrelated navigation, per-row attachment queries or new JavaScript packages were added. Financial list pagination, totals, report filters and cache invalidation remain in place. Only affected pages' changed asset URLs were refreshed. Upload processing adds bounded work only to payments with proof, outside database locks. Core Web Vitals and production latency were not measured.
+
+The running dashboard was inspected in the ChatGPT browser to establish Bethlehem styling. No manual payment/navigation, actual-data entry, OTP submission, password reset or real bank verification was performed. Remaining practical checks are the user's browser workflow, real provider receipt formats, device scanning and deployment storage/PDF-validator availability. Non-blocking existing Node VM/PDF recovery and Browserslist notices remain.
+
+### Before manual testing or deployment
+
+1. Apply only the new forward migration with the intended application's PHP CLI: `php artisan migrate --path=database/migrations/2026_10_23_000002_add_qr_payment_proofs.php`. The original QR migration must already be applied. No actual application database migration was run during this task.
+2. Keep private storage persistent, writable and backed up; include `storage/app/private/.htaccess` on Apache deployments and keep private directories outside public aliases on other web servers.
+3. Make Poppler's `pdfinfo` available to the web/worker PHP process. Its default executable is `pdfinfo`; an absolute executable path can be configured through `QR_PAYMENT_PDFINFO`. The test environment has Poppler installed. If parsing is unavailable, PDF attachments fail safely before settlement with an image-upload alternative. No private environment files were edited.
+4. Ensure the existing Laravel scheduler runs so abandoned-upload cleanup executes. Keep the official receiving QR configured. Deploy generated static OCR/PDF assets through the existing build process and restart long-lived workers when applying code/schema updates.
+
+No commit, push or deployment was performed. Earlier reports below are retained as implementation history.
+
 ## Receiving-account verification simplification
 
 The Grooming payment form no longer contains **Verified using**, **Transaction History** or **Payment Notification** choices. The selector, source-selection state, validation error, change handler and outgoing `verification_source` field were removed. The remaining fields use the existing spacing without replacement controls or helper text. **Verified in the clinic's receiving account** remains mandatory; OCR never checks it automatically. The QR image, amount, optional image/PDF receipt uploads, drop/paste, editable extraction, manual entry and administrator exception remain unchanged.

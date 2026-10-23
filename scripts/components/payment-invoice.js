@@ -14,6 +14,15 @@ window.PaymentInvoice = (() => {
       const date = new Date(recordedValue);
       return Number.isNaN(date.getTime()) ? recordedValue : dateFormatter.format(date);
     },
+    formatPaymentDateTime(value) {
+      if (!value) return '—';
+      let recorded = String(value).replace(' ', 'T');
+      if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(recorded)) recorded += '+08:00';
+      const date = new Date(recorded);
+      return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('en-PH', {
+        year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila',
+      });
+    },
     formatProductUnitPrice(line) {
       const quantity = Number(line.quantity);
       const subtotal = Number(line.subtotal);
