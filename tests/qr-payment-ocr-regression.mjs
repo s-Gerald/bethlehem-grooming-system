@@ -131,6 +131,8 @@ assert.equal(manual.amount, '850.00', 'Partial OCR must not erase an existing am
 assert.equal(manual.externalReference, 'MANUAL1234');
 manual.applyExtraction({externalReference: 'OCR999999', referenceCandidates: ambiguous.referenceCandidates});
 assert.equal(manual.externalReference, 'MANUAL1234', 'OCR suggestions preserve manual reference edits');
+assert.equal(manual.referenceCandidates.length, 0, 'A confidently resolved reference needs no redundant choices');
+manual.applyExtraction({externalReference: '', referenceCandidates: ambiguous.referenceCandidates});
 manual.selectReference(ambiguous.referenceCandidates[1]);
 assert.equal(manual.externalReference, 'BANK222222', 'Staff can choose an ambiguous reference');
 assert.equal(manual.verified, false, 'Choosing a reference cannot verify funds');
@@ -207,6 +209,7 @@ jobs[1].resolve({amount: '111.00'}); await oldScan;
 assert.equal(racing.ocrBusy, true, 'An old scan cannot clear the new scan loading state');
 jobs[2].resolve({amount: '850.00', externalReference: 'CURRENT1234'}); await newScan;
 assert.equal(racing.amount, '850.00'); assert.equal(racing.externalReference, 'CURRENT1234');
+assert.equal(racing.ocrMessage, '', 'Visible extracted values need no success helper message');
 assert.equal(racing.ocrBusy, false);
 racing.externalReference = 'CORRECTED1234'; racing.reviewField('externalReference');
 racing.removeReceipt();
@@ -221,6 +224,20 @@ await new Promise(setImmediate);
 racing.externalReference = ''; racing.reviewField('externalReference');
 jobs[4].resolve({externalReference: 'OCR654321'}); await clearedScan;
 assert.equal(racing.externalReference, '', 'An explicitly cleared field stays cleared when OCR completes');
+const ambiguousScan = racing.extract(new Blob(['ambiguous'], {type: 'image/png'}));
+await new Promise(setImmediate);
+jobs[5].resolve({externalReference: '', referenceCandidates: ambiguous.referenceCandidates}); await ambiguousScan;
+assert.equal(racing.referenceCandidates.length, 2);
+assert.equal(racing.ocrMessage, '', 'Reference choices need no duplicate instructional paragraph');
+assert.equal(racing.externalReference, '', 'Ambiguous OCR does not choose a reference');
+const noReferenceScan = racing.extract(new Blob(['no reference'], {type: 'image/png'}));
+await new Promise(setImmediate);
+jobs[6].resolve({amount: '850.00', externalReference: ''}); await noReferenceScan;
+assert.match(racing.ocrMessage, /No payment reference/i, 'Missing references remain actionable even when an amount was read');
+const failedScan = racing.extract(new Blob(['failure'], {type: 'image/png'}));
+await new Promise(setImmediate);
+jobs[7].resolve(Promise.reject(new Error('Receipt could not be read.'))); await failedScan;
+assert.equal(racing.ocrMessage, 'Receipt could not be read.', 'OCR failures stay visible');
 racing.dispose();
 
 // Exercise the actual installed OCR engine and local model against synthetic data.

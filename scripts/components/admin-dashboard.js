@@ -3250,7 +3250,7 @@ function adminDashboard() {
       };
       const modal = this.paymentModal;
       try {
-        const {createQrPayment} = await import('./qr-payment.js?v=20261023-references');
+        const {createQrPayment} = await import('./qr-payment.js?v=20261023-inline-errors');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
         modal.qr = createQrPayment();
         await modal.qr.load();
@@ -3781,6 +3781,18 @@ function adminDashboard() {
       this.paymentModal.error = "";
     },
 
+    focusPaymentReference(modal) {
+      this.$nextTick(() => {
+        if (this.paymentModal !== modal || !modal.open || modal.paymentMethod !== 'qrph' || !modal.qr?.referenceError) return;
+        const {paymentModalBody: body, qrPaymentReferenceField: field, qrPaymentReference: input} = this.$refs;
+        if (!body || !field || !input) return;
+        const bounds = body.getBoundingClientRect();
+        const target = field.getBoundingClientRect();
+        if (target.top < bounds.top || target.bottom > bounds.bottom) body.scrollTop += target.top - bounds.top - 12;
+        input.focus({preventScroll: true});
+      });
+    },
+
     formatPeso(amount) {
       return `\u20b1${Number(amount || 0).toFixed(2)}`;
     },
@@ -3909,7 +3921,8 @@ function adminDashboard() {
         ? modal.qr?.validationError(fp) || (!modal.qr ? 'QR payments are unavailable.' : '')
         : window.CashPayment.error(amountPaid, fp);
       if (cashError) {
-        this.paymentModal.error = cashError;
+        if (paymentMethod === 'qrph' && modal.qr?.referenceError) this.focusPaymentReference(modal);
+        else this.paymentModal.error = cashError;
         return;
       }
 
@@ -3944,7 +3957,15 @@ function adminDashboard() {
         await this.completeGroomingPayment(res);
       } catch (err) {
         if (this.paymentModal !== modal || !modal.open) return;
-        modal.error = Object.values(err.errors || {}).flat().join(" ") || err.message || "Payment failed. Please try again.";
+        const {external_reference: referenceErrors, ...otherErrors} = err.errors || {};
+        const referenceError = [referenceErrors].flat().filter(Boolean).join(' ');
+        if (paymentMethod === 'qrph' && referenceError) {
+          modal.qr.setReferenceError(referenceError);
+          modal.error = Object.values(otherErrors).flat().join(' ');
+          this.focusPaymentReference(modal);
+        } else {
+          modal.error = Object.values(err.errors || {}).flat().join(" ") || err.message || "Payment failed. Please try again.";
+        }
       } finally {
         if (this.paymentModal === modal) modal.busy = false;
       }

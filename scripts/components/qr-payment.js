@@ -2,6 +2,7 @@ export function createQrPayment() {
   return {
     settings: null, paymentSource: '', loading: false, error: '', imageUrl: '', imageLoading: false,
     amount: '', externalReference: '', transactionAt: '', recipient: '', referenceCandidates: [],
+    referenceError: '', _invalidReference: '',
     verified: false,
     ocrBusy: false, ocrProgress: 0, ocrMessage: '',
     disposed: false,
@@ -14,6 +15,18 @@ export function createQrPayment() {
       return recipient && merchant && !recipient.includes(merchant) && !merchant.includes(recipient)
         ? 'Receipt recipient differs from the receiving account. Check the account credit carefully.' : '';
     },
+    get normalizedReference() {
+      return this.externalReference.replace(/[ -]/g, '').toUpperCase();
+    },
+    setReferenceError(message) {
+      this.referenceError = message;
+      this._invalidReference = this.normalizedReference;
+    },
+    clearReferenceErrorIfChanged() {
+      if (this.normalizedReference !== this._invalidReference) {
+        this.referenceError = this._invalidReference = '';
+      }
+    },
     setExpectedAmount(total) {
       const cents = Math.round(total * 100);
       if (this.expectedAmount !== cents) this.verified = false;
@@ -22,6 +35,7 @@ export function createQrPayment() {
     reviewField(key) {
       delete this._derived[key];
       this._edited[key] = true;
+      if (key === 'externalReference') this.clearReferenceErrorIfChanged();
       this.verified = false;
     },
     selectReference(candidate) {
@@ -31,16 +45,18 @@ export function createQrPayment() {
     },
     applyExtraction(result) {
       if (result.amount) this.receiptAmountExtracted = true;
-      this.referenceCandidates = result.referenceCandidates || [];
+      this.referenceCandidates = result.externalReference ? [] : result.referenceCandidates || [];
       for (const key of ['amount', 'externalReference', 'transactionAt', 'recipient', 'payingApp']) {
         if (result[key] && !this._edited[key] && (!this[key] || this._derived[key] === this[key])) { this[key] = result[key]; this._derived[key] = result[key]; }
       }
+      this.clearReferenceErrorIfChanged();
       this.verified = false;
     },
     removeReceipt() {
       this.cancelScan();
       if (this.receiptPreview) URL.revokeObjectURL(this.receiptPreview);
       for (const [key, value] of Object.entries(this._derived)) if (this[key] === value) this[key] = '';
+      this.clearReferenceErrorIfChanged();
       this._derived = {};
       this.referenceCandidates = [];
       this.receiptAmountExtracted = false;
@@ -89,10 +105,8 @@ export function createQrPayment() {
         const result = await recognizePaymentProof(file, progress => { if (current()) this.ocrProgress = progress; }, controller.signal);
         if (!current()) return;
         this.applyExtraction(result);
-        this.ocrMessage = !result.externalReference && this.referenceCandidates.length > 1
-          ? 'Multiple references found. Choose one below or enter it manually.'
-          : ['amount', 'externalReference', 'transactionAt', 'recipient', 'payingApp'].some(key => result[key])
-            ? 'Details scanned. Review and verify the account credit.' : 'No payment details found. Enter the Payment Reference No. manually.';
+        this.ocrMessage = !result.externalReference && this.referenceCandidates.length < 2
+          ? 'No payment reference found. Enter it manually.' : '';
       } catch (error) { if (current()) this.ocrMessage = error.message || 'OCR failed. Enter the details manually.'; }
       finally { if (version === this._scanVersion) { this.ocrBusy = false; this._ocrController = null; } }
     },
@@ -109,8 +123,9 @@ export function createQrPayment() {
       if (!this.settings?.enabled) return 'QR payments are unavailable.';
       if (!(this.settings.accepted_methods || []).includes(this.paymentSource)) return 'Select an enabled payment method.';
       if (this.ocrBusy) return 'Wait for OCR to finish.';
+      if (this.referenceError) return this.referenceError;
       if ((this.receiptAmountExtracted || this.amount !== '') && (!/^\d+(?:\.\d{1,2})?$/.test(String(this.amount)) || Math.round(Number(this.amount) * 100) !== Math.round(total * 100))) return 'Receipt amount differs from Total Due. Check the account credit and correct a scan error, or leave payment unresolved.';
-      if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/i.test(this.externalReference.replace(/[ -]/g, ''))) return 'Enter the Payment Reference No. of 6–80 letters or numbers.';
+      if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/.test(this.normalizedReference)) return 'Enter the Payment Reference No. of 6–80 letters or numbers.';
       return this.verified ? '' : 'Verify receipt of funds in the clinic’s official receiving account.';
     },
     payload() {

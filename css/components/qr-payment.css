@@ -26,8 +26,9 @@
 .qr-receipt-name { overflow-wrap: anywhere; min-width: 0; font-size: .8rem; color: #475569; }
 .qr-details > summary { cursor: pointer; font-size: .875rem; font-weight: 600; color: #315b7e; padding-block: .5rem; }
 .qr-details > summary:focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; border-radius: .25rem; }
-.qr-reference-choice { flex-direction: column; align-items: flex-start; gap: .15rem; max-width: 100%; text-align: left; overflow-wrap: anywhere; }
-.qr-reference-choice > span { font-size: .75rem; font-weight: 400; }
+.qr-reference-choice { flex-direction: column; align-items: flex-start; gap: .1rem; max-width: 100%; padding: .375rem .625rem; font-size: .8125rem; line-height: 1.2; text-align: left; overflow-wrap: anywhere; }
+.qr-reference-choice > span { font-size: .7rem; font-weight: 400; }
+.qr-reference-choice:hover { background: #f5f8fb; border-color: #a9bfd6; }
 .qr-reference-choice[aria-pressed="true"] { background: #edf5fb; border-color: #315b7e; }
 
 /* Hallmark · Bethlehem settings · navy/light-blue · image beside configuration.

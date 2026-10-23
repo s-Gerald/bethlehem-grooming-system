@@ -8,7 +8,7 @@
 
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=qr-ux-20261023" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-references" />
+    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-inline-errors" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
     <link
       rel="stylesheet"
@@ -772,7 +772,7 @@
               </div>
 
               <!-- Body -->
-              <div class="payment-modal-body px-6 py-5 space-y-4">
+              <div x-ref="paymentModalBody" class="payment-modal-body px-6 py-5 space-y-4">
                 <fieldset :disabled="paymentModal.busy" class="min-w-0 space-y-4">
                 <section>
                   <p class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Services &amp; Breakdown</p>
@@ -959,15 +959,17 @@
                         <p class="text-sm text-[#2f4b66]">Amount to enter in payment app</p>
                         <p class="mt-1 text-2xl font-bold text-[#1f3850]" x-text="formatPeso(paymentTotalDue)"></p>
                       </div>
-                      <label class="block text-xs font-semibold text-slate-600">Payment Reference No.
-                        <input type="text" maxlength="100" autocomplete="off" spellcheck="false" x-model="paymentModal.qr.externalReference" @input="paymentModal.qr.reviewField('externalReference'); clearPaymentError()" class="qr-field mt-1" />
-                      </label>
+                      <div x-ref="qrPaymentReferenceField">
+                        <label for="qr-payment-reference" class="block text-xs font-semibold text-slate-600">Payment Reference No.</label>
+                        <input id="qr-payment-reference" x-ref="qrPaymentReference" type="text" maxlength="100" autocomplete="off" spellcheck="false" x-model="paymentModal.qr.externalReference" :aria-invalid="Boolean(paymentModal.qr.referenceError)" :aria-describedby="paymentModal.qr.referenceError ? 'qr-payment-reference-error' : null" @input="paymentModal.qr.reviewField('externalReference'); clearPaymentError()" class="qr-field mt-1" />
+                        <p id="qr-payment-reference-error" x-show="paymentModal.qr.referenceError" x-text="paymentModal.qr.referenceError" class="qr-field-error" role="alert"></p>
+                      </div>
                       <template x-if="paymentModal.qr.referenceCandidates.length > 1">
                         <fieldset class="min-w-0">
                           <legend class="text-xs font-semibold text-slate-600">Scanned references</legend>
                           <div class="mt-2 flex flex-wrap gap-2">
                             <template x-for="candidate in paymentModal.qr.referenceCandidates" :key="candidate.value">
-                              <button type="button" class="qr-secondary qr-reference-choice" :aria-pressed="paymentModal.qr.externalReference.replace(/[ -]/g, '').toUpperCase() === candidate.value" @click="paymentModal.qr.selectReference(candidate); clearPaymentError()"><span x-text="candidate.label"></span><strong x-text="candidate.value"></strong></button>
+                              <button type="button" class="qr-secondary qr-reference-choice" :aria-pressed="paymentModal.qr.normalizedReference === candidate.value" @click="paymentModal.qr.selectReference(candidate); clearPaymentError()"><span x-text="candidate.label"></span><strong x-text="candidate.value"></strong></button>
                             </template>
                           </div>
                         </fieldset>
@@ -1564,6 +1566,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-references"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors"></script>
   </body>
 </html>

@@ -29,6 +29,14 @@ The existing lazy local Tesseract service now understands GCash, Maya, QRPH, Ins
 
 Interword-space preservation improves layout extraction without another recognition pass, cloud service or dependency. Manual corrections, including cleared fields, survive later OCR completions. Receipt replacement clears unreviewed old suggestions; scan versioning and cancellation block stale results. OCR never acknowledges account credit. Existing tests include sanitized receipt text, generated GCash/Maya images, real local recognition/PDF rendering and manual-edit races.
 
+### Inline payment reference validation
+
+The existing 422 `errors.external_reference` response now appears directly below Payment Reference No., using the established red field styling, `aria-invalid`, `aria-describedby` and an alert announcement. After rendering, only the modal body scrolls to the field and keyboard focus moves without page scrolling. The error is excluded from the generic modal message; other validation and network failures retain their messages. Both Pay Now and final payment preserve all form values and the receipt on failure.
+
+An unchanged rejected reference blocks repeated submissions locally. Formatting-only changes and unrelated field edits do not dismiss the rejection. A different manually entered or scanned reference clears its error and still requires account acknowledgment. Backend uniqueness, settlement, amount validation and database queries are unchanged; no preflight requests, listeners, observers, polling or dependencies were added.
+
+Scanned references use smaller buttons with blue selected states. Confident extraction fills the input without redundant choices. The old multiple-reference instruction and routine OCR success message were removed; processing, failure, unsupported-file and missing-reference feedback remain. The existing payment and OCR regression files cover error mapping, preserved values, both flows, focus/scroll bounds, repeat blocking, candidate selection and feedback. This refinement requires no new migration. Automated checks: 75 frontend regression scripts and 79 focused PHP payment/schema/concurrency tests passed; build and syntax/diff checks passed. Logs: `storage/logs/qr-inline-errors-npm-tests.log` and `qr-inline-errors-build.log`.
+
 ### Providers and optional paying app
 
 `config/qr_payments.php` is the receiving-provider catalog. Its GCash, Maya, BPI, BDO, Metrobank, RCBC, UnionBank, LandBank, PNB, Security Bank and AUB names were verified against the [BSP/BancNet participant list dated 30 September 2026](https://www.bsp.gov.ph/PaymentAndSettlement/QR%20Ph%20P2M%20Participants.pdf). This identifies receiving institutions; it does not certify that every institution supports every QR type. Continue uploading official institution-issued QR images.
