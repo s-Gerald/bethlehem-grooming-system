@@ -92,6 +92,15 @@ class Payment extends Model
         return $this->belongsTo(QrPayment::class);
     }
 
+    public function methodLabel(): string
+    {
+        if ($this->payment_method === 'qrph') {
+            $source = $this->relationLoaded('qrPayment') ? $this->qrPayment?->payment_source : null;
+            return $source !== null && trim($source) !== '' ? $source : 'QR Payment';
+        }
+        return $this->payment_method === 'online' ? 'Online Payment' : GatewayPayment::labelFor($this->payment_method);
+    }
+
     public function products()
     {
         return $this->hasMany(GroomingPaymentProduct::class, 'payment_id', $this->getKeyName());

@@ -11,7 +11,7 @@ class QrPayment extends Model
     protected $fillable = [
         'payable_type', 'payable_id', 'external_reference', 'received_amount', 'transaction_at',
         'verification_source', 'verified_by', 'verified_by_name', 'verified_at',
-        'settings_version', 'merchant_name', 'provider_name', 'qr_image_hash', 'paying_app',
+        'settings_version', 'merchant_name', 'provider_name', 'qr_image_hash', 'paying_app', 'payment_source',
         'proof_path', 'proof_name', 'proof_mime', 'proof_size', 'proof_hash',
     ];
 
@@ -30,6 +30,7 @@ class QrPayment extends Model
     {
         return [
             'id' => $this->id,
+            'payment_source' => $this->payment_source,
             'paying_app' => $this->paying_app,
             'proof' => $this->proof_path ? ['name' => $this->proof_name, 'mime' => $this->proof_mime, 'size' => $this->proof_size] : null,
             'external_reference' => $this->external_reference,

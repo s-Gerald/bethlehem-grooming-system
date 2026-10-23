@@ -20,14 +20,14 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
-    qrProviders: {},
-    qrSettings: {provider_id: '', providerChoice: '', enabled: false, version: 1, merchant_name: '', provider_name: '', has_image: false,
+    qrMethodOptions: ['GCash', 'Maya', 'Bank Transfer'],
+    qrSettings: {accepted_methods: [], methodsOpen: false, customOpen: false, customName: '', editingMethod: '', enabled: false, version: 1, merchant_name: '', has_image: false,
       status: 'not_ready', missing_fields: [], fieldErrors: {},
       loaded: false, loading: false, saving: false, file: null, preview: '', officialConfirmed: false, error: '', success: ''},
     qrCrop: {open: false, busy: false, ready: false, error: '', detected: false},
     get qrStatusLabel() { return {not_ready: 'Not Ready', disabled: 'Disabled', enabled: 'Enabled'}[this.qrSettings.status] || 'Not Ready'; },
     get qrMissingLabel() {
-      const labels = {image: 'QR image', merchant_name: 'account name', provider_name: 'bank or e-wallet'};
+      const labels = {image: 'QR image', merchant_name: 'account name', accepted_methods: 'payment methods'};
       return (this.qrSettings.missing_fields || []).map(key => labels[key]).filter(Boolean).join(', ');
     },
     availabilityService: "clinic",
@@ -232,8 +232,7 @@ function adminSettings() {
       state.error = '';
       state.success = '';
       try {
-        const {settings, providers} = await API.getQrPaymentSettings();
-        this.qrProviders = providers || {};
+        const {settings} = await API.getQrPaymentSettings();
         if (qrDestroyed) return;
         this.applyQrSettings(settings);
         await this.refreshQrPreview(settings);
@@ -241,20 +240,81 @@ function adminSettings() {
       finally { state.loading = false; }
     },
 
-    selectQrProvider() {
-      const state = this.qrSettings;
-      const match = Object.entries(this.qrProviders).find(([, label]) => label === state.providerChoice);
-      state.provider_id = match?.[0] || (state.providerChoice === 'Other supported provider' ? 'other' : '');
-      if (match) state.provider_name = match[1];
-      else if (state.provider_id !== 'other') state.provider_name = '';
+    get qrCustomMethods() {
+      return this.qrSettings.accepted_methods.filter(method => !this.qrMethodOptions.includes(method));
     },
-
+    get qrMethodCount() {
+      const count = this.qrSettings.accepted_methods.length;
+      return `${count} method${count === 1 ? '' : 's'} selected`;
+    },
+    qrMethodChecked(method) {
+      return method === 'Other' ? this.qrSettings.customOpen || this.qrCustomMethods.length > 0
+        : this.qrSettings.accepted_methods.includes(method);
+    },
+    toggleQrMethod(method) {
+      const state = this.qrSettings;
+      delete state.fieldErrors.accepted_methods;
+      if (method === 'Other') {
+        if (this.qrMethodChecked('Other')) {
+          state.accepted_methods = state.accepted_methods.filter(value => this.qrMethodOptions.includes(value));
+          this.cancelQrCustomMethod();
+        } else {
+          state.customOpen = true;
+          this.$nextTick(() => this.$refs?.qrCustomName?.focus());
+        }
+      } else if (this.qrMethodOptions.includes(method)) {
+        if (state.accepted_methods.includes(method)) this.removeQrMethod(method);
+        else state.accepted_methods.push(method);
+      }
+    },
+    removeQrMethod(method, returnFocus = false) {
+      this.qrSettings.accepted_methods = this.qrSettings.accepted_methods.filter(value => value !== method);
+      if (this.qrSettings.editingMethod === method) this.cancelQrCustomMethod();
+      if (returnFocus) this.$nextTick(() => this.$refs?.qrMethodsTrigger?.focus());
+    },
+    editQrCustomMethod(method) {
+      Object.assign(this.qrSettings, {customOpen: true, customName: method, editingMethod: method});
+      this.$nextTick(() => this.$refs?.qrCustomName?.focus());
+    },
+    cancelQrCustomMethod() {
+      Object.assign(this.qrSettings, {customOpen: false, customName: '', editingMethod: ''});
+      delete this.qrSettings.fieldErrors.custom_method;
+    },
+    commitQrCustomMethod() {
+      const state = this.qrSettings, name = state.customName.trim(), key = name.toLowerCase();
+      const duplicate = [...this.qrMethodOptions, ...state.accepted_methods.filter(method => method !== state.editingMethod)]
+        .some(method => method.toLowerCase() === key);
+      let error = '';
+      if (!name || ['cash', 'qrph', 'other', 'qr payment'].includes(key)) error = 'Enter a custom payment method name.';
+      else if (name.length > 100) error = 'Use 100 characters or fewer.';
+      else if (duplicate) error = 'This payment method already exists.';
+      else if (!state.editingMethod && state.accepted_methods.length >= 20) error = 'Use up to 20 payment methods.';
+      if (error) { state.fieldErrors.custom_method = error; return false; }
+      const index = state.accepted_methods.indexOf(state.editingMethod);
+      if (index >= 0) state.accepted_methods.splice(index, 1, name);
+      else state.accepted_methods.push(name);
+      this.cancelQrCustomMethod();
+      delete state.fieldErrors.accepted_methods;
+      return true;
+    },
+    closeQrMethods(returnFocus = false) {
+      this.qrSettings.methodsOpen = false;
+      if (returnFocus) this.$refs?.qrMethodsTrigger?.focus();
+    },
+    async focusQrMethod(event, edge = 0) {
+      this.qrSettings.methodsOpen = true;
+      await this.$nextTick();
+      const options = [...this.$refs.qrMethodsPanel.querySelectorAll('input[type="checkbox"]')];
+      const index = options.indexOf(event.target);
+      const next = edge === -1 ? 0 : edge === 1 ? options.length - 1
+        : (index + (event.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+      options[next]?.focus();
+    },
     applyQrSettings(settings) {
-      Object.assign(this.qrSettings, settings, {merchant_name: settings.merchant_name || '', provider_name: settings.provider_name || '',
+      Object.assign(this.qrSettings, settings, {merchant_name: settings.merchant_name || '',
+        accepted_methods: [...(settings.accepted_methods ?? this.qrMethodOptions)],
+        methodsOpen: false, customOpen: false, customName: '', editingMethod: '',
         file: null, officialConfirmed: false, loaded: true, fieldErrors: {}});
-      const match = Object.entries(this.qrProviders).find(([, label]) => label === settings.provider_name);
-      this.qrSettings.provider_id = match?.[0] || (settings.provider_name ? 'other' : '');
-      this.qrSettings.providerChoice = match?.[1] || (settings.provider_name ? 'Other supported provider' : '');
     },
 
     async refreshQrPreview(settings) {
@@ -331,9 +391,9 @@ function adminSettings() {
     async saveQrSettings() {
       const state = this.qrSettings;
       if (!this.isAdmin || !state.loaded || state.saving || state.loading || this.qrCrop.open) return;
-      if (state.providerChoice.trim() && !state.provider_id) {
-        state.fieldErrors = {provider_id: 'Select a listed provider or Other supported provider.'};
+      if (state.customOpen && !this.commitQrCustomMethod()) {
         state.error = 'Check the highlighted field.';
+        this.$nextTick(() => this.$refs?.qrCustomName?.focus());
         return;
       }
       state.saving = true;
@@ -344,8 +404,7 @@ function adminSettings() {
       payload.append('enabled', state.enabled ? '1' : '0');
       payload.append('version', String(state.version));
       payload.append('merchant_name', state.merchant_name);
-      payload.append('provider_name', state.provider_name);
-      payload.append('provider_id', state.provider_id);
+      payload.append('accepted_methods', JSON.stringify(state.accepted_methods));
       if (state.file) {
         payload.append('image', state.file);
         payload.append('official_qr_confirmed', state.officialConfirmed ? '1' : '0');
@@ -360,6 +419,8 @@ function adminSettings() {
         catch { if (state.preview) URL.revokeObjectURL(state.preview); state.preview = ''; state.error = 'Saved, but the image preview could not load. Reload to retry.'; }
       } catch (error) {
         state.fieldErrors = Object.fromEntries(Object.entries(error.errors || {}).map(([key, value]) => [key, Array.isArray(value) ? value.join(' ') : value]));
+        const methodErrors = Object.entries(state.fieldErrors).filter(([key]) => key.startsWith('accepted_methods.')).map(([, message]) => message);
+        if (methodErrors.length) state.fieldErrors.accepted_methods = methodErrors.join(' ');
         state.error = Object.keys(state.fieldErrors).length ? 'Check the highlighted fields.' : error.message || 'Could not save QR settings.';
         this.$nextTick(() => this.$refs?.qrSettingsForm?.querySelector('[aria-invalid="true"]')?.focus());
       }

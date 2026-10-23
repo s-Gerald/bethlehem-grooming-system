@@ -213,3 +213,7 @@ assert.equal(prevented, 2, 'Tab can reach the transaction link normally');
   assert.equal(restored.$refs.groomingRecordBody.scrollTop, 300);
   console.log('Grooming history regression tests passed.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
+
+assert.equal(ui.paymentMethod({payment: {paymentMethod: 'qrph', paymentMethodLabel: 'Bank Transfer'}}), 'Bank Transfer');
+assert.equal(ui.paymentMethod({payment: {paymentMethod: 'qrph', paymentMethodLabel: 'PayPal'}}), 'PayPal');
+assert.equal(ui.paymentMethod({payment: {paymentMethod: 'qrph'}}), 'QR Payment');

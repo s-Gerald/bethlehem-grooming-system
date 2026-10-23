@@ -26,3 +26,51 @@
 .qr-receipt-name { overflow-wrap: anywhere; min-width: 0; font-size: .8rem; color: #475569; }
 .qr-details > summary { cursor: pointer; font-size: .875rem; font-weight: 600; color: #315b7e; padding-block: .5rem; }
 .qr-details > summary:focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; border-radius: .25rem; }
+
+/* Hallmark · Bethlehem settings · navy/light-blue · image beside configuration.
+ * Pre-emit critique: philosophy 4, hierarchy 4, execution 4, specificity 5, restraint 5, variety 3. */
+.qr-settings-grid {
+  --qr-ink: #2f4b66; --qr-accent: #315b7e; --qr-border: #cfe0ee;
+  --qr-paper: #fff; --qr-tint: #edf5fb; --qr-muted: #64748b; --qr-error: #dc2626;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; min-width: 0; margin-top: 1.5rem;
+}
+.qr-methods { min-width: 0; }
+.qr-methods-label { display: block; color: var(--qr-ink); font-size: .875rem; font-weight: 600; }
+.qr-methods-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  width: 100%; min-height: 48px; margin-top: .5rem; padding: .75rem 1rem;
+  border: 1px solid var(--qr-border); border-radius: .75rem;
+  background: var(--qr-paper); color: var(--qr-ink); font-size: .875rem; text-align: left;
+}
+.qr-methods-chevron { flex-shrink: 0; }
+.qr-methods-chevron.is-open { transform: rotate(180deg); }
+.qr-methods-panel { border: 1px solid var(--qr-border); border-radius: .75rem; margin-top: .5rem; padding: .375rem; background: var(--qr-paper); }
+.qr-method-option { display: flex; align-items: center; gap: .75rem; min-height: 46px; padding: .625rem .75rem; border-radius: .5rem; color: var(--qr-ink); font-size: .875rem; cursor: pointer; }
+.qr-method-option:hover, .qr-method-option:focus-within { background: var(--qr-tint); }
+.qr-method-checkbox {
+  appearance: none; flex: 0 0 22px; width: 22px; height: 22px; display: grid; place-content: center;
+  margin: 0; border: 1.5px solid var(--qr-accent); border-radius: 50%; background: var(--qr-paper); cursor: pointer;
+}
+.qr-method-checkbox:checked { background: var(--qr-accent); }
+.qr-method-checkbox:checked::after { content: ''; width: 10px; height: 6px; border-left: 2px solid var(--qr-paper); border-bottom: 2px solid var(--qr-paper); transform: translateY(-1px) rotate(-45deg); }
+.qr-methods-trigger:focus-visible, .qr-method-checkbox:focus-visible, .qr-method-chip button:focus-visible, .qr-method-add:focus-visible { outline: 2px solid var(--qr-accent); outline-offset: 3px; }
+.qr-methods-trigger[aria-invalid="true"] { border-color: var(--qr-error); }
+.qr-method-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.qr-method-chip { display: inline-flex; align-items: center; gap: .375rem; max-width: 100%; min-width: 0; padding: .25rem .375rem .25rem .75rem; border-radius: .5rem; background: var(--qr-tint); color: var(--qr-ink); font-size: .8rem; }
+.qr-method-chip > span, .qr-method-chip > button:first-child { min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.qr-method-chip button { border-radius: .25rem; }
+.qr-chip-remove { min-width: 30px; min-height: 30px; font-size: 1.25rem; }
+.qr-chip-remove:hover { background: var(--qr-paper); }
+.qr-custom-method { display: grid; gap: .5rem; margin-top: 1rem; }
+.qr-method-add { margin-top: .75rem; color: var(--qr-accent); font-size: .8rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.qr-selection-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (min-width: 1024px) {
+  .qr-settings-grid { grid-template-columns: minmax(0, .9fr) minmax(0, 1fr); gap: 2rem; }
+}
+@media (forced-colors: active) {
+  .qr-method-checkbox { appearance: auto; }
+}
+
+.qr-payment-choice { max-width: 100%; min-width: 0; }
+.qr-payment-choice input { flex-shrink: 0; }
+.qr-payment-choice span { min-width: 0; overflow-wrap: anywhere; }

@@ -288,7 +288,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
                 'transaction_at' => '2026-10-22T13:14', 'verified_at' => '2000-01-01 00:00:00',
             ])->getData(true);
             $this->assertTrue($response['success']);
-            $this->assertSame('QR Payment', $response['payment_method_label']);
+            $this->assertSame('GCash', $response['payment_method_label']);
             $this->assertSame('123456AB', $response['qr_payment']['external_reference']);
             $this->assertSame('receiving_history', $response['qr_payment']['verification_source']);
             $this->assertEquals(7, $response['qr_payment']['verified_by']);
@@ -300,6 +300,40 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             $this->assertDatabaseCount('notifications', 1);
             $this->assertEquals(850, Payment::realCollections()->sum('total_amount'));
         });
+    }
+
+    public function test_selected_custom_method_is_preserved_independently_of_ocr(): void
+    {
+        $this->configureQr();
+        DB::table('qr_payment_settings')->update(['accepted_methods' => json_encode(['PayPal'])]);
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        $response = $this->submitQr('store', ['payment_source' => 'PayPal', 'paying_app' => 'Maya'])->getData(true);
+        $this->assertSame('PayPal', $response['payment_method_label']);
+        $this->assertSame('PayPal', $response['qr_payment']['payment_source']);
+        $this->assertDatabaseHas('qr_payments', ['payment_source' => 'PayPal', 'paying_app' => 'Maya']);
+        $payment = Payment::with('qrPayment')->firstOrFail();
+        $this->assertSame('PayPal', $payment->methodLabel());
+        $payment->qrPayment->update(['payment_source' => null]);
+        $this->assertSame('QR Payment', $payment->fresh()->load('qrPayment')->methodLabel());
+    }
+
+    public function test_disabled_unknown_and_missing_sources_cannot_settle(): void
+    {
+        $this->configureQr();
+        DB::table('qr_payment_settings')->update(['accepted_methods' => json_encode(['Maya'])]);
+        $this->seedService('regular_dog_grooming', 'large', 850);
+        foreach (['GCash', 'Other', 'Unsupported', null] as $source) {
+            try {
+                $this->submitQr('store', ['payment_source' => $source]);
+                $this->fail('Unconfigured source must not settle.');
+            } catch (ValidationException $error) {
+                $this->assertArrayHasKey('payment_source', $error->errors());
+                $this->assertDatabaseCount('payments', 0);
+                $this->assertDatabaseCount('qr_payments', 0);
+                $this->assertDatabaseHas('bookings', ['paid' => false]);
+            }
+        }
+        $this->assertSame('Maya', $this->submitQr('store', ['payment_source' => 'Maya'])->getData(true)['payment_method_label']);
     }
 
     public function test_qr_early_payment_preserves_unfinished_visit_and_rejects_repeated_submission(): void
@@ -569,10 +603,11 @@ class GroomingPaymentPriceSafetyTest extends TestCase
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
+        (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update([
-            'enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Receiving bank',
+            'enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => json_encode(['GCash', 'Maya', 'Bank Transfer']),
             'image_path' => 'qr-payments/code.png', 'image_hash' => hash('sha256', 'fixture'),
         ]);
     }
@@ -580,7 +615,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
     private function submitQr(string $action, array $override = [], string $role = 'admin', int $bookingId = 1)
     {
         $request = Request::create('/payment', 'POST', array_replace([
-            'final_price' => 850, 'amount_paid' => 850, 'payment_method' => 'qrph',
+            'final_price' => 850, 'amount_paid' => 850, 'payment_method' => 'qrph', 'payment_source' => 'GCash',
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
             'qr_settings_version' => 1, 'qr_verified' => true,
             'external_reference' => '1234-56 ab', 'transaction_at' => now()->format('Y-m-d\TH:i'),

@@ -126,9 +126,30 @@ console.log("Admin grooming invoice print regression tests passed.");
   assert.equal(submissions.length, 2, 'Repeated clicks submit once per payment');
   const {createQrPayment} = await import('../scripts/components/qr-payment.js');
   global.API = {getUserRole: () => 'staff'};
+  const methodQr = createQrPayment();
+  methodQr.settings = {enabled: true, version: 2, accepted_methods: ['GCash', 'Maya', 'Bank Transfer']};
+  let qrImageReads = 0;
+  global.API.getQrPaymentImage = async () => {qrImageReads++; return {blob: new Blob(['official QR'])};};
+  ui.paymentModal = {...ui.paymentModal, busy: false, paymentMethod: 'cash', qr: methodQr};
+  ui.selectPaymentMethod('Unconfigured');
+  assert.equal(ui.paymentModal.paymentMethod, 'cash');
+  assert.equal(qrImageReads, 0, 'Unsupported choices never fetch the QR image');
+  ui.selectPaymentMethod('Maya');
+  await Promise.resolve();
+  assert.equal(ui.paymentModal.paymentMethod, 'qrph');
+  assert.equal(ui.paymentMethodLabel, 'Maya');
+  methodQr.verified = true;
+  ui.selectPaymentMethod('GCash');
+  assert.equal(methodQr.verified, false, 'Changing the source requires renewed verification');
+  assert.equal(methodQr.payload().payment_source, 'GCash');
+  assert.equal(qrImageReads, 1, 'All configured methods reuse the same lazily loaded QR image');
+  ui.selectPaymentMethod('cash');
+  assert.equal(ui.paymentMethodLabel, 'Cash');
+  assert.equal(methodQr.paymentSource, '');
+  methodQr.dispose();
   for (const early of [true, false]) {
     const qr = createQrPayment();
-    Object.assign(qr, {settings: {enabled: true, version: 2}, amount: '',
+    Object.assign(qr, {settings: {enabled: true, version: 2, accepted_methods: ['GCash', 'Maya', 'Bank Transfer']}, paymentSource: early ? 'Maya' : 'Bank Transfer', amount: '',
       externalReference: 'BANK123456', transactionAt: '2026-10-23T10:30', verified: false});
     ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
       petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: '', paymentMethod: 'qrph', qr};
@@ -138,7 +159,7 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(ui.canSubmitPayment, true, 'Verified QR does not require Cash Received');
     context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
       submissions.push({id, payload});
-      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: 'QR Payment',
+      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: early ? 'Maya' : 'Bank Transfer',
         qr_payment: {external_reference: 'BANK123456', verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
     };
     await ui.submitPayment();
@@ -148,7 +169,8 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(submissions.at(-1).payload.observed_amount, null);
     if (early) assert.equal(await submissions.at(-1).payload.receipt.text(), 'synthetic proof');
     assert.equal(Object.hasOwn(submissions.at(-1).payload, 'verification_source'), false, 'Early and final submissions never send a source choice');
-    assert.equal(ui.receiptModal.paymentMethod, 'QR Payment');
+    assert.equal(submissions.at(-1).payload.payment_source, early ? 'Maya' : 'Bank Transfer');
+    assert.equal(ui.receiptModal.paymentMethod, early ? 'Maya' : 'Bank Transfer');
     assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
     const printCount = printed;
     ui.printReceipt();

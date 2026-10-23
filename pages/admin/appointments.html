@@ -8,7 +8,7 @@
 
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=qr-ux-20261023" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-ux" />
+    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-methods" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
     <link
       rel="stylesheet"
@@ -919,8 +919,10 @@
                   <div>
                     <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</p>
                     <div class="flex flex-wrap gap-3">
-                      <label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="cash" :checked="paymentModal.paymentMethod === 'cash'" @change="selectPaymentMethod('cash')" />Cash</label>
-                      <label x-show="paymentModal.qr?.settings?.enabled" class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="qrph" :checked="paymentModal.paymentMethod === 'qrph'" @change="selectPaymentMethod('qrph')" />QR Payment</label>
+                      <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="cash" :checked="paymentModal.paymentMethod === 'cash'" @change="selectPaymentMethod('cash')" />Cash</label>
+                      <template x-for="method in (paymentModal.qr?.settings?.enabled ? paymentModal.qr.settings.accepted_methods : [])" :key="method">
+                        <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" :value="method" :checked="paymentModal.paymentMethod === 'qrph' && paymentModal.qr.paymentSource === method" @change="selectPaymentMethod(method)" /><span class="break-words" x-text="method"></span></label>
+                      </template>
                     </div>
                     <p x-show="paymentModal.qr?.loading" role="status" class="mt-2 text-xs text-slate-500">Loading payment options…</p>
                     <p x-show="paymentModal.paymentMethod === 'cash' && paymentModal.qr?.error" class="mt-2 text-xs text-slate-500" x-text="paymentModal.qr?.error"></p>
@@ -950,7 +952,6 @@
                     <div class="space-y-4" x-effect="paymentModal.qr.setExpectedAmount(paymentTotalDue)" @paste="paymentModal.qr.paste($event)">
                       <div class="rounded-2xl border border-[#d7e3ef] bg-[#f5f8fb] p-4 text-center">
                         <p class="font-semibold text-[#1f3850]" x-text="paymentModal.qr.settings?.merchant_name"></p>
-                        <p class="mt-1 text-sm text-slate-500" x-text="paymentModal.qr.settings?.provider_name"></p>
                         <p x-show="paymentModal.qr.imageLoading" class="py-6 text-sm text-slate-500" role="status">Loading official QR…</p>
                         <template x-if="paymentModal.qr.imageUrl"><img :src="paymentModal.qr.imageUrl" alt="Scan the clinic’s official QR Payment code" class="mx-auto my-4 max-h-72 max-w-full bg-white object-contain" /></template>
                         <p x-show="paymentModal.qr.error" role="alert" class="mt-3 text-sm text-red-600" x-text="paymentModal.qr.error"></p>
@@ -986,7 +987,7 @@
                           </label>
                         </div>
                         <p x-show="paymentModal.qr.amount !== '' && Math.round(Number(paymentModal.qr.amount) * 100) !== Math.round(paymentTotalDue * 100)" class="text-sm text-amber-700" role="alert">Receipt amount differs from Total Due. Correct a scan error after checking the account credit, or leave payment unresolved.</p>
-                        <p x-show="paymentModal.qr.payingApp" class="text-sm text-slate-600">Paying app: <span x-text="paymentModal.qr.payingApp"></span> <button type="button" class="qr-secondary" @click="paymentModal.qr.payingApp = ''; paymentModal.qr.reviewField('payingApp')">Clear</button></p>
+                        <p x-show="paymentModal.qr.payingApp" class="text-sm text-slate-600">Scanned app: <span x-text="paymentModal.qr.payingApp"></span> <button type="button" class="qr-secondary" @click="paymentModal.qr.payingApp = ''; paymentModal.qr.reviewField('payingApp')">Clear</button></p>
                         <p x-show="paymentModal.qr.recipientWarning" x-text="paymentModal.qr.recipientWarning" class="text-sm text-amber-700" role="status"></p>
                         <label class="flex items-start gap-2 rounded-xl border border-[#cfe0ee] bg-[#f5f8fb] p-3 text-sm text-[#2f4b66]"><input type="checkbox" x-model="paymentModal.qr.verified" @change="clearPaymentError()" class="mt-1" /><span>I verified <strong x-text="formatPeso(paymentTotalDue)"></strong> was received in the clinic's official account.</span></label>
                       </fieldset>
@@ -1026,7 +1027,7 @@
                   class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white transition btn-confirm-payment"
                   :class="!canSubmitPayment ? 'opacity-50 cursor-not-allowed' : ''"
                 >
-                  <span x-text="paymentModal.busy ? 'Processing...' : paymentModal.paymentMethod === 'qrph' ? 'Confirm QR Payment' : 'Confirm Cash Payment'"></span>
+                  <span x-text="paymentModal.busy ? 'Processing...' : 'Confirm ' + paymentMethodLabel + ' Payment'"></span>
                 </button>
               </div>
             </div>
@@ -1061,7 +1062,7 @@
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
-                <p class="receipt-success-label" x-text="receiptModal.qrPayment ? 'QR Payment' : receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
+                <p class="receipt-success-label" x-text="receiptModal.qrPayment ? receiptModal.paymentMethod : receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
                 <div class="receipt-success-reference">
                   <span x-text="receiptModal.qrPayment ? 'Transaction Reference' : 'Reference'"></span>
                   <strong x-text="receiptModal.qrPayment ? receiptModal.qrPayment.external_reference : receiptModal.bookingReference"></strong>
@@ -1113,7 +1114,7 @@
                   <h5>Payment Details</h5>
                   <dl class="receipt-success-details">
                     <div><dt>Pet owner</dt><dd x-text="receiptModal.ownerName"></dd></div>
-                    <div x-show="!receiptModal.qrPayment"><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
+                    <div><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Cash received</dt><dd x-text="formatPeso(receiptModal.amountPaid)"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Change</dt><dd x-text="formatPeso(receiptModal.change)"></dd></div>
                     <div x-show="!receiptModal.qrPayment"><dt>Paid at</dt><dd x-text="receiptModal.paidAt"></dd></div>
@@ -1556,6 +1557,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-methods"></script>
   </body>
 </html>

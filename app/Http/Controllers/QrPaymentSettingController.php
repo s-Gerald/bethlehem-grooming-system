@@ -12,7 +12,7 @@ class QrPaymentSettingController extends Controller
 {
     public function show()
     {
-        return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration(true), 'providers' => config('qr_payments.providers')]);
+        return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration(true)]);
     }
 
     public function configuration()
@@ -22,40 +22,48 @@ class QrPaymentSettingController extends Controller
 
     public function save(Request $request)
     {
+        // Multipart JSON preserves an explicitly empty selection.
+        if (is_string($request->input('accepted_methods'))) {
+            $request->merge(['accepted_methods' => json_decode($request->input('accepted_methods'), true)]);
+        }
         $data = $request->validate([
             'version' => 'required|integer|min:1',
             'enabled' => 'required|boolean',
             'merchant_name' => 'nullable|string|max:150',
-            'provider_id' => ['nullable', \Illuminate\Validation\Rule::in([...array_keys(config('qr_payments.providers')), 'other'])],
-            'provider_name' => 'nullable|string|max:100',
+            'accepted_methods' => 'present|array|list|max:20',
+            'accepted_methods.*' => ['bail', 'required', 'string', 'max:100', function ($attribute, $value, $fail) {
+                if (in_array(mb_strtolower(trim($value)), ['cash', 'qrph', 'other', 'qr payment'], true)) {
+                    $fail('Enter a custom payment method name.');
+                }
+            }],
             'image' => 'nullable|file|image|mimes:png,jpg,jpeg,webp|mimetypes:image/png,image/jpeg,image/webp|max:3072|dimensions:min_width=128,min_height=128,max_width=4096,max_height=4096',
             'official_qr_confirmed' => 'exclude_without:image|required|accepted',
         ]);
+        $methods = array_map('trim', $data['accepted_methods']);
+        $keys = array_map('mb_strtolower', $methods);
+        if (in_array('', $methods, true) || count(array_unique($keys)) !== count($keys)) {
+            throw ValidationException::withMessages(['accepted_methods' => 'Use unique, non-empty payment method names.']);
+        }
+        foreach ($methods as &$method) {
+            foreach (config('qr_payments.default_methods') as $builtIn) {
+                if (strcasecmp($method, $builtIn) === 0) $method = $builtIn;
+            }
+        }
+        unset($method);
         $newPath = null;
         if ($request->hasFile('image')) {
             $newPath = $request->file('image')->store('qr-payments', 'local');
             abort_unless($newPath, 503, 'Could not save the QR image. Please retry.');
         }
         try {
-            [$settings, $oldPath] = DB::transaction(function () use ($request, $data, $newPath) {
+            [$settings, $oldPath] = DB::transaction(function () use ($request, $data, $methods, $newPath) {
                 $settings = QrPaymentSettings::whereKey(1)->lockForUpdate()->firstOrFail();
                 abort_if($settings->version !== (int) $data['version'], 409, 'QR settings changed. Reload the tab before saving.');
                 $oldPath = $settings->image_path;
-                $provider = $data['provider_id'] ?? null;
-                $providerName = trim($data['provider_name'] ?? '');
-                if ($provider && $provider !== 'other') $providerName = config('qr_payments.providers')[$provider];
-                if ($provider === 'other' && $providerName === '') {
-                    throw ValidationException::withMessages(['provider_name' => 'Enter the receiving institution name.']);
-                }
-                if (! $provider && $providerName !== '' && $providerName !== $settings->provider_name
-                    && ! in_array($providerName, config('qr_payments.providers'), true)) {
-                    throw ValidationException::withMessages(['provider_id' => 'Select a provider or Other supported provider.']);
-                }
-
                 $settings->fill([
                     'enabled' => $data['enabled'],
                     'merchant_name' => trim($data['merchant_name'] ?? '') ?: null,
-                    'provider_name' => $providerName ?: null,
+                    'accepted_methods' => $methods,
                     'updated_by' => $request->user()->user_id,
                     'version' => $settings->version + 1,
                 ]);
@@ -65,7 +73,7 @@ class QrPaymentSettingController extends Controller
                 }
                 if ($settings->enabled && ! $settings->available()) {
                     $messages = ['image' => 'Add a QR Payment Image.', 'merchant_name' => 'Enter the receiving merchant/account name.',
-                        'provider_name' => 'Enter the receiving bank or e-wallet.'];
+                        'accepted_methods' => 'Select at least one payment method.'];
                     throw ValidationException::withMessages(array_intersect_key($messages, array_flip($settings->missingFields())));
                 }
                 $settings->save();

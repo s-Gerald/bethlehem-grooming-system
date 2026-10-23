@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qr-ux-20261023" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-ux" />
+    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-methods" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
       #success-toast { z-index: 10002; }
@@ -226,7 +226,7 @@
               </div>
               <p x-show="qrSettings.loading" role="status" class="mt-4 text-sm text-slate-500">Loading QR settings…</p>
               <p x-show="qrSettings.loaded && qrSettings.status === 'not_ready' && qrMissingLabel" class="mt-3 text-sm text-slate-500">Missing: <span x-text="qrMissingLabel"></span></p>
-              <fieldset :disabled="!qrSettings.loaded || qrSettings.loading || qrSettings.saving" class="mt-5 grid min-w-0 gap-6 lg:grid-cols-2">
+              <fieldset :disabled="!qrSettings.loaded || qrSettings.loading || qrSettings.saving" class="qr-settings-grid">
                 <div class="space-y-4">
                   <p class="text-sm font-semibold text-[#2f4b66]">QR Payment Image</p>
                   <div x-show="!qrCrop.open" class="qr-upload" @dragover.prevent @drop.prevent="dropQrImage($event)">
@@ -260,18 +260,50 @@
                   <p id="qr-official-error" x-show="qrSettings.fieldErrors.official_qr_confirmed" x-text="qrSettings.fieldErrors.official_qr_confirmed" class="text-sm text-red-600"></p>
                 </div>
                 <div class="space-y-5">
-                  <label class="block text-sm font-semibold text-[#2f4b66]">Receiving merchant / account name
+                  <label class="block text-sm font-semibold text-[#2f4b66]">Merchant / account name
                     <input type="text" x-model="qrSettings.merchant_name" maxlength="150" :required="qrSettings.enabled" :aria-invalid="!!qrSettings.fieldErrors.merchant_name" aria-describedby="qr-merchant-error" class="qr-field mt-2" />
                     <span id="qr-merchant-error" x-show="qrSettings.fieldErrors.merchant_name" x-text="qrSettings.fieldErrors.merchant_name" class="qr-field-error"></span>
                   </label>
-                  <div class="block text-sm font-semibold text-[#2f4b66]"><label for="qr-provider-choice">Receiving bank or e-wallet</label>
-                    <input id="qr-provider-choice" type="text" list="qr-provider-catalog" x-model="qrSettings.providerChoice" @input="selectQrProvider()" :required="qrSettings.enabled" :aria-invalid="!!(qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id)" aria-describedby="qr-provider-error" class="qr-field mt-2" autocomplete="off" placeholder="Search bank or e-wallet" />
-                    <datalist id="qr-provider-catalog"><template x-for="(label, id) in qrProviders" :key="id"><option :value="label"></option></template><option value="Other supported provider"></option></datalist>
-                    <input x-show="qrSettings.provider_id === 'other'" type="text" x-model="qrSettings.provider_name" maxlength="100" :required="qrSettings.provider_id === 'other'" aria-label="Other receiving institution" placeholder="Receiving institution name" class="qr-field mt-2" />
-                    <span id="qr-provider-error" x-show="qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id" x-text="qrSettings.fieldErrors.provider_name || qrSettings.fieldErrors.provider_id" class="qr-field-error"></span>
+                  <div class="qr-methods" @keydown.escape.stop.prevent="closeQrMethods(true)" @click.outside="closeQrMethods()">
+                    <label id="qr-methods-label" for="qr-methods-trigger" class="qr-methods-label">Accepted Payment Methods</label>
+                    <button id="qr-methods-trigger" type="button" x-ref="qrMethodsTrigger" class="qr-methods-trigger"
+                      :aria-expanded="qrSettings.methodsOpen" aria-controls="qr-methods-panel" aria-labelledby="qr-methods-label qr-methods-count"
+                      :aria-invalid="!!qrSettings.fieldErrors.accepted_methods" aria-describedby="qr-methods-error"
+                      @click="qrSettings.methodsOpen = !qrSettings.methodsOpen"
+                      @keydown.down.prevent="focusQrMethod($event, -1)" @keydown.up.prevent="focusQrMethod($event, 1)">
+                      <span id="qr-methods-count" x-text="qrMethodCount"></span>
+                      <svg class="qr-methods-chevron" :class="{'is-open': qrSettings.methodsOpen}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    <div id="qr-methods-panel" x-ref="qrMethodsPanel" x-show="qrSettings.methodsOpen" x-cloak class="qr-methods-panel" role="group" aria-labelledby="qr-methods-label"
+                      @keydown.down.prevent="focusQrMethod($event)" @keydown.up.prevent="focusQrMethod($event)"
+                      @keydown.home.prevent="focusQrMethod($event, -1)" @keydown.end.prevent="focusQrMethod($event, 1)">
+                      <template x-for="method in [...qrMethodOptions, 'Other']" :key="method">
+                        <label class="qr-method-option"><input type="checkbox" class="qr-method-checkbox" :checked="qrMethodChecked(method)" @change="toggleQrMethod(method)" /><span x-text="method"></span></label>
+                      </template>
+                    </div>
+                    <div class="qr-method-chips" aria-label="Selected payment methods">
+                      <template x-for="method in qrSettings.accepted_methods" :key="method">
+                        <span class="qr-method-chip">
+                          <span x-show="qrMethodOptions.includes(method)" x-text="method"></span>
+                          <button x-show="!qrMethodOptions.includes(method)" type="button" @click="editQrCustomMethod(method)" :aria-label="'Edit ' + method" x-text="method"></button>
+                          <button type="button" @click="removeQrMethod(method, true)" :aria-label="'Remove ' + method" class="qr-chip-remove">&times;</button>
+                        </span>
+                      </template>
+                    </div>
+                    <p class="qr-selection-status" role="status" aria-live="polite" x-text="qrMethodCount"></p>
+                    <div x-show="qrSettings.customOpen" x-cloak class="qr-custom-method">
+                      <label for="qr-custom-name" class="qr-methods-label">Custom payment method</label>
+                      <input id="qr-custom-name" x-ref="qrCustomName" type="text" maxlength="100" x-model="qrSettings.customName" :required="qrSettings.customOpen"
+                        @keydown.enter.prevent="commitQrCustomMethod()" @input="delete qrSettings.fieldErrors.custom_method"
+                        :aria-invalid="!!qrSettings.fieldErrors.custom_method" aria-describedby="qr-custom-error" class="qr-field" />
+                      <p id="qr-custom-error" x-show="qrSettings.fieldErrors.custom_method" x-text="qrSettings.fieldErrors.custom_method" class="qr-field-error" role="alert"></p>
+                      <div class="qr-crop-tools"><button type="button" class="qr-secondary" @click="cancelQrCustomMethod()">Cancel</button><button type="button" class="qr-secondary" @click="commitQrCustomMethod()" x-text="qrSettings.editingMethod ? 'Update Method' : 'Add Method'"></button></div>
+                    </div>
+                    <button x-show="qrCustomMethods.length && !qrSettings.customOpen" type="button" class="qr-method-add" @click="qrSettings.customOpen = true; $nextTick(() => $refs.qrCustomName.focus())">Add custom method</button>
+                    <span id="qr-methods-error" x-show="qrSettings.fieldErrors.accepted_methods" x-text="qrSettings.fieldErrors.accepted_methods" class="qr-field-error" role="alert"></span>
                   </div>
                   <label class="flex items-center gap-3 text-sm font-semibold text-[#2f4b66]"><input type="checkbox" x-model="qrSettings.enabled" />Enable QR Payments</label>
-                  <button type="submit" class="qr-primary" :disabled="qrSettings.saving || qrCrop.open" x-text="qrSettings.saving ? 'Saving…' : (qrSettings.enabled && qrSettings.status !== 'enabled' ? 'Save & Enable' : 'Save Changes')"></button>
+                  <button type="submit" class="qr-primary" :disabled="qrSettings.saving || qrCrop.open" x-text="qrSettings.saving ? 'Saving…' : 'Save Changes'"></button>
                 </div>
               </fieldset>
               <p x-show="qrSettings.error" x-text="qrSettings.error" class="mt-4 text-sm text-red-600" role="alert"></p>
@@ -1477,6 +1509,6 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023"></script>
+    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023-methods"></script>
   </body>
 </html>

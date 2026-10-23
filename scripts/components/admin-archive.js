@@ -768,8 +768,10 @@ function adminArchive() {
     },
 
     paymentMethod(booking = this.detailsBooking) {
+      if (booking?.payment?.paymentMethodLabel) return booking.payment.paymentMethodLabel;
       const method = booking?.payment?.paymentMethod ?? booking?.payment?.payment_method;
       if (method === 'online') return 'Online Payment';
+      if (method === 'qrph') return 'QR Payment';
       return method ? method.charAt(0).toUpperCase() + method.slice(1) : 'Not recorded';
     },
 

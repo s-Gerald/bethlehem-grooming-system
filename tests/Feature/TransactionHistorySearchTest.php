@@ -316,6 +316,7 @@ class TransactionHistorySearchTest extends TestCase
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
+        (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
         $qr = \App\Models\QrPayment::create([
             'payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
             'proof_path' => 'payment-proofs/private.png', 'proof_name' => 'receipt.png', 'proof_mime' => 'image/png', 'paying_app' => 'Maya',
@@ -343,6 +344,12 @@ class TransactionHistorySearchTest extends TestCase
         $this->assertSame('receipt.png', $transaction['qrPayment']['proof']['name']);
         $this->assertSame('Maya', $transaction['qrPayment']['paying_app']);
         $this->assertEquals(850, $data['collection_total']);
+        foreach (['GCash', 'Maya', 'Bank Transfer', 'PayPal', '0'] as $method) {
+            $qr->update(['payment_source' => $method]);
+            $recorded = $this->search(['search' => 'BANK123456'])['transactions'][0];
+            $this->assertSame($method, $recorded['paymentMethodLabel']);
+            $this->assertSame($method, $recorded['qrPayment']['payment_source']);
+        }
     }
 
     public static function historicalVerificationSources(): array

@@ -3250,7 +3250,7 @@ function adminDashboard() {
       };
       const modal = this.paymentModal;
       try {
-        const {createQrPayment} = await import('./qr-payment.js?v=20261023-workflow');
+        const {createQrPayment} = await import('./qr-payment.js?v=20261023-methods');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
         modal.qr = createQrPayment();
         await modal.qr.load();
@@ -3259,13 +3259,18 @@ function adminDashboard() {
       }
     },
 
+    get paymentMethodLabel() {
+      return this.paymentModal.paymentMethod === 'qrph' ? this.paymentModal.qr?.paymentSource || 'QR Payment' : 'Cash';
+    },
     selectPaymentMethod(method) {
-      if (this.paymentModal.busy || !['cash', 'qrph'].includes(method)) return;
-      if (method === 'qrph' && !this.paymentModal.qr?.settings?.enabled) return;
-      this.paymentModal.paymentMethod = method;
-      this.paymentModal.error = '';
-      if (this.paymentModal.qr) this.paymentModal.qr.verified = false;
-      if (method === 'qrph') void this.paymentModal.qr.showImage();
+      const modal = this.paymentModal;
+      if (modal.busy) return;
+      const cash = method === 'cash';
+      if (!cash && (!modal.qr?.settings?.enabled || !modal.qr.settings.accepted_methods.includes(method))) return;
+      modal.paymentMethod = cash ? 'cash' : 'qrph';
+      modal.error = '';
+      if (modal.qr) { modal.qr.paymentSource = cash ? '' : method; modal.qr.verified = false; }
+      if (!cash) void modal.qr.showImage();
     },
 
     closePaymentModal(force = false) {

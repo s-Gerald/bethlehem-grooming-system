@@ -27,6 +27,7 @@ class QrPaymentSettingsTest extends TestCase
             $table->decimal('total_amount', 10, 2)->default(0);
         });
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
+        (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
         Storage::fake('local');
     }
 
@@ -57,9 +58,9 @@ class QrPaymentSettingsTest extends TestCase
     public function test_enabled_settings_need_image_identity_and_explicit_official_qr_acknowledgment(): void
     {
         $this->actor();
-        $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 1])
-            ->assertUnprocessable()->assertJsonValidationErrors(['image', 'merchant_name', 'provider_name']);
-        $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Maya', 'version' => 1];
+        $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 1, 'accepted_methods' => []])
+            ->assertUnprocessable()->assertJsonValidationErrors(['image', 'merchant_name', 'accepted_methods']);
+        $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash', 'Maya', 'Bank Transfer'], 'version' => 1];
         $this->postJson('/api/admin/qr-payments/settings', $payload)->assertUnprocessable();
         $this->post('/api/admin/qr-payments/settings', $payload + ['image' => $this->image()], ['Accept' => 'application/json'])
             ->assertUnprocessable();
@@ -71,27 +72,27 @@ class QrPaymentSettingsTest extends TestCase
         $this->actor();
         $this->getJson('/api/admin/qr-payments/settings')->assertJsonPath('settings.status', 'not_ready');
         $saved = $this->post('/api/admin/qr-payments/settings', [
-            'enabled' => false, 'version' => 1, 'image' => $this->image(), 'official_qr_confirmed' => true,
+            'enabled' => false, 'version' => 1, 'accepted_methods' => [], 'image' => $this->image(), 'official_qr_confirmed' => true,
         ], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('settings.status', 'not_ready')
-            ->assertJsonPath('settings.missing_fields', ['merchant_name', 'provider_name']);
-        $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 2, 'merchant_name' => 'Bethlehem'])
-            ->assertUnprocessable()->assertJsonValidationErrors(['provider_name']);
+            ->assertJsonPath('settings.missing_fields', ['merchant_name', 'accepted_methods']);
+        $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 2, 'merchant_name' => 'Bethlehem', 'accepted_methods' => []])
+            ->assertUnprocessable()->assertJsonValidationErrors(['accepted_methods']);
         $this->assertDatabaseHas('qr_payment_settings', ['version' => 2, 'enabled' => false]);
         $this->postJson('/api/admin/qr-payments/settings', [
-            'enabled' => false, 'version' => 2, 'merchant_name' => 'Bethlehem', 'provider_id' => 'other', 'provider_name' => 'Bank',
+            'enabled' => false, 'version' => 2, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash'],
         ])->assertOk()->assertJsonPath('settings.status', 'disabled')->assertJsonPath('settings.missing_fields', []);
         $this->actor('staff');
         $this->getJson('/api/admin/qr-payments/config')->assertExactJson(['settings' => ['enabled' => false]]);
         $this->actor();
         $this->postJson('/api/admin/qr-payments/settings', [
-            'enabled' => true, 'version' => 3, 'merchant_name' => 'Bethlehem', 'provider_id' => 'other', 'provider_name' => 'Bank',
+            'enabled' => true, 'version' => 3, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash'],
         ])->assertOk()->assertJsonPath('settings.status', 'enabled')->assertJsonPath('message', 'QR Payments enabled');
     }
 
     public function test_private_image_and_versioned_settings_survive_reloads_replace_and_disable(): void
     {
         $this->actor();
-        $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Maya', 'version' => 1, 'official_qr_confirmed' => true];
+        $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash', 'Maya', 'Bank Transfer'], 'version' => 1, 'official_qr_confirmed' => true];
         $saved = $this->post('/api/admin/qr-payments/settings', $payload + ['image' => $this->image()], ['Accept' => 'application/json'])
             ->assertOk()->assertJsonPath('settings.version', 2)->assertJsonPath('settings.enabled', true)->json('settings');
         $this->assertArrayNotHasKey('image_path', $saved);
@@ -121,7 +122,7 @@ class QrPaymentSettingsTest extends TestCase
     public function test_invalid_image_mime_size_and_dimensions_do_not_change_configuration(): void
     {
         $this->actor();
-        $payload = ['version' => 1, 'enabled' => true, 'merchant_name' => 'Bethlehem', 'provider_id' => 'other', 'provider_name' => 'Bank', 'official_qr_confirmed' => true];
+        $payload = ['version' => 1, 'enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash'], 'official_qr_confirmed' => true];
         foreach ([UploadedFile::fake()->create('receipt.svg', 2, 'image/svg+xml'),
             UploadedFile::fake()->create('image.png', 3073, 'image/png'), $this->image(20)] as $file) {
             $this->post('/api/admin/qr-payments/settings', $payload + ['image' => $file], ['Accept' => 'application/json'])->assertUnprocessable();
@@ -130,20 +131,48 @@ class QrPaymentSettingsTest extends TestCase
         $this->assertSame([], Storage::disk('local')->allFiles());
     }
 
-    public function test_provider_catalog_validation_fallback_and_legacy_value_preservation(): void
+    public function test_method_defaults_persistence_and_validation(): void
     {
+        // Exercise all invalid names without exhausting the endpoint's production rate limit.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->actor();
-        $response = $this->getJson('/api/admin/qr-payments/settings')->assertOk();
-        $this->assertSame('GCash', $response->json('providers.gcash'));
-        $payload = ['version' => 1, 'enabled' => false, 'provider_id' => 'invented', 'provider_name' => 'Fake'];
-        $this->postJson('/api/admin/qr-payments/settings', $payload)->assertUnprocessable()->assertJsonValidationErrors('provider_id');
-        $payload['provider_id'] = 'gcash';
-        $this->postJson('/api/admin/qr-payments/settings', $payload)->assertOk()->assertJsonPath('settings.provider_name', 'GCash');
-        DB::table('qr_payment_settings')->update(['provider_name' => 'Existing local institution']);
-        $this->postJson('/api/admin/qr-payments/settings', ['version' => 2, 'enabled' => false,
-            'provider_name' => 'Existing local institution'])->assertOk()->assertJsonPath('settings.provider_name', 'Existing local institution');
-        $this->postJson('/api/admin/qr-payments/settings', ['version' => 3, 'enabled' => false,
-            'provider_id' => 'other', 'provider_name' => 'Another legitimate institution'])->assertOk()->assertJsonPath('settings.provider_name', 'Another legitimate institution');
+        $this->getJson('/api/admin/qr-payments/settings')->assertOk()
+            ->assertJsonPath('settings.accepted_methods', ['GCash', 'Maya', 'Bank Transfer']);
+        foreach ([['Other'], ['Cash'], ['qrph'], ['GCash', 'gcash'], ['Maya', ' Maya '], [''], [['bad']], [23], [str_repeat('x', 101)]] as $methods) {
+            $this->postJson('/api/admin/qr-payments/settings', ['version' => 1, 'enabled' => false, 'accepted_methods' => $methods])
+                ->assertUnprocessable();
+        }
+        $this->postJson('/api/admin/qr-payments/settings', ['version' => 1, 'enabled' => false,
+            'accepted_methods' => ['GCash', '  PayPal  ']])->assertOk()->assertJsonPath('settings.accepted_methods', ['GCash', 'PayPal']);
+        $this->getJson('/api/admin/qr-payments/settings')->assertJsonPath('settings.accepted_methods', ['GCash', 'PayPal']);
+        $this->postJson('/api/admin/qr-payments/settings', ['version' => 2, 'enabled' => false, 'accepted_methods' => '[]'])
+            ->assertOk()->assertJsonPath('settings.accepted_methods', []);
+        $this->getJson('/api/admin/qr-payments/settings')->assertJsonPath('settings.accepted_methods', []);
+    }
+
+    public function test_method_migration_preserves_historical_financial_and_audit_values_and_can_resume(): void
+    {
+        $migration = require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php');
+        $migration->down();
+        DB::table('qr_payment_settings')->update(['version' => 7, 'merchant_name' => 'Existing account', 'provider_name' => 'Old bank']);
+        DB::table('qr_payments')->insert(['payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
+            'external_reference' => 'OLD123456', 'received_amount' => 850, 'transaction_at' => '2026-10-22 09:00:00',
+            'verified_at' => '2026-10-22 09:05:00', 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
+            'verification_source' => 'receiving_history', 'reference_unavailable_reason' => 'Retained audit note.',
+            'settings_version' => 6, 'merchant_name' => 'Historical merchant', 'provider_name' => 'Historical bank', 'qr_image_hash' => hash('sha256', 'fixture')]);
+        $before = (array) DB::table('qr_payments')->first();
+        $migration->up();
+        $migration->up();
+        $after = (array) DB::table('qr_payments')->first();
+        $this->assertNull($after['payment_source']);
+        unset($after['payment_source']);
+        $this->assertSame($before, $after);
+        $this->assertFalse(Schema::hasColumn('qr_payment_settings', 'provider_name'));
+        $this->assertDatabaseHas('qr_payment_settings', ['version' => 7, 'merchant_name' => 'Existing account']);
+        $this->assertSame(['GCash', 'Maya', 'Bank Transfer'], \App\Models\QrPaymentSettings::findOrFail(1)->acceptedMethods());
+        DB::table('qr_payment_settings')->update(['accepted_methods' => json_encode([])]);
+        $migration->up();
+        $this->assertSame([], \App\Models\QrPaymentSettings::findOrFail(1)->acceptedMethods());
     }
 
     public function test_proof_forward_migration_preserves_historical_reference_exceptions(): void

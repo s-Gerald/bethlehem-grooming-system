@@ -1,6 +1,6 @@
 export function createQrPayment() {
   return {
-    settings: null, loading: false, error: '', imageUrl: '', imageLoading: false,
+    settings: null, paymentSource: '', loading: false, error: '', imageUrl: '', imageLoading: false,
     amount: '', externalReference: '', transactionAt: '', recipient: '',
     verified: false,
     ocrBusy: false, ocrProgress: 0, ocrMessage: '',
@@ -98,6 +98,7 @@ export function createQrPayment() {
     cancelScan() { this._ocrController?.abort(); this._scanVersion++; this.ocrBusy = false; },
     validationError(total) {
       if (!this.settings?.enabled) return 'QR payments are unavailable.';
+      if (!(this.settings.accepted_methods || []).includes(this.paymentSource)) return 'Select an enabled payment method.';
       if (this.ocrBusy) return 'Wait for OCR to finish.';
       if ((this.receiptAmountExtracted || this.amount !== '') && (!/^\d+(?:\.\d{1,2})?$/.test(String(this.amount)) || Math.round(Number(this.amount) * 100) !== Math.round(total * 100))) return 'Receipt amount differs from Total Due. Check the account credit and correct a scan error, or leave payment unresolved.';
       if (!this.transactionAt) return 'Enter the transaction date and time.';
@@ -106,6 +107,7 @@ export function createQrPayment() {
     },
     payload() {
       return {
+        payment_source: this.paymentSource,
         qr_settings_version: this.settings?.version, qr_verified: this.verified,
         external_reference: this.externalReference,
         transaction_at: this.transactionAt,

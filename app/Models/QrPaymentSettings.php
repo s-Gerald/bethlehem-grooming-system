@@ -11,9 +11,14 @@ class QrPaymentSettings extends Model
 
     protected $guarded = ['id'];
 
-    protected $casts = ['enabled' => 'boolean', 'version' => 'integer'];
+    protected $casts = ['enabled' => 'boolean', 'version' => 'integer', 'accepted_methods' => 'array'];
 
     protected $hidden = ['image_path', 'image_hash'];
+
+    public function acceptedMethods(): array
+    {
+        return $this->accepted_methods ?? config('qr_payments.default_methods');
+    }
 
     public function available(): bool
     {
@@ -25,13 +30,13 @@ class QrPaymentSettings extends Model
         $missing = [];
         if (! $this->image_hash || ! $this->image_path || ! Storage::disk('local')->exists($this->image_path)) $missing[] = 'image';
         if (! trim($this->merchant_name ?? '')) $missing[] = 'merchant_name';
-        if (! trim($this->provider_name ?? '')) $missing[] = 'provider_name';
+        if ($this->acceptedMethods() === []) $missing[] = 'accepted_methods';
         return $missing;
     }
 
     public function configuration(bool $admin = false): array
     {
-        if (! $admin && (! $this->enabled || ! $this->merchant_name || ! $this->provider_name)) return ['enabled' => false];
+        if (! $admin && ! $this->enabled) return ['enabled' => false];
         $missing = $this->missingFields();
         $available = $this->enabled && $missing === [];
         if (! $admin && ! $available) return ['enabled' => false];
@@ -40,7 +45,7 @@ class QrPaymentSettings extends Model
             'enabled' => $admin ? $this->enabled : $available,
             'version' => $this->version,
             'merchant_name' => $this->merchant_name,
-            'provider_name' => $this->provider_name,
+            'accepted_methods' => $this->acceptedMethods(),
             'has_image' => ! in_array('image', $missing, true),
         ] + ($admin ? ['status' => $missing ? 'not_ready' : ($available ? 'enabled' : 'disabled'), 'missing_fields' => $missing] : []);
     }

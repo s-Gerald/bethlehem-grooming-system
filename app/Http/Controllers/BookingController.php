@@ -420,8 +420,10 @@ class BookingController extends Controller
             'cancellation_reason',
         ]);
         if (Schema::hasTable('payments')) {
+            $paymentRelations = Schema::hasTable('qr_payments') ? ['qrPayment'] : [];
             $relations['payments'] = fn ($query) => $query
                 ->where('payment_status', 'paid')
+                ->with($paymentRelations)
                 ->orderByDesc('paid_at');
         }
 
@@ -542,7 +544,7 @@ class BookingController extends Controller
                     'amount_tendered' => $paidPayment->amount_tendered,
                     'change_amount' => $paidPayment->change_amount,
                     'payment_method' => $paidPayment->payment_method,
-                    'payment_method_label' => $paidPayment->payment_method === 'online' ? 'Online Payment' : ucfirst((string) $paidPayment->payment_method),
+                    'payment_method_label' => $paidPayment->methodLabel(),
                     'paid_at' => $paidPayment->paid_at?->toIso8601String(),
                     'pets' => $safePets->map(fn (array $pet) => [
                         'pet_id' => $pet['pet_id'],

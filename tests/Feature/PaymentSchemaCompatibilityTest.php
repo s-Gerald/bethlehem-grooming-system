@@ -150,7 +150,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
         }
         $historical = $this->historicalAttempt('pos', User::class, 7);
         $before = $historical->fresh()->getAttributes();
-        $payload = ['final_price' => 1160, 'amount_paid' => 1160, 'payment_method' => 'qrph',
+        $payload = ['final_price' => 1160, 'amount_paid' => 1160, 'payment_method' => 'qrph', 'payment_source' => 'GCash',
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850], ['booking_service_id' => 8, 'amount' => 150]],
             'products' => [['item_id' => 10, 'quantity' => 2]], 'qr_settings_version' => 1,
             'qr_verified' => true, 'external_reference' => 'REAL123456', 'transaction_at' => now()->format('Y-m-d\TH:i')];
@@ -162,7 +162,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
             $this->assertDatabaseCount('inventory_transactions', 0);
             $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
         }
-        $this->postJson($url, $payload)->assertOk()->assertJsonPath('payment_method_label', 'QR Payment')->assertJsonPath('final_price', '1160.00')
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('payment_method_label', 'GCash')->assertJsonPath('final_price', '1160.00')
             ->assertJsonPath('qr_payment.verification_source', 'receiving_history');
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => true, 'status' => $flow === 'pay' ? 'released' : 'in_progress']);
@@ -243,7 +243,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
                 }
             });
             $request = Illuminate\Http\Request::create('/payment', 'POST', [
-                'final_price' => 1010, 'amount_paid' => 1010, 'payment_method' => 'qrph',
+                'final_price' => 1010, 'amount_paid' => 1010, 'payment_method' => 'qrph', 'payment_source' => 'GCash',
                 'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
                 'products' => [['item_id' => 10, 'quantity' => 2]],
                 'qr_settings_version' => 1, 'qr_verified' => true,
@@ -294,10 +294,11 @@ class PaymentSchemaCompatibilityTest extends TestCase
     {
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
+        (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update(['enabled' => true, 'merchant_name' => 'Bethlehem',
-            'provider_name' => 'Receiving bank', 'image_path' => 'qr-payments/code.png', 'image_hash' => hash('sha256', 'fixture')]);
+            'accepted_methods' => json_encode(['GCash', 'Maya', 'Bank Transfer']), 'image_path' => 'qr-payments/code.png', 'image_hash' => hash('sha256', 'fixture')]);
     }
 
     public function test_historical_unresolved_attempts_keep_billing_and_stock_locked(): void

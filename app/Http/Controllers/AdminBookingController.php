@@ -102,6 +102,8 @@ class AdminBookingController extends Controller
             $rangeStart = $rangeEnd->copy();
         }
 
+        $paymentRelations = Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
+
         // Incoming: dashboard sees only the selected day; appointments can opt in to today + future.
         $incomingQuery = Booking::whereBetween('booking_date', [
             $rangeStart->toDateString(),
@@ -111,7 +113,7 @@ class AdminBookingController extends Controller
         $incoming = $incomingQuery
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderByRaw('CASE WHEN booking_date = ? THEN 0 ELSE 1 END', [$rangeStart->toDateString()])
             ->orderBy('booking_date', 'asc')
             ->get()
@@ -128,7 +130,7 @@ class AdminBookingController extends Controller
         $queued = $queuedQuery
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
@@ -150,7 +152,7 @@ class AdminBookingController extends Controller
         $inProgress = $inProgressQuery
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
             ->map(function ($booking) {
@@ -165,7 +167,7 @@ class AdminBookingController extends Controller
         $forPayment = Booking::where('status', 'for_payment')
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
@@ -173,7 +175,7 @@ class AdminBookingController extends Controller
         $released = Booking::where('status', 'released')
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with('products')])
+                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
@@ -1269,6 +1271,7 @@ class AdminBookingController extends Controller
         $search = $request->query('search', '');
         $date = $request->query('date', '');
 
+        $paymentRelations = Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
         $query = Booking::whereIn('status', ['archived', 'cancelled'])
             ->withExists('groomingConsent')
             ->with([
@@ -1279,7 +1282,7 @@ class AdminBookingController extends Controller
                 'bookingPets.cancelledBy',
                 'cancelledBy',
                 'bookingServices.service',
-                'payments' => fn ($q) => $q->with('products')
+                'payments' => fn ($q) => $q->with($paymentRelations)
                     ->where('payment_status', 'paid')
                     ->orderBy('paid_at', 'desc'),
             ])
@@ -1449,6 +1452,7 @@ class AdminBookingController extends Controller
                 'amountPaid' => (float) $paidPayment->amount_tendered,
                 'amount_paid' => (float) $paidPayment->amount_tendered,
                 'paymentMethod' => $paidPayment->payment_method,
+                'paymentMethodLabel' => $paidPayment->methodLabel(),
                 'payment_method' => $paidPayment->payment_method,
                 'paidAt' => $paidPayment->paid_at
                     ? Carbon::parse($paidPayment->paid_at)->format('M j, Y g:i A')
