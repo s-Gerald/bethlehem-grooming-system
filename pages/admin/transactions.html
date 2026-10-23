@@ -415,8 +415,9 @@
                       <div x-show="!selectedTransaction.qrPayment"><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>External Transaction Reference</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — historical record'"></dd></div></template>
-                      <template x-if="selectedTransaction.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.transaction_at)"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Payment Reference No.</dt><dd x-text="selectedTransaction.qrPayment.external_reference || 'Unavailable — historical record'"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment"><div><dt>Recorded at</dt><dd x-text="formatQrDate(selectedTransaction.paidAt)"></dd></div></template>
+                      <template x-if="selectedTransaction.qrPayment?.transaction_at"><div><dt>Original transaction time</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.transaction_at)"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Merchant / account</dt><dd x-text="selectedTransaction.qrPayment.merchant_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment"><div><dt>Verified by</dt><dd x-text="selectedTransaction.qrPayment.verified_by_name"></dd></div></template>
                       <template x-if="selectedTransaction.qrPayment?.paying_app"><div><dt>Scanned App</dt><dd x-text="selectedTransaction.qrPayment.paying_app"></dd></div></template>
@@ -427,11 +428,10 @@
                     </dl>
                     <div class="transaction-paid-total"><span x-text="selectedTransaction.qrPayment ? 'Amount Paid' : 'Total Paid'">Total Paid</span><strong x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></strong></div>
                     <template x-if="selectedTransaction.qrPayment"><details class="transaction-audit">
-                      <summary>Audit timestamps</summary>
+                      <summary>Audit details</summary>
                       <dl class="transaction-line-items transaction-payment">
-                        <div><dt>Recorded at</dt><dd x-text="formatQrDate(selectedTransaction.paidAt)"></dd></div>
                         <template x-if="selectedTransaction.qrPayment.provider_name"><div><dt>Historical receiving provider</dt><dd x-text="selectedTransaction.qrPayment.provider_name"></dd></div></template>
-                        <div><dt>Verified at</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.verified_at)"></dd></div>
+                        <div x-show="selectedTransaction.qrPayment.verified_at && selectedTransaction.qrPayment.verified_at !== selectedTransaction.paidAt"><dt>Verified at</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.verified_at)"></dd></div>
                       </dl>
                     </details></template>
                     <template x-if="selectedTransaction.qrPayment?.proof"><section class="transaction-proof" aria-label="Payment Proof">

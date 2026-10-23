@@ -16,7 +16,7 @@ class QrPaymentVerificationService
             'qr_settings_version' => 'required_if:payment_method,qrph|nullable|integer|min:1',
             'qr_verified' => 'exclude_unless:payment_method,qrph|required|accepted',
             'external_reference' => 'required_if:payment_method,qrph|nullable|string|max:100|regex:/^[A-Za-z0-9 -]+$/D',
-            'transaction_at' => 'required_if:payment_method,qrph|nullable|date_format:Y-m-d\TH:i|before_or_equal:now',
+            'transaction_at' => 'exclude_unless:payment_method,qrph|nullable|date_format:Y-m-d\TH:i|before_or_equal:now',
             'observed_amount' => 'nullable|numeric|decimal:0,2|min:0.01|max:99999999.99',
             'payment_source' => 'exclude_unless:payment_method,qrph|required|string|max:100',
             'paying_app' => ['exclude_unless:payment_method,qrph', 'nullable', \Illuminate\Validation\Rule::in(['GCash', 'Maya'])],
@@ -47,15 +47,15 @@ class QrPaymentVerificationService
         }
         $reference = self::normalizeReference($data['external_reference'] ?? null);
         if (! $reference || ! preg_match('/^[A-Z0-9]{6,80}$/D', $reference)) {
-            throw ValidationException::withMessages(['external_reference' => 'Enter the official reference of 6–80 letters or numbers.']);
+            throw ValidationException::withMessages(['external_reference' => 'Enter the Payment Reference No. of 6–80 letters or numbers.']);
         }
         if ($reference && QrPayment::where('external_reference', $reference)->exists()) {
-            throw ValidationException::withMessages(['external_reference' => 'This external reference has already been recorded.']);
+            throw ValidationException::withMessages(['external_reference' => 'This Payment Reference No. has already been recorded.']);
         }
         return QrPayment::create(($data['_proof'] ?? []) + [
             'payable_type' => $payable->getMorphClass(), 'payable_id' => $payable->getKey(),
             'external_reference' => $reference, 'received_amount' => $total,
-            'transaction_at' => $data['transaction_at'], 'verification_source' => 'receiving_history',
+            'transaction_at' => $data['transaction_at'] ?? null, 'verification_source' => 'receiving_history',
             'verified_by' => $actor->user_id, 'verified_by_name' => trim($actor->first_name.' '.$actor->last_name),
             'verified_at' => now(), 'paying_app' => $data['paying_app'] ?? null, 'payment_source' => $data['payment_source'],
             'settings_version' => $settings->version, 'merchant_name' => $settings->merchant_name,

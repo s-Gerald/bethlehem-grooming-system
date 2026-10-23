@@ -3250,7 +3250,7 @@ function adminDashboard() {
       };
       const modal = this.paymentModal;
       try {
-        const {createQrPayment} = await import('./qr-payment.js?v=20261023-methods');
+        const {createQrPayment} = await import('./qr-payment.js?v=20261023-references');
         if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
         modal.qr = createQrPayment();
         await modal.qr.load();
@@ -3997,7 +3997,7 @@ function adminDashboard() {
         paymentMethod: res.payment_method_label ?? (res.payment_method === "cash" ? "Cash" : res.payment_method ?? paymentMethod),
         qrPayment: res.qr_payment || null,
         notes:         res.notes ?? notes ?? "",
-        paidAt:        res.paid_at ?? new Date().toLocaleString("en-PH"),
+        paidAt:        res.paid_at ?? (res.qr_payment ? "" : new Date().toLocaleString("en-PH")),
         isEarlyPayment,
       };
       await this.loadAdminBookings();

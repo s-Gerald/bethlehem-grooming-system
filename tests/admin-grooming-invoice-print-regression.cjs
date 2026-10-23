@@ -150,7 +150,7 @@ console.log("Admin grooming invoice print regression tests passed.");
   for (const early of [true, false]) {
     const qr = createQrPayment();
     Object.assign(qr, {settings: {enabled: true, version: 2, accepted_methods: ['GCash', 'Maya', 'Bank Transfer']}, paymentSource: early ? 'Maya' : 'Bank Transfer', amount: '',
-      externalReference: 'BANK123456', transactionAt: '2026-10-23T10:30', verified: false});
+      externalReference: 'BANK123456', verified: false});
     ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
       petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: '', paymentMethod: 'qrph', qr};
     assert.equal(ui.canSubmitPayment, false, 'QR requires explicit verification');
@@ -160,18 +160,21 @@ console.log("Admin grooming invoice print regression tests passed.");
     context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
       submissions.push({id, payload});
       return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: early ? 'Maya' : 'Bank Transfer',
-        qr_payment: {external_reference: 'BANK123456', verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
+        paid_at: '2026-10-23 10:31:00',
+        qr_payment: {external_reference: 'BANK123456', transaction_at: null, verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
     };
     await ui.submitPayment();
     assert.equal(submissions.at(-1).payload.payment_method, 'qrph');
     assert.equal(submissions.at(-1).payload.amount_paid, 500);
     assert.equal(submissions.at(-1).payload.qr_verified, true);
     assert.equal(submissions.at(-1).payload.observed_amount, null);
+    assert.equal(submissions.at(-1).payload.transaction_at, null, 'Early and final manual QR payments need no receipt date');
     if (early) assert.equal(await submissions.at(-1).payload.receipt.text(), 'synthetic proof');
     assert.equal(Object.hasOwn(submissions.at(-1).payload, 'verification_source'), false, 'Early and final submissions never send a source choice');
     assert.equal(submissions.at(-1).payload.payment_source, early ? 'Maya' : 'Bank Transfer');
     assert.equal(ui.receiptModal.paymentMethod, early ? 'Maya' : 'Bank Transfer');
     assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
+    assert.equal(ui.receiptModal.paidAt, '2026-10-23 10:31:00', 'Success uses the backend recording timestamp');
     const printCount = printed;
     ui.printReceipt();
     assert.equal(printed, printCount, 'QR success cannot print a Cash invoice');

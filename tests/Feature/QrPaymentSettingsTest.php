@@ -223,16 +223,27 @@ class QrPaymentSettingsTest extends TestCase
         $this->assertDatabaseHas('payments', ['id' => 12, 'payment_method' => 'online', 'total_amount' => 600, 'qr_payment_id' => null]);
     }
 
-    public function test_qr_dates_are_mandatory_and_never_automatically_initialized_or_updated(): void
+    public function test_unknown_receipt_time_is_nullable_and_recorded_dates_never_automatically_update(): void
     {
+        $values = ['payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
+            'external_reference' => 'TIME123456', 'received_amount' => 850,
+            'transaction_at' => '2026-10-22 13:14:00', 'verified_at' => '2026-10-23 15:20:30',
+            'verification_source' => 'receiving_history', 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
+            'settings_version' => 1, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank', 'qr_image_hash' => hash('sha256', 'fixture')];
+        $qr = \App\Models\QrPayment::create($values);
+        $before = $qr->fresh()->getAttributes();
+        $migration = require database_path('migrations/2026_10_23_000004_allow_unknown_qr_transaction_time.php');
+        $migration->up();
+        $this->assertSame($before, $qr->fresh()->getAttributes(), 'Forward migration preserves historical data');
         if (DB::getDriverName() === 'mysql') {
             $columns = collect(DB::select("SELECT COLUMN_NAME AS name, DATA_TYPE AS type, IS_NULLABLE AS nullable,
                 COLUMN_DEFAULT AS default_value, EXTRA AS extra FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'qr_payments' AND COLUMN_NAME IN ('transaction_at', 'verified_at')"))->keyBy('name');
             foreach (['transaction_at', 'verified_at'] as $field) {
                 $this->assertSame('datetime', $columns[$field]->type);
-                $this->assertSame('NO', $columns[$field]->nullable);
-                $this->assertNull($columns[$field]->default_value);
+                $this->assertSame($field === 'transaction_at' ? 'YES' : 'NO', $columns[$field]->nullable);
+                if ($field === 'transaction_at') $this->assertContains($columns[$field]->default_value, [null, 'NULL']);
+                else $this->assertNull($columns[$field]->default_value);
                 $this->assertStringNotContainsString('on update', strtolower($columns[$field]->extra));
             }
             $settingsDates = DB::select("SELECT COLUMN_NAME AS name, IS_NULLABLE AS nullable, EXTRA AS extra
@@ -248,22 +259,24 @@ class QrPaymentSettingsTest extends TestCase
                 'session' => DB::selectOne('SELECT @@SESSION.sql_mode AS sql_mode, @@GLOBAL.explicit_defaults_for_timestamp AS explicit_defaults'),
             ], JSON_THROW_ON_ERROR).PHP_EOL;
         }
-        $values = ['payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
-            'external_reference' => 'TIME123456', 'received_amount' => 850,
-            'transaction_at' => '2026-10-22 13:14:00', 'verified_at' => '2026-10-23 15:20:30',
-            'verification_source' => 'receiving_history', 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
-            'settings_version' => 1, 'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank', 'qr_image_hash' => hash('sha256', 'fixture')];
-        foreach (['transaction_at', 'verified_at'] as $field) {
-            $incomplete = $values;
-            unset($incomplete[$field]);
-            try {
-                DB::table('qr_payments')->insert($incomplete);
-                $this->fail($field.' must be explicitly supplied.');
-            } catch (\Illuminate\Database\QueryException $error) {
-                $this->assertContains($error->getCode(), ['23000', 'HY000']);
-            }
+        $incomplete = $values;
+        unset($incomplete['verified_at']);
+        $incomplete['payable_id'] = 3;
+        $incomplete['external_reference'] = 'MISSING123456';
+        try {
+            DB::table('qr_payments')->insert($incomplete);
+            $this->fail('verified_at must be explicitly supplied.');
+        } catch (\Illuminate\Database\QueryException $error) {
+            $this->assertContains($error->getCode(), ['23000', 'HY000']);
         }
-        $qr = \App\Models\QrPayment::create($values);
+        $unknown = $values;
+        unset($unknown['transaction_at']);
+        $unknown['payable_id'] = 2;
+        $unknown['external_reference'] = 'UNKNOWN123456';
+        $unknownQr = \App\Models\QrPayment::create($unknown);
+        $migration->down();
+        $this->assertNull($unknownQr->fresh()->transaction_at);
+        $this->assertNull($unknownQr->fresh()->verificationDetails()['transaction_at']);
         $this->assertSame('2026-10-22 13:14:00', $qr->fresh()->transaction_at->format('Y-m-d H:i:s'));
         $this->assertSame('2026-10-23 15:20:30', $qr->fresh()->verified_at->format('Y-m-d H:i:s'));
         $qr->update(['verified_by_name' => 'Updated verifier name']);

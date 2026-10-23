@@ -153,7 +153,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $payload = ['final_price' => 1160, 'amount_paid' => 1160, 'payment_method' => 'qrph', 'payment_source' => 'GCash',
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850], ['booking_service_id' => 8, 'amount' => 150]],
             'products' => [['item_id' => 10, 'quantity' => 2]], 'qr_settings_version' => 1,
-            'qr_verified' => true, 'external_reference' => 'REAL123456', 'transaction_at' => now()->format('Y-m-d\TH:i')];
+            'qr_verified' => true, 'external_reference' => 'REAL123456'];
         $url = '/api/admin/bookings/1/'.$flow;
         foreach ([['qr_verified' => false], ['final_price' => 1161], ['amount_paid' => 1161]] as $invalid) {
             $this->postJson($url, array_replace($payload, $invalid))->assertUnprocessable();
@@ -248,7 +248,6 @@ class PaymentSchemaCompatibilityTest extends TestCase
                 'products' => [['item_id' => 10, 'quantity' => 2]],
                 'qr_settings_version' => 1, 'qr_verified' => true,
                 'external_reference' => $role === 'first' ? 'RACE000001' : 'RACE000002',
-                'transaction_at' => now()->format('Y-m-d\TH:i'),
             ]);
             $request->setUserResolver(fn () => App\Models\User::findOrFail(7));
             $response = (new App\Http\Controllers\PaymentController)->payNow($request, 1);
@@ -295,6 +294,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
+        (require database_path('migrations/2026_10_23_000004_allow_unknown_qr_transaction_time.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update(['enabled' => true, 'merchant_name' => 'Bethlehem',

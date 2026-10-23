@@ -317,6 +317,31 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->assertSame('QR Payment', $payment->fresh()->load('qrPayment')->methodLabel());
     }
 
+    #[DataProvider('manualQrFlows')]
+    public function test_manual_qr_confirmation_records_backend_time_without_inventing_a_receipt_time(string $action): void
+    {
+        \Carbon\Carbon::withTestNow('2026-10-23 15:20:30', function () use ($action) {
+            $this->configureQr();
+            $this->seedService('regular_dog_grooming', 'large', 850);
+            if ($action === 'payNow') {
+                DB::table('bookings')->update(['status' => 'in_progress']);
+                DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+            }
+            $response = $this->submitQr($action, ['paid_at' => '2000-01-01 00:00:00', 'verified_at' => '2000-01-01 00:00:00'])->getData(true);
+            $this->assertTrue($response['success']);
+            $this->assertNull($response['qr_payment']['transaction_at']);
+            $this->assertNull($response['qr_payment']['proof']);
+            $this->assertSame('2026-10-23 15:20:30', $response['paid_at']);
+            $this->assertSame('2026-10-23 15:20:30', $response['qr_payment']['verified_at']);
+            $this->assertSame('Asia/Manila', config('app.timezone'));
+        });
+    }
+
+    public static function manualQrFlows(): array
+    {
+        return [['store'], ['payNow']];
+    }
+
     public function test_disabled_unknown_and_missing_sources_cannot_settle(): void
     {
         $this->configureQr();
@@ -361,7 +386,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             ['qr_verified' => false], ['qr_verified' => false, 'verification_source' => 'merchant_notification'], ['qr_settings_version' => 99],
             ['external_reference' => '!!!'], ['external_reference' => ''],
             ['external_reference' => 'AB@123456'], ['transaction_at' => '2099-01-01T12:00'],
-            ['transaction_at' => null], ['qr_verified' => null],
+            ['transaction_at' => 'invalid'], ['qr_verified' => null],
         ];
         foreach ($cases as $override) {
             try {
@@ -501,10 +526,11 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         $this->configureQr();
         $this->seedService('regular_dog_grooming', 'large', 850);
         $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('customer.png', file_get_contents(base_path('tests/Fixtures/qr-payment-receipt.png')));
-        $response = $this->submitQr('store', ['receipt' => $file, 'paying_app' => 'Maya'])->getData(true);
+        $response = $this->submitQr('store', ['receipt' => $file, 'paying_app' => 'Maya', 'transaction_at' => '2026-10-22T13:14'])->getData(true);
         $qr = \App\Models\QrPayment::firstOrFail();
         $this->assertSame('customer.png', $response['qr_payment']['proof']['name']);
         $this->assertSame('Maya', $response['qr_payment']['paying_app']);
+        $this->assertSame('2026-10-22 13:14:00', $response['qr_payment']['transaction_at']);
         $this->assertArrayNotHasKey('proof_path', $response['qr_payment']);
         \Illuminate\Support\Facades\Storage::disk('local')->assertExists($qr->proof_path);
         $this->assertSame(hash_file('sha256', $file->getRealPath()), $qr->proof_hash);
@@ -531,7 +557,8 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         } catch (ValidationException) {}
         $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
         $this->assertDatabaseCount('payments', 0);
-        $this->submitQr('store', ['receipt' => $file]);
+        $recorded = $this->submitQr('store', ['receipt' => $file])->getData(true);
+        $this->assertNull($recorded['qr_payment']['transaction_at'], 'A receipt without a known transaction time stays undated');
         $this->assertSame(422, $this->submitQr('store', ['receipt' => $file])->getStatusCode());
         $this->assertCount(1, \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
         $this->assertDatabaseCount('payments', 1);
@@ -604,6 +631,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();
+        (require database_path('migrations/2026_10_23_000004_allow_unknown_qr_transaction_time.php'))->up();
         \Illuminate\Support\Facades\Storage::fake('local');
         \Illuminate\Support\Facades\Storage::disk('local')->put('qr-payments/code.png', 'fixture');
         DB::table('qr_payment_settings')->where('id', 1)->update([
@@ -618,7 +646,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
             'final_price' => 850, 'amount_paid' => 850, 'payment_method' => 'qrph', 'payment_source' => 'GCash',
             'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
             'qr_settings_version' => 1, 'qr_verified' => true,
-            'external_reference' => '1234-56 ab', 'transaction_at' => now()->format('Y-m-d\TH:i'),
+            'external_reference' => '1234-56 ab',
         ], $override));
         if (isset($override['receipt'])) { $request->files->set('receipt', $override['receipt']); $request->request->remove('receipt'); }
         $actor = new \App\Models\User;

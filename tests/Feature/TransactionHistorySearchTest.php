@@ -350,6 +350,13 @@ class TransactionHistorySearchTest extends TestCase
             $this->assertSame($method, $recorded['paymentMethodLabel']);
             $this->assertSame($method, $recorded['qrPayment']['payment_source']);
         }
+        $this->assertSame('2026-10-03 11:59:00', $transaction['qrPayment']['transaction_at']);
+        $recordedAt = $transaction['paidAt'];
+        (require database_path('migrations/2026_10_23_000004_allow_unknown_qr_transaction_time.php'))->up();
+        $qr->update(['transaction_at' => null]);
+        $undated = $this->search(['search' => 'BANK123456'])['transactions'][0];
+        $this->assertNull($undated['qrPayment']['transaction_at']);
+        $this->assertSame($recordedAt, $undated['paidAt'], 'An unknown receipt time never replaces the recording time');
     }
 
     public static function historicalVerificationSources(): array

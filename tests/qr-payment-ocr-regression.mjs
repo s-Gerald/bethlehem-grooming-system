@@ -23,8 +23,32 @@ for (const [text, amount, reference, transactionAt, recipient] of [
 for (const text of ['Successful', 'Paid', 'Balance PHP 850.00\nFee PHP 15.00', 'Total amount PHP 850.00\nTotal amount PHP 950.00']) {
     assert.equal(parsePaymentReceipt(text).amount, '', 'No fabricated amount from statuses, fees, balances or ambiguous amounts');
 }
-assert.equal(parsePaymentReceipt('Date: 02/03/2026 10:00').transactionAt, '', 'Ambiguous numeric dates need manual entry');
+assert.equal(parsePaymentReceipt('Date: 02/03/2026 10:00').transactionAt, '', 'Ambiguous numeric dates remain unknown');
 assert.equal(parsePaymentReceipt('2026-02-30 12:00').transactionAt, '', 'Invalid dates cannot roll into another month');
+// Sanitized receipt text: payment IDs must not be confused with biller/processor IDs.
+for (const [text, expected] of [
+    ['GCash\nBills Payment Successful\nReference Number (8–20 character)\nBILL998877\nGCash Reference No.\n1234 5678 9012\nECPay Reference No. ECP998877', '123456789012'],
+    ['Maya\nMaya Reference No.: MAYA-765432\nCustomer Reference No.: CUST998877', 'MAYA765432'],
+    ['InstaPay Transfer\nGCash Reference No. GCASH998877\nInstaPay Reference No. BANK-765432', 'BANK765432'],
+    ['QRPH Payment\nQRPH Reference: QRPH-765432', 'QRPH765432'],
+    ['Bank Transfer\nTransaction Reference\nBANK-765432', 'BANK765432'],
+    ['GCash Reference No.    ECPay Reference No.\n123456789012           ECP998877', '123456789012'],
+    ['GCash Reference No.    ECPay Reference No.\n123456789012 ECP998877', ''],
+    ['GCash Reference No. | 123456789012', '123456789012'],
+    ['Billing Reference No. BILL998877\nCustomer ID CUST998877\nAccount Number 1234567890', ''],
+    ['Reference Number (8-20 character): BILL998877', ''],
+    ['Reference Number\nPayment successful', ''],
+    ['Reference Number\nTransaction ID BANK765432', 'BANK765432'],
+]) assert.equal(parsePaymentReceipt(text).externalReference, expected, text);
+const ambiguous = parsePaymentReceipt('Transaction ID: BANK111111\nRef. No.: BANK222222');
+assert.equal(ambiguous.externalReference, '', 'Ambiguous references need staff review');
+assert.deepEqual(ambiguous.referenceCandidates.map(candidate => candidate.value), ['BANK111111', 'BANK222222']);
+assert.equal(parsePaymentReceipt('Ref. No.: BANK111111\nTransaction ID: BANK111111').externalReference, 'BANK111111');
+assert.equal(parsePaymentReceipt('GCash\nReference No. GCASH111111\nGCash Reference No. GCASH111111\nTransaction ID BANK222222').externalReference, 'GCASH111111', 'Repeated generic labels must not hide a clear provider label');
+assert.equal(parsePaymentReceipt('2026-10-22 12:00\n2026-10-23 13:00').transactionAt, '', 'Conflicting receipt timestamps remain unknown');
+assert.equal(parsePaymentReceipt('2026-10-23').transactionAt, '', 'Date-only receipts cannot invent a time');
+assert.equal(parsePaymentReceipt('Oct 23, 2026 10:30:45 PM').transactionAt, '2026-10-23T22:30', 'Seconds must not hide a PM marker');
+assert.equal(parsePaymentReceipt('2026-10-22T17:30:00Z').transactionAt, '2026-10-23T01:30', 'Explicit receipt zones convert to Philippine time');
 await assert.rejects(recognizePaymentProof({type: 'text/html', size: 20}), /PNG|JPEG|WebP/);
 await assert.rejects(recognizePaymentProof({type: 'image/png', size: 6000000}), /5 MB/);
 
@@ -32,9 +56,10 @@ globalThis.API = { getUserRole: () => 'staff', getQrPaymentConfig: async () => (
 const qr = createQrPayment();
 await qr.load();
 assert.equal(qr.settings.version, 2);
-assert.ok(qr.validationError(850), 'Amount and explicit verification are required');
-Object.assign(qr, { paymentSource: 'Bank Transfer', externalReference: '1234-ABCD', transactionAt: '2026-10-23T10:30', verified: true });
+assert.ok(qr.validationError(850), 'A payment reference and explicit verification are required');
+Object.assign(qr, { paymentSource: 'Bank Transfer', externalReference: '1234-ABCD', verified: true });
 assert.equal(qr.validationError(850), '');
+assert.equal(qr.payload().transaction_at, null, 'Manual confirmation leaves the original transaction time unknown');
 assert.equal(qr.payload().external_reference, '1234-ABCD', 'Preserve staff input for server normalization');
 assert.equal(qr.payload().qr_verified, true);
 qr.applyExtraction({payingApp: 'Maya'});
@@ -67,7 +92,7 @@ const extractedAmount = createQrPayment();
 extractedAmount.settings = {enabled: true, accepted_methods: ['GCash']};
 extractedAmount.paymentSource = 'GCash';
 extractedAmount.applyExtraction({amount: '849.00'});
-Object.assign(extractedAmount, {amount: '', externalReference: 'VALID1234', transactionAt: '2026-10-23T10:30', verified: true});
+Object.assign(extractedAmount, {amount: '', externalReference: 'VALID1234', verified: true});
 assert.ok(extractedAmount.validationError(850), 'Clearing an extracted amount cannot bypass discrepancy handling');
 assert.equal(parsePaymentReceipt('GCash\nSent to Maya').payingApp, '', 'Recipient or brand names never establish a paying app');
 assert.equal(parsePaymentReceipt('Paid using: Maya').payingApp, 'Maya');
@@ -85,6 +110,13 @@ assert.equal(removed.receiptFile, null);
 assert.equal(removed.verified, false);
 assert.equal(removed.payload().reference_unavailable_reason, undefined);
 assert.equal(removed.payload().exception_verified, undefined);
+const replacement = createQrPayment();
+replacement.applyExtraction({externalReference: 'OLD123456', transactionAt: '2026-10-22T10:00'});
+replacement.verified = true;
+replacement.removeReceipt();
+replacement.applyExtraction({externalReference: 'NEW123456'});
+assert.equal(replacement.externalReference, 'NEW123456', 'Replacing a verified receipt clears its unreviewed suggestions');
+assert.equal(replacement.transactionAt, '', 'The previous receipt time cannot leak into a replacement');
 const disabled = createQrPayment();
 API.getQrPaymentConfig = async () => { throw new Error('Config unavailable'); };
 await disabled.load();
@@ -97,6 +129,11 @@ manual.externalReference = 'MANUAL1234';
 manual.applyExtraction({amount: '', externalReference: '', transactionAt: '', recipient: 'Other Account'});
 assert.equal(manual.amount, '850.00', 'Partial OCR must not erase an existing amount');
 assert.equal(manual.externalReference, 'MANUAL1234');
+manual.applyExtraction({externalReference: 'OCR999999', referenceCandidates: ambiguous.referenceCandidates});
+assert.equal(manual.externalReference, 'MANUAL1234', 'OCR suggestions preserve manual reference edits');
+manual.selectReference(ambiguous.referenceCandidates[1]);
+assert.equal(manual.externalReference, 'BANK222222', 'Staff can choose an ambiguous reference');
+assert.equal(manual.verified, false, 'Choosing a reference cannot verify funds');
 manual.settings = {merchant_name: 'Bethlehem Animal Clinic'};
 assert.match(manual.recipientWarning, /recipient/i);
 manual.recipient = 'BETHLEHEM ANIMAL CLINIC';
@@ -174,6 +211,16 @@ assert.equal(racing.ocrBusy, false);
 racing.externalReference = 'CORRECTED1234'; racing.reviewField('externalReference');
 racing.removeReceipt();
 assert.equal(racing.externalReference, 'CORRECTED1234'); assert.equal(racing.amount, '');
+const editedScan = racing.extract(new Blob(['edited'], {type: 'image/png'}));
+await new Promise(setImmediate);
+racing.externalReference = 'TYPED123456'; racing.reviewField('externalReference');
+jobs[3].resolve({externalReference: 'OCR123456'}); await editedScan;
+assert.equal(racing.externalReference, 'TYPED123456', 'A scan completing after a manual edit cannot overwrite it');
+const clearedScan = racing.extract(new Blob(['cleared'], {type: 'image/png'}));
+await new Promise(setImmediate);
+racing.externalReference = ''; racing.reviewField('externalReference');
+jobs[4].resolve({externalReference: 'OCR654321'}); await clearedScan;
+assert.equal(racing.externalReference, '', 'An explicitly cleared field stays cleared when OCR completes');
 racing.dispose();
 
 // Exercise the actual installed OCR engine and local model against synthetic data.
@@ -189,6 +236,18 @@ try {
     assert.equal(result.transactionAt, '2026-10-23T10:30');
     assert.match(result.recipient, /Bethlehem Animal Clinic/);
     const {createCanvas, loadImage} = await import('@napi-rs/canvas');
+    await worker.setParameters({preserve_interword_spaces: '1'});
+    for (const [provider, lines, expected] of [
+        ['GCash', ['Reference Number (8-20 character)', 'BILL998877', 'GCash Reference No.', '123456789012', 'ECPay Reference No.', 'ECP998877'], '123456789012'],
+        ['Maya', ['Customer Reference No. CUST998877', 'Maya Reference No.', 'MAYA765432'], 'MAYA765432'],
+    ]) {
+        const image = createCanvas(1000, 700), ctx = image.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, image.width, image.height);
+        ctx.fillStyle = '#111'; ctx.font = '28px Arial';
+        [provider, 'Payment Successful', 'Amount Paid PHP 850.00', ...lines].forEach((line, i) => ctx.fillText(line, 40, 45 + i * 62));
+        const {data} = await worker.recognize(image.toBuffer('image/png'));
+        assert.equal(parsePaymentReceipt(data.text).externalReference, expected, `${provider} multiple-reference image: ${data.text}`);
+    }
     globalThis.document = {createElement: () => createCanvas(1, 1)};
     const {readPdfReceipt} = await import('../scripts/services/payment-receipt-pdf.js');
     const receipt = await loadImage(path.resolve('tests/Fixtures/qr-payment-receipt.png'));

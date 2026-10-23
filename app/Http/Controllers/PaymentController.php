@@ -41,7 +41,9 @@ class PaymentController extends Controller
             'products' => 'nullable|array',
             'products.*.item_id' => 'required|integer|distinct|exists:inventory_items,item_id',
             'products.*.quantity' => 'required|integer|min:1|max:99999999',
-        ] + QrPaymentVerificationService::rules());
+        ] + QrPaymentVerificationService::rules(), [], [
+            'external_reference' => 'Payment Reference No.', 'transaction_at' => 'receipt transaction time',
+        ]);
 
         if ((float) ($data['final_price'] ?? 0) > PaymentLimitExceededException::MAX_VALUE) {
             throw new PaymentLimitExceededException('final price');
@@ -328,7 +330,7 @@ class PaymentController extends Controller
             'payment_method' => $payment->payment_method,
             'payment_method_label' => $payment->methodLabel(),
             'qr_payment' => $payment->relationLoaded('qrPayment') ? $payment->qrPayment?->verificationDetails() : null,
-            'paid_at' => Carbon::parse($payment->paid_at)->format('M j, Y g:i A'),
+            'paid_at' => Carbon::parse($payment->paid_at)->format($payment->payment_method === 'qrph' ? 'Y-m-d H:i:s' : 'M j, Y g:i A'),
             'payment_summary' => $result['summary'],
             'product_addons' => $this->formatProductLines($result['productLines']),
             'service_price_warnings' => $result['servicePriceWarnings'],
@@ -398,7 +400,7 @@ class PaymentController extends Controller
             'payment_method' => $payment->payment_method,
             'payment_method_label' => $payment->methodLabel(),
             'qr_payment' => $payment->relationLoaded('qrPayment') ? $payment->qrPayment?->verificationDetails() : null,
-            'paid_at' => Carbon::parse($payment->paid_at)->format('M j, Y g:i A'),
+            'paid_at' => Carbon::parse($payment->paid_at)->format($payment->payment_method === 'qrph' ? 'Y-m-d H:i:s' : 'M j, Y g:i A'),
             'all_pets_finished' => $result['allPetsFinished'],
             'remaining_pets' => $result['remainingPets'],
             'booking_status' => $result['booking']->status,

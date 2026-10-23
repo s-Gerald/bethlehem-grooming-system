@@ -1,13 +1,13 @@
 export function createQrPayment() {
   return {
     settings: null, paymentSource: '', loading: false, error: '', imageUrl: '', imageLoading: false,
-    amount: '', externalReference: '', transactionAt: '', recipient: '',
+    amount: '', externalReference: '', transactionAt: '', recipient: '', referenceCandidates: [],
     verified: false,
     ocrBusy: false, ocrProgress: 0, ocrMessage: '',
     disposed: false,
     receiptName: '', receiptPreview: '', scanOpen: false,
     receiptAmountExtracted: false, expectedAmount: null,
-    receiptFile: null, payingApp: '', _derived: {}, _ocrController: null, _scanVersion: 0,
+    receiptFile: null, payingApp: '', _derived: {}, _edited: {}, _ocrController: null, _scanVersion: 0,
     get recipientWarning() {
       const normalize = value => String(value || '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]/g, '');
       const recipient = normalize(this.recipient), merchant = normalize(this.settings?.merchant_name);
@@ -21,22 +21,28 @@ export function createQrPayment() {
     },
     reviewField(key) {
       delete this._derived[key];
+      this._edited[key] = true;
       this.verified = false;
+    },
+    selectReference(candidate) {
+      if (!this.referenceCandidates.some(item => item.value === candidate.value)) return;
+      this.externalReference = candidate.value;
+      this.reviewField('externalReference');
     },
     applyExtraction(result) {
       if (result.amount) this.receiptAmountExtracted = true;
+      this.referenceCandidates = result.referenceCandidates || [];
       for (const key of ['amount', 'externalReference', 'transactionAt', 'recipient', 'payingApp']) {
-        if (result[key]) { this[key] = result[key]; this._derived[key] = result[key]; }
+        if (result[key] && !this._edited[key] && (!this[key] || this._derived[key] === this[key])) { this[key] = result[key]; this._derived[key] = result[key]; }
       }
       this.verified = false;
     },
     removeReceipt() {
       this.cancelScan();
       if (this.receiptPreview) URL.revokeObjectURL(this.receiptPreview);
-      if (!this.verified) {
-        for (const [key, value] of Object.entries(this._derived)) if (this[key] === value) this[key] = '';
-      }
+      for (const [key, value] of Object.entries(this._derived)) if (this[key] === value) this[key] = '';
       this._derived = {};
+      this.referenceCandidates = [];
       this.receiptAmountExtracted = false;
       this.receiptFile = null;
       this.receiptName = this.receiptPreview = this.ocrMessage = '';
@@ -78,12 +84,15 @@ export function createQrPayment() {
       const current = () => !this.disposed && version === this._scanVersion && !controller.signal.aborted;
       this.ocrBusy = true;
       try {
-        const { recognizePaymentProof } = await import('../services/payment-proof-ocr.js?v=20261023-workflow');
+        const { recognizePaymentProof } = await import('../services/payment-proof-ocr.js?v=20261023-references');
         if (!current()) return;
         const result = await recognizePaymentProof(file, progress => { if (current()) this.ocrProgress = progress; }, controller.signal);
         if (!current()) return;
         this.applyExtraction(result);
-        this.ocrMessage = Object.values(result).some(Boolean) ? 'Details scanned. Review and verify the account credit.' : 'No payment details found. Enter them manually.';
+        this.ocrMessage = !result.externalReference && this.referenceCandidates.length > 1
+          ? 'Multiple references found. Choose one below or enter it manually.'
+          : ['amount', 'externalReference', 'transactionAt', 'recipient', 'payingApp'].some(key => result[key])
+            ? 'Details scanned. Review and verify the account credit.' : 'No payment details found. Enter the Payment Reference No. manually.';
       } catch (error) { if (current()) this.ocrMessage = error.message || 'OCR failed. Enter the details manually.'; }
       finally { if (version === this._scanVersion) { this.ocrBusy = false; this._ocrController = null; } }
     },
@@ -101,8 +110,7 @@ export function createQrPayment() {
       if (!(this.settings.accepted_methods || []).includes(this.paymentSource)) return 'Select an enabled payment method.';
       if (this.ocrBusy) return 'Wait for OCR to finish.';
       if ((this.receiptAmountExtracted || this.amount !== '') && (!/^\d+(?:\.\d{1,2})?$/.test(String(this.amount)) || Math.round(Number(this.amount) * 100) !== Math.round(total * 100))) return 'Receipt amount differs from Total Due. Check the account credit and correct a scan error, or leave payment unresolved.';
-      if (!this.transactionAt) return 'Enter the transaction date and time.';
-      if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/i.test(this.externalReference.replace(/[ -]/g, ''))) return 'Enter the official external transaction reference.';
+      if (!/^[A-Z0-9 -]+$/i.test(this.externalReference) || !/^[A-Z0-9]{6,80}$/i.test(this.externalReference.replace(/[ -]/g, ''))) return 'Enter the Payment Reference No. of 6–80 letters or numbers.';
       return this.verified ? '' : 'Verify receipt of funds in the clinic’s official receiving account.';
     },
     payload() {
@@ -110,7 +118,7 @@ export function createQrPayment() {
         payment_source: this.paymentSource,
         qr_settings_version: this.settings?.version, qr_verified: this.verified,
         external_reference: this.externalReference,
-        transaction_at: this.transactionAt,
+        transaction_at: this.transactionAt || null,
         observed_amount: this.amount || null,
         paying_app: this.payingApp || null,
       };

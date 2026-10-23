@@ -1,5 +1,15 @@
 # QR Payment Workflow Implementation Plan
 
+## Receipt reference and timestamp refinement
+
+1. Extend existing OCR/payment regressions with sanitized GCash, Maya, bank, column-layout and ambiguous references; verify failures before implementation.
+2. Update `QrPaymentVerificationService.php` and add only `2026_10_23_000004_allow_unknown_qr_transaction_time.php`. Keep `transaction_at` nullable and backend `paid_at`/`verified_at` authoritative within settlement. Verify early/final payments, known/unknown receipt dates, rollback, uniqueness and historical data with existing PHPUnit classes and the disposable MySQL runner.
+3. Update `payment-proof-ocr.js` and `qr-payment.js` in place. Return labeled candidates when ambiguous, preserve manual edits and scan cancellation, and keep OCR lazy. Verify real local OCR/PDF recognition and completion races.
+4. Update `appointments.html`, `transactions.html`, `admin-dashboard.js` and existing regression expectations. Remove editable dates, use Payment Reference No., put Recorded at in primary details and keep optional receipt time separate. Preserve existing styles and modal mechanics; inspect current localhost UI without manual data submission.
+5. Run relevant frontend/backend regressions, frontend build and diff checks; update `docs/qr-payments.md` with actual results and manual migration/deployment steps. No commits, production writes or new dependencies.
+
+Additional review cases: duplicate normalized references, multiple timestamps, unknown receipt time, changed manual fields during scans and historical nullable-reference records.
+
 **Goal:** Refine Grooming QR payments, optional private proof storage, provider configuration and transaction presentation.
 
 **Architecture:** Extend existing verification, settlement, OCR and settings code. Upload validation and private storage happen before settlement locks; attachment metadata commits atomically with the QR record. Failed settlements remove uploads; scheduled cleanup removes only old unreferenced files. Existing records and migrations stay intact.

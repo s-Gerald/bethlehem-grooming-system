@@ -8,7 +8,7 @@
 
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=qr-ux-20261023" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-methods" />
+    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-references" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
     <link
       rel="stylesheet"
@@ -959,8 +959,21 @@
                         <p class="text-sm text-[#2f4b66]">Amount to enter in payment app</p>
                         <p class="mt-1 text-2xl font-bold text-[#1f3850]" x-text="formatPeso(paymentTotalDue)"></p>
                       </div>
+                      <label class="block text-xs font-semibold text-slate-600">Payment Reference No.
+                        <input type="text" maxlength="100" autocomplete="off" spellcheck="false" x-model="paymentModal.qr.externalReference" @input="paymentModal.qr.reviewField('externalReference'); clearPaymentError()" class="qr-field mt-1" />
+                      </label>
+                      <template x-if="paymentModal.qr.referenceCandidates.length > 1">
+                        <fieldset class="min-w-0">
+                          <legend class="text-xs font-semibold text-slate-600">Scanned references</legend>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            <template x-for="candidate in paymentModal.qr.referenceCandidates" :key="candidate.value">
+                              <button type="button" class="qr-secondary qr-reference-choice" :aria-pressed="paymentModal.qr.externalReference.replace(/[ -]/g, '').toUpperCase() === candidate.value" @click="paymentModal.qr.selectReference(candidate); clearPaymentError()"><span x-text="candidate.label"></span><strong x-text="candidate.value"></strong></button>
+                            </template>
+                          </div>
+                        </fieldset>
+                      </template>
                       <details class="qr-details" :open="paymentModal.qr.scanOpen" @toggle="paymentModal.qr.scanOpen = $el.open">
-                        <summary>Scan Payment Details</summary>
+                        <summary>Scan receipt <span class="font-normal text-slate-500">(optional)</span></summary>
                         <div class="qr-scan-upload" @dragover.prevent @drop.prevent="paymentModal.qr.drop($event)">
                           <input x-ref="qrReceiptInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" @change="paymentModal.qr.extract($event.target.files[0]); $event.target.value = ''" class="hidden" tabindex="-1" aria-label="Select payment receipt" />
                           <button type="button" @click="$refs.qrReceiptInput.click()" class="qr-secondary">Upload Receipt</button>
@@ -974,18 +987,11 @@
                         <p x-show="paymentModal.qr.ocrBusy" class="mt-2 text-sm text-slate-600" role="status" x-text="'Reading image… ' + paymentModal.qr.ocrProgress + '%'"></p>
                         <p x-show="paymentModal.qr.ocrMessage" class="mt-2 text-sm text-slate-600" role="status" x-text="paymentModal.qr.ocrMessage"></p>
                       </details>
-                      <fieldset :disabled="paymentModal.qr.ocrBusy" class="min-w-0 space-y-3">
-                        <label class="block text-xs font-semibold text-slate-600">Transaction Reference
-                          <input type="text" maxlength="100" x-model="paymentModal.qr.externalReference" @input="paymentModal.qr.reviewField('externalReference'); clearPaymentError()" class="qr-field mt-1" />
+                      <fieldset class="min-w-0 space-y-3">
+                        <label x-show="paymentModal.qr.receiptAmountExtracted || paymentModal.qr.amount !== ''" class="block text-xs font-semibold text-slate-600">Receipt Amount
+                          <input type="number" min="0.01" step="0.01" x-model="paymentModal.qr.amount" @input="paymentModal.qr.reviewField('amount'); clearPaymentError()" class="qr-field mt-1" />
                         </label>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                          <label class="block text-xs font-semibold text-slate-600">Payment Date &amp; Time
-                            <input type="datetime-local" x-model="paymentModal.qr.transactionAt" @input="paymentModal.qr.reviewField('transactionAt'); clearPaymentError()" class="qr-field mt-1" />
-                          </label>
-                          <label x-show="paymentModal.qr.receiptAmountExtracted || paymentModal.qr.amount !== ''" class="block text-xs font-semibold text-slate-600">Receipt Amount
-                            <input type="number" min="0.01" step="0.01" x-model="paymentModal.qr.amount" @input="paymentModal.qr.reviewField('amount'); clearPaymentError()" class="qr-field mt-1" />
-                          </label>
-                        </div>
+                        <p x-show="paymentModal.qr.transactionAt" class="text-xs text-slate-500">Receipt transaction time: <span x-text="formatQrDate(paymentModal.qr.transactionAt)"></span> <button type="button" class="font-semibold text-[#315b7e] underline" @click="paymentModal.qr.transactionAt = ''; paymentModal.qr.reviewField('transactionAt'); clearPaymentError()" aria-label="Clear scanned receipt transaction time">Clear</button></p>
                         <p x-show="paymentModal.qr.amount !== '' && Math.round(Number(paymentModal.qr.amount) * 100) !== Math.round(paymentTotalDue * 100)" class="text-sm text-amber-700" role="alert">Receipt amount differs from Total Due. Correct a scan error after checking the account credit, or leave payment unresolved.</p>
                         <p x-show="paymentModal.qr.payingApp" class="text-sm text-slate-600">Scanned app: <span x-text="paymentModal.qr.payingApp"></span> <button type="button" class="qr-secondary" @click="paymentModal.qr.payingApp = ''; paymentModal.qr.reviewField('payingApp')">Clear</button></p>
                         <p x-show="paymentModal.qr.recipientWarning" x-text="paymentModal.qr.recipientWarning" class="text-sm text-amber-700" role="status"></p>
@@ -1062,9 +1068,9 @@
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
-                <p class="receipt-success-label" x-text="receiptModal.qrPayment ? receiptModal.paymentMethod : receiptModal.isTest ? 'Test payment' : 'Amount paid'"></p>
+                <p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount Paid'"></p>
                 <div class="receipt-success-reference">
-                  <span x-text="receiptModal.qrPayment ? 'Transaction Reference' : 'Reference'"></span>
+                  <span x-text="receiptModal.qrPayment ? 'Payment Reference No.' : 'Reference'"></span>
                   <strong x-text="receiptModal.qrPayment ? receiptModal.qrPayment.external_reference : receiptModal.bookingReference"></strong>
                 </div>
               </header>
@@ -1118,7 +1124,8 @@
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Cash received</dt><dd x-text="formatPeso(receiptModal.amountPaid)"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Change</dt><dd x-text="formatPeso(receiptModal.change)"></dd></div>
                     <div x-show="!receiptModal.qrPayment"><dt>Paid at</dt><dd x-text="receiptModal.paidAt"></dd></div>
-                    <template x-if="receiptModal.qrPayment"><div><dt>Payment Date &amp; Time</dt><dd x-text="formatQrDate(receiptModal.qrPayment.transaction_at)"></dd></div></template>
+                    <template x-if="receiptModal.qrPayment"><div><dt>Recorded at</dt><dd x-text="formatQrDate(receiptModal.paidAt)"></dd></div></template>
+                    <template x-if="receiptModal.qrPayment?.transaction_at"><div><dt>Original transaction time</dt><dd x-text="formatQrDate(receiptModal.qrPayment.transaction_at)"></dd></div></template>
                     <template x-if="receiptModal.qrPayment"><div><dt>Verified by</dt><dd x-text="receiptModal.qrPayment.verified_by_name"></dd></div></template>
                     <div x-show="receiptModal.notes"><dt>Notes</dt><dd x-text="receiptModal.notes"></dd></div>
                   </dl>
@@ -1557,6 +1564,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-methods"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-references"></script>
   </body>
 </html>
