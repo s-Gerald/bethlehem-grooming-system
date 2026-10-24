@@ -128,7 +128,7 @@ class SharedPayMongoTest extends TestCase
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
         config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
-            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/appointments']);
+            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/pages/admin/appointments.html']);
         Http::preventStrayRequests();
         $this->fakeProvider();
         Schema::create('clinic_appointments', function (Blueprint $table) {
@@ -179,9 +179,99 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('payments', 0);
         Http::assertSent(fn ($r) => $r['data']['attributes']['line_items'][0]['amount'] === 50000
             && $r['data']['attributes']['payment_method_types'] === ['qrph']
-            && str_contains($r['data']['attributes']['success_url'], '/pages/admin/clinic.html?')
-            && str_contains($r['data']['attributes']['success_url'], 'gateway_payment=1'));
+            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/pages/admin/clinic.html?gateway_payment=1&payment_context=clinic&payment_return=success&payable=1'
+            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/pages/admin/clinic.html?gateway_payment=1&payment_context=clinic&payment_return=cancel&payable=1');
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 500, 'amount_paid' => 500])->assertUnprocessable();
+    }
+
+    public static function deploymentEnvironments(): array
+    {
+        return [
+            'explicit HTTPS return overrides localhost' => ['http://127.0.0.1:8000', 'http://127.0.0.1:5173',
+                'https://bethlehem.example/pages/admin/appointments.html', 'https://bethlehem.example'],
+            'frontend fallback preserves subdirectory' => ['https://api.example', 'https://bethlehem.example/system/',
+                null, 'https://bethlehem.example/system'],
+            'app fallback' => ['https://bethlehem.example', null, null, 'https://bethlehem.example'],
+            'separate localhost development' => ['http://127.0.0.1:8000', 'http://127.0.0.1:5173',
+                null, 'http://127.0.0.1:5173'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('deploymentEnvironments')]
+    public function test_environment_return_urls_and_signature_survive_cached_configuration(
+        string $appUrl, ?string $frontendUrl, ?string $returnUrl, string $expectedBase,
+    ): void {
+        $directory = sys_get_temp_dir().'/bethlehem-payment-config-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $cache = $directory.'/config.php';
+        // Child processes receive only fixtures, never credentials inherited from the local .env.
+        $environment = array_fill_keys(array_keys(array_merge(getenv(), $_SERVER, $_ENV)), false);
+        foreach (['SystemRoot', 'PATH', 'TEMP', 'TMP'] as $name) {
+            if (getenv($name) !== false) $environment[$name] = getenv($name);
+        }
+        $environment = array_replace($environment, [
+            'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $cache,
+            'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => ':memory:', 'DB_URL' => '',
+            'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+        ]);
+        $worker = <<<'PHP'
+            require 'tests/bootstrap.php';
+            $app = require 'bootstrap/app.php';
+            $app->addAbsoluteCachePathPrefix($argv[1]);
+            $app->useEnvironmentPath($argv[1]);
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            if ($argv[2] === 'prepare') {
+                // The same serialized configuration format consumed after artisan config:cache.
+                file_put_contents($app->getCachedConfigPath(), '<?php return '.var_export(config()->all(), true).';');
+            }
+            $provider = app(App\Services\PayMongoService::class);
+            $provider->assertConfigured();
+            $urls = [];
+            foreach (['grooming', 'clinic', 'pos'] as $context) {
+                $attempt = new App\Models\GatewayPayment(['context' => $context, 'payable_id' => 9]);
+                $attempt->id = 7;
+                foreach (['success', 'cancel'] as $outcome) {
+                    $urls[$context][$outcome] = app(App\Services\OnlinePaymentService::class)->returnUrl($attempt, $outcome);
+                }
+            }
+            $body = '{"fixture":true}'; $timestamp = time();
+            $signature = 't='.$timestamp.',te='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_fixture');
+            echo json_encode(['cached' => $app->configurationIsCached(), 'urls' => $urls,
+                'methods' => $provider->paymentMethods(), 'live' => $provider->livemode(),
+                'valid_signature' => $provider->validSignature($body, $signature),
+                'tampered_signature' => $provider->validSignature($body.' ', $signature)], JSON_THROW_ON_ERROR);
+            PHP;
+        try {
+            foreach (['prepare', 'cached'] as $mode) {
+                $fixtures = $mode === 'prepare' ? [
+                    'APP_URL' => $appUrl, 'FRONTEND_URL' => $frontendUrl ?? false, 'PAYMONGO_RETURN_URL' => $returnUrl ?? false,
+                    'PAYMONGO_SECRET_KEY' => 'sk_test_fixture', 'PAYMONGO_WEBHOOK_SECRET' => 'whsec_fixture',
+                    'PAYMONGO_LIVE_MODE' => 'false',
+                ] : [];
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $directory, $mode],
+                    base_path(), array_replace($environment, $fixtures));
+                $process->setTimeout(15);
+                $process->run();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
+                $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($mode === 'cached', $result['cached']);
+                $this->assertSame(['qrph'], $result['methods']);
+                $this->assertFalse($result['live']);
+                $this->assertTrue($result['valid_signature']);
+                $this->assertFalse($result['tampered_signature']);
+                foreach (['grooming' => '/pages/admin/appointments.html', 'clinic' => '/pages/admin/clinic.html',
+                    'pos' => '/pages/admin/inventory/inventory.html'] as $context => $page) {
+                    foreach (['success', 'cancel'] as $outcome) {
+                        $this->assertSame($expectedBase.$page.'?gateway_payment=7&payment_context='.$context
+                            .'&payment_return='.$outcome.'&payable=9'.($context === 'pos' ? '#sell-product' : ''),
+                            $result['urls'][$context][$outcome]);
+                    }
+                }
+            }
+        } finally {
+            if (is_file($cache)) unlink($cache);
+            rmdir($directory);
+        }
     }
 
     public function test_clinic_verified_webhook_settles_once_with_actual_method(): void
@@ -232,7 +322,9 @@ class SharedPayMongoTest extends TestCase
         $this->posCheckout('online')->assertOk()->assertJsonPath('online_payment.amount', '160.00');
         Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph']
             && $r['data']['attributes']['line_items'][0]['quantity'] === 2
-            && $r['data']['attributes']['line_items'][0]['amount'] === 8000);
+            && $r['data']['attributes']['line_items'][0]['amount'] === 8000
+            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/pages/admin/inventory/inventory.html?gateway_payment=1&payment_context=pos&payment_return=success&payable=7#sell-product'
+            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/pages/admin/inventory/inventory.html?gateway_payment=1&payment_context=pos&payment_return=cancel&payable=7#sell-product');
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
         $this->assertDatabaseHas('gateway_stock_reservations', ['item_id' => 10, 'quantity' => 2]);
