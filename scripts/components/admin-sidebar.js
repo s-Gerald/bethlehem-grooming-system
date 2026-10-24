@@ -222,6 +222,14 @@ function adminSidebar() {
         if (event.detail?.reload) void this.loadLoggedInIdentity();
       };
       window.addEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
+      this._navigationUpdateListener = (event) => {
+        if (this._destroyed || !event.detail?.user) return;
+        this._identityRevision++;
+        Object.assign(this, getAdminSidebarIdentityState(event.detail.user));
+        this.sidebarError = '';
+        renderCachedAdminSidebar();
+      };
+      window.addEventListener('admin-navigation:updated', this._navigationUpdateListener);
 
       // Notification origins are presentation context, never ownership of workspace data.
       const ownsGroomingData = window.location.pathname.endsWith('/notifications.html')
@@ -250,6 +258,7 @@ function adminSidebar() {
       window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
       window.removeEventListener('admin-navigation:invalidated', this._navigationInvalidationListener);
+      window.removeEventListener('admin-navigation:updated', this._navigationUpdateListener);
       if (this._incomingAppointmentInterval) {
         clearInterval(this._incomingAppointmentInterval);
       }

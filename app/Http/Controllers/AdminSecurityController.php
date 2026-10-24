@@ -8,10 +8,13 @@ use App\Models\PrivilegedCredentialChange;
 use App\Models\User;
 use App\Services\PendingStaffAccountService;
 use App\Services\PrivilegedCredentialChangeService;
+use App\Support\AccountUsername;
 use App\Support\StaffRole;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -67,6 +70,92 @@ class AdminSecurityController extends Controller
             $admin,
             $data,
         );
+    }
+
+    public function validateStaffProfile(Request $request)
+    {
+        $data = $this->staffProfileData($request);
+        $this->assertStaffUsernameIsAvailable($data['username'], $request->user());
+
+        return response()->json(['success' => true]);
+    }
+
+    public function updateStaffProfile(Request $request)
+    {
+        $data = $this->staffProfileData($request);
+        try {
+            $staff = DB::transaction(function () use ($request, $data): User {
+                $staff = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
+                abort_unless($staff->role === 'staff' && $staff->is_active && ! $staff->is_archived && ! $staff->requiresPasswordSetup(), 403);
+
+                if ($data['username'] !== $staff->username) {
+                    $this->assertStaffUsernameIsAvailable($data['username'], $staff, true);
+                    if (! is_string($data['current_password'] ?? null) || $data['current_password'] === '') {
+                        throw ValidationException::withMessages(['current_password' => 'Enter your current password.']);
+                    }
+                    if (! Hash::check($data['current_password'], $staff->password_hash)) {
+                        throw ValidationException::withMessages(['current_password' => 'The current password is incorrect.']);
+                    }
+                }
+
+                $staff->first_name = $data['first_name'];
+                $staff->last_name = $data['last_name'];
+                $staff->username = $data['username'];
+                if ($staff->isDirty()) {
+                    $staff->save();
+                }
+
+                return $staff;
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            // The unique index is authoritative when two requests claim the same username.
+            throw ValidationException::withMessages(['username' => 'That username is already in use.']);
+        }
+
+        if ($staff->wasChanged()) {
+            Log::info('Staff profile updated.', ['user_id' => $staff->getKey(), 'fields' => array_keys($staff->getChanges())]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully.',
+            'account' => $this->accountPayload($staff),
+            'user' => array_merge($this->accountPayload($staff), ['clinic_permissions' => $staff->clinicPermissions()]),
+            'sidebar_revision' => $staff->sidebarRevision(),
+        ]);
+    }
+
+    private function staffProfileData(Request $request): array
+    {
+        $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'username', 'current_password']);
+        if ($unexpected) {
+            throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
+        }
+        foreach (['first_name', 'last_name', 'username'] as $field) {
+            if (is_string($request->input($field))) {
+                $value = $request->input($field);
+                $request->merge([$field => $field === 'username' ? trim($value) : User::normalizeName($value)]);
+            }
+        }
+
+        return $request->validate([
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
+            'username' => AccountUsername::rules(),
+            'current_password' => ['nullable', 'string'],
+        ], [
+            'first_name.required' => 'Enter your first name.',
+            'last_name.required' => 'Enter your last name.',
+            'username.required' => 'Enter a username.',
+            'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
+        ]);
+    }
+
+    private function assertStaffUsernameIsAvailable(string $username, User $staff, bool $lockForUpdate = false): void
+    {
+        if (! AccountUsername::isAvailableToStaff($username, $staff, $lockForUpdate)) {
+            throw ValidationException::withMessages(['username' => 'That username is already in use.']);
+        }
     }
 
     public function requestStaffPasswordChange(
@@ -456,13 +545,7 @@ class AdminSecurityController extends Controller
             'current_password' => $requireCurrentPassword
                 ? ['required', 'string']
                 : ['prohibited'],
-            'username' => [
-                'nullable',
-                'string',
-                'min:3',
-                'max:50',
-                'regex:/^[A-Za-z][A-Za-z0-9._-]{2,49}$/',
-            ],
+            'username' => AccountUsername::rules('nullable'),
             'password' => [
                 'nullable',
                 'string',

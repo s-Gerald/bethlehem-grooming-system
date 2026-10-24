@@ -151,6 +151,10 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/admin/pet-groomers', [\App\Http\Controllers\PetGroomerController::class, 'store'])->middleware('grooming');
         Route::patch('/admin/pet-groomers/{id}', [\App\Http\Controllers\PetGroomerController::class, 'update'])->middleware('grooming');
         Route::get('/settings/security/account', [AdminSecurityController::class, 'ownAccount']);
+        Route::post('/settings/security/profile/validate', [AdminSecurityController::class, 'validateStaffProfile'])
+            ->middleware(['role:staff', 'throttle:10,1']);
+        Route::patch('/settings/security/profile', [AdminSecurityController::class, 'updateStaffProfile'])
+            ->middleware(['role:staff', 'throttle:10,1']);
         Route::post('/settings/security/password-change', [AdminSecurityController::class, 'requestStaffPasswordChange'])
             ->middleware(['role:staff', 'throttle:3,10']);
         Route::post('/settings/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])

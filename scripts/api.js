@@ -122,9 +122,9 @@ var API = (() => {
     const user = response?.user, owner = staffIdentityOwner();
     if (!owner || token !== getAdminToken() || user?.role !== getUserRole() || !response.sidebar_revision) return;
     if (verifiedSidebarRevision && verifiedSidebarRevision !== response.sidebar_revision) return;
-    // Navigation presentation only: no contact details, credentials or page data.
+    // Navigation presentation only: no contact details, passwords or page data.
     const data = { sidebar_revision: response.sidebar_revision, user: {
-      user_id: user.user_id, role: user.role, first_name: user.first_name, last_name: user.last_name,
+      user_id: user.user_id, role: user.role, first_name: user.first_name, last_name: user.last_name, username: user.username,
       staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {},
     } };
     staffIdentityToken = token;
@@ -2440,6 +2440,23 @@ var API = (() => {
     return request("GET", "/settings/security/account", null, getAdminToken());
   }
 
+  function validateStaffProfile(payload) {
+    return request("POST", "/settings/security/profile/validate", payload, getAdminToken());
+  }
+
+  async function updateStaffProfile(payload) {
+    const token = getAdminToken(), epoch = staffIdentityEpoch;
+    const response = await request("PATCH", "/settings/security/profile", payload, token);
+    if (token !== getAdminToken() || epoch !== staffIdentityEpoch) throw new Error('Session changed while saving profile.');
+    // Supersede older identity reads without clearing operational data or fetching /me again.
+    staffIdentityEpoch++;
+    staffIdentityRequest = null;
+    verifiedSidebarRevision = response.sidebar_revision;
+    rememberStaffIdentity(response, token);
+    window.dispatchEvent(new CustomEvent('admin-navigation:updated', { detail: { user: response.user } }));
+    return response;
+  }
+
   async function requestStaffPasswordChange(payload) {
     return request(
       "POST",
@@ -3054,6 +3071,8 @@ var API = (() => {
     adminUpdateAvailability,
     getAdminSecurityAccounts,
     getSettingsSecurityAccount,
+    validateStaffProfile,
+    updateStaffProfile,
     requestStaffPasswordChange,
     requestAdminCredentialChange,
     requestStaffAccount,

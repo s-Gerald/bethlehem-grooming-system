@@ -467,6 +467,167 @@ class AdminCredentialChangeTest extends TestCase
         return $plainCode;
     }
 
+    public function test_staff_profile_names_save_without_password_or_email_code_and_preserve_session(): void
+    {
+        Notification::fake();
+        foreach (['grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $index => $subrole) {
+            $staff = $this->createUser('staff', "profile{$index}@example.test", "0917111100{$index}", "ProfileStaff{$index}");
+            $staff->update(['staff_type' => $index === 0 ? 'grooming' : 'clinic', 'staff_subrole' => $subrole]);
+            $token = $staff->createToken('staff_token');
+            $before = $staff->fresh()->getAttributes();
+            $permissions = $staff->clinicPermissions();
+            $this->withToken($token->plainTextToken)->patchJson('/api/settings/security/profile', [
+                'first_name' => '  MARÍA   JOSÉ ', 'last_name' => " O'NEILL-SANTOS ", 'username' => $staff->username,
+            ])->assertOk()->assertJsonPath('account.first_name', 'María José')
+                ->assertJsonPath('account.last_name', "O'neill-Santos")
+                ->assertJsonPath('user.user_id', $staff->user_id)
+                ->assertJsonPath('sidebar_revision', $staff->fresh()->sidebarRevision());
+            $staff->refresh();
+            foreach (['user_id', 'email', 'role', 'staff_type', 'staff_subrole', 'password_hash', 'is_active', 'is_archived'] as $field) {
+                $this->assertSame($before[$field], $staff->getAttributes()[$field]);
+            }
+            $this->assertSame($permissions, $staff->clinicPermissions());
+            $this->assertSame(1, $staff->tokens()->count());
+            $this->app['auth']->forgetGuards();
+            $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.first_name', 'María José');
+            $this->app['auth']->forgetGuards();
+        }
+        Notification::assertNothingSent();
+        $this->assertSame(0, PrivilegedCredentialChange::count());
+    }
+
+    public function test_staff_username_preflight_does_not_save_and_confirmation_is_atomic(): void
+    {
+        Notification::fake();
+        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        Sanctum::actingAs($staff);
+        $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'New.Staff'];
+        $this->postJson('/api/settings/security/profile/validate', $profile)->assertOk();
+        $this->assertSame('Staff', $staff->fresh()->first_name);
+        $this->assertSame('ProfileStaff', $staff->fresh()->username);
+        foreach ([null, 'wrong-password'] as $password) {
+            $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => $password])
+                ->assertUnprocessable()->assertJsonValidationErrors('current_password');
+            $this->assertSame('Staff', $staff->fresh()->first_name);
+            $this->assertSame('ProfileStaff', $staff->fresh()->username);
+        }
+        $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('account.username', 'New.Staff')->assertJsonPath('account.first_name', 'Updated');
+        Notification::assertNothingSent();
+        $this->assertSame(0, PrivilegedCredentialChange::count());
+    }
+
+    public function test_staff_profile_case_only_username_changes_need_password_but_unchanged_profile_is_a_noop(): void
+    {
+        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        Sanctum::actingAs($staff);
+        $profile = ['first_name' => 'Staff', 'last_name' => 'Bethlehem', 'username' => 'ProfileStaff'];
+        $this->patchJson('/api/settings/security/profile', $profile)->assertOk();
+        $profile['username'] = 'profilestaff';
+        $this->patchJson('/api/settings/security/profile', $profile)->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
+            ->assertOk()->assertJsonPath('account.username', 'profilestaff');
+    }
+
+    public function test_staff_profile_rejects_case_insensitive_existing_and_pending_usernames_and_rechecks_on_save(): void
+    {
+        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        Sanctum::actingAs($staff);
+        $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'ClaimedName'];
+        $this->postJson('/api/settings/security/profile/validate', $profile)->assertOk();
+        $this->createUser('customer', 'claimed@example.test', '09171111011', 'claimedname');
+        $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
+            ->assertUnprocessable()->assertJsonValidationErrors('username');
+        $this->assertSame('Staff', $staff->fresh()->first_name);
+        \App\Models\PendingCustomerRegistration::create([
+            'first_name' => 'Pending', 'last_name' => 'Customer', 'username' => 'Pending.Name',
+            'email' => 'pending@example.test', 'phone' => '09171111012', 'password_hash' => Hash::make('Customer!234'),
+        ]);
+        $profile['username'] = 'PENDING.NAME';
+        $this->postJson('/api/settings/security/profile/validate', $profile)->assertUnprocessable()->assertJsonValidationErrors('username');
+    }
+
+    public function test_staff_profile_honors_other_pending_staff_username_reservations(): void
+    {
+        Schema::create('pending_staff_accounts', function (Blueprint $table): void {
+            $table->id();
+            $table->string('username');
+            $table->string('email');
+        });
+        try {
+            $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+            Sanctum::actingAs($staff);
+            \Illuminate\Support\Facades\DB::table('pending_staff_accounts')->insert(['username' => 'ReservedStaff', 'email' => 'invited@example.test']);
+            $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'reservedstaff'];
+            $this->postJson('/api/settings/security/profile/validate', $profile)->assertUnprocessable()->assertJsonValidationErrors('username');
+            $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
+                ->assertUnprocessable()->assertJsonValidationErrors('username');
+            $this->assertSame('Staff', $staff->fresh()->first_name);
+        } finally {
+            Schema::dropIfExists('pending_staff_accounts');
+        }
+    }
+
+    public function test_staff_profile_username_race_returns_field_error_and_rolls_back_names(): void
+    {
+        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        $other = $this->createUser('staff', 'other@example.test', '09171111011', 'OtherStaff');
+        Sanctum::actingAs($staff);
+        $raced = false;
+        $event = 'eloquent.updating: '.User::class;
+        \Illuminate\Support\Facades\Event::listen($event, function (User $saving) use ($staff, $other, &$raced): void {
+            if ($saving->is($staff) && ! $raced) {
+                $raced = true;
+                // Exercise the real unique constraint after the availability check, as in staff setup tests.
+                \Illuminate\Support\Facades\DB::table('users')->where('user_id', $other->getKey())->update(['username' => $saving->username]);
+            }
+        });
+        try {
+            $this->patchJson('/api/settings/security/profile', [
+                'first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'RacingName', 'current_password' => 'CurrentAdmin!234',
+            ])->assertUnprocessable()->assertJsonValidationErrors('username');
+            $this->assertTrue($raced);
+            $this->assertSame('ProfileStaff', $staff->fresh()->username);
+            $this->assertSame('Staff', $staff->fresh()->first_name);
+            $this->assertSame('Bethlehem', $staff->fresh()->last_name);
+        } finally {
+            \Illuminate\Support\Facades\Event::forget($event);
+        }
+    }
+
+    public function test_staff_profile_rejects_invalid_and_protected_fields_including_target_ids(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        $other = $this->createUser('staff', 'other@example.test', '09171111011', 'OtherStaff');
+        Sanctum::actingAs($staff);
+        $profile = ['first_name' => 'Changed', 'last_name' => 'Person', 'username' => 'ProfileStaff'];
+        foreach (['user_id', 'id', 'target_user_id', 'email', 'role', 'staff_type', 'staff_subrole', 'permissions', 'is_active', 'is_archived', 'password', 'password_hash', 'account_status', 'unexpected'] as $field) {
+            $this->patchJson('/api/settings/security/profile', $profile + [$field => $other->user_id])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        foreach (['1abc', 'ab', str_repeat('a', 51), 'bad space', 'abc@def'] as $username) {
+            $this->postJson('/api/settings/security/profile/validate', array_replace($profile, ['username' => $username]))
+                ->assertUnprocessable()->assertJsonValidationErrors('username');
+        }
+        foreach (['', '   ', str_repeat('x', 101), ['invalid']] as $name) {
+            $this->patchJson('/api/settings/security/profile', array_replace($profile, ['first_name' => $name]))
+                ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+        }
+        $this->assertSame('Staff', $staff->fresh()->first_name);
+        $this->assertSame('OtherStaff', $other->fresh()->username);
+    }
+
+    public function test_profile_endpoints_are_authenticated_staff_only(): void
+    {
+        $this->patchJson('/api/settings/security/profile', [])->assertUnauthorized();
+        foreach (['admin', 'customer'] as $index => $role) {
+            Sanctum::actingAs($this->createUser($role, "role{$index}@example.test", "0917111102{$index}", "RoleUser{$index}"));
+            $this->patchJson('/api/settings/security/profile', [])->assertForbidden();
+            $this->postJson('/api/settings/security/profile/validate', [])->assertForbidden();
+        }
+    }
+
     private function createUser(
         string $role,
         string $email,

@@ -4,16 +4,14 @@ namespace App\Services;
 
 use App\Http\Controllers\EmailVerificationController;
 use App\Models\PasswordResetRequest;
-use App\Models\PendingCustomerRegistration;
-use App\Models\PendingStaffAccount;
 use App\Models\User;
 use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\SetUpStaffPasswordNotification;
+use App\Support\AccountUsername;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -247,7 +245,7 @@ class PasswordResetService
     private function validateStaffUsername(string $username): void
     {
         Validator::make(['username' => $username], [
-            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z][A-Za-z0-9._-]{2,49}$/'],
+            'username' => AccountUsername::rules(),
         ], [
             'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
         ])->validate();
@@ -255,22 +253,7 @@ class PasswordResetService
 
     private function staffUsernameIsAvailable(string $username, User $staff): bool
     {
-        $normalized = Str::lower($username);
-        if (User::query()->whereRaw('LOWER(username) = ?', [$normalized])
-            ->whereKeyNot($staff->getKey())->lockForUpdate()->exists()) {
-            return false;
-        }
-
-        if (Schema::hasTable('pending_customer_registrations')
-            && PendingCustomerRegistration::query()->unexpired()->whereRaw('LOWER(username) = ?', [$normalized])
-                ->lockForUpdate()->exists()) {
-            return false;
-        }
-
-        return ! (Schema::hasTable('pending_staff_accounts')
-            && PendingStaffAccount::query()->whereRaw('LOWER(username) = ?', [$normalized])
-                ->whereRaw('LOWER(email) <> ?', [Str::lower($staff->email)])
-                ->lockForUpdate()->exists());
+        return AccountUsername::isAvailableToStaff($username, $staff, true);
     }
 
     private function generateStaffUsername(User $staff): string

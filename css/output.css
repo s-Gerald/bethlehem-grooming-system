@@ -4423,9 +4423,24 @@ video {
   background-color: rgb(39 72 100 / var(--tw-bg-opacity, 1));
 }
 
+.active\:bg-\[\#284a67\]:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(40 74 103 / var(--tw-bg-opacity, 1));
+}
+
+.active\:bg-\[\#eef5fb\]:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(238 245 251 / var(--tw-bg-opacity, 1));
+}
+
 .active\:bg-red-50:active {
   --tw-bg-opacity: 1;
   background-color: rgb(254 242 242 / var(--tw-bg-opacity, 1));
+}
+
+.active\:bg-slate-100:active {
+  --tw-bg-opacity: 1;
+  background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1));
 }
 
 .enabled\:hover\:bg-portal-danger-hover:hover:enabled {

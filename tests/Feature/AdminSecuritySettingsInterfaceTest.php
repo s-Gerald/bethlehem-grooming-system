@@ -74,7 +74,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         $this->assertStringNotContainsString('x-model="addStaffModal.confirmation"', $security);
         $this->assertStringNotContainsString('newStaffUsername', $security);
         $this->assertStringNotContainsString('addStaffModal.createdUsername', $security);
-        $this->assertStringNotContainsString('No username', $security);
+        $this->assertStringNotContainsString('No username', $adminSecurity);
         $this->assertStringContainsString('x-show="!staff.setupRequired && staff.username"', $security);
         $this->assertStringContainsString('x-show="!staffDetailsModal.staff?.setupRequired && staffDetailsModal.staff?.username"', $security);
         $this->assertStringNotContainsString('Change credentials', $security);

@@ -12,7 +12,7 @@ class Storage {
 const identity = (overrides = {}, revision = 'revision-1') => ({
   sidebar_revision: revision,
   user: { user_id: 7, role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian',
-    first_name: 'Test', last_name: 'Staff', clinic_permissions: { access: true, clinical: true, services_view: true }, ...overrides },
+    first_name: 'Test', last_name: 'Staff', username: 'teststaff', clinic_permissions: { access: true, clinical: true, services_view: true }, ...overrides },
 });
 function environment() {
   const localStorage = new Storage(), sessionStorage = new Storage(), calls = [];
@@ -201,8 +201,50 @@ async function cachedIdentityLogoutRace() {
   assert.equal(sidebar.clinicPermissions.access, undefined);
   sidebar.destroy();
 }
+async function profileIdentitySynchronization() {
+  const e = environment();
+  await e.c.API.getStaffIdentity();
+  const sidebar = e.c.adminSidebar();
+  sidebar.$nextTick = fn => fn();
+  await sidebar.init();
+  let lateIdentity;
+  e.respond(url => url.endsWith('/me') ? new Promise(resolve => { lateIdentity = resolve; }) : ({
+    ...identity({ first_name: 'Updated', last_name: 'Person', username: 'updated.staff' }, 'revision-updated'),
+    account: { first_name: 'Updated', last_name: 'Person', username: 'updated.staff' }, success: true,
+  }));
+  const oldMe = e.c.API.getMe('staff');
+  const epoch = e.c.API.getAdminDataRevision('grooming');
+  await e.c.API.updateStaffProfile({ first_name: 'Updated', last_name: 'Person', username: 'updated.staff', current_password: 'Test!234' });
+  assert.equal(sidebar.staffDisplayName, 'Updated Person');
+  assert.equal(sidebar.staffInitials, 'UP');
+  assert.equal(sidebar.clinicPermissions.clinical, true);
+  assert.equal(e.c.API.getAdminToken(), '17|test-secret');
+  assert.equal(e.c.API.getAdminDataRevision('grooming'), epoch, 'Profile updates preserve operational cache epochs');
+  lateIdentity(identity());
+  await oldMe;
+  assert.equal(e.c.API.getCachedStaffIdentity().user.first_name, 'Updated', 'Late GET /me cannot restore old cache');
+  const next = e.page();
+  const updated = await next.API.getStaffIdentity();
+  assert.equal(updated.user.username, 'updated.staff');
+  assert.equal(next.adminSidebar().staffDisplayName, 'Updated Person');
+  assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 2, 'Saving/navigation do not fetch identity again');
+  sidebar.destroy();
+}
+
+async function profileSessionSwitchRace() {
+  const e = environment();
+  await e.c.API.getStaffIdentity();
+  let resolveUpdate;
+  e.respond(() => new Promise(resolve => { resolveUpdate = resolve; }));
+  const update = e.c.API.updateStaffProfile({ first_name: 'Updated', last_name: 'Person', username: 'newstaff' });
+  e.c.API.setAdminToken('18|another-session');
+  resolveUpdate(identity({ first_name: 'Updated' }, 'revision-updated'));
+  await assert.rejects(update, /session changed/i);
+  assert.equal(e.c.API.getCachedStaffIdentity(), null);
+}
+
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, profileIdentitySynchronization, profileSessionSwitchRace]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

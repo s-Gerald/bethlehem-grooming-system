@@ -82,11 +82,22 @@ function adminSettings() {
       success: "",
     },
     staffAccount: {
+      firstName: "",
+      lastName: "",
       fullName: "",
       roleLabel: "Staff",
       username: "",
       email: "",
       statusLabel: "",
+    },
+    staffProfile: { editing: false, confirming: false, submitting: false, firstName: "", lastName: "", username: "", currentPassword: "", showPassword: false, errors: {}, error: "" },
+    get staffProfileChanged() {
+      const values = this.staffProfileValues();
+      return values.first_name !== this.staffAccount.firstName || values.last_name !== this.staffAccount.lastName
+        || values.username !== this.staffAccount.username;
+    },
+    get staffProfileValid() {
+      return Object.keys(this.staffProfileValidation()).length === 0 && !Object.keys(this.staffProfile.errors).some(field => field !== 'current_password');
     },
     staffPassword: {
       current: "",
@@ -608,19 +619,133 @@ function adminSettings() {
       this.staffLoading = !this.staffLoaded;
       try {
         const response = await API.getSettingsSecurityAccount();
-        const account = response?.account || {};
-        this.staffAccount = {
-          fullName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "Staff account",
-          roleLabel: this.accountRoleLabel(account),
-          username: account.username || "No username",
-          email: account.email || "No email address",
-          statusLabel: account.is_active && !account.is_archived ? "Active" : "Inactive",
-        };
+        this.applyStaffAccount(response?.account || {});
         this.staffLoaded = true;
       } catch (error) {
         this.staffPassword.error = error.message || "Could not load your account information.";
       } finally {
         this.staffLoading = false;
+      }
+    },
+
+    applyStaffAccount(account) {
+      this.staffAccount = {
+        firstName: account.first_name || "", lastName: account.last_name || "",
+        fullName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "Staff account",
+        roleLabel: this.accountRoleLabel(account), username: account.username || "",
+        email: account.email || "No email address",
+        statusLabel: account.is_active && !account.is_archived ? "Active" : "Inactive",
+      };
+    },
+
+    staffProfileValues() {
+      return { first_name: this.staffProfile.firstName.trim().replace(/\s+/gu, ' '),
+        last_name: this.staffProfile.lastName.trim().replace(/\s+/gu, ' '), username: this.staffProfile.username.trim() };
+    },
+
+    staffProfileValidation() {
+      const values = this.staffProfileValues(), errors = {};
+      for (const [field, label] of [['first_name', 'first name'], ['last_name', 'last name']]) {
+        if (!values[field]) errors[field] = `Enter your ${label}.`;
+        else if (Array.from(values[field]).length > 100) errors[field] = 'Use 100 characters or fewer.';
+      }
+      if (!values.username) errors.username = 'Enter a username.';
+      else if (values.username.length < 3 || values.username.length > 50) errors.username = 'Use 3–50 characters.';
+      else if (!/^[A-Za-z]/.test(values.username)) errors.username = 'Begin with a letter.';
+      else if (!/^[A-Za-z][A-Za-z0-9._-]{2,49}$/.test(values.username)) errors.username = 'Use letters, numbers, periods, underscores, or hyphens.';
+      return errors;
+    },
+
+    editStaffProfile() {
+      if (!this.isStaff || !this.staffLoaded || this.staffProfile.submitting) return;
+      this.staffProfile = { editing: true, confirming: false, submitting: false,
+        firstName: this.staffAccount.firstName, lastName: this.staffAccount.lastName, username: this.staffAccount.username,
+        currentPassword: "", showPassword: false, errors: {}, error: "" };
+      this.$nextTick(() => document.getElementById('staffProfileFirstName')?.focus());
+    },
+
+    cancelStaffProfile() {
+      if (this.staffProfile.submitting) return;
+      this.editStaffProfile();
+      this.staffProfile.editing = false;
+      this.$nextTick(() => document.getElementById('editStaffProfile')?.focus());
+    },
+
+    staffProfileInput(field) {
+      delete this.staffProfile.errors[field];
+      this.staffProfile.error = "";
+    },
+
+    validateStaffProfileField(field) {
+      const error = this.staffProfileValidation()[field];
+      if (error) this.staffProfile.errors[field] = error;
+    },
+
+    cancelStaffProfileConfirmation() {
+      if (this.staffProfile.submitting) return;
+      Object.assign(this.staffProfile, { confirming: false, currentPassword: "", showPassword: false, error: "" });
+      delete this.staffProfile.errors.current_password;
+      this.$nextTick(() => document.getElementById('staffProfileUsername')?.focus());
+    },
+
+    async submitStaffProfile() {
+      if (!this.isStaff || !this.staffProfile.editing || this.staffProfile.submitting || this.staffProfile.confirming) return;
+      this.staffProfile.errors = this.staffProfileValidation();
+      if (!this.staffProfileValid || !this.staffProfileChanged) return;
+      if (this.staffProfileValues().username === this.staffAccount.username) return this.saveStaffProfile();
+      this.staffProfile.submitting = true;
+      this.staffProfile.error = "";
+      try {
+        await API.validateStaffProfile(this.staffProfileValues());
+        this.staffProfile.confirming = true;
+        this.$nextTick(() => document.getElementById('staffProfileCurrentPassword')?.focus());
+      } catch (error) {
+        this.staffProfileApiError(error);
+      } finally {
+        this.staffProfile.submitting = false;
+      }
+    },
+
+    async confirmStaffProfile() {
+      if (!this.staffProfile.confirming || this.staffProfile.submitting) return;
+      if (!this.staffProfile.currentPassword) {
+        this.staffProfile.errors.current_password = 'Enter your current password.';
+        return;
+      }
+      return this.saveStaffProfile(true);
+    },
+
+    staffProfileApiError(error) {
+      const errors = error.errors || {};
+      this.staffProfile.errors = Object.fromEntries(Object.entries(errors).map(([field, messages]) => [field, Array.isArray(messages) ? messages[0] : messages]));
+      this.staffProfile.error = Object.keys(errors).length ? "" : (error.message || 'Could not save your profile. Try again.');
+      if (['first_name', 'last_name', 'username'].some(field => errors[field])) this.staffProfile.confirming = false;
+      this.$nextTick(() => {
+        const ids = { first_name: 'staffProfileFirstName', last_name: 'staffProfileLastName', username: 'staffProfileUsername', current_password: 'staffProfileCurrentPassword' };
+        document.getElementById(ids[Object.keys(errors)[0]])?.focus();
+      });
+    },
+
+    async saveStaffProfile(confirming = false) {
+      this.staffProfile.submitting = true;
+      this.staffProfile.error = "";
+      this.staffProfile.errors = {};
+      const payload = this.staffProfileValues();
+      if (confirming) payload.current_password = this.staffProfile.currentPassword;
+      this.staffProfile.currentPassword = "";
+      try {
+        const response = await API.updateStaffProfile(payload);
+        this.applyStaffAccount(response.account);
+        this.staffProfile.editing = false;
+        this.staffProfile.confirming = false;
+        window.showSuccessToast?.('Profile updated successfully.');
+        this.$nextTick(() => document.getElementById('editStaffProfile')?.focus());
+      } catch (error) {
+        this.staffProfileApiError(error);
+      } finally {
+        this.staffProfile.currentPassword = "";
+        this.staffProfile.showPassword = false;
+        this.staffProfile.submitting = false;
       }
     },
 

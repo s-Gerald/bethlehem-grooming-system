@@ -3,14 +3,12 @@
 namespace App\Services;
 
 use App\Http\Controllers\EmailVerificationController;
-use App\Models\PendingCustomerRegistration;
 use App\Models\PrivilegedCredentialChange;
 use App\Models\User;
 use App\Notifications\ConfirmPrivilegedCredentialChangeCodeNotification;
+use App\Support\AccountUsername;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class PrivilegedCredentialChangeService
@@ -143,7 +141,7 @@ class PrivilegedCredentialChangeService
             }
 
             if ($change->new_username !== null
-                && ! $this->usernameIsAvailable($change->new_username, $target->getKey(), true)) {
+                && ! AccountUsername::isAvailable($change->new_username, $target->getKey(), true)) {
                 return [
                     'status' => 'username_unavailable',
                     'message' => 'That username became unavailable. Return to Security settings and choose another one.',
@@ -309,41 +307,11 @@ class PrivilegedCredentialChangeService
 
     private function assertUsernameIsAvailable(string $username, int $targetUserId): void
     {
-        if (! $this->usernameIsAvailable($username, $targetUserId)) {
+        if (! AccountUsername::isAvailable($username, $targetUserId)) {
             throw ValidationException::withMessages([
                 'username' => 'That username is already in use.',
             ]);
         }
-    }
-
-    private function usernameIsAvailable(
-        string $username,
-        int $targetUserId,
-        bool $lockForUpdate = false,
-    ): bool {
-        $normalized = Str::lower($username);
-        $userQuery = User::query()
-            ->whereRaw('LOWER(username) = ?', [$normalized])
-            ->whereKeyNot($targetUserId);
-        if ($lockForUpdate) {
-            $userQuery->lockForUpdate();
-        }
-
-        if ($userQuery->exists()) {
-            return false;
-        }
-
-        if (! Schema::hasTable('pending_customer_registrations')) {
-            return true;
-        }
-
-        $pendingQuery = PendingCustomerRegistration::query()->unexpired()
-            ->whereRaw('LOWER(username) = ?', [$normalized]);
-        if ($lockForUpdate) {
-            $pendingQuery->lockForUpdate();
-        }
-
-        return ! $pendingQuery->exists();
     }
 
     private function changedFields(PrivilegedCredentialChange $change): array
