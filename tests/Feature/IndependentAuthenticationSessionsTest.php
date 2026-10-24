@@ -27,6 +27,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_archived')->default(false);
             $table->timestamp('email_verified_at')->nullable();
+            $table->string('staff_type')->nullable();
+            $table->string('staff_subrole')->nullable();
         });
         Schema::create('personal_access_tokens', function (Blueprint $table) {
             $table->id();
@@ -71,6 +73,15 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 'is_active' => true, 'email_verified_at' => now(),
             ]);
         }
+        foreach (['clinic_receptionist' => 'clinic', 'grooming_receptionist' => 'grooming'] as $subrole => $type) {
+            User::create([
+                'first_name' => $type, 'last_name' => 'Receptionist', 'username' => $subrole,
+                'email' => "$subrole@example.test", 'phone' => '091700003'.($type === 'clinic' ? '1' : '2'),
+                'password_hash' => Hash::make('SessionTest!123'), 'role' => 'staff',
+                'staff_type' => $type, 'staff_subrole' => $subrole,
+                'is_active' => true, 'email_verified_at' => now(),
+            ]);
+        }
     }
 
     protected function tearDown(): void
@@ -88,12 +99,16 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $pending = $this->postJson('/api/sign-in', [
             'identifier' => "$role@example.test", 'password' => 'SessionTest!123',
         ])->assertAccepted()->assertJsonMissingPath('token');
-        $user = User::where('role', $role)->firstOrFail();
+        $user = User::where('email', "$role@example.test")->firstOrFail();
         $code = Notification::sent($user, ConfirmLoginNotification::class)->last()->code;
 
-        return $this->postJson('/api/email/login/confirm', [
+        $confirmed = $this->postJson('/api/email/login/confirm', [
             'poll_token' => $pending->json('login_poll_token'), 'code' => $code,
-        ])->assertOk()->assertJsonPath('user.role', $role)->json('token');
+        ])->assertOk()->assertJsonPath('user.role', $user->role);
+        $this->assertSame($user->clinicPermissions(), $confirmed->json('user.clinic_permissions'));
+        $this->assertSame($user->staffPermissions(), $confirmed->json('user.staff_permissions'));
+
+        return $confirmed->json('token');
     }
 
     private function requestAs(string $token, string $method, string $uri, array $data = [])
@@ -106,7 +121,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     public static function loginOrders(): array
     {
-        return [['admin', 'customer'], ['customer', 'admin']];
+        return [['admin', 'customer'], ['customer', 'admin'],
+            ['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']];
     }
 
     #[DataProvider('loginOrders')]
@@ -118,7 +134,11 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
         for ($round = 0; $round < 3; $round++) {
             foreach ($tokens as $role => $token) {
-                $this->requestAs($token, 'GET', '/api/me')->assertOk()->assertJsonPath('user.role', $role);
+                $user = User::where('email', "$role@example.test")->firstOrFail();
+                $this->requestAs($token, 'GET', '/api/me')->assertOk()
+                    ->assertJsonPath('user.user_id', $user->user_id)
+                    ->assertJsonPath('user.role', $user->role)
+                    ->assertJsonPath('user.staff_subrole', $user->staff_subrole);
                 $this->requestAs($token, 'GET', '/api/grooming/services')->assertOk();
             }
         }
@@ -126,9 +146,63 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
         $this->requestAs($tokens[$second], 'POST', '/api/logout')->assertOk();
         $this->requestAs($tokens[$second], 'GET', '/api/me')->assertUnauthorized();
-        $this->requestAs($tokens[$first], 'GET', '/api/me')->assertOk()->assertJsonPath('user.role', $first);
+        $this->requestAs($tokens[$first], 'GET', '/api/me')->assertOk()
+            ->assertJsonPath('user.user_id', User::where('email', "$first@example.test")->value('user_id'));
         $this->requestAs($tokens[$first], 'GET', '/api/grooming/services')->assertOk();
         $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public function test_receptionist_permissions_are_equivalent_without_changing_staff_identity(): void
+    {
+        $clinic = User::where('staff_subrole', 'clinic_receptionist')->firstOrFail();
+        $grooming = User::where('staff_subrole', 'grooming_receptionist')->firstOrFail();
+        $this->assertSame($clinic->clinicPermissions(), $grooming->clinicPermissions());
+        $this->assertSame($clinic->staffPermissions(), $grooming->staffPermissions());
+        foreach ([$clinic, $grooming] as $user) {
+            $this->assertTrue($user->clinicPermissions()['access']);
+            $this->assertTrue($user->staffPermissions()['grooming_services_view']);
+            $this->assertFalse($user->clinicPermissions()['clinical']);
+            $this->assertFalse($user->clinicPermissions()['billing_edit']);
+            $this->assertFalse($user->staffPermissions()['services_manage']);
+        }
+        $this->assertSame('grooming', $grooming->fresh()->staff_type);
+    }
+
+    public function test_invalid_receptionist_type_pairs_do_not_gain_operational_access(): void
+    {
+        foreach ([['clinic', 'grooming_receptionist'], ['grooming', 'clinic_receptionist'],
+            ['grooming', null], ['clinic', 'unknown']] as [$type, $subrole]) {
+            $user = new User(['role' => 'staff', 'staff_type' => $type, 'staff_subrole' => $subrole]);
+            $this->assertFalse($user->clinicPermissions()['access']);
+            $this->assertFalse($user->staffPermissions()['grooming']);
+            $this->assertFalse($user->staffPermissions()['grooming_services_view']);
+        }
+    }
+
+    #[DataProvider('receptionistOrders')]
+    public function test_receptionist_lock_unlock_and_expiry_affect_only_the_requesting_token(string $first, string $second): void
+    {
+        $normal = $this->login($first);
+        $this->travel(20)->minutes();
+        $private = $this->login($second);
+        $this->travel(10)->minutes();
+        $this->requestAs($normal, 'GET', '/api/me')->assertStatus(423);
+        $this->requestAs($private, 'GET', '/api/me')->assertOk()->assertJsonPath('user.staff_subrole', $second);
+        $this->requestAs($normal, 'POST', '/api/session/unlock', ['password' => 'wrong'])->assertUnprocessable();
+        $this->requestAs($normal, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk()
+            ->assertJsonPath('locked', false);
+        $this->requestAs($normal, 'GET', '/api/me')->assertOk()->assertJsonPath('user.staff_subrole', $first);
+        $this->travel(11)->hours();
+        $this->travel(30)->minutes();
+        $this->requestAs($normal, 'GET', '/api/me')->assertUnauthorized();
+        $this->requestAs($private, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk();
+        $this->requestAs($private, 'GET', '/api/me')->assertOk()->assertJsonPath('user.staff_subrole', $second);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public static function receptionistOrders(): array
+    {
+        return [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']];
     }
 
     public function test_logout_only_revokes_the_requesting_token_even_for_the_same_account(): void

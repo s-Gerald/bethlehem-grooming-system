@@ -210,12 +210,13 @@ function permissions(clinical, payment, queue, customers) {
     ['clinic', 'veterinarian', 'Veterinarian'], ['clinic', 'clinic_receptionist', 'Clinic Receptionist'],
     ['grooming', 'grooming_receptionist', 'Grooming Receptionist'], ['grooming', null, 'Staff'], [null, null, 'Staff'],
   ]) {
-    const clinic_permissions = {services_view: staff_type === 'clinic', services_manage: false};
+    const canViewServices = ['veterinarian', 'clinic_receptionist', 'grooming_receptionist'].includes(staff_subrole);
+    const clinic_permissions = {services_view: canViewServices, services_manage: false};
     sandbox.API.getMe = sandbox.API.getStaffIdentity = async () => ({ user: { first_name: 'Ana', last_name: 'Santos', staff_type, staff_subrole, clinic_permissions } });
     const sidebar = sandbox.adminSidebar();
     await sidebar.loadLoggedInIdentity();
     assert.equal(sidebar.staffRoleLabel, label);
-    assert.equal(sidebar.clinicPermissions.services_view, staff_type === 'clinic');
+    assert.equal(sidebar.clinicPermissions.services_view, canViewServices);
   }
   const adminSidebar = sandbox.adminSidebar();
   adminSidebar.isAdmin = true;

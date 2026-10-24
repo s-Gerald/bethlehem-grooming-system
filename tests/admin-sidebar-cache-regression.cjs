@@ -206,6 +206,27 @@ async function cachedIdentityLogoutRace() {
   assert.equal(sidebar.clinicPermissions.access, undefined);
   sidebar.destroy();
 }
+async function sharedReceptionistSwitchReplacesTheFormerAccountDocument() {
+  for (const subroles of [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
+    const e = environment();
+    e.respond(() => identity({staff_subrole: subroles[0], staff_type: subroles[0] === 'clinic_receptionist' ? 'clinic' : 'grooming'}));
+    await e.c.API.getStaffIdentity();
+    await e.c.API.adminRequest('GET', '/inventory/items?page=1');
+    let reloads = 0;
+    e.c.window.location.reload = () => { reloads++; };
+    // Another normal tab finishes a new staff login while this document still
+    // contains the previous account's workspace and cached identity.
+    e.localStorage.setItem('admin_token', '18|replacement-session');
+    e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
+      key: 'admin_token', oldValue: '17|test-secret', newValue: '18|replacement-session'});
+    assert.equal(e.c.API.getCachedStaffIdentity(), null);
+    assert.equal(e.c.API.readAdminCache('/inventory/items?page=1'), null);
+    assert.equal(reloads, 1, 'A confirmed shared-profile account switch replaces the former account workspace');
+    e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
+      key: 'user_role', oldValue: null, newValue: 'staff'});
+    assert.equal(reloads, 1, 'The matching role event does not request a duplicate reload');
+  }
+}
 async function profileIdentitySynchronization() {
   const e = environment();
   await e.c.API.getStaffIdentity();
@@ -249,7 +270,7 @@ async function profileSessionSwitchRace() {
 }
 
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, profileIdentitySynchronization, profileSessionSwitchRace]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

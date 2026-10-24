@@ -577,15 +577,15 @@ class ClinicCaseServiceBillingTest extends TestCase
         $payload = $this->payload($this->catalog());
         $id = $this->postJson('/api/admin/clinic-cases/1/services', $payload)->json('data.id');
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['total_amount' => 500, 'payment_method' => 'cash'])->assertUnprocessable();
-        $this->signIn('clinic_receptionist');
-        $this->getJson('/api/admin/clinic-cases/1/services')->assertOk();
-        $this->postJson('/api/admin/clinic-cases/1/services', $payload)->assertForbidden();
-        $this->deleteJson('/api/admin/clinic-cases/1/services/'.$id)->assertForbidden();
-        $this->postJson('/api/admin/clinic-appointments/1/record', ['diagnosis' => 'Unauthorized'])->assertForbidden();
-        $this->signIn('grooming_receptionist');
-        $this->getJson('/api/admin/clinic-cases/1/services')->assertForbidden();
-        $this->getJson('/api/admin/clinic-cases/1/charges')->assertForbidden();
-        $this->patchJson('/api/admin/clinic-cases/1/charges/1', ['unit_price' => 0])->assertForbidden();
+        foreach (['clinic_receptionist', 'grooming_receptionist'] as $subrole) {
+            $this->signIn($subrole);
+            $this->getJson('/api/admin/clinic-cases/1/services')->assertOk();
+            $this->getJson('/api/admin/clinic-cases/1/charges')->assertOk();
+            $this->postJson('/api/admin/clinic-cases/1/services', $payload)->assertForbidden();
+            $this->deleteJson('/api/admin/clinic-cases/1/services/'.$id)->assertForbidden();
+            $this->postJson('/api/admin/clinic-appointments/1/record', ['diagnosis' => 'Unauthorized'])->assertForbidden();
+            $this->patchJson('/api/admin/clinic-cases/1/charges/1', ['unit_price' => 0])->assertForbidden();
+        }
     }
 
     public function test_completed_cases_reject_new_services_and_financial_edits(): void

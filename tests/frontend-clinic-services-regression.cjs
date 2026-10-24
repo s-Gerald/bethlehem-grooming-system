@@ -7,7 +7,7 @@ const read = name => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
 function setup(permissions = {services_view: true, services_manage: true}, role = 'admin', subrole = null) {
   const calls = [], panels = [], listeners = new Map(), scripts = [];
   const clinicAccess = {permissions, user: {role, staff_subrole: subrole, clinic_permissions: permissions,
-    staff_permissions: {grooming_services_view: role === 'admin' || subrole === 'clinic_receptionist', services_manage: role === 'admin'}}, init: async () => {}};
+    staff_permissions: {grooming_services_view: role === 'admin' || ['clinic_receptionist', 'grooming_receptionist'].includes(subrole), services_manage: role === 'admin'}}, init: async () => {}};
   let failMarkup = false;
   const context = {
     URLSearchParams, clearTimeout, setTimeout, console,
@@ -161,7 +161,7 @@ async function workflow() {
 
 async function readOnlyAccess() {
   const service = {id: 1, name: 'CBC', is_active: true, pricing_method: 'fixed', price: 500};
-  for (const subrole of ['veterinarian', 'clinic_receptionist']) {
+  for (const subrole of ['veterinarian', 'clinic_receptionist', 'grooming_receptionist']) {
     const app = setup({services_view: true, services_manage: false}, 'staff', subrole);
     app.context.API.getUserRole = () => 'staff';
     await app.shell.showSection();
@@ -177,7 +177,7 @@ async function readOnlyAccess() {
     await state.save(); await state.changeStatus(service);
     assert.equal(state.modalOpen, false);
     assert.equal(app.calls.some(call => Array.isArray(call) && call[0] !== 'GET'), false);
-    if (subrole === 'clinic_receptionist') {
+    if (subrole !== 'veterinarian') {
       await app.visit('#grooming');
       assert.equal(app.shell.activeTab, 'grooming', 'Receptionists can follow the Grooming deep link');
       const grooming = app.context.adminGroomingServices();

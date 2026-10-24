@@ -76,7 +76,7 @@ class ClinicConfinementTest extends TestCase
     private function signIn(string $subrole = 'veterinarian'): void
     {
         $user = new User;
-        $user->forceFill(['user_id' => 1, 'role' => $subrole === 'admin' ? 'admin' : 'staff', 'staff_type' => 'clinic',
+        $user->forceFill(['user_id' => 1, 'role' => $subrole === 'admin' ? 'admin' : 'staff', 'staff_type' => $subrole === 'grooming_receptionist' ? 'grooming' : 'clinic',
             'staff_subrole' => $subrole, 'is_active' => true, 'first_name' => 'Attending', 'last_name' => 'Vet']);
         DB::table('users')->updateOrInsert(['user_id' => 1], $user->getAttributes());
         Sanctum::actingAs($user);
@@ -137,7 +137,9 @@ class ClinicConfinementTest extends TestCase
             ->assertJsonPath('case.vitals.weight_kg', '18.40')
             ->assertJsonPath('case.record.primary_veterinarian_name', $full['record']['primary_veterinarian_name']);
         $this->signIn('grooming_receptionist');
-        $this->getJson('/api/admin/clinic-cases/1')->assertForbidden();
+        $this->getJson('/api/admin/clinic-cases/1')->assertOk()
+            ->assertJsonPath('case.vitals.weight_kg', '18.40')
+            ->assertJsonPath('case.record.primary_veterinarian_name', $full['record']['primary_veterinarian_name']);
         fwrite(STDOUT, "\nClinic fixture list=".strlen(json_encode($row))." bytes; full=".strlen(json_encode($full))." bytes; list queries=".count($queries)."\n");
     }
 
@@ -193,10 +195,13 @@ class ClinicConfinementTest extends TestCase
 
     public function test_receptionist_can_view_but_cannot_admit_monitor_or_discharge_and_confined_cases_cannot_be_paid(): void
     {
-        $this->admit(); $this->signIn('clinic_receptionist');
-        $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk();
-        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk();
-        foreach (['', '/observations', '/discharge'] as $suffix) $this->postJson('/api/admin/clinic-cases/1/confinement'.$suffix)->assertForbidden();
+        $this->admit();
+        foreach (['clinic_receptionist', 'grooming_receptionist'] as $subrole) {
+            $this->signIn($subrole);
+            $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk();
+            $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk();
+            foreach (['', '/observations', '/discharge'] as $suffix) $this->postJson('/api/admin/clinic-cases/1/confinement'.$suffix)->assertForbidden();
+        }
         $this->signIn();
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['total_amount' => 0, 'payment_method' => 'cash'])->assertUnprocessable();
     }

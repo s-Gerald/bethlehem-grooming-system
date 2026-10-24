@@ -676,11 +676,11 @@ class AdminStaffAccountManagementTest extends TestCase
         $login = $this->signInWithCode($staff, 'Staff', 'CurrentStaff!234')
             ->assertJsonPath('user.staff_type', $to === 'grooming_receptionist' ? 'grooming' : 'clinic')
             ->assertJsonPath('user.staff_subrole', $to)
-            ->assertJsonPath('user.clinic_permissions.access', $to !== 'grooming_receptionist')
+            ->assertJsonPath('user.clinic_permissions.access', true)
             ->assertJsonPath('user.clinic_permissions.clinical', $to === 'veterinarian')
-            ->assertJsonPath('user.clinic_permissions.billing_view', $to !== 'grooming_receptionist')
+            ->assertJsonPath('user.clinic_permissions.billing_view', true)
             ->assertJsonPath('user.clinic_permissions.billing_edit', $to === 'veterinarian')
-            ->assertJsonPath('user.clinic_permissions.payment', $to !== 'grooming_receptionist')
+            ->assertJsonPath('user.clinic_permissions.payment', true)
             ->assertJsonPath('user.staff_permissions.dashboard', true)
             ->assertJsonPath('user.staff_permissions.grooming', $to !== 'veterinarian');
 
@@ -690,8 +690,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->withToken($login->json('token'))->getJson('/api/admin/bookings')
             ->assertStatus($to !== 'veterinarian' ? 200 : 403);
         app('auth')->forgetGuards();
-        $this->withToken($login->json('token'))->getJson('/api/admin/clinic-cases')
-            ->assertStatus($to === 'grooming_receptionist' ? 403 : 200);
+        $this->withToken($login->json('token'))->getJson('/api/admin/clinic-cases')->assertOk();
         if ($to === 'veterinarian') {
             app('auth')->forgetGuards();
             $this->withToken($login->json('token'))->postJson('/api/admin/walk-in')->assertForbidden();

@@ -112,7 +112,7 @@ class User extends Authenticatable
         $admin = $this->role === 'admin';
         $clinicStaff = $this->role === 'staff' && $this->staff_type === 'clinic';
         $vet = $clinicStaff && $this->staff_subrole === 'veterinarian';
-        $receptionist = $clinicStaff && $this->staff_subrole === 'clinic_receptionist';
+        $receptionist = $this->isReceptionist();
 
         return [
             'access' => $admin || $vet || $receptionist,
@@ -164,22 +164,24 @@ class User extends Authenticatable
 
     public function canAccessGrooming(): bool
     {
-        return $this->role === 'admin'
-            || ($this->role === 'staff' && (
-                ($this->staff_type === 'grooming' && $this->staff_subrole === 'grooming_receptionist')
-                || ($this->staff_type === 'clinic' && $this->staff_subrole === 'clinic_receptionist')
-            ));
+        return $this->role === 'admin' || $this->isReceptionist();
+    }
+
+    public function isReceptionist(): bool
+    {
+        return $this->role === 'staff'
+            && in_array($this->staff_subrole, ['clinic_receptionist', 'grooming_receptionist'], true)
+            && (StaffRole::TYPES[$this->staff_subrole] ?? null) === $this->staff_type;
     }
 
     public function staffPermissions(): array
     {
         $admin = $this->role === 'admin';
-        $clinicReceptionist = $this->role === 'staff' && $this->staff_type === 'clinic' && $this->staff_subrole === 'clinic_receptionist';
         $inventory = $admin || $this->role === 'staff';
         return [
             'dashboard' => $this->canAccessGrooming() || $this->isVeterinarian(),
             'grooming' => $this->canAccessGrooming(),
-            'grooming_services_view' => $admin || $clinicReceptionist,
+            'grooming_services_view' => $this->canAccessGrooming(),
             'services_manage' => $admin,
             'inventory_view' => $inventory,
             'inventory_manage' => $inventory && ! $this->isVeterinarian(),

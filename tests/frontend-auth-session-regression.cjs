@@ -40,8 +40,8 @@ function createBrowser({
   elements = {},
   fetchImpl = async () => jsonResponse(200, {}),
 } = {}) {
-  const localStorage = new MemoryStorage(local);
-  const sessionStorage = new MemoryStorage(session);
+  const localStorage = local instanceof MemoryStorage ? local : new MemoryStorage(local);
+  const sessionStorage = session instanceof MemoryStorage ? session : new MemoryStorage(session);
   const listeners = new Map();
   const replacements = [];
   const location = {
@@ -58,6 +58,9 @@ function createBrowser({
   };
   const window = {
     location,
+    dispatchEvent(event) {
+      for (const handler of listeners.get(event.type) || []) handler(event);
+    },
     addEventListener(name, handler) {
       const handlers = listeners.get(name) || [];
       handlers.push(handler);
@@ -67,12 +70,15 @@ function createBrowser({
   const context = {
     AbortController,
     FormData: class FormData {},
+    URL,
     URLSearchParams,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
     clearTimeout,
     console,
     document: {
       readyState: "loading",
       querySelector: () => null,
+      querySelectorAll: () => [],
       getElementById: (id) => elements[id] || null,
       addEventListener() {},
     },
@@ -93,8 +99,46 @@ function createBrowser({
     sessionStorage,
     location,
     replacements,
+    sidebar() {
+      window.API = context.API;
+      vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/components/admin-sidebar.js'), 'utf8'), context);
+      return context.adminSidebar();
+    },
     dispatch(name, event = {}) {
       for (const handler of listeners.get(name) || []) handler(event);
+    },
+  };
+}
+
+// One profile shares localStorage and storage events between documents. Each
+// tab owns sessionStorage; navigation preserves that tab's store. Profiles
+// have no shared storage/event channel, as with normal and incognito windows.
+function createBrowserProfile(fetchImpl) {
+  const values = new Map(), tabs = [];
+  return {
+    page(session = new MemoryStorage(), pathname = '/pages/client/sign-in.html') {
+      const local = new MemoryStorage();
+      local.values = values;
+      const broadcast = (key, oldValue, newValue) => {
+        if (oldValue === newValue) return;
+        for (const tab of tabs) {
+          if (tab.localStorage === local) continue;
+          queueMicrotask(() => tab.dispatch('storage', { storageArea: tab.localStorage, key, oldValue, newValue }));
+        }
+      };
+      local.setItem = (key, value) => {
+        const oldValue = local.getItem(key);
+        values.set(key, String(value));
+        broadcast(key, oldValue, String(value));
+      };
+      local.removeItem = key => {
+        const oldValue = local.getItem(key);
+        values.delete(key);
+        broadcast(key, oldValue, null);
+      };
+      const tab = createBrowser({ local, session, pathname, fetchImpl });
+      tabs.push(tab);
+      return tab;
     },
   };
 }
@@ -411,21 +455,34 @@ function testLogoutFromAnotherSessionCannotClearTheCurrentLogin() {
 }
 
 async function testIndependentBrowserContextsInBothLoginOrders() {
-  for (const roles of [["admin", "customer"], ["customer", "admin"]]) {
+  for (const roles of [["admin", "customer"], ["customer", "admin"],
+    ['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
     // Normal/Private profiles (and different browsers) have independent stores,
     // but make requests to the same server/token catalogue.
-    const tokens = new Map();
+    const tokens = new Map(), challenges = new Map(), calls = [];
     let sequence = 300;
     const fetchImpl = async (url, options) => {
+      calls.push(url);
       if (url.endsWith("/sign-in")) {
-        const role = JSON.parse(options.body).identifier;
-        const token = `${++sequence}|${role}-secret`;
-        tokens.set(token, role);
-        return jsonResponse(200, { token, user: { role } });
+        const identifier = JSON.parse(options.body).identifier;
+        const receptionist = identifier.endsWith('_receptionist');
+        const user = { user_id: ++sequence, role: receptionist ? 'staff' : identifier,
+          staff_subrole: receptionist ? identifier : null,
+          staff_type: receptionist ? (identifier === 'clinic_receptionist' ? 'clinic' : 'grooming') : null,
+          clinic_permissions: {access: true, services_view: true, clinical: false},
+          staff_permissions: {grooming: true, grooming_services_view: true, services_manage: false} };
+        challenges.set(identifier, user);
+        return jsonResponse(202, { requires_login_confirmation: true, login_poll_token: identifier });
+      }
+      if (url.endsWith('/email/login/confirm')) {
+        const user = challenges.get(JSON.parse(options.body).poll_token);
+        const token = `${++sequence}|${user.user_id}-secret`;
+        tokens.set(token, user);
+        return jsonResponse(200, { token, user });
       }
       const token = options.headers.Authorization?.replace(/^Bearer /, "");
-      const role = tokens.get(token);
-      if (!role) return jsonResponse(401, { message: "Unauthenticated." });
+      const user = tokens.get(token);
+      if (!user) return jsonResponse(401, { message: "Unauthenticated." });
       if (url.endsWith("/logout")) {
         tokens.delete(token);
         return jsonResponse(200, { success: true });
@@ -434,24 +491,134 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
         assert.equal(options.cache, "no-store");
         return jsonResponse(200, { data: [] });
       }
-      return jsonResponse(200, { user: { role } });
+      return jsonResponse(200, { user, sidebar_revision: `revision-${user.user_id}` });
     };
-    const normal = createBrowser({ fetchImpl });
-    const privateWindow = createBrowser({ fetchImpl });
+    const normalProfile = createBrowserProfile(fetchImpl), privateProfile = createBrowserProfile(fetchImpl);
+    const normal = normalProfile.page();
+    const privateWindow = privateProfile.page();
     await normal.API.signIn(roles[0], "password");
-    const normalToken = roles[0] === "admin" ? normal.API.getAdminToken() : normal.API.getCustomerToken();
+    await normal.API.confirmLoginCode('012345');
+    const normalToken = normal.API.getAdminToken() || normal.API.getCustomerToken();
     await privateWindow.API.signIn(roles[1], "password", false);
-    assert.equal(normal.API.getUserRole(), roles[0]);
+    await privateWindow.API.confirmLoginCode('012345');
+    const expectedNormal = tokens.get(normalToken);
+    assert.equal(normal.API.getUserRole(), expectedNormal.role);
     for (const [browser, role] of [[normal, roles[0]], [privateWindow, roles[1]]]) {
-      assert.equal((await browser.API.getMe(role)).user.role, role);
+      const identity = await browser.API.getMe(role.endsWith('_receptionist') ? 'staff' : role);
+      assert.equal(identity.user.staff_subrole || identity.user.role, role);
+      const profile = browser === normal ? normalProfile : privateProfile;
+      const navigation = profile.page(browser.sessionStorage, identity.user.role === 'customer'
+        ? '/pages/client/dashboard.html' : '/pages/admin/clinic.html');
+      assert.deepEqual(navigation.replacements, []);
+      if (role.endsWith('_receptionist')) {
+        const reads = calls.filter(url => url.endsWith('/me')).length;
+        assert.equal((await navigation.API.getStaffIdentity()).user.staff_subrole, role);
+        assert.equal(calls.filter(url => url.endsWith('/me')).length, reads, 'Navigation restores owned identity without another /me');
+        assert.equal(navigation.sidebar().staffRoleLabel, role === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
+        const otherTab = profile.page(new MemoryStorage(), '/pages/admin/services.html');
+        assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role);
+      }
       await browser.API.getGroomingCatalogue();
       assert.deepEqual(browser.replacements, []);
     }
     await privateWindow.API.logout(roles[1]);
-    assert.equal((await normal.API.getMe(roles[0], { force: true })).user.role, roles[0]);
+    assert.equal((await normal.API.getMe(expectedNormal.role, { force: true })).user.user_id, expectedNormal.user_id);
     assert.equal(tokens.has(normalToken), true);
     assert.equal(tokens.size, 1);
     assert.deepEqual(normal.replacements, []);
+  }
+}
+
+async function testDelayedStaffLoginCannotReplaceNewerSession() {
+  let release;
+  const browser = createBrowser({
+    session: {pending_login_poll_token: 'older-clinic-challenge'},
+    fetchImpl: async url => url.endsWith('/email/login/confirm')
+      ? new Promise(resolve => { release = () => resolve(jsonResponse(200, {
+        token: '501|old-clinic-secret', user: {role: 'staff', staff_subrole: 'clinic_receptionist'},
+      })); })
+      : jsonResponse(200, {success: true}),
+  });
+  const pending = browser.API.confirmLoginCode('012345');
+  browser.API.setAdminToken('502|new-grooming-secret');
+  browser.API.setUserRole('staff');
+  release();
+  await assert.rejects(pending, /changed|superseded|ended/i);
+  assert.equal(browser.API.getAdminToken(), '502|new-grooming-secret');
+}
+
+async function testDelayedRevocationCannotClearNewerStaffSession() {
+  let release;
+  const browser = createBrowser({
+    local: {admin_token: '601|clinic-secret', user_role: 'staff'},
+    fetchImpl: async () => new Promise(resolve => { release = () => resolve(jsonResponse(200, {success: true})); }),
+  });
+  const pending = browser.API.logout('staff', {requireRevocation: true});
+  browser.API.setAdminToken('602|grooming-secret');
+  browser.API.setUserRole('staff');
+  release();
+  await pending;
+  assert.equal(browser.API.getAdminToken(), '602|grooming-secret', 'Old-token revocation must preserve the replacement login');
+}
+
+async function testDelayedPasswordResponseCannotClearNewerStaffSession() {
+  let release;
+  const browser = createBrowser({fetchImpl: async url => {
+    if (url.endsWith('/sign-in')) return new Promise(resolve => {
+      release = () => resolve(jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'older-challenge'}));
+    });
+    return jsonResponse(200, {});
+  }});
+  const pending = browser.API.signIn('clinic@example.test', 'password');
+  browser.API.setAdminToken('603|grooming-secret');
+  browser.API.setUserRole('staff');
+  release();
+  await assert.rejects(pending, /changed|superseded|ended/i);
+  assert.equal(browser.API.getAdminToken(), '603|grooming-secret');
+  assert.equal(browser.API.hasPendingLoginConfirmation(), false);
+}
+
+async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
+  for (const roles of [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
+    let sequence = 800, release;
+    const users = new Map();
+    let pauseIdentity = false;
+    const profile = createBrowserProfile(async (url, options) => {
+      if (url.endsWith('/sign-in')) {
+        const staff_subrole = JSON.parse(options.body).identifier;
+        const user = {user_id: ++sequence, role: 'staff', staff_subrole,
+          staff_type: staff_subrole === 'clinic_receptionist' ? 'clinic' : 'grooming',
+          clinic_permissions: {access: true, services_view: true}, staff_permissions: {grooming: true}};
+        const token = `${sequence}|${staff_subrole}-secret`;
+        users.set(token, user);
+        return jsonResponse(200, {token, user});
+      }
+      const user = users.get(options.headers.Authorization?.replace(/^Bearer /, ''));
+      const result = jsonResponse(200, {user, sidebar_revision: `revision-${user?.user_id}`});
+      if (url.endsWith('/me') && pauseIdentity) return new Promise(resolve => { release = () => resolve(result); });
+      return result;
+    });
+    const first = profile.page();
+    await first.API.signIn(roles[0], 'password');
+    const sibling = profile.page(new MemoryStorage(), '/pages/admin/clinic.html');
+    const cached = await sibling.API.getStaffIdentity();
+    assert.equal(cached.user.staff_subrole, roles[0]);
+    // An uncached sibling starts an old-token identity read before the switch.
+    const pendingTab = profile.page();
+    pauseIdentity = true;
+    const pending = pendingTab.API.getStaffIdentity();
+    await first.API.signIn(roles[1], 'password');
+    assert.equal(sibling.API.getCachedStaffIdentity(), null, 'Shared token replacement invalidates the former identity');
+    release();
+    await assert.rejects(pending, /changed|superseded|ended/i);
+    pauseIdentity = false;
+    assert.equal((await sibling.API.getStaffIdentity()).user.staff_subrole, roles[1]);
+    assert.equal(sibling.API.getAdminToken(), first.API.getAdminToken());
+    await first.API.logout('staff');
+    await Promise.resolve();
+    assert.equal(sibling.API.getAdminToken(), null);
+    assert.equal(sibling.API.getCachedStaffIdentity(), null);
+    assert.equal(sibling.replacements.at(-1), '/pages/client/sign-in.html');
   }
 }
 
@@ -1390,6 +1557,10 @@ async function testStaffSetupUsernameForm() {
   await testLogoutClearsBeforeNetworkAndSynchronizesCustomerTabs();
   testLogoutFromAnotherSessionCannotClearTheCurrentLogin();
   await testIndependentBrowserContextsInBothLoginOrders();
+  await testReceptionistAccountSwitchSynchronizesSharedTabs();
+  await testDelayedPasswordResponseCannotClearNewerStaffSession();
+  await testDelayedRevocationCannotClearNewerStaffSession();
+  await testDelayedStaffLoginCannotReplaceNewerSession();
   testSharedPersistentLogoutDoesNotErasePendingConfirmation();
   await testPricingAuthFailuresStayLocalToTheRequestingSession();
   testTokenReplacementRemovalEventCannotClearFreshLogin();

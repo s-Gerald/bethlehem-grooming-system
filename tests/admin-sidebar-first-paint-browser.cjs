@@ -15,7 +15,10 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 const profiles = {
   admin: { role: 'admin', first_name: 'Local', last_name: 'Admin', clinic_permissions: {} },
   vet: { role: 'staff', first_name: 'Local', last_name: 'Vet', staff_type: 'clinic', staff_subrole: 'veterinarian', clinic_permissions: { access: true, services_view: true } },
-  grooming: { role: 'staff', first_name: 'Local', last_name: 'Groomer', staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {} },
+  grooming: { role: 'staff', first_name: 'Local', last_name: 'Groomer', staff_type: 'grooming', staff_subrole: 'grooming_receptionist',
+    clinic_permissions: { access: true, services_view: true, clinical: false }, staff_permissions: { grooming: true, grooming_services_view: true } },
+  clinic: { role: 'staff', first_name: 'Local', last_name: 'Receptionist', staff_type: 'clinic', staff_subrole: 'clinic_receptionist',
+    clinic_permissions: { access: true, services_view: true, clinical: false }, staff_permissions: { grooming: true, grooming_services_view: true } },
 };
 async function fixture(browser, profile = 'admin', inventory = false, workspaces = false) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -279,7 +282,6 @@ async function cachedRefresh(browser, profile) {
     assert.equal(count(), 1);
     for (const [file, active] of pages.filter(([file]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(file))) {
       if ((profile !== 'admin' && active === 'Reports')
-        || (profile === 'grooming' && ['Clinic', 'Services'].includes(active))
         || (profile === 'vet' && active === 'Grooming')) continue;
       f.state.sessionHold = deferred();
       const started = Date.now();
@@ -325,7 +327,7 @@ async function cachedRefresh(browser, profile) {
       assert.equal(count(), 1, 'Valid cached reload avoids /me');
       f.state.sessionHold.resolve(); await ready(f.page);
     }
-    assert.equal(await f.page.locator('aside a[href$="clinic.html"]').isVisible(), profile !== 'grooming');
+    assert.equal(await f.page.locator('aside a[href$="clinic.html"]').isVisible(), true);
     assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), profile === 'admin');
     for (const width of [320, 375, 414, 768]) {
       await f.page.setViewportSize({ width, height: 844 });
@@ -365,7 +367,7 @@ async function securityTransitions(browser) {
     await g.page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await g.page.waitForFunction(() => !Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarReady);
     await visibleShell(g.page, 'Dashboard');
-    assert.equal(await g.page.locator('aside a[href$="clinic.html"]').isVisible(), false);
+    assert.equal(await g.page.locator('aside a[href$="clinic.html"]').isVisible(), true);
     assert.equal(await g.page.locator('aside a[href$="appointments.html"]').isVisible(), false);
     g.state.identityHold.resolve(); await ready(g.page);
     assert.equal(g.state.requests.filter(p => p === '/api/me').length, 2, 'Revision change refetches identity exactly once');

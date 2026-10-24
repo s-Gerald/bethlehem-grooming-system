@@ -1344,7 +1344,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $bookingServices = [];
         $payments = [];
 
-        for ($id = 1; $id <= 12; $id++) {
+        for ($id = 1; $id <= 24; $id++) {
             $isWalkin = $id % 2 === 0;
             $bookings[] = [
                 'booking_id' => $id,
@@ -1406,24 +1406,43 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ];
         }
 
-        DB::table('bookings')->insert($bookings);
-        DB::table('pets')->insert($pets);
-        DB::table('booking_pets')->insert($bookingPets);
-        DB::table('booking_services')->insert($bookingServices);
-        DB::table('payments')->insert($payments);
-
         $queryCount = 0;
-        DB::listen(function () use (&$queryCount): void {
+        $qrCompatibilityQueryCount = 0;
+        DB::listen(function ($query) use (&$queryCount, &$qrCompatibilityQueryCount): void {
             $queryCount++;
+            if (str_contains($query->sql, 'select exists')
+                && (str_contains($query->sql, "'qr_payments'") || in_array('qr_payments', $query->bindings, true))) {
+                $qrCompatibilityQueryCount++;
+            }
         });
 
-        $response = $this->getJson('/api/admin/bookings/archived');
+        $fixtures = [
+            'bookings' => $bookings, 'pets' => $pets, 'booking_pets' => $bookingPets,
+            'booking_services' => $bookingServices, 'payments' => $payments,
+        ];
+        $queryCounts = [];
+        $previousCount = 0;
+        foreach ([2, 12, 24] as $bookingCount) {
+            foreach ($fixtures as $table => $rows) {
+                DB::table($table)->insert(array_slice($rows, $previousCount, $bookingCount - $previousCount));
+            }
+            $previousCount = $bookingCount;
+            $queryCount = $qrCompatibilityQueryCount = 0;
+            $currentResponse = $this->getJson('/api/admin/bookings/archived')
+                ->assertOk()->assertJsonPath('total', $bookingCount)->assertJsonCount($bookingCount, 'archived');
 
-        $this->assertLessThanOrEqual(
-            13,
-            $queryCount,
-            'Archive queries must not grow with the number of bookings.',
-        );
+            // QR schema compatibility adds one fixed probe to the original budget.
+            $this->assertSame(1, $qrCompatibilityQueryCount, "Expected one QR compatibility query for {$bookingCount} bookings.");
+            $this->assertLessThanOrEqual(
+                13,
+                $queryCount - $qrCompatibilityQueryCount,
+                "Archive query budget exceeded for {$bookingCount} bookings.",
+            );
+            $queryCounts[$bookingCount] = $queryCount;
+            if ($bookingCount === 12) $response = $currentResponse;
+        }
+        $this->assertSame($queryCounts[2], $queryCounts[12], 'Archive queries must not grow from 2 to 12 bookings.');
+        $this->assertSame($queryCounts[2], $queryCounts[24], 'Archive queries must not grow from 2 to 24 bookings.');
         $response->assertJsonStructure([
             'success',
             'total',

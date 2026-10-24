@@ -1409,9 +1409,15 @@ var API = (() => {
         clearCustomerCache();
       }
       if (event.key === ADMIN_TOKEN_KEY || event.key === USER_ROLE_KEY) {
+        const previousIdentityToken = staffIdentityToken;
         clearAdminCache();
         clearStaffIdentity();
         verifiedSidebarRevision = null;
+        const token = getAdminToken();
+        if (isAdminPage() && previousIdentityToken && token && token !== previousIdentityToken) {
+          // Replace workspace state belonging to the account displayed here.
+          window.location.reload?.();
+        }
       }
       if (event.key === ADMIN_DATA_CHANGED_KEY && event.newValue) {
         try {
@@ -1711,11 +1717,16 @@ var API = (() => {
     // the session dies when the tab closes.
     const normalized = normalizePhoneLikeIdentifier(identifier);
     const resolvedIdentifier = normalized || identifier;
+    const revision = sessionRevision, previousToken = getAuthSession()?.token;
     const data = await request("POST", "/sign-in", {
       identifier: resolvedIdentifier,
       password,
       remember,
     });
+
+    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
+      throw new Error('Sign-in changed while loading. Please try again.');
+    }
 
     if (data?.requires_login_confirmation) {
       storePendingLoginConfirmation(data?.login_poll_token, data?.email);
@@ -1853,6 +1864,7 @@ var API = (() => {
 
   async function confirmLoginCode(code) {
     const pollToken = safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY);
+    const revision = sessionRevision, previousToken = getAuthSession()?.token;
     if (!pollToken) {
       throw new Error("This browser no longer has a pending sign-in. Please sign in again.");
     }
@@ -1862,6 +1874,11 @@ var API = (() => {
         poll_token: pollToken,
         code,
       });
+
+      if (revision !== sessionRevision || previousToken !== getAuthSession()?.token
+        || pollToken !== safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY)) {
+        throw new Error('Sign-in changed while confirming. Please try again.');
+      }
 
       const role = data?.user?.role;
       if (!data?.token || !["customer", "admin", "staff"].includes(role)) {
@@ -1892,7 +1909,8 @@ var API = (() => {
 
       return data;
     } catch (error) {
-      if (error?.expired || error?.status === 403 || error?.status === 429) {
+      if (pollToken === safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY)
+        && (error?.expired || error?.status === 403 || error?.status === 429)) {
         clearPendingLoginConfirmation();
       }
       throw error;
@@ -1914,6 +1932,7 @@ var API = (() => {
     if (logoutOptions.requireRevocation && token) {
       try { await revoke(); }
       catch (error) { if (error?.status !== 401) throw error; }
+      if (getAuthSession()?.token !== currentSession?.token) return { success: true };
     }
 
     clearAuthStorage();

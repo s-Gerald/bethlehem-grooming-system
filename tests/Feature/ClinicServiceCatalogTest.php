@@ -265,8 +265,8 @@ class ClinicServiceCatalogTest extends TestCase
     public function test_clinic_staff_can_browse_catalog_but_only_admin_can_manage_it(): void
     {
         $id = $this->postJson('/api/admin/clinic-services', $this->payload())->assertCreated()->json('data.id');
-        foreach (['veterinarian', 'clinic_receptionist'] as $subrole) {
-            $this->signIn('staff', $subrole);
+        foreach (['veterinarian', 'clinic_receptionist', 'grooming_receptionist'] as $subrole) {
+            $this->signIn('staff', $subrole, $subrole === 'grooming_receptionist' ? 'grooming' : 'clinic');
             $this->getJson('/api/admin/clinic-services?q=CBC&category_id=2&status=all&page=1')
                 ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $id);
             $this->getJson('/api/admin/clinic-services/options')->assertOk()->assertJsonCount(5, 'categories');
@@ -283,7 +283,7 @@ class ClinicServiceCatalogTest extends TestCase
     public function test_other_staff_and_customers_cannot_read_or_mutate_catalog(): void
     {
         $id = $this->postJson('/api/admin/clinic-services', $this->payload())->json('data.id');
-        foreach ([['staff', null, 'clinic'], ['staff', 'grooming_receptionist', 'grooming'],
+        foreach ([['staff', null, 'clinic'], ['staff', 'grooming_receptionist', 'clinic'],
             ['staff', 'unknown', 'clinic'], ['customer', null, 'clinic']] as [$role, $subrole, $type]) {
             $this->signIn($role, $subrole, $type);
             $this->getJson('/api/admin/clinic-services')->assertForbidden();

@@ -159,11 +159,13 @@ function createIdleBrowser(role, fixture = {}) {
     Date: FakeDate,
     FormData: class FormData {},
     URLSearchParams,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
     clearTimeout: clearFakeTimeout,
     console,
     document,
     fetch: async (url, options) => {
       requests.push({ url, options });
+      if (fixture.user) assert.equal(options.headers.Authorization, `Bearer ${token}`, 'Every request uses this context\'s token');
       if (url.endsWith("/logout") && fixture.failLogout) throw new Error("Offline");
       if (url.endsWith("/session") && fixture.statusFailure !== undefined) {
         if (fixture.statusFailure === 0) throw new Error("Offline");
@@ -184,7 +186,9 @@ function createIdleBrowser(role, fixture = {}) {
         server.idleAt = now + 30 * 60000;
       }
       if (fixture.protectedLocked && !url.includes("/session")) return jsonResponse(423, {code: "session_locked"});
-      const response = jsonResponse(200, {success: true, locked: server.locked, server_now: new Date(now).toISOString(),
+      const response = jsonResponse(200, {success: true, ...(fixture.user ? {
+        user: fixture.user, user_id: fixture.user.user_id, role: fixture.user.role, sidebar_revision: `revision-${fixture.user.user_id}`,
+      } : {}), locked: server.locked, server_now: new Date(now).toISOString(),
         idle_at: new Date(server.idleAt).toISOString(), expires_at: new Date(server.expiresAt).toISOString()});
       if (url.endsWith("/session") && fixture.pauseStatus) return new Promise(resolve => { fixture.releaseStatus = () => resolve(response); });
       if (url.endsWith("/session/activity") && fixture.pauseActivity) return new Promise(resolve => { fixture.releaseActivity = () => resolve(response); });
@@ -216,6 +220,7 @@ function createIdleBrowser(role, fixture = {}) {
     async settle() { for (let i = 0; i < 30; i++) await Promise.resolve(); },
     localStorage,
     replacements,
+    sessionStorage,
     requests,
     warning() {
       return elements.get("bethlehem-session-inactivity-warning") || null;
@@ -640,6 +645,36 @@ async function testCustomerThirtyMinuteTimeout() {
   assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
 }
 
+async function testReceptionistContextsLockUnlockAndExpireIndependently() {
+  for (const subroles of [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
+    const [normal, privateWindow] = subroles.map((staff_subrole, index) => createIdleBrowser('staff', {
+      token: `${701 + index}|${staff_subrole}-secret`,
+      user: {user_id: index + 1, role: 'staff', staff_subrole,
+        staff_type: staff_subrole === 'clinic_receptionist' ? 'clinic' : 'grooming',
+        clinic_permissions: {access: true, clinical: false}, staff_permissions: {grooming: true}},
+    }));
+    await normal.settle(); await privateWindow.settle();
+    await normal.API.getStaffIdentity(); await privateWindow.API.getStaffIdentity();
+    assert.notEqual(normal.localStorage, privateWindow.localStorage);
+    assert.notEqual(normal.sessionStorage, privateWindow.sessionStorage);
+    await normal.advance(30);
+    assert.equal(normal.API.isSessionLocked(), true);
+    assert.equal(privateWindow.API.isSessionLocked(), false);
+    await normal.submit('wrong');
+    assert.equal(normal.API.isSessionLocked(), true);
+    await normal.submit('correct');
+    assert.equal(normal.API.isSessionLocked(), false);
+    assert.equal(privateWindow.unlockRequests, 0);
+    assert.equal(privateWindow.API.getCachedStaffIdentity().user.staff_subrole, subroles[1]);
+    await normal.advance(12 * 60 - 30);
+    assert.equal(normal.API.getAdminToken(), null);
+    assert.equal(normal.replacements.at(-1), '/pages/client/sign-in.html');
+    assert.equal(privateWindow.API.getCachedStaffIdentity().user.staff_subrole, subroles[1]);
+    assert.equal((await privateWindow.API.getStaffIdentity()).user.staff_subrole, subroles[1]);
+    assert.deepEqual(privateWindow.replacements, []);
+  }
+}
+
 (async () => {
   await testTabReturnKeepsUnlockedWorkflow("admin");
   await testTabReturnKeepsUnlockedWorkflow("staff");
@@ -660,6 +695,7 @@ async function testCustomerThirtyMinuteTimeout() {
   await testDelayedStatusCannotRelockAfterPasswordUnlock();
   await testPausedReadsResumeOnceAndWritesAreNeverReplayed();
   await testCustomerThirtyMinuteTimeout();
+  await testReceptionistContextsLockUnlockAndExpireIndependently();
   console.log("Session inactivity regression tests passed.");
 })().catch((error) => {
   console.error(error);

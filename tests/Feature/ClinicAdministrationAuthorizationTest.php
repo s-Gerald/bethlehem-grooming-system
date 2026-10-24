@@ -372,9 +372,15 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ];
     }
 
-    public function test_receptionist_cannot_call_any_clinical_mutation_endpoint(): void
+    public static function receptionistRoles(): array
     {
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        return [['clinic_receptionist'], ['grooming_receptionist']];
+    }
+
+    #[DataProvider('receptionistRoles')]
+    public function test_receptionist_cannot_call_any_clinical_mutation_endpoint(string $subrole): void
+    {
+        $this->authenticateAs('staff', subrole: $subrole);
         foreach ([
             ['POST', '/api/admin/clinic-cases/1/start'],
             ['POST', '/api/admin/clinic-cases/1/finish'],
@@ -403,7 +409,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
 
     public function test_both_clinic_subroles_and_admin_can_check_in_and_view_the_shared_queue(): void
     {
-        foreach (['veterinarian', 'clinic_receptionist', 'admin'] as $index => $subrole) {
+        foreach (['veterinarian', 'clinic_receptionist', 'grooming_receptionist', 'admin'] as $index => $subrole) {
             $this->authenticateAs($subrole === 'admin' ? 'admin' : 'staff', subrole: $subrole);
             $this->insertClinicAppointment('waiting_to_arrive', id: $index + 1);
             $this->postJson('/api/admin/clinic-appointments/'.($index + 1).'/check-in')
@@ -480,9 +486,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('clinic_vitals', ['clinic_appointment_id' => 1, 'weight_kg' => 18.4, 'temperature_c' => null]);
     }
 
-    public function test_receptionist_creates_a_checked_in_case_without_starting_the_assessment(): void
+    #[DataProvider('receptionistRoles')]
+    public function test_receptionist_creates_a_checked_in_case_without_starting_the_assessment(string $subrole): void
     {
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $subrole);
         DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
         $this->postJson('/api/admin/clinic-cases', ['pet_id' => 1, 'case_type' => 'consultation'])
             ->assertCreated()->assertJsonPath('case.status', 'checked_in')
@@ -600,9 +607,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['total_amount' => 350, 'payment_method' => 'cash', 'amount_paid' => 350])->assertUnprocessable();
     }
 
-    public function test_clinic_cash_payment_persists_server_receipt_and_authenticated_processor(): void
+    #[DataProvider('receptionistRoles')]
+    public function test_clinic_cash_payment_persists_server_receipt_and_authenticated_processor(string $subrole): void
     {
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $subrole);
+        $label = $subrole === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist';
         $this->insertClinicAppointment('for_payment');
         DB::table('clinic_charges')->insert([
             'clinic_appointment_id' => 1, 'kind' => 'existing', 'description' => 'Clinic consultation',
@@ -614,7 +623,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('appointment.paid', true)
             ->assertJsonPath('appointment.cash_received', '500.00')
             ->assertJsonPath('appointment.change', 149.5)
-            ->assertJsonPath('appointment.processed_by.name', 'Staff · Clinic Receptionist')
+            ->assertJsonPath('appointment.processed_by.name', 'Staff · '.$label)
             ->assertJsonPath('appointment.charges.0.description', 'Clinic consultation');
         $this->assertNotEmpty($receipt->json('appointment.paid_at'));
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid_by_user_id' => 1, 'cash_received' => 500]);
@@ -1032,9 +1041,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertSame(['size'], json_decode(DB::table('pets')->value('clinic_verified_fields'), true));
     }
 
-    public function test_receptionist_cancellation_rechecks_current_status_and_preserves_other_roles(): void
+    #[DataProvider('receptionistRoles')]
+    public function test_receptionist_cancellation_rechecks_current_status_and_preserves_other_roles(string $receptionist): void
     {
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $receptionist);
         foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'waiting_to_arrive', 'cancelled', 'expired'] as $index => $status) {
             $id = $index + 1;
             $this->insertClinicAppointment($status, $id);
@@ -1051,7 +1061,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->insertClinicAppointment('checked_in', 10);
         $this->authenticateAs('staff', subrole: 'veterinarian');
         $this->postJson('/api/admin/clinic-cases/10/start')->assertOk();
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $receptionist);
         $this->postJson('/api/admin/clinic-appointments/10/cancel')->assertConflict();
         foreach (['veterinarian', 'admin'] as $subrole) {
             $this->authenticateAs($subrole === 'admin' ? 'admin' : 'staff', subrole: $subrole);
@@ -1060,17 +1070,19 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
     }
 
-    public function test_receptionist_cannot_edit_existing_patients_through_the_api(): void
+    #[DataProvider('receptionistRoles')]
+    public function test_receptionist_cannot_edit_existing_patients_through_the_api(string $subrole): void
     {
         DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $subrole);
         $this->putJson('/api/admin/pets/1', ['pet_name' => 'Changed'])->assertForbidden();
         $this->assertDatabaseHas('pets', ['pet_id' => 1, 'pet_name' => 'Mochi']);
     }
 
-    public function test_walkins_check_in_sequentially_without_starting_and_reject_duplicate_intake(): void
+    #[DataProvider('receptionistRoles')]
+    public function test_walkins_check_in_sequentially_without_starting_and_reject_duplicate_intake(string $subrole): void
     {
-        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->authenticateAs('staff', subrole: $subrole);
         DB::table('unregistered_customers')->insert(['id' => 10, 'first_name' => 'Ana', 'last_name' => 'Santos', 'phone' => '09171234567']);
         $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Ana', 'lname' => 'Santos',
             'phone' => '09171234567', 'pet_name' => 'Mochi', 'species' => 'cat', 'terms_agreed' => true,
@@ -3254,7 +3266,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'first_name' => ucfirst($role),
             'last_name' => 'User',
             'role' => $role,
-            'staff_type' => $role === 'staff' ? $staffType : null,
+            'staff_type' => $role === 'staff' ? ($subrole === 'grooming_receptionist' ? 'grooming' : $staffType) : null,
             'staff_subrole' => $role === 'staff' ? $subrole : null,
         ]);
         $user->exists = true;
