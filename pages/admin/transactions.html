@@ -316,7 +316,7 @@
                           <p class="transaction-reference" x-text="tx.reference"></p>
                         </div>
                         <p class="transaction-pets" :title="transactionDetails(tx)" x-text="transactionDetails(tx)"></p>
-                        <span class="transaction-method" x-text="(tx.paymentMethodLabel || tx.paymentMethod || '—') + (tx.isTest ? ' · Test' : '')"></span>
+                        <span class="transaction-method" x-text="tx.paymentMethodLabel || tx.paymentMethod || '—'"></span>
                         <p class="transaction-total" x-text="formatInvoicePeso(tx.finalPrice)"></p>
                         <button type="button" class="transaction-button transaction-button-secondary transaction-view"
                           :data-transaction-id="tx.key || tx.id" @click="openDetails(tx, $el)" aria-haspopup="dialog" :aria-label="'View Details for ' + tx.reference">View Details</button>
@@ -346,7 +346,7 @@
                   <div class="transaction-dialog-subtitle" x-show="!selectedTransaction.qrPayment">
                     <span class="transaction-reference" x-text="selectedTransaction.reference"></span>
                     <span x-text="formatTransactionDate(selectedTransaction)"></span>
-                    <span class="transaction-method" x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></span>
+                    <span class="transaction-method" x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></span>
                   </div>
                 </header>
                 <div x-ref="detailsBody" class="transaction-dialog-body" tabindex="0" aria-label="Transaction details content">
@@ -357,7 +357,7 @@
                       <template x-if="!isProductSale(selectedTransaction)"><div><dt>Pet</dt><dd x-text="petNames(selectedTransaction).join(', ') || '—'"></dd></div></template>
                       <div><dt x-text="isClinicPayment(selectedTransaction) ? 'Clinic Reference' : selectedTransaction.qrPayment ? 'Grooming Reference' : 'Reference'">Reference</dt><dd x-text="selectedTransaction.reference"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment"><dt>Transaction Date</dt><dd x-text="formatTransactionDate(selectedTransaction)"></dd></div>
-                      <div x-show="!isClinicPayment(selectedTransaction) && !selectedTransaction.qrPayment"><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
+                      <div x-show="!isClinicPayment(selectedTransaction) && !selectedTransaction.qrPayment"><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
                     </dl>
                   </section>
                   <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction)">
@@ -411,7 +411,7 @@
                   <section class="transaction-detail-section" aria-labelledby="transaction-payment-title">
                     <h3 id="transaction-payment-title">Payment Details</h3>
                     <dl class="transaction-line-items transaction-payment">
-                      <div><dt>Payment Method</dt><dd x-text="(selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—') + (selectedTransaction.isTest ? ' · Test' : '')"></dd></div>
+                      <div><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment"><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Change</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.changeGiven == null ? '—' : formatInvoicePeso(selectedTransaction.changeGiven)"></dd></div>
@@ -466,8 +466,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023"></script>
-    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024"></script>
+    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024"></script>
     <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023"></script>
   </body>
 </html>

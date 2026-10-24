@@ -206,6 +206,14 @@ async function main() {
   assert.equal(ui.receiptModal.amountPaid, null);
   assert.equal(ui.receiptModal.change, null);
 
+  for (const isTest of [true, false]) {
+    prepare('online');
+    await ui.applyOnlinePaymentStatus({...status, payment: {...status.payment, is_test: isTest}});
+    assert.equal(ui.receiptModal.isTest, isTest);
+    assert.equal(ui.receiptModal.paymentMethod, 'Online Payment');
+    assert.equal(ui.receiptModal.finalPrice, 500);
+  }
+
   status = { online_payment: { ...status.online_payment, status: 'pending' } };
   prepare('online');
   await ui.submitPayment();

@@ -121,6 +121,21 @@ assert.equal(ui.groupedTransactions[0].dateKey, '2026-10-03');
 assert.equal(ui.groupedTransactions[1].dateKey, 'unknown');
 
 const html = fs.readFileSync(path.join(__dirname, "../pages/admin/transactions.html"), "utf8");
+const methodBindings = [...html.matchAll(/x-text="([^"]*paymentMethodLabel[^"]*)"/g)];
+for (const isTest of [true, false]) {
+  for (const transactionType of ['grooming_payment', 'clinic_payment', 'product_sale']) {
+    const recorded = {...onlineTransaction, transactionType, isTest};
+    for (const [, expression] of methodBindings) {
+      assert.equal(new Function('tx', 'selectedTransaction', `return ${expression}`)(recorded, recorded), 'Online Payment');
+    }
+    if (transactionType !== 'product_sale') {
+      ui.openDetails(recorded, null);
+      assert.equal(ui.receiptModal.isTest, isTest, 'Historical invoices keep the original environment');
+      assert.equal(ui.receiptModal.paymentMethod, 'Online Payment');
+      ui.closeDetails();
+    }
+  }
+}
 const history = html.split('<!-- Compact history:')[1].split('</main>')[0].split('<dialog')[0];
 for (const field of ["amountPaid", "changeGiven", "groomingServicesTotal", "productAddonsTotal", "service_breakdown", "<details"]) {
   assert.ok(!history.includes(field), `${field} must stay out of history rows`);

@@ -99,8 +99,9 @@
     <template x-if="receipt">
       <div class="pos-success-content">
         <svg class="pos-success-icon ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#check-circle"></use></svg>
-        <h3 id="pos-success-title" x-text="receipt.is_test ? 'Test sale completed' : 'Sale completed'"></h3>
+        <h3 id="pos-success-title">Sale completed</h3>
         <p class="pos-success-total" x-text="'₱' + fmt(receipt.total_amount)"></p>
+        <p class="pos-helper">Amount Paid</p>
         <p class="pos-success-reference" x-text="receipt.reference"></p>
         <p class="pos-helper" x-text="saleDate(receipt.created_at)"></p>
         <dl class="pos-summary-values">

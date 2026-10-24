@@ -287,6 +287,42 @@ class SharedPayMongoTest extends TestCase
             ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
     }
 
+    public function test_historical_grooming_payment_keeps_recorded_environment_after_configuration_changes(): void
+    {
+        $this->postJson('/api/admin/bookings/1/online-payment', [
+            'flow' => 'final', 'payment_method' => 'online',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+            'pet_sizes' => [['booking_pet_id' => 2, 'size' => 'large']],
+        ])->assertOk();
+        $this->webhook($this->event(85000))->assertOk();
+        config(['services.paymongo.livemode' => true]);
+
+        $this->getJson('/api/admin/bookings/1/online-payment')->assertOk()
+            ->assertJsonPath('payment.is_test', true)
+            ->assertJsonPath('payment.payment_method_label', 'Online Payment');
+        $this->getJson('/api/admin/transactions?transaction_type=grooming_payment')->assertOk()
+            ->assertJsonPath('transactions.0.isTest', true)
+            ->assertJsonPath('transactions.0.paymentMethodLabel', 'Online Payment')
+            ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 850);
+        $this->assertFalse(GatewayPayment::firstOrFail()->livemode);
+    }
+
+    public function test_historical_clinic_payment_keeps_recorded_environment_after_configuration_changes(): void
+    {
+        $this->clinicCheckout();
+        $this->webhook($this->event())->assertOk();
+        config(['services.paymongo.livemode' => true]);
+
+        $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
+            ->assertJsonPath('appointment.is_test', true)
+            ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
+        $this->getJson('/api/admin/transactions?transaction_type=clinic_payment')->assertOk()
+            ->assertJsonPath('transactions.0.isTest', true)
+            ->assertJsonPath('transactions.0.paymentMethodLabel', 'Online Payment')
+            ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 500);
+        $this->assertFalse(GatewayPayment::firstOrFail()->livemode);
+    }
+
     public function test_clinic_checkout_preserves_whole_quantities_and_finalized_fractional_charges(): void
     {
         DB::table('clinic_charges')->where('id', 1)->update(['quantity' => 2, 'amount' => 1000]);
@@ -404,9 +440,13 @@ class SharedPayMongoTest extends TestCase
     public function test_test_sales_remain_in_history_but_are_excluded_from_financial_reporting(): void
     {
         $this->posCheckout()->assertOk(); $this->webhook($this->event(16000))->assertOk();
+        config(['services.paymongo.livemode' => true]);
+        $this->getJson('/api/pos/transactions/1')->assertOk()
+            ->assertJsonPath('data.is_test', true)->assertJsonPath('data.payment_method_label', 'Online Payment');
         $this->getJson('/api/admin/transactions?transaction_type=product_sale')->assertOk()
             ->assertJsonPath('transactions.0.paymentMethod', 'online')->assertJsonPath('transactions.0.isTest', true)
             ->assertJsonPath('transactions.0.paymentMethodLabel', 'Online Payment')
+            ->assertJsonPath('transactions.0.receipt.is_test', true)
             ->assertJsonPath('collection_total', 0)->assertJsonPath('test_collection_total', 160);
         $this->getJson('/api/admin/transactions?transaction_type=product_sale&exclude_test=1')->assertOk()
             ->assertJsonPath('total', 0)->assertJsonPath('collection_total', 0);

@@ -39,6 +39,14 @@ for (const name of ['cash-payment', 'online-payment', 'admin-clinic', 'admin-pos
   assert.equal(pos.receiptOpen, true); assert.equal(receipts, 1); assert.equal(pos.cart.length, 0);
   assert.equal(pos.receipt.payment_method, 'online');
   assert.equal(pos.receipt.payment_method_label, 'Online Payment');
+  for (const isTest of [true, false]) {
+    clinic.completeClinicPayment({id: 1, total_amount: 500, payment_method: 'online', payment_method_label: 'Online Payment', is_test: isTest});
+    assert.equal(clinic.receiptModal.isTest, isTest);
+    assert.equal(clinic.receiptModal.paymentMethod, 'Online Payment');
+    await pos.applyPosOnlineStatus({online_payment: {id: 3, status: 'paid'}, receipt: {pos_id: 8, payment_method: 'online', payment_method_label: 'Online Payment', total_amount: 160, is_test: isTest}});
+    assert.equal(pos.receipt.is_test, isTest);
+    assert.equal(pos.receipt.total_amount, 160);
+  }
   await pos.applyPosOnlineStatus({online_payment: {id: 4, status: 'expired'}, cart: [{item_id: 1, name: 'Treats', unit: 'pack', quantity: 2, price_at_sale: 80, subtotal: 160}]});
   assert.equal(pos.cart.length, 1, 'An expired return restores its cart for review');
   await testPosRecovery();

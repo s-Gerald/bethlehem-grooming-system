@@ -1081,7 +1081,7 @@
                 </div>
                 <h4 class="receipt-success-title">Payment recorded</h4>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
-                <p class="receipt-success-label" x-text="receiptModal.isTest ? 'Test payment' : 'Amount Paid'"></p>
+                <p class="receipt-success-label">Amount Paid</p>
                 <div class="receipt-success-reference">
                   <span x-text="receiptModal.qrPayment ? 'Payment Reference No.' : 'Reference'"></span>
                   <strong x-text="receiptModal.qrPayment ? receiptModal.qrPayment.external_reference : receiptModal.bookingReference"></strong>
@@ -1574,7 +1574,7 @@
     </script>
 
     <!-- Shared dashboard content script -->
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>

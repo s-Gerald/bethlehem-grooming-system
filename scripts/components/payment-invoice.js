@@ -69,7 +69,7 @@ window.PaymentInvoice = (() => {
     </div>
     <div class="payment-invoice-heading">
       <h1>INVOICE</h1>
-      <span class="payment-invoice-status" x-text="receiptModal.isTest ? 'TEST PAYMENT' : 'PAID'"></span>
+      <span class="payment-invoice-status" x-text="receiptModal.isTest ? 'Paid · Test' : 'Paid'"></span>
     </div>
   </header>
 

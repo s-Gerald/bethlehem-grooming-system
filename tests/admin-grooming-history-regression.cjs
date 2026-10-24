@@ -8,6 +8,9 @@ const dialog = { querySelector: (selector) => selector.includes('Close') ? { foc
 const context = { Date, Intl, URLSearchParams, window: {}, document: { body: { style: { overflow: '' } }, querySelector: () => dialog } };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-archive.js'), 'utf8'), context);
 const ui = context.adminArchive();
+for (const isTest of [true, false]) {
+  assert.equal(ui.paymentMethod({payment: {paymentMethod: 'qrph', paymentMethodLabel: 'Online Payment', isTest}}), 'Online Payment');
+}
 ui.$nextTick = (callback) => callback();
 ui.$refs = {};
 

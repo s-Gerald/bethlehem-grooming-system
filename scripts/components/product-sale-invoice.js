@@ -15,7 +15,7 @@ window.ProductSaleInvoice = {
         <img :src="window.ProductSaleInvoice.logoUrl" alt="Bethlehem Animal Clinic logo" class="payment-invoice-logo" />
         <div><strong>BETHLEHEM</strong><span>ANIMAL CLINIC</span></div>
       </div>
-      <div class="payment-invoice-heading"><h1>INVOICE</h1><span class="payment-invoice-status" x-text="receipt.is_test ? 'TEST PAYMENT' : 'PAID'"></span></div>
+      <div class="payment-invoice-heading"><h1>INVOICE</h1><span class="payment-invoice-status" x-text="receipt.is_test ? 'Paid · Test' : 'Paid'"></span></div>
     </header>
     <dl class="payment-invoice-meta">
       <div><dt>Transaction reference</dt><dd x-text="receipt.reference"></dd></div>

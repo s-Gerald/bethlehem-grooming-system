@@ -30,6 +30,31 @@ assert.equal(JSON.stringify(product), originalProduct, "Unit price formatting mu
 const html = fs.readFileSync(path.join(__dirname, "../pages/admin/appointments.html"), "utf8");
 assert.ok(html.includes('x-html="window.PaymentInvoice.template"'), "Grooming uses the shared invoice template");
 const invoice = context.window.PaymentInvoice.template;
+// Evaluate the actual Alpine text binding (or static text) against recorded snapshots.
+function renderedText(markup, attribute, value, bindings) {
+  const tag = markup.match(new RegExp(`<[^>]*${attribute}="${value}"[^>]*>[^<]*</[^>]+>`))[0];
+  const expression = tag.match(/x-text="([^"]+)"/);
+  return expression
+    ? new Function(...Object.keys(bindings), `return ${expression[1]}`)(...Object.values(bindings))
+    : tag.replace(/<[^>]+>/g, '');
+}
+context.document = {currentScript: {src: 'http://localhost/scripts/components/product-sale-invoice.js'}};
+context.URL = URL;
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/product-sale-invoice.js'), 'utf8'), context);
+const clinicHtml = fs.readFileSync(path.join(__dirname, '../pages/admin/clinic.html'), 'utf8');
+const posHtml = fs.readFileSync(path.join(__dirname, '../pages/admin/inventory/sections/sell-product.html'), 'utf8');
+for (const [isTest, expected] of [[true, 'Paid · Test'], [false, 'Paid'], [undefined, 'Paid']]) {
+  for (const template of [invoice, context.window.PaymentInvoice.clinicTemplate]) {
+    assert.equal(renderedText(template, 'class', 'payment-invoice-status', {receiptModal: {isTest}}), expected);
+  }
+  assert.equal(renderedText(context.window.ProductSaleInvoice.template, 'class', 'payment-invoice-status', {receipt: {is_test: isTest}}), expected);
+  assert.equal(renderedText(html, 'class', 'receipt-success-title', {receiptModal: {isTest}}), 'Payment recorded');
+  assert.equal(renderedText(html, 'class', 'receipt-success-label', {receiptModal: {isTest}}), 'Amount Paid');
+  assert.equal(renderedText(clinicHtml, 'id', 'clinic-payment-recorded-title', {receiptModal: {isTest}}), 'Payment recorded');
+  assert.equal(renderedText(clinicHtml, 'class', 'receipt-success-label', {receiptModal: {isTest}}), 'Amount Paid');
+  assert.equal(renderedText(posHtml, 'id', 'pos-success-title', {receipt: {is_test: isTest}}), 'Sale completed');
+  assert.equal(renderedText(posHtml.split('class="pos-success-content"')[1], 'class', 'pos-helper', {receipt: {is_test: isTest}}), 'Amount Paid');
+}
 assert.ok(invoice.includes('Grooming reference'));
 assert.doesNotMatch(invoice, /Booking reference|Appointment/i);
 const settledPayment = { finalPrice: 850, amountPaid: 1000, change: 150 };
