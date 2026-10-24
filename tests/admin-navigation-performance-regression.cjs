@@ -109,7 +109,9 @@ async function clinicDefersRecordsAndKeepsConfinedOnDemand() {
   vm.runInContext(read('scripts/components/admin-clinic.js'), e.c);
   const ui = e.c.adminClinicPage(); ui.$root = { querySelector: () => ({}) };
   ui.$nextTick = fn => fn();
-  e.c.API.getStaffIdentity = async () => ({ user: { clinic_permissions: { access: true } } });
+  const permissions = {access: true, clinical: true};
+  ui.$store = {clinicAccess: {permissions}};
+  e.c.API.getStaffIdentity = async () => ({ user: { clinic_permissions: permissions } });
   await ui.init();
   assert.ok(ui.activeCasesLoaded);
   assert.equal(e.calls.some(c => c.endpoint.includes('clinic-records')), false, 'Offscreen records do not compete with active cases');
@@ -134,7 +136,12 @@ async function scopedListsReuseRetainedData() {
   const e = environment();
   const response = {data: [{item_id: 1}], page: 1, last_page: 1, total: 1, priceLimits: {}, archived: []};
   e.respond(() => response);
-  const load = (page, file, factory) => {vm.runInContext(read('scripts/components/'+file), page.c); return page.c[factory]();};
+  const load = (page, file, factory) => {
+    vm.runInContext(read('scripts/components/'+file), page.c);
+    const ui = page.c[factory]();
+    ui.$store = {clinicAccess: {user: {role: 'admin'}}};
+    return ui;
+  };
   let services = load(e, 'admin-grooming-services.js', 'adminGroomingServices');
   await services.activate();
   services = load(e.page(), 'admin-grooming-services.js', 'adminGroomingServices'); await services.activate();
@@ -164,10 +171,11 @@ async function scopedListsReuseRetainedData() {
 }
 async function servicesPrimaryDoesNotWaitForClinicPermissions() {
   const e=environment(), permission=deferred(); e.c.API.getUserRole=()=> 'admin';
+  e.c.API.getCachedStaffIdentity=()=>({user:{role:'admin',clinic_permissions:{services_view:false}}});
   e.c.window.location.hash='#grooming'; e.c.window.removeEventListener=()=>{};
   e.c.history={replaceState(){}};
   vm.runInContext(read('scripts/components/admin-services.js'),e.c);
-  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,permissions:{services_view:false}}};
+  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,user:{role:'admin',clinic_permissions:{services_view:false}},permissions:{services_view:false}}};
   let mounted=''; const state={loaded:true,activate:async()=>{}};
   shell.$refs={grooming:{},clinic:{}}; shell.mount=async tab=>{mounted=tab;return {};}; e.c.Alpine={$data:()=>state};
   const pending=shell.init(); await new Promise(setImmediate);
@@ -193,7 +201,7 @@ async function staffServicesWaitForAuthorizedActiveTab() {
   const e=environment(), permission=deferred(); e.c.API.getUserRole=()=> 'staff';
   e.c.window.location.hash=''; e.c.history={replaceState(){}};
   vm.runInContext(read('scripts/components/admin-services.js'),e.c);
-  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,permissions:{services_view:true}}};
+  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,user:{role:'staff',clinic_permissions:{services_view:true}},permissions:{services_view:true}}};
   let mounted=''; const state={loaded:true,activate:async()=>{}};
   shell.$refs={grooming:{},clinic:{}}; shell.mount=async tab=>{mounted=tab;return {};}; e.c.Alpine={$data:()=>state};
   const pending=shell.init(); await new Promise(setImmediate);

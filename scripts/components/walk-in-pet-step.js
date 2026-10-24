@@ -1,5 +1,5 @@
 import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021";
-import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021";
+import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024";
 import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";

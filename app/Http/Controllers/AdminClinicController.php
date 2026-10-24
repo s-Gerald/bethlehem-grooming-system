@@ -157,7 +157,7 @@ class AdminClinicController extends Controller
 
     public function showCase(int $id)
     {
-        $case = ClinicAppointment::with($this->appointmentRelations())->findOrFail($id);
+        $case = ClinicAppointment::with([...$this->appointmentRelations(), 'paidBy'])->findOrFail($id);
         return response()->json(['case' => $this->formatAppointment($case)]);
     }
 
@@ -463,22 +463,24 @@ class AdminClinicController extends Controller
             return response()->json(['success' => false, 'message' => 'Appointment is not For Payment.'], 422);
         }
 
-        $recorded = $this->formatAppointment($appt->fresh($this->appointmentRelations()));
-        // The processor comes from the authenticated request, never a submitted ID.
-        $recorded['processed_by'] = [
-            'name' => trim(($request->user()->first_name ?? '').' '.($request->user()->last_name ?? '')),
-        ];
-
+        $recorded = $this->formatAppointment($appt->fresh($this->appointmentRelations())->setRelation('paidBy', $request->user()));
         return response()->json(['success' => true, 'appointment' => $recorded]);
     }
 
     public function cancel(Request $request, int $id)
     {
-        $appt = DB::transaction(function () use ($id) {
+        $appt = DB::transaction(function () use ($id, $request) {
             $appointment = ClinicAppointment::query()
                 ->whereKey($id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if (! $request->user()->clinicPermissions()['clinical'] && $appointment->status !== 'checked_in') {
+                throw new HttpResponseException(response()->json([
+                    'success' => false,
+                    'message' => 'This case is no longer Checked In. Refresh to see its current status.',
+                ], 409));
+            }
 
             \App\Models\GatewayPayment::assertClinicUnlocked($appointment);
             if (in_array($appointment->status, ['completed', 'cancelled'], true)) {
@@ -853,6 +855,7 @@ class AdminClinicController extends Controller
             'cash_received' => $a->cash_received,
             'change' => $a->cash_received !== null ? round((float) $a->cash_received - (float) $a->total_amount, 2) : null,
             'paid_at' => $a->paid_at?->toIso8601String(),
+            'processed_by' => ['name' => $a->relationLoaded('paidBy') ? $a->paidBy?->paymentAttribution() : null],
             'notes' => $a->notes,
             'checked_in_at' => $a->checked_in_at?->toIso8601String(),
             'consultation_started_at' => $a->consultation_started_at?->toIso8601String(),

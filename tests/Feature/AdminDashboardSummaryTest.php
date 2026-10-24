@@ -24,6 +24,35 @@ class AdminDashboardSummaryTest extends TestCase
 {
     use \Tests\Support\CreatesPetGroomers;
 
+    public function test_dashboard_read_access_and_revenue_follow_authenticated_staff_role(): void
+    {
+        foreach ([['admin', null, null], ['staff', 'grooming', 'grooming_receptionist'],
+            ['staff', 'clinic', 'clinic_receptionist'], ['staff', 'clinic', 'veterinarian']] as [$role, $type, $subrole]) {
+            \Laravel\Sanctum\Sanctum::actingAs(new \App\Models\User([
+                'role' => $role, 'staff_type' => $type, 'staff_subrole' => $subrole, 'is_active' => true,
+            ]));
+            DB::enableQueryLog(); DB::flushQueryLog();
+            $response = $this->getJson('/api/admin/dashboard/summary')->assertOk()
+                ->assertJsonPath('canViewRevenue', $role === 'admin');
+            if ($role === 'admin') {
+                $response->assertJsonStructure(['summary' => ['revenueToday', 'revenuePaymentCount']]);
+            } else {
+                $this->assertArrayNotHasKey('revenueToday', $response->json('summary'));
+                $this->assertArrayNotHasKey('revenuePaymentCount', $response->json('summary'));
+                $aggregateQueries = array_filter(DB::getQueryLog(), fn ($query) => str_contains(strtolower($query['query']), 'sum(total_amount)'));
+                $this->assertCount(0, $aggregateQueries, 'Staff dashboard does not query aggregate revenue.');
+            }
+            DB::disableQueryLog();
+            $this->getJson('/api/admin/dashboard/activity')->assertOk()->assertJsonStructure(['recentActivity']);
+        }
+        \Laravel\Sanctum\Sanctum::actingAs(new \App\Models\User(['role' => 'customer']));
+        $this->getJson('/api/admin/dashboard/summary')->assertForbidden();
+        $this->getJson('/api/admin/dashboard/activity')->assertForbidden();
+        \Laravel\Sanctum\Sanctum::actingAs(new \App\Models\User(['role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => null]));
+        $this->getJson('/api/admin/dashboard/summary')->assertForbidden();
+        $this->getJson('/api/admin/dashboard/activity')->assertForbidden();
+    }
+
     public function test_summary_formats_recorded_check_in_times_and_preserves_legacy_nulls(): void
     {
         DB::table('bookings')->insert([

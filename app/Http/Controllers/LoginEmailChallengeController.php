@@ -221,6 +221,7 @@ class LoginEmailChallengeController extends Controller
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,
                 'clinic_permissions' => $user->clinicPermissions(),
+                'staff_permissions' => $user->staffPermissions(),
             ],
         ]);
     }

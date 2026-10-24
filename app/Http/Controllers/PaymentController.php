@@ -844,8 +844,7 @@ class PaymentController extends Controller
             'isTest' => $appointment->gatewayPayment ? ! $appointment->gatewayPayment->livemode : false,
             'paymentMethodLabel' => $appointment->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($appointment->payment_method),
             'processedBy' => $appointment->paid_by_user_id,
-            'processedByName' => $appointment->paidBy
-                ? trim($appointment->paidBy->first_name.' '.$appointment->paidBy->last_name) : null,
+            'processedByName' => $appointment->paidBy?->paymentAttribution(),
             'paidAt' => $appointment->paid_at?->format('Y-m-d H:i:s'),
             'dateKey' => $appointment->paid_at?->toDateString() ?? 'unknown',
             'charges' => $appointment->charges->map(fn ($charge) => [

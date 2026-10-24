@@ -19,6 +19,7 @@ class TransactionHistorySearchTest extends TestCase
             $table->increments('user_id');
             $table->string('first_name');
             $table->string('last_name');
+            $table->string('role')->nullable();
         });
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');
@@ -211,6 +212,7 @@ class TransactionHistorySearchTest extends TestCase
 
     public function test_clinic_payments_use_recorded_charges_and_remain_distinct_from_grooming(): void
     {
+        DB::table('users')->where('user_id', 1)->update(['role' => 'admin']);
         DB::table('clinic_appointments')->insert([
             'id' => 1, 'appointment_reference' => 'CL-20261003-001', 'user_id' => 1, 'pet_id' => 1,
             'status' => 'completed', 'paid' => true, 'total_amount' => 725.50,
@@ -239,7 +241,7 @@ class TransactionHistorySearchTest extends TestCase
         $this->assertSame('Clinic Payment', $tx['transactionTypeLabel']);
         $this->assertSame('Gerald Senining', $tx['ownerName']);
         $this->assertSame('Hopper', $tx['petName']);
-        $this->assertSame('Gerald Senining', $tx['processedByName']);
+        $this->assertSame('Gerald · Admin', $tx['processedByName']);
         $this->assertEquals(1000, $tx['amountPaid']);
         $this->assertEquals(274.50, $tx['changeGiven']);
         $this->assertSame(['Consultation', 'Clinic supplies'], array_column($tx['charges'], 'description'));

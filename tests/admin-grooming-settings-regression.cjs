@@ -160,7 +160,7 @@ async function main() {
   services.$refs = {editor: {showModal() {opened = true;}, close() {opened = false;}, querySelector: () => null},
     form: {reportValidity: () => true}, serviceName: {focus() {}}, formError: {focus() {}}};
   services.$nextTick = fn => fn();
-  services.$store = {clinicFeedback: {notify() {}}};
+  services.$store = {clinicAccess: {user: {role: 'admin'}}, clinicFeedback: {notify() {}}};
   await services.activate();
   await services.activate();
   assert.equal(calls.length, 1, 'Already loaded catalog is reused');

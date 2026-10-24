@@ -360,6 +360,8 @@ function adminDashboard() {
     weekCount: 0,
     revenueToday: 0,
     revenuePaymentCount: 0,
+    canViewRevenue: false,
+    _dashboardAccessRevision: 0,
     waitingNow: 0,
     currentCapacity: 0,
     maxCapacity: 20,
@@ -659,6 +661,18 @@ function adminDashboard() {
         Promise.allSettled([this._bookingRequest, this._summaryRequest, this._activityRequest]).then(refresh);
       };
       window.addEventListener('admin-session:unlocked', this._sessionResumeListener);
+      if (this.pageMode === 'dashboard') {
+        this._dashboardAccessInvalidated = () => {
+          this._dashboardAccessRevision++;
+          this.canViewRevenue = false;
+          this.revenueToday = this.revenuePaymentCount = 0;
+        };
+        this._dashboardIdentityUpdated = event => {
+          if (event.detail?.user?.role !== 'admin' && this.canViewRevenue) this._dashboardAccessInvalidated();
+        };
+        window.addEventListener('admin-navigation:invalidated', this._dashboardAccessInvalidated);
+        window.addEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
+      }
     },
 
     destroy() {
@@ -670,6 +684,8 @@ function adminDashboard() {
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
+      window.removeEventListener('admin-navigation:invalidated', this._dashboardAccessInvalidated);
+      window.removeEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
       this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
       this.paymentModal.qr?.dispose();
@@ -680,10 +696,13 @@ function adminDashboard() {
       if (this._summaryRequest) return this._summaryRequest;
       if (!force && Date.now() < this._dashboardRetryAt.summary) return Promise.resolve();
       this.summaryLoading = !this.summaryLoaded;
+      const accessRevision = this._dashboardAccessRevision;
       let failed = false;
       const onRefreshError = error => { failed = true; this.dashboardRefreshFailed('summary', error); };
       this._summaryRequest = API.loadAdminData("/admin/dashboard/summary", () => API.getAdminDashboardSummary({ force }), data => {
-        if (this._destroyed) return;
+        if (this._destroyed || accessRevision !== this._dashboardAccessRevision) return;
+        this.canViewRevenue = data.canViewRevenue === true;
+        if (!this.canViewRevenue) this.revenueToday = this.revenuePaymentCount = 0;
         this.dashboardQueuePreview = data.queuePreview || [];
         this.applyDashboardData(data);
         this.summaryLoaded = true;
@@ -1550,11 +1569,11 @@ function adminDashboard() {
         this.weekCount = nextPayload.weekCount;
       }
 
-      if ("revenueToday" in nextPayload) {
+      if ("revenueToday" in nextPayload && (this.pageMode !== 'dashboard' || this.canViewRevenue)) {
         this.revenueToday = nextPayload.revenueToday;
       }
 
-      if ("revenuePaymentCount" in nextPayload) {
+      if ("revenuePaymentCount" in nextPayload && (this.pageMode !== 'dashboard' || this.canViewRevenue)) {
         this.revenuePaymentCount = nextPayload.revenuePaymentCount;
       }
 

@@ -188,7 +188,7 @@ class AdminBookingController extends Controller
             'forPaymentList' => $forPayment->values(),
             'releasedList' => $released->values(),
             ...($request->query('view') === 'board' ? ['summary' => $this->groomingCounts()] : [
-                'summary' => $this->dashboardMetrics(),
+                'summary' => $this->dashboardMetrics(true, $request->user()?->role === 'admin'),
                 'recentActivity' => $this->recentActivity(),
             ]),
             'activeTodayCount' => $this->activeTodayCount(),
@@ -214,6 +214,7 @@ class AdminBookingController extends Controller
 
     public function dashboardSummary()
     {
+        $canViewRevenue = request()->user()?->role === 'admin';
         app(\App\Services\PreRegistrationExpiry::class)->expire();
         $today = Carbon::today()->toDateString();
         $queue = Booking::whereDate('booking_date', $today)
@@ -234,7 +235,8 @@ class AdminBookingController extends Controller
             ]);
 
         return response()->json([
-            'summary' => $this->dashboardMetrics(false),
+            'canViewRevenue' => $canViewRevenue,
+            'summary' => $this->dashboardMetrics(false, $canViewRevenue),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
             'queuePreview' => $queue,
             'activeTodayCount' => $this->activeTodayCount(),
@@ -262,16 +264,16 @@ class AdminBookingController extends Controller
         return ['today' => $todayCompletedCount, ...($includeWeek ? ['week' => $weekCount] : [])];
     }
 
-    private function dashboardMetrics(bool $includeWeek = true): array
+    private function dashboardMetrics(bool $includeWeek = true, bool $includeRevenue = false): array
     {
         $today = Carbon::today();
-        $collections = Payment::realCollections()->whereDate('paid_at', $today->toDateString())
+        $collections = $includeRevenue ? Payment::realCollections()->whereDate('paid_at', $today->toDateString())
             ->where('payment_status', 'paid')
-            ->selectRaw('COALESCE(SUM(total_amount), 0) as total, COUNT(*) as payments')->first();
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total, COUNT(*) as payments')->first() : null;
         return [
                 ...$this->groomingCounts($includeWeek),
-                'revenueToday' => (float) $collections->total,
-                'revenuePaymentCount' => (int) $collections->payments,
+                ...($includeRevenue ? ['revenueToday' => (float) $collections->total,
+                    'revenuePaymentCount' => (int) $collections->payments] : []),
                 'waitingNow' => app(\App\Services\OperationalCapacity::class)->waitingCount(),
         ];
     }

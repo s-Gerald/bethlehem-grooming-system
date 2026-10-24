@@ -203,6 +203,7 @@ async function handleSubmit(event) {
         appointment_id:        response.appointment_id,
         appointment_date:      response.appointment_date,
         status:                response.status,
+        checked_in_at:         response.checked_in_at,
         returning_customer:    response.returning_customer,
         submitted_at:          new Date().toISOString(),
         owner: {

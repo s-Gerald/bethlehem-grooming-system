@@ -4,9 +4,10 @@ const vm = require('node:vm');
 const path = require('node:path');
 const read = name => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
 
-function setup(permissions = {services_view: true, services_manage: true}) {
+function setup(permissions = {services_view: true, services_manage: true}, role = 'admin', subrole = null) {
   const calls = [], panels = [], listeners = new Map(), scripts = [];
-  const clinicAccess = {permissions, init: async () => {}};
+  const clinicAccess = {permissions, user: {role, staff_subrole: subrole, clinic_permissions: permissions,
+    staff_permissions: {grooming_services_view: role === 'admin' || subrole === 'clinic_receptionist', services_manage: role === 'admin'}}, init: async () => {}};
   let failMarkup = false;
   const context = {
     URLSearchParams, clearTimeout, setTimeout, console,
@@ -14,7 +15,7 @@ function setup(permissions = {services_view: true, services_manage: true}) {
     scrollTo() {}, addEventListener: (name, listener) => listeners.set(name, listener),
     removeEventListener: name => listeners.delete(name),
     adminClinicPage: () => ({tab: 'active-cases', init() {calls.push('cases:init');}, loadAllRecords() {calls.push('records:load');}}),
-    API: {getUserRole: () => 'admin', loadAdminData: (key,load,render) => load().then(data=>{render(data);return data;}), adminRequest: async (method, url, payload) => {
+    API: {getUserRole: () => role, getCachedStaffIdentity: () => ({user: clinicAccess.user}), loadAdminData: (key,load,render) => load().then(data=>{render(data);return data;}), adminRequest: async (method, url, payload) => {
       calls.push([method, url, payload]);
       return url.endsWith('/options') ? {categories: [{id: 2, name: 'Laboratory'}]}
         : method !== 'GET' ? {data: {}}
@@ -35,7 +36,7 @@ function setup(permissions = {services_view: true, services_manage: true}) {
   vm.runInContext(read('scripts/components/admin-clinic-shell.js'), context);
   vm.runInContext(read('scripts/components/admin-services.js'), context);
   const shell = context.adminServices();
-  shell.showSection = async () => {await clinicAccess.init(); shell.canViewClinic = !!clinicAccess.permissions.services_view; shell.isAdmin = context.API.getUserRole() === 'admin'; return shell.showTab();};
+  shell.showSection = async () => {await clinicAccess.init(); shell.applyIdentity(clinicAccess.user); return shell.showTab();};
   shell.$store = {clinicAccess};
   const cases = {state: context.adminClinicCasesSection()};
   const groomingPanels = [];
@@ -161,7 +162,7 @@ async function workflow() {
 async function readOnlyAccess() {
   const service = {id: 1, name: 'CBC', is_active: true, pricing_method: 'fixed', price: 500};
   for (const subrole of ['veterinarian', 'clinic_receptionist']) {
-    const app = setup({services_view: true, services_manage: false});
+    const app = setup({services_view: true, services_manage: false}, 'staff', subrole);
     app.context.API.getUserRole = () => 'staff';
     await app.shell.showSection();
     assert.equal(app.shell.activeTab, 'clinic', subrole + ' can open Services directly');
@@ -176,6 +177,20 @@ async function readOnlyAccess() {
     await state.save(); await state.changeStatus(service);
     assert.equal(state.modalOpen, false);
     assert.equal(app.calls.some(call => Array.isArray(call) && call[0] !== 'GET'), false);
+    if (subrole === 'clinic_receptionist') {
+      await app.visit('#grooming');
+      assert.equal(app.shell.activeTab, 'grooming', 'Receptionists can follow the Grooming deep link');
+      const grooming = app.context.adminGroomingServices();
+      grooming.$store = state.$store;
+      await grooming.activate(); await grooming.activate();
+      assert.equal(grooming.canManageServices, false);
+      grooming.openEditor('package'); await grooming.save(); await grooming.changeStatus({serviceId: 1});
+      assert.equal(grooming.form, null);
+      assert.equal(app.calls.filter(call => Array.isArray(call) && call[1] === '/admin/grooming/services/catalogue').length, 1);
+      assert.equal(app.calls.some(call => Array.isArray(call) && call[0] !== 'GET'), false);
+      await app.visit('');
+      assert.equal(app.shell.activeTab, 'clinic', 'Receptionists default back to Clinic Services');
+    }
   }
   const denied = setup({services_view: false, services_manage: false});
   await denied.shell.showSection();
@@ -190,16 +205,35 @@ async function readOnlyAccess() {
   assert.ok(page.includes('View Details'));
   assert.ok(read('scripts/components/admin-sidebar.js').includes("services.setAttribute('x-show', 'isAdmin || clinicPermissions.services_view')"));
 
-  const pending = setup({});
+  const pending = setup({}, 'staff', 'clinic_receptionist');
   let finishIdentity;
   pending.context.clinicAccess.init = () => new Promise(resolve => {finishIdentity = resolve;});
   const opening = pending.shell.showSection();
   assert.equal(pending.context.location.hash, '#clinic', 'Do not redirect while permissions are loading');
   assert.equal(pending.panels.length, 0);
   pending.context.clinicAccess.permissions = {services_view: true, services_manage: false};
+  pending.context.clinicAccess.user.clinic_permissions = pending.context.clinicAccess.permissions;
   finishIdentity();
   await opening;
   assert.equal(pending.shell.activeTab, 'clinic');
+
+  const transition = setup();
+  await transition.shell.init();
+  transition.panels[0].state.openModal();
+  assert.equal(transition.panels[0].state.modalOpen, true);
+  transition.listeners.get('admin-navigation:invalidated')({detail: {reload: true}});
+  assert.equal(transition.panels[0].state.modalOpen, false, 'Revoking access closes an existing service editor');
+  assert.equal(transition.shell.isAdmin, false);
+  assert.equal(transition.shell.canViewGrooming, false);
+  assert.ok(transition.shell.error);
+  transition.listeners.get('admin-navigation:updated')({detail: {user: {
+    role: 'staff', clinic_permissions: {services_view: true, services_manage: false},
+    staff_permissions: {grooming_services_view: true, services_manage: false},
+  }}});
+  await new Promise(setImmediate);
+  assert.equal(transition.shell.isAdmin, false);
+  assert.equal(transition.panels[0].state.canManageServices, false);
+  assert.equal(transition.shell.canViewGrooming, true);
 }
 
 function formatting() {

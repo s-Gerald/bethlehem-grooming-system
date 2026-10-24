@@ -30,8 +30,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
@@ -120,8 +120,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024"></script>
 
       <!-- Main -->
       <div class="flex min-w-0 flex-1 flex-col lg:ml-[280px]" x-data="adminClinicShell()">
@@ -169,7 +169,7 @@
           <div class="mt-5 flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1" role="group" aria-label="Case status filters">
             <button type="button" :aria-pressed="tab === 'expected'" @click="setTab('expected')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'expected' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Expected <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'expected' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="expectedCount" x-cloak x-show="activeCasesLoaded"></span></button>
             <button type="button" :aria-pressed="tab === 'active-cases'" @click="setTab('active-cases')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'active-cases' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Active <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'active-cases' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="activeCount" x-cloak x-show="activeCasesLoaded"></span></button>
-            <button type="button" :aria-pressed="tab === 'confined'" @click="setTab('confined')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'confined' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Confined <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'confined' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="confinedCount" x-cloak x-show="activeCasesLoaded"></span></button>
+            <button x-show="permissions.clinical" type="button" :aria-pressed="tab === 'confined'" @click="setTab('confined')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'confined' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Confined <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="tab === 'confined' ? 'bg-white/20 text-white' : 'bg-white text-slate-600'" x-text="confinedCount" x-cloak x-show="activeCasesLoaded"></span></button>
             <button id="clinic-for-payment-filter" type="button" :aria-pressed="tab === 'for-payment'" @click="setTab('for-payment')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="tab === 'for-payment' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">For Payment <span class="min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-xs tabular-nums" :class="forPaymentCount > 0 ? 'bg-amber-100 text-amber-800' : (tab === 'for-payment' ? 'bg-white/20 text-white' : 'bg-white text-slate-600')" x-text="forPaymentCount" x-cloak x-show="activeCasesLoaded"></span></button>
           </div>
 
@@ -193,9 +193,9 @@
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700" x-text="caseStatus(caseItem)"></span>
                       <div x-show="caseItem.status === 'for_payment'" class="px-2 sm:text-right"><span class="block text-xs text-slate-500">Amount due</span><strong class="text-lg tabular-nums text-[#2f4b66]" x-text="money(caseItem.total_amount)"></strong></div>
-                      <button x-show="caseItem.status === 'for_payment' && permissions.access && permissions.payment" type="button" @click="openCase(caseItem)" :disabled="caseBusyId !== null" class="whitespace-nowrap rounded-xl border border-[#d0e4f2] bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-100 disabled:opacity-50">Open Case</button>
+                      <button x-show="caseItem.status === 'for_payment' && permissions.clinical && permissions.payment" type="button" @click="openCase(caseItem)" :disabled="caseBusyId !== null" class="whitespace-nowrap rounded-xl border border-[#d0e4f2] bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-100 disabled:opacity-50">Open Case</button>
                       <button x-show="caseActionLabel(caseItem)" type="button" @click="runCaseAction(caseItem)" :disabled="caseBusyId !== null" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#274864] disabled:opacity-50" x-text="caseBusyId === caseItem.id ? 'Working…' : caseActionLabel(caseItem)"></button>
-                      <div x-data="{menuOpen: false}" x-show="permissions.queue && !(caseItem.confinement && !caseItem.confinement.discharged_at)" class="relative" @click.outside="menuOpen = false" @keydown.escape.stop="menuOpen = false; $refs.trigger.focus()">
+                      <div x-data="{menuOpen: false}" x-show="canCancelCase(caseItem)" class="relative" @click.outside="menuOpen = false" @keydown.escape.stop="menuOpen = false; $refs.trigger.focus()">
                         <button type="button" x-ref="trigger" @click="menuOpen = !menuOpen; if (menuOpen) $nextTick(() => $refs.cancel.focus())" :aria-expanded="menuOpen" :aria-label="'More actions for ' + (caseItem.pet?.name || 'patient')" :disabled="caseBusyId !== null" class="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three"></use></svg></button>
                         <div x-show="menuOpen" x-cloak class="absolute right-0 z-40 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"><button type="button" x-ref="cancel" @click="menuOpen = false; cancelCase(caseItem)" class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50">Cancel Case</button></div>
                       </div>
@@ -207,7 +207,7 @@
 
           </section>
 
-          <section x-show="tab === 'confined'" class="mt-5 overflow-hidden rounded-2xl border border-[#cfe0ee] bg-white shadow-sm">
+          <section x-show="permissions.clinical && tab === 'confined'" class="mt-5 overflow-hidden rounded-2xl border border-[#cfe0ee] bg-white shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><h3 class="font-bold text-[#2f4b66]">Confined patients</h3><button type="button" @click="loadConfinedCases(confinedPage)" :disabled="confinedLoading" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Refresh</button></div>
             <admin-loader x-cloak x-show="confinedLoading &amp;&amp; !confinedLoaded"></admin-loader><p x-show="confinedError" role="alert" x-text="confinedError" class="p-4 text-sm text-red-600"></p>
             <p x-show="confinedLoaded && !confinedError && !confinedCases.length" class="p-6 text-center text-sm text-slate-500">No patients currently confined.</p>
@@ -463,8 +463,9 @@
                 </div>
               </div>
               <div x-show="!profile.loading && !profile.error && !detail.record && !profileEditing" class="clinic-profile-actions flex flex-wrap gap-2">
-                <button x-ref="editPatient" x-show="permissions.access && profile.owner?.id" @click="editPatient()" :disabled="profileBusy" type="button"
+                <button x-ref="editPatient" x-show="canEditPatient && profile.owner?.id" @click="editPatient()" :disabled="profileBusy" type="button"
                         class="rounded-xl border border-[#d0e4f2] bg-[#eef5fb] px-4 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-[#dceaf5] disabled:opacity-50">Edit Patient</button>
+                <span x-show="profileStatusLabel" class="inline-flex items-center rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-semibold text-[#315b7e]" x-text="profileStatusLabel"></span>
                 <button x-show="profileActionLabel" @click="runProfileAction()" :disabled="profileBusy || caseBusyId !== null" type="button"
                         class="rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#274864] disabled:opacity-50" x-text="profileBusy ? 'Checking In…' : caseBusyId !== null ? 'Starting…' : profileActionLabel"></button>
               </div>
@@ -1701,7 +1702,7 @@
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined"></script>
+    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
     <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019"></script>

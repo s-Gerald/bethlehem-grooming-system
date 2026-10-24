@@ -5,31 +5,31 @@
     <section x-show="loaded" class="services-group" :aria-labelledby="'heading-' + group.kind">
       <header class="services-group-header">
         <h2 :id="'heading-' + group.kind" class="text-xl font-bold text-[#1f3850]" x-text="group.label"></h2>
-        <button type="button" @click="openEditor(group.kind)" class="grooming-pricing-button grooming-pricing-button--primary" x-text="group.action"></button>
+        <button x-show="canManageServices" type="button" @click="openEditor(group.kind)" class="grooming-pricing-button grooming-pricing-button--primary" x-text="group.action"></button>
       </header>
       <div class="grooming-pricing-table-wrap" tabindex="0" role="region" :aria-label="group.label">
         <table class="grooming-pricing-table services-table" :class="{'services-table--ala': group.kind === 'ala_carte'}">
-          <thead><tr><th scope="col">Service</th><th scope="col" x-text="group.kind === 'package' ? 'Pricing' : 'Price'"></th><th scope="col">Status</th><th scope="col" class="text-right">Actions</th></tr></thead>
+          <thead><tr><th scope="col">Service</th><th scope="col" x-text="group.kind === 'package' ? 'Pricing' : 'Price'"></th><th scope="col">Status</th><th x-show="canManageServices" scope="col" class="text-right">Actions</th></tr></thead>
           <tbody>
             <template x-for="service in services(group.kind)" :key="service.serviceId">
               <tr>
                 <th scope="row"><span class="font-semibold text-[#2f4b66]" x-text="service.name"></span><span x-show="group.kind === 'package'" class="mt-1 block text-xs font-normal text-slate-500" x-text="({dog: 'Dogs', cat: 'Cats', all: 'Dogs & Cats'})[service.petType]"></span></th>
                 <td><div :class="group.kind === 'package' ? 'services-size-prices' : ''"><template x-for="option in service.priceOptions" :key="option.sizeKey"><span><span x-show="group.kind === 'package'" class="block text-xs text-slate-500" x-text="option.label"></span><span class="whitespace-nowrap font-medium" x-text="pricing(option)"></span></span></template></div></td>
                 <td><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="service.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'" x-text="service.isActive ? 'Active' : 'Inactive'"></span></td>
-                <td><div class="flex items-center justify-end gap-2"><button type="button" @click="openEditor(group.kind, service)" :disabled="busyId !== null" :aria-label="'Edit ' + service.name" class="rounded-lg border border-[#d0e4f2] bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-100 disabled:opacity-50">Edit</button>
+                <td x-show="canManageServices"><div class="flex items-center justify-end gap-2"><button type="button" @click="openEditor(group.kind, service)" :disabled="busyId !== null" :aria-label="'Edit ' + service.name" class="rounded-lg border border-[#d0e4f2] bg-[#eef5fb] px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-100 disabled:opacity-50">Edit</button>
                 <button type="button" @click="changeStatus(service)" :disabled="busyId !== null" :title="service.isActive ? 'Deactivate service' : 'Reactivate service'" :aria-label="(busyId === service.serviceId ? 'Updating ' : service.isActive ? 'Deactivate ' : 'Reactivate ') + service.name" :aria-busy="busyId === service.serviceId" class="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e] disabled:opacity-50" :class="service.isActive ? 'text-red-600' : 'text-[#315b7e]'">
                   <svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false" class="h-5 w-5" :class="{'animate-spin': busyId === service.serviceId}"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (busyId === service.serviceId ? 'spinner-gap' : service.isActive ? 'x-circle' : 'arrow-counter-clockwise')"></use></svg>
                 </button></div></td>
               </tr>
             </template>
-            <tr x-show="!services(group.kind).length"><td colspan="4" class="py-8 text-center text-slate-500" x-text="group.kind === 'package' ? 'No grooming packages yet.' : 'No Ala carte services yet.'"></td></tr>
+            <tr x-show="!services(group.kind).length"><td :colspan="canManageServices ? 4 : 3" class="py-8 text-center text-slate-500" x-text="group.kind === 'package' ? 'No grooming packages yet.' : 'No Ala carte services yet.'"></td></tr>
           </tbody>
         </table>
       </div>
     </section>
   </template>
 
-  <dialog x-ref="editor" class="services-editor grooming-pricing-dialog" aria-labelledby="grooming-editor-title" @cancel.prevent="closeEditor()" @click="if ($event.target === $el) closeEditor()">
+  <dialog x-show="canManageServices" x-ref="editor" class="services-editor grooming-pricing-dialog" aria-labelledby="grooming-editor-title" @cancel.prevent="closeEditor()" @click="if ($event.target === $el) closeEditor()">
     <template x-if="form">
       <form x-ref="form" @submit.prevent="save()">
         <header class="grooming-pricing-modal-header">

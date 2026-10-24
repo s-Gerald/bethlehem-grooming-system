@@ -72,6 +72,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         ->middleware(['role:admin,staff', 'throttle:10,1'])->name('session.unlock');
     Route::get('/grooming/services', [GroomingPricingController::class, 'index']);
     Route::get('/admin/grooming/services', [GroomingPricingController::class, 'managedIndex'])->middleware('role:admin');
+    Route::get('/admin/grooming/services/catalogue', [GroomingPricingController::class, 'staffIndex'])->middleware(['role:admin,staff', 'staff:grooming_services_view']);
     Route::post('/admin/grooming/services', [GroomingPricingController::class, 'store'])->middleware('role:admin');
     Route::put('/admin/grooming/services/{service}', [GroomingPricingController::class, 'save'])->middleware('role:admin');
     Route::patch('/admin/grooming/services/{service}/status', [GroomingPricingController::class, 'status'])->middleware('role:admin');
@@ -162,9 +163,9 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/settings/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
             ->middleware(['role:staff', ThrottleAuthenticationResends::class.':3,10']);
         Route::get('/admin/transactions', [PaymentController::class, 'index']);
+        Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary'])->middleware('staff:dashboard');
+        Route::get('/admin/dashboard/activity', [AdminBookingController::class, 'dashboardActivity'])->middleware('staff:dashboard');
         Route::middleware('grooming')->group(function () {
-            Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary']);
-            Route::get('/admin/dashboard/activity', [AdminBookingController::class, 'dashboardActivity']);
             Route::get('/admin/grooming/activity', [AdminBookingController::class, 'activityIndicator']);
             Route::get('/admin/bookings', [AdminBookingController::class, 'index']);
             Route::get('/admin/bookings/archived', [AdminBookingController::class, 'archivedIndex']);

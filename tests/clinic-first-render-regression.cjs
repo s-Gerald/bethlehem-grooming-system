@@ -68,8 +68,33 @@ async function accessAndSectionFailures() {
     e.ui.destroy();
   }
 }
+async function roleTabAccess() {
+  for (const [role, staff_subrole, clinical] of [['staff', 'clinic_receptionist', false], ['staff', 'veterinarian', true], ['admin', null, true]]) {
+    for (const requested of ['', 'expected', 'active-cases', 'for-payment', 'confined', 'invalid']) {
+      const e = clinic();
+      e.API.setUserRole(role);
+      e.c.window.location.search = requested ? '?tab=' + requested : '';
+      e.respond(endpoint => endpoint === '/me' ? {...identity(true), user: {...identity(true).user, role, staff_subrole, clinic_permissions: {access: true, intake: true, clinical}}}
+        : {cases: [], data: [], total: 0, current_page: 1, last_page: 1});
+      await e.stores.clinicAccess.init();
+      await e.ui.activate();
+      const permitted = ['expected', 'active-cases', 'for-payment', ...(clinical ? ['confined'] : [])];
+      const expected = permitted.includes(requested) ? requested : clinical ? 'active-cases' : 'expected';
+      assert.equal(e.ui.tab, expected, 'Initial tab follows role and permitted deep links');
+      assert.deepEqual(Array.from(e.ui.allowedTabs).sort(), permitted.sort());
+      if (!clinical) {
+        e.ui.setTab('confined');
+        await e.ui.loadConfinedCases();
+        assert.equal(e.ui.tab, expected);
+        assert.equal(e.calls.some(call => call.endpoint.includes('clinic-confinements')), false);
+      }
+      e.ui.destroy();
+    }
+  }
+}
 (async () => {
   await sharedIdentityAndLazyData();
   await accessAndSectionFailures();
+  await roleTabAccess();
   console.log('Clinic shared identity, startup request budget, lazy records and access/section failure isolation passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

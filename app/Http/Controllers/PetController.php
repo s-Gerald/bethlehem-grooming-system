@@ -175,7 +175,9 @@ class PetController extends Controller
     // PUT /api/admin/pets/{id}  (admin/staff — can update any customer's pet)
     public function adminUpdate(Request $request, $id)
     {
-        if (! in_array($request->user()?->role, ['admin', 'staff'], true)) {
+        $actor = $request->user();
+        if (! in_array($actor?->role, ['admin', 'staff'], true)
+            || ($actor->clinicPermissions()['access'] && ! $actor->clinicPermissions()['clinical'])) {
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
 

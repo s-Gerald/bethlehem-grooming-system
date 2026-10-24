@@ -158,7 +158,7 @@ async function dashboardRoleChangeRejectsPendingData() {
 module.exports = { environment, deferred };
 async function scopedPresentationPolicies() {
   for (const [key, freshness] of [
-    ['/admin/grooming/services', 61000], ['/admin/clinic-services?page=1&status=active', 61000],
+    ['/admin/grooming/services', 61000], ['/admin/grooming/services/catalogue', 61000], ['/admin/clinic-services?page=1&status=active', 61000],
     ['/admin/clinic-services/options', 61000], ['/inventory/summary?page=1&view=overview', 6000],
     ['/inventory/items?page=1', 6000], ['/inventory/transactions?page=1', 6000],
   ]) {
@@ -187,9 +187,9 @@ async function scopedPresentationPolicies() {
   }
 }
 async function scopedMutationInvalidation() {
-  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count', '/admin/notifications?mode=full&service=clinic&activity=payments'];
+  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count', '/admin/notifications?mode=full&service=clinic&activity=payments', '/admin/grooming/services/catalogue'];
   for (const [mutation, affected] of [
-    ['/admin/grooming/services/1/status', [0]], ['/admin/clinic-services/1/status', [1]],
+    ['/admin/grooming/services/1/status', [0,9]], ['/admin/clinic-services/1/status', [1]],
     ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
     ['/inventory/stock-out', [2,3,4]], ['/pos/transactions', [2,3,4]],
     ['/admin/bookings/1/mark-done', [5,7,8]], ['/admin/clinic-appointments/1/finish', [2,3,4,6,7,8]],

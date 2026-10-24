@@ -22,6 +22,12 @@ class GroomingPricingController extends Controller
         return $this->catalogue(true, $resolver);
     }
 
+    public function staffIndex(Request $request, GroomingServicePriceResolver $resolver)
+    {
+        abort_unless($request->user()?->staffPermissions()['grooming_services_view'] ?? false, 403);
+        return $this->catalogue(true, $resolver);
+    }
+
     private function catalogue(bool $all, GroomingServicePriceResolver $resolver)
     {
         $services = Service::whereIn('kind', ['package', 'ala_carte'])->orderBy('service_id')->get();

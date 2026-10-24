@@ -481,6 +481,7 @@ class AdminCredentialChangeTest extends TestCase
             ])->assertOk()->assertJsonPath('account.first_name', 'María José')
                 ->assertJsonPath('account.last_name', "O'neill-Santos")
                 ->assertJsonPath('user.user_id', $staff->user_id)
+                ->assertJsonPath('user.staff_permissions', $staff->staffPermissions())
                 ->assertJsonPath('sidebar_revision', $staff->fresh()->sidebarRevision());
             $staff->refresh();
             foreach (['user_id', 'email', 'role', 'staff_type', 'staff_subrole', 'password_hash', 'is_active', 'is_archived'] as $field) {

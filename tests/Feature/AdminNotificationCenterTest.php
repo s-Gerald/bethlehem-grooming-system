@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\AdminClinicController;
 use App\Http\Controllers\NotificationController;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -288,8 +289,12 @@ class AdminNotificationCenterTest extends TestCase
 
     public function test_staff_clinic_cancellation_creates_a_cancellation_notification(): void
     {
+        $request = Request::create('/api/admin/clinic-appointments/1/cancel', 'POST');
+        $request->setUserResolver(fn () => new User([
+            'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'clinic_receptionist',
+        ]));
         $response = (new AdminClinicController)->cancel(
-            Request::create('/api/admin/clinic-appointments/1/cancel', 'POST'),
+            $request,
             1,
         );
 

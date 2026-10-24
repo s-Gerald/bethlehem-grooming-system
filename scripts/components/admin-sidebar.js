@@ -96,7 +96,7 @@ function getAdminSidebarIdentityState(user) {
     sidebarReady: true,
     isAdmin: user.role === 'admin',
     clinicPermissions: user.clinic_permissions || {},
-    canAccessGrooming: user.role === 'admin' || (user.staff_type === 'grooming' && user.staff_subrole === 'grooming_receptionist'),
+    canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
     staffDisplayName: `${first} ${last}`.trim() || 'Staff',
     staffInitials: `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'ST',
     staffRoleLabel: user.staff_type === 'clinic'
@@ -214,6 +214,7 @@ function adminSidebar() {
         this._identityRevision++;
         this._incomingAppointmentRevision++;
         Object.assign(this, getAdminSidebarIdentityState(null));
+        document.documentElement?.removeAttribute('data-admin-role');
         this.sidebarError = '';
         this.incomingAppointmentCount = 0;
         renderCachedAdminSidebar();
@@ -226,6 +227,7 @@ function adminSidebar() {
         if (this._destroyed || !event.detail?.user) return;
         this._identityRevision++;
         Object.assign(this, getAdminSidebarIdentityState(event.detail.user));
+        document.documentElement?.setAttribute('data-admin-role', this.isAdmin ? 'admin' : 'staff');
         this.sidebarError = '';
         renderCachedAdminSidebar();
       };
@@ -235,11 +237,11 @@ function adminSidebar() {
       const ownsGroomingData = window.location.pathname.endsWith('/notifications.html')
         || ['dashboard', 'appointments'].includes(this.activePage);
       await this.loadLoggedInIdentity();
-      if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) await this.loadIncomingAppointmentCount();
+      if (!ownsGroomingData && this.canAccessGrooming) await this.loadIncomingAppointmentCount();
       if (this._destroyed) return;
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
-        if (!ownsGroomingData && (this.isAdmin || this.staffRoleLabel === 'Grooming Receptionist')) void this.loadIncomingAppointmentCount();
+        if (!ownsGroomingData && this.canAccessGrooming) void this.loadIncomingAppointmentCount();
       };
       this._incomingAppointmentInterval = setInterval(refresh, 30000);
       this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };

@@ -117,6 +117,9 @@ class SharedPayMongoTest extends TestCase
             $table->string('role');
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
+            $table->string('staff_type')->nullable();
+            $table->string('staff_subrole')->nullable();
+            $table->boolean('is_active')->default(true);
         });
         (require database_path('migrations/2026_10_16_120000_create_gateway_payments_table.php'))->up();
         DB::table('users')->insert(['user_id' => 7, 'role' => 'admin']);
@@ -285,6 +288,41 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseHas('gateway_payments', ['provider' => 'paymongo', 'provider_method' => 'qrph']);
         $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
             ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
+    }
+
+    public static function clinicProcessors(): array
+    {
+        return [
+            ['staff', 'clinic_receptionist', 'Grace · Clinic Receptionist'],
+            ['staff', 'veterinarian', 'Grace · Veterinarian'],
+            ['admin', null, 'Grace · Admin'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('clinicProcessors')]
+    public function test_clinic_webhook_and_invoices_attribute_the_checkout_initiator(string $role, ?string $subrole, string $label): void
+    {
+        DB::table('users')->where('user_id', 7)->update([
+            'first_name' => 'Grace', 'last_name' => 'Santos', 'role' => $role,
+            'staff_type' => $subrole ? 'clinic' : null, 'staff_subrole' => $subrole,
+        ]);
+        Sanctum::actingAs(User::findOrFail(7));
+        $this->clinicCheckout();
+        $this->assertDatabaseHas('gateway_payments', ['initiated_by' => 7]);
+        DB::table('users')->insert(['user_id' => 8, 'role' => 'admin', 'first_name' => 'Different']);
+        Sanctum::actingAs(User::findOrFail(8));
+        $this->webhook($this->event())->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid_by_user_id' => 7]);
+        $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
+            ->assertJsonPath('appointment.processed_by.name', $label);
+        $this->getJson('/api/admin/transactions?transaction_type=clinic_payment')->assertOk()
+            ->assertJsonPath('transactions.0.processedByName', $label);
+        DB::table('users')->where('user_id', 7)->update(['first_name' => 'Renamed', 'is_active' => false]);
+        $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
+            ->assertJsonPath('appointment.processed_by.name', str_replace('Grace', 'Renamed', $label));
+        DB::table('users')->where('user_id', 7)->delete();
+        $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()->assertJsonPath('appointment.processed_by.name', null);
+        $this->getJson('/api/admin/transactions?transaction_type=clinic_payment')->assertOk()->assertJsonPath('transactions.0.processedByName', null);
     }
 
     public function test_historical_grooming_payment_keeps_recorded_environment_after_configuration_changes(): void

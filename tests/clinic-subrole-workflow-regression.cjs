@@ -63,10 +63,10 @@ function permissions(clinical, payment, queue, customers) {
   await receptionistImaging.removeImagingService({});
   const receptionist = component('adminClinicPage');
   await receptionist.startCase({ id: 1 });
+  const eventCount = events.length;
   for (const status of ['checked_in', 'in_consultation', 'for_payment']) {
     receptionist.openCase({id: 1, status});
-    assert.equal(events.at(-1).type, 'clinic-open-modal');
-    assert.equal(events.at(-1).detail.appt.status, status);
+    assert.equal(events.length, eventCount, 'Reception cannot open a clinical workspace');
     receptionistRecord.currentAppt = {id: 1, status};
     assert.equal(receptionistRecord.canEditClinical, false);
     assert.equal(receptionistRecord.canFinish, false);
@@ -79,11 +79,32 @@ function permissions(clinical, payment, queue, customers) {
   receptionist.openCase = appt => {openedPet = appt.pet.id;};
   sandbox.API.createClinicCase = async () => { throw new Error('Viewing must not create a case'); };
   receptionist.openProfileCase();
-  assert.equal(openedPet, 7, 'Reception can view an existing checked-in case');
-  assert.equal(receptionist.caseActionLabel(receptionist.activeCases[0]), 'Open Case');
+  assert.equal(openedPet, undefined, 'Reception views history in Patient Records');
+  assert.equal(receptionist.caseActionLabel(receptionist.activeCases[0]), '');
+  assert.equal(receptionist.profileActionLabel, '');
+  assert.equal(receptionist.profileStatusLabel, 'Checked In');
   receptionist.activeCases[0].status = 'in_consultation';
   receptionist.openProfileCase();
-  assert.equal(openedPet, 7);
+  assert.equal(openedPet, undefined);
+  assert.equal(receptionist.profileStatusLabel, 'In Consultation');
+  assert.equal(receptionist.canEditPatient, false);
+  await receptionist.editPatient();
+  assert.equal(receptionist.profileEditing, false);
+  for (const status of ['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment', 'completed']) {
+    assert.equal(receptionist.canCancelCase({status}), status === 'checked_in');
+  }
+  let cancellations = 0, refreshes = 0, profileRefreshes = 0;
+  sandbox.API.clinicCancel = async () => {cancellations++; throw new Error('Case already started');};
+  receptionist.loadActiveCases = async ({force} = {}) => {assert.equal(force, true); refreshes++;};
+  receptionist.loadProfileVisit = async () => {profileRefreshes++;};
+  receptionist.profileVisit = {id: 1};
+  await receptionist.cancelCase({id: 1, status: 'in_consultation'});
+  assert.equal(cancellations, 0);
+  await receptionist.cancelCase({id: 1, status: 'checked_in'});
+  assert.equal(cancellations, 1);
+  assert.equal(refreshes, 1, 'A stale cancellation forces current case data to reload');
+  assert.equal(profileRefreshes, 1);
+  sandbox.API.clinicCancel = async () => {};
   const receptionistVaccines = component('adminClinicVaccinations');
   receptionistVaccines.pet = { id: 1 };
   receptionistVaccines.appointment = { id: 1, status: 'in_consultation' };
@@ -216,9 +237,9 @@ function permissions(clinical, payment, queue, customers) {
   assert.match(page, /Attachments<\/p>/);
   assert.match(page, /Follow-up<\/h3>/);
   assert.equal((page.match(/x-for="caseItem in caseRows"/g) || []).length, 1);
-  const clinicSource = fs.readFileSync(path.join(root, 'scripts/components/admin-clinic.js'), 'utf8');
-  assert.match(clinicSource, /item\.status === 'for_payment' && this\.permissions\.payment/);
-  assert.match(clinicSource, /item\.status === 'waiting_to_arrive' && this\.permissions\.intake/);
+  receptionist.clinicToday = '2026-10-24';
+  assert.equal(receptionist.caseActionLabel({status: 'waiting_to_arrive', appointment_date: '2026-10-25'}), '');
+  assert.equal(receptionist.caseActionLabel({status: 'waiting_to_arrive', appointment_date: '2026-10-24'}), 'Check In');
   permissions(true, true, true, true);
   const casePage = component('adminClinicPage');
   const actions = [];
@@ -243,12 +264,12 @@ function permissions(clinical, payment, queue, customers) {
   assert.equal(casePage.visibleActiveCases.length, 1);
   assert.equal(casePage.visibleActiveCases[0].id, 2);
   permissions(false, false, false, false);
-  assert.equal(casePage.caseActionLabel({status: 'for_payment'}), 'Open Case');
-  assert.equal(casePage.caseActionLabel({status: 'checked_in'}), 'Open Case');
+  assert.equal(casePage.caseActionLabel({status: 'for_payment'}), '');
+  assert.equal(casePage.caseActionLabel({status: 'checked_in'}), '');
   const actionCount = actions.length;
   casePage.runCaseAction({id: 1, status: 'checked_in'});
   casePage.runCaseAction({id: 1, status: 'for_payment'});
-  assert.equal(actions.length, actionCount + 2, 'Viewing existing cases does not require clinical or payment permission');
+  assert.equal(actions.length, actionCount, 'Clinic access alone cannot open the clinical workspace');
   const chargesModal = component('adminClinicModal');
   chargesModal.$nextTick = () => {};
   chargesModal.currentAppt = {id: 1, status: 'for_payment'};

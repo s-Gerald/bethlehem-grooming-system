@@ -203,6 +203,7 @@ class ClinicWalkinController extends Controller
         StoreClinicWalkinRequest $request,
         ClinicAppointmentSequence $clinicSequence,
     ) {
+        app(\App\Services\PreRegistrationExpiry::class)->expire();
         return app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($request, $clinicSequence) {
             app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
             $data = $request->validated();
@@ -226,15 +227,24 @@ class ClinicWalkinController extends Controller
 
             $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $data);
 
-            $sequence = $clinicSequence->reserve(now()->toDateString(), false);
+            $existing = ClinicAppointment::query()->where('pet_id', $pet->pet_id)->blocking()->lockForUpdate()->first();
+            if ($existing) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'success' => false,
+                    'code' => $existing->status === 'waiting_to_arrive' ? 'pre_registration_exists' : 'active_case_exists',
+                    'message' => "{$pet->pet_name} already has an ongoing clinic visit. Check the current case before registering another visit.",
+                ], 409));
+            }
+
+            $sequence = $clinicSequence->reserve(now()->toDateString(), true);
             $reference = $sequence['appointment_reference'];
 
             $appointment = ClinicAppointment::create([
                 'appointment_reference' => $reference,
                 'appointment_type' => 'walk_in',
                 'case_type' => 'consultation',
-                'status' => 'in_consultation',
-                'queue_number' => null,
+                'status' => 'checked_in',
+                'queue_number' => $sequence['queue_number'],
                 'appointment_date' => now()->toDateString(),
                 'user_id' => $user?->user_id,
                 'walkin_id' => $walkin->id,
@@ -244,7 +254,7 @@ class ClinicWalkinController extends Controller
                 'total_amount' => 0,
                 'paid' => false,
                 'checked_in_at' => now(),
-                'consultation_started_at' => now(),
+                'consultation_started_at' => null,
             ]);
 
             $ownerName = trim("{$walkin->fname} {$walkin->lname}");
@@ -257,10 +267,11 @@ class ClinicWalkinController extends Controller
             return response()->json([
                 'success' => true,
                 'appointment_reference' => $reference,
-                'queue_number' => null,
+                'queue_number' => $appointment->queue_number,
                 'appointment_id' => $appointment->id,
                 'appointment_date' => $appointment->appointment_date->toDateString(),
                 'status' => $appointment->status,
+                'checked_in_at' => $appointment->checked_in_at->toIso8601String(),
                 'owner' => [
                     'name' => trim("{$walkin->fname} {$walkin->lname}"),
                     'email' => $walkin->email,

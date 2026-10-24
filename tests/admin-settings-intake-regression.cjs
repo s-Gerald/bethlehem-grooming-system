@@ -138,7 +138,7 @@ async function sidebarRefreshNeverReadsIntake() {
       e.c.setInterval = fn => { timers.push(fn); return timers.length; };
       e.c.clearInterval = () => {};
       e.respond(endpoint => endpoint === '/me' ? { sidebar_revision: '1', user: {
-        user_id: 1, role, staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {},
+        user_id: 1, role, staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {}, staff_permissions: {grooming: true},
       } } : { success: true, activeTodayCount: 1 });
       vm.runInContext(fs.readFileSync('scripts/components/admin-sidebar.js', 'utf8'), e.c);
       const sidebar = e.c.adminSidebar(); sidebar.$nextTick = fn => fn();

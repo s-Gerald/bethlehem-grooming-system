@@ -7,15 +7,17 @@ function adminGroomingServices() {
       {kind: 'ala_carte', label: 'Ala carte', action: 'Add Ala carte Service'}],
     form: null, editingId: null, saving: false, formError: '', fieldErrors: {},
     init() {},
+    get canManageServices() { return this.$store.clinicAccess.user?.role === 'admin'; },
+    get catalogueEndpoint() { return this.canManageServices ? '/admin/grooming/services' : '/admin/grooming/services/catalogue'; },
     async activate() {
-      if (this.loaded && (!API.readAdminCache || API.readAdminCache('/admin/grooming/services')?.fresh)) return;
+      if (this.loaded && (!API.readAdminCache || API.readAdminCache(this.catalogueEndpoint)?.fresh)) return;
       if (!this.loading) await this.load();
     },
     async load() {
       this.loading = true;
       this.error = '';
       try {
-        await API.loadAdminData('/admin/grooming/services', () => API.adminRequest('GET', '/admin/grooming/services'), response => {
+        await API.loadAdminData(this.catalogueEndpoint, () => API.adminRequest('GET', this.catalogueEndpoint), response => {
           this.rows = response.data;
           this.priceLimits = response.priceLimits;
           this.loaded = true;
@@ -31,6 +33,7 @@ function adminGroomingServices() {
         : option.pricingType === 'range' ? `–${money(option.maxAmount)}` : '');
     },
     openEditor(kind, service = null) {
+      if (!this.canManageServices) return;
       this.editingId = service?.serviceId ?? null;
       this.fieldErrors = {};
       this.formError = '';
@@ -114,6 +117,7 @@ function adminGroomingServices() {
       return !this.fieldErrors[key];
     },
     async save() {
+      if (!this.canManageServices) return;
       if (this.saving || !this.$refs.form.reportValidity()) return;
       if (!this.validatePricing()) { this.$nextTick(() => this.$refs.form.querySelector?.('[aria-invalid="true"]')?.focus()); return; }
       const f = this.form;
@@ -140,6 +144,7 @@ function adminGroomingServices() {
       } finally { this.saving = false; }
     },
     async changeStatus(service) {
+      if (!this.canManageServices) return;
       if (this.busyId !== null) return;
       this.busyId = service.serviceId;
       try {

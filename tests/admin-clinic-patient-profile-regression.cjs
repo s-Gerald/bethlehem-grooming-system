@@ -281,7 +281,7 @@ function setup() {
   assert.equal(denied.state.profileActionLabel, '');
   denied.state.profileVisit = {id: 1, pet: {id: 7}, status: 'checked_in'};
   denied.state.$store.clinicAccess.permissions.clinical = false;
-  assert.equal(denied.state.profileActionLabel, 'Open Case', 'Read access is preserved for non-clinical staff');
+  assert.equal(denied.state.profileActionLabel, '', 'Reception uses Patient Records for read-only history');
   denied.state.$store.clinicAccess.permissions.access = false;
   await denied.state.runProfileAction();
   denied.state.openProfileCase();
@@ -324,7 +324,7 @@ function setup() {
   assert.equal(gummy.state.profileActionLabel, 'Open Case', 'Gummy resumes the October 16 consultation on October 17');
   await gummy.state.loadActiveCases();
   assert.equal(gummy.state.activeCount, 1);
-  assert.equal(gummy.state.caseStartedLabel(current), 'Started Oct 16');
+  assert.equal(gummy.state.caseStartedLabel(current), 'Checked in Oct 16');
   assert.equal(gummy.state.caseActionLabel(current), 'Open Case');
   gummy.state.closeProfile();
   gummy.state.activeCases = [];
@@ -392,9 +392,9 @@ function setup() {
   await rollover.state.loadActiveCases();
   assert.equal(rollover.state.activeCount, 2);
   assert.equal(rollover.state.forPaymentCount, 1);
-  assert.equal(rollover.state.caseStartedLabel(carried[1]), 'Started Oct 16');
+  assert.equal(rollover.state.caseStartedLabel(carried[1]), 'Checked in Oct 16');
   assert.equal(rollover.state.caseStartedLabel(carried[2]), '');
-  assert.equal(rollover.state.caseStartedLabel({...carried[0], started_on: '2025-12-31'}), 'Started Dec 31, 2025');
+  assert.equal(rollover.state.caseStartedLabel({...carried[0], started_on: '2025-12-31'}), 'Checked in Dec 31, 2025');
 
   console.log('Patient Profile browsing, authoritative ongoing cases, carry-over dates, confinement, double check-in, counters and rollover regressions passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

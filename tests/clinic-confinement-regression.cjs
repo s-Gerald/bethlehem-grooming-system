@@ -163,7 +163,7 @@ function component(permission = true, id = 1) {
   assert.equal(modal.canFinish, false, 'Ordinary completion is hidden during active confinement');
   modal.currentAppt.confinement.discharged_at = '2026-10-14T10:01:00Z'; assert.equal(modal.canFinish, true);
   sandbox.API.getClinicConfinedCases = async () => ({data: [{id: 1, status: 'in_consultation', confinement: episode}], total: 23, current_page: 2, last_page: 2});
-  const pageState = sandbox.adminClinicPage(); pageState.$store = {clinicAccess: {permissions: {access: true}}};
+  const pageState = sandbox.adminClinicPage(); pageState.$store = {clinicAccess: {permissions: {access: true, clinical: true}}};
   await pageState.loadConfinedCases(2); assert.equal(pageState.confinedCount, 23); assert.equal(pageState.confinedPage, 2);
   assert.equal(pageState.confinedCases.length, 1, 'Count comes from the server, not loaded page length');
   pageState.openCase(pageState.confinedCases[0], 'confinement');

@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -213,8 +213,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&dashboard-refresh=20261021&session-presentation=walk-in-20261021&payments=cash-only-20261023&staff-access=20261024"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
@@ -365,6 +365,7 @@
 
                   <button
                     type="button"
+                    x-cloak x-show="canAccessGrooming"
                     @click="handleWalkInBooking()"
                     class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#284a67]"
                   >
@@ -384,7 +385,7 @@
           <div x-cloak x-show="summaryLoaded" :aria-busy="summaryLoading">
           <!-- Summary cards -->
           <section class="mt-6">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" :class="canViewRevenue ? 'xl:grid-cols-4' : 'xl:grid-cols-3'">
               <article data-session-surface class="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                 <div class="flex items-start justify-between gap-4">
                   <div class="min-w-0">
@@ -440,7 +441,7 @@
                 </div>
               </article>
 
-              <article data-session-surface class="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <template x-if="canViewRevenue"><article data-session-surface class="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                 <div class="flex items-start justify-between gap-4">
                   <div class="min-w-0">
                     <p class="flex items-center gap-1 text-sm font-medium text-[#355674]">
@@ -457,7 +458,7 @@
                     </p>
                   </div>
                 </div>
-              </article>
+              </article></template>
             </div>
           </section>
 
@@ -560,6 +561,6 @@
     <!-- Shared dashboard content scripts -->
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?v=grooming-workload-20261009&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=cash-only-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&dashboard-refresh=20261021"></script>
+    <script src="../../scripts/components/admin-dashboard.js?v=grooming-workload-20261009&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=cash-only-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&dashboard-refresh=20261021&staff-access=20261024"></script>
   </body>
 </html>

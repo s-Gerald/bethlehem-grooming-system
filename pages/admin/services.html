@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div x-data="adminSidebar()" class="min-h-screen flex bg-[#f5f8fb]" data-admin-shell>
@@ -102,8 +102,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024"></script>
 
       <main class="services-page min-w-0 flex-1 px-4 pb-6 lg:ml-[280px] lg:px-6" x-data="adminServices()" data-money-input-root>
         <header class="sticky top-0 z-30 -mx-4 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 lg:hidden" data-session-surface>
@@ -116,7 +116,7 @@
           </div>
         </header>
         <div x-ref="tabs" class="services-tabs mt-5 flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="Service type" @keydown="tabKeydown($event)">
-          <button id="grooming-tab" type="button" role="tab" x-show="isAdmin" :aria-selected="activeTab === 'grooming'" :tabindex="activeTab === 'grooming' ? 0 : -1" aria-controls="grooming-panel" @click="selectTab('grooming')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="activeTab === 'grooming' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Grooming</button>
+          <button id="grooming-tab" type="button" role="tab" x-show="canViewGrooming" :aria-selected="activeTab === 'grooming'" :tabindex="activeTab === 'grooming' ? 0 : -1" aria-controls="grooming-panel" @click="selectTab('grooming')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="activeTab === 'grooming' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Grooming</button>
           <button id="clinic-tab" type="button" role="tab" x-show="canViewClinic" :aria-selected="activeTab === 'clinic'" :tabindex="activeTab === 'clinic' ? 0 : -1" aria-controls="clinic-panel" @click="selectTab('clinic')" class="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition" :class="activeTab === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-slate-600 hover:bg-white'">Clinic</button>
         </div>
         <admin-loader x-cloak page x-show="loading && !error"></admin-loader>
@@ -176,7 +176,7 @@
 
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
-    <script src="../../scripts/components/admin-services.js?v=services-20261017-followup&loading-ui=universal-20261018&icons=20261018&fetching=20261019"></script>
+    <script src="../../scripts/components/admin-services.js?v=services-20261017-followup&loading-ui=universal-20261018&icons=20261018&fetching=20261019&staff-access=20261024"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   </body>
 </html>

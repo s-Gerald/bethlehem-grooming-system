@@ -12,7 +12,8 @@ class Storage {
 const identity = (overrides = {}, revision = 'revision-1') => ({
   sidebar_revision: revision,
   user: { user_id: 7, role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian',
-    first_name: 'Test', last_name: 'Staff', username: 'teststaff', clinic_permissions: { access: true, clinical: true, services_view: true }, ...overrides },
+    first_name: 'Test', last_name: 'Staff', username: 'teststaff', clinic_permissions: { access: true, clinical: true, services_view: true },
+    staff_permissions: {grooming: overrides.role === 'admin' || ['grooming_receptionist', 'clinic_receptionist'].includes(overrides.staff_subrole)}, ...overrides },
 });
 function environment() {
   const localStorage = new Storage(), sessionStorage = new Storage(), calls = [];
@@ -94,7 +95,8 @@ async function rolesAndInvalidCache() {
   const cases = [
     [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Staff'],
     [{ staff_type: 'clinic', staff_subrole: 'veterinarian' }, false, false, 'Veterinarian'],
-    [{ staff_type: 'clinic', staff_subrole: 'clinic_receptionist' }, false, false, 'Clinic Receptionist'],
+    [{ staff_type: 'clinic', staff_subrole: 'clinic_receptionist' }, false, true, 'Clinic Receptionist'],
+    [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist', staff_permissions: {grooming: false} }, false, false, 'Grooming Receptionist'],
     [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist', clinic_permissions: {} }, false, true, 'Grooming Receptionist'],
   ];
   for (const [user, admin, grooming, label] of cases) {

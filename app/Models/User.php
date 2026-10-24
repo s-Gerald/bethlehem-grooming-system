@@ -133,8 +133,23 @@ class User extends Authenticatable
         // Uses already-loaded attributes; no queries or token secrets.
         return hash('sha256', json_encode([
             $this->user_id, $this->role, $this->staff_type, $this->staff_subrole,
-            $this->first_name, $this->last_name, $this->clinicPermissions(),
+            $this->first_name, $this->last_name, $this->clinicPermissions(), $this->staffPermissions(),
         ], JSON_THROW_ON_ERROR));
+    }
+
+    public function paymentAttribution(): ?string
+    {
+        $name = trim((string) $this->first_name);
+        if ($name === '') return null;
+
+        $role = $this->role === 'admin' ? 'Admin' : ($this->role === 'staff' ? match ($this->staff_subrole) {
+            'clinic_receptionist' => 'Clinic Receptionist',
+            'veterinarian' => 'Veterinarian',
+            'grooming_receptionist' => 'Grooming Receptionist',
+            default => 'Staff',
+        } : null);
+
+        return $role ? $name.' · '.$role : $name;
     }
 
     public function isVeterinarian(): bool
@@ -150,8 +165,22 @@ class User extends Authenticatable
     public function canAccessGrooming(): bool
     {
         return $this->role === 'admin'
-            || ($this->role === 'staff' && $this->staff_type === 'grooming'
-                && $this->staff_subrole === 'grooming_receptionist');
+            || ($this->role === 'staff' && (
+                ($this->staff_type === 'grooming' && $this->staff_subrole === 'grooming_receptionist')
+                || ($this->staff_type === 'clinic' && $this->staff_subrole === 'clinic_receptionist')
+            ));
+    }
+
+    public function staffPermissions(): array
+    {
+        $admin = $this->role === 'admin';
+        $clinicReceptionist = $this->role === 'staff' && $this->staff_type === 'clinic' && $this->staff_subrole === 'clinic_receptionist';
+        return [
+            'dashboard' => $this->canAccessGrooming() || $this->isVeterinarian(),
+            'grooming' => $this->canAccessGrooming(),
+            'grooming_services_view' => $admin || $clinicReceptionist,
+            'services_manage' => $admin,
+        ];
     }
 
     public function passwordResetRequest()

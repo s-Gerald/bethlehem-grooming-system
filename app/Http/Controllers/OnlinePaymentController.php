@@ -166,7 +166,6 @@ class OnlinePaymentController extends Controller
             $response['appointment'] = [
                 ...app(AdminClinicController::class)->formatAppointment($case),
                 'is_test' => ! $attempt->livemode, 'charges' => in_array($attempt->status, ['pending', 'paid'], true) ? $attempt->snapshot['charges'] : $case->charges->toArray(), 'payment_method_label' => $attempt->methodLabel(),
-                'processed_by' => ['name' => trim(($case->paidBy?->first_name ?? '').' '.($case->paidBy?->last_name ?? ''))],
             ];
         }
         return $response;

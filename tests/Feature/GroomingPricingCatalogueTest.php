@@ -57,6 +57,28 @@ class GroomingPricingCatalogueTest extends TestCase
         return $this->patchJson("/api/admin/grooming/services/$id/pricing", $payload);
     }
 
+    public function test_clinic_receptionist_reads_both_active_and_inactive_grooming_services_without_management_access(): void
+    {
+        Service::where('slug', 'facial_trimming')->update(['is_active' => false]);
+        Sanctum::actingAs(new User(['role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'clinic_receptionist']));
+        $data = $this->getJson('/api/admin/grooming/services/catalogue')->assertOk()->json('data');
+        $this->assertContains(false, array_column($data, 'isActive'));
+        $this->assertContains(true, array_column($data, 'isActive'));
+        $this->getJson('/api/admin/grooming/services')->assertForbidden();
+        $id = Service::where('slug', 'facial_trimming')->value('service_id');
+        $this->postJson('/api/admin/grooming/services', [])->assertForbidden();
+        $this->putJson("/api/admin/grooming/services/{$id}", [])->assertForbidden();
+        $this->patchJson("/api/admin/grooming/services/{$id}/status", ['isActive' => true])->assertForbidden();
+        $this->updatePrice('facial_trimming', ['pricing_type' => 'fixed', 'amount' => '999'])->assertForbidden();
+        $this->assertDatabaseHas('services', ['service_id' => $id, 'is_active' => false, 'base_price' => 150]);
+        foreach (['veterinarian', 'grooming_receptionist'] as $subrole) {
+            Sanctum::actingAs(new User(['role' => 'staff', 'staff_type' => $subrole === 'veterinarian' ? 'clinic' : 'grooming', 'staff_subrole' => $subrole]));
+            $this->getJson('/api/admin/grooming/services/catalogue')->assertForbidden();
+        }
+        $this->asRole('admin');
+        $this->getJson('/api/admin/grooming/services/catalogue')->assertOk();
+    }
+
     public function test_staff_and_customer_cannot_update_prices(): void
     {
         foreach (['staff', 'customer'] as $role) {

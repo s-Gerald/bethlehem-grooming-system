@@ -542,6 +542,8 @@ class GroomingPaymentPriceSafetyTest extends TestCase
         }
         $actor->forceFill(['role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'clinic_receptionist']);
         \Laravel\Sanctum\Sanctum::actingAs($actor);
+        $this->get('/api/admin/qr-payments/'.$qr->id.'/proof')->assertOk();
+        $actor->staff_subrole = 'veterinarian';
         $this->get('/api/admin/qr-payments/'.$qr->id.'/proof')->assertForbidden();
         $this->assertCount(1, \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-proofs'));
     }

@@ -120,7 +120,9 @@ class AdminSecurityController extends Controller
             'success' => true,
             'message' => 'Profile updated successfully.',
             'account' => $this->accountPayload($staff),
-            'user' => array_merge($this->accountPayload($staff), ['clinic_permissions' => $staff->clinicPermissions()]),
+            'user' => array_merge($this->accountPayload($staff), [
+                'clinic_permissions' => $staff->clinicPermissions(), 'staff_permissions' => $staff->staffPermissions(),
+            ]),
             'sidebar_revision' => $staff->sidebarRevision(),
         ]);
     }

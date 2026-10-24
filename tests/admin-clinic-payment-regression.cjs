@@ -8,7 +8,7 @@ const recorded = {
   id: 4, status: 'completed', paid: true, appointment_reference: 'CL-20261015-004',
   ownerName: 'Recorded Owner', pet: {name: 'Recorded Patient', species: 'Dog', breed: 'Mixed'},
   total_amount: '350.50', payment_method: 'cash', cash_received: '500.00', change: 149.50,
-  paid_at: '2026-10-15T03:00:00+00:00', processed_by: {name: 'Recorded Staff'},
+  paid_at: '2026-10-15T03:00:00+00:00', processed_by: {name: 'Grace · Clinic Receptionist'},
   charges: [{id: 1, description: 'Clinic consultation', quantity: 1, unit_price: '350.50', amount: '350.50'}],
 };
 let fail = false, complete;
@@ -63,7 +63,7 @@ function page() {
   assert.equal(state.payment.recorded, true);
   assert.equal(state.forPaymentCount, 0);
   assert.equal(state.receiptModal.ownerName, 'Recorded Owner');
-  assert.equal(state.receiptModal.processedBy, 'Recorded Staff');
+  assert.equal(state.receiptModal.processedBy, 'Grace · Clinic Receptionist');
   assert.equal(state.receiptModal.charges[0].description, 'Clinic consultation');
   state.payment.amountPaid = '999';
   assert.equal(state.receiptModal.amountPaid, '500.00', 'Receipt is independent of the form');

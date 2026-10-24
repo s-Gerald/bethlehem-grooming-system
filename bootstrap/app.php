@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => EnsureUserHasRole::class,
             'clinic' => EnsureClinicPermission::class,
             'grooming' => EnsureGroomingPermission::class,
+            'staff' => \App\Http\Middleware\EnsureStaffPermission::class,
         ]);
 
         $middleware->api(prepend: [

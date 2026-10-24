@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const { environment, deferred } = require('./admin-data-cache-regression.cjs');
 const source = fs.readFileSync('scripts/components/admin-dashboard.js', 'utf8');
 const summary = { summary: { today: 7, revenueToday: 1200, revenuePaymentCount: 2, waitingNow: 3 },
-  capacity: { current: 6, max: 20 }, queuePreview: [{ id: 1 }], activeTodayCount: 4 };
+  canViewRevenue: true, capacity: { current: 6, max: 20 }, queuePreview: [{ id: 1 }], activeTodayCount: 4 };
 const failure = status => ({ ok: false, status, json: async () => ({message: 'Unavailable'}), headers: {get: () => null} });
 const settle = () => new Promise(setImmediate);
 function component(e, page = e) {
@@ -126,11 +126,32 @@ async function invalidationDoesNotOverlapSummaryRequests() {
   e.respond(() => summary); await e.API.getAdminDashboardSummary();
   assert.equal(e.calls.filter(c => c.endpoint.endsWith('/summary')).length, 2);
 }
+async function revenueRequiresServerAuthorizationAndClearsOnRoleChange() {
+  const e = environment(), ui = component(e), timer = polling(e);
+  e.API.setUserRole('admin');
+  e.respond(() => ({...summary, canViewRevenue: false}));
+  await ui.loadDashboardSummary();
+  assert.equal(ui.canViewRevenue, false, 'A locally editable admin role cannot reveal revenue');
+  assert.equal(ui.revenueToday, 0);
+  e.respond(() => summary); await ui.loadDashboardSummary({force: true});
+  assert.equal(ui.canViewRevenue, true);
+  assert.equal(ui.revenueToday, 1200);
+  ui.startContentPolling();
+  const held = deferred(); e.respond(() => held.promise);
+  const pending = ui.loadDashboardSummary({force: true});
+  for (const fn of timer.windowListeners.get('admin-navigation:invalidated') || []) fn({detail: {reload: true}});
+  assert.equal(ui.canViewRevenue, false);
+  assert.equal(ui.revenueToday, 0);
+  held.resolve(summary); await pending;
+  assert.equal(ui.canViewRevenue, false, 'A stale admin response cannot re-enable revenue');
+  assert.equal(ui.revenuePaymentCount, 0);
+  ui.destroy();
+}
 (async () => {
   let failed = 0;
   for (const test of [retainedFailureIsVisibleAndRetryRecovers, boundedFailuresAndManualRetryShareOneRequest,
     singlePollAndVisibilityLifecycle, navigationRefreshAndSessionOwnership, activityFailuresAlsoRetainAndRecover,
-    invalidationDoesNotOverlapSummaryRequests]) {
+    invalidationDoesNotOverlapSummaryRequests, revenueRequiresServerAuthorizationAndClearsOnRoleChange]) {
     try { await test(); console.log(test.name+' passed'); }
     catch (error) { failed++; console.error(test.name, error); }
   }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js";
-import { clinicReasonConfirmation } from "../scripts/components/clinic-visit-confirmed.js";
+import { clinicReasonConfirmation, initClinicVisitConfirmation } from "../scripts/components/clinic-visit-confirmed.js";
 import {
   confirmationFields, ownerConfirmationFields, formatConfirmationTimestamp,
   renderConfirmation,
@@ -51,8 +51,17 @@ globalThis.window = {
 const root = { innerHTML: "", querySelector(selector) {
   return selector === "#confirmationHeading" ? { focus() { focused = true; } } : { addEventListener(name, callback) { printCallback = callback; } };
 } };
-renderConfirmation(root, { title: "Clinic Walk-in Checked In", printTitle: "CLINIC WALK-IN CHECK-IN CONFIRMATION", message: "Checked in", reference: "CV-1", status: "Checked In", walkIn: true, queueNumber: null, sections: reason, primaryHref: "./clinic.html?tab=active-cases", primaryLabel: "Go to Active Cases" });
-assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
+document.body.dataset = {confirmationContext: 'walk-in'};
+document.getElementById = () => root;
+globalThis.API = {waitForSessionVerification: async () => true};
+globalThis.sessionStorage = {getItem: () => JSON.stringify({appointment_reference: 'CL-20261024-004',
+  status: 'checked_in', queue_number: 4, checked_in_at: '2026-10-24T02:30:00Z',
+  owner: {name: 'Ana Santos'}, pet: {name: 'Mochi', species: 'cat'}})};
+await initClinicVisitConfirmation();
+assert.match(root.innerHTML, /Queue number<\/dt><dd>4/);
+assert.match(root.innerHTML, /Patient name<\/dt><dd>Mochi/);
+assert.match(root.innerHTML, /Current status<\/dt><dd>Checked In/);
+assert.match(root.innerHTML, /Checked in at<\/dt><dd>October 24, 2026 at 10:30 AM/);
 assert.doesNotMatch(root.innerHTML, /<dd>Active/);
 assert.match(root.innerHTML, /Print Confirmation/);
 assert.match(root.innerHTML, /href="\.\/clinic\.html\?tab=active-cases">Go to Active Cases<\/a>/);

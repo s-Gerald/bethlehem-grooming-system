@@ -1709,8 +1709,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     #[DataProvider('authorizedGroomingRoles')]
     public function test_staff_and_admin_can_complete_the_existing_core_grooming_workflow(
         string $role,
+        string $subrole = 'grooming_receptionist',
     ): void {
-        $this->authenticateAs($role);
+        $this->authenticateAs($role, $subrole);
         $this->seedMultiPetBooking();
 
         $this->getJson('/api/admin/bookings')
@@ -2436,15 +2437,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->patchJson('/api/admin/clinic/settings/groomers-on-duty', ['groomers_on_duty' => 5])->assertUnprocessable();
     }
 
-    public function test_clinic_staff_cannot_access_grooming_operations_and_shared_routes_stay_available(): void
+    public function test_veterinarians_have_dashboard_read_access_without_grooming_operations(): void
     {
-        foreach (['veterinarian', 'clinic_receptionist'] as $subrole) {
+        foreach (['veterinarian'] as $subrole) {
             $this->authenticateAs('staff');
             $user = auth()->user();
             $user->forceFill(['staff_type' => 'clinic', 'staff_subrole' => $subrole]);
             Sanctum::actingAs($user, ['*']);
             foreach (self::GROOMING_ADMIN_ROUTES as [$method, $uri]) {
-                if (str_starts_with($uri, 'api/admin/notifications') || $uri === 'api/admin/transactions') continue;
+                if (str_starts_with($uri, 'api/admin/notifications') || str_starts_with($uri, 'api/admin/dashboard/') || $uri === 'api/admin/transactions') continue;
                 $this->json($method, '/'.preg_replace('/\{[^}]+\}/', '1', $uri))
                     ->assertForbidden()->assertExactJson(self::FORBIDDEN_RESPONSE);
             }
@@ -2462,6 +2463,11 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         }
     }
 
+    public function test_clinic_receptionist_uses_the_existing_core_grooming_workflow(): void
+    {
+        $this->test_staff_and_admin_can_complete_the_existing_core_grooming_workflow('staff', 'clinic_receptionist');
+    }
+
     public function test_every_grooming_administration_route_has_authentication_and_role_middleware(): void
     {
         $routes = collect(Route::getRoutes()->getRoutes());
@@ -2475,7 +2481,10 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->assertNotNull($route, "Expected grooming route [{$method} {$uri}] is not registered.");
             $this->assertContains('auth:sanctum', $route->gatherMiddleware());
             $this->assertContains('role:admin,staff', $route->gatherMiddleware());
-            if (! str_starts_with($uri, 'api/admin/notifications') && $uri !== 'api/admin/transactions') {
+            if (str_starts_with($uri, 'api/admin/dashboard/')) {
+                $this->assertContains('staff:dashboard', $route->gatherMiddleware());
+                $this->assertNotContains('grooming', $route->gatherMiddleware());
+            } elseif (! str_starts_with($uri, 'api/admin/notifications') && $uri !== 'api/admin/transactions') {
                 $this->assertContains('grooming', $route->gatherMiddleware());
             } else {
                 $this->assertNotContains('grooming', $route->gatherMiddleware());
@@ -3844,7 +3853,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('booking_services', ['booking_id' => $customer->json('booking.booking_id'), 'service_id' => $package['serviceId'], 'price_at_booking' => 600]);
     }
 
-    private function authenticateAs(string $role): void
+    private function authenticateAs(string $role, string $subrole = 'grooming_receptionist'): void
     {
         $user = new User;
         $user->forceFill([
@@ -3856,8 +3865,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'first_name' => ucfirst($role),
             'last_name' => 'User',
             'role' => $role,
-            'staff_type' => $role === 'staff' ? 'grooming' : null,
-            'staff_subrole' => $role === 'staff' ? 'grooming_receptionist' : null,
+            'staff_type' => $role === 'staff' ? ($subrole === 'clinic_receptionist' ? 'clinic' : 'grooming') : null,
+            'staff_subrole' => $role === 'staff' ? $subrole : null,
         ]);
         $user->exists = true;
 

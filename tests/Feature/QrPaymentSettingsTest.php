@@ -52,6 +52,10 @@ class QrPaymentSettingsTest extends TestCase
         $this->getJson('/api/admin/qr-payments/config')->assertForbidden();
         $this->getJson('/api/admin/qr-payments/image')->assertForbidden();
         $this->actor('staff', 'clinic');
+        $this->getJson('/api/admin/qr-payments/config')->assertOk();
+        $this->getJson('/api/admin/qr-payments/settings')->assertForbidden();
+        $this->postJson('/api/admin/qr-payments/settings', [])->assertForbidden();
+        auth()->user()->staff_subrole = 'veterinarian';
         $this->getJson('/api/admin/qr-payments/config')->assertForbidden();
     }
 

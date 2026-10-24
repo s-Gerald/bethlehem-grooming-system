@@ -112,7 +112,7 @@ var API = (() => {
     const cached = staffIdentity;
     if (cached?.version !== 1 || cached.owner !== owner || !Number.isFinite(cached.at)
       || Date.now() < cached.at || Date.now() - cached.at >= 12 * 60 * 60 * 1000
-      || !cached.data?.sidebar_revision || !cached.data?.user?.user_id
+      || !cached.data?.sidebar_revision || !cached.data?.user?.user_id || !cached.data.user.staff_permissions
       || cached.data.user.role !== getUserRole()
       || (verifiedSidebarRevision && cached.data.sidebar_revision !== verifiedSidebarRevision)) return null;
     return cached.data;
@@ -125,7 +125,7 @@ var API = (() => {
     // Navigation presentation only: no contact details, passwords or page data.
     const data = { sidebar_revision: response.sidebar_revision, user: {
       user_id: user.user_id, role: user.role, first_name: user.first_name, last_name: user.last_name, username: user.username,
-      staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {},
+      staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {}, staff_permissions: user.staff_permissions || {},
     } };
     staffIdentityToken = token;
     staffIdentity = { version: 1, owner, at: Date.now(), data };
@@ -142,7 +142,7 @@ var API = (() => {
         || (key === 'status' && value === 'active') || (key === 'view' && value === 'overview'));
       return { group, persist, fresh: persist ? fresh : Math.min(fresh, 5000), retain: persist ? retain : Math.min(retain, 15000) };
     };
-    if (path === '/admin/grooming/services') return { group: 'services-grooming', fresh: 60000, retain: 300000 };
+    if (path === '/admin/grooming/services' || path === '/admin/grooming/services/catalogue') return { group: 'services-grooming', fresh: 60000, retain: 300000 };
     if (/^\/admin\/clinic-services(?:\/options)?$/.test(path)) return presentation('services-clinic', 60000, 300000);
     if (/^\/inventory\/(items|summary|low-stock|alerts\/expiry|transactions)$/.test(path)) return presentation('inventory', 5000, 30000);
     // Legacy archive lists include payment/medical fields: reuse only in memory.

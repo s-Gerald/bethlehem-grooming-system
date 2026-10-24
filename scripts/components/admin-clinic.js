@@ -284,6 +284,7 @@ function adminClinicModal() {
     },
 
     async openModal({ appt, section = "medical" } = {}) {
+      if (!this.$store.clinicAccess.permissions.clinical) return;
       if (!appt) return;
       this.returnFocus = document.activeElement;
       this.weightTools = await loadClinicPetWeightTools();
@@ -593,10 +594,9 @@ function adminClinicPage() {
           return;
         }
       } catch (error) { this.accessError = error.message || "Could not verify Clinic access."; return; }
-      if (new URLSearchParams(window.location.search).get("tab") === "active-cases") this.tab = "active-cases";
-      if (new URLSearchParams(window.location.search).get("tab") === "expected") this.tab = "expected";
-      if (new URLSearchParams(window.location.search).get("tab") === "for-payment") this.tab = "for-payment";
-      if (new URLSearchParams(window.location.search).get("tab") === "confined") { this.tab = "confined"; this.loadConfinedCases(); }
+      const requestedTab = new URLSearchParams(window.location.search).get("tab");
+      this.tab = this.allowedTabs.includes(requestedTab) ? requestedTab : this.defaultTab;
+      if (this.tab === 'confined') this.loadConfinedCases();
       await this.loadActiveCases();
       this.deferPatientRecords();
       await this.restoreOnlinePayment();
@@ -676,7 +676,10 @@ function adminClinicPage() {
     get expectedCount() { return this.waitingCases.length; },
     get caseRows() { return this.tab === 'expected' ? this.waitingCases : this.visibleActiveCases; },
     get forPaymentCount() { return this.activeCases.filter(item => item.status === 'for_payment').length; },
+    get defaultTab() { return this.permissions.clinical ? 'active-cases' : 'expected'; },
+    get allowedTabs() { return ['expected', 'active-cases', ...(this.permissions.clinical ? ['confined'] : []), 'for-payment']; },
     async loadConfinedCases(page = 1) {
+      if (!this.permissions.clinical) return;
       const request = ++this._confinedRequest;
       this.confinedLoading = true; this.confinedError = '';
       try {
@@ -693,6 +696,7 @@ function adminClinicPage() {
       return clinicConfinementDuration(episode?.admitted_at, episode?.discharged_at || this.$store.clinicConfinementClock?.now || Date.now());
     },
     setTab(tab) {
+      if (!this.allowedTabs.includes(tab)) return;
       this.tab = tab;
       const url = new URL(window.location.href);
       if (tab === "active-cases") url.searchParams.set("tab", "active-cases");
@@ -712,28 +716,33 @@ function adminClinicPage() {
     caseStartedLabel(item) {
       const date = item.started_on || item.appointment_date;
       if (!['checked_in', 'in_consultation'].includes(item.status) || !date || !this.clinicToday || date >= this.clinicToday) return '';
-      return 'Started ' + new Date(date + 'T00:00:00').toLocaleDateString('en-PH', {
+      return 'Checked in ' + new Date(date + 'T00:00:00').toLocaleDateString('en-PH', {
         month: 'short', day: 'numeric', ...(date.slice(0, 4) !== this.clinicToday.slice(0, 4) ? {year: 'numeric'} : {}),
       });
     },
     caseActionLabel(item) {
-      if (item.status === 'waiting_to_arrive' && this.permissions.intake) return 'Check In';
+      if (this.canCheckInArrival(item)) return 'Check In';
       if (item.status === 'checked_in' && this.permissions.clinical) return 'Start Consultation';
       if (item.status === 'for_payment' && this.permissions.payment) return 'Review & Collect Payment';
-      if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.access) return 'Open Case';
+      if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.clinical) return 'Open Case';
       return '';
     },
     runCaseAction(item) {
       if (this.caseBusyId !== null) return;
-      if (item.status === 'waiting_to_arrive' && this.permissions.intake) return this.checkInCase(item);
+      if (this.canCheckInArrival(item)) return this.checkInCase(item);
       if (item.status === 'checked_in' && this.permissions.clinical) return this.startCase(item);
       if (item.status === 'for_payment' && this.permissions.payment) return this.reviewPayment(item);
-      if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.access) this.openCase(item);
+      if (['checked_in', 'in_consultation', 'for_payment'].includes(item.status) && this.permissions.clinical) this.openCase(item);
     },
     get permissions() { return this.$store.clinicAccess.permissions; },
+    get canEditPatient() { return !!this.permissions.clinical; },
+    canCheckInArrival(item) {
+      return this.permissions.intake && item?.status === 'waiting_to_arrive'
+        && (!item.appointment_date || !this.clinicToday || item.appointment_date === this.clinicToday);
+    },
     money(value) { return Number(value || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" }); },
     async checkInCase(item) {
-      if (!this.permissions.intake || this.caseBusyId || item.status !== 'waiting_to_arrive') return;
+      if (!this.canCheckInArrival(item) || this.caseBusyId) return;
       this.caseBusyId = item.id;
       try {
         const response = await API.clinicCheckIn(item.id);
@@ -934,9 +943,13 @@ function adminClinicPage() {
         if (this.payment.open && this.payment.online?.status === 'pending') await this.applyClinicOnlineStatus({online_payment: this.payment.online});
       }
     },
+    canCancelCase(item) {
+      return !!this.permissions.queue && !['completed', 'cancelled'].includes(item.status)
+        && (this.permissions.clinical || item.status === 'checked_in')
+        && !(item.confinement && !item.confinement.discharged_at);
+    },
     async cancelCase(item) {
-      if (!this.permissions.queue) return;
-      if (item.confinement && !item.confinement.discharged_at) return;
+      if (!this.canCancelCase(item) || this.caseBusyId !== null) return;
       const confirmed = await this.$store.clinicFeedback.confirm({
         title: "Cancel this case?",
         message: `The case for ${item.pet?.name || "this patient"} will be cancelled.`,
@@ -945,15 +958,19 @@ function adminClinicPage() {
         danger: true,
       });
       if (!confirmed) return;
+      this.caseBusyId = item.id;
       try {
         await API.clinicCancel(item.id);
-        if (this.profileVisit?.id === item.id) await this.loadProfileVisit();
-        await this.loadActiveCases();
       }
       catch (error) { this.$store.clinicFeedback.notify(error.message || "Could not cancel this case.", "error"); }
+      finally {
+        await this.loadActiveCases({force: true});
+        if (this.profileVisit?.id === item.id) await this.loadProfileVisit();
+        this.caseBusyId = null;
+      }
     },
     async openCase(item, section) {
-      if (!this.permissions.access || !['checked_in', 'in_consultation', 'for_payment'].includes(item.status)) return;
+      if (!this.permissions.clinical || !['checked_in', 'in_consultation', 'for_payment'].includes(item.status)) return;
       if (this.caseBusyId !== null) return;
       this.caseBusyId = item.id;
       try {
@@ -1240,9 +1257,12 @@ function adminClinicPage() {
     get profileActionLabel() {
       if (!this.profileVisitLoaded || this.profile.loading || this.profile.error) return '';
       const visit = this.currentClinicVisit;
-      if (!visit || visit.status === 'waiting_to_arrive') return this.permissions.intake ? 'Check In Patient' : '';
-      if (visit.status === 'for_payment') return this.permissions.access ? 'Open Case' : '';
+      if (!visit || visit.status === 'waiting_to_arrive') return this.permissions.intake && (!visit || this.canCheckInArrival(visit)) ? 'Check In Patient' : '';
+      if (visit.status === 'for_payment') return this.permissions.clinical ? 'Open Case' : '';
       return this.caseActionLabel(visit);
+    },
+    get profileStatusLabel() {
+      return !this.profileActionLabel && this.profileVisitLoaded && this.currentClinicVisit ? this.caseStatus(this.currentClinicVisit) : '';
     },
     runProfileAction() {
       if (!this.profileActionLabel || this.profileBusy || this.caseBusyId !== null || this.profileEditorSaving || this.profileEditorLoading) return;
@@ -1252,7 +1272,7 @@ function adminClinicPage() {
       return this.openProfileCase();
     },
     openProfileCase(visit = this.currentClinicVisit) {
-      if (!visit || !['checked_in', 'in_consultation', 'for_payment'].includes(visit.status) || !this.permissions.access
+      if (!visit || !['checked_in', 'in_consultation', 'for_payment'].includes(visit.status) || !this.permissions.clinical
         || this.profileBusy || this.profileEditorSaving || this.profileEditorLoading) return;
       const trigger = this.petPicker.open ? this.petPickerReturnFocus : this.profileReturnFocus;
       this.closeProfile(false);
@@ -1262,6 +1282,7 @@ function adminClinicPage() {
     async checkInPatient() {
       if (!this.permissions.intake || !this.profile.pet?.id || this.profileBusy || !this.profileVisitLoaded || this.profile.loading || this.profile.error) return;
       if (this.currentClinicVisit?.status !== 'waiting_to_arrive' && this.currentClinicVisit) return;
+      if (this.currentClinicVisit && !this.canCheckInArrival(this.currentClinicVisit)) return;
       this.profileBusy = true;
       this.profileActionError = '';
       try {
@@ -1290,7 +1311,7 @@ function adminClinicPage() {
       } finally { this.profileBusy = false; }
     },
     async editPatient() {
-      if (!this.permissions.access || this.profileEditorLoading || this.profileBusy) return;
+      if (!this.canEditPatient || this.profileEditorLoading || this.profileBusy) return;
       this.profileEditing = true;
       this.profileEditorLoading = true;
       this.profileActionError = '';
@@ -1546,7 +1567,7 @@ function adminClinicPatientEditor() {
   return Object.assign(editor, {
     init() {},
     async saveEditPet() {
-      if (!this.$store.clinicAccess.permissions.access) return;
+      if (!this.$store.clinicAccess.permissions.clinical) return;
       this.$dispatch('clinic-patient-edit-saving', true);
       try {
         await save.call(this);

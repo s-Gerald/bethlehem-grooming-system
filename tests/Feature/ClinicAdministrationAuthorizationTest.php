@@ -614,7 +614,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('appointment.paid', true)
             ->assertJsonPath('appointment.cash_received', '500.00')
             ->assertJsonPath('appointment.change', 149.5)
-            ->assertJsonPath('appointment.processed_by.name', 'Staff User')
+            ->assertJsonPath('appointment.processed_by.name', 'Staff · Clinic Receptionist')
             ->assertJsonPath('appointment.charges.0.description', 'Clinic consultation');
         $this->assertNotEmpty($receipt->json('appointment.paid_at'));
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid_by_user_id' => 1, 'cash_received' => 500]);
@@ -1018,8 +1018,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'terms_agreed' => true,
         ])
             ->assertCreated()
-            ->assertJsonPath('status', 'in_consultation')
-            ->assertJsonPath('queue_number', null)
+            ->assertJsonPath('status', 'checked_in')
+            ->assertJsonPath('queue_number', 1)
             ->assertJsonPath('pet.name', 'Bantay')
             ->assertJsonPath('common_concerns', ['Routine check-up', 'Vaccination'])
             ->assertJsonPath('chief_complaint', "Routine check-up, Vaccination\nRoutine consultation");
@@ -1030,6 +1030,88 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         );
         $this->assertDatabaseHas('pets', ['pet_name' => 'Bantay', 'size' => 'medium', 'weight' => 12]);
         $this->assertSame(['size'], json_decode(DB::table('pets')->value('clinic_verified_fields'), true));
+    }
+
+    public function test_receptionist_cancellation_rechecks_current_status_and_preserves_other_roles(): void
+    {
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'waiting_to_arrive', 'cancelled', 'expired'] as $index => $status) {
+            $id = $index + 1;
+            $this->insertClinicAppointment($status, $id);
+            $response = $this->postJson("/api/admin/clinic-appointments/{$id}/cancel");
+            if ($status === 'checked_in') {
+                $response->assertOk();
+                $this->assertDatabaseHas('clinic_appointments', ['id' => $id, 'status' => 'cancelled']);
+            } else {
+                $response->assertConflict();
+                $this->assertDatabaseHas('clinic_appointments', ['id' => $id, 'status' => $status]);
+            }
+        }
+        // The UI may still show checked_in, but another vet has already started this case.
+        $this->insertClinicAppointment('checked_in', 10);
+        $this->authenticateAs('staff', subrole: 'veterinarian');
+        $this->postJson('/api/admin/clinic-cases/10/start')->assertOk();
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->postJson('/api/admin/clinic-appointments/10/cancel')->assertConflict();
+        foreach (['veterinarian', 'admin'] as $subrole) {
+            $this->authenticateAs($subrole === 'admin' ? 'admin' : 'staff', subrole: $subrole);
+            DB::table('clinic_appointments')->where('id', 10)->update(['status' => 'in_consultation']);
+            $this->postJson('/api/admin/clinic-appointments/10/cancel')->assertOk();
+        }
+    }
+
+    public function test_receptionist_cannot_edit_existing_patients_through_the_api(): void
+    {
+        DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->putJson('/api/admin/pets/1', ['pet_name' => 'Changed'])->assertForbidden();
+        $this->assertDatabaseHas('pets', ['pet_id' => 1, 'pet_name' => 'Mochi']);
+    }
+
+    public function test_walkins_check_in_sequentially_without_starting_and_reject_duplicate_intake(): void
+    {
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        DB::table('unregistered_customers')->insert(['id' => 10, 'first_name' => 'Ana', 'last_name' => 'Santos', 'phone' => '09171234567']);
+        $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Ana', 'lname' => 'Santos',
+            'phone' => '09171234567', 'pet_name' => 'Mochi', 'species' => 'cat', 'terms_agreed' => true,
+            'owner_record_type' => 'unregistered', 'unregistered_customer_id' => 10];
+        $first = $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated()
+            ->assertJsonPath('status', 'checked_in')->assertJsonPath('queue_number', 1);
+        $id = $first->json('appointment_id');
+        $this->assertNotEmpty($first->json('checked_in_at'));
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $id, 'consultation_started_at' => null]);
+        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'pet_name' => 'Bantay'])
+            ->assertCreated()->assertJsonPath('queue_number', 2);
+        $petId = DB::table('clinic_appointments')->where('id', $id)->value('pet_id');
+        $ownerId = DB::table('pets')->where('pet_id', $petId)->value('unregistered_customer_id');
+        $duplicate = [...$payload, 'owner_record_type' => 'unregistered', 'unregistered_customer_id' => $ownerId, 'pet_id' => $petId];
+        foreach (['checked_in', 'in_consultation', 'for_payment', 'waiting_to_arrive'] as $status) {
+            DB::table('clinic_appointments')->where('id', $id)->update(['status' => $status]);
+            $this->postJson('/api/admin/clinic-walk-in', $duplicate)->assertConflict();
+            $this->assertDatabaseCount('clinic_appointments', 2);
+            $this->assertDatabaseCount('walkins', 2);
+        }
+        DB::table('clinic_appointments')->where('id', $id)->update(['status' => 'checked_in']);
+        $this->postJson("/api/admin/clinic-cases/{$id}/start")->assertForbidden();
+        $this->authenticateAs('staff');
+        $this->postJson("/api/admin/clinic-cases/{$id}/start")->assertOk()->assertJsonPath('case.status', 'in_consultation');
+    }
+
+    public function test_clinic_receipts_use_linked_processor_identity_across_roles_and_identity_changes(): void
+    {
+        foreach (['clinic_receptionist' => 'Clinic Receptionist', 'veterinarian' => 'Veterinarian', 'admin' => 'Admin'] as $subrole => $label) {
+            $this->authenticateAs($subrole === 'admin' ? 'admin' : 'staff', subrole: $subrole);
+            $id = DB::table('clinic_appointments')->count() + 1;
+            $this->insertClinicAppointment('for_payment', $id);
+            $first = $subrole === 'admin' ? 'Admin' : 'Staff';
+            $this->postJson("/api/admin/clinic-appointments/{$id}/pay", ['total_amount' => 0, 'amount_paid' => 0, 'payment_method' => 'cash'])
+                ->assertOk()->assertJsonPath('appointment.processed_by.name', "{$first} · {$label}");
+            DB::table('users')->where('user_id', 1)->update(['first_name' => 'Renamed', 'is_active' => false]);
+            $this->getJson("/api/admin/clinic-cases/{$id}")->assertOk()
+                ->assertJsonPath('case.processed_by.name', "Renamed · {$label}");
+            DB::table('clinic_appointments')->where('id', $id)->update(['paid_by_user_id' => 999]);
+            $this->getJson("/api/admin/clinic-cases/{$id}")->assertOk()->assertJsonPath('case.processed_by.name', null);
+        }
     }
 
     public function test_staff_weight_update_replaces_a_verified_size(): void
@@ -1476,7 +1558,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', [
             'user_id' => 10,
             'pet_id' => 101,
-            'status' => 'in_consultation',
+            'status' => 'checked_in',
         ]);
         $this->assertDatabaseCount('pets', 1);
     }
@@ -1530,7 +1612,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('clinic_appointments', [
             'user_id' => null,
             'pet_id' => 102,
-            'status' => 'in_consultation',
+            'status' => 'checked_in',
         ]);
         $this->assertDatabaseCount('pets', 1);
     }
@@ -1602,7 +1684,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
         $this->assertDatabaseHas('clinic_appointments', [
             'user_id' => 11,
-            'status' => 'in_consultation',
+            'status' => 'checked_in',
         ]);
     }
 

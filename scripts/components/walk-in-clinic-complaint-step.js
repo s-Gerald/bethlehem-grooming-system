@@ -1,4 +1,4 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024";
 import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
