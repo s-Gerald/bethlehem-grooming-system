@@ -205,8 +205,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -322,8 +322,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
@@ -365,7 +365,7 @@
                   </div>
                 </div>
 
-                <div class="history-switch inline-flex rounded-xl border border-white/70 bg-white/55 p-1 shadow-sm" role="group" aria-label="History type">
+                <div x-cloak x-show="_archiveIdentityLoaded && !clinicOnly" class="history-switch inline-flex rounded-xl border border-white/70 bg-white/55 p-1 shadow-sm" role="group" aria-label="History type">
                   <button
                     type="button"
                     @click="selectArchiveType('grooming')"
@@ -814,6 +814,6 @@
 
 
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023"></script>
+    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024"></script>
   </body>
 </html>

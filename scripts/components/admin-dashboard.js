@@ -337,6 +337,8 @@ function adminDashboard() {
     activityLoading: true,
     activityError: "",
     dashboardQueuePreview: [],
+    clinicOnly: false,
+    inConsultation: 0,
     activeTodayCount: null,
     _bookingRequest: null,
     _bookingRequestDate: null,
@@ -666,6 +668,9 @@ function adminDashboard() {
           this._dashboardAccessRevision++;
           this.canViewRevenue = false;
           this.revenueToday = this.revenuePaymentCount = 0;
+          this.dashboardQueuePreview = [];
+          this.recentActivity = [];
+          this.summaryLoaded = this.activityLoaded = false;
         };
         this._dashboardIdentityUpdated = event => {
           if (event.detail?.user?.role !== 'admin' && this.canViewRevenue) this._dashboardAccessInvalidated();
@@ -702,6 +707,8 @@ function adminDashboard() {
       this._summaryRequest = API.loadAdminData("/admin/dashboard/summary", () => API.getAdminDashboardSummary({ force }), data => {
         if (this._destroyed || accessRevision !== this._dashboardAccessRevision) return;
         this.canViewRevenue = data.canViewRevenue === true;
+        this.clinicOnly = data.clinicOnly === true;
+        this.inConsultation = Number(data.summary?.inConsultation) || 0;
         if (!this.canViewRevenue) this.revenueToday = this.revenuePaymentCount = 0;
         this.dashboardQueuePreview = data.queuePreview || [];
         this.applyDashboardData(data);
@@ -2994,6 +3001,7 @@ function adminDashboard() {
     },
 
     queuePreviewStatusLabel(status) {
+      if (this.clinicOnly) return this.normalizeStatus(status) === 'in-progress' ? 'In Consultation' : 'Waiting';
       return this.normalizeStatus(status) === "in-progress" ? "In progress" : "Queued";
     },
 

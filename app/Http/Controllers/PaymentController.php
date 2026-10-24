@@ -579,7 +579,11 @@ class PaymentController extends Controller
         $week = (string) $request->query('week', '');
         $month = (string) $request->query('month', '');
         $year = (string) $request->query('year', '');
-        $type = (string) $request->query('transaction_type', 'all');
+        $clinicOnly = $request->user()?->isVeterinarian() ?? false;
+        $type = (string) $request->query('transaction_type', $clinicOnly ? 'clinic_payment' : 'all');
+        if ($clinicOnly && $type !== 'clinic_payment') {
+            return response()->json(['success' => false, 'message' => 'Forbidden. You do not have permission to access this resource.'], 403);
+        }
         if (! in_array($type, ['all', 'grooming_payment', 'clinic_payment', 'product_sale'], true)) {
             return response()->json(['success' => false, 'message' => 'Please provide a valid transaction type.'], 422);
         }
@@ -682,7 +686,7 @@ class PaymentController extends Controller
             ->when(! in_array($type, ['all', 'product_sale'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
         $clinicRows = $clinicQuery->selectRaw("id as transaction_id, 'clinic_payment' as transaction_type, paid_at, total_amount, ".$testFlag('clinic_appointments')." as is_test")
             ->when(! in_array($type, ['all', 'clinic_payment'], true), fn ($q) => $q->whereRaw('1 = 0'))->toBase();
-        $combined = DB::query()->fromSub($groomingRows->unionAll($posRows)->unionAll($clinicRows), 'financial_transactions');
+        $combined = DB::query()->fromSub($clinicOnly ? $clinicRows : $groomingRows->unionAll($posRows)->unionAll($clinicRows), 'financial_transactions');
         $collectionTotal = (float) (clone $combined)->where('is_test', 0)->sum('total_amount');
         $testCollectionTotal = (float) (clone $combined)->where('is_test', 1)->sum('total_amount');
         $page = (clone $combined)->orderByDesc('paid_at')->orderBy('transaction_type')->orderByDesc('transaction_id')

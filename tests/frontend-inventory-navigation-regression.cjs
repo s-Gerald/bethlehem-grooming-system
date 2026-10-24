@@ -381,7 +381,7 @@ function testSidebarNavigation() {
   let group;
   const link={href:'http://localhost/pages/admin/inventory/inventory.html',className:'sidebar-link',innerHTML:'<i data-lucide="box"></i><span>Inventory</span>',getAttribute:()=>"activePage === 'inventory' ? 'active' : ''",replaceWith:element=>{group=element;}};
   context.document.querySelector=()=>link;
-  context.document.createElement=()=>({attrs:{},children:[],setAttribute(key,value){this.attrs[key]=value;},append(...children){this.children.push(...children);},appendChild(child){this.children.push(child);}});
+  context.document.createElement=()=>({attrs:{},style:{},children:[],setAttribute(key,value){this.attrs[key]=value;},append(...children){this.children.push(...children);},appendChild(child){this.children.push(child);}});
   context.installAdminInventoryNavigation();
   assert.equal(group.children[0].attrs['aria-controls'],'inventory-submenu');
   assert.deepEqual(group.children[1].children.map(child=>child.textContent),['Overview','Products','Point of Sale','Stock Movements']);

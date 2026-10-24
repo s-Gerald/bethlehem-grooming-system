@@ -9,7 +9,8 @@ function adminTransactions() {
     totalCount: 0,
     searchQuery: "",
     transactionPeriod: "day",
-    transactionType: "all",
+    clinicOnly: window.API?.isClinicWorkspace?.() === true,
+    transactionType: window.API?.isClinicWorkspace?.() ? 'clinic_payment' : 'all',
     currentPage: 1,
     lastPage: 1,
     serverCollectionTotal: null,
@@ -29,14 +30,23 @@ function adminTransactions() {
     previousBodyOverflow: "",
 
     async init() {
+      try {
+        if (API.getStaffIdentity) await API.getStaffIdentity();
+        this.clinicOnly = API.isClinicWorkspace?.() === true;
+      } catch (error) {
+        this.errorMessage = error.message || 'Could not verify transaction access.';
+        this.loading = false;
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       const paymentId = params.get("payment");
       const posId = params.get("pos");
       const clinicId = params.get("clinic");
       const reference = params.get("reference");
-      if (posId) this.transactionType = "product_sale";
+      if (posId && !this.clinicOnly) this.transactionType = "product_sale";
+      if (this.clinicOnly) this.transactionType = 'clinic_payment';
       if (clinicId) this.transactionType = "clinic_payment";
-      if (paymentId || posId || clinicId || reference) this.searchQuery = reference || (posId ? 'POS-' + posId.padStart(6, '0') : "");
+      if (paymentId || posId || clinicId || reference) this.searchQuery = reference || (posId && !this.clinicOnly ? 'POS-' + posId.padStart(6, '0') : "");
       await this.loadTransactions();
       if (paymentId || posId || clinicId || reference) {
         const tx = this.transactions.find((record) => posId
@@ -54,6 +64,7 @@ function adminTransactions() {
     },
 
     async loadTransactions(page = 1) {
+      if (this.clinicOnly) this.transactionType = 'clinic_payment';
       const version = ++this._loadVersion;
       const key = JSON.stringify([this.searchQuery.trim(), this.transactionPeriod, this.filterDate, this.filterMonth, this.filterYear, this.transactionType, page]);
       this.transactionsLoaded = this.transactionsLoaded && key === this._transactionsKey;
@@ -116,7 +127,7 @@ function adminTransactions() {
 
     clearFilters() {
       this.searchQuery = "";
-      this.transactionType = "all";
+      this.transactionType = this.clinicOnly ? 'clinic_payment' : 'all';
       this.transactionPeriod = "day";
       this.filterDate = "";
       this.filterMonth = "";
@@ -127,7 +138,7 @@ function adminTransactions() {
     get hasActiveFilters() {
       return (
         this.searchQuery ||
-        this.transactionType !== "all" ||
+        this.transactionType !== (this.clinicOnly ? 'clinic_payment' : 'all') ||
         this.transactionPeriod !== "day" ||
         this.filterDate ||
         this.filterMonth ||

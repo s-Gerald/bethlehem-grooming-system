@@ -1,5 +1,6 @@
 function adminInventoryItems() {
   return {
+    clinicOnly: window.API?.isClinicWorkspace?.() === true,
     items: [],
     loading: true,
     loaded: false,
@@ -151,6 +152,7 @@ function adminInventoryItems() {
     },
 
     stockDetails(section) {
+      if (this.clinicOnly) return;
       if (!['stock-in', 'stock-out'].includes(section) || !this.details.item?.is_active) return;
       const itemId = this.details.item.item_id;
       this.closeDetails(false);
@@ -193,11 +195,13 @@ function adminInventoryItems() {
     // ── Add / Edit modal ────────────────────────────────────────────────────
 
     openAdd() {
+      if (this.clinicOnly) return;
       this.form = ProductForm.empty();
       this.modal = { open: true, busy: false, error: "" };
     },
 
     openEdit(item) {
+      if (this.clinicOnly) return;
       this.form = ProductForm.empty({
         item_id:       item.item_id,
         item_name:     item.item_name,
@@ -247,11 +251,13 @@ function adminInventoryItems() {
     // ── Deactivate ──────────────────────────────────────────────────────────
 
     confirmDeactivate(item) {
+      if (this.clinicOnly) return;
       this.deactivateTarget = item;
       this.deactivateModal = { open: true, busy: false, error: "" };
     },
 
     async doDeactivate() {
+      if (this.clinicOnly) return;
       if (!this.deactivateTarget) return;
       this.deactivateModal.busy = true;
       this.deactivateModal.error = "";
@@ -269,6 +275,7 @@ function adminInventoryItems() {
     },
 
     async doReactivate(item) {
+      if (this.clinicOnly) return;
       const inDetails = this.details.open && this.details.item?.item_id === item.item_id;
       const detailsRequest = this._detailsRequest;
       if (inDetails) this.details.busy = true;

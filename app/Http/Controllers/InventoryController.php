@@ -11,6 +11,7 @@ use App\Services\InventoryStockMovementService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -42,13 +43,25 @@ class InventoryController extends Controller
 
     // ── Formatters ─────────────────────────────────────────────────────────────
 
+    private function itemsQuery(): Builder
+    {
+        return InventoryItem::query()->when($this->requireAuth()->isVeterinarian(),
+            fn (Builder $query) => $query->whereIn('category', ['medicine', 'vaccine']));
+    }
+
+    private function movementsQuery(): Builder
+    {
+        return InventoryTransaction::query()->when($this->requireAuth()->isVeterinarian(),
+            fn (Builder $query) => $query->whereHas('item', fn (Builder $item) => $item->whereIn('category', ['medicine', 'vaccine'])));
+    }
+
     private function formatItem(InventoryItem $item, ?array $balance = null, ?float $reserved = null): array
     {
         $balance ??= $this->batchBalances->forItem((int) $item->item_id);
         $physicalQuantity = (float) $item->quantity_on_hand;
         $reserved ??= (float) (GatewayPayment::reservedQuantities([$item->item_id])[$item->item_id] ?? 0);
 
-        return [
+        $data = [
             'item_id'          => $item->item_id,
             'item_name'        => $item->item_name,
             'barcode'          => $item->barcode,
@@ -58,7 +71,7 @@ class InventoryController extends Controller
             'strength_concentration' => $item->strength_concentration,
             'pricing_method' => $item->pricing_method ?? 'flat',
             'weight_pricing_mode' => $item->weight_pricing_mode ?? 'legacy',
-            'weight_prices' => $item->category === 'medicine' && $item->pricing_method === 'weight_based'
+            'weight_prices' => ! $this->requireAuth()->isVeterinarian() && $item->category === 'medicine' && $item->pricing_method === 'weight_based'
                 ? $item->weightPrices->map->only(['min_weight_kg', 'max_weight_kg', 'price'])->values()->all() : [],
             'description'      => $item->description,
             'unit_cost'        => $item->unit_cost,
@@ -81,12 +94,18 @@ class InventoryController extends Controller
             'created_at'       => $item->created_at,
             'updated_at'       => $item->updated_at,
         ];
+        if ($this->requireAuth()->isVeterinarian()) {
+            unset($data['unit_cost'], $data['selling_price'], $data['weight_prices'], $data['pricing_method'], $data['weight_pricing_mode']);
+        }
+        return $data;
     }
 
     private function formatItems(iterable $items): Collection
     {
         $items = new \Illuminate\Database\Eloquent\Collection($items);
-        $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
+        if (! $this->requireAuth()->isVeterinarian()) {
+            $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
+        }
         $balances = $this->batchBalances->forItems($items->pluck('item_id'));
         $reserved = GatewayPayment::reservedQuantities($items->pluck('item_id'));
 
@@ -101,13 +120,15 @@ class InventoryController extends Controller
     {
         $today = now()->startOfDay();
         $cutoff = $today->copy()->addDays(30)->toDateString();
-        $items = InventoryItem::where('is_active', 1)
+        $items = $this->itemsQuery()->where('is_active', 1)
             ->where('quantity_on_hand', '>', 0)
             ->get();
         $balances = $this->batchBalances->forItems($items->pluck('item_id'));
         $reserved = GatewayPayment::reservedQuantities($items->pluck('item_id'));
 
-        $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
+        if (! $this->requireAuth()->isVeterinarian()) {
+            $items->where('category', 'medicine')->where('pricing_method', 'weight_based')->loadMissing('weightPrices');
+        }
         return $items->map(function (InventoryItem $item) use ($balances, $reserved, $today, $cutoff) {
             $balance = $balances[(int) $item->item_id] ?? $this->batchBalances->emptyBalance();
             $expiringBatches = collect($balance['batches'])
@@ -140,7 +161,7 @@ class InventoryController extends Controller
 
     private function formatTransaction(InventoryTransaction $t): array
     {
-        return [
+        $data = [
             'transaction_id'        => $t->transaction_id,
             'stock_in_reference'    => $t->stock_in_reference,
             'item_id'               => $t->item_id,
@@ -157,7 +178,7 @@ class InventoryController extends Controller
             'expiry_date'           => $t->expiry_date?->format('Y-m-d'),
             'reference_type'        => $t->reference_type,
             'reference_id'          => $t->reference_id,
-            'source_label'          => match ($t->reference_type) {
+            'source_label'          => $this->requireAuth()->isVeterinarian() && in_array($t->reference_type, ['pos', 'grooming'], true) ? null : match ($t->reference_type) {
                 'grooming' => 'Grooming · '.($t->groomingBooking?->booking_reference ?? $t->reference_id),
                 'clinic' => $t->reference_id === null
                     ? 'Clinic'
@@ -172,13 +193,23 @@ class InventoryController extends Controller
                 : null,
             'created_at'            => $t->created_at,
         ];
+        if ($this->requireAuth()->isVeterinarian()) {
+            unset($data['unit_cost_at_time'], $data['selling_price_at_time']);
+            if (in_array($t->reference_type, ['pos', 'grooming'], true)) {
+                $data['source_label'] = null;
+                $data['reference_id'] = null;
+            }
+        }
+        return $data;
     }
 
     private function formatTransactions($transactions): Collection
     {
         // Reference ids are shared by different source tables; hydrate only the
         // matching source so a POS movement never queries grooming/clinic data.
-        $transactions->where('reference_type', 'grooming')->load('groomingBooking');
+        if (! $this->requireAuth()->isVeterinarian()) {
+            $transactions->where('reference_type', 'grooming')->load('groomingBooking');
+        }
         $transactions->where('reference_type', 'clinic')->load('clinicAppointment');
         return $transactions->map(fn ($transaction) => $this->formatTransaction($transaction));
     }
@@ -197,8 +228,8 @@ class InventoryController extends Controller
         $page           = max(1, (int) $request->query('page', 1));
 
         $query = $inactiveOnly
-            ? InventoryItem::where('is_active', 0)
-            : ($includeInactive ? InventoryItem::query() : InventoryItem::where('is_active', 1));
+            ? $this->itemsQuery()->where('is_active', 0)
+            : ($includeInactive ? $this->itemsQuery() : $this->itemsQuery()->where('is_active', 1));
 
         if ($q) {
             $query->where(function ($qb) use ($q) {
@@ -245,7 +276,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $item = InventoryItem::findOrFail($itemId);
+        $item = $this->itemsQuery()->findOrFail($itemId);
         $balance = $this->batchBalances->forItem($itemId);
         $tracksExpiry = ! in_array($item->category, ['pet_shop', 'miscellaneous'], true);
         $cutoff = now()->startOfDay()->addDays(30)->toDateString();
@@ -270,7 +301,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $item = InventoryItem::findOrFail($itemId);
+        $item = $this->itemsQuery()->findOrFail($itemId);
 
         DB::transaction(function () use ($request, $item) {
             $item = InventoryItem::whereKey($item->item_id)->lockForUpdate()->firstOrFail();
@@ -393,7 +424,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $item = InventoryItem::findOrFail($itemId);
+        $item = $this->itemsQuery()->findOrFail($itemId);
 
         if ((float) $item->quantity_on_hand > 0) {
             abort(422, "Cannot deactivate \"{$item->item_name}\" — it still has {$item->quantity_on_hand} {$item->unit} in stock. Record a stock-out first.");
@@ -408,7 +439,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $item = InventoryItem::findOrFail($itemId);
+        $item = $this->itemsQuery()->findOrFail($itemId);
         $item->update(['is_active' => 1]);
 
         return response()->json(['data' => $this->formatItem($item->fresh())]);
@@ -420,7 +451,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $item = InventoryItem::where('barcode', $barcode)
+        $item = $this->itemsQuery()->where('barcode', $barcode)
                              ->when($request->query('sale_context') === 'pos', fn ($query) => $query->retailSale())
                              ->when(! $request->boolean('include_inactive'), fn ($query) => $query->where('is_active', 1))
                              ->first();
@@ -445,7 +476,7 @@ class InventoryController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $items = InventoryItem::query()
+        $items = $this->itemsQuery()
             ->when(! $includeInactive, fn ($query) => $query->where('is_active', 1))
             ->when($forGrooming, fn ($query) => $query->whereNotIn('category', ['medicine', 'vaccine'])
                 ->whereNotNull('selling_price'))
@@ -491,7 +522,7 @@ class InventoryController extends Controller
             'items.*.notes'        => 'nullable|string|max:500',
         ]);
 
-        $categories = InventoryItem::query()
+        $categories = $this->itemsQuery()
             ->whereIn('item_id', collect($validated['items'])->pluck('item_id')->unique())
             ->pluck('category', 'item_id');
 
@@ -538,7 +569,7 @@ class InventoryController extends Controller
             'items.*.reference_id'   => 'nullable|integer',
         ]);
 
-        $categories = InventoryItem::query()
+        $categories = $this->itemsQuery()
             ->whereIn('item_id', collect($validated['items'])->pluck('item_id')->unique())
             ->pluck('category', 'item_id');
 
@@ -566,7 +597,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $query = InventoryTransaction::with(['item', 'performedBy'])
+        $query = $this->movementsQuery()->with(['item', 'performedBy'])
                      ->orderBy('created_at', 'desc');
 
         if ($request->filled('item_id')) {
@@ -608,7 +639,7 @@ class InventoryController extends Controller
         $this->requireAuth();
 
         $page = max(1, $request->integer('page', 1));
-        $paginator = InventoryItem::where('is_active', 1)
+        $paginator = $this->itemsQuery()->where('is_active', 1)
             ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
             ->orderByRaw('quantity_on_hand / reorder_level ASC')
             ->orderBy('item_id')
@@ -644,7 +675,7 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $lowStockCount = InventoryItem::where('is_active', 1)
+        $lowStockCount = $this->itemsQuery()->where('is_active', 1)
             ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
             ->count();
 
@@ -663,22 +694,22 @@ class InventoryController extends Controller
     {
         $this->requireAuth();
 
-        $totalItems    = InventoryItem::where('is_active', 1)->count();
-        $lowStockCount = InventoryItem::where('is_active', 1)
+        $totalItems    = $this->itemsQuery()->where('is_active', 1)->count();
+        $lowStockCount = $this->itemsQuery()->where('is_active', 1)
             ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
             ->count();
 
         $expiryAlerts = $this->currentExpiryAlerts();
         $expiryCount = $expiryAlerts->count();
 
-        if ($request->query('view') === 'overview') {
+        if ($request->query('view') === 'overview' || $this->requireAuth()->isVeterinarian()) {
             // Reuse the expiry computation above; previews need no pagination
             // counts, batch/price hydration or report-only 30-day aggregates.
-            $lowStock = InventoryItem::where('is_active', 1)
+            $lowStock = $this->itemsQuery()->where('is_active', 1)
                 ->whereRaw('reorder_level > 0 AND quantity_on_hand <= reorder_level')
                 ->orderByRaw('quantity_on_hand / reorder_level ASC')->orderBy('item_id')
                 ->limit(5)->get(['item_id', 'item_name', 'category', 'unit', 'quantity_on_hand', 'reorder_level']);
-            $recent = InventoryTransaction::with(['item', 'performedBy'])
+            $recent = $this->requireAuth()->isVeterinarian() ? null : $this->movementsQuery()->with(['item', 'performedBy'])
                 ->orderBy('created_at', 'desc')->limit(5)->get();
 
             return response()->json([
@@ -689,12 +720,12 @@ class InventoryController extends Controller
                 'expiry_items' => $expiryAlerts->take(5)->map(fn (array $item) => array_intersect_key($item, array_flip([
                     'item_id', 'item_name', 'batch_number', 'earliest_expiry', 'is_expired', 'days_until_expiry',
                 ])))->values(),
-                'recent_transactions' => $this->formatTransactions($recent),
+                ...($recent === null ? [] : ['recent_transactions' => $this->formatTransactions($recent)]),
             ]);
         }
 
         $recentTransactionsPage = max(1, $request->integer('page', 1));
-        $recentTransactions = InventoryTransaction::with(['item', 'performedBy'])
+        $recentTransactions = $this->movementsQuery()->with(['item', 'performedBy'])
             ->orderBy('created_at', 'desc')
             ->paginate(10, ['*'], 'page', $recentTransactionsPage);
 

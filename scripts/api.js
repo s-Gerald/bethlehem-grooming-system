@@ -68,7 +68,7 @@ var API = (() => {
   let customerCacheToken = null;
   let customerCacheEpoch = 0;
 
-  const ADMIN_CACHE_KEY = "bethlehem.admin.presentation.v2";
+  const ADMIN_CACHE_KEY = "bethlehem.admin.presentation.v3";
   const ADMIN_DATA_CHANGED_KEY = "bethlehem.admin.data_changed";
   const adminCache = new Map();
   const adminRequests = new Map();
@@ -110,7 +110,7 @@ var API = (() => {
       catch { /* Invalid cache is a normal first-load path. */ }
     }
     const cached = staffIdentity;
-    if (cached?.version !== 1 || cached.owner !== owner || !Number.isFinite(cached.at)
+    if (cached?.version !== 2 || cached.owner !== owner || !Number.isFinite(cached.at)
       || Date.now() < cached.at || Date.now() - cached.at >= 12 * 60 * 60 * 1000
       || !cached.data?.sidebar_revision || !cached.data?.user?.user_id || !cached.data.user.staff_permissions
       || cached.data.user.role !== getUserRole()
@@ -128,7 +128,7 @@ var API = (() => {
       staff_type: user.staff_type, staff_subrole: user.staff_subrole, clinic_permissions: user.clinic_permissions || {}, staff_permissions: user.staff_permissions || {},
     } };
     staffIdentityToken = token;
-    staffIdentity = { version: 1, owner, at: Date.now(), data };
+    staffIdentity = { version: 2, owner, at: Date.now(), data };
     try { sessionStorage.setItem(ADMIN_NAVIGATION_KEY, JSON.stringify(staffIdentity)); }
     catch { /* Storage restrictions retain same-page request sharing. */ }
   }
@@ -170,6 +170,7 @@ var API = (() => {
     adminCacheRevisions.clear();
     adminCacheOwner = adminCacheToken = null;
     safeStorageRemove(sessionStorage, ADMIN_CACHE_KEY);
+    safeStorageRemove(sessionStorage, 'bethlehem.admin.presentation.v2');
     safeStorageRemove(sessionStorage, "bethlehem.admin.presentation.v1");
   }
 
@@ -180,6 +181,7 @@ var API = (() => {
     adminCacheEpoch++;
     adminCache.clear(); adminRequests.clear(); adminCacheRevisions.clear();
     adminCacheToken = token; adminCacheOwner = owner;
+    safeStorageRemove(sessionStorage, 'bethlehem.admin.presentation.v2');
     safeStorageRemove(sessionStorage, "bethlehem.admin.presentation.v1");
     try {
       const stored = JSON.parse(safeStorageGet(sessionStorage, ADMIN_CACHE_KEY) || "null");
@@ -812,6 +814,12 @@ var API = (() => {
       return false;
     }
 
+    const user = getCachedStaffIdentity()?.user;
+    if (user?.staff_permissions?.clinic_workspace && ['appointments.html', 'services.html', 'pos.html', 'stock-in.html', 'stock-out.html'].includes(currentPageName())) {
+      redirectToAdminDashboard();
+      return false;
+    }
+
     if (isAdminOnlyPage() && role !== "admin") {
       redirectToAdminDashboard();
       return false;
@@ -1264,7 +1272,11 @@ var API = (() => {
       const cached = getCachedStaffIdentity();
       verifiedSidebarRevision = data.sidebar_revision;
       if (cached && (cached.sidebar_revision !== data.sidebar_revision || cached.user.user_id !== data.user_id)) {
+        clearAdminCache();
         clearStaffIdentity(true);
+        // Existing page state may contain data from the former permissions.
+        // Reload only on verified identity changes, never during normal polling.
+        window.location.reload?.();
       }
     }
     const timestamp = Date.now();
@@ -2961,6 +2973,7 @@ var API = (() => {
     // Role access (used by admin dashboard for staff role-based UI hiding)
     getUserRole,
     getStaffIdentity,
+    isClinicWorkspace: () => getCachedStaffIdentity()?.user?.staff_permissions?.clinic_workspace === true,
     getCachedStaffIdentity,
     setUserRole,
     clearUserRole,

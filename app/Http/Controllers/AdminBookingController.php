@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Booking;
 use App\Models\BookingPet;
+use App\Models\ClinicAppointment;
 use App\Models\ClinicSetting;
 use App\Models\CustomerNotification;
 use App\Models\Notification;
@@ -214,6 +215,9 @@ class AdminBookingController extends Controller
 
     public function dashboardSummary()
     {
+        if (request()->user()?->isVeterinarian()) {
+            return $this->clinicDashboardSummary();
+        }
         $canViewRevenue = request()->user()?->role === 'admin';
         app(\App\Services\PreRegistrationExpiry::class)->expire();
         $today = Carbon::today()->toDateString();
@@ -245,8 +249,63 @@ class AdminBookingController extends Controller
 
     public function dashboardActivity()
     {
-        return response()->json(['recentActivity' => $this->recentActivity()])
+        return response()->json(['recentActivity' => request()->user()?->isVeterinarian()
+            ? $this->clinicDashboardActivity() : $this->recentActivity()])
             ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function clinicDashboardSummary()
+    {
+        $today = Carbon::today()->toDateString();
+        $hasClinic = Schema::hasTable('clinic_appointments');
+        $counts = $hasClinic ? ClinicAppointment::query()
+            ->where(fn ($q) => $q->whereIn('status', ['checked_in', 'in_consultation'])
+                ->orWhereDate('consultation_finished_at', $today))
+            ->selectRaw("SUM(CASE WHEN status = 'checked_in' AND appointment_date = ? THEN 1 ELSE 0 END) as waiting,
+                SUM(CASE WHEN status = 'in_consultation' AND appointment_date = ? THEN 1 ELSE 0 END) as consulting,
+                SUM(CASE WHEN status IN ('for_payment', 'completed', 'archived') AND DATE(consultation_finished_at) = ? THEN 1 ELSE 0 END) as completed", [$today, $today, $today])->first() : null;
+        $queue = $hasClinic ? ClinicAppointment::with(['user:user_id,first_name,last_name', 'walkin', 'pet.unregisteredCustomer'])
+            ->where('appointment_date', $today)->whereIn('status', ['checked_in', 'in_consultation'])
+            ->orderByRaw("CASE WHEN status = 'in_consultation' THEN 0 ELSE 1 END")
+            ->orderBy('queue_number')->limit(5)->get()->map(fn ($case) => [
+                'id' => $case->id, 'serviceType' => 'clinic',
+                'status' => $case->status === 'in_consultation' ? 'in-progress' : 'queued',
+                'appointmentDate' => $today, 'queueNumber' => $case->queue_number,
+                ...$this->clinicDashboardIdentity($case),
+                'dropOffTime' => $case->checked_in_at?->format('g:i A'),
+            ])->all() : [];
+        return response()->json([
+            'clinicOnly' => true, 'canViewRevenue' => false,
+            'summary' => ['waitingNow' => (int) ($counts?->waiting ?? 0),
+                'inConsultation' => (int) ($counts?->consulting ?? 0), 'today' => (int) ($counts?->completed ?? 0)],
+            'queuePreview' => $queue,
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
+    private function clinicDashboardIdentity(ClinicAppointment $case): array
+    {
+        $owner = $case->user ?? $case->pet?->unregisteredCustomer;
+        return ['petName' => $case->pet?->pet_name ?? 'Patient', 'breed' => $case->pet?->breed ?? '—',
+            'ownerName' => $owner ? trim($owner->first_name.' '.$owner->last_name)
+                : (trim(($case->walkin?->fname ?? '').' '.($case->walkin?->lname ?? '')) ?: 'Customer')];
+    }
+
+    private function clinicDashboardActivity(): array
+    {
+        if (! Schema::hasTable('clinic_appointments')) return [];
+        return ClinicAppointment::with(['user:user_id,first_name,last_name', 'walkin', 'pet.unregisteredCustomer'])
+            ->whereIn('status', ['checked_in', 'in_consultation', 'for_payment', 'completed', 'archived'])
+            ->orderByDesc('updated_at')->limit(6)->get()->map(function ($case) {
+                $identity = $this->clinicDashboardIdentity($case);
+                [$type, $title, $time] = match ($case->status) {
+                    'checked_in' => ['queued', 'Clinic check-in', $case->checked_in_at],
+                    'in_consultation' => ['in_progress', 'Consultation started', $case->consultation_started_at],
+                    default => ['completed', 'Consultation completed', $case->consultation_finished_at],
+                };
+                return ['id' => 'clinic-'.$case->id, 'type' => $type, 'title' => $title,
+                    'subtitle' => $identity['petName'].' - '.$identity['ownerName'],
+                    'time' => $time?->toIso8601String()];
+            })->all();
     }
 
     private function groomingCounts(bool $includeWeek = true): array

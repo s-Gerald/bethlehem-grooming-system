@@ -153,6 +153,8 @@ async function permissionRevalidation() {
   assert.equal(attrs.has('data-session-gate'), false, 'Server validation still releases the session gate');
   assert.equal(navigation.inert, false);
   assert.equal(e.calls.filter(c => c.url.endsWith('/me')).length, 1, 'Unchanged /session revision needs no identity refetch');
+  await c.API.adminRequest('GET', '/inventory/items?page=1');
+  assert.ok(c.API.readAdminCache('/inventory/items?page=1'));
   revision = 'revision-2';
   c.window.dispatchEvent({ type: 'focus' });
   await settle();
@@ -160,6 +162,7 @@ async function permissionRevalidation() {
   assert.equal(sidebar.canAccessGrooming, true);
   assert.equal(sidebar.clinicPermissions.access, undefined);
   assert.equal(sidebar.sidebarReady, true);
+  assert.equal(c.API.readAdminCache('/inventory/items?page=1'), null, 'A verified permission change discards page data from the former role');
   await c.API.logout('staff');
   assert.equal(sidebar.sidebarReady, false, 'Logout clears the existing navigation identity immediately');
   assert.equal(sidebar.canAccessGrooming, false, 'Logout revokes permission-dependent presentation');

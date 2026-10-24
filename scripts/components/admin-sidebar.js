@@ -62,6 +62,11 @@ function installAdminInventoryNavigation() {
   for (const [section, label] of Object.entries(adminInventoryLinks)) {
     const child = document.createElement("a");
     child.href = `${url.pathname}#${section}`;
+    if (section === 'sell-product') {
+      child.setAttribute('x-show', '!clinicOnly');
+      child.setAttribute('data-admin-permission', '');
+      child.style.display = 'none';
+    }
     child.textContent = label;
     child.setAttribute(":aria-current", `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
     child.setAttribute("@click", "sidebarOpen = false");
@@ -78,7 +83,7 @@ function installAdminServicesNavigation() {
   services.href = new URL('services.html', clinic.href).pathname;
   services.className = clinic.className;
   services.setAttribute(':class', "activePage === 'services' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'");
-  services.setAttribute('x-show', 'isAdmin || clinicPermissions.services_view');
+  services.setAttribute('x-show', 'canViewServices');
   services.setAttribute('data-admin-permission', '');
   services.style.display = 'none';
   services.setAttribute('@click', 'sidebarOpen = false');
@@ -88,13 +93,15 @@ function installAdminServicesNavigation() {
 
 function getAdminSidebarIdentityState(user) {
   if (!user) return {
-    sidebarReady: false, isAdmin: false, clinicPermissions: {}, canAccessGrooming: false,
+    sidebarReady: false, isAdmin: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
     staffDisplayName: '', staffInitials: '', staffRoleLabel: '',
   };
   const first = String(user.first_name || '').trim(), last = String(user.last_name || '').trim();
   return {
     sidebarReady: true,
     isAdmin: user.role === 'admin',
+    clinicOnly: user.staff_permissions?.clinic_workspace === true,
+    canViewServices: user.role === 'admin' || (!!user.clinic_permissions?.services_view && !user.staff_permissions?.clinic_workspace),
     clinicPermissions: user.clinic_permissions || {},
     canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
     staffDisplayName: `${first} ${last}`.trim() || 'Staff',
@@ -114,8 +121,9 @@ function renderCachedAdminSidebar() {
   const visible = {
     isAdmin: state.isAdmin,
     'isAdmin || clinicPermissions.access': state.isAdmin || !!state.clinicPermissions.access,
-    'isAdmin || clinicPermissions.services_view': state.isAdmin || !!state.clinicPermissions.services_view,
     'isAdmin || canAccessGrooming': state.canAccessGrooming,
+    canViewServices: state.canViewServices,
+    '!clinicOnly': state.sidebarReady && !state.clinicOnly,
   };
   aside.querySelectorAll('[x-show]').forEach(el => {
     const condition = el.getAttribute('x-show');
@@ -286,6 +294,7 @@ function adminSidebar() {
         const user = response?.user;
         if (!user || this._destroyed || revision !== this._identityRevision) return;
         Object.assign(this, getAdminSidebarIdentityState(user));
+        API.enforceAdminPageAccess?.();
         this.$nextTick?.(() => {
           if (this._destroyed || revision !== this._identityRevision) return;
           this.$root?.setAttribute('data-admin-ready', '');

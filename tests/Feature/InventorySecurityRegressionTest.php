@@ -171,6 +171,76 @@ class InventorySecurityRegressionTest extends TestCase
         $this->postJson('/api/pos/transactions', [])->assertForbidden();
     }
 
+    public function test_veterinarian_inventory_is_scoped_before_pagination_and_aggregation(): void
+    {
+        $vet = $this->createUser('staff', '09170000901');
+        $vet->staff_type = 'clinic';
+        $vet->staff_subrole = 'veterinarian';
+        Sanctum::actingAs($vet);
+        foreach (['medicine', 'vaccine', 'food', 'grooming_supply', 'pet_shop', 'miscellaneous'] as $category) {
+            $id = $this->createInventoryItem('Scoped '.$category, 2, 100);
+            DB::table('inventory_items')->where('item_id', $id)->update([
+                'category' => $category, 'barcode' => 'SCOPE-'.$id, 'reorder_level' => 5,
+            ]);
+            $this->recordInventoryTransaction($id, 'stock_in', 2, ['expiry_date' => now()->addDays(5)->toDateString()]);
+        }
+        $this->getJson('/api/inventory/items')->assertOk()->assertJsonPath('total', 2)
+            ->assertJsonMissingPath('data.0.unit_cost')->assertJsonMissingPath('data.0.selling_price');
+        $this->getJson('/api/inventory/items?category=food&include_inactive=1')->assertOk()->assertJsonPath('total', 0);
+        $this->getJson('/api/inventory/search?q=Scoped')->assertOk()->assertJsonCount(2, 'data');
+        $this->getJson('/api/inventory/items/3')->assertNotFound();
+        $this->getJson('/api/inventory/barcode/SCOPE-3')->assertNotFound();
+        $this->getJson('/api/inventory/items/1')->assertOk()->assertJsonCount(1, 'data.current_batches')
+            ->assertJsonMissingPath('data.unit_cost');
+        foreach (['?view=overview', ''] as $query) {
+            $this->getJson('/api/inventory/summary'.$query)->assertOk()->assertJsonPath('total_items', 2)
+                ->assertJsonPath('low_stock_count', 2)->assertJsonPath('expiry_alert_count', 2)
+                ->assertJsonMissingPath('recent_transactions')->assertJsonMissingPath('top_used_30_days');
+        }
+        $this->getJson('/api/inventory/low-stock')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/api/inventory/alerts/expiry')->assertOk()->assertJsonPath('total', 2);
+        $this->getJson('/api/inventory/alerts/badge')->assertOk()->assertJsonPath('total', 4);
+        $this->getJson('/api/inventory/transactions')->assertOk()->assertJsonPath('total', 2)
+            ->assertJsonMissingPath('data.0.unit_cost_at_time')->assertJsonMissingPath('data.0.selling_price_at_time');
+        $this->getJson('/api/inventory/transactions?item_id=3')->assertOk()->assertJsonPath('total', 0);
+    }
+
+    public function test_veterinarian_cannot_mutate_inventory_or_use_any_pos_endpoint(): void
+    {
+        $vet = $this->createUser('staff', '09170000902');
+        $vet->staff_type = 'clinic';
+        $vet->staff_subrole = 'veterinarian';
+        Sanctum::actingAs($vet);
+        foreach ([['post', '/inventory/items'], ['put', '/inventory/items/1'],
+            ['post', '/inventory/items/1/deactivate'], ['post', '/inventory/items/1/reactivate'],
+            ['post', '/inventory/stock-in'], ['post', '/inventory/stock-out'],
+            ['post', '/pos/validate-cart'], ['post', '/pos/transactions'], ['get', '/pos/transactions'],
+            ['get', '/pos/transactions/1'], ['post', '/pos/online-payment'],
+            ['get', '/pos/online-payment/1'], ['delete', '/pos/online-payment/1']] as [$method, $path]) {
+            $this->json(strtoupper($method), '/api'.$path)->assertForbidden();
+        }
+        $this->getJson('/api/admin/bookings/archived')->assertForbidden();
+        $this->patchJson('/api/admin/clinic/settings/availability', [])->assertForbidden();
+        $this->patchJson('/api/admin/clinic/settings/groomers-on-duty', [])->assertForbidden();
+        $this->postJson('/api/admin/pet-groomers', [])->assertForbidden();
+        $this->assertDatabaseCount('inventory_items', 0);
+        $this->assertDatabaseCount('inventory_transactions', 0);
+    }
+
+    public function test_administrators_and_receptionists_keep_catalog_and_pos_permissions(): void
+    {
+        $this->createInventoryItem('Clinical item', 0, 100);
+        $retail = $this->createInventoryItem('Retail item', 5, 100);
+        DB::table('inventory_items')->where('item_id', $retail)->update(['category' => 'pet_shop']);
+        foreach ([['admin', null, null], ['staff', 'clinic', 'clinic_receptionist'],
+            ['staff', 'grooming', 'grooming_receptionist']] as [$role, $type, $subrole]) {
+            Sanctum::actingAs(new User(['role' => $role, 'staff_type' => $type, 'staff_subrole' => $subrole, 'is_active' => true]));
+            $this->getJson('/api/inventory/items')->assertOk()->assertJsonPath('total', 2);
+            $this->postJson('/api/inventory/items/1/reactivate')->assertOk();
+            $this->postJson('/api/pos/validate-cart', ['items' => [['item_id' => $retail, 'quantity' => 1]]])->assertOk();
+        }
+    }
+
     public function test_inventory_dashboard_summary_paginates_recent_transactions_ten_per_page(): void
     {
         Sanctum::actingAs($this->createUser('admin', '09170000002'));

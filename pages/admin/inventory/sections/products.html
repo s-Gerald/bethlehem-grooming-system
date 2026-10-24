@@ -22,13 +22,8 @@
   </div>
   <select x-model="category" @change="load(1)"
     class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30">
-    <option value="">All Categories</option>
-    <option value="medicine">Medicine</option>
-    <option value="vaccine">Vaccine</option>
-    <option value="food">Food</option>
-    <option value="grooming_supply">Grooming Supply</option>
-    <option value="pet_shop">Pet Shop</option>
-    <option value="miscellaneous">Miscellaneous</option>
+    <option value="" x-text="clinicOnly ? 'All Clinical Products' : 'All Categories'">All Categories</option>
+    <template x-for="option in categoryOptions" :key="option.value"><option :value="option.value" x-text="option.label"></option></template>
   </select>
   <label class="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50">
     <input type="checkbox" x-model="showInactive" @change="load(1)" class="h-4 w-4 rounded" style="accent-color:#315b7e" />
@@ -52,17 +47,17 @@
           <th class="px-4 py-3">Item</th>
           <th class="px-4 py-3 hidden sm:table-cell">Category</th>
           <th class="px-4 py-3 hidden md:table-cell">Barcode</th>
-          <th class="px-4 py-3 hidden lg:table-cell">Unit Cost</th>
-          <th class="px-4 py-3 hidden lg:table-cell">Selling Price</th>
+          <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Unit Cost</th>
+          <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Selling Price</th>
           <th class="px-4 py-3">Stock</th>
           <th class="px-4 py-3 hidden md:table-cell">Min Stock</th>
           <th class="px-4 py-3">Status</th>
-          <th class="px-4 py-3 text-right">Actions</th>
+          <th x-show="!clinicOnly" class="px-4 py-3 text-right">Actions</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-[#e6eef7]">
         <template x-if="items.length === 0">
-          <tr><td colspan="10" class="px-4 py-10 text-center text-sm text-slate-400">No items found.</td></tr>
+          <tr><td :colspan="clinicOnly ? 7 : 10" class="px-4 py-10 text-center text-sm text-slate-400">No items found.</td></tr>
         </template>
         <template x-for="(item, index) in items" :key="item.item_id">
           <tr tabindex="0" role="button" aria-haspopup="dialog" :aria-label="'View details for ' + item.item_name"
@@ -77,8 +72,8 @@
               <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="categoryColor(item.category)" x-text="categoryLabel(item.category)"></span>
             </td>
             <td class="px-4 py-3 hidden md:table-cell text-slate-500 font-mono text-xs" x-text="item.barcode || '—'"></td>
-            <td class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="'₱' + parseFloat(item.unit_cost || 0).toFixed(2)"></td>
-            <td class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="ProductForm.isWeightBased(item) ? 'Weight-based' : fmtMoney(item.selling_price)"></td>
+            <td x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="'₱' + parseFloat(item.unit_cost || 0).toFixed(2)"></td>
+            <td x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="ProductForm.isWeightBased(item) ? 'Weight-based' : fmtMoney(item.selling_price)"></td>
             <td class="px-4 py-3 font-semibold text-slate-800">
               <span x-text="fmtQty(item.quantity_on_hand)"></span>
               <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
@@ -91,7 +86,7 @@
               <span x-show="item.is_active" class="rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="stockStyle(item)" x-text="stockLabel(item)"></span>
               <span x-show="!item.is_active" style="display:none;background-color:#f1f5f9;color:#64748b" class="rounded-full px-2.5 py-0.5 text-xs font-semibold">Deactivated</span>
             </td>
-            <td class="px-4 py-3">
+            <td x-show="!clinicOnly" class="px-4 py-3">
               <div class="flex items-center justify-end gap-2">
                 <button x-show="item.is_active" type="button" aria-label="Edit" @click.stop="openEdit(item)" title="Edit"
                   class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-[#eaf4fb] hover:text-[#315b7e] transition">
@@ -233,7 +228,7 @@
             </div>
             <p x-show="details.item.tracks_expiry" class="mt-2 text-xs text-slate-500">Expiring Soon: within 30 days. Exhausted stock receipts remain available in Stock Movements.</p>
           </section>
-          <section aria-labelledby="product-pricing-heading">
+          <section x-show="!clinicOnly" aria-labelledby="product-pricing-heading">
             <h4 id="product-pricing-heading" class="mb-3 text-sm font-bold text-[#355674]">Pricing</h4>
             <dl class="grid grid-cols-2 gap-4 text-sm">
               <div><dt class="text-xs text-slate-500">Unit Cost</dt><dd class="mt-1 font-semibold text-slate-800" x-text="fmtMoney(details.item.unit_cost)"></dd></div>
@@ -252,7 +247,7 @@
     </div>
     <div class="flex flex-wrap justify-end gap-3 border-t border-[#e6eef7] px-6 py-4">
       <button type="button" @click="closeDetails()" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Close</button>
-      <template x-if="details.item && !details.loading">
+      <template x-if="!clinicOnly && details.item && !details.loading">
         <div class="flex flex-wrap gap-3">
           <button x-show="details.item.is_active" type="button" @click="stockDetails('stock-in')" :disabled="details.busy" class="rounded-xl border border-[#315b7e] px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-[#eaf4fb] disabled:opacity-50">Stock In</button>
           <button x-show="details.item.is_active" type="button" @click="stockDetails('stock-out')" :disabled="details.busy" class="rounded-xl border border-[#315b7e] px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-[#eaf4fb] disabled:opacity-50">Stock Out</button>

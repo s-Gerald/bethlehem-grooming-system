@@ -147,7 +147,8 @@ const clinicBreakdown = html.split('id="transaction-clinic-breakdown-title"')[1]
 assert.ok(clinicBreakdown.includes('charge.amount'));
 assert.ok(!clinicBreakdown.includes('unit_price'));
 const filters = ['All Transactions', 'Grooming Payments', 'Clinic Payments', 'Product Sales'];
-assert.deepEqual([...filters].sort((a, b) => html.indexOf(a) - html.indexOf(b)), filters);
+const typeSelect = html.match(/<select x-model="transactionType"[\s\S]*?<\/select>/)[0];
+assert.deepEqual([...filters].sort((a, b) => typeSelect.indexOf(a) - typeSelect.indexOf(b)), filters);
 assert.ok(html.includes('selectedTransaction.productAddons.length > 1'));
 assert.ok(!html.split('<!-- Transactions Content -->')[1].includes('data-lucide'));
 (async () => {

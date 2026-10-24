@@ -3,7 +3,8 @@ function adminArchive() {
   const unavailableText = "Data is currently unavailable.";
 
   return {
-    archiveType: "grooming",
+    archiveType: window.API?.getCachedStaffIdentity?.()?.user?.staff_type === 'clinic' ? 'clinic' : 'grooming',
+    clinicOnly: window.API?.isClinicWorkspace?.() === true,
     archivedList: [],
     clinicArchivedList: [],
     totalCount: 0,
@@ -67,6 +68,7 @@ function adminArchive() {
     },
 
     async selectArchiveType(type) {
+      if (this.clinicOnly && type !== 'clinic') return;
       if (!['grooming', 'clinic'].includes(type) || this.archiveType === type) return;
 
       this.archiveType = type;
@@ -85,6 +87,7 @@ function adminArchive() {
         this.errorMessage = '';
         try {
           const identity = await API.getStaffIdentity();
+          this.clinicOnly = identity.user?.staff_permissions?.clinic_workspace === true;
           if (identity.user?.role === 'staff' && identity.user?.staff_type === 'clinic') this.archiveType = 'clinic';
           this._archiveIdentityLoaded = true;
         } catch (error) {

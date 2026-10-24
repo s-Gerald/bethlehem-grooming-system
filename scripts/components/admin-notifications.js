@@ -74,6 +74,7 @@ function adminNotifications(mode = 'full') {
     open: false, busy: false, _destroyed: false, previewStyle: '',
 
     init() {
+      if (this.clinicOnly) this.serviceFilter = 'clinic';
       this._unsubscribe = AdminNotificationService.subscribe(event => this.onNotificationChange(event), {loadCount: this.mode !== 'full'});
       if (this.mode === 'full') {
         return this.loadNotifications(true);
@@ -132,6 +133,7 @@ function adminNotifications(mode = 'full') {
       await this.loadNotifications(true);
     },
     async setService(value) {
+      if (this.clinicOnly && value !== 'clinic') return;
       if (this.serviceFilter === value) return;
       this.serviceFilter = value;
       await this.loadNotifications(true);
@@ -144,6 +146,7 @@ function adminNotifications(mode = 'full') {
 
     async loadNotifications(reset = false) {
       if (this._destroyed) return;
+      if (this.clinicOnly) this.serviceFilter = 'clinic';
       const requestId = ++this._requestId;
       const filter = JSON.stringify([this.statusFilter, this.serviceFilter, this.activityFilter]);
       this.loaded = this.loaded && filter === this._loadedFilter;

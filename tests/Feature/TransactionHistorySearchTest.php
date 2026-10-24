@@ -12,6 +12,25 @@ use Tests\TestCase;
 
 class TransactionHistorySearchTest extends TestCase
 {
+    public function test_veterinary_transactions_only_return_clinic_payments_and_scoped_totals(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(new \App\Models\User([
+            'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
+        ]));
+        DB::table('clinic_appointments')->insert([
+            'id' => 99, 'appointment_reference' => 'CL-VET', 'status' => 'completed',
+            'paid' => true, 'total_amount' => 350, 'paid_at' => '2026-10-03 14:00:00',
+        ]);
+        $this->getJson('/api/admin/transactions')->assertOk()->assertJsonPath('total', 1)
+            ->assertJsonPath('transactions.0.transactionType', 'clinic_payment')
+            ->assertJsonPath('collection_total', 350);
+        foreach (['all', 'grooming_payment', 'product_sale'] as $type) {
+            $this->getJson('/api/admin/transactions?transaction_type='.$type)->assertForbidden();
+        }
+        $this->getJson('/api/admin/transactions?transaction_type=clinic_payment&search=CL-VET')
+            ->assertOk()->assertJsonPath('total', 1);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

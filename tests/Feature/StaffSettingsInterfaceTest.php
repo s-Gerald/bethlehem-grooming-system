@@ -17,7 +17,7 @@ class StaffSettingsInterfaceTest extends TestCase
             '>Capacity</span>',
             '>Security</span>',
             'These settings are managed by an administrator.',
-            'Most settings on this page are managed by an administrator. You can manage Pet Groomers here.',
+            'x-show="canManageGroomers"',
             '>Groomers on Duty</h3>',
             'Add Pet Groomer',
             'person.on_duty',

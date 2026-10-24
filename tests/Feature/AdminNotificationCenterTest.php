@@ -14,6 +14,23 @@ use Tests\TestCase;
 
 class AdminNotificationCenterTest extends TestCase
 {
+    public function test_veterinary_notification_lists_counts_and_read_actions_are_clinic_scoped(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(new User([
+            'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
+        ]));
+        $grooming = $this->insertNotification('payment_confirmed', false, bookingId: 1);
+        $this->insertNotification('clinic_booked', false, clinicAppointmentId: 1);
+        $this->getJson('/api/admin/notifications?mode=full')->assertOk()
+            ->assertJsonPath('unread_count', 1)->assertJsonPath('pagination.total', 1)
+            ->assertJsonPath('notifications.0.service', 'clinic');
+        $this->getJson('/api/admin/notifications?mode=count')->assertOk()->assertJsonPath('unread_count', 1);
+        $this->getJson('/api/admin/notifications?service=grooming')->assertOk()->assertJsonCount(0, 'notifications');
+        $this->patchJson('/api/admin/notifications/'.$grooming.'/read')->assertNotFound();
+        $this->patchJson('/api/admin/notifications/read-all')->assertOk()->assertJsonPath('unread_count', 0);
+        $this->assertDatabaseHas('notifications', ['notification_id' => $grooming, 'is_read' => false]);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -447,8 +464,8 @@ class AdminNotificationCenterTest extends TestCase
         ?int $clinicAppointmentId = null,
         ?Carbon $createdAt = null,
         ?string $message = null,
-    ): void {
-        DB::table('notifications')->insert([
+    ): int {
+        return DB::table('notifications')->insertGetId([
             'type' => $type,
             'booking_id' => $bookingId,
             'clinic_appointment_id' => $clinicAppointmentId,
@@ -458,6 +475,6 @@ class AdminNotificationCenterTest extends TestCase
             },
             'is_read' => $isRead,
             'created_at' => ($createdAt ?? now())->toDateTimeString(),
-        ]);
+        ], 'notification_id');
     }
 }

@@ -12,6 +12,12 @@ use Illuminate\Validation\Rule;
 
 class NotificationController extends Controller
 {
+    private function visibleNotifications(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Notification::query()->when(request()->user()?->isVeterinarian(),
+            fn ($query) => $query->whereIn('type', Notification::serviceTypes()['clinic']));
+    }
+
     private const STATUSES = ['all', 'unread'];
 
     private const CATEGORIES = [
@@ -45,7 +51,7 @@ class NotificationController extends Controller
         $page = (int) ($filters['page'] ?? 1);
         $perPage = (int) ($filters['per_page'] ?? ($mode === 'full' ? 10 : 30));
 
-        $query = Notification::query()->with([
+        $query = $this->visibleNotifications()->with([
             'booking.user',
             'booking.walkin',
             'booking.timeWindow',
@@ -108,7 +114,7 @@ class NotificationController extends Controller
 
     public function markRead($id)
     {
-        $notification = Notification::find($id);
+        $notification = $this->visibleNotifications()->find($id);
 
         if (! $notification) {
             return response()->json([
@@ -128,7 +134,7 @@ class NotificationController extends Controller
 
     public function markAllRead()
     {
-        Notification::query()->where('is_read', false)->update(['is_read' => true]);
+        $this->visibleNotifications()->where('is_read', false)->update(['is_read' => true]);
 
         return response()->json([
             'success' => true,
@@ -139,7 +145,7 @@ class NotificationController extends Controller
 
     private function unreadCount(): int
     {
-        return Notification::query()->where('is_read', false)->count();
+        return $this->visibleNotifications()->where('is_read', false)->count();
     }
 
     /** @return array<string, mixed> */

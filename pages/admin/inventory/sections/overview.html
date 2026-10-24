@@ -53,12 +53,12 @@
           <th class="px-4 py-3 hidden sm:table-cell">Category</th>
           <th class="px-4 py-3">Stock</th>
           <th class="px-4 py-3">Min Stock</th>
-          <th class="px-4 py-3 text-right hidden sm:table-cell">Action</th>
+          <th x-show="!clinicOnly" class="px-4 py-3 text-right hidden sm:table-cell">Action</th>
         </tr></thead>
         <tbody class="divide-y divide-[#e6eef7]">
           <template x-for="item in lowStockItems" :key="item.item_id">
             <tr class="hover:bg-[#f5f8fb] transition">
-              <td class="px-4 py-3 font-semibold text-slate-800" x-text="item.item_name"></td>
+              <td class="px-4 py-3 font-semibold text-slate-800"><a href="#products?filter=low-stock" class="hover:underline focus-visible:underline" x-text="item.item_name"></a></td>
               <td class="px-4 py-3 hidden sm:table-cell">
                 <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold" style="background-color:#e0f2fe;color:#0369a1" x-text="item.category?.replace('_',' ')"></span>
               </td>
@@ -70,7 +70,7 @@
                 <span x-text="fmtQty(item.reorder_level)"></span>
                 <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
               </td>
-              <td class="px-4 py-3 text-right hidden sm:table-cell">
+              <td x-show="!clinicOnly" class="px-4 py-3 text-right hidden sm:table-cell">
                 <a :href="inventoryStockHref('stock-in', item.item_id)" class="text-xs font-semibold text-[#315b7e] hover:underline">Restock</a>
               </td>
             </tr>
@@ -99,7 +99,7 @@
         <tbody class="divide-y divide-[#e6eef7]">
           <template x-for="(item, index) in expiryItems" :key="item.item_id + '-' + index">
             <tr class="hover:bg-[#f5f8fb] transition">
-              <td class="px-4 py-3 font-semibold text-slate-800" x-text="item.item_name"></td>
+              <td class="px-4 py-3 font-semibold text-slate-800"><a href="#products?filter=expiry" class="hover:underline focus-visible:underline" x-text="item.item_name"></a></td>
               <td class="px-4 py-3 hidden sm:table-cell text-slate-500 font-mono text-xs" x-text="item.batch_number || '—'"></td>
               <td class="px-4 py-3 text-slate-600" x-text="item.earliest_expiry || '—'"></td>
               <td class="px-4 py-3">
@@ -118,7 +118,7 @@
   </div>
 
   <!-- Recent transactions -->
-  <div class="mt-6">
+  <div x-cloak x-show="!clinicOnly" class="mt-6">
     <h3 class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">Recent Activity</h3>
     <div class="overflow-hidden rounded-2xl border border-[#e6eef7] bg-white shadow-sm">
       <template x-if="recentTransactions.length === 0">

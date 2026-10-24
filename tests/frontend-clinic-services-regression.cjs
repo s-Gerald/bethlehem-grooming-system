@@ -203,7 +203,7 @@ async function readOnlyAccess() {
   }
   assert.ok(page.includes('View clinic services and pricing.'));
   assert.ok(page.includes('View Details'));
-  assert.ok(read('scripts/components/admin-sidebar.js').includes("services.setAttribute('x-show', 'isAdmin || clinicPermissions.services_view')"));
+  assert.ok(read('scripts/components/admin-sidebar.js').includes("services.setAttribute('x-show', 'canViewServices')"));
 
   const pending = setup({}, 'staff', 'clinic_receptionist');
   let finishIdentity;

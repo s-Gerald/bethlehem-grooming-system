@@ -269,36 +269,36 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     // Inventory and POS expose stock and financial data only to staff/admin roles.
     Route::middleware('role:admin,staff')->group(function () {
         // Admin — Inventory: Products
-        Route::get('/inventory/items', [InventoryController::class, 'index']);
-        Route::post('/inventory/items', [InventoryController::class, 'store']);
-        Route::get('/inventory/items/{id}', [InventoryController::class, 'show']);
-        Route::put('/inventory/items/{id}', [InventoryController::class, 'update']);
-        Route::post('/inventory/items/{id}/deactivate', [InventoryController::class, 'deactivate']);
-        Route::post('/inventory/items/{id}/reactivate', [InventoryController::class, 'reactivate']);
+        Route::get('/inventory/items', [InventoryController::class, 'index'])->middleware('staff:inventory_view');
+        Route::post('/inventory/items', [InventoryController::class, 'store'])->middleware('staff:inventory_manage');
+        Route::get('/inventory/items/{id}', [InventoryController::class, 'show'])->middleware('staff:inventory_view');
+        Route::put('/inventory/items/{id}', [InventoryController::class, 'update'])->middleware('staff:inventory_manage');
+        Route::post('/inventory/items/{id}/deactivate', [InventoryController::class, 'deactivate'])->middleware('staff:inventory_manage');
+        Route::post('/inventory/items/{id}/reactivate', [InventoryController::class, 'reactivate'])->middleware('staff:inventory_manage');
 
         // Admin — Inventory: Barcode & search
-        Route::get('/inventory/search', [InventoryController::class, 'search']);
-        Route::get('/inventory/barcode/{barcode}', [InventoryController::class, 'findByBarcode']);
+        Route::get('/inventory/search', [InventoryController::class, 'search'])->middleware('staff:inventory_view');
+        Route::get('/inventory/barcode/{barcode}', [InventoryController::class, 'findByBarcode'])->middleware('staff:inventory_view');
 
         // Admin — Inventory: Stock movements
-        Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
-        Route::post('/inventory/stock-out', [InventoryController::class, 'stockOut']);
+        Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn'])->middleware('staff:inventory_manage');
+        Route::post('/inventory/stock-out', [InventoryController::class, 'stockOut'])->middleware('staff:inventory_manage');
 
         // Admin — Inventory: History & alerts
-        Route::get('/inventory/transactions', [InventoryController::class, 'transactions']);
-        Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
-        Route::get('/inventory/alerts/expiry', [InventoryController::class, 'expiryAlerts']);
-        Route::get('/inventory/alerts/badge', [InventoryController::class, 'alertBadge']);
-        Route::get('/inventory/summary', [InventoryController::class, 'summary']);
+        Route::get('/inventory/transactions', [InventoryController::class, 'transactions'])->middleware('staff:inventory_view');
+        Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock'])->middleware('staff:inventory_view');
+        Route::get('/inventory/alerts/expiry', [InventoryController::class, 'expiryAlerts'])->middleware('staff:inventory_view');
+        Route::get('/inventory/alerts/badge', [InventoryController::class, 'alertBadge'])->middleware('staff:inventory_view');
+        Route::get('/inventory/summary', [InventoryController::class, 'summary'])->middleware('staff:inventory_view');
 
         // Admin — POS
-        Route::post('/pos/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'createPos']);
-        Route::get('/pos/online-payment/{id?}', [\App\Http\Controllers\OnlinePaymentController::class, 'posStatus'])->whereNumber('id');
-        Route::delete('/pos/online-payment/{id}', [\App\Http\Controllers\OnlinePaymentController::class, 'cancelPos'])->whereNumber('id');
-        Route::post('/pos/validate-cart', [PosController::class, 'validateCart']);
-        Route::post('/pos/transactions', [PosController::class, 'processSale']);
-        Route::get('/pos/transactions', [PosController::class, 'getTransactions']);
-        Route::get('/pos/transactions/{posId}', [PosController::class, 'getReceipt']);
+        Route::post('/pos/online-payment', [\App\Http\Controllers\OnlinePaymentController::class, 'createPos'])->middleware('staff:pos');
+        Route::get('/pos/online-payment/{id?}', [\App\Http\Controllers\OnlinePaymentController::class, 'posStatus'])->middleware('staff:pos')->whereNumber('id');
+        Route::delete('/pos/online-payment/{id}', [\App\Http\Controllers\OnlinePaymentController::class, 'cancelPos'])->middleware('staff:pos')->whereNumber('id');
+        Route::post('/pos/validate-cart', [PosController::class, 'validateCart'])->middleware('staff:pos');
+        Route::post('/pos/transactions', [PosController::class, 'processSale'])->middleware('staff:pos');
+        Route::get('/pos/transactions', [PosController::class, 'getTransactions'])->middleware('staff:pos');
+        Route::get('/pos/transactions/{posId}', [PosController::class, 'getReceipt'])->middleware('staff:pos');
     });
 
     // Administrator-only clinic availability and closure actions.

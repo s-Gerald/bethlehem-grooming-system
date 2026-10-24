@@ -42,7 +42,12 @@ assert.equal(ui.queuedList[0].appointmentTime, '8:00 AM - 9:00 AM', 'Preferred t
 const page = fs.readFileSync(path.join(__dirname, '../pages/admin/dashboard.html'), 'utf8');
 const cards = page.slice(page.indexOf('<!-- Summary cards -->'), page.indexOf('<!-- Queue and activity preview -->')).match(/<article[\s\S]*?<\/article>/g);
 assert.equal(cards.length, 4);
-['Grooming capacity', 'Waiting now', 'Completed today', 'Revenue today'].forEach((title, index) => assert.ok(cards[index].includes(`\n                      ${title}\r\n`) || cards[index].includes(`\n                      ${title}\n`)));
+['Grooming capacity', 'Waiting now', 'Completed today', 'Revenue today'].forEach((title, index) => assert.ok(cards[index].includes(title)));
+ui.clinicOnly = true;
+assert.equal(ui.queuePreviewStatusLabel('in-progress'), 'In Consultation');
+assert.equal(ui.queuePreviewStatusLabel('queued'), 'Waiting');
+assert.ok(cards[0].includes("clinicOnly ? 'Waiting Now'"));
+assert.ok(cards[1].includes("clinicOnly ? 'In Consultation'"));
 assert.doesNotMatch(cards[2], /[Cc]apacity/);
 assert.doesNotMatch(cards.join(''), /This week|[Ss]hared [Cc]apacity/);
 assert.match(cards[0], /role="progressbar"/);

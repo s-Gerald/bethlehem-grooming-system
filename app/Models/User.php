@@ -175,11 +175,16 @@ class User extends Authenticatable
     {
         $admin = $this->role === 'admin';
         $clinicReceptionist = $this->role === 'staff' && $this->staff_type === 'clinic' && $this->staff_subrole === 'clinic_receptionist';
+        $inventory = $admin || $this->role === 'staff';
         return [
             'dashboard' => $this->canAccessGrooming() || $this->isVeterinarian(),
             'grooming' => $this->canAccessGrooming(),
             'grooming_services_view' => $admin || $clinicReceptionist,
             'services_manage' => $admin,
+            'inventory_view' => $inventory,
+            'inventory_manage' => $inventory && ! $this->isVeterinarian(),
+            'pos' => $inventory && ! $this->isVeterinarian(),
+            'clinic_workspace' => $this->isVeterinarian(),
         ];
     }
 

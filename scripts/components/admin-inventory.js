@@ -37,7 +37,7 @@ function loadInventoryScript(name) {
       const script = document.createElement("script");
       script.src = name === "scanner"
         ? "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
-        : `../../../scripts/components/${name}?v=product-details-20261002&release=combined-20261023&icons=20261018&fetching=20261019&inventory=20261023&presentation=20261024`;
+        : `../../../scripts/components/${name}?v=product-details-20261002&release=combined-20261023&icons=20261018&fetching=20261019&inventory=20261023&presentation=20261024&veterinary=20261024`;
       script.onload = resolve;
       script.onerror = () => {
         script.remove();
@@ -55,6 +55,7 @@ function adminInventory() {
   const pendingPanels = new Map();
   return {
     activeSection: "",
+    clinicOnly: window.API?.isClinicWorkspace?.() === true,
     mountedSections: {},
     sectionLoading: false,
     sectionError: "",
@@ -66,8 +67,22 @@ function adminInventory() {
     _hashListener: null,
     _changeListener: null,
 
-    init() {
+    get categoryOptions() {
+      return Object.entries({medicine: 'Medicine', vaccine: 'Vaccine', food: 'Food',
+        grooming_supply: 'Grooming Supply', pet_shop: 'Pet Shop', miscellaneous: 'Miscellaneous'})
+        .filter(([value]) => !this.clinicOnly || ['medicine', 'vaccine'].includes(value))
+        .map(([value, label]) => ({value, label}));
+    },
+
+    async init() {
       if (API.enforceAdminPageAccess && !API.enforceAdminPageAccess()) return;
+      try {
+        if (API.getStaffIdentity) await API.getStaffIdentity();
+        this.clinicOnly = API.isClinicWorkspace?.() === true;
+      } catch (error) {
+        this.sectionError = error.message || 'Could not verify inventory access.';
+        return;
+      }
       this._hashListener = () => this.showSection();
       this._changeListener = () => { this.inventoryRevision += 1; };
       window.addEventListener("hashchange", this._hashListener);
@@ -93,7 +108,7 @@ function adminInventory() {
         const mount = async () => {
           const config = InventorySections[section];
           const [response] = await Promise.all([
-            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024`),
+            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024&veterinary=20261024`),
             ...config.dependencies.map(loadInventoryScript),
             loadInventoryScript(config.script),
           ]);
@@ -120,7 +135,11 @@ function adminInventory() {
 
     async showSection() {
       const navigation = ++this._navigation;
-      const route = inventoryRoute();
+      let route = inventoryRoute();
+      if (this.clinicOnly && !['overview', 'products', 'history'].includes(route.section)) {
+        history.replaceState(null, '', '#overview');
+        route = inventoryRoute();
+      }
       if (!Object.hasOwn(InventorySections, window.location.hash.slice(1).split("?")[0])) {
         history.replaceState(null, "", "#overview");
       }

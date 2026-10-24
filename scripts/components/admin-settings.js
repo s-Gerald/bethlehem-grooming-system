@@ -19,6 +19,7 @@ function adminSettings() {
   return {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
+    canManageGroomers: false,
     activeSettingsTab: "general",
     qrMethodOptions: ['GCash', 'Maya', 'Bank Transfer'],
     qrSettings: {accepted_methods: [], methodsOpen: false, customOpen: false, customName: '', editingMethod: '', enabled: false, version: 1, merchant_name: '', has_image: false,
@@ -194,6 +195,16 @@ function adminSettings() {
     },
 
     async init() {
+      if (API.getStaffIdentity) {
+        try {
+          const {user} = await API.getStaffIdentity();
+          this.isAdmin = user.role === 'admin';
+          this.canManageGroomers = this.isAdmin || !!user.staff_permissions?.grooming;
+        } catch (error) {
+          this.availabilityError = error.message || 'Could not verify settings access.';
+          return;
+        }
+      } else this.canManageGroomers = this.isAdmin;
       this._intakeRefreshListener = () => { void this.refreshIntakeStatus(); };
       window.addEventListener?.('focus', this._intakeRefreshListener);
       window.addEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
@@ -750,12 +761,14 @@ function adminSettings() {
     },
 
     editPetGroomer(person = null) {
+      if (!this.canManageGroomers) return;
       this.petGroomerEditor = { id: person?.id ?? null, first_name: person?.first_name || "" };
       this.groomersOnDutyError = "";
       this.$nextTick(() => document.getElementById("petGroomerFirstName")?.focus());
     },
 
     async savePetGroomer(data, id = null, toggle = null) {
+      if (!this.canManageGroomers) return;
       if (this.groomersOnDutySaving) return;
       this.groomersOnDutySaving = true;
       this.groomersOnDutyError = "";

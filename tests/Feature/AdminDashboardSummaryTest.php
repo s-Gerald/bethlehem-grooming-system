@@ -24,6 +24,44 @@ class AdminDashboardSummaryTest extends TestCase
 {
     use \Tests\Support\CreatesPetGroomers;
 
+    public function test_veterinarian_dashboard_counts_and_activity_are_clinic_only(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs(new User([
+            'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
+        ]));
+        Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->id(); $table->string('appointment_reference'); $table->string('status');
+            $table->date('appointment_date'); $table->integer('queue_number')->nullable();
+            $table->integer('pet_id')->nullable(); $table->integer('user_id')->nullable(); $table->integer('walkin_id')->nullable();
+            $table->dateTime('checked_in_at')->nullable(); $table->dateTime('consultation_started_at')->nullable();
+            $table->dateTime('consultation_finished_at')->nullable(); $table->timestamps();
+        });
+        try {
+            foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled'] as $i => $status) {
+                DB::table('clinic_appointments')->insert([
+                    'appointment_reference' => 'CL-VET-'.$i, 'appointment_date' => '2026-06-24',
+                    'status' => $status, 'queue_number' => $i + 1, 'updated_at' => now(),
+                    'checked_in_at' => now()->subHour(),
+                    'consultation_finished_at' => in_array($status, ['for_payment', 'completed', 'cancelled']) ? now() : null,
+                ]);
+            }
+            DB::table('bookings')->insert(['booking_reference' => 'GROOMING', 'booking_date' => '2026-06-24', 'status' => 'checked_in']);
+            $this->getJson('/api/admin/dashboard/summary')->assertOk()
+                ->assertJsonPath('clinicOnly', true)->assertJsonPath('summary.waitingNow', 1)
+                ->assertJsonPath('summary.inConsultation', 1)->assertJsonPath('summary.today', 2)
+                ->assertJsonMissingPath('capacity')->assertJsonMissingPath('summary.revenueToday')
+                ->assertJsonCount(2, 'queuePreview')->assertJsonPath('queuePreview.0.serviceType', 'clinic');
+            $activity = $this->getJson('/api/admin/dashboard/activity')->assertOk()->json('recentActivity');
+            $this->assertNotEmpty($activity);
+            foreach ($activity as $item) {
+                $this->assertStringStartsWith('clinic-', $item['id']);
+                $this->assertStringNotContainsString('Grooming', $item['title']);
+            }
+        } finally {
+            Schema::dropIfExists('clinic_appointments');
+        }
+    }
+
     public function test_dashboard_read_access_and_revenue_follow_authenticated_staff_role(): void
     {
         foreach ([['admin', null, null], ['staff', 'grooming', 'grooming_receptionist'],

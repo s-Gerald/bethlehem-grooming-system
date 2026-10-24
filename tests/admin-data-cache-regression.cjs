@@ -124,7 +124,7 @@ async function boundedSearchAndOperationalReuse() {
     assert.equal(visible.version, 1); wait.resolve({ version: 2 }); await p; assert.equal(visible.version, 2);
   }
   e.respond(() => ({})); for (let i = 0; i < 40; i++) await e.API.getAdminBookings('2026-10-'+i, { boardOnly: true });
-  const stored = JSON.parse(e.sessionStorage.getItem('bethlehem.admin.presentation.v2'));
+  const stored = JSON.parse(e.sessionStorage.getItem('bethlehem.admin.presentation.v3'));
   assert.ok(Object.keys(stored.entries).length <= 24);
 }
 async function retainedDataWaitsForSessionVerification() {
@@ -179,7 +179,7 @@ async function scopedPresentationPolicies() {
   for (const key of ['/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/clinic-services?page=1&q=private-search', '/inventory/items?page=1&q=private-search', '/inventory/transactions?page=1&type=stock_in']) {
     await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
     assert.equal(e.calls.filter(c => c.endpoint === key).length, 1, key + ' memory reuse');
-    assert.ok(!e.sessionStorage.getItem('bethlehem.admin.presentation.v2')?.includes(key), key + ' must not persist');
+    assert.ok(!e.sessionStorage.getItem('bethlehem.admin.presentation.v3')?.includes(key), key + ' must not persist');
   }
   for (const key of ['/inventory/search?q=retail&sale_context=pos', '/inventory/items/1', '/admin/bookings/1/signed-consent', '/admin/clinic-cases/1']) {
     await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
