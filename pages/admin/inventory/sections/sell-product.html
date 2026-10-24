@@ -1,6 +1,6 @@
 <div class="pos-workflow">
-  <fieldset x-show="!onlinePayment" :disabled="submitting || validating || receiptOpen || !!onlinePayment" :aria-busy="submitting || validating" class="pos-layout">
-    <div class="pos-left">
+  <div class="pos-layout">
+    <fieldset class="pos-left pos-fields" :disabled="submitting || validating || receiptOpen || !!onlinePayment" :aria-busy="submitting || validating" aria-label="Products and cart">
       <section class="pos-panel" aria-labelledby="pos-search-title">
         <label id="pos-search-title" for="pos-product-search">Search or scan product</label>
         <div class="pos-search-input">
@@ -30,7 +30,7 @@
       </section>
       <section class="pos-panel" aria-labelledby="pos-cart-title">
         <div class="pos-panel-heading"><h3 id="pos-cart-title">Cart</h3><button type="button" class="pos-text-button" x-show="cart.length" @click="clearCart()">Clear All</button></div>
-        <p x-show="!cart.length" class="pos-empty">Search for a product to start a sale.</p>
+        <p x-show="!cart.length" class="pos-empty" x-text="onlinePayment ? 'Restoring payment cart…' : 'Search for a product to start a sale.'"></p>
         <template x-for="(line, index) in cart" :key="line.item_id">
           <div class="pos-cart-line">
             <div class="pos-line-product"><strong x-text="line.item_name"></strong><span x-text="'₱' + fmt(line.price) + ' / ' + line.unit"></span></div>
@@ -44,13 +44,14 @@
         </template>
         <p x-show="notice" role="status" class="pos-notice" x-text="notice"></p>
       </section>
-    </div>
+    </fieldset>
     <section class="pos-panel pos-summary" aria-labelledby="pos-payment-title">
       <h3 id="pos-payment-title">Order Summary</h3>
       <dl class="pos-summary-values">
-        <div><dt>Subtotal</dt><dd x-text="'₱' + fmt(totalAmount)"></dd></div>
-        <div class="pos-total"><dt>Total</dt><dd x-text="'₱' + fmt(totalAmount)"></dd></div>
+        <div><dt>Subtotal</dt><dd x-text="'₱' + fmt(onlinePayment?.amount ?? totalAmount)"></dd></div>
+        <div class="pos-total"><dt>Total</dt><dd x-text="'₱' + fmt(onlinePayment?.amount ?? totalAmount)"></dd></div>
       </dl>
+      <fieldset class="pos-fields" :disabled="submitting || validating || receiptOpen || !!onlinePayment" :aria-busy="submitting || validating" aria-label="Payment information">
       <div class="pos-payment-methods" role="group" aria-labelledby="pos-payment-method-title">
         <p id="pos-payment-method-title">Payment Method</p>
         <label class="pos-payment-option" :class="{'pos-payment-selected': paymentMethod === 'cash'}">
@@ -68,21 +69,24 @@
       <label for="pos-notes">Notes <span class="pos-helper">(optional)</span></label>
       <input id="pos-notes" x-model="notes" maxlength="500" type="text" />
       <p x-show="totalAmount > 999999.99" class="pos-error">The total exceeds ₱999,999.99. Reduce the cart before continuing.</p>
-      <button type="button" @click="processSale()" :disabled="submitting || !canProcess" class="pos-button pos-primary" x-text="validating ? 'Checking stock and prices…' : submitting ? 'Processing…' : paymentMethod === 'cash' ? 'Complete Sale' : 'Create Online Payment'"></button>
+      <button x-show="!onlinePayment || openingCheckout" type="button" @click="processSale()" :disabled="submitting || !canProcess" class="pos-button pos-primary" x-text="validating ? 'Checking stock and prices…' : submitting ? (paymentMethod === 'cash' ? 'Processing…' : 'Opening checkout…') : paymentMethod === 'cash' ? 'Complete Sale' : 'Create Online Payment'"></button>
+      </fieldset>
+      <div x-ref="paymentStatus" tabindex="-1" x-cloak x-show="onlinePayment && !openingCheckout" class="pos-payment-status" :aria-busy="submitting">
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h4 x-text="posPaymentTitle"></h4>
+          <p class="pos-helper" x-text="posPaymentMessage"></p>
+        </div>
+        <button x-show="canOpenPosCheckout" type="button" class="pos-button pos-primary" @click="openPosCheckout()" :disabled="submitting">Open Checkout</button>
+        <div class="pos-payment-actions">
+          <button type="button" class="pos-text-button" @click="checkPosPaymentStatus()" :disabled="submitting" x-text="submitting && !_posCancelling ? 'Checking…' : 'Check Status'"></button>
+          <button x-show="onlinePayment?.id && onlinePayment?.status === 'pending'" type="button" class="pos-text-button" @click="cancelPosOnlinePayment()" :disabled="submitting" x-text="_posCancelling ? 'Cancelling…' : 'Cancel Online Payment'"></button>
+        </div>
+      </div>
+      <div x-show="error" class="pos-error">
+        <p role="alert" x-text="error"></p>
+        <button type="button" x-show="validationFailed" class="pos-text-button" @click="revalidateCart()" :disabled="submitting || validating || !!onlinePayment" x-text="validating ? 'Checking…' : 'Retry'"></button>
+      </div>
     </section>
-  </fieldset>
-  <section x-show="onlinePayment" class="pos-panel" aria-live="polite">
-    <h3 x-text="verifyingPayment ? 'Verifying payment…' : 'Awaiting Online Payment'"></h3>
-    <p class="pos-success-total" x-text="'₱' + fmt(onlinePayment?.amount)"></p>
-    <div class="flex flex-wrap gap-3">
-      <button x-show="onlinePayment?.checkout_url && onlinePayment?.status === 'pending'" type="button" class="pos-button pos-primary" @click="openPosCheckout()" :disabled="submitting">Open Checkout</button>
-      <button x-show="onlinePayment?.status === 'pending'" type="button" class="pos-text-button" @click="checkPosPaymentStatus()" :disabled="submitting">Check Status</button>
-      <button x-show="onlinePayment?.status === 'pending'" type="button" class="pos-text-button" @click="cancelPosOnlinePayment()" :disabled="submitting">Cancel Online Payment</button>
-    </div>
-  </section>
-  <div x-show="error" class="pos-error">
-    <p role="alert" x-text="error"></p>
-    <button type="button" x-show="validationFailed" class="pos-text-button" @click="revalidateCart()" :disabled="submitting || validating || !!onlinePayment" x-text="validating ? 'Checking…' : 'Retry'"></button>
   </div>
 
   <dialog class="pos-scanner-dialog" aria-labelledby="pos-scanner-title" x-effect="scannerActive ? $el.showModal() : $el.close()" @cancel.prevent="closeScanner()">

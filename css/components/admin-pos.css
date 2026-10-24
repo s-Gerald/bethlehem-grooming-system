@@ -17,19 +17,20 @@
   min-width: 0;
 }
 .pos-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.pos-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 .pos-left { min-width: 0; display: grid; align-content: start; gap: 20px; }
 .pos-panel { min-width: 0; padding: 20px; border: 1px solid var(--pos-border); border-radius: 16px; background: var(--pos-surface); }
 .pos-panel h3, .pos-success-content h3 { font-size: 18px; font-weight: 700; }
 .pos-workflow label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
 .pos-workflow input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--pos-border); border-radius: 9px; background: var(--pos-surface); font-size: 14px; }
-.pos-workflow :is(button, input):focus-visible { outline: 2px solid var(--pos-blue); outline-offset: 3px; }
+.pos-workflow :is(button, input, .pos-payment-status):focus-visible { outline: 2px solid var(--pos-blue); outline-offset: 3px; }
 .pos-workflow input[aria-invalid="true"] { border-color: var(--pos-error); }
 .pos-search-input { position: relative; min-width: 0; }
 .pos-search-input input { padding-right: 58px; }
 .pos-scan-button { position: absolute; right: 2px; top: 0; display: flex; align-items: center; justify-content: center; width: 44px; border-radius: 9px; color: var(--pos-blue); }
 .pos-scan-button svg { width: 24px; height: 24px; }
 .pos-workflow button { min-height: 44px; }
-.pos-workflow button:disabled, .pos-layout:disabled :is(button, input) { cursor: not-allowed; opacity: .55; }
+.pos-workflow :is(button, input):disabled { cursor: not-allowed; opacity: .55; }
 .pos-workflow button:active:not(:disabled) { transform: translateY(1px); }
 .pos-helper { margin-top: 6px; color: var(--pos-muted); font-size: 12px; font-weight: 400; }
 .pos-results { margin-top: 12px; border: 1px solid var(--pos-border); border-radius: 9px; max-height: 320px; overflow-y: auto; }
@@ -56,6 +57,10 @@
 .pos-line-error { grid-column: 1 / -1; color: var(--pos-error); font-size: 12px; }
 .pos-notice { color: var(--pos-muted); font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
 .pos-summary { align-self: start; }
+.pos-payment-status { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--pos-border); }
+.pos-payment-status h4 { font-size: 16px; font-weight: 700; }
+.pos-payment-actions { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 8px; }
+.pos-payment-actions button { white-space: nowrap; }
 .pos-summary-values { margin: 16px 0; font-size: 14px; }
 .pos-summary-values > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; }
 .pos-summary-values dt { color: var(--pos-muted); }

@@ -2,27 +2,30 @@ function adminPos() {
   return {
     searchQuery: "", searchResults: [], searching: false, noResults: false,
     _searchTimer: null, _searchVersion: 0,
-    paymentMethod: "cash", onlinePayment: null, verifyingPayment: false, requestKey: null,
+    paymentMethod: "cash", onlinePayment: null, verifyingPayment: false, requestKey: null, _posCancelling: false,
     cart: [], amountTendered: "", notes: "",
-    submitting: false, validating: false, validationFailed: false, error: "", notice: "",
+    submitting: false, openingCheckout: false, validating: false, validationFailed: false, error: "", notice: "",
     receipt: null, receiptOpen: false,
     scannerActive: false, _scanner: null,
 
     async init() {
       const saved = window.OnlinePayment?.get('pos');
-      this.requestKey = saved?.requestKey || null;
+      this.requestKey = saved?.requestKey || this.requestKey;
       if (!saved && !this.onlinePayment) return;
+      this.onlinePayment ||= {id: saved?.id, status: 'recovering', amount: this.totalAmount};
+      this.paymentMethod = 'online';
       this.submitting = true; this.verifyingPayment = saved?.outcome === 'success';
       try {
-        const response = await InventoryAPI.onlinePaymentStatus(saved?.id, this.requestKey);
+        const response = await InventoryAPI.onlinePaymentStatus(saved?.id || this.onlinePayment?.id, this.requestKey);
         await this.applyPosOnlineStatus(response);
         if (saved?.outcome === 'cancel' && this.onlinePayment?.status === 'pending') await this.cancelPosOnlinePayment();
       } catch (error) {
         if (saved?.id && [403, 404].includes(error.status)) {
           window.OnlinePayment.clear('pos'); this.requestKey = null;
+          this.onlinePayment = {status: 'recovering', amount: this.totalAmount};
           try {await this.applyPosOnlineStatus(await InventoryAPI.onlinePaymentStatus());}
           catch (retryError) {this.error = retryError.message || 'Could not check online payments.';}
-        } else this.error = error.message || 'Could not restore online payment. Reload to retry.';
+        } else this.error = 'Could not restore Online Payment. Check Status to retry.';
       }
       finally {this.submitting = false;}
     },
@@ -43,6 +46,7 @@ function adminPos() {
     },
 
     onSearchInput() {
+      if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
       clearTimeout(this._searchTimer);
       const version = ++this._searchVersion;
       const q = this.searchQuery.trim();
@@ -66,7 +70,7 @@ function adminPos() {
     },
 
     async scanBarcode(code = this.searchQuery.trim()) {
-      if (!code || this.submitting) return;
+      if (!code || this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
       clearTimeout(this._searchTimer);
       const version = ++this._searchVersion;
       this.searching = true;
@@ -186,7 +190,7 @@ function adminPos() {
     },
 
     async revalidateCart() {
-      if (this.validating || !this.cart.length) return false;
+      if (this.validating || this.onlinePayment || !this.cart.length) return false;
       this.validating = true; this.validationFailed = false; this.error = "";
       try {
         const response = await InventoryAPI.validateCart({
@@ -230,6 +234,9 @@ function adminPos() {
         if (this.paymentMethod !== 'cash') {
           this.requestKey ||= window.crypto.randomUUID();
           window.OnlinePayment.remember('pos', {request_key: this.requestKey}, null);
+          this.onlinePayment = {status: 'recovering', amount: this.totalAmount};
+          this.openingCheckout = true;
+          this.cancelSearch();
           const response = await InventoryAPI.createOnlinePayment({
             request_key: this.requestKey, payment_method: this.paymentMethod,
             items: this.cart.map(line => ({item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock})),
@@ -245,9 +252,19 @@ function adminPos() {
         });
         this.completePosSale(res.data);
       } catch (err) {
-        if (this.paymentMethod !== 'cash') {
-          try {await this.applyPosOnlineStatus(await InventoryAPI.onlinePaymentStatus(null, this.requestKey));}
+        if (this.paymentMethod !== 'cash' && this.requestKey) {
+          try {
+            const recovered = await InventoryAPI.onlinePaymentStatus(null, this.requestKey);
+            if (!recovered.online_payment && err.status >= 400 && err.status < 500 && err.status !== 408) this.onlinePayment = null;
+            await this.applyPosOnlineStatus(recovered);
+          }
           catch { /* Keep the original create error. */ }
+          if (this.onlinePayment) {
+            this.error = this.onlinePayment.checkout_url
+              ? 'Checkout could not open. Use Open Checkout to retry.'
+              : 'Checkout could not be confirmed. Check Status before retrying.';
+            return;
+          }
         }
         if (err.code === "POS_CART_CHANGED" || err.data?.code === "POS_CART_CHANGED") {
           this.reconcileCart(err.data.data);
@@ -256,7 +273,11 @@ function adminPos() {
         this.error = err.status === 0 || err.status >= 500
           ? "Sale could not be confirmed. Check Records → Transactions before retrying if the connection was interrupted."
           : Object.values(err.errors || {}).flat()[0] || err.message || "Sale failed. Please try again.";
-      } finally { this.submitting = false; }
+      } finally {
+        const openingCheckout = this.openingCheckout;
+        this.submitting = false; this.openingCheckout = false;
+        if (openingCheckout && this.onlinePayment && this._paymentVisible !== false) this.$nextTick(() => this.$refs.paymentStatus?.focus());
+      }
     },
 
     completePosSale(receipt) {
@@ -270,11 +291,42 @@ function adminPos() {
       this.$nextTick(() => { this.$refs.successDialog.showModal(); });
       window.dispatchEvent?.(new CustomEvent('inventory:changed'));
     },
-    openPosCheckout() {if (this._paymentVisible !== false) window.OnlinePayment.open('pos', this.onlinePayment, null);},
+    openPosCheckout() {
+      if (this._paymentVisible === false || !this.canOpenPosCheckout) return;
+      try {
+        window.OnlinePayment.open('pos', {...this.onlinePayment, request_key: this.requestKey}, null);
+      } catch {
+        this.error = 'Checkout could not open. Use Open Checkout to retry.';
+      }
+    },
+    get canOpenPosCheckout() {
+      return this.onlinePayment?.status === 'pending' && !!this.onlinePayment.checkout_url && !this.onlinePayment.reconciliation_reason;
+    },
+    get posPaymentTitle() {
+      if (this.onlinePayment?.status === 'paid') return 'Payment received';
+      if (this.verifyingPayment || this.onlinePayment?.status === 'recovering') return 'Verifying Online Payment…';
+      return this.canOpenPosCheckout ? 'Payment Pending' : 'Checkout needs review';
+    },
+    get posPaymentMessage() {
+      if (this.onlinePayment?.status === 'paid') return 'Contact an administrator to reconcile stock.';
+      if (this.onlinePayment?.status === 'recovering') return 'Check Status to recover this payment attempt.';
+      return this.canOpenPosCheckout ? 'Waiting for payment confirmation.' : 'Check Status or contact an administrator.';
+    },
     async applyPosOnlineStatus(response) {
       const attempt = response.online_payment;
-      if (attempt?.status !== 'paid') {
-        if (response.cart) this.cart = response.cart.map(line => ({
+      const wasPending = this.onlinePayment?.status === 'pending';
+      this.verifyingPayment = false;
+      if (!attempt && this.requestKey && this.onlinePayment?.status === 'recovering') {
+        this.error = 'Checkout is still unconfirmed. Check Status or contact an administrator.';
+        return;
+      }
+      if (response.cart) {
+        const sameCart = this.cart.length === response.cart.length && response.cart.every((line, index) => {
+          const current = this.cart[index];
+          return Number(current.item_id) === Number(line.item_id) && Number(current.quantity) === Number(line.quantity)
+            && current.price === Number(line.price_at_sale) && current.subtotal === Number(line.subtotal);
+        });
+        if (!sameCart) this.cart = response.cart.map(line => ({
           item_id: line.item_id, item_name: line.name, unit: line.unit, quantity: line.quantity,
           price: Number(line.price_at_sale), stock: line.quantity, subtotal: Number(line.subtotal), unavailable: false,
         }));
@@ -287,6 +339,7 @@ function adminPos() {
         this.completePosSale(response.receipt);
       } else if (attempt?.status === 'pending') {
         this.onlinePayment = attempt; this.paymentMethod = 'online';
+        this.cancelSearch();
         window.OnlinePayment.remember('pos', {...attempt, request_key: this.requestKey}, null);
         this.error = attempt.reconciliation_reason ? 'Checkout creation needs reconciliation. Contact an administrator.' : '';
         if (!this._posPaymentWatch && this._paymentVisible !== false) {
@@ -298,28 +351,43 @@ function adminPos() {
           });
           this._posPaymentWatch.start();
         }
+        if (!wasPending && !this.submitting && this._paymentVisible !== false) this.$nextTick(() => this.$refs.paymentStatus?.focus());
       } else {
         this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
         this.onlinePayment = null; this.verifyingPayment = false; this.requestKey = null;
         window.OnlinePayment?.clear('pos');
         if (attempt) this.error = ({failed: 'Checkout creation failed. Review the cart and retry.', cancelled: 'Online payment cancelled.', expired: 'Checkout expired. Review the cart before retrying.'})[attempt.status] || '';
+        if (attempt && this._paymentVisible !== false) this.$nextTick(() => this.$refs.productSearch?.focus());
       }
     },
     async checkPosPaymentStatus() {
-      if (this.submitting) return;
+      if (this.submitting || !this.onlinePayment || this._paymentVisible === false) return;
+      this.submitting = true; this.error = '';
       this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
-      await this.applyPosOnlineStatus({online_payment: this.onlinePayment});
-      await this._posPaymentWatch?.check();
+      try {await this.applyPosOnlineStatus(await InventoryAPI.onlinePaymentStatus(this.onlinePayment.id, this.requestKey));}
+      catch {this.error = 'Could not check Online Payment. Check Status to retry.';}
+      finally {
+        this.submitting = false;
+        if (this.onlinePayment?.status === 'pending' && !this._posPaymentWatch) {
+          const error = this.error;
+          await this.applyPosOnlineStatus({online_payment: this.onlinePayment});
+          this.error = error;
+        }
+      }
     },
     async cancelPosOnlinePayment() {
-      if (this._posCancelling) return;
+      if (this._posCancelling || !this.onlinePayment?.id || this.onlinePayment.status !== 'pending') return;
       this._posCancelling = true; this.submitting = true; this.error = '';
       this._posPaymentWatch?.stop(); this._posPaymentWatch = null;
       try {await this.applyPosOnlineStatus(await InventoryAPI.cancelOnlinePayment(this.onlinePayment.id));}
       catch (error) {this.error = error.message || 'Online payment is still pending.';}
       finally {
         this._posCancelling = false; this.submitting = false;
-        if (this.onlinePayment?.status === 'pending') await this.applyPosOnlineStatus({online_payment: this.onlinePayment});
+        if (this.onlinePayment?.status === 'pending' && !this._posPaymentWatch) {
+          const error = this.error;
+          await this.applyPosOnlineStatus({online_payment: this.onlinePayment});
+          this.error = error;
+        }
       }
     },
     closeSuccess() { this.$refs.successDialog?.close(); this.receiptOpen = false; this.cancelSearch(); },
