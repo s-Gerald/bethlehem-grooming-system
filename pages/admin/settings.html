@@ -1048,7 +1048,7 @@
                           class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
                           :class="staff.active ? 'border-red-200 bg-white text-red-600 hover:bg-red-50' : 'border-[#c9d9e8] bg-white text-[#315b7e] hover:bg-[#eef5fb]'"
                         >
-                          <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staff.active ? 'user-minus' : 'user-check')"></use></svg>
+                          <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staff.active ? 'user-minus' : 'user-check')"></use></svg>
                           <span x-text="staff.active ? 'Deactivate' : 'Reactivate'"></span>
                         </button>
                       </div>
@@ -1243,7 +1243,7 @@
                     <div class="flex justify-end gap-3 border-t border-[#e8f0f8] px-5 py-3 sm:px-6">
                       <button type="button" @click="closeStaffStatusModal()" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Cancel</button>
                       <button type="button" @click="updateStaffStatus()" :disabled="staffStatusModal.busy" class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70" :class="staffStatusModal.targetActive ? 'bg-[#315b7e] hover:bg-[#284a67]' : 'bg-red-600 hover:bg-red-700'">
-                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffStatusModal.targetActive ? 'user-check' : 'user-minus')"></use></svg>
+                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffStatusModal.targetActive ? 'user-check' : 'user-minus')"></use></svg>
                         <span x-text="staffStatusModal.busy ? 'Updating...' : (staffStatusModal.targetActive ? 'Reactivate' : 'Deactivate')"></span>
                       </button>
                     </div>
@@ -1302,7 +1302,10 @@
                           <button type="button" @click="openStaffSetupModal(staffDetailsModal.staff)" :disabled="staffDetailsModal.busy" class="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 disabled:opacity-60">Cancel Account Setup</button>
                         </div>
                       </template>
-                      <button x-show="staffDetailsModal.staff && !staffDetailsModal.staff.setupRequired" type="button" @click="const staff = staffDetailsModal.staff; closeStaffDetails(); openStaffStatusModal(staff)" :disabled="staffDetailsModal.busy" class="rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] disabled:opacity-60" x-text="staffDetailsModal.staff?.active ? 'Deactivate' : 'Reactivate'"></button>
+                      <button x-show="staffDetailsModal.staff && !staffDetailsModal.staff.setupRequired" type="button" @click="const staff = staffDetailsModal.staff; closeStaffDetails(); openStaffStatusModal(staff)" :disabled="staffDetailsModal.busy" class="inline-flex items-center justify-center gap-2 rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] disabled:opacity-60">
+                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffDetailsModal.staff?.active ? 'user-minus' : 'user-check')"></use></svg>
+                        <span x-text="staffDetailsModal.staff?.active ? 'Deactivate' : 'Reactivate'"></span>
+                      </button>
                       <div class="ml-auto flex gap-2">
                         <button x-show="!staffRoleChangePending" type="button" @click="closeStaffDetails()" :disabled="staffDetailsModal.busy" class="rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:opacity-60">Close</button>
                         <button x-cloak x-show="staffRoleChangePending" type="button" @click="cancelStaffRoleChange()" :disabled="staffDetailsModal.busy" class="whitespace-nowrap rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] disabled:opacity-60">Cancel</button>
