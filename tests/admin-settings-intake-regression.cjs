@@ -10,10 +10,15 @@ function setup(role = 'admin') {
   e.c.document.visibilityState = 'visible';
   e.c.window.removeEventListener = () => {};
   e.c.document.removeEventListener = () => {};
-  const timers = new Map();
+  const timers = new Map(), timeouts = new Map();
   let nextTimer = 0;
   e.c.window.setInterval = callback => { timers.set(++nextTimer, callback); return nextTimer; };
   e.c.window.clearInterval = id => timers.delete(id);
+  e.c.window.setTimeout = (callback, delay = 0) => {
+    timeouts.set(++nextTimer, { callback, dueAt: e.c.Date.now() + delay });
+    return nextTimer;
+  };
+  e.c.window.clearTimeout = id => timeouts.delete(id);
   let stopped = false, statusError = false, mutationError = false, pendingStatus, pendingMutation;
   e.respond(async (endpoint, options) => {
     if (endpoint === '/clinic/status') {
@@ -33,7 +38,16 @@ function setup(role = 'admin') {
   vm.runInContext(fs.readFileSync('scripts/components/admin-settings.js', 'utf8'), e.c);
   const ui = e.c.adminSettings();
   ui.$nextTick = fn => fn();
-  return { ...e, ui, timers, tick: milliseconds => { e.advance(milliseconds); for (const callback of timers.values()) callback(); },
+  return { ...e, ui, timers, timeouts, tick: milliseconds => {
+    e.advance(milliseconds);
+    for (const callback of timers.values()) callback();
+    for (const [id, timeout] of [...timeouts]) {
+      if (timeouts.has(id) && timeout.dueAt <= e.c.Date.now()) {
+        timeouts.delete(id);
+        timeout.callback();
+      }
+    }
+  },
     statusCalls: () => e.calls.filter(c => c.endpoint === '/clinic/status').length,
     mutations: () => e.calls.filter(c => /\/(stop|reopen)-today$/.test(c.endpoint)),
     setStopped: value => { stopped = value; }, failStatus: value => { statusError = value; },
@@ -165,12 +179,55 @@ async function timerCleanupPreservesIntakeRequests() {
   e.tick(1000);
   assert.equal(e.ui.securityVerification.resendRemaining, 0);
   assert.equal(e.timers.size, 0, 'Expired countdown clears its interval');
+  const recovery = { id: 'recovery-timer', status: 'pending', expires_at: new Date(e.c.Date.now() + 1000).toISOString() };
+  e.ui.staffDetailsModal.staff = { id: 7, emailRecovery: recovery };
+  e.ui.armStaffRecoveryExpiry();
+  assert.equal(e.timeouts.size, 1, 'Recovery expiry registers a timeout');
+  e.tick(999);
+  assert.equal(recovery.status, 'pending', 'Expiry must not run before its deadline');
+  e.tick(1);
+  assert.equal(recovery.status, 'expired');
+  assert.equal(e.timeouts.size, 0, 'Expiry is a one-shot callback');
+
+  recovery.status = 'pending';
+  recovery.expires_at = new Date(e.c.Date.now() + 1000).toISOString();
+  e.ui.armStaffRecoveryExpiry();
+  const previousExpiry = e.ui._staffRecoveryExpiryTimer;
+  recovery.expires_at = new Date(e.c.Date.now() + 3000).toISOString();
+  e.ui.armStaffRecoveryExpiry();
+  assert.equal(e.timeouts.has(previousExpiry), false, 'Rearming cancels the previous expiry callback');
+  assert.equal(e.timeouts.size, 1);
+  e.tick(1000);
+  assert.equal(recovery.status, 'pending', 'The canceled expiry cannot expire a rearmed recovery');
+  e.tick(2000);
+  assert.equal(recovery.status, 'expired');
+  assert.equal(e.timeouts.size, 0);
+
   e.ui.startSecurityResendCountdown(5);
+  const previousInterval = e.ui._securityResendTimer;
   e.ui.startSecurityResendCountdown(10);
+  assert.equal(e.timers.has(previousInterval), false);
   assert.equal(e.timers.size, 1, 'Restarting countdown replaces the previous interval');
+  e.tick(1000);
+  assert.equal(e.ui.securityVerification.resendRemaining, 9);
+  e.ui.startSecurityResendCountdown(8, e.ui.staffEmailChange, '_staffEmailResendTimer');
+  e.ui.startSecurityResendCountdown(9, e.ui.staffRecovery, '_staffRecoveryResendTimer');
+  recovery.status = 'pending';
+  recovery.expires_at = new Date(e.c.Date.now() + 1000).toISOString();
+  e.ui.armStaffRecoveryExpiry();
+  assert.equal(e.timers.size, 3);
+  assert.equal(e.timeouts.size, 1);
+  assert.notEqual(e.ui._staffRecoveryExpiryTimer, e.ui._securityResendTimer, 'Intervals and timeouts have distinct timer IDs');
   e.ui.destroy();
-  assert.equal(e.timers.size, 0, 'Destroy clears the remaining interval');
+  assert.equal(e.timers.size, 0, 'Destroy clears every active resend interval');
+  assert.equal(e.timeouts.size, 0, 'Destroy cancels recovery expiry');
   assert.equal(e.ui._securityResendTimer, null);
+  e.tick(20000);
+  assert.equal(recovery.status, 'pending', 'A destroyed component cannot run its expiry callback');
+  assert.equal(e.ui.securityVerification.resendRemaining, 9);
+  assert.equal(e.ui.staffEmailChange.resendRemaining, 8);
+  assert.equal(e.ui.staffRecovery.resendRemaining, 9);
+  assert.equal(e.timers.size + e.timeouts.size, 0, 'Canceled callbacks cannot register more work');
   assert.equal(e.calls.length, requests, 'Timer lifecycle performs no intake or other requests');
 }
 (async () => { for (const test of [obsoleteNotificationSettingsAreAbsent, lazyStatusAndFreshEntry, confirmationAndActions, staffIsReadOnly, errorsAndRetry, sidebarRefreshNeverReadsIntake, timerCleanupPreservesIntakeRequests]) {
