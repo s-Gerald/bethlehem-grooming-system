@@ -511,9 +511,9 @@ function bindEvents() {
 document.addEventListener("DOMContentLoaded", async () => {
   const isClinic = appointmentType === "clinic";
   document.getElementById("walkInPageTitle").textContent = isClinic ? "Clinic walk-in" : "Grooming walk-in";
-  document.querySelectorAll("[data-walk-in-back-link]").forEach((link) => {
-    link.setAttribute("href", isClinic ? "./clinic.html" : "./appointments.html");
-  });
+  document.getElementById("walkInOwnerBackLink").setAttribute(
+    "href", isClinic ? "./clinic.html" : "./appointments.html",
+  );
   if (!await API.waitForSessionVerification()) {
     return;
   }

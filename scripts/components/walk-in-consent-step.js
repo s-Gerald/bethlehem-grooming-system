@@ -16,14 +16,13 @@ let elements = {};
 function getConsentMainMarkup() {
   return `
     <main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
-      <button
+      <a
         id="walkInConsentBackTopBtn"
-        type="button"
-        class="inline-flex items-center gap-2 text-sm font-medium text-[#315b7e] hover:underline"
+        href="./dashboard.html"
+        class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
-        <span>&larr;</span>
-        <span>Back to Review</span>
-      </button>
+        &larr; Back to Home
+      </a>
 
       <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Consent &amp; Agreement</h1>
@@ -93,10 +92,7 @@ function refreshElements() {
     submitBookingButton: document.getElementById("submitBookingButton"),
     consentStatusMessage: document.getElementById("consentStatusMessage"),
     bookingSummaryText: document.getElementById("bookingSummaryText"),
-    backButtons: [
-      document.getElementById("walkInConsentBackTopBtn"),
-      document.getElementById("walkInConsentBackBtn"),
-    ].filter(Boolean),
+    backButton: document.getElementById("walkInConsentBackBtn"),
   };
 }
 
@@ -423,9 +419,7 @@ function getStoredData(key) {
 
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
-  elements.backButtons.forEach((button) => {
-    button.addEventListener("click", handleBackClick);
-  });
+  elements.backButton.addEventListener("click", handleBackClick);
 }
 
 function initSignature() {

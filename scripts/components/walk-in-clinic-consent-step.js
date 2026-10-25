@@ -17,13 +17,13 @@ let elements = {};
 function getMarkup(pet, commonConcerns, chiefComplaint) {
   return `
     <main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
-      <button
+      <a
         id="clinicConsentBackTopBtn"
-        type="button"
-        class="inline-flex items-center gap-2 text-sm font-medium text-[#315b7e] hover:underline"
+        href="./dashboard.html"
+        class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
-        &larr; Back to Chief Complaint
-      </button>
+        &larr; Back to Home
+      </a>
 
       <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Review &amp; Confirm</h1>
@@ -113,10 +113,7 @@ function refreshElements() {
     checkbox: document.getElementById("clinicConsentCheckbox"),
     submitBtn: document.getElementById("clinicConsentSubmitBtn"),
     statusMsg: document.getElementById("clinicConsentStatus"),
-    backButtons: [
-      document.getElementById("clinicConsentBackTopBtn"),
-      document.getElementById("clinicConsentBackBtn"),
-    ].filter(Boolean),
+    backButton: document.getElementById("clinicConsentBackBtn"),
   };
 }
 
@@ -252,7 +249,7 @@ function handleBackClick() {
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
   elements.checkbox.addEventListener("change", syncSubmitButton);
-  elements.backButtons.forEach((btn) => btn.addEventListener("click", handleBackClick));
+  elements.backButton.addEventListener("click", handleBackClick);
 }
 
 export async function renderWalkInClinicConsentStep({ pet = null, commonConcerns = [], chiefComplaint = "", onBack = null } = {}) {

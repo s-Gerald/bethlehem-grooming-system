@@ -20,7 +20,7 @@ import {
   getPackageAlaCarteRules,
   getPackagesByPetType,
 } from "../services/grooming-service.js?v=managed-services-20261017-2";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025";
 
 const state = {
   pets: [],
@@ -41,13 +41,13 @@ function getServicesMainMarkup() {
   return `
     <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section data-session-public>
-        <button
+        <a
           id="walkInServicesBackTopBtn"
-          type="button"
-          class="inline-flex items-center gap-2 text-sm font-medium text-[#315b7e] hover:underline"
+          href="./dashboard.html"
+          class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
         >
-          &larr; Back to Pet Information
-        </button>
+          &larr; Back to Home
+        </a>
 
         <div class="mt-4">
           <h1 class="text-3xl font-bold text-[#2f4b66]">
@@ -120,10 +120,7 @@ function refreshElements() {
     serviceNotice: document.getElementById("serviceNotice"),
     petServiceSelections: document.getElementById("petServiceSelections"),
     nextButton: document.getElementById("walkInServicesNextBtn"),
-    backButtons: [
-      document.getElementById("walkInServicesBackTopBtn"),
-      document.getElementById("walkInServicesBackBtn"),
-    ].filter(Boolean),
+    backButton: document.getElementById("walkInServicesBackBtn"),
   };
 }
 
@@ -171,10 +168,8 @@ function bindEvents() {
   elements.petServiceSelections.addEventListener("change", handleSelectionChange);
   elements.petServiceSelections.addEventListener("input", handleSelectionInput);
   elements.form.addEventListener("submit", handleSubmit);
-  elements.backButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      window.location.href = "./walk-in-pet-details.html";
-    });
+  elements.backButton.addEventListener("click", () => {
+    window.location.href = "./walk-in-pet-details.html";
   });
 }
 

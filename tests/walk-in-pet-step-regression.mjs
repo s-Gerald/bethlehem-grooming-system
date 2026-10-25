@@ -159,7 +159,7 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
     resolvePets({ customer: { pets: apiPets } });
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return { ui, calls, resolvePets, rejectPets, handlers: main.namespace, window: context.window, renderedSteps };
+  return { ui, calls, resolvePets, rejectPets, handlers: main.namespace, window: context.window, renderedSteps, stored };
 }
 
 const savedPet = { id: 42, petName: "Mochi", species: "Dog", breed: "Poodle", size: "small", sizeVerified: true };
@@ -223,16 +223,20 @@ for (const appointmentType of ["grooming", "clinic"]) {
   }] } });
   flow.ui("backBtn").events.click();
   assert.equal(flow.window.location.href, `./walk-in-booking.html?flow=${appointmentType}`);
-  let prevented = false;
-  flow.ui("ownerBackLink").events.click({ preventDefault() { prevented = true; } });
-  assert.equal(prevented, true);
-  assert.equal(flow.window.location.href, `./walk-in-booking.html?flow=${appointmentType}`);
+  assert.equal(flow.ui("ownerBackLink").events.click, undefined, "Home retains native anchor navigation");
   flow.handlers.handleNext();
   assert.deepEqual(flow.renderedSteps, [appointmentType], "Pet step enters only the originating workflow");
   assert.equal(flow.window.history.url, appointmentType === "clinic"
     ? "./walk-in-pet-details.html?step=clinic-complaint"
     : "./walk-in-grooming-services.html");
 }
+
+const directClinic = await runStep({ ...ownerDraft(null, "clinic"), directEntry: "clinic" });
+const directDraft = [...directClinic.stored];
+directClinic.ui("backBtn").events.click();
+assert.equal(directClinic.window.location.href, "./clinic.html", "Direct clinic entry retains its bottom Back shortcut");
+assert.equal(directClinic.ui("ownerBackLink").events.click, undefined);
+assert.deepEqual([...directClinic.stored], directDraft, "Back preserves the direct-entry draft");
 
 for (const appointmentType of ["grooming", "clinic"]) {
   for (const weight of ["4.780", "4.200000", "10.555"]) {

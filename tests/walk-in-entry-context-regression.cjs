@@ -18,7 +18,7 @@ function element() {
   const attributes = new Map();
   return {
     value: "", textContent: "", innerHTML: "", disabled: false,
-    addEventListener() {}, focus() {},
+    events: {}, addEventListener(name, callback) { this.events[name] = callback; }, focus() {},
     setAttribute(key, value) { attributes.set(key, value); },
     getAttribute(key) { return attributes.get(key); },
     classList: {
@@ -35,7 +35,6 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
     if (!ui.has(id)) ui.set(id, element());
     return ui.get(id);
   };
-  const back = [element(), element()];
   const storage = new Map(continuationKeys.map((key) => [key, "stale"]));
   storage.set("unrelated", "keep");
   storage.set("walkInOwnerStep", JSON.stringify({ appointmentType: type === "clinic" ? "grooming" : "clinic", ...draft }));
@@ -48,7 +47,6 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
     URLSearchParams, window,
     document: {
       getElementById: get,
-      querySelectorAll(selector) { assert.equal(selector, "[data-walk-in-back-link]"); return back; },
       addEventListener(event, callback) { if (event === "DOMContentLoaded") ready = callback; },
     },
     API: { waitForSessionVerification: () => verification, validateWalkInNewOwner: async () => ({}) },
@@ -59,10 +57,60 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
   });
   vm.runInContext(ownerSource, context);
   const initialization = ready();
-  return { context, storage, get, back, window, initialization };
+  return { context, storage, get, window, initialization };
+}
+
+async function checkStepNavigation(file, markupFunction, topId, bottomId, previousPage) {
+  const nodes = new Map();
+  const get = id => {
+    if (!nodes.has(id)) nodes.set(id, element());
+    return nodes.get(id);
+  };
+  const saved = new Map([["walkInOwnerStep", '{"appointmentType":"clinic"}'], ["walkInPetStep", '{"pets":[{"petName":"Mochi"}]}']]);
+  const initialDraft = [...saved];
+  const context = vm.createContext({
+    document: { getElementById: get, addEventListener() {}, body: {}, querySelector: () => ({}) },
+    window: { location: { href: "" } },
+    sessionStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
+    API: { waitForSessionVerification: async () => true },
+    mountClinicVisitReasonFields: () => ({}), getClinicVisitSummaryMarkup: () => "", formatClinicVisitReason: () => "",
+  });
+  const source = read(`scripts/components/${file}.js`).replace(/^import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "").replace(/^export /gm, "");
+  vm.runInContext(source, context);
+  const markup = vm.runInContext(`${markupFunction}()`, context);
+  if (file === "walk-in-clinic-complaint-step") await context.renderWalkInClinicComplaintStep();
+  else vm.runInContext("refreshElements(); bindEvents();", context);
+
+  const top = markup.match(new RegExp(`<([a-z]+)\\b([^>]*\\bid="${topId}"[^>]*)>([\\s\\S]*?)<\\/\\1>`));
+  assert.ok(top, `${file}: top navigation is rendered`);
+  assert.equal(top[1], "a", `${file}: Home uses native anchor navigation`);
+  assert.match(top[2], /href="\.\/dashboard\.html"/, file);
+  assert.equal(top[3].replace(/<[^>]+>/g, "").replace(/&larr;/g, "←").replace(/\s+/g, " ").trim(), "← Back to Home", file);
+  assert.equal(get(topId).events.click, undefined, `${file}: no handler overrides Home`);
+  assert.deepEqual([...saved], initialDraft, `${file}: navigation setup preserves drafts`);
+
+  get(bottomId).events.click();
+  assert.equal(context.window.location.href, previousPage, `${file}: bottom Back retains its destination`);
+  if (file !== "walk-in-services-step" && file !== "walk-in-clinic-complaint-step") {
+    let callbacks = 0;
+    context.onBack = () => { callbacks++; };
+    vm.runInContext("state.onBack = onBack;", context);
+    context.window.location.href = "";
+    get(bottomId).events.click();
+    assert.equal(callbacks, 1, `${file}: bottom Back retains the supplied callback`);
+    assert.equal(context.window.location.href, "");
+  }
+  assert.deepEqual([...saved], initialDraft, `${file}: bottom Back preserves drafts`);
 }
 
 (async () => {
+  for (const step of [
+    ["walk-in-services-step", "getServicesMainMarkup", "walkInServicesBackTopBtn", "walkInServicesBackBtn", "./walk-in-pet-details.html"],
+    ["walk-in-review-step", "getReviewMainMarkup", "walkInReviewBackTopBtn", "walkInReviewBackBtn", "./walk-in-grooming-services.html"],
+    ["walk-in-consent-step", "getConsentMainMarkup", "walkInConsentBackTopBtn", "walkInConsentBackBtn", "./walk-in-booking-review.html"],
+    ["walk-in-clinic-complaint-step", "getMarkup", "clinicComplaintBackTopBtn", "clinicComplaintBackBtn", "./walk-in-pet-details.html"],
+    ["walk-in-clinic-consent-step", "getMarkup", "clinicConsentBackTopBtn", "clinicConsentBackBtn", "./walk-in-pet-details.html"],
+  ]) await checkStepNavigation(...step);
   let authorize;
   const verification = new Promise(resolve => { authorize = resolve; });
   const delayed = ownerFlow("clinic", {verification, draft: {firstName: "Private draft"}});
@@ -82,7 +130,7 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
     const flow = ownerFlow(type);
     await flow.initialization;
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
-    flow.back.forEach((link) => assert.equal(link.getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html"));
+    assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html");
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
     continuationKeys.forEach((key) => assert.equal(flow.storage.has(key), false, `${type}: clears ${key}`));
     assert.equal(flow.storage.get("unrelated"), "keep");
@@ -175,5 +223,5 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
   assert.equal(refreshed, true);
   assert.match(read("scripts/api.js"), /createUnregisteredCustomer/);
   assert.match(read("pages/admin/clients.html"), /@click="openAddCustomerModal\(\)"/);
-  console.log("Walk-in entry context, stale drafts, owner validation, intake permissions and dedicated Customers creation passed.");
+  console.log("Walk-in Home links, bottom Back routes and callbacks, entry context, drafts, owner validation, intake permissions and dedicated Customers creation passed.");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

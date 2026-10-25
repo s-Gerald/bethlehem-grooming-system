@@ -1,4 +1,4 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025";
 import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
@@ -9,10 +9,10 @@ function getMarkup() {
   return `
     <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section data-session-public class="mb-6">
-        <button id="clinicComplaintBackTopBtn" type="button"
-          class="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700">
-          &larr; Back to Pet Information
-        </button>
+        <a id="clinicComplaintBackTopBtn" href="./dashboard.html"
+          class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700">
+          &larr; Back to Home
+        </a>
         <div class="mt-4"><h1 class="text-3xl font-bold text-[#2f4b66]">Reason for Visit</h1></div>
         <div class="mt-6">
           <div class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
@@ -86,9 +86,7 @@ export async function renderWalkInClinicComplaintStep({ pet = null } = {}) {
     draft.chiefComplaint,
   );
   document.getElementById("clinicComplaintForm").addEventListener("submit", handleSubmit);
-  ["clinicComplaintBackTopBtn", "clinicComplaintBackBtn"].forEach((id) => {
-    document.getElementById(id).addEventListener("click", () => {
-      window.location.href = "./walk-in-pet-details.html";
-    });
+  document.getElementById("clinicComplaintBackBtn").addEventListener("click", () => {
+    window.location.href = "./walk-in-pet-details.html";
   });
 }

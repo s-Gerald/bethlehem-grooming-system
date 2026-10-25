@@ -13,7 +13,7 @@ import {
   formatPriceOption,
   getPackageById,
 } from "../services/grooming-service.js?v=managed-services-20261017-2";
-import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021";
+import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025";
 
 const state = {
   bookingDraft: null,
@@ -38,14 +38,13 @@ let elements = {};
 function getReviewMainMarkup() {
   return `
     <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
-      <button
+      <a
         id="walkInReviewBackTopBtn"
-        type="button"
-        class="inline-flex items-center gap-2 text-sm font-medium text-[#315b7e] hover:underline"
+        href="./dashboard.html"
+        class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
-        <span>&larr;</span>
-        <span>Back to Grooming Services</span>
-      </button>
+        &larr; Back to Home
+      </a>
 
       <section data-session-public class="mt-4">
         <h1 class="text-3xl font-bold text-[#2f4b66]">Review your grooming visit</h1>
@@ -141,10 +140,7 @@ function refreshElements() {
     totalPriceSubtext: document.getElementById("totalPriceSubtext"),
     reviewActionNotice: document.getElementById("reviewActionNotice"),
     confirmBookingBtn: document.getElementById("confirmBookingBtn"),
-    backButtons: [
-      document.getElementById("walkInReviewBackTopBtn"),
-      document.getElementById("walkInReviewBackBtn"),
-    ].filter(Boolean),
+    backButton: document.getElementById("walkInReviewBackBtn"),
   };
 }
 
@@ -153,9 +149,7 @@ function bindEvents() {
   elements.reviewActionNotice?.addEventListener("click", (event) => {
     if (event.target.closest("[data-retry-capacity]")) checkCapacity();
   });
-  elements.backButtons.forEach((button) => {
-    button.addEventListener("click", handleBackClick);
-  });
+  elements.backButton.addEventListener("click", handleBackClick);
 }
 
 function handleBackClick() {
@@ -242,7 +236,7 @@ async function checkCapacity() {
     notice.innerHTML = `<p class="font-semibold">Grooming capacity unavailable for today</p>
       <p class="mt-2">${explanation}</p>
       ${times.length ? `<p class="mt-2">${escapeHtml(times.join(" · "))}</p>` : ""}`;
-    elements.backButtons.at(-1).textContent = "Review services";
+    elements.backButton.textContent = "Review services";
   } catch (error) {
     if (request !== capacityRequest) return;
     notice.setAttribute("role", "alert");

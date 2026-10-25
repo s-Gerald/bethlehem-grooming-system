@@ -30,15 +30,15 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $clinicComponent,
         );
         $this->assertSame(
-            2,
-            substr_count($walkInPage, 'data-walk-in-back-link'),
+            1,
+            substr_count($walkInPage, 'id="walkInOwnerBackLink"'),
         );
         $this->assertStringContainsString(
-            'document.querySelectorAll("[data-walk-in-back-link]")',
+            'document.getElementById("walkInOwnerBackLink").setAttribute(',
             $ownerStep,
         );
         $this->assertStringContainsString(
-            'link.setAttribute("href", isClinic ? "./clinic.html" : "./appointments.html");',
+            '"href", isClinic ? "./clinic.html" : "./appointments.html",',
             $ownerStep,
         );
         $this->assertStringContainsString(
@@ -72,7 +72,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
         );
         $this->assertMatchesRegularExpression('/\?\s*"clinic"\s*:\s*"grooming";/', $ownerStep);
         $this->assertSame(
-            2,
+            1,
             substr_count($walkInPage, 'href="./appointments.html"'),
         );
         $this->assertStringContainsString(
@@ -83,6 +83,18 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             'walkInBookingUrl: "./walk-in-booking.html?flow=grooming&new=1"',
             $dashboardComponent,
         );
+    }
+
+    public function test_active_walk_in_pages_have_a_native_home_link_above_the_heading(): void
+    {
+        foreach (['walk-in-booking', 'walk-in-pet-details', 'walk-in-grooming-services', 'walk-in-booking-review', 'walk-in-consent'] as $page) {
+            $html = file_get_contents(base_path('pages/admin/'.$page.'.html'));
+            preg_match('/<main\b[^>]*>(.*?)<h1\b/s', $html, $header);
+            preg_match('/<a\b([^>]*)>(.*?)<\/a>/s', $header[1] ?? '', $link);
+            $this->assertStringContainsString('href="./dashboard.html"', $link[1] ?? '', $page);
+            $this->assertSame('← Back to Home', trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($link[2] ?? '')))), $page);
+            $this->assertStringNotContainsString('data-walk-in-back-link', $html, $page);
+        }
     }
 
     public function test_grooming_walk_in_can_select_existing_owners_and_their_pets(): void
