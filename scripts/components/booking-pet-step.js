@@ -897,8 +897,8 @@ function configurePageForFlow() {
   }
 
   document.title = "Clinic Visit - Pet Information";
-  elements.backLink.href = "./clinic-visit-date.html";
-  elements.backLabel.textContent = "Back to Date";
+  elements.backLink.href = "./dashboard.html";
+  elements.backLabel.textContent = "Back to Home";
   elements.pageTitle.textContent = "Pet Information";
   elements.savedPetsInstruction.textContent =
     "Select one pet from your saved pet list.";

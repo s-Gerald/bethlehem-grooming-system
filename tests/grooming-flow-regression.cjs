@@ -136,8 +136,34 @@ async function main() {
   assert.equal(entered.at(-1), 'schedule');
   assert.deepEqual([...values.entries()], activeDraft, 'Reloading preserves the current draft');
 
-  // Exercise the real pet-step Next handler without a schedule.
+  // Clinic initialization sets Home navigation without changing either grooming entry point.
   const petSource = read('scripts/components/booking-pet-step.js');
+  const petInitialization = petSource.slice(petSource.indexOf('function configurePageForFlow()'), petSource.indexOf('export async function refreshBookingPetStep()'))
+    .replace(/^export /gm, '');
+  for (const clinic of [false, true]) {
+    const elements = {
+      backLink: { href: './grooming-pre-registration.html' }, backLabel: { textContent: 'Back to Schedule' },
+      pageTitle: {}, savedPetsInstruction: {}, selectedPetsTitle: {},
+    };
+    const initialization = vm.createContext({
+      IS_CLINIC_VISIT: clinic, elements, document: { title: 'Pet Information' },
+      requireCustomerSession: () => true, bindEvents() {}, initStepState: async () => {},
+    });
+    vm.runInContext(petInitialization, initialization);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await initialization.initBookingPetStep();
+      assert.equal(elements.backLink.href, clinic ? './dashboard.html' : './grooming-pre-registration.html');
+      assert.equal(elements.backLabel.textContent, clinic ? 'Back to Home' : 'Back to Schedule');
+    }
+    if (!clinic) {
+      elements.backLink.href = './dashboard.html';
+      elements.backLabel.textContent = 'Back to Home';
+      await initialization.initBookingPetStep();
+      assert.equal(elements.backLink.href, './dashboard.html', 'Single-page grooming keeps its Home link');
+      assert.equal(elements.backLabel.textContent, 'Back to Home');
+    }
+  }
+  // Exercise the real in-form handlers independently of the upper-left link.
   const handlers = petSource.slice(petSource.indexOf('function handleBack()'), petSource.indexOf('function setFieldError('));
   let target, saved = false, error;
   const petContext = vm.createContext({ IS_CLINIC_VISIT: false, isGroomingSinglePage: () => true,
@@ -153,6 +179,9 @@ async function main() {
   assert.equal(error, undefined);
   petContext.handleBack();
   assert.equal(petContext.window.location.href, './pre-register.html');
+  petContext.IS_CLINIC_VISIT = true;
+  petContext.handleBack();
+  assert.equal(petContext.window.location.href, './clinic-visit-date.html', 'Clinic in-form Back still returns to arrival selection');
 
   const page = read('pages/client/grooming-pre-registration.html');
   assert.deepEqual([...page.matchAll(/data-grooming-step="([^"]+)"/g)].map((match) => match[1]), sections.map((section) => section.dataset.groomingStep));
@@ -162,6 +191,6 @@ async function main() {
     assert.ok(section.includes(index === 4 ? 'Final step' : `${(index + 1) * 20}% Complete`));
   }
   assert.match(read('scripts/components/booking-services-step.js'), /saveCurrentStepDraft\(\);\s+goToGroomingStep\("schedule"\)/);
-  console.log('Grooming flow: step order, complete-selection guards, new-draft reset, current arrival, and Back preservation passed.');
+  console.log('Grooming flow: step order, complete-selection guards, new-draft reset, current arrival, Clinic Home initialization, and Back preservation passed.');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
