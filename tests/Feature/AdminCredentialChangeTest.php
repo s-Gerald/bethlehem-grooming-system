@@ -17,6 +17,11 @@ class AdminCredentialChangeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql'
+            && (! preg_match('/\Abethlehem_email_test_[a-f0-9]{12}\z/', (string) config('database.connections.mysql.database'))
+                || ! in_array(config('database.connections.mysql.host'), ['localhost', '127.0.0.1', '::1'], true))) {
+            throw new \RuntimeException('MySQL credential tests require a disposable local email-test database.');
+        }
 
         Schema::create('users', function (Blueprint $table): void {
             $table->increments('user_id');
@@ -59,7 +64,7 @@ class AdminCredentialChangeTest extends TestCase
             $table->string('code_hash')->nullable();
             $table->unsignedTinyInteger('failed_attempts')->default(0);
             $table->timestamp('last_sent_at')->nullable();
-            $table->timestamp('expires_at');
+            $table->dateTime('expires_at');
             $table->timestamp('confirmed_at')->nullable();
             $table->timestamps();
         });
@@ -78,10 +83,20 @@ class AdminCredentialChangeTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         (require database_path('migrations/2026_08_28_000003_create_password_reset_requests_table.php'))->up();
+        (require database_path('migrations/2026_09_28_000002_add_code_verification_to_password_reset_requests.php'))->up();
+        (require database_path('migrations/2026_10_25_000001_add_session_replacement.php'))->up();
+        (require database_path('migrations/2026_10_25_000002_create_staff_email_changes.php'))->up();
+        (require database_path('migrations/2026_08_19_000002_create_login_email_challenges_table.php'))->up();
+        (require database_path('migrations/2026_08_19_000003_add_polling_to_login_email_challenges_table.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('staff_email_changes');
+        Schema::dropIfExists('login_email_challenges');
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
         Schema::dropIfExists('personal_access_tokens');
         Schema::dropIfExists('password_reset_requests');
         Schema::dropIfExists('privileged_credential_changes');
@@ -223,6 +238,7 @@ class AdminCredentialChangeTest extends TestCase
 
     public function test_security_code_can_be_resent_after_the_cooldown_and_replaces_the_old_code(): void
     {
+        $this->freezeTime();
         Notification::fake();
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', '09170001008', 'Admin');
         Sanctum::actingAs($admin);
@@ -627,6 +643,472 @@ class AdminCredentialChangeTest extends TestCase
             $this->patchJson('/api/settings/security/profile', [])->assertForbidden();
             $this->postJson('/api/settings/security/profile/validate', [])->assertForbidden();
         }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('selfServiceEmailRoles')]
+    public function test_active_staff_verify_both_addresses_before_email_and_sessions_change(string $type, string $subrole): void
+    {
+        Notification::fake();
+        $staff = $this->createUser('staff', 'current@example.test', '09171111099', 'ExistingStaff');
+        $staff->update(['staff_type' => $type, 'staff_subrole' => $subrole]);
+        if ($subrole === 'grooming_receptionist') $staff->update(['email_verified_at' => null]);
+        $original = $staff->refresh()->getAttributes();
+        $token = $staff->createToken('staff')->plainTextToken;
+        $staff->createToken('superseded')->accessToken->forceFill(['replaced_at' => now()])->save();
+        $unrelated = $this->createUser('staff', 'unrelated@example.test', '09171111998', 'UnrelatedStaff');
+        $unrelatedToken = $unrelated->createToken('other')->accessToken;
+        $staff->tokens()->update(['last_interaction_at' => now()]);
+        $this->withToken($token);
+        $this->app['auth']->forgetGuards();
+        $started = $this->postJson('/api/settings/security/email-change', [
+            'email' => ' NEW@example.test ', 'current_password' => 'CurrentAdmin!234',
+        ])->assertAccepted()->assertJsonPath('pending_email_change.stage', 'current');
+        $id = $started->json('pending_email_change.id');
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change.id', $id)
+            ->assertJsonMissingPath('pending_email_change.code_hash')->assertJsonMissingPath('pending_email_change.account_fingerprint')
+            ->assertJsonMissingPath('pending_email_change.session_token_id');
+        $currentCode = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last()->code;
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $currentCode])
+            ->assertOk()->assertJsonPath('pending_email_change.stage', 'new');
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $newNotification = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last();
+        $newCode = $newNotification->code;
+        $this->assertNotSame($currentCode, $newCode);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $currentCode])->assertUnprocessable();
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $newCode])
+            ->assertOk()->assertJsonPath('completed', true)->assertJsonMissingPath('token');
+        $staff->refresh();
+        $this->assertSame('new@example.test', $staff->email);
+        foreach (['user_id', 'first_name', 'last_name', 'username', 'password_hash', 'role', 'staff_type', 'staff_subrole', 'is_active'] as $field) {
+            $this->assertSame($original[$field], $staff->getAttributes()[$field]);
+        }
+        $this->assertNotNull($staff->email_verified_at);
+        $this->assertSame(0, $staff->tokens()->count());
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $unrelatedToken->getKey(), 'tokenable_id' => $unrelated->getKey()]);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/api/settings/security/account')->assertUnauthorized();
+    }
+
+    public static function selfServiceEmailRoles(): array
+    {
+        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist']];
+    }
+
+    public function test_self_service_email_validation_ownership_and_role_restrictions(): void
+    {
+        [$staff, $token] = $this->emailStaffFixture();
+        $this->createUser('customer', 'USED@example.test', '09171111100', 'Other');
+        $service = app(\App\Services\StaffEmailChangeService::class);
+        foreach (['current@example.test', 'used@example.test', 'bad@-example..com', str_repeat('x', 151).'@example.test'] as $email) {
+            try { $service->start($staff, $email, 'CurrentAdmin!234'); $this->fail('Invalid email must be rejected.'); }
+            catch (\Illuminate\Validation\ValidationException $e) { $this->assertArrayHasKey('email', $e->errors()); }
+        }
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'incorrect'])
+            ->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $pending = $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertAccepted()->json('pending_email_change');
+        $other = $this->createUser('staff', 'other@example.test', '09171111101', 'OtherStaff');
+        $this->useEmailToken($other->createToken('staff')->plainTextToken);
+        $this->postJson('/api/settings/security/email-change/'.$pending['id'].'/confirm', ['stage' => 'current', 'code' => '123456'])->assertNotFound();
+        $this->deleteJson('/api/settings/security/email-change/'.$pending['id'])->assertNotFound();
+        foreach (['admin', 'customer'] as $index => $role) {
+            $user = $this->createUser($role, $role.'@example.test', '0917111111'.$index);
+            $this->useEmailToken($user->createToken('account')->plainTextToken);
+            $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertForbidden();
+        }
+        $this->useEmailToken($token);
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234', 'user_id' => $other->getKey()])
+            ->assertUnprocessable()->assertJsonValidationErrors('user_id');
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+    }
+
+    public function test_email_resend_cancel_expiry_and_replacement_preserve_security_budgets(): void
+    {
+        $this->freezeTime();
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange();
+        $id = $pending['id']; $old = $this->latestEmailCode();
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertTooManyRequests();
+        $this->travel(61)->seconds();
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
+        $this->assertNotSame($old, $this->latestEmailCode());
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $old])->assertUnprocessable();
+        $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertUnprocessable();
+        $this->travel(61)->seconds();
+        $replacement = $this->startEmailChange('replacement@example.test');
+        $this->assertNotSame($id, $replacement['id']);
+        $this->assertSame(4, $replacement['attempts_remaining']);
+        $this->assertSame($pending['expires_at'], $replacement['expires_at']);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $old])->assertNotFound();
+        $this->travel(21)->minutes();
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+    }
+
+    public function test_email_codes_expire_and_lock_after_five_incorrect_attempts(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        \App\Models\StaffEmailChange::whereKey($id)->update(['code_expires_at' => now()->subSecond()]);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertUnprocessable()->assertJsonPath('status', 'expired');
+        $this->travel(61)->seconds();
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
+        $wrong = $this->latestEmailCode() === '111111' ? '222222' : '111111';
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $wrong])
+                ->assertUnprocessable()->assertJsonPath('status', $i === 4 ? 'locked' : 'invalid_code');
+        }
+        $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
+        $this->travel(61)->seconds();
+        $this->postJson('/api/settings/security/email-change', ['email' => 'replacement@example.test', 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable()->assertJsonPath('status', 'locked');
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('emailAuthorityChanges')]
+    public function test_email_change_rechecks_mutable_account_and_session_authority(string $field, mixed $value): void
+    {
+        [$staff, $token] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange();
+        if ($field === 'session') {
+            app(\App\Services\AccountSessionService::class)->issue($staff);
+        } else {
+            User::whereKey($staff->getKey())->update([$field => $value]);
+        }
+        $this->app['auth']->forgetGuards();
+        $response = $this->postJson('/api/settings/security/email-change/'.$pending['id'].'/confirm', ['stage' => 'current', 'code' => $this->latestEmailCode()]);
+        $this->assertContains($response->status(), [401, 403, 422]);
+        $this->assertNotSame('new@example.test', $staff->fresh()->email);
+    }
+
+    public static function emailAuthorityChanges(): array
+    {
+        return [['is_active', false], ['is_archived', true], ['role', 'admin'], ['staff_subrole', 'clinic_receptionist'],
+            ['email', 'changed@example.test'], ['password_hash', 'changed-password'],
+            ['password_hash', User::passwordSetupPlaceholder()], ['session', null]];
+    }
+
+    public function test_new_email_code_expiration_and_request_expiration_preserve_the_registered_email(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $id = $this->startEmailChange()['id'];
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+        $code = $this->latestEmailCode();
+        \App\Models\StaffEmailChange::whereKey($id)->update(['code_expires_at' => now()->subSecond()]);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $code])
+            ->assertUnprocessable()->assertJsonPath('status', 'expired');
+        \App\Models\StaffEmailChange::whereKey($id)->update(['code_expires_at' => now()->addMinute(), 'expires_at' => now()->subSecond()]);
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $code])
+            ->assertUnprocessable()->assertJsonPath('status', 'invalid');
+        $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public function test_email_queue_failure_preserves_current_stage_and_valid_code(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id']; $code = $this->latestEmailCode();
+        $before = \App\Models\StaffEmailChange::findOrFail($id)->getAttributes();
+        Notification::shouldReceive('send')->once()->andThrow(new \RuntimeException('private mail failure'));
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $code])->assertStatus(503)->assertDontSee('private mail failure');
+        $this->assertSame($before, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+    }
+
+    public function test_email_final_claim_conflict_preserves_account_and_sessions(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+        $this->createUser('staff', 'new@example.test', '09171111200', 'Claimant');
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public function test_email_change_durable_queue_supersession_delivery_rollback_and_final_notice_failure(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
+        config(['queue.default' => 'database', 'mail.default' => 'array']);
+        Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
+        \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_initial_email_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertStatus(503);
+        $this->assertDatabaseCount('staff_email_changes', 0);
+        $this->assertDatabaseCount('jobs', 0);
+        \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_initial_email_job');
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        $this->assertDatabaseCount('jobs', 1);
+        $payload = json_decode(\Illuminate\Support\Facades\DB::table('jobs')->value('payload'), true);
+        $this->assertStringNotContainsString('VerifyStaffEmailChangeNotification', $payload['data']['command']);
+        $this->travel(61)->seconds();
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'current'])->assertOk();
+        $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
+        $this->travel(61)->seconds();
+        $id = $this->startEmailChange()['id'];
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages, 'Cancelled and superseded codes must not be delivered.');
+        $mail = $messages[0]->getOriginalMessage();
+        $this->assertSame('current@example.test', $mail->getTo()[0]->getAddress());
+        preg_match('/\b[0-9]{6}\b/', $mail->getTextBody(), $digits);
+        $currentState = \App\Models\StaffEmailChange::findOrFail($id)->getAttributes();
+        \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_transition_email_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $digits[0]])->assertStatus(503);
+        $this->assertSame($currentState, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
+        \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_transition_email_job');
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $digits[0]])->assertOk();
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(2, $messages);
+        $mail = $messages[1]->getOriginalMessage();
+        $this->assertSame('new@example.test', $mail->getTo()[0]->getAddress());
+        preg_match('/\b[0-9]{6}\b/', $mail->getTextBody(), $digits);
+        $before = \App\Models\StaffEmailChange::findOrFail($id)->getAttributes();
+        $this->travel(61)->seconds();
+        \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_email_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'new'])->assertStatus(503);
+        $this->assertSame($before, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $digits[0]])->assertOk()->assertJsonPath('completed', true);
+        $this->assertSame('new@example.test', $staff->fresh()->email);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_completed_email_change_uses_new_mailbox_for_login_and_recovery_only(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        $this->postJson('/api/sign-in', ['identifier' => 'new@example.test', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->postJson('/api/sign-in', ['identifier' => 'current@example.test', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson('/api/sign-in', ['identifier' => 'new@example.test', 'password' => 'CurrentAdmin!234'])->assertAccepted();
+        Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class,
+            fn ($notification, $channels, $recipient) => $recipient->email === 'new@example.test');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode('current@example.test');
+        Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
+        $service->sendCode('new@example.test');
+        Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class,
+            fn ($notification, $channels, $recipient) => $recipient->email === 'new@example.test');
+    }
+
+    public function test_email_change_migration_is_reversible_without_mutating_user_data(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $before = $staff->refresh()->getAttributes();
+        $migration = require database_path('migrations/2026_10_25_000002_create_staff_email_changes.php');
+        $migration->down();
+        $this->assertFalse(Schema::hasTable('staff_email_changes'));
+        $migration->up();
+        $this->assertTrue(Schema::hasTable('staff_email_changes'));
+        $this->assertSame($before, $staff->fresh()->getAttributes());
+    }
+
+    public function test_email_change_retries_a_deadlock_without_partial_mutation_or_duplicate_notice(): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $pending = $this->startEmailChange(); $id = $pending['id'];
+        $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+        $code = $this->latestEmailCode();
+        $event = 'eloquent.updating: '.User::class;
+        $attempts = 0;
+        \Illuminate\Support\Facades\Event::listen($event, function (User $saving) use ($staff, &$attempts): void {
+            if ($saving->getKey() === $staff->getKey() && $saving->isDirty('email') && ++$attempts === 1) {
+                throw new \Illuminate\Database\DeadlockException('Deadlock found when trying to get lock');
+            }
+        });
+        try {
+            $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $code])->assertOk()->assertJsonPath('completed', true);
+            $this->assertSame(2, $attempts);
+            $this->assertSame('new@example.test', $staff->fresh()->email);
+            Notification::assertSentOnDemandTimes(\App\Notifications\StaffEmailChangedNotification::class, 1);
+        } finally { \Illuminate\Support\Facades\Event::forget($event); }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('overlappingEmailChanges')]
+    public function test_overlapping_email_operations_keep_one_authoritative_result(string $oneOp, string $twoOp, string $oneStatus, string $twoStatus, string $email): void
+    {
+        [$staff] = $this->emailStaffFixture();
+        $id = $code = '';
+        if ($oneOp !== 'start') {
+            $id = $this->startEmailChange()['id'];
+            $code = $this->latestEmailCode();
+            if ($oneOp !== 'current') {
+                $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $code])->assertOk();
+                $code = $this->latestEmailCode();
+            }
+            \App\Models\StaffEmailChange::whereKey($id)->update(['last_sent_at' => now()->subMinutes(2)]);
+        }
+        $grant = str_repeat('g', 64);
+        \App\Models\PasswordResetRequest::create(['user_id' => $staff->getKey(), 'token_hash' => Hash::make('123456'),
+            'verified_token_hash' => hash('sha256', $grant), 'expires_at' => now()->addMinutes(15), 'last_sent_at' => now()]);
+        $secondUser = $staff;
+        $secondId = $id; $secondCode = $code;
+        if ($twoOp === 'claim') {
+            $secondUser = $this->createUser('staff', 'other@example.test', '09171111999', 'ClaimingStaff');
+            $secondUser->update(['staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
+            $this->useEmailToken($secondUser->createToken('staff')->plainTextToken);
+            $secondId = $this->startEmailChange()['id'];
+            $this->postJson("/api/settings/security/email-change/{$secondId}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
+            $secondCode = $this->latestEmailCode();
+        }
+        $directory = sys_get_temp_dir().'/bethlehem-email-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $isMysql = \Illuminate\Support\Facades\DB::getDriverName() === 'mysql';
+        $database = $isMysql ? config('database.connections.mysql.database') : $directory.'/email.sqlite';
+        $first = $second = $connection = null;
+        try {
+            if (! $isMysql) \Illuminate\Support\Facades\DB::statement('VACUUM INTO '.\Illuminate\Support\Facades\DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                [$script, $database, $directory, $position, $operation, $userId, $tokenId, $changeId, $code, $grant, $lockUserId] = $argv;
+                $directory = realpath($directory);
+                $isMysql = getenv('DB_CONNECTION') === 'mysql';
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-email-[a-f0-9]{12}\z/', basename($directory))
+                    || ($isMysql ? !preg_match('/\Abethlehem_email_test_[a-f0-9]{12}\z/', $database)
+                        : (basename($database) !== 'email.sqlite' || !is_file($database)))) throw new RuntimeException('Disposable email test database required.');
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                $driver = $isMysql ? 'mysql' : 'sqlite';
+                config(['database.default' => $driver, 'database.connections.'.$driver.'.database' => $database,
+                    'database.connections.'.$driver.'.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                if ($isMysql && !in_array(config('database.connections.mysql.host'), ['localhost', '127.0.0.1', '::1'], true)) throw new RuntimeException('Local test server required.');
+                Illuminate\Support\Facades\DB::purge($driver);
+                $connection = Illuminate\Support\Facades\DB::connection();
+                if ($isMysql ? $connection->selectOne('SELECT DATABASE() AS db')->db !== $database
+                    : realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) throw new RuntimeException('Unexpected database.');
+                Illuminate\Support\Facades\Notification::fake();
+                $user = App\Models\User::findOrFail($userId);
+                $user->withAccessToken(Laravel\Sanctum\PersonalAccessToken::findOrFail($tokenId));
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('Email test barrier timed out.');
+                };
+                $busy = $probed = false;
+                $connection->beforeStartingTransaction(function () use ($position, $directory, $database, $wait, $isMysql, $lockUserId, &$busy, &$probed) {
+                    if ($position !== 'second' || $probed) return;
+                    $probed = true;
+                    $wait($directory.'/first-lock');
+                    if ($isMysql) {
+                        $cfg = config('database.connections.mysql');
+                        $probe = new PDO('mysql:host='.$cfg['host'].';port='.$cfg['port'].';dbname='.$database, $cfg['username'], $cfg['password']);
+                        $probe->exec('SET SESSION innodb_lock_wait_timeout=1');
+                        $probe->beginTransaction();
+                        try { $probe->query('SELECT user_id FROM users WHERE user_id = '.(int) $lockUserId.' FOR UPDATE'); }
+                        catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 1205) throw $e; $busy = true; }
+                        $probe->rollBack();
+                    } else {
+                        $probe = new PDO('sqlite:'.$database); $probe->exec('PRAGMA busy_timeout=0');
+                        try { $probe->exec('BEGIN IMMEDIATE'); $probe->exec('ROLLBACK'); }
+                        catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 5) throw $e; $busy = true; }
+                    }
+                    touch($directory.'/second-attempt');
+                });
+                $app['events']->listen(Illuminate\Database\Events\TransactionBeginning::class,
+                    function () use ($position, $directory, $wait, $isMysql) {
+                        if ($position === 'first' && !$isMysql) { touch($directory.'/first-lock'); $wait($directory.'/second-attempt'); }
+                    });
+                $held = false;
+                $connection->listen(function ($event) use ($position, $directory, $wait, $isMysql, &$held) {
+                    if ($isMysql && $position === 'first' && !$held && str_contains($event->sql, 'users') && str_contains(strtolower($event->sql), 'for update')) {
+                        $held = true; touch($directory.'/first-lock'); $wait($directory.'/second-attempt');
+                    }
+                });
+                $service = app(App\Services\StaffEmailChangeService::class);
+                try {
+                    $result = match ($operation) {
+                        'start' => $service->start($user, $position.'@example.test', 'CurrentAdmin!234'),
+                        'current' => $service->confirm($user, $changeId, 'current', $code),
+                        'final', 'claim' => $service->confirm($user, $changeId, 'new', $code),
+                        'resend' => $service->resend($user, $changeId, 'new'),
+                        'reset' => app(App\Services\PasswordResetService::class)->reset($grant, 'ResetPassword!234'),
+                    };
+                    $status = $result['status'];
+                } catch (Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) { $status = 'http'.$e->getStatusCode(); }
+                catch (Illuminate\Validation\ValidationException $e) { $status = isset($e->errors()['email']) ? 'email_unavailable' : 'invalid'; }
+                echo json_encode(['pid' => getmypid(), 'busy' => $busy, 'status' => $status]);
+                PHP;
+            $env = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused.php', 'DB_CONNECTION' => $isMysql ? 'mysql' : 'sqlite',
+                'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array',
+                'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array', 'AUTH_MAIL_DELIVERY' => 'queued'];
+            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $directory, 'first', $oneOp,
+                $staff->getKey(), $staff->tokens()->firstOrFail()->getKey(), $id, $code, $grant, $staff->getKey()], base_path(), $env);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $directory, 'second', $twoOp,
+                $secondUser->getKey(), $secondUser->tokens()->firstOrFail()->getKey(), $secondId, $secondCode, $grant, $staff->getKey()], base_path(), $env);
+            $first->setTimeout(15); $second->setTimeout(15); $first->start(); $second->start(); $first->wait(); $second->wait();
+            $this->assertTrue($first->isSuccessful(), $first->getErrorOutput());
+            $this->assertTrue($second->isSuccessful(), $second->getErrorOutput());
+            $one = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $two = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertNotSame($one['pid'], $two['pid']);
+            $this->assertTrue($two['busy'], 'The operations must overlap a real writer lock.');
+            if ($twoOp === 'claim') {
+                $statuses = [$one['status'], $two['status']]; sort($statuses);
+                $this->assertSame(['completed', 'email_unavailable'], $statuses);
+                $email = $one['status'] === 'completed' ? 'new@example.test' : 'current@example.test';
+            } else {
+                $this->assertSame($oneStatus, $one['status']); $this->assertSame($twoStatus, $two['status']);
+            }
+            $connection = $isMysql ? \Illuminate\Support\Facades\DB::getPdo() : new \PDO('sqlite:'.$database);
+            $this->assertSame($email, $connection->query('SELECT email FROM users WHERE user_id = '.$staff->getKey())->fetchColumn());
+            $this->assertLessThanOrEqual(1, (int) $connection->query("SELECT COUNT(*) FROM users WHERE email='new@example.test'")->fetchColumn());
+        } finally {
+            $first?->stop(); $second?->stop(); $connection = null;
+            foreach (['email.sqlite', 'email.sqlite-journal', 'email.sqlite-wal', 'email.sqlite-shm', 'first-lock', 'second-attempt'] as $file) {
+                if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
+            }
+            rmdir($directory);
+        }
+    }
+
+    public static function overlappingEmailChanges(): array
+    {
+        return [
+            ['start', 'start', 'pending', 'cooldown', 'current@example.test'],
+            ['current', 'current', 'pending', 'stale_stage', 'current@example.test'],
+            ['final', 'final', 'completed', 'http401', 'new@example.test'],
+            ['resend', 'final', 'pending', 'invalid_code', 'current@example.test'],
+            ['final', 'resend', 'completed', 'http401', 'new@example.test'],
+            ['final', 'reset', 'completed', 'invalid', 'new@example.test'],
+            ['reset', 'final', 'reset', 'http401', 'current@example.test'],
+            ['final', 'claim', 'completed', 'email_unavailable', 'new@example.test'],
+        ];
+    }
+
+    private function emailStaffFixture(): array
+    {
+        Notification::fake();
+        $staff = $this->createUser('staff', 'current@example.test', '09171111099', 'ExistingStaff');
+        $staff->update(['staff_type' => 'clinic', 'staff_subrole' => 'veterinarian']);
+        $token = $staff->createToken('staff')->plainTextToken;
+        $this->useEmailToken($token);
+        $staff->withAccessToken($staff->tokens()->firstOrFail());
+        return [$staff, $token];
+    }
+
+    private function useEmailToken(string $token): void
+    {
+        $this->withToken($token);
+        $this->app['auth']->forgetGuards();
+    }
+
+    private function startEmailChange(string $email = 'new@example.test'): array
+    {
+        return $this->postJson('/api/settings/security/email-change', ['email' => $email, 'current_password' => 'CurrentAdmin!234'])
+            ->assertAccepted()->json('pending_email_change');
+    }
+
+    private function latestEmailCode(): string
+    {
+        return Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last()->code;
     }
 
     private function createUser(

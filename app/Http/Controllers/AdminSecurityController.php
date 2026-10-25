@@ -9,13 +9,13 @@ use App\Models\User;
 use App\Services\PendingStaffAccountService;
 use App\Services\PrivilegedCredentialChangeService;
 use App\Support\AccountUsername;
+use App\Support\AccountEmail;
 use App\Support\StaffRole;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -48,6 +48,7 @@ class AdminSecurityController extends Controller
         return response()->json([
             'success' => true,
             'account' => $this->accountPayload($request->user()),
+            'pending_email_change' => app(\App\Services\StaffEmailChangeService::class)->pending($request->user()),
         ]);
     }
 
@@ -206,7 +207,7 @@ class AdminSecurityController extends Controller
         $request->merge([
             'first_name' => is_string($firstName) ? User::normalizeName($firstName) : $firstName,
             'last_name' => is_string($lastName) ? User::normalizeName($lastName) : $lastName,
-            'email' => Str::lower(trim((string) $request->input('email'))),
+            'email' => AccountEmail::normalize((string) $request->input('email')),
             'staff_subrole' => $staffSubrole === '' ? null : $staffSubrole,
         ]);
         $data = $request->validate([
@@ -330,7 +331,7 @@ class AdminSecurityController extends Controller
             throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
         }
         if (is_string($request->input('email'))) {
-            $request->merge(['email' => Str::lower(trim($request->input('email')))]);
+            $request->merge(['email' => AccountEmail::normalize($request->input('email'))]);
         }
         $data = $request->validate([
             'email' => PendingStaffAccountService::emailRules(),

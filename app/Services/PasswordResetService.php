@@ -106,6 +106,9 @@ class PasswordResetService
     public function reset(string $plainToken, string $newPassword): array
     {
         return DB::transaction(function () use ($plainToken, $newPassword): array {
+            // Match authenticated identity changes: account before recovery grant.
+            $userId = PasswordResetRequest::where('verified_token_hash', hash('sha256', $plainToken))->value('user_id');
+            if ($userId) User::whereKey($userId)->lockForUpdate()->first();
             $request = PasswordResetRequest::query()
                 ->where('verified_token_hash', hash('sha256', $plainToken))
                 ->lockForUpdate()

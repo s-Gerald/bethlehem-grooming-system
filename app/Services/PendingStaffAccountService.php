@@ -3,12 +3,12 @@
 namespace App\Services;
 
 use App\Http\Controllers\EmailVerificationController;
-use App\Models\PendingCustomerRegistration;
 use App\Models\PendingStaffAccount;
 use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Notifications\SetUpStaffPasswordNotification;
 use App\Support\StaffRole;
+use App\Support\AccountEmail;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -31,7 +31,7 @@ class PendingStaffAccountService
         StaffRole::assertValid($staffType, $staffSubrole);
         $normalizedFirstName = User::normalizeName($firstName);
         $normalizedLastName = User::normalizeName($lastName);
-        $normalizedEmail = Str::lower(trim($email));
+        $normalizedEmail = AccountEmail::normalize($email);
         $this->assertEmailIsAvailable($normalizedEmail);
         EmailVerificationController::assertMailCanBeDelivered();
 
@@ -109,16 +109,12 @@ class PendingStaffAccountService
 
     public static function emailRules(): array
     {
-        return [
-            'required', 'string', 'email:rfc',
-            'regex:/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/',
-            'max:150',
-        ];
+        return AccountEmail::rules();
     }
 
     public function correctEmail(User $requester, User $staff, string $email, string $password): User
     {
-        $email = Str::lower(trim($email));
+        $email = AccountEmail::normalize($email);
         Validator::make(['email' => $email], ['email' => self::emailRules()])->validate();
 
         try {
@@ -136,7 +132,7 @@ class PendingStaffAccountService
                 if ($target->is_active || ! $target->requiresPasswordSetup()) {
                     throw ValidationException::withMessages(['account' => 'This account no longer requires initial setup.']);
                 }
-                if ($email === Str::lower(trim($target->email))) {
+                if ($email === AccountEmail::normalize($target->email)) {
                     throw ValidationException::withMessages(['email' => 'Enter a different email address.']);
                 }
                 $this->assertEmailIsAvailable($email, $target);
@@ -157,32 +153,7 @@ class PendingStaffAccountService
 
     private function assertEmailIsAvailable(string $email, ?User $except = null): void
     {
-        if (! $this->emailIsAvailable($email, $except)) {
-            throw ValidationException::withMessages([
-                'email' => 'That email address is already in use.',
-            ]);
-        }
-    }
-
-    private function emailIsAvailable(string $email, ?User $except = null): bool
-    {
-        // MySQL's email collation is case-insensitive; retain the email index.
-        // SQLite test databases need an explicit case-insensitive comparison.
-        $column = DB::getDriverName() === 'sqlite' ? 'email COLLATE NOCASE' : 'email';
-        $pending = PendingCustomerRegistration::query()->unexpired()->whereRaw($column.' = ?', [$email]);
-        $users = User::query()->whereRaw($column.' = ?', [$email])
-            ->when($except, fn ($query) => $query->whereKeyNot($except->getKey()));
-        if ($except) {
-            // Match registration's reservation → user ordering and lock missing
-            // email ranges as well as existing claims during the mutation.
-            $pending->lockForUpdate();
-            $users->lockForUpdate();
-        }
-        if ($pending->first(['id'])) {
-            return false;
-        }
-
-        return $users->first(['user_id']) === null;
+        AccountEmail::assertAvailable($email, $except, $except !== null);
     }
 
     private function assertAdminIsEligible(User $admin): void

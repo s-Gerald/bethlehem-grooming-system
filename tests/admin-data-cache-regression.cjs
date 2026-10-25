@@ -99,6 +99,14 @@ async function preciseInvalidationAndCrossTab() {
   for (const key of ['/admin/customers?status=active', '/admin/dashboard/summary', '/admin/bookings?date=2026-10-19&view=board', '/admin/clinic-cases']) {
     assert.ok(e.API.readAdminCache(key), 'Pending staff email correction must preserve unrelated caches');
   }
+  e.respond(() => ({ success: true }));
+  await e.API.requestStaffEmailChange({ email: 'replacement@example.test', current_password: 'CurrentStaff!234' });
+  await e.API.confirmStaffEmailChange('request', 'current', '123456');
+  await e.API.resendStaffEmailChange('request', 'current');
+  await e.API.cancelStaffEmailChange('request');
+  for (const key of ['/admin/customers?status=active', '/admin/dashboard/summary', '/admin/bookings?date=2026-10-19&view=board', '/admin/clinic-cases']) {
+    assert.ok(e.API.readAdminCache(key), 'Self-service verification must preserve operational caches before sign-out');
+  }
 }
 async function failuresAndSessionOwnership() {
   const e = environment(); await e.API.getActiveClinicCases(); e.advance(6000);

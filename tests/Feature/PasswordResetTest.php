@@ -523,6 +523,7 @@ class PasswordResetTest extends TestCase
 
     public function test_password_resend_reports_the_longer_endpoint_limit_after_the_last_allowed_request(): void
     {
+        $this->freezeTime();
         foreach (range(1, 2) as $attempt) {
             $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 45);
             $this->travel(45)->seconds();

@@ -578,6 +578,57 @@ async function testDelayedPasswordResponseCannotClearNewerStaffSession() {
   assert.equal(browser.API.hasPendingLoginConfirmation(), false);
 }
 
+async function testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect() {
+  let release;
+  const browser = createBrowser({ pathname: '/pages/admin/settings.html',
+    local: { admin_token: '910|staff-secret', user_role: 'staff' },
+    fetchImpl: async (url, options) => {
+      if (!url.endsWith('/confirm')) return jsonResponse(401, {message: 'Session ended.'});
+      assert.equal(JSON.parse(options.body).stage, 'new');
+      return new Promise(resolve => { release = () => resolve(jsonResponse(200, { completed: true })); });
+    },
+  });
+  const completion = browser.API.confirmStaffEmailChange('request', 'new', '123456');
+  const backgroundAccount = browser.API.getSettingsSecurityAccount().catch(error => error);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(browser.replacements.length, 0, 'A background 401 must not preempt the final success response');
+  release();
+  assert.equal((await completion).completed, true);
+  assert.equal((await backgroundAccount).status, 401);
+  assert.equal(browser.API.getAdminToken(), null);
+  assert.equal(browser.replacements.length, 0, 'The Email Updated state must render before navigation');
+  const logout = JSON.parse(browser.localStorage.getItem('bethlehem.auth.logout'));
+  assert.equal(logout.reason, 'email_changed');
+  assert.equal(logout.sessionId, 'staff:910');
+  browser.API.redirectToSignIn({replace: true});
+  assert.equal(browser.replacements.length, 1);
+
+  const switched = createBrowser({ local: { admin_token: '911|old-staff', user_role: 'staff' },
+    fetchImpl: async () => new Promise(resolve => { release = () => resolve(jsonResponse(200, {completed: true})); }),
+  });
+  const oldCompletion = switched.API.confirmStaffEmailChange('request', 'new', '123456');
+  switched.API.setAdminToken('912|new-staff'); switched.API.setUserRole('staff');
+  release();
+  await assert.rejects(oldCompletion, /session.*changed/i);
+  assert.equal(switched.API.getAdminToken(), '912|new-staff');
+
+  const rejected = createBrowser({ pathname: '/pages/admin/settings.html',
+    local: { admin_token: '913|expired-staff', user_role: 'staff' },
+    fetchImpl: async url => url.endsWith('/confirm')
+      ? new Promise(resolve => { release = () => resolve(jsonResponse(422, { message: 'The code is incorrect.' })); })
+      : jsonResponse(401, { message: 'Session expired.' }),
+  });
+  const failedConfirmation = rejected.API.confirmStaffEmailChange('request', 'new', '123456').catch(error => error);
+  const expiredRead = rejected.API.getSettingsSecurityAccount().catch(error => error);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(rejected.replacements.length, 0);
+  release();
+  assert.equal((await failedConfirmation).status, 422);
+  assert.equal((await expiredRead).status, 401);
+  assert.equal(rejected.replacements.length, 1, 'A real auth failure redirects after a failed final operation');
+  assert.equal(rejected.API.getAdminToken(), null);
+}
+
 async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
   for (const roles of [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
     let sequence = 800, release;
@@ -1630,6 +1681,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testIndependentBrowserContextsInBothLoginOrders();
   await testReceptionistAccountSwitchSynchronizesSharedTabs();
   await testDelayedPasswordResponseCannotClearNewerStaffSession();
+  await testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect();
   await testDelayedRevocationCannotClearNewerStaffSession();
   await testDelayedStaffLoginCannotReplaceNewerSession();
   testSharedPersistentLogoutDoesNotErasePendingConfirmation();

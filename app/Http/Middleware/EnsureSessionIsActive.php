@@ -27,9 +27,12 @@ class EnsureSessionIsActive
                 : response()->json(['message' => 'Please sign in again.'], 401);
         }
 
-        $response = DB::transaction(function () use ($request, $accessToken, $next) {
+        // Email changes revalidate account/session inside their own retryable
+        // transaction. Keep that transaction outside the HTTP exception renderer.
+        $ownsTransaction = $request->routeIs('staff.email-change.*');
+        $response = DB::transaction(function () use ($request, $accessToken, $next, $ownsTransaction) {
             // Keep mutations ordered against takeover through their controller.
-            if (! $request->isMethodSafe()) {
+            if (! $request->isMethodSafe() && ! $ownsTransaction) {
                 $request->user()->newQuery()->whereKey($request->user()->getKey())
                     ->lockForUpdate()->firstOrFail([$request->user()->getKeyName()]);
             }
@@ -85,7 +88,7 @@ class EnsureSessionIsActive
                 ]);
             }
 
-            return $request->isMethodSafe() ? null : $next($request);
+            return $request->isMethodSafe() || $ownsTransaction ? null : $next($request);
         });
 
         return $response ?? $next($request);

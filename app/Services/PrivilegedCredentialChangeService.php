@@ -7,15 +7,16 @@ use App\Models\PrivilegedCredentialChange;
 use App\Models\User;
 use App\Notifications\ConfirmPrivilegedCredentialChangeCodeNotification;
 use App\Support\AccountUsername;
+use App\Support\SecurityCode;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class PrivilegedCredentialChangeService
 {
-    public const MAX_CODE_ATTEMPTS = 5;
+    public const MAX_CODE_ATTEMPTS = SecurityCode::MAX_ATTEMPTS;
 
-    private const RESEND_COOLDOWN_SECONDS = 60;
+    private const RESEND_COOLDOWN_SECONDS = SecurityCode::RESEND_COOLDOWN_SECONDS;
 
     public function request(
         User $requester,
@@ -263,15 +264,12 @@ class PrivilegedCredentialChangeService
 
     private function generateCode(): string
     {
-        return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        return SecurityCode::generate();
     }
 
     private function codeTtlMinutes(): int
     {
-        return max(
-            1,
-            (int) config('app.privileged_credential_change_code_ttl_minutes', 10),
-        );
+        return SecurityCode::ttlMinutes();
     }
 
     private function assertRequesterAndTargetAreEligible(User $requester, User $target): void

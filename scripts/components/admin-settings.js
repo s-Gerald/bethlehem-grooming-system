@@ -92,6 +92,12 @@ function adminSettings() {
       statusLabel: "",
     },
     staffProfile: { editing: false, confirming: false, submitting: false, firstName: "", lastName: "", username: "", currentPassword: "", showPassword: false, errors: {}, error: "" },
+    pendingStaffEmailChange: null,
+    _ownAccountRevision: 0,
+    _ownEmailCompleted: false,
+    _ownEmailOpener: null,
+    staffEmailChange: { open: false, stage: 'form', newEmail: '', password: '', showPassword: false,
+      digits: ['', '', '', '', '', ''], busy: false, error: '', errors: {}, resendRemaining: 0 },
     get staffProfileChanged() {
       const values = this.staffProfileValues();
       return values.first_name !== this.staffAccount.firstName || values.last_name !== this.staffAccount.lastName
@@ -246,6 +252,8 @@ function adminSettings() {
       this.cancelQrCrop();
       if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
       this.stopSecurityVerificationFeedback();
+      window.clearInterval(this._staffEmailResendTimer);
+      ++this._ownAccountRevision;
       window.removeEventListener?.('focus', this._intakeRefreshListener);
       window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
       document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
@@ -631,26 +639,186 @@ function adminSettings() {
     },
 
     async loadOwnAccount() {
+      const revision = ++this._ownAccountRevision;
       this.staffLoading = !this.staffLoaded;
       try {
         const response = await API.getSettingsSecurityAccount();
+        if (revision !== this._ownAccountRevision || this._ownEmailCompleted) return;
         this.applyStaffAccount(response?.account || {});
+        this.pendingStaffEmailChange = response?.pending_email_change || null;
         this.staffLoaded = true;
+        return true;
       } catch (error) {
-        this.staffPassword.error = error.message || "Could not load your account information.";
+        if (revision === this._ownAccountRevision) this.staffPassword.error = error.message || "Could not load your account information.";
       } finally {
         this.staffLoading = false;
       }
     },
 
     applyStaffAccount(account) {
+      if (this._ownEmailCompleted) return;
       this.staffAccount = {
         firstName: account.first_name || "", lastName: account.last_name || "",
         fullName: `${account.first_name || ""} ${account.last_name || ""}`.trim() || "Staff account",
         roleLabel: this.accountRoleLabel(account), username: account.username || "",
         email: account.email || "No email address",
         statusLabel: account.is_active && !account.is_archived ? "Active" : "Inactive",
+        canChangeEmail: Boolean(this.isStaff && account.is_active && !account.is_archived && !account.password_setup_required),
       };
+    },
+
+    emailReplacementError(value, currentEmail) {
+      const email = value.trim().toLowerCase();
+      if (email.length > 150 || !/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email)) return 'Enter a valid email address.';
+      return email === currentEmail?.trim().toLowerCase() ? 'Enter a different email address.' : '';
+    },
+
+    ownEmailValidation() {
+      const form = this.staffEmailChange, errors = {};
+      const emailError = this.emailReplacementError(form.newEmail, this.staffAccount.email);
+      if (emailError) errors.email = form.newEmail.trim() ? emailError : 'Enter your new email address.';
+      if (!form.password) errors.current_password = 'Enter your current password.';
+      return errors;
+    },
+
+    get canContinueOwnEmailChange() {
+      return !this.staffEmailChange.busy && !Object.keys(this.ownEmailValidation()).length && !Object.keys(this.staffEmailChange.errors).length;
+    },
+
+    ownEmailInput(field) {
+      delete this.staffEmailChange.errors[field];
+      this.staffEmailChange.error = '';
+    },
+
+    validateOwnEmailField(field) {
+      const error = this.ownEmailValidation()[field];
+      if (error) this.staffEmailChange.errors[field] = error;
+      else delete this.staffEmailChange.errors[field];
+    },
+
+    openOwnEmailChange() {
+      if (!this.isStaff || !this.staffAccount.canChangeEmail || this.staffProfile.editing || this.staffProfile.submitting
+        || this.staffPassword.submitting || this.securityVerification.open || this.staffEmailChange.busy || this._ownEmailCompleted) return;
+      this._ownEmailOpener = document.activeElement;
+      Object.assign(this.staffEmailChange, { open: true, stage: 'form', newEmail: '', password: '', showPassword: false,
+        digits: ['', '', '', '', '', ''], errors: {}, error: '' });
+      this.$nextTick(() => document.getElementById('ownNewEmail')?.focus());
+    },
+
+    closeOwnEmailChange() {
+      if (this.staffEmailChange.busy || this.staffEmailChange.stage === 'success') return;
+      Object.assign(this.staffEmailChange, { open: false, password: '', showPassword: false, digits: ['', '', '', '', '', ''], errors: {}, error: '' });
+      window.clearInterval(this._staffEmailResendTimer);
+      const opener = this._ownEmailOpener;
+      this._ownEmailOpener = null;
+      this.$nextTick(() => (document.getElementById(this.pendingStaffEmailChange ? 'ownEmailResume' : 'ownChangeEmail') || opener)?.focus());
+    },
+
+    applyOwnEmailPending(pending) {
+      this.pendingStaffEmailChange = pending;
+      Object.assign(this.staffEmailChange, { stage: pending.stage, newEmail: pending.new_email, digits: ['', '', '', '', '', ''], errors: {}, error: '' });
+      this.startSecurityResendCountdown(pending.resend_after || 0, this.staffEmailChange, '_staffEmailResendTimer');
+      this.focusSecurityCodeDigit(0, 'ownEmailCodeDigit');
+    },
+
+    async resumeOwnEmailChange() {
+      if (this.staffEmailChange.busy || this.staffProfile.editing || this.staffPassword.submitting || this.securityVerification.open || this._ownEmailCompleted) return;
+      this._ownEmailOpener = document.activeElement;
+      this.staffEmailChange.busy = true;
+      try {
+        if (await this.loadOwnAccount()) {
+          if (this.pendingStaffEmailChange) {
+            this.staffEmailChange.open = true;
+            this.applyOwnEmailPending(this.pendingStaffEmailChange);
+          } else {
+            this.staffEmailChange.busy = false;
+            this.openOwnEmailChange();
+          }
+        }
+      } finally { this.staffEmailChange.busy = false; }
+    },
+
+    ownEmailError(error) {
+      const form = this.staffEmailChange;
+      form.errors = Object.fromEntries(Object.entries(error.errors || {}).map(([key, value]) => [key, [].concat(value)[0]]));
+      form.error = error.status >= 500 ? 'The verification email could not be queued. Please try again.'
+        : this.firstApiError(error) || 'Could not complete this email change. Please try again.';
+      if (form.stage === 'form' && (form.errors.email || form.errors.current_password)) form.error = '';
+      if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter, form, '_staffEmailResendTimer');
+      if (error.data?.status === 'locked' && this.pendingStaffEmailChange) this.pendingStaffEmailChange.attempts_remaining = 0;
+    },
+
+    focusOwnEmailDialog() {
+      document.getElementById('ownEmailDialog')?.focus();
+    },
+
+    async startOwnEmailChange() {
+      const form = this.staffEmailChange;
+      if (form.busy || form.stage !== 'form' || !form.open || !this.staffAccount.canChangeEmail) return;
+      form.errors = this.ownEmailValidation();
+      form.error = '';
+      if (Object.keys(form.errors).length) return;
+      form.busy = true;
+      this.focusOwnEmailDialog();
+      try {
+        const response = await API.requestStaffEmailChange({ email: form.newEmail.trim().toLowerCase(), current_password: form.password });
+        this.applyOwnEmailPending(response.pending_email_change);
+      } catch (error) { this.ownEmailError(error); }
+      finally { form.password = ''; form.showPassword = false; form.busy = false; }
+    },
+
+    async verifyOwnEmailChange() {
+      const form = this.staffEmailChange, pending = this.pendingStaffEmailChange;
+      if (form.busy || !pending || !/^[0-9]{6}$/.test(form.digits.join(''))) return;
+      form.busy = true; form.error = '';
+      this.focusOwnEmailDialog();
+      try {
+        const response = await API.confirmStaffEmailChange(pending.id, form.stage, form.digits.join(''));
+        if (response.completed) {
+          this._ownEmailCompleted = true;
+          ++this._ownAccountRevision;
+          this.pendingStaffEmailChange = null;
+          this.staffAccount = { firstName: '', lastName: '', fullName: '', username: '', email: '', roleLabel: '', statusLabel: '', canChangeEmail: false };
+          this.staffLoaded = false;
+          this.staffProfile.currentPassword = '';
+          this.staffPassword.current = this.staffPassword.password = this.staffPassword.confirmation = '';
+          this.staffPassword.error = '';
+          form.stage = 'success'; form.digits = ['', '', '', '', '', ''];
+          window.clearInterval(this._staffEmailResendTimer);
+          this.$nextTick(() => document.getElementById('ownEmailSignIn')?.focus());
+        } else this.applyOwnEmailPending(response.pending_email_change);
+      } catch (error) {
+        this.ownEmailError(error);
+        form.digits = ['', '', '', '', '', ''];
+        this.focusSecurityCodeDigit(0, 'ownEmailCodeDigit');
+      } finally { form.busy = false; }
+    },
+
+    async resendOwnEmailChange() {
+      const form = this.staffEmailChange, pending = this.pendingStaffEmailChange;
+      if (form.busy || !pending || form.resendRemaining > 0) return;
+      form.busy = true; form.error = '';
+      this.focusOwnEmailDialog();
+      try {
+        const response = await API.resendStaffEmailChange(pending.id, form.stage);
+        this.applyOwnEmailPending(response.pending_email_change);
+      } catch (error) { this.ownEmailError(error); }
+      finally { form.busy = false; }
+    },
+
+    async cancelOwnEmailChange() {
+      const form = this.staffEmailChange;
+      if (form.busy || form.stage === 'success') return;
+      if (!this.pendingStaffEmailChange) { this.closeOwnEmailChange(); return; }
+      form.busy = true; form.error = '';
+      if (form.open) this.focusOwnEmailDialog();
+      try {
+        await API.cancelStaffEmailChange(this.pendingStaffEmailChange.id);
+        this.pendingStaffEmailChange = null;
+        form.busy = false;
+        this.closeOwnEmailChange();
+      } catch (error) { this.ownEmailError(error); }
+      finally { form.busy = false; }
     },
 
     staffProfileValues() {
@@ -672,7 +840,7 @@ function adminSettings() {
     },
 
     editStaffProfile() {
-      if (!this.isStaff || !this.staffLoaded || this.staffProfile.submitting) return;
+      if (!this.isStaff || !this.staffLoaded || this.staffProfile.submitting || this.staffEmailChange.open || this.staffEmailChange.busy) return;
       this.staffProfile = { editing: true, confirming: false, submitting: false,
         firstName: this.staffAccount.firstName, lastName: this.staffAccount.lastName, username: this.staffAccount.username,
         currentPassword: "", showPassword: false, errors: {}, error: "" };
@@ -964,6 +1132,7 @@ function adminSettings() {
     },
 
     async submitStaffPassword() {
+      if (this.staffEmailChange.open || this.staffEmailChange.busy) return;
       this.staffPassword.error = "";
       this.staffPassword.success = "";
 
@@ -1191,13 +1360,9 @@ function adminSettings() {
     },
 
     staffEmailValidation() {
-      const email = this.staffEmailCorrection.email.trim().toLowerCase();
       const errors = {};
-      if (email.length > 150 || !/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email)) {
-        errors.email = "Enter a valid email address.";
-      } else if (email === this.staffDetailsModal.staff?.email.trim().toLowerCase()) {
-        errors.email = "Enter a different email address.";
-      }
+      const emailError = this.emailReplacementError(this.staffEmailCorrection.email, this.staffDetailsModal.staff?.email);
+      if (emailError) errors.email = emailError;
       if (!this.staffEmailCorrection.password) errors.current_password = "Enter your admin password.";
       return errors;
     },
@@ -1235,7 +1400,7 @@ function adminSettings() {
     },
 
     trapStaffDetailsFocus(event) {
-      const controls = [...event.currentTarget.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]')]
+      const controls = [...event.currentTarget.querySelectorAll('button:enabled, input:enabled, select:enabled, [tabindex="0"]')]
         .filter(element => element.getClientRects().length > 0);
       const first = controls[0], last = controls.at(-1);
       if (!first) { event.preventDefault(); return; }
@@ -1417,6 +1582,7 @@ function adminSettings() {
     },
 
     closeSecurityModals() {
+      if (this.staffEmailChange.open) this.closeOwnEmailChange();
       if (this.staffDetailsModal.open) this.closeStaffDetails();
       if (this.addStaffModal.open) this.closeAddStaffAccount();
       if (this.staffStatusModal.open) this.closeStaffStatusModal();
@@ -1461,17 +1627,17 @@ function adminSettings() {
       this._stopSecurityDeliveryCheck = null;
     },
 
-    startSecurityResendCountdown(seconds) {
-      window.clearInterval(this._securityResendTimer);
+    startSecurityResendCountdown(seconds, verification = this.securityVerification, timerKey = '_securityResendTimer') {
+      window.clearInterval(this[timerKey]);
       const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
       const tick = () => {
-        this.securityVerification.resendRemaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
-        if (!this.securityVerification.resendRemaining) {
-          window.clearInterval(this._securityResendTimer);
-          this._securityResendTimer = null;
+        verification.resendRemaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        if (!verification.resendRemaining) {
+          window.clearInterval(this[timerKey]);
+          this[timerKey] = null;
         }
       };
-      this._securityResendTimer = window.setInterval(tick, 1000);
+      this[timerKey] = window.setInterval(tick, 1000);
       tick();
     },
 
@@ -1488,43 +1654,43 @@ function adminSettings() {
       });
     },
 
-    focusSecurityCodeDigit(index) {
-      this.$nextTick(() => document.getElementById(`securityCodeDigit${index}`)?.focus());
+    focusSecurityCodeDigit(index, prefix = 'securityCodeDigit') {
+      this.$nextTick(() => document.getElementById(`${prefix}${Math.max(0, Math.min(5, index))}`)?.focus());
     },
 
-    applySecurityCode(value, startIndex = 0) {
+    applySecurityCode(value, startIndex = 0, verification = this.securityVerification, prefix = 'securityCodeDigit') {
       const digits = String(value || "").replace(/\D/g, "").slice(0, 6 - startIndex);
       if (!digits) return;
 
       [...digits].forEach((digit, offset) => {
-        this.securityVerification.digits[startIndex + offset] = digit;
+        verification.digits[startIndex + offset] = digit;
       });
-      this.focusSecurityCodeDigit(Math.min(5, startIndex + digits.length));
+      this.focusSecurityCodeDigit(Math.min(5, startIndex + digits.length), prefix);
     },
 
-    handleSecurityCodeInput(index, event) {
+    handleSecurityCodeInput(index, event, verification = this.securityVerification, prefix = 'securityCodeDigit') {
       const digits = String(event.target.value || "").replace(/\D/g, "");
       if (digits.length > 1) {
-        this.applySecurityCode(digits, index);
+        this.applySecurityCode(digits, index, verification, prefix);
         return;
       }
 
       const digit = digits.slice(-1);
-      this.securityVerification.digits[index] = digit;
+      verification.digits[index] = digit;
       event.target.value = digit;
-      if (digit && index < 5) this.focusSecurityCodeDigit(index + 1);
+      if (digit && index < 5) this.focusSecurityCodeDigit(index + 1, prefix);
     },
 
-    handleSecurityCodeBackspace(index) {
-      if (this.securityVerification.digits[index] || index === 0) return;
-      this.securityVerification.digits[index - 1] = "";
-      this.focusSecurityCodeDigit(index - 1);
+    handleSecurityCodeBackspace(index, verification = this.securityVerification, prefix = 'securityCodeDigit') {
+      if (verification.digits[index] || index === 0) return;
+      verification.digits[index - 1] = "";
+      this.focusSecurityCodeDigit(index - 1, prefix);
     },
 
-    pasteSecurityCode(event) {
+    pasteSecurityCode(event, verification = this.securityVerification, prefix = 'securityCodeDigit') {
       const value = event.clipboardData?.getData("text") || "";
-      this.securityVerification.digits = ["", "", "", "", "", ""];
-      this.applySecurityCode(value);
+      verification.digits = ["", "", "", "", "", ""];
+      this.applySecurityCode(value, 0, verification, prefix);
     },
 
     clearSecurityCode() {

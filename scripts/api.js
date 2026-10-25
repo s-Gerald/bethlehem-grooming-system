@@ -505,6 +505,7 @@ var API = (() => {
   let sessionChecking = false;
   let serverSession = null;
   let sessionSync = null;
+  let emailChangeSignOut = null;
   let sessionPollTimer = null;
   let activityReportTimer = null;
   let lastActivityReportAt = 0;
@@ -1654,8 +1655,15 @@ var API = (() => {
     const lostAuthenticatedSession = response.status === 401
       && responseBelongsToCurrentSession;
 
+    // Revocation can reach a background read before the final email-change
+    // response. Let that response settle before deciding whether to redirect.
+    const completingEmail = emailChangeSignOut;
+    if ((lostAuthenticatedSession || invalidAccountSession) && completingEmail?.token === token
+      && endpoint !== completingEmail.endpoint) await completingEmail.settled;
+
     if (
       (lostAuthenticatedSession || invalidAccountSession)
+      && getAuthSession()?.token === token
       && !requestOptions.suppressAuthRedirect
     ) {
       // Public sign-in/register failures have no bearer token and therefore
@@ -2593,6 +2601,41 @@ var API = (() => {
       { email, current_password: currentPassword }, getAdminToken());
   }
 
+  async function requestStaffEmailChange(payload) {
+    return request('POST', '/settings/security/email-change', payload, getAdminToken());
+  }
+
+  async function confirmStaffEmailChange(id, stage, code) {
+    const token = getAdminToken();
+    const endpoint = `/settings/security/email-change/${encodeURIComponent(id)}/confirm`;
+    let settle;
+    const completing = stage === 'new' ? { token, endpoint, settled: new Promise(resolve => { settle = resolve; }) } : null;
+    if (completing) emailChangeSignOut = completing;
+    try {
+      const response = await request('POST', endpoint, { stage, code }, token);
+      if (response.completed) {
+        if (getAuthSession()?.token !== token) throw new Error('Your account session changed. Sign in again to continue.');
+        const session = getAuthSession();
+        clearAuthStorage();
+        notifyLogout(session.role, 'email_changed', session);
+      }
+      return response;
+    } finally {
+      if (completing) {
+        if (emailChangeSignOut === completing) emailChangeSignOut = null;
+        settle();
+      }
+    }
+  }
+
+  async function resendStaffEmailChange(id, stage) {
+    return request('POST', `/settings/security/email-change/${encodeURIComponent(id)}/resend`, { stage }, getAdminToken());
+  }
+
+  async function cancelStaffEmailChange(id) {
+    return request('DELETE', `/settings/security/email-change/${encodeURIComponent(id)}`, null, getAdminToken());
+  }
+
   async function cancelStaffSetup(staffId, currentPassword) {
     return request("DELETE", `/admin/security/staff/${encodeURIComponent(staffId)}/setup`, { current_password: currentPassword }, getAdminToken());
   }
@@ -3150,6 +3193,10 @@ var API = (() => {
     updateStaffAccountRole,
     resendStaffSetupEmail,
     correctStaffSetupEmail,
+    requestStaffEmailChange,
+    confirmStaffEmailChange,
+    resendStaffEmailChange,
+    cancelStaffEmailChange,
     cancelStaffSetup,
     confirmSecurityCredentialChange,
     resendSecurityCredentialChangeCode,

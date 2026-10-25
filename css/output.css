@@ -1787,6 +1787,10 @@ video {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid-cols-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .grid-cols-7 {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
@@ -4418,6 +4422,10 @@ video {
 
 .focus-visible\:outline-red-600:focus-visible {
   outline-color: #dc2626;
+}
+
+.focus-visible\:outline-white:focus-visible {
+  outline-color: #fff;
 }
 
 .focus-visible\:ring-2:focus-visible {
