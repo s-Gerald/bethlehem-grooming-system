@@ -29,26 +29,22 @@ class AdminDashboardSummaryTest extends TestCase
         \Laravel\Sanctum\Sanctum::actingAs(new User([
             'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
         ]));
-        Schema::create('clinic_appointments', function (Blueprint $table) {
-            $table->id(); $table->string('appointment_reference'); $table->string('status');
-            $table->date('appointment_date'); $table->integer('queue_number')->nullable();
-            $table->integer('pet_id')->nullable(); $table->integer('user_id')->nullable(); $table->integer('walkin_id')->nullable();
-            $table->dateTime('checked_in_at')->nullable(); $table->dateTime('consultation_started_at')->nullable();
-            $table->dateTime('consultation_finished_at')->nullable(); $table->timestamps();
-        });
+        $this->createClinicAppointments();
         try {
             foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled'] as $i => $status) {
                 DB::table('clinic_appointments')->insert([
                     'appointment_reference' => 'CL-VET-'.$i, 'appointment_date' => '2026-06-24',
                     'status' => $status, 'queue_number' => $i + 1, 'updated_at' => now(),
                     'checked_in_at' => now()->subHour(),
+                    'paid' => $status === 'completed', 'paid_at' => $status === 'completed' ? now() : null,
                     'consultation_finished_at' => in_array($status, ['for_payment', 'completed', 'cancelled']) ? now() : null,
                 ]);
             }
             DB::table('bookings')->insert(['booking_reference' => 'GROOMING', 'booking_date' => '2026-06-24', 'status' => 'checked_in']);
             $this->getJson('/api/admin/dashboard/summary')->assertOk()
                 ->assertJsonPath('clinicOnly', true)->assertJsonPath('summary.waitingNow', 1)
-                ->assertJsonPath('summary.inConsultation', 1)->assertJsonPath('summary.today', 2)
+                ->assertJsonPath('summary.inConsultation', 1)->assertJsonPath('summary.completedToday', ['clinic' => 1])
+                ->assertJsonMissingPath('summary.today')
                 ->assertJsonMissingPath('capacity')->assertJsonMissingPath('summary.revenueToday')
                 ->assertJsonCount(2, 'queuePreview')->assertJsonPath('queuePreview.0.serviceType', 'clinic');
             app(\App\Services\ActivityRecorder::class)->record('checked_in', 'clinic', 'clinic_visit', '1', 'Clinic', [], true);
@@ -134,7 +130,7 @@ class AdminDashboardSummaryTest extends TestCase
         $indicatorQueries = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertSame($full['summary']['today'], $summary['summary']['today']);
+        $this->assertSame(['grooming' => 0, 'clinic' => 0], $summary['summary']['completedToday']);
         $this->assertSame($full['summary']['waitingNow'], $summary['summary']['waitingNow']);
         $this->assertSame($full['capacity'], $summary['capacity']);
         $this->assertCount(1, $summary['queuePreview']);
@@ -200,6 +196,7 @@ class AdminDashboardSummaryTest extends TestCase
             $table->dateTime('dropped_off_at')->nullable();
             $table->dateTime('grooming_started_at')->nullable();
             $table->dateTime('grooming_finished_at')->nullable();
+            $table->dateTime('archived_at')->nullable();
             $table->boolean('paid')->default(false);
             $table->decimal('total_amount', 8, 2)->default(0);
         });
@@ -218,6 +215,7 @@ class AdminDashboardSummaryTest extends TestCase
             $table->text('special_instructions')->nullable();
             $table->dateTime('grooming_start_time')->nullable();
             $table->dateTime('grooming_end_time')->nullable();
+            $table->dateTime('cancelled_at')->nullable();
             $table->string('grooming_state', 20)->default(
                 BookingPet::GROOMING_STATE_NOT_STARTED,
             );
@@ -305,7 +303,133 @@ class AdminDashboardSummaryTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_dashboard_counts_pets_in_today_and_week_summaries(): void
+    private function createClinicAppointments(): void
+    {
+        Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->id(); $table->string('appointment_reference'); $table->string('status');
+            $table->date('appointment_date'); $table->integer('queue_number')->nullable();
+            $table->integer('pet_id')->nullable(); $table->integer('user_id')->nullable(); $table->integer('walkin_id')->nullable();
+            $table->dateTime('checked_in_at')->nullable(); $table->dateTime('consultation_started_at')->nullable();
+            $table->dateTime('consultation_finished_at')->nullable(); $table->dateTime('paid_at')->nullable();
+            $table->boolean('paid')->default(false); $table->dateTime('archived_at')->nullable(); $table->timestamps();
+        });
+    }
+
+    public static function completionCases(): array
+    {
+        return [
+            'finished unpaid' => [['status' => 'for_payment', 'paid' => false], [], [], 0],
+            'prepaid unfinished' => [['status' => 'in_progress', 'grooming_finished_at' => null], ['grooming_state' => 'in_progress', 'grooming_end_time' => null], [], 0],
+            'fully finished paid' => [[], [], [], 1],
+            'missing payment audit' => [[], [], null, 0],
+            'pending payment' => [[], [], ['payment_status' => 'pending'], 0],
+            'missing payment time' => [[], [], ['paid_at' => null], 0],
+            'missing service time' => [['grooming_finished_at' => null], ['grooming_end_time' => null], [], 0],
+            'pet timestamp preserves known finish' => [['grooming_finished_at' => null], [], [], 1],
+            'cancelled pet' => [[], ['grooming_state' => 'cancelled'], [], 0],
+            'cancelled timestamp' => [[], ['cancelled_at' => '2026-06-24 10:00:00'], [], 0],
+            'cancelled visit' => [['status' => 'cancelled'], [], [], 0],
+            'expired visit' => [['status' => 'expired'], [], [], 0],
+            'no show visit' => [['status' => 'no_show'], [], [], 0],
+            'late payment at midnight' => [['grooming_finished_at' => '2026-06-23 23:59:59'], ['grooming_end_time' => '2026-06-23 23:59:59'], ['paid_at' => '2026-06-24 00:00:00'], 1],
+            'prepaid yesterday finished today' => [[], [], ['paid_at' => '2026-06-23 23:59:59'], 1],
+            'tomorrow payment' => [[], [], ['paid_at' => '2026-06-25 00:00:00'], 0],
+            'tomorrow finish' => [['grooming_finished_at' => '2026-06-25 00:00:00'], ['grooming_end_time' => '2026-06-25 00:00:00'], [], 0],
+            'archived today completed yesterday' => [['status' => 'archived', 'archived_at' => '2026-06-24 09:00:00', 'grooming_finished_at' => '2026-06-23 23:59:59'], ['grooming_end_time' => '2026-06-23 23:59:59'], ['paid_at' => '2026-06-23 23:59:59'], 0],
+            'archived later retains completion' => [['status' => 'archived', 'archived_at' => '2026-06-25 09:00:00'], [], [], 1],
+        ];
+    }
+
+    private function completedGrooming(array $booking = [], array $pet = [], ?array $payment = []): int
+    {
+        $id = DB::table('bookings')->insertGetId(array_replace([
+            'booking_reference' => 'DONE-'.DB::table('bookings')->count(), 'booking_date' => '2026-06-23',
+            'status' => 'released', 'paid' => true, 'number_of_pets' => 1,
+            'grooming_finished_at' => '2026-06-24 10:00:00',
+        ], $booking), 'booking_id');
+        DB::table('booking_pets')->insert(array_replace(['booking_id' => $id,
+            'grooming_state' => 'finished', 'grooming_end_time' => '2026-06-24 10:00:00'], $pet));
+        if ($payment !== null) DB::table('payments')->insert(array_replace(['booking_id' => $id,
+            'payment_status' => 'paid', 'paid_at' => '2026-06-24 11:00:00'], $payment));
+        return $id;
+    }
+
+    #[DataProvider('completionCases')]
+    public function test_dashboard_grooming_requires_finished_pets_and_confirmed_payment(array $booking, array $pet, ?array $payment, int $expected): void
+    {
+        $this->completedGrooming($booking, $pet, $payment);
+        $summary = (new AdminBookingController)->dashboardSummary()->getData(true)['summary'];
+        $this->assertSame(['grooming' => $expected, 'clinic' => 0], $summary['completedToday'] ?? null);
+    }
+
+    public function test_multi_pet_completion_excludes_cancelled_siblings_and_waits_for_the_whole_booking(): void
+    {
+        $id = $this->completedGrooming(['number_of_pets' => 3]);
+        DB::table('booking_pets')->insert([
+            ['booking_id' => $id, 'grooming_state' => 'finished', 'grooming_end_time' => '2026-06-24 10:00:00'],
+            ['booking_id' => $id, 'grooming_state' => 'cancelled', 'grooming_end_time' => null],
+        ]);
+        // Duplicate successful audit rows must neither multiply pets nor move their completion day.
+        DB::table('payments')->insert(['booking_id' => $id, 'payment_status' => 'paid', 'paid_at' => '2026-06-25 09:00:00']);
+        $controller = new AdminBookingController;
+        for ($i = 0; $i < 2; $i++) {
+            $this->assertSame(2, $controller->dashboardSummary()->getData(true)['summary']['completedToday']['grooming'] ?? null);
+        }
+        DB::table('booking_pets')->insert(['booking_id' => $id, 'grooming_state' => 'in_progress']);
+        $this->assertSame(0, $controller->dashboardSummary()->getData(true)['summary']['completedToday']['grooming'] ?? null);
+    }
+
+    public function test_multi_pet_finalization_uses_the_last_pet_finish_when_the_booking_timestamp_is_missing(): void
+    {
+        $id = $this->completedGrooming(['number_of_pets' => 2, 'grooming_finished_at' => null],
+            ['grooming_end_time' => '2026-06-23 23:59:59'], ['paid_at' => '2026-06-23 23:59:59']);
+        DB::table('booking_pets')->insert(['booking_id' => $id, 'grooming_state' => 'finished',
+            'grooming_end_time' => '2026-06-24 00:00:00']);
+        $controller = new AdminBookingController;
+        $this->assertSame(2, $controller->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
+        Carbon::setTestNow('2026-06-23 23:59:59');
+        $this->assertSame(0, $controller->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
+    }
+
+    public function test_clinic_completion_dates_payment_and_role_breakdowns_are_consistent(): void
+    {
+        $this->createClinicAppointments();
+        $this->completedGrooming();
+        $cases = [
+            ['for_payment', false, '2026-06-24 10:00:00', null, null],
+            ['completed', true, '2026-06-23 23:59:59', '2026-06-24 00:00:00', null],
+            ['completed', true, '2026-06-24 10:00:00', '2026-06-23 23:59:59', null],
+            ['archived', true, '2026-06-24 10:00:00', '2026-06-24 11:00:00', '2026-06-25 09:00:00'],
+            ['archived', true, '2026-06-23 10:00:00', '2026-06-23 11:00:00', '2026-06-24 09:00:00'],
+            ['completed', false, '2026-06-24 10:00:00', '2026-06-24 11:00:00', null],
+            ['completed', true, null, '2026-06-24 11:00:00', null],
+            ['completed', true, '2026-06-24 10:00:00', null, null],
+            ['completed', true, '2026-06-24 10:00:00', '2026-06-25 00:00:00', null],
+            ['cancelled', true, '2026-06-24 10:00:00', '2026-06-24 11:00:00', null],
+            ['expired', true, '2026-06-24 10:00:00', '2026-06-24 11:00:00', null],
+            ['no_show', true, '2026-06-24 10:00:00', '2026-06-24 11:00:00', null],
+        ];
+        foreach ($cases as $i => [$status, $paid, $finished, $paidAt, $archived]) {
+            DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-'.$i,
+                'appointment_date' => '2026-06-23', 'status' => $status, 'paid' => $paid,
+                'consultation_finished_at' => $finished, 'paid_at' => $paidAt, 'archived_at' => $archived]);
+        }
+        foreach (['admin', 'grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $role) {
+            \Laravel\Sanctum\Sanctum::actingAs(new User(['role' => $role === 'admin' ? 'admin' : 'staff',
+                'staff_type' => $role === 'grooming_receptionist' ? 'grooming' : 'clinic', 'staff_subrole' => $role, 'is_active' => true]));
+            DB::enableQueryLog(); DB::flushQueryLog();
+            $expected = $role === 'veterinarian' ? ['clinic' => 3] : ['grooming' => 1, 'clinic' => 3, ...($role === 'admin' ? ['total' => 4] : [])];
+            for ($i = 0; $i < 2; $i++) $this->getJson('/api/admin/dashboard/summary')->assertOk()
+                ->assertJsonPath('summary.completedToday', $expected)->assertJsonMissingPath('summary.today');
+            if ($role === 'veterinarian') {
+                $this->assertCount(0, array_filter(DB::getQueryLog(), fn ($query) => preg_match('/\b(bookings|booking_pets|payments)\b/i', $query['query'])));
+            }
+            DB::disableQueryLog();
+        }
+        Schema::dropIfExists('clinic_appointments');
+    }
+
+    public function test_management_counts_pets_in_today_and_week_summaries(): void
     {
         DB::table('bookings')->insert([
             [
@@ -1112,12 +1236,14 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertTrue((bool) DB::table('bookings')->where('booking_id', 1)->value('paid'));
 
         $bookingController = new AdminBookingController;
+        $this->assertSame(0, $bookingController->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
         $firstFinish = $bookingController->markPetDone(1, 1);
 
         $this->assertSame(200, $firstFinish->getStatusCode());
         $this->assertFalse($firstFinish->getData(true)['all_pets_finished']);
         $this->assertSame('checked_in', DB::table('bookings')->where('booking_id', 1)->value('status'));
 
+        $this->assertSame(0, $bookingController->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
         $bookingController->startPetGrooming(1, 2);
         $finalFinish = $bookingController->markPetDone(1, 2);
 
@@ -1125,6 +1251,7 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertTrue($finalFinish->getData(true)['all_pets_finished']);
         $this->assertSame('released', $finalFinish->getData(true)['booking_status']);
         $this->assertSame('released', DB::table('bookings')->where('booking_id', 1)->value('status'));
+        $this->assertSame(2, $bookingController->dashboardSummary()->getData(true)['summary']['completedToday']['grooming']);
     }
 
     public function test_each_parent_workflow_state_has_an_admin_destination(): void

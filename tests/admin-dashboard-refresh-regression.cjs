@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { environment, deferred } = require('./admin-data-cache-regression.cjs');
 const source = fs.readFileSync('scripts/components/admin-dashboard.js', 'utf8');
-const summary = { summary: { today: 7, revenueToday: 1200, revenuePaymentCount: 2, waitingNow: 3 },
+const summary = { summary: { completedToday: { grooming: 4, clinic: 3, total: 7 }, revenueToday: 1200, revenuePaymentCount: 2, waitingNow: 3 },
   canViewRevenue: true, capacity: { current: 6, max: 20 }, queuePreview: [{ id: 1 }], activeTodayCount: 4 };
 const failure = status => ({ ok: false, status, json: async () => ({message: 'Unavailable'}), headers: {get: () => null} });
 const settle = () => new Promise(setImmediate);
@@ -35,12 +35,12 @@ async function retainedFailureIsVisibleAndRetryRecovers() {
   e.respond(() => failure(500)); await ui.loadDashboardSummary();
   assert.ok(ui.summaryError, 'A retained cache hit must not hide a failed server refresh');
   assert.match(ui.summaryError, /outdated/i);
-  assert.equal(ui.todayCount, 7); assert.equal(ui.summaryLoaded, true);
+  assert.equal(ui.completedToday.total, 7); assert.equal(ui.summaryLoaded, true);
   const count = e.calls.length;
   await ui.loadDashboardSummary(); assert.equal(e.calls.length, count, 'Automatic refresh observes backoff');
-  e.respond(() => ({...summary, summary: {...summary.summary, today: 8}}));
+  e.respond(() => ({...summary, summary: {...summary.summary, completedToday: { grooming: 4, clinic: 4, total: 8 }}}));
   await ui.loadDashboardSummary({force: true});
-  assert.equal(ui.todayCount, 8); assert.equal(ui.summaryError, '');
+  assert.equal(ui.completedToday.total, 8); assert.equal(ui.summaryError, '');
   e.advance(30000); await ui.loadDashboardSummary();
   assert.equal(e.calls.length, count + 2, 'Success restores the normal polling cadence');
 }
@@ -77,8 +77,8 @@ async function singlePollAndVisibilityLifecycle() {
   assert.equal(e.calls.length, 4, 'A slow refresh does not overlap the next poll');
   ui.destroy(); assert.equal(timer.intervals.size, 0);
   assert.equal(timer.documentListeners.get('visibilitychange').size, 0);
-  held.resolve({...summary, summary: {today: 99}}); await settle();
-  assert.equal(ui.todayCount, 7, 'Destroyed components ignore late responses');
+  held.resolve({...summary, summary: {completedToday: {grooming: 99, clinic: 0, total: 99}}}); await settle();
+  assert.equal(ui.completedToday.total, 7, 'Destroyed components ignore late responses');
   await timer.tick(120000); assert.equal(e.calls.length, 4);
 }
 async function navigationRefreshAndSessionOwnership() {
@@ -94,7 +94,7 @@ async function navigationRefreshAndSessionOwnership() {
   e.advance(16000); const held = deferred(); e.respond(() => held.promise);
   const refreshed = component(e, e.page()), pending = refreshed.loadDashboardSummary();
   assert.equal(refreshed.summaryLoaded, true, 'Retained metrics appear before revalidation');
-  assert.equal(refreshed.todayCount, 7); assert.equal(refreshed.summaryLoading, true);
+  assert.equal(refreshed.completedToday.total, 7); assert.equal(refreshed.summaryLoading, true);
   held.resolve(summary); await pending;
   e.advance(121000); e.respond(() => failure(500));
   const expired = component(e, e.page()); await expired.loadDashboardSummary();
@@ -145,11 +145,12 @@ async function revenueRequiresServerAuthorizationAndClearsOnRoleChange() {
   held.resolve(summary); await pending;
   assert.equal(ui.canViewRevenue, false, 'A stale admin response cannot re-enable revenue');
   assert.equal(ui.revenuePaymentCount, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.completedToday)), {}, 'Role invalidation clears completion data too');
   ui.destroy();
 }
 async function activityFiltersRejectStaleResponsesAndPreserveSummary() {
   const e = environment(), ui = component(e);
-  ui.activityCanFilter = true; ui.activityArea = 'all'; ui.todayCount = 9;
+  ui.activityCanFilter = true; ui.activityArea = 'all'; ui.completedToday.total = 9;
   const first = deferred(), second = deferred();
   e.respond(endpoint => endpoint.includes('area=grooming') ? first.promise : second.promise);
   const grooming = ui.setActivityArea('grooming');
@@ -160,11 +161,28 @@ async function activityFiltersRejectStaleResponsesAndPreserveSummary() {
   await grooming;
   assert.equal(ui.activityArea, 'clinic'); assert.equal(ui.recentActivity[0].id, 2);
   assert.equal(ui.recentActivity[0].area, 'clinic', 'The feed retains recorded department metadata for the shared color rules');
-  assert.equal(ui.todayCount, 9, 'Changing activity must preserve dashboard metrics');
+  assert.equal(ui.completedToday.total, 9, 'Changing activity must preserve dashboard metrics');
   assert.equal(e.calls.length, 2);
   ui.activityCanFilter = false;
   await ui.setActivityArea('grooming');
   assert.equal(e.calls.length, 2, 'Clinic-only users have no interactive cross-area filter');
+}
+
+async function completionBreakdownFollowsServerRoleAndReplacesOldData() {
+  const e = environment(), ui = component(e);
+  e.respond(() => summary); await ui.loadDashboardSummary();
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.completedToday)), {grooming: 4, clinic: 3, total: 7});
+  const restored = component(e, e.page());
+  restored.applyDashboardData(ui.getState());
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.completedToday)), {grooming: 4, clinic: 3, total: 7});
+  e.respond(() => ({canViewRevenue: false, summary: {completedToday: {grooming: 4, clinic: 3}}}));
+  await ui.loadDashboardSummary({force: true});
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.completedToday)), {grooming: 4, clinic: 3});
+  e.respond(() => ({clinicOnly: true, canViewRevenue: false, summary: {completedToday: {clinic: 3}}}));
+  await ui.loadDashboardSummary({force: true});
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.completedToday)), {clinic: 3});
+  assert.equal(ui.clinicOnly, true);
+  assert.equal(e.calls.length, 3, 'One existing request per refresh supplies all metrics');
 }
 
 (async () => {
@@ -172,7 +190,7 @@ async function activityFiltersRejectStaleResponsesAndPreserveSummary() {
   for (const test of [retainedFailureIsVisibleAndRetryRecovers, boundedFailuresAndManualRetryShareOneRequest,
     singlePollAndVisibilityLifecycle, navigationRefreshAndSessionOwnership, activityFailuresAlsoRetainAndRecover,
     invalidationDoesNotOverlapSummaryRequests, revenueRequiresServerAuthorizationAndClearsOnRoleChange,
-    activityFiltersRejectStaleResponsesAndPreserveSummary]) {
+    activityFiltersRejectStaleResponsesAndPreserveSummary, completionBreakdownFollowsServerRoleAndReplacesOldData]) {
     try { await test(); console.log(test.name+' passed'); }
     catch (error) { failed++; console.error(test.name, error); }
   }

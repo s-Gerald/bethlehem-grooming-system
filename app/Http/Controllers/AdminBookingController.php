@@ -189,7 +189,7 @@ class AdminBookingController extends Controller
             'forPaymentList' => $forPayment->values(),
             'releasedList' => $released->values(),
             ...($request->query('view') === 'board' ? ['summary' => $this->groomingCounts()] : [
-                'summary' => $this->dashboardMetrics(true, $request->user()?->role === 'admin'),
+                'summary' => [...$this->groomingCounts(), ...$this->dashboardMetrics($request->user()?->role === 'admin')],
             ]),
             'activeTodayCount' => $this->activeTodayCount(),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
@@ -239,7 +239,8 @@ class AdminBookingController extends Controller
 
         return response()->json([
             'canViewRevenue' => $canViewRevenue,
-            'summary' => $this->dashboardMetrics(false, $canViewRevenue),
+            'summary' => [...$this->dashboardMetrics($canViewRevenue),
+                'completedToday' => app(\App\Services\DashboardCompletionMetrics::class)->today(includeTotal: $canViewRevenue)],
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
             'queuePreview' => $queue,
             'activeTodayCount' => $this->activeTodayCount(),
@@ -256,11 +257,9 @@ class AdminBookingController extends Controller
         $today = Carbon::today()->toDateString();
         $hasClinic = Schema::hasTable('clinic_appointments');
         $counts = $hasClinic ? ClinicAppointment::query()
-            ->where(fn ($q) => $q->whereIn('status', ['checked_in', 'in_consultation'])
-                ->orWhereDate('consultation_finished_at', $today))
+            ->whereIn('status', ['checked_in', 'in_consultation'])
             ->selectRaw("SUM(CASE WHEN status = 'checked_in' AND appointment_date = ? THEN 1 ELSE 0 END) as waiting,
-                SUM(CASE WHEN status = 'in_consultation' AND appointment_date = ? THEN 1 ELSE 0 END) as consulting,
-                SUM(CASE WHEN status IN ('for_payment', 'completed', 'archived') AND DATE(consultation_finished_at) = ? THEN 1 ELSE 0 END) as completed", [$today, $today, $today])->first() : null;
+                SUM(CASE WHEN status = 'in_consultation' AND appointment_date = ? THEN 1 ELSE 0 END) as consulting", [$today, $today])->first() : null;
         $queue = $hasClinic ? ClinicAppointment::with(['user:user_id,first_name,last_name', 'walkin', 'pet.unregisteredCustomer'])
             ->where('appointment_date', $today)->whereIn('status', ['checked_in', 'in_consultation'])
             ->orderByRaw("CASE WHEN status = 'in_consultation' THEN 0 ELSE 1 END")
@@ -274,7 +273,8 @@ class AdminBookingController extends Controller
         return response()->json([
             'clinicOnly' => true, 'canViewRevenue' => false,
             'summary' => ['waitingNow' => (int) ($counts?->waiting ?? 0),
-                'inConsultation' => (int) ($counts?->consulting ?? 0), 'today' => (int) ($counts?->completed ?? 0)],
+                'inConsultation' => (int) ($counts?->consulting ?? 0),
+                'completedToday' => app(\App\Services\DashboardCompletionMetrics::class)->today(clinicOnly: true)],
             'queuePreview' => $queue,
         ])->header('Cache-Control', 'no-store, private');
     }
@@ -287,7 +287,7 @@ class AdminBookingController extends Controller
                 : (trim(($case->walkin?->fname ?? '').' '.($case->walkin?->lname ?? '')) ?: 'Customer')];
     }
 
-    private function groomingCounts(bool $includeWeek = true): array
+    private function groomingCounts(): array
     {
         $today = Carbon::today();
         $todayCompletedCount = Booking::whereDate('grooming_finished_at', $today->toDateString())
@@ -296,20 +296,19 @@ class AdminBookingController extends Controller
 
         $weekStart = Carbon::now()->startOfWeek()->toDateString();
         $weekEnd = Carbon::now()->endOfWeek()->toDateString();
-        $weekCount = $includeWeek ? Booking::whereBetween('booking_date', [$weekStart, $weekEnd])
+        $weekCount = Booking::whereBetween('booking_date', [$weekStart, $weekEnd])
             ->whereNotIn('status', ['cancelled'])
-            ->sum('number_of_pets') : null;
-        return ['today' => $todayCompletedCount, ...($includeWeek ? ['week' => $weekCount] : [])];
+            ->sum('number_of_pets');
+        return ['today' => $todayCompletedCount, 'week' => $weekCount];
     }
 
-    private function dashboardMetrics(bool $includeWeek = true, bool $includeRevenue = false): array
+    private function dashboardMetrics(bool $includeRevenue = false): array
     {
         $today = Carbon::today();
         $collections = $includeRevenue ? Payment::realCollections()->whereDate('paid_at', $today->toDateString())
             ->where('payment_status', 'paid')
             ->selectRaw('COALESCE(SUM(total_amount), 0) as total, COUNT(*) as payments')->first() : null;
         return [
-                ...$this->groomingCounts($includeWeek),
                 ...($includeRevenue ? ['revenueToday' => (float) $collections->total,
                     'revenuePaymentCount' => (int) $collections->payments] : []),
                 'waitingNow' => app(\App\Services\OperationalCapacity::class)->waitingCount(),

@@ -363,6 +363,7 @@ function adminDashboard() {
     dashboardSearchPets: [],
     _dashboardSearchRequestId: 0,
     todayCount: 0,
+    completedToday: {},
     weekCount: 0,
     revenueToday: 0,
     revenuePaymentCount: 0,
@@ -672,6 +673,7 @@ function adminDashboard() {
           this.activityCanFilter = false;
           this.canViewRevenue = false;
           this.revenueToday = this.revenuePaymentCount = 0;
+          this.completedToday = {};
           this.dashboardQueuePreview = [];
           this.recentActivity = [];
           this.summaryLoaded = this.activityLoaded = false;
@@ -1589,6 +1591,8 @@ function adminDashboard() {
       if (payload.estimateRules) window.GroomingEstimates.configure(payload.estimateRules);
       const nextPayload = this.normalizeDashboardPayload(payload);
 
+      if ("completedToday" in nextPayload) this.completedToday = nextPayload.completedToday;
+
       if ("todayCount" in nextPayload) {
         this.todayCount = nextPayload.todayCount;
       }
@@ -1683,6 +1687,9 @@ function adminDashboard() {
       const groomerCapacity = payload.groomerCapacity || payload.groomer_capacity || {};
 
       const nextPayload = {};
+      if ("completedToday" in payload || "completedToday" in summary) {
+        nextPayload.completedToday = payload.completedToday ?? summary.completedToday;
+      }
       if ("groomingWorkload" in payload) nextPayload.groomingWorkload = payload.groomingWorkload;
 
       if (this.hasValue(payload.todayCount) || this.hasValue(summary.today)) {
@@ -2433,6 +2440,7 @@ function adminDashboard() {
         selectedDate: this.selectedDate,
         activeTab: this.activeTab,
         todayCount: this.todayCount,
+        completedToday: { ...this.completedToday },
         weekCount: this.weekCount,
         revenueToday: this.revenueToday,
         revenuePaymentCount: this.revenuePaymentCount,

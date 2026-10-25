@@ -49,7 +49,7 @@ class AdminDashboardMysqlTest extends TestCase
     public function test_empty_summary_returns_real_zero_values_over_the_authorized_route(): void
     {
         $this->getJson('/api/admin/dashboard/summary')->assertOk()
-            ->assertJsonPath('summary.today', 0)->assertJsonPath('summary.revenueToday', 0)
+            ->assertJsonPath('summary.completedToday', ['grooming' => 0, 'clinic' => 0, 'total' => 0])->assertJsonPath('summary.revenueToday', 0)
             ->assertJsonPath('summary.waitingNow', 0)->assertJsonPath('capacity.current', 0)
             ->assertJsonPath('activeTodayCount', 0)->assertJsonCount(0, 'queuePreview');
     }
@@ -74,12 +74,15 @@ class AdminDashboardMysqlTest extends TestCase
 
     public function test_summary_preserves_collections_and_completed_counts_with_current_migrations(): void
     {
-        $id = $this->booking('COMPLETED', 'archived', attributes: ['grooming_finished_at' => now(), 'number_of_pets' => 3]);
+        $id = $this->booking('COMPLETED', 'archived', attributes: ['grooming_finished_at' => now(), 'number_of_pets' => 3, 'paid' => true]);
+        for ($i = 0; $i < 3; $i++) DB::table('booking_pets')->insert(['booking_id' => $id, 'grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-DONE', 'appointment_date' => '2026-10-20',
+            'status' => 'completed', 'paid' => true, 'consultation_finished_at' => '2026-10-20 23:59:59', 'paid_at' => '2026-10-21 00:00:00']);
         foreach ([[125, 'paid', '2026-10-21'], [250, 'paid', '2026-10-21'], [900, 'pending', '2026-10-21'], [800, 'paid', '2026-10-20']] as [$amount, $status, $day]) {
             DB::table('payments')->insert(['booking_id' => $id, 'total_amount' => $amount,
                 'payment_method' => 'cash', 'payment_status' => $status, 'paid_at' => $day.' 09:00:00']);
         }
-        $this->getJson('/api/admin/dashboard/summary')->assertOk()->assertJsonPath('summary.today', '3')
+        $this->getJson('/api/admin/dashboard/summary')->assertOk()->assertJsonPath('summary.completedToday', ['grooming' => 3, 'clinic' => 1, 'total' => 4])
             ->assertJsonPath('summary.revenueToday', 375)->assertJsonPath('summary.revenuePaymentCount', 2);
     }
 
