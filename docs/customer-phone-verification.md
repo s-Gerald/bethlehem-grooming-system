@@ -1,132 +1,157 @@
-# Customer phone verification
+# Customer phone management and grooming completion SMS
 
-## Configuration and activation
+Implemented locally on `gerald-frontend`, October 25, 2026. No branch, commit, push, production configuration change, real SMS submission, or Hostinger deployment was performed. The additive completion-outbox migration was applied to the confirmed local MySQL server after checking the local environment, loopback host and server hostname. The account count was unchanged. `.env` was not changed.
 
-Laravel alone calls iProgSMS. Set these values privately in the local or hosting environment; both switches default to false:
+## What changed
+
+- Settings retains its existing Account card, avatar and read-only fields. Phone actions are Add, Verify, Change, or Continue verification / Cancel change. A pending replacement leaves the old verified number visible and authoritative.
+- The existing lazy modal and six-cell OTP input serve Settings and Grooming/Clinic entry. Opening only reads safe challenge metadata. It never sends SMS. Explicit Send Code / Resend Code actions are required. Closing preserves an active challenge; reopening or refreshing can recover it without another paid send. Settings confirmation stays on Settings; pre-registration continues to the selected destination. Existing ongoing-registration restrictions have priority.
+- Replacing a verified number requires the current password, checked server-side with an account-scoped five-failure/hour budget. Initial Add/Verify does not require this password step. Resending an authorized replacement requires the original phone ownership to remain unchanged. Provider verification, uniqueness checks, account locking, HMAC binding and atomic proof consumption remain in place. A replacement queues a brief security email through the existing database mail infrastructure; email/queue failure cannot undo committed phone ownership.
+- Both fixed SMS types use the existing iProgSMS HTTP boundary. The formatter counts GSM-7 units, including two-unit extensions, and preserves the full header/footer. Single-pet SMS uses the booking's actual registered pet name. Missing, incompatible, injected/control-character or overlong names use the fixed generic fallback. Multiple active pets use the plural message, never a list of names.
+- Grooming SMS is recorded at the common whole-visit completion transition, including bulk completion, individually finished pets and cancellation of the last unstarted pet after others finish. Partial completion retains its existing in-app notice and sends no external SMS. Canceled pets are excluded from the completion subject. Portal association comes only from `bookings.user_id`; matching contact information never establishes a link.
+- Grooming-completion email delivery and its unused notification/templates were removed. Existing in-app, recovery, authentication and other emails remain.
+
+## Provider contract and acceptance limits
+
+Checked against the [official API documentation](https://www.iprogsms.com/api/v1/documentation) on October 25, 2026:
+
+- OTP creation uses `POST /api/v1/otp/send_otp`, custom `message` with `:otp`, and five-minute expiry. Verification still uses `POST /api/v1/otp/verify_otp`. Codes are provider-generated and provider-verified.
+- Ordinary completion SMS uses `POST /api/v1/sms_messages`. A successful response must have HTTP success, numeric `status: 200` and a valid `message_id`. This records **accepted**, never confirmed handset delivery.
+- Separate message-header/footer request parameters and automatic approved-template behavior are not documented. The application therefore composes the full message in `message`, with one clinic header and the correct per-type footer. No dashboard template API or dashboard setting was changed.
+- Keep the global footer blank. No dashboard change is prescribed from an assumption. Before enabling paid completion SMS, send controlled OTP and completion acceptance messages to an owner-controlled handset. Confirm exactly one clinic header, the separate correct footers, no provider-added text causing segmentation, and actual provider credit usage. If the approved dashboard header is automatically appended, resolve that behavior with iProgSMS/support before activation; do not blindly delete an approved KYC header.
+- The [official network announcement](https://www.iprogsms.com/announcements) distinguishes normal `IPROGOTP` support for Smart/TNT from regular shared-sender restrictions and fallback routing. The UI includes only the requested short helper. There are no prefix blocks, paid network-detection calls or assumptions of identical coverage. Regular grooming SMS to Smart/TNT remains a provider/sender acceptance limitation with the current shared sender.
+- A documented message-status endpoint accepts a known provider message ID. Inspect accepted IDs through the provider dashboard/status API when investigating; do not resubmit. A timeout without an ID cannot safely prove rejection. No real-phone delivery was verified by this implementation.
+
+## Final SMS text and computed GSM-7 lengths
+
+These are composed application messages, including two LF separators. Actual provider additions/charging require the handset check above. Joseph is an example of runtime pet data, not a production constant.
+
+OTP: **92 units** after six-digit substitution:
+
+```text
+Bethlehem Animal Clinic
+Your verification code is 482913. Valid for 5 minutes.
+Do not share.
+```
+
+Single pet, example actual booking name Joseph: **90 units**:
+
+```text
+Bethlehem Animal Clinic
+Joseph's grooming is complete.
+Please visit the clinic for pickup.
+```
+
+Multiple active pets: **92 units**:
+
+```text
+Bethlehem Animal Clinic
+Your pets' grooming is complete.
+Please visit the clinic for pickup.
+```
+
+Missing/unsafe/overlong single-pet name: **92 units**:
+
+```text
+Bethlehem Animal Clinic
+Your pet's grooming is complete.
+Please visit the clinic for pickup.
+```
+
+A single ordinary GSM-7 pet name can occupy up to 76 units in this format (160 total); extension characters consume two units. Unicode is not silently transliterated or truncated.
+
+## Authenticated lifecycle and budgets
+
+Customer-only Sanctum routes retain active-account/session restrictions:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/phone-verification/state` | Explicit-open recovery: challenge ID, masked destination, active/expired/locked state, remaining expiry/cooldown and verification eligibility |
+| `POST /api/phone-verification/send` | Validated phone and optional current password; replacement requires the password |
+| `POST /api/phone-verification/resend` | Same authenticated customer's challenge ID |
+| `POST /api/phone-verification/verify` | Challenge ID and six-digit code |
+| `POST /api/phone-verification/cancel` | Supersede the named challenge and clear proof; retain old verified phone, cooldown and attempt counters |
+
+The state endpoint never returns a plaintext OTP, fingerprint, full destination, raw provider response or credentials. `/api/me` adds only pending-replacement metadata using an indexed existence query, without a separate challenge-state request on page load. Verification refreshes the existing profile once and invalidates profile/access caches. Send/cancel invalidate the profile's pending metadata while preserving eligibility and unrelated caches. No background OTP sends, retries or state polling were added.
+
+Existing shared customer/destination locks and the global budget lock remain. `SmsSendBudget` is the common reservation source for OTP and grooming submissions:
+
+- OTP expiry 5 minutes; resend cooldown 60 seconds; verification failures 5/hour per account, retained across number switches/resends/cancellation.
+- Sends: account 5/hour, destination 5/hour, requesting IP 20/hour, global 100/hour and 500/day. Grooming jobs have no requesting-client IP and share the other paid-send budgets.
+- New configurable account/destination daily caps default to 20. These constrain repeated account abuse without reducing the existing clinic-wide daily allowance. Global daily allowance is now configurable, default 500; choose a lower private value if appropriate for the clinic's real volume.
+- Malformed/claimed numbers, same already verified number, invalid password, exhausted budgets and contending requests never call the provider. Uncertain provider attempts still reserve cost/cooldown.
+
+Use shared persistent database/Redis cache locks and counters. Array/null stores fail closed outside tests. Keep the same cache namespace and application key across PHP workers. Clearing limiter cache discards budgets. These protections do not replace edge rate limiting/WAF protection.
+
+## Durable completion delivery
+
+Forward migration: `database/migrations/2026_10_25_000004_create_grooming_completion_sms.php`.
+
+The outbox has a unique `booking_id`, indexed pending state/queue timestamp, linked account ID, safe operational state and optional provider message ID. It stores neither message bodies nor phone numbers. States are pending, accepted, failed, uncertain, or skipped; `queued_at` distinguishes queued pending work. No historical migration was modified.
+
+The completion transaction inserts the event. After commit, the service inserts an event-ID-only job on the existing database queue. Queue insertion failure leaves recoverable pending work and does not fail grooming completion. The Laravel scheduler recovers pending/stale queued events in bounded batches. Duplicate queued jobs cannot produce duplicate submissions: one atomic database claim changes pending to uncertain before any provider call. A crash, lost response, timeout or redelivery cannot automatically resubmit that event. The job has one try even when the worker's general default is three. This provides at most one automatic submission, not exactly-once physical delivery.
+
+The worker rechecks the linked active customer, current authoritative verified phone, finished visit and all active pet states. It never uses a pending replacement. A newly committed verified replacement is read before sending. Missing configuration, budget exhaustion or rejection cannot roll back the already completed visit. Provider HTTP runs outside database transactions, with three-second connect/eight-second total timeout, redirects disabled and no automatic retry. Sensitive exceptions/responses are contained rather than logged.
+
+## Local and Hostinger setup
+
+Private environment settings (never frontend/Vite):
 
 ```dotenv
 IPROGSMS_API_TOKEN=
-SMS_VERIFICATION_AVAILABLE=false
-SMS_VERIFICATION_ENFORCED=false
+SMS_VERIFICATION_AVAILABLE=true
+SMS_VERIFICATION_ENFORCED=true
+GROOMING_COMPLETION_SMS_ENABLED=false
+SMS_USER_DAILY_LIMIT=20
+SMS_PHONE_DAILY_LIMIT=20
+SMS_GLOBAL_DAILY_LIMIT=500
 ```
 
-| Available | Enforced | Behavior |
-| --- | --- | --- |
-| false | false | Existing customer pre-registration remains available under its usual eligibility rules. SMS routes return an unavailable response. |
-| true | false | Eligible unverified customers open real verification through Pre-register. Direct backend bookings retain their existing permissions. |
-| true | true | Unverified customers must verify before submitting Grooming or Clinic pre-registration. |
-| false | true | Unverified submissions remain forbidden; entry feedback explains that SMS is unavailable. Already verified customers retain access. |
+Missing flags default false. Enable grooming completion explicitly only after acceptance. Available/enforced combinations retain their established behavior: both false preserves optional historical access; available true/enforced false offers verification at entry; both true blocks unverified backend submission; available false/enforced true continues blocking unverified submission while verified users retain access.
 
-Missing provider credentials also fail safely. Browser flags, cached profile data and URL parameters cannot authorize a submission. Staff/admin walk-ins retain their existing authorization and workflows.
+Local: the new migration is already applied. Keep a fake provider for automation; only the owner should conduct real OTP/phone-change testing. To manually exercise completion SMS, configure the flag privately and run the existing database queue locally; no worker or real send was launched by the implementation agent.
 
-Run the new forward migration before enabling availability:
+Hostinger release, through the existing deployment process:
 
-```sh
-php artisan migrate
-php artisan config:clear
-```
-
-The migration creates only `phone_verification_attempts`. It does not recreate phone columns or modify historical migrations. The existing nullable phone column, unique non-null phone index and `phone_verified_at` remain authoritative. No application `.env` values or live database migrations were changed as part of implementation.
-
-## Provider contract
-
-Reference: [official iProgSMS API documentation](https://www.iprogsms.com/api/v1/documentation), checked October 22, 2026.
-
-- `POST https://www.iprogsms.com/api/v1/otp/send_otp` receives JSON `api_token`, `phone_number`, `expires_in_minutes: 5`.
-- `POST https://www.iprogsms.com/api/v1/otp/verify_otp` receives JSON `api_token`, `phone_number`, `otp`.
-- Sending requires a successful HTTP response, `status: "success"`, a matching destination, an unconfirmed six-digit provider code and a valid future provider expiry. Expiry is capped at the application's five-minute window. The documented provider range is 1–60 minutes.
-- Verification requires a successful HTTP response, `status: "success"` and the documented `message: "OTP verified successfully"`. HTTP 200 alone is insufficient.
-- The generic SMS endpoint is not used. TLS checks remain enabled. Redirects are disabled to protect the request body. Connection timeout is three seconds; total timeout is eight seconds. There are no automatic provider retries.
-
-Canonical application/provider destinations are `09XXXXXXXXX`. The send route accepts ordinary phone punctuation and `+63` input, validates it, and normalizes to the existing local format. OTP entry is exactly six ASCII digits. Provider-generated codes, SMS bodies, raw responses and credentials never appear in application responses, browser storage or application logs. Request exceptions are contained at the provider boundary without reporting their sensitive text. Do not enable HTTP request/response recording for these endpoints in external debugging or observability tools.
-
-The provider does not document OTP-specific error bodies, resend invalidation semantics, or verification idempotency. These are not assumed. Malformed responses, errors, outages and uncertain outcomes never verify an account. Complete live delivery/lifecycle checks privately before enforcement.
-
-## Authenticated endpoints and lifecycle
-
-All three endpoints retain Sanctum authentication, usable-account checks, active-session restrictions and customer-only authorization:
-
-| Application endpoint | Body |
-| --- | --- |
-| `POST /api/phone-verification/send` | `{ "phone": "09XXXXXXXXX" }` |
-| `POST /api/phone-verification/resend` | `{ "challenge_id": "server-issued UUID" }` |
-| `POST /api/phone-verification/verify` | `{ "challenge_id": "server-issued UUID", "code": "six digits" }` |
-
-Send/resend return only safe metadata: `success`, `message`, `challenge_id`, `expires_in`, and `resend_after`. These durations are remaining server-side time, so network latency can make them shorter than 300 and 60 seconds. Failed send requests do not claim that a code was sent. HTTP 429 includes remaining cooldown when applicable.
-
-There is one persistent attempt per customer. It binds the exact destination, UUID generation, original saved phone/timestamp, expiry, resend eligibility, state and failed-attempt budget. States are `sending`, `active`, `verifying`, `confirmed`, `consumed`, `uncertain`, or `superseded`. Neither sending nor resending saves the candidate phone to the user.
-
-A keyed HMAC fingerprint of the provider-issued code binds that code to its generation. No plaintext OTP is persisted. A code from a superseded generation is rejected even if iProgSMS still accepts it. Laravel never generates its own OTP, and a matching fingerprint alone cannot verify a phone: explicit iProgSMS success is required.
-
-On verification, short database transactions lock the current user and attempt, recheck generation, expiry, original phone/timestamp, account eligibility and uniqueness, save phone plus `phone_verified_at`, and consume the attempt atomically. Another account cannot claim a unique user phone. Pending signup phone conflicts are checked on send and finalization. Changing a phone through the User model clears verification and supersedes outstanding proof, including a change followed by a change back. Query-builder writes bypass model events and must explicitly perform the same invalidation if a future account-management workflow uses them.
-
-## Limits and concurrency
-
-Defaults in `config/services.php`:
-
-- Five-minute OTP lifetime, capped by the provider's actual expiry.
-- Sixty-second resend cooldown, enforced for sends as well as resends and number changes.
-- Five failed/local or provider verification attempts per customer budget. Resends and destination changes do not reset that budget; it resets after one hour.
-- Five sends per customer/hour and destination/hour, twenty per IP/hour, one hundred globally/hour and five hundred globally/day.
-- Twenty requests/minute per authenticated customer on each verification route, in addition to the cost budgets.
-
-Provider attempts and uncertain sends consume cost/attempt budgets conservatively. Invalid format, ownership conflicts, exhausted limits and concurrent operations do not contact iProgSMS.
-
-Customer and destination cache locks serialize send, resend and verification across provider calls. A separate short cache lock atomically reserves send budgets. No database transaction or row lock is held over provider HTTP. Generation/state comparisons reject late replies after a newer attempt or account change. User phone uniqueness remains protected by the existing database constraint.
-
-Use a shared cache with atomic locks and persistent rate counters. The established database cache is supported; its cache/cache_locks tables must exist. Redis is suitable across application servers. A file store is suitable only when all workers share the same filesystem. Process-local array/null caches are rejected outside isolated tests. Keep a common application key/cache store across workers; clearing rate-limit caches discards cost protections.
-
-## Failure and recovery
-
-A timeout or malformed send leaves an `uncertain` generation and preserves cooldown/cost limits. The customer may explicitly send again after cooldown. The UI never automatically retries a send. A process interruption in `sending` or `verifying` also requires a fresh explicit send after cooldown; no stale proof can be applied.
-
-If the provider confirms verification but the local account transaction fails, a `confirmed` proof remains bound to the same customer, UUID, original account state and code fingerprint until its original expiry. Retrying that same code retries only the atomic local commit; it does not call the provider again. This also works when the provider call used the last allowed attempt. A changed account, conflicting phone, consumed proof or expired generation still cannot commit. If persisting the provider confirmation itself fails, start a new send after cooldown; do not infer verification from an uncertain response or manually mark the phone verified.
-
-## Existing frontend and cache behavior
-
-The original native dialog now uses real send/resend/verify operations. Missing numbers show Add Phone Number; saved unverified numbers remain editable before sending. OTP entry appears only after confirmed sending. It reuses the email OTP utility, six visual cells, one accessible numeric input, paste handling, countdown formatting and shared blue styling. Code entry, sending, verification and resend controls prevent duplicate submissions. Close and Cancel remain available; backdrop clicks and Escape do not dismiss the modal. Native dialog focus containment blocks background interaction and closing restores trigger focus. Late responses after dismissal cannot reopen the dialog or navigate.
-
-There is no unverified Continue action. Successful server verification invalidates the existing profile/access caches, makes one shared `/api/me` refresh, updates the existing Settings fields/badge if present, and automatically continues to the intended registration page. A profile refresh outage does not undo committed verification; the destination page retries its normal profile read. Normal dashboard rendering adds no requests or polling. The modal/OTP utility/CSS remain lazy; its one local countdown timer stops on closing. The existing eligibility polling is retained.
-
-`/api/me` retains `phone_verification_status`. `/api/me` and the existing access response expose server feature settings; the access response also exposes the phone requirement. Direct Grooming/Clinic form entry redirects to the dashboard when enforcement requires verification; direct service selection disables its links with an actionable message. Ongoing registrations still take precedence. Both actual submission routes enforce the stored requirement before validation and again on the account already locked inside their booking transaction. Rescheduling retains its existing workflow; it cannot create a new registration through these routes.
-
-## Automated verification
-
-```sh
-php vendor/bin/phpunit tests/Feature/PhoneVerificationTest.php
-php vendor/bin/phpunit --filter 'PhoneVerificationTest|EmailVerificationTest|CustomerPreRegistrationAccess|SessionLockTest|IndependentAuthenticationSessionsTest|PasswordResetTest|CustomerPageLoadingPerformanceInterfaceTest|CustomerGroomingVisitSummaryTest|GroomingAdministrationAuthorizationTest|ClinicAdministrationAuthorizationTest' --display-skipped
-npm test
-npm run build
-```
-
-PHPUnit and the Node regression runner force empty iProgSMS credentials and disabled feature flags; phone tests explicitly use a synthetic token and HTTP fakes with stray requests blocked. They never send live SMS. The phone suite includes actual two-process send/resend/verify contention using owned disposable SQLite files and a shared database cache, plus generation races, replay, expiry, number conflicts and provider-success/local-commit-failure recovery. This validates shared lock behavior; it does not substitute for production MySQL engine/load testing.
-
-The Node regressions cover entry eligibility/flags, editable and missing numbers, failed/confirmed sends, six-digit paste, duplicate submission, resend timing, expiry, loading/errors, close/Cancel, Escape/backdrop policy, stale responses, focus restoration, confirmed navigation, Settings refresh and targeted cache invalidation. Native browser accessibility and responsive rendering still require the user's visual/manual acceptance testing.
-
-Recorded implementation checks on October 22, 2026: the combined PHP 8.2 run completed 597 tests / 7,495 assertions with zero failures and two existing skips. Email's IMMEDIATE-transaction concurrency test was unsupported by that PDO runtime; the isolated MySQL grooming-capacity test requires its dedicated runner. Using the installed PHP 8.4 runtime, the phone suite plus that email concurrency test completed 40 tests / 286 assertions with no skips or failures. The supplemental command was `C:/Users/Gerald/AppData/Local/Programs/BethlehemTestTools/php84/php.exe vendor/bin/phpunit --filter 'test_overlapping_verification_requests_consume_one_pending_registration_on_sqlite|PhoneVerificationTest'`. `npm test` passed all 76 scripts; `npm run build` passed with an existing outdated Browserslist-data notice. MySQL concurrency/load behavior and real SMS delivery remain unverified.
-
-## Private local acceptance testing
-
-1. Apply the migration, privately set your token, set availability true and leave enforcement false. Clear configuration cache. Ensure the cache driver supports shared locks.
-2. On an eligible customer, select Pre-register. Check both missing and saved/correctable phone numbers. Send to a number you control, receive the real code, verify it, and confirm Settings shows Verified. Sending, canceling and failed codes must not change the account number/status.
-3. Check cooldown, resend, expiry, older codes, wrong codes and failure feedback. Confirm actual provider delivery and response behavior. No live provider behavior was tested by the implementation agent.
-4. Only after successful live tests, set both flags true and clear configuration cache. Verify unverified customers are blocked through both the frontend and direct Grooming/Clinic API submissions, while verified customers can submit and existing ongoing-registration restrictions/staff walk-ins still work.
-
-All manual page navigation, actual input, OTP submission and password-reset testing are reserved for the user. Browser inspection by the agent is visual only.
-
-## Hostinger deployment preparation and incident rollback
-
-No deployment or production configuration changes were performed. When ready to deploy reviewed code:
-
-1. Securely set `IPROGSMS_API_TOKEN` in the hosting environment. Start with `SMS_VERIFICATION_AVAILABLE=true`, `SMS_VERIFICATION_ENFORCED=false`; never place the token in public frontend assets.
-2. Back up the database and run the normal forward migration process:
+1. Deploy backend changes, raw `pages/`, `scripts/`, existing verification CSS, rebuilt `css/output.css`, complete `public/build/` manifest/assets and normal generated vendor assets together. Keep existing routes, Vite paths, private credentials, sessions and HTTPS settings.
+2. Back up through the normal process and run, with the verified CLI PHP binary from the deployed Laravel root:
 
    ```sh
    php artisan migrate --force
    php artisan config:cache
+   php artisan queue:restart
    ```
 
-3. Verify the shared cache tables/driver, outbound HTTPS connectivity and the deployed asset versions. This implementation is synchronous; it introduces no SMS queues or worker requirements. Queue restarts are unnecessary for SMS alone; follow the normal deployment policy for any existing workers using cached configuration.
-4. Privately complete live delivery, status refresh, resend/expiry and staff-isolation checks. Only then set enforcement true and rerun `php artisan config:cache`.
-5. To stop new SMS while retaining the verification requirement, set availability false and retain enforcement true: unverified customers are intentionally blocked. For a deliberate return to the previous unrestricted SMS behavior, set both flags false. Refresh configuration cache after either change. These are distinct operational choices; disabling enforcement restores the old booking permissions.
-6. Prefer disabling flags and retaining the attempt table during code rollback. Roll back the attempt migration only after no deployed code uses it and outstanding attempts can be discarded. Do not roll back the nullable-phone migration or erase verified user timestamps as part of this integration rollback.
+3. Preserve the established database queue on the application database, its jobs/failed_jobs tables and shared cache/cache_locks tables. Completion jobs use its configured default queue; the existing worker must consume this queue in addition to any `AUTH_MAIL_QUEUE` used for security email.
+4. Repository deployment guidance in `docs/hostinger-email-auth.md` specifies the following every-minute hPanel worker cron. Verify the actual path/runtime and existing worker before adding or changing anything; do not duplicate a supervised worker:
+
+   ```sh
+   /usr/bin/php /home/ACCOUNT/domains/DOMAIN/APP/artisan queue:work database --stop-when-empty --max-time=50 --timeout=45 --tries=3 --sleep=1
+   ```
+
+5. Ensure the existing Laravel scheduler runs every minute for outbox recovery and other application schedules. If no scheduler cron exists, configure it through the normal deployment process using the same verified PHP/project path:
+
+   ```sh
+   /usr/bin/php /home/ACCOUNT/domains/DOMAIN/APP/artisan schedule:run
+   ```
+
+6. Verify actual worker/scheduler execution, outbound provider HTTPS and known-ID status visibility. Do not expose HTTP cron endpoints or dump queue payloads/provider responses. Then perform owner-controlled handset/header/footer/network/credit acceptance and enable `GROOMING_COMPLETION_SMS_ENABLED=true` privately followed by `config:cache` and normal worker restart.
+
+To stop future completion SMS, disable its independent flag and refresh configuration. Existing phone enforcement remains independent. Do not blindly retry uncertain/accepted events or bulk-retry SMS jobs. Keep the outbox during rollback so its uniqueness history remains intact.
+
+## Files and verification
+
+Key existing files: `CustomerPhoneVerificationService`, `IprogSmsOtpService`, phone/auth/admin-booking controllers, API/config/console routes, `api.js`, the shared modal/entry handler, Settings component/phone header and service-selection handler. New formatter, shared budget, outbox service/job, security-email notification and forward migration have narrow responsibilities. Existing lifecycle tests share a fixture rather than duplicating the grooming schema.
+
+Removed obsolete files: `GroomingFinishedNotification.php`, `emails/grooming-finished.blade.php`, `emails/grooming-finished-text.blade.php`, and `GroomingFinishedEmailNotificationTest.php`. Existing notification assertions now preserve in-app notices and reject the obsolete email. `GroomingCompletionSmsTest.php` replaces external delivery coverage.
+
+Executed with PHP 8.4.26, fake HTTP providers, isolated SQLite and explicit non-sending flags:
+
+- Final focused PHP run: **143 tests, 859 assertions; no failures; one optional MySQL case skipped**. Includes phone replacement/recovery/budgets/concurrent OTP processes, grooming event/queue/eligibility/overlapping worker claims, lifecycle/cancellation, preregistration access, customer visit summary and testing configuration.
+- Separately opted into the guarded local disposable MySQL migration test: **1 test, 52 assertions, passed**. Both migrations and actual MySQL duplicate-completion rejection were verified; the owned temporary database was removed by the harness.
+- Full PHP suite snapshot: **1,772 tests, 23,182 assertions, one failure, eight opt-in skips**. The existing `EmailVerificationTest::test_resend_does_not_extend_retention_and_expired_rows_are_not_mailed` invoked an in-process worker with its default 128 MB ceiling after the suite had grown beyond that size; Laravel exit code 12 denotes memory exhaustion. The isolated rerun passed **1 test, 9 assertions**. No unrelated production behavior or assertion was weakened. This is a full-suite infrastructure limitation, not a claim of a fully green full suite.
+- Final complete JavaScript run: **80/81 regression scripts passed**. The remaining unrelated `admin-settings-intake-regression.cjs` failure is `window.clearTimeout is not a function` in its existing mock. It was reproduced with the baseline HEAD API source and unchanged admin settings code. The affected Settings, dashboard/modal, cache, selection-flow and auth/session scripts pass; obsolete cache expectations were updated for pending-change metadata. The final run includes the cooldown-metadata correction and all updated Settings/modal/cache regressions.
+- `npm run build`: passed (existing outdated Browserslist-data notice). `git diff --check`: passed.
+- ChatGPT browser visual review: existing customer Settings card and the shared Change Phone Number modal inspected. No other role/tab, real data entry, OTP submission, password reset or real SMS functional test was performed.
+
+Remaining owner acceptance: real provider template/header/footer and network behavior, actual handset receipt/credits, manual add/verify/change/cancel/resume flows, mobile/keyboard interaction, and deployed Hostinger queue/scheduler/configuration. No live delivery or Core Web Vitals result is claimed.

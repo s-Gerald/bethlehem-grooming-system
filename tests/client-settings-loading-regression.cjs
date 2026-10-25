@@ -8,7 +8,7 @@ const source = fs.readFileSync(
   "utf8",
 );
 
-function createPage(getMe) {
+function createPage(getMe, phoneApi = {}) {
   const elements = new Map();
   const windowEvents = new Map();
   const pageHtml = fs.readFileSync(
@@ -52,7 +52,7 @@ function createPage(getMe) {
         getAttribute(name) { return attributes.get(name) ?? null; },
         hasAttribute(name) { return attributes.has(name); },
         addEventListener(name, callback) { listeners.set(name, callback); },
-        dispatch(name) { listeners.get(name)?.(); },
+        dispatch(name) { return listeners.get(name)?.(); },
         querySelectorAll() { return []; },
       });
     }
@@ -67,6 +67,7 @@ function createPage(getMe) {
       loadCustomerData: (endpoint, load, render) => load().then(render),
       isAuthenticationError: () => false,
       redirectToSignIn() {},
+      ...phoneApi,
     },
     document: {
       body: { classList: { toggle() {} } },
@@ -164,9 +165,41 @@ async function testPhoneVerificationBadgesUseServerStatus() {
     });
     await flush();
     assert.equal(element('settingsPhoneStatus').textContent, label);
+    assert.equal(element('settingsPhoneAction').textContent, !phone ? 'Add' : status === 'verified' ? 'Change' : 'Verify');
     assert.equal(element('settingsPhone').value, phone ? '0917-123-4567' : 'Not provided');
     assert.equal(requests, 1, 'Badge must reuse the Settings profile request.');
   }
+}
+
+async function testPendingReplacementKeepsAuthoritativePhoneVisible() {
+  let requests = 0;
+  const element = createPage(async () => {
+    requests++;
+    return { user: { phone: '09171234567', phone_verification_status: 'verified', phone_change_pending: true } };
+  });
+  await flush();
+  assert.equal(element('settingsPhoneStatus').textContent, 'Pending');
+  assert.equal(element('settingsPhoneAction').textContent, 'Continue verification');
+  assert.equal(element('settingsPhoneCancel').hidden, false);
+  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(requests, 1);
+}
+
+async function testCancelReplacementKeepsVerifiedPhoneAndRestoresChangeAction() {
+  let canceled = 0;
+  const element = createPage(async () => ({ user: {
+    phone: '09171234567', phone_verification_status: 'verified', phone_change_pending: true,
+  } }), {
+    getPhoneVerificationState: async () => ({ challenge: { challenge_id: 'pending-change' } }),
+    cancelPhoneVerification: async id => { assert.equal(id, 'pending-change'); canceled++; },
+  });
+  await flush();
+  await element('settingsPhoneCancel').dispatch('click');
+  assert.equal(canceled, 1);
+  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(element('settingsPhoneAction').textContent, 'Change');
+  assert.equal(element('settingsPhoneStatus').textContent, 'Verified');
+  assert.equal(element('settingsPhoneCancel').hidden, true);
 }
 
 async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
@@ -187,6 +220,8 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
   await testSettingsFailureKeepsFormHiddenUntilRetry();
   await testPhoneVerificationBadgesUseServerStatus();
   await testConfirmedPhoneRefreshUpdatesExistingSettingsFields();
+  await testPendingReplacementKeepsAuthoritativePhoneVisible();
+  await testCancelReplacementKeepsVerifiedPhoneAndRestoresChangeAction();
   console.log("Client settings loading regression tests passed.");
 })().catch((error) => {
   console.error(error);

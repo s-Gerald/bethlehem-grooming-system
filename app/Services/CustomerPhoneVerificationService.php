@@ -9,6 +9,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -38,17 +39,59 @@ class CustomerPhoneVerificationService
             && (! preg_match('/^09[0-9]{9}$/D', (string) $user->phone) || ! $user->phone_verified_at);
     }
 
-    public function send(User $user, string $phone, string $ip, ?string $generation = null): array
+    public function state(User $user): array
+    {
+        $user = $user->fresh();
+        $this->usable($user);
+        $attempt = $this->attempt($user->getKey());
+        if (! $attempt || in_array($attempt->status, ['consumed', 'superseded'], true)
+            || $user->phone !== $attempt->original_phone
+            || $user->getRawOriginal('phone_verified_at') !== $attempt->original_verified_at) {
+            return ['challenge' => null];
+        }
+
+        return ['challenge' => $this->timing($attempt)];
+    }
+
+    public function cancel(User $user, string $generation): array
+    {
+        $user = $user->fresh();
+        $this->usable($user);
+        $attempt = $this->attempt($user->getKey());
+        if (! $attempt || $attempt->generation !== $generation) self::fail('This verification has changed. Start again.', 409);
+
+        return $this->locked($user->getKey(), $attempt->phone, function () use ($user, $generation) {
+            DB::table('phone_verification_attempts')->where('user_id', $user->getKey())->where('generation', $generation)
+                ->whereNotIn('status', ['consumed', 'superseded'])->update(['status' => 'superseded', 'code_fingerprint' => null, 'updated_at' => now()]);
+
+            return ['success' => true];
+        });
+    }
+
+    public function send(User $user, string $phone, string $ip, ?string $generation = null, #[\SensitiveParameter] ?string $password = null): array
     {
         $this->available();
 
-        return $this->locked($user->getKey(), $phone, function () use ($user, $phone, $ip, $generation) {
+        return $this->locked($user->getKey(), $phone, function () use ($user, $phone, $ip, $generation, $password) {
             $user = User::findOrFail($user->getKey());
             $this->usable($user);
             $attempt = $this->attempt($user->getKey());
+            if ($user->phone_verified_at && $user->phone === $phone) {
+                throw ValidationException::withMessages(['phone' => 'This phone number is already verified.']);
+            }
             if ($generation !== null && (! $attempt || $attempt->generation !== $generation || $attempt->phone !== $phone
-                || in_array($attempt->status, ['consumed', 'superseded'], true))) {
+                || in_array($attempt->status, ['consumed', 'superseded'], true)
+                || $user->phone !== $attempt->original_phone
+                || $user->getRawOriginal('phone_verified_at') !== $attempt->original_verified_at)) {
                 self::fail('This verification has changed. Start again.', 409);
+            }
+            if ($user->phone_verified_at && $generation === null) {
+                $key = 'sms:password:'.$user->getKey();
+                if (RateLimiter::tooManyAttempts($key, 5)) self::fail('Too many attempts. Try again later.', 429);
+                if (! $password || ! Hash::check($password, (string) $user->password_hash)) {
+                    RateLimiter::hit($key, 3600);
+                    throw ValidationException::withMessages(['current_password' => 'Current password is incorrect.']);
+                }
             }
             $this->budget($attempt);
             if ($attempt && Carbon::parse($attempt->resend_at)->isFuture()) {
@@ -61,7 +104,7 @@ class CustomerPhoneVerificationService
                 ->where('expires_at', '>', now())->whereNotIn('status', ['consumed', 'superseded'])->exists()) {
                 self::fail('This number has an active verification. Try again later.', 409);
             }
-            $this->reserveSend($user->getKey(), $phone, $ip);
+            app(SmsSendBudget::class)->reserve($user->getKey(), $phone, $ip);
             $id = (string) Str::uuid();
             $reset = ! $attempt || Carbon::parse($attempt->attempts_reset_at)->lte(now());
             $values = [
@@ -77,7 +120,9 @@ class CustomerPhoneVerificationService
             if (! $expires) {
                 // An ambiguous send may have been accepted. Reserve its expiry and cooldown.
                 DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')->update(['status' => 'uncertain']);
-                self::fail('SMS could not be confirmed. Wait a minute, then try again.', 503);
+                self::fail('SMS could not be confirmed. Wait a minute, then try again.', 503, 'sms_send_uncertain', [
+                    'resend_after' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($values['resend_at']), false))),
+                ]);
             }
             $updated = DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')
                 ->update(['status' => 'active', 'expires_at' => $expires, 'code_fingerprint' => $this->provider->sentFingerprint()]);
@@ -139,6 +184,7 @@ class CustomerPhoneVerificationService
                     self::fail('This verification has changed. Start again.', 409);
                 }
             }
+            $replacement = $attempt->original_verified_at !== null && $attempt->original_phone !== $attempt->phone;
             try {
                 DB::transaction(function () use ($user, $generation) {
                     $current = User::whereKey($user->getKey())->lockForUpdate()->firstOrFail();
@@ -160,7 +206,16 @@ class CustomerPhoneVerificationService
                 self::fail('Verification could not be saved. Retry the same code before it expires, or start again.', 503);
             }
 
-            return ['success' => true, 'message' => 'Phone number verified.'];
+            if ($replacement) {
+                try {
+                    $recipient = $user->fresh();
+                    if (filled($recipient->email)) $recipient->notify(new \App\Notifications\PhoneNumberChangedNotification);
+                } catch (\Throwable) {
+                    // Ownership is committed; mail infrastructure must not reverse it.
+                }
+            }
+
+            return ['success' => true, 'message' => $replacement ? 'Phone number updated.' : 'Phone number verified.'];
         });
     }
 
@@ -199,7 +254,7 @@ class CustomerPhoneVerificationService
     {
         if ($attempt && Carbon::parse($attempt->attempts_reset_at)->isFuture()
             && $attempt->failed_attempts >= config('services.sms_verification.max_attempts', 5)) {
-            self::fail('Too many attempts. Try again in an hour.', 429, 'attempts_exceeded');
+            self::fail('Too many attempts. Try again later.', 429, 'attempts_exceeded');
         }
     }
 
@@ -224,36 +279,16 @@ class CustomerPhoneVerificationService
         }
     }
 
-    private function reserveSend(int $userId, string $phone, string $ip): void
-    {
-        $lock = Cache::lock('sms:send-budget', 5);
-        if (! $lock->get()) {
-            self::fail('Please try sending again in a moment.', 429);
-        }
-        try {
-            $limits = [
-                ['user:'.$userId, 'user_hourly_limit', 5, 3600],
-                ['phone:'.hash('sha256', $phone), 'phone_hourly_limit', 5, 3600],
-                ['ip:'.hash('sha256', $ip), 'ip_hourly_limit', 20, 3600],
-                ['global:hour', 'global_hourly_limit', 100, 3600],
-                ['global:day', 'global_daily_limit', 500, 86400],
-            ];
-            foreach ($limits as [$key, $setting, $default, $seconds]) {
-                if (RateLimiter::tooManyAttempts('sms:'.$key, config('services.sms_verification.'.$setting, $default))) {
-                    self::fail('SMS sending limit reached. Please try again later.', 429, 'sms_send_limit', ['resend_after' => RateLimiter::availableIn('sms:'.$key)]);
-                }
-            }
-            foreach ($limits as [$key, $setting, $default, $seconds]) {
-                RateLimiter::hit('sms:'.$key, $seconds);
-            }
-        } finally {
-            $lock->release();
-        }
-    }
-
     private function timing(object $attempt): array
     {
+        $active = in_array($attempt->status, ['active', 'confirmed'], true) && Carbon::parse($attempt->expires_at)->isFuture();
+        $locked = Carbon::parse($attempt->attempts_reset_at)->isFuture() && $attempt->failed_attempts >= config('services.sms_verification.max_attempts', 5)
+            && $attempt->status !== 'confirmed';
         return ['success' => true, 'message' => 'Verification code sent.', 'challenge_id' => $attempt->generation,
+            'masked_destination' => substr($attempt->phone, 0, 4).' •••• '.substr($attempt->phone, -3),
+            'status' => $locked ? 'locked' : ($active ? 'active' : (Carbon::parse($attempt->expires_at)->lte(now()) ? 'expired' : $attempt->status)),
+            'can_verify' => $active && ! $locked,
+            'replacement' => $attempt->original_verified_at !== null && $attempt->original_phone !== $attempt->phone,
             'expires_in' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($attempt->expires_at), false))),
             'resend_after' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($attempt->resend_at), false)))];
     }

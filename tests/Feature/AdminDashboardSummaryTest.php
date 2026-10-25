@@ -10,7 +10,6 @@ use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\Pet;
 use App\Models\User;
-use App\Notifications\GroomingFinishedNotification;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -815,12 +814,7 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertSame(['dog'], $notification['pet_types']);
         $this->assertNull($payload['pickup_alert']);
 
-        NotificationFacade::assertSentTo(
-            User::findOrFail(1),
-            GroomingFinishedNotification::class,
-            fn (GroomingFinishedNotification $notification, array $channels) => $channels === ['mail']
-                && $notification->petNames === ['Max'],
-        );
+        NotificationFacade::assertNothingSent();
     }
 
     public function test_ready_for_pickup_notification_does_not_mention_a_single_pet_name(): void
@@ -901,15 +895,10 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertSame(['Max', 'Bella', 'Luna'], $notification['pet_names']);
         $this->assertSame(['Max', 'Bella', 'Luna'], $payload['pickup_alert']['pet_names']);
 
-        NotificationFacade::assertSentTo(
-            User::findOrFail(1),
-            GroomingFinishedNotification::class,
-            fn (GroomingFinishedNotification $notification, array $channels) => $channels === ['mail']
-                && $notification->petNames === ['Max'],
-        );
+        NotificationFacade::assertNothingSent();
     }
 
-    public function test_finishing_a_whole_booking_sends_one_email_for_its_completed_pets(): void
+    public function test_finishing_a_whole_booking_preserves_pickup_notice_without_email(): void
     {
         NotificationFacade::fake();
 
@@ -925,7 +914,7 @@ class AdminDashboardSummaryTest extends TestCase
         DB::table('bookings')->insert([
             'booking_id' => 1,
             'user_id' => 1,
-            'booking_reference' => 'WHOLE-BOOKING-FINISH-EMAIL',
+            'booking_reference' => 'WHOLE-BOOKING-FINISH',
             'booking_date' => '2026-06-24',
             'number_of_pets' => 2,
             'status' => 'in_progress',
@@ -960,12 +949,7 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('ready_for_pickup', DB::table('customer_notifications')->value('type'));
 
-        NotificationFacade::assertSentTo(
-            User::findOrFail(1),
-            GroomingFinishedNotification::class,
-            fn (GroomingFinishedNotification $notification, array $channels) => $channels === ['mail']
-                && $notification->petNames === ['Max', 'Bella'],
-        );
+        NotificationFacade::assertNothingSent();
     }
 
     #[DataProvider('groomerCapacities')]

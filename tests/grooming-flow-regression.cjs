@@ -42,18 +42,36 @@ async function main() {
     'groomingSelectedPricing', 'groomingReviewedPricing'];
   for (const key of [...groomingKeys, 'clinicVisitDraft', 'clientPets']) save(key, { stale: true });
   const links = new Map();
-  await vm.runInNewContext(`(async () => {${script('scripts/components/pre-registration-options.js')} })()`, {
+  const destinations = [];
+  const choiceContext = vm.createContext({
     requireCustomerSession: () => true, clearGroomingDraft: draft.clearGroomingDraft,
-    getPreRegistrationAccess: async () => ({ allowed: true }), setPreRegistrationLinkAccess() {}, console,
-    document: { getElementById(id) {
-      if (!links.has(id)) links.set(id, { addEventListener(event, handler) { this[event] = handler; } });
+    clearClinicVisitDraft: () => storage.removeItem('clinicVisitDraft'), console,
+    API: { getPreRegistrationAccess: async () => ({ allowed: true }) },
+    window: { location: { assign: url => destinations.push(url) } },
+    document: { querySelectorAll: () => [], getElementById(id) {
+      if (!links.has(id)) {
+        const attributes = new Map(), listeners = [];
+        links.set(id, { href: id === 'groomingOption' ? './grooming-pre-registration.html' : './clinic-visit-date.html',
+          classList: { toggle() {} },
+          addEventListener(event, handler) { if (event === 'click') listeners.push(handler); },
+          setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key),
+          getAttribute: key => attributes.get(key),
+          async click() { for (const callback of listeners) await callback({ preventDefault() {} }); },
+        });
+      }
       return links.get(id);
     } },
   });
-  links.get('groomingOption').click();
+  vm.runInContext(script('scripts/services/booking-form-access-guard.js'), choiceContext);
+  vm.runInContext(script('scripts/components/customer-pre-registration-button.js'), choiceContext);
+  await vm.runInContext(`(async () => {${script('scripts/components/pre-registration-options.js')} })()`, choiceContext);
+  await links.get('groomingOption').click();
+  assert.equal(destinations.at(-1), './grooming-pre-registration.html');
   for (const key of groomingKeys) assert.equal(values.has(key), false, `Clear stale ${key}`);
   assert.equal(values.has('clinicVisitDraft'), true);
   assert.equal(values.has('clientPets'), true);
+  await links.get('clinicVisitOption').click();
+  assert.equal(destinations.at(-1), './clinic-visit-date.html');
   assert.equal(forecast.groomingForecastPets(), null);
 
   const pet = { id: '101', petName: 'Mochi', petType: 'dog', size: 'small', weight: '5' };

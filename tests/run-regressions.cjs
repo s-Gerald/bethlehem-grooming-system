@@ -7,7 +7,7 @@ const files = fs.readdirSync(__dirname).filter(file =>
 ).sort();
 const env = { ...process.env, APP_ENV: 'testing', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', DB_URL: '',
   CACHE_STORE: 'array', SESSION_DRIVER: 'array', QUEUE_CONNECTION: 'sync', MAIL_MAILER: 'array',
-  IPROGSMS_API_TOKEN: '', SMS_VERIFICATION_AVAILABLE: 'false', SMS_VERIFICATION_ENFORCED: 'false' };
+  IPROGSMS_API_TOKEN: '', SMS_VERIFICATION_AVAILABLE: 'false', SMS_VERIFICATION_ENFORCED: 'false', GROOMING_COMPLETION_SMS_ENABLED: 'false' };
 let failures = 0;
 for (const file of files) {
   console.log(`\n${file}`);

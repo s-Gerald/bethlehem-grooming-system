@@ -7,11 +7,14 @@ import {
   setPreRegistrationLinkAccess,
 } from "../services/booking-form-access-guard.js?v=phone-20261022";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
+import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261025-sms";
 
 if (requireCustomerSession("./sign-in.html")) {
   const groomingOption = document.getElementById("groomingOption");
   const clinicVisitOption = document.getElementById("clinicVisitOption");
   const accessMessage = document.getElementById("preRegistrationAccessMessage");
+  bindPreRegistrationButton(groomingOption);
+  bindPreRegistrationButton(clinicVisitOption);
 
   groomingOption?.addEventListener("click", clearGroomingDraft);
 
@@ -21,10 +24,7 @@ if (requireCustomerSession("./sign-in.html")) {
 
   try {
     const access = { ...await getPreRegistrationAccess() };
-    if (access.allowed && access.sms_verification?.enforced && access.phone_verification_required) {
-      access.allowed = false;
-      access.message = "Use Pre-register on your dashboard to verify your phone number.";
-    }
+    setPhoneVerificationAccess(access);
     setPreRegistrationLinkAccess(groomingOption, access.allowed, access.message);
     setPreRegistrationLinkAccess(clinicVisitOption, access.allowed, access.message);
 

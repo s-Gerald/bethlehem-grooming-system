@@ -95,6 +95,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::middleware('role:customer')->prefix('phone-verification')->group(function () {
+        Route::get('/state', [\App\Http\Controllers\PhoneVerificationController::class, 'state'])->middleware('throttle:30,1');
+        Route::post('/cancel', [\App\Http\Controllers\PhoneVerificationController::class, 'cancel'])->middleware('throttle:20,1');
         Route::post('/send', [\App\Http\Controllers\PhoneVerificationController::class, 'send'])->middleware('throttle:20,1');
         Route::post('/resend', [\App\Http\Controllers\PhoneVerificationController::class, 'resend'])->middleware('throttle:20,1');
         Route::post('/verify', [\App\Http\Controllers\PhoneVerificationController::class, 'verify'])->middleware('throttle:20,1');

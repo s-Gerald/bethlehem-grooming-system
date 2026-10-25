@@ -2,6 +2,7 @@ import "../auth/verification-code.js";
 
 let dialog, trigger, codeControl, timer;
 let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0;
+let navigate = true, canVerify = false, challengeStatus = null;
 
 function field(id) { return dialog.querySelector(`#phoneVerification${id}`); }
 function message(text, input = null, success = false) {
@@ -13,20 +14,26 @@ function message(text, input = null, success = false) {
 function maskPhone(phone) { return `${phone.slice(0, 4)} •••• ${phone.slice(-3)}`; }
 function updateControls() {
   const waiting = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
-  field("Next").disabled = busy;
-  field("Next").textContent = busy ? "Sending…" : "Send code";
+  field("Next").disabled = busy || Date.now() < resendAt;
+  field("Next").textContent = busy ? "Please wait…" : waiting ? `Send Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Send Code";
+  field("Next").setAttribute("aria-busy", String(busy));
   field("Phone").disabled = busy;
+  field("Password").disabled = busy;
   field("Code").disabled = busy;
-  field("Verify").disabled = busy || field("Code").value.length !== 6 || Date.now() >= expiresAt;
+  field("Verify").disabled = busy || !canVerify || field("Code").value.length !== 6 || Date.now() >= expiresAt;
   field("Verify").setAttribute("aria-busy", String(busy));
-  field("VerifyLabel").textContent = busy ? "Verifying…" : "Verify and continue";
+  field("VerifyLabel").textContent = busy ? "Please wait…" : "Verify and Continue";
   field("Spinner").hidden = !busy;
-  field("Resend").disabled = busy || waiting > 0;
-  field("Resend").textContent = waiting ? `Resend code in ${window.VerificationCode.formatCountdown(waiting)}` : "Resend code";
-  if (challenge && Date.now() >= expiresAt && !busy) message("Code expired. Send a new code.");
+  field("Resend").disabled = busy || waiting > 0 || challengeStatus === "locked";
+  field("Resend").textContent = waiting ? `Resend Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Resend Code";
+  const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  field("Expiry").textContent = canVerify && remaining ? `Code expires in ${window.VerificationCode.formatCountdown(remaining)}` : "";
+  if (challenge && challengeStatus !== "locked" && Date.now() >= expiresAt && !busy) message("Code expired. Send a new code.");
 }
 function setTiming(data) {
   challenge = data.challenge_id;
+  challengeStatus = data.status || "active";
+  canVerify = data.can_verify !== false;
   resendAt = Date.now() + Math.max(0, Number(data.resend_after)) * 1000;
   expiresAt = Date.now() + Math.max(0, Number(data.expires_in)) * 1000;
   window.clearInterval(timer);
@@ -34,10 +41,15 @@ function setTiming(data) {
 }
 function closeDialog() { dialog.close(); }
 function showError(error) {
-  const seconds = Number(error.data?.resend_after);
-  if (seconds > 0) resendAt = Date.now() + seconds * 1000;
-  const text = error.errors?.phone?.[0] || error.message || "Unable to connect. Please try again.";
-  message(text, challenge ? field("Code") : field("Phone"));
+  const seconds = Number(error.data?.resend_after ?? error.retryAfter);
+  if (seconds > 0) {
+    resendAt = Date.now() + seconds * 1000;
+    window.clearInterval(timer); timer = window.setInterval(updateControls, 1000);
+  }
+  const passwordError = error.errors?.current_password?.[0];
+  const text = passwordError || error.errors?.phone?.[0] || error.message || "Unable to connect. Please try again.";
+  if (error.data?.code === "attempts_exceeded" || error.code === "attempts_exceeded") { challengeStatus = "locked"; canVerify = false; }
+  message(text, passwordError ? field("Password") : challenge ? field("Code") : field("Phone"));
 }
 function confirmedSend(data) {
   if (data?.success !== true || !data.challenge_id || !Number.isFinite(data.expires_in) || !Number.isFinite(data.resend_after)) {
@@ -45,19 +57,22 @@ function confirmedSend(data) {
   }
   setTiming(data);
   field("Title").textContent = "Verify Phone Number";
-  field("Description").textContent = "Enter the 6-digit code sent to";
-  field("Number").textContent = maskPhone(field("Phone").value);
-  field("Number").hidden = false;
+  const destination = data.masked_destination || maskPhone(field("Phone").value);
+  field("Description").textContent = canVerify ? `Enter the 6-digit code sent to ${destination}.` : `Phone Number: ${destination}`;
+  field("Number").textContent = destination;
+  field("Number").hidden = true;
   field("Entry").hidden = true;
   field("Next").type = "button";
   field("Otp").hidden = false;
+  field("PasswordField").hidden = true;
+  field("Password").value = "";
   codeControl.clear();
-  message("");
+  message(challengeStatus === "locked" ? "Too many attempts. Try again later." : challengeStatus === "expired" ? "Code expired. Send a new code." : !canVerify ? "SMS could not be confirmed. Request a new code when available." : "");
 }
 function createDialog() {
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
-  stylesheet.href = new URL("../../css/components/verification-code.css?v=phone-20261022", import.meta.url).href;
+  stylesheet.href = new URL("../../css/components/verification-code.css?v=phone-20261025-sms", import.meta.url).href;
   document.head.appendChild(stylesheet);
   dialog = document.createElement("dialog");
   dialog.id = "phoneVerificationDialog";
@@ -78,9 +93,14 @@ function createDialog() {
       <div id="phoneVerificationEntry">
         <div id="phoneVerificationPhoneField">
           <label for="phoneVerificationPhone" class="phone-verification-label">Phone Number</label>
-          <input id="phoneVerificationPhone" class="phone-verification-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="09XXXXXXXXX" maxlength="11" pattern="09[0-9]{9}" aria-describedby="phoneVerificationMessage" />
+          <input id="phoneVerificationPhone" class="phone-verification-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="09XXXXXXXXX" maxlength="11" pattern="09[0-9]{9}" aria-describedby="phoneVerificationNetwork phoneVerificationMessage" />
+          <p id="phoneVerificationNetwork" class="phone-verification-helper">SMS availability varies by network, including Smart/TNT.</p>
         </div>
-        <button id="phoneVerificationNext" type="submit" class="verification-primary">Send code</button>
+        <div id="phoneVerificationPasswordField" class="phone-verification-password" hidden>
+          <label for="phoneVerificationPassword" class="phone-verification-label">Current Password</label>
+          <input id="phoneVerificationPassword" class="phone-verification-phone" type="password" autocomplete="current-password" maxlength="255" aria-describedby="phoneVerificationMessage" />
+        </div>
+        <button id="phoneVerificationNext" type="submit" class="verification-primary">Send Code</button>
       </div>
       <div id="phoneVerificationOtp" hidden>
         <label for="phoneVerificationCode" class="sr-only">6-digit phone verification code</label>
@@ -93,7 +113,8 @@ function createDialog() {
           <span id="phoneVerificationVerifyLabel">Verify and continue</span>
         </button>
         <div class="verification-resend">
-          <button id="phoneVerificationResend" type="button" class="verification-link">Resend code</button>
+          <p id="phoneVerificationExpiry"></p>
+          <button id="phoneVerificationResend" type="button" class="verification-link">Resend Code</button>
         </div>
       </div>
       <p id="phoneVerificationMessage" class="verification-message" role="alert" hidden></p>
@@ -107,7 +128,7 @@ function createDialog() {
   });
   dialog.addEventListener("cancel", (event) => event.preventDefault());
   dialog.addEventListener("close", () => {
-    session++; window.clearInterval(timer); field("Code").value = ""; trigger?.focus();
+    session++; busy = false; window.clearInterval(timer); codeControl.clear(); field("Password").value = ""; trigger?.focus();
   });
   field("Close").addEventListener("click", closeDialog);
   field("Cancel").addEventListener("click", closeDialog);
@@ -120,18 +141,22 @@ function createDialog() {
     if (sending && !/^09\d{9}$/.test(phone)) {
       message("Enter a valid Philippine mobile number (09XXXXXXXXX).", field("Phone")); field("Phone").focus(); return;
     }
+    if (sending && !field("PasswordField").hidden && !field("Password").value) {
+      message("Enter your current password.", field("Password")); field("Password").focus(); return;
+    }
     if (!sending && (field("Verify").disabled || !challenge)) return;
     busy = true; message(""); updateControls();
     try {
       if (sending) {
-        const data = await API.sendPhoneVerification(phone);
+        const data = await API.sendPhoneVerification(phone, field("PasswordField").hidden ? null : field("Password").value);
         if (session !== currentSession || !dialog.open) return;
         confirmedSend(data);
+        if (data.replacement) window.dispatchEvent(new CustomEvent("customer-phone:pending"));
       } else {
         const data = await API.verifyPhoneVerification(challenge, field("Code").value);
         if (session !== currentSession || !dialog.open) return;
         if (data?.success !== true) throw new Error("Phone verification could not be confirmed.");
-        message("Phone number verified.", null, true);
+        message(data.message || "Phone number verified.", null, true);
         // The API invalidates profile/access caches after server confirmation.
         let user;
         try { ({ user } = await API.getMe("customer", { force: true })); }
@@ -139,24 +164,24 @@ function createDialog() {
         if (session !== currentSession || !dialog.open) return;
         if (user) {
           trigger.customerProfileReady = Promise.resolve(user);
-          window.dispatchEvent(new CustomEvent("customer-phone:verified", { detail: { user } }));
+          window.dispatchEvent(new CustomEvent("customer-phone:verified", { detail: { user, message: data.message } }));
         }
-        const destination = trigger.getAttribute("aria-disabled") !== "true" ? trigger.href : null;
+        const destination = navigate && trigger.getAttribute("aria-disabled") !== "true" ? trigger.href : null;
         closeDialog();
         if (destination) window.location.assign(destination);
       }
     } catch (error) {
       if (session === currentSession && dialog.open) showError(error);
     } finally {
-      busy = false;
       if (session === currentSession && dialog.open) {
+        busy = false;
         updateControls();
         if (sending && challenge) field("Code").focus();
       }
     }
   });
   field("Resend").addEventListener("click", async () => {
-    if (busy || !challenge || Date.now() < resendAt) return;
+    if (busy || !challenge || challengeStatus === "locked" || Date.now() < resendAt) return;
     const currentSession = session;
     busy = true; message(""); updateControls();
     field("Resend").textContent = "Sending…";
@@ -167,26 +192,43 @@ function createDialog() {
     } catch (error) {
       if (session === currentSession && dialog.open) showError(error);
     } finally {
-      busy = false;
-      if (session === currentSession && dialog.open) { updateControls(); field("Code").focus(); }
+      if (session === currentSession && dialog.open) { busy = false; updateControls(); field("Code").focus(); }
     }
   });
 }
 
-export function openPhoneVerification(button, user) {
+export async function openPhoneVerification(button, user, options = {}) {
   if (!dialog) createDialog();
   if (dialog.open || busy) return;
-  session++; trigger = button; challenge = null; resendAt = 0; expiresAt = 0; busy = false;
+  session++; trigger = button; challenge = null; resendAt = 0; expiresAt = 0; busy = true;
+  navigate = options.navigate !== false; canVerify = false; challengeStatus = null;
+  const currentSession = session;
   codeControl.clear();
   const phone = String(user.phone ?? "").trim();
   field("Phone").value = phone;
   field("Phone").setAttribute("aria-invalid", "false");
   field("PhoneField").hidden = false;
-  field("Title").textContent = phone ? "Verify Phone Number" : "Add Phone Number";
-  field("Description").textContent = phone ? "Confirm your phone number to receive a code." : "Enter a Philippine mobile number.";
+  const replacing = phone && user.phone_verification_status === "verified";
+  field("PasswordField").hidden = !replacing;
+  field("Password").value = "";
+  field("Password").setAttribute("aria-invalid", "false");
+  field("Title").textContent = replacing ? "Change Phone Number" : phone ? "Verify Phone Number" : "Add Phone Number";
+  field("Description").textContent = replacing ? `Current number: ${maskPhone(phone)}` : "Enter your mobile number to continue.";
+  if (replacing) field("Phone").value = "";
   field("Number").hidden = true;
   field("Entry").hidden = false;
   field("Next").type = "submit";
   field("Otp").hidden = true;
-  message(""); updateControls(); dialog.showModal(); field("Phone").focus();
+  message(""); updateControls(); dialog.showModal();
+  try {
+    const { challenge: saved } = await API.getPhoneVerificationState();
+    if (session !== currentSession || !dialog.open) return;
+    if (saved) confirmedSend(saved);
+  } catch (error) {
+    if (session === currentSession && dialog.open) { showError(error); closeDialog(); throw error; }
+  } finally {
+    if (session === currentSession && dialog.open) {
+      busy = false; updateControls(); (challenge ? field("Code") : field("Phone")).focus();
+    }
+  }
 }

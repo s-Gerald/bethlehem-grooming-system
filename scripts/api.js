@@ -460,6 +460,7 @@ var API = (() => {
 
   function invalidateCustomerMutation(endpoint) {
     if (endpoint === "/phone-verification/verify") invalidateCustomerCache("profile", "access");
+    else if (["/phone-verification/send", "/phone-verification/cancel"].includes(endpoint)) invalidateCustomerCache("profile");
     else if (/^\/pets(?:\/|$)/.test(endpoint)) invalidateCustomerCache("pets", "bookings", "notifications", "access");
     else if (/^\/(?:booking\/(?:store|cancel|reschedule)|clinic\/pre-register)$/.test(endpoint)) {
       invalidateCustomerCache("bookings", "capacity", "notifications", "access");
@@ -1681,6 +1682,8 @@ var API = (() => {
     if (response.status === 429) {
       const error = new Error(data.message || "Too many attempts. Please wait before trying again.");
       error.status = 429;
+      error.code = data.code || null;
+      error.data = data;
       error.retryAfter = Number(response.headers.get("Retry-After")) || data.retry_after || null;
       error.errors = null;
       throw error;
@@ -2010,8 +2013,16 @@ var API = (() => {
     return response;
   }
 
-  function sendPhoneVerification(phone) {
-    return request("POST", "/phone-verification/send", { phone }, getCustomerToken());
+  function sendPhoneVerification(phone, currentPassword = null) {
+    return request("POST", "/phone-verification/send", { phone, current_password: currentPassword }, getCustomerToken());
+  }
+
+  function getPhoneVerificationState() {
+    return request("GET", "/phone-verification/state", null, getCustomerToken(), { force: true });
+  }
+
+  function cancelPhoneVerification(challengeId) {
+    return request("POST", "/phone-verification/cancel", { challenge_id: challengeId }, getCustomerToken());
   }
 
   function verifyPhoneVerification(challengeId, code) {
@@ -3139,6 +3150,8 @@ var API = (() => {
     logout,
     getMe,
     sendPhoneVerification,
+    getPhoneVerificationState,
+    cancelPhoneVerification,
     verifyPhoneVerification,
     resendPhoneVerification,
     // Timeslots

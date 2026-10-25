@@ -344,6 +344,11 @@ class AuthController extends Controller
                 'username' => $user->username,
                 'email' => $user->email,
                 'phone' => $user->phone,
+                'phone_change_pending' => $user->role === 'customer' && $user->phone_verified_at !== null
+                    && \Illuminate\Support\Facades\Schema::hasTable('phone_verification_attempts')
+                    && DB::table('phone_verification_attempts')->where('user_id', $user->getKey())
+                        ->where('original_phone', $user->phone)->where('original_verified_at', $user->getRawOriginal('phone_verified_at'))
+                        ->whereNotIn('status', ['consumed', 'superseded'])->exists(),
                 'role' => $user->role,
                 'staff_type' => $user->staff_type,
                 'staff_subrole' => $user->staff_subrole,

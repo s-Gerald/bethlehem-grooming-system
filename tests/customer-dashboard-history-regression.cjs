@@ -501,6 +501,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   let sendError = null, verifyError = null, pendingSend = null;
   let timer;
   let expectedGeneration = 'generation-one';
+  let recovery = null, stateCalls = 0, pendingState = null;
   let eligible = true;
   function element(id) {
     if (elements.has(id)) return elements.get(id);
@@ -557,6 +558,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     dispatchEvent() {},
   };
   global.API = {
+    async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery }; },
     readCustomerCache: () => ({ fresh: true, data: { allowed: true, sms_verification: flags } }),
     async getPreRegistrationAccess() { calls.access++; return { allowed: eligible, sms_verification: flags }; },
     async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
@@ -671,6 +673,29 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.match(element('phoneVerificationMessage').textContent, /expired/i);
     await element('phoneVerificationClose').dispatch('click');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261025-sms');
+    recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
+    const sendsBeforeRecovery = calls.sends;
+    await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
+    assert.equal(element('phoneVerificationOtp').hidden, false, 'Explicit reopening restores a persisted challenge.');
+    assert.equal(calls.sends, sendsBeforeRecovery, 'Recovery never resends.');
+    assert.equal(element('phoneVerificationPasswordField').hidden, true, 'An authorized replacement resumes without another password.');
+    await code.dispatch('paste', { clipboardData: { getData: () => '123456' } });
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(calls.navigation.length, 3, 'Settings confirmation stays on Settings.');
+    assert.equal(calls.profiles, 2);
+    recovery = null;
+    await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
+    assert.equal(element('phoneVerificationPasswordField').hidden, false);
+    await element('phoneVerificationClose').dispatch('click');
+    let finishState;
+    pendingState = new Promise(resolve => { finishState = resolve; });
+    const opening = openPhoneVerification(trigger, user);
+    await element('phoneVerificationClose').dispatch('click');
+    finishState(); await opening; pendingState = null;
+    assert.equal(dialog.open, false, 'Late state recovery never reopens a dismissed modal.');
+    assert.ok(stateCalls > 0);
+    trigger.customerProfileReady = Promise.resolve(user);
     flags = { available: false, enforced: true };
     await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
     await trigger.dispatch('click');

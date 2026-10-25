@@ -4404,6 +4404,10 @@ video {
   outline-color: #b45309;
 }
 
+.focus-visible\:outline-portal-primary:focus-visible {
+  outline-color: var(--portal-primary);
+}
+
 .focus-visible\:outline-red-600:focus-visible {
   outline-color: #dc2626;
 }

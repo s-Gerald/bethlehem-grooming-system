@@ -270,6 +270,8 @@ body:has(.phone-verification-dialog[open]) { overflow: hidden; }
   border-radius: .5rem;
 }
 .phone-verification-phone[aria-invalid="true"] { border-color: #b91c1c; }
+.phone-verification-helper { margin: .5rem 0 0; color: #64748b; font-size: .75rem; line-height: 1.5; }
+.phone-verification-password { margin-top: 1rem; }
 .phone-verification-dialog .verification-primary { margin-top: 1.25rem; }
 .phone-verification-dialog .verification-primary svg { display: inline-block; margin-right: .25rem; vertical-align: middle; fill: currentColor; }
 .phone-verification-dialog .verification-primary svg[hidden] { display: none; }

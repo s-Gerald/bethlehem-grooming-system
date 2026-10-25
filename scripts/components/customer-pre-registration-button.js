@@ -24,7 +24,10 @@ function entryMessage(button, text) {
   }
   notice.textContent = text;
 }
-buttons.forEach((button) => {
+export function setPhoneVerificationAccess(access) { accessState = access; }
+
+export function bindPreRegistrationButton(button) {
+  if (!button) return;
   button.addEventListener("click", async (event) => {
     if (button.getAttribute("aria-disabled") === "true") { event.preventDefault(); return; }
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -42,13 +45,14 @@ buttons.forEach((button) => {
       if (!user) throw new Error("Unable to check your phone status. Please try again.");
       if (user.phone && user.phone_verification_status === "verified") { window.location.assign(button.href); return; }
       if (!flags.available) throw new Error("SMS verification is unavailable. Please contact the clinic before pre-registering.");
-      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=20261022");
-      if (button.getAttribute("aria-disabled") !== "true") openPhoneVerification(button, user);
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=20261025-sms");
+      if (button.getAttribute("aria-disabled") !== "true") await openPhoneVerification(button, user);
     } catch (error) {
       entryMessage(button, error.message || "Unable to open phone verification. Please try again.");
     } finally { openingPhoneVerification = false; }
   });
-});
+}
+buttons.forEach(bindPreRegistrationButton);
 
 let accessRequest = null;
 async function loadPreRegistrationAccess() {

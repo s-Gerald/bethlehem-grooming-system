@@ -15,10 +15,16 @@ return [
         'max_attempts' => 5,
         'attempt_window_seconds' => 3600,
         'user_hourly_limit' => 5,
+        'user_daily_limit' => (int) env('SMS_USER_DAILY_LIMIT', 20),
+        'phone_daily_limit' => (int) env('SMS_PHONE_DAILY_LIMIT', 20),
         'phone_hourly_limit' => 5,
         'ip_hourly_limit' => 20,
         'global_hourly_limit' => 100,
-        'global_daily_limit' => 500,
+        'global_daily_limit' => (int) env('SMS_GLOBAL_DAILY_LIMIT', 500),
+    ],
+
+    'grooming_completion_sms' => [
+        'enabled' => env('GROOMING_COMPLETION_SMS_ENABLED', false),
     ],
 
     /*

@@ -31,6 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const firstNameInput = document.getElementById("settingsFirstName");
   const lastNameInput = document.getElementById("settingsLastName");
   const phoneInput = document.getElementById("settingsPhone");
+  const phoneAction = document.getElementById("settingsPhoneAction");
+  const phoneCancel = document.getElementById("settingsPhoneCancel");
   const emailInput = document.getElementById("settingsEmail");
   const accountInitials = document.getElementById("accountInitials");
   const accountDisplayName = document.getElementById("accountDisplayName");
@@ -41,6 +43,29 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("customer-phone:verified", (event) => {
     serverUser = event.detail.user;
     applyUserToAccount(serverUser);
+    showStatus(event.detail.message || "Phone number verified.", "success");
+  });
+  window.addEventListener("customer-phone:pending", () => {
+    if (serverUser) { serverUser = { ...serverUser, phone_change_pending: true }; applyUserToAccount(serverUser); }
+  });
+  phoneAction?.addEventListener("click", async () => {
+    if (!serverUser || phoneAction.disabled) return;
+    phoneAction.disabled = true; hideStatus();
+    try {
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=20261025-sms");
+      await openPhoneVerification(phoneAction, serverUser, { navigate: false });
+    } catch (error) { showStatus(error.message || "Unable to open phone verification.", "error"); }
+    finally { phoneAction.disabled = false; }
+  });
+  phoneCancel?.addEventListener("click", async () => {
+    if (phoneCancel.disabled) return;
+    phoneCancel.disabled = true; phoneAction.disabled = true; hideStatus();
+    try {
+      const { challenge } = await API.getPhoneVerificationState();
+      if (challenge) await API.cancelPhoneVerification(challenge.challenge_id);
+      serverUser = { ...serverUser, phone_change_pending: false }; applyUserToAccount(serverUser);
+    } catch (error) { showStatus(error.message || "Unable to cancel phone change.", "error"); }
+    finally { phoneCancel.disabled = false; phoneAction.disabled = false; }
   });
 
   function scheduleSettingsIdleTask(task) {
@@ -240,11 +265,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (phoneStatus) {
       const hasPhone = Boolean(String(user.phone ?? "").trim());
       const verified = hasPhone && user.phone_verification_status === "verified";
-      phoneStatus.textContent = !hasPhone ? "Not added" : verified ? "Verified" : "Not verified";
-      phoneStatus.classList.toggle("bg-green-50", verified);
-      phoneStatus.classList.toggle("text-green-700", verified);
-      phoneStatus.classList.toggle("bg-portal-surface-soft", !verified);
-      phoneStatus.classList.toggle("text-portal-muted", !verified);
+      const pending = verified && user.phone_change_pending === true;
+      phoneStatus.textContent = pending ? "Pending" : !hasPhone ? "Not added" : verified ? "Verified" : "Not verified";
+      phoneStatus.classList.toggle("bg-green-50", verified && !pending);
+      phoneStatus.classList.toggle("text-green-700", verified && !pending);
+      phoneStatus.classList.toggle("bg-portal-surface-soft", !verified || pending);
+      phoneStatus.classList.toggle("text-portal-muted", !verified || pending);
+      if (phoneAction) phoneAction.textContent = pending ? "Continue verification" : !hasPhone ? "Add" : verified ? "Change" : "Verify";
+      if (phoneCancel) phoneCancel.hidden = !pending;
     }
     emailInput.value = user.email || "Not provided";
 

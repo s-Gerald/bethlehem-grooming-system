@@ -192,13 +192,21 @@ async function testInvalidation() {
   env.respond(() => ({ success: true, challenge_id: 'challenge', expires_in: 300, resend_after: 60 }));
   await env.API.sendPhoneVerification('09171234567');
   await env.API.resendPhoneVerification('challenge');
-  assert.ok(env.API.readCustomerCache('/me'), 'Sending must not change account verification.');
+  assert.equal(env.API.readCustomerCache('/me'), null, 'Sending invalidates only the profile containing pending-change metadata.');
+  assert.ok(env.API.readCustomerCache('/pre-registration/access'), 'Sending does not grant verified access or invalidate eligibility.');
   await env.API.verifyPhoneVerification('challenge', '123456');
   assert.equal(env.API.readCustomerCache('/me'), null);
   assert.equal(env.API.readCustomerCache('/pre-registration/access'), null);
   assert.ok(env.API.readCustomerCache('/pets?archived=0'), 'Verification must preserve unrelated cached data.');
   assert.equal(env.calls.length, phoneCalls + 3, 'Each explicit action makes exactly one request.');
   assert.deepEqual(env.calls.slice(-3).map(call => call.endpoint), ['/phone-verification/send', '/phone-verification/resend', '/phone-verification/verify']);
+  env.respond(() => response({ message: 'Please wait before sending another code.', code: 'resend_cooldown', resend_after: 40 }, 429));
+  await assert.rejects(env.API.sendPhoneVerification('09171234567'), error => {
+    assert.equal(error.status, 429);
+    assert.equal(error.data.resend_after, 40, 'Phone controls need the authoritative remaining cooldown.');
+    assert.equal(error.code, 'resend_cooldown');
+    return true;
+  });
   env.respond((endpoint) => endpoint === '/me' ? profile : endpoint.startsWith('/pets?') ? pets : bookings);
   await seed(env);
   env.API.invalidateCustomerCache("profile");

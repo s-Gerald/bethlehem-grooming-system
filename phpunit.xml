@@ -23,6 +23,7 @@
         <env name="IPROGSMS_API_TOKEN" value="" force="true"/>
         <env name="SMS_VERIFICATION_AVAILABLE" value="false" force="true"/>
         <env name="SMS_VERIFICATION_ENFORCED" value="false" force="true"/>
+        <env name="GROOMING_COMPLETION_SMS_ENABLED" value="false" force="true"/>
         <env name="APP_CONFIG_CACHE" value="storage/framework/testing-config-unused.php" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

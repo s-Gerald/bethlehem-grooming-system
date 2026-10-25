@@ -326,6 +326,8 @@
                       <div class="mb-2 flex flex-wrap items-center gap-2">
                         <label for="settingsPhone" class="text-sm font-semibold text-portal-text">Phone Number</label>
                         <span id="settingsPhoneStatus" class="rounded-full bg-portal-surface-soft px-2 py-0.5 text-xs font-medium text-portal-muted"></span>
+                        <button id="settingsPhoneAction" type="button" class="ml-auto rounded text-sm font-semibold text-portal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary disabled:opacity-50"></button>
+                        <button id="settingsPhoneCancel" type="button" class="rounded text-xs font-medium text-portal-muted hover:text-portal-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary disabled:opacity-50" hidden>Cancel change</button>
                       </div>
                       <input
                         type="tel"
@@ -492,10 +494,10 @@
       </main>
     </div>
 
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261022&auth-races=20261024&security=single-session-20261025"></script>
+    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
-    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261022"></script>
-    <script src="../../scripts/components/client-settings.js?v=phone-20261022"></script>
+    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261025-sms"></script>
+    <script src="../../scripts/components/client-settings.js?v=phone-20261025-sms"></script>
   </body>
 </html>

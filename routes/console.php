@@ -13,6 +13,9 @@ Artisan::command('inspire', function () {
 // Preferred arrival times never expire a registration during its selected day.
 Schedule::command('pre-registrations:expire')->everyFiveMinutes()->withoutOverlapping();
 
+Schedule::call(fn () => app(\App\Services\GroomingCompletionSmsService::class)->dispatchPending())
+    ->name('grooming-completion-sms:dispatch')->everyMinute()->withoutOverlapping();
+
 // Send preferred-arrival reminders every 30 minutes
 Schedule::command('reminders:send')->everyThirtyMinutes();
 

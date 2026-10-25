@@ -34,6 +34,8 @@ class PhoneVerificationTest extends TestCase
             $t->increments('user_id');
             $t->string('role')->default('customer');
             $t->string('phone', 20)->nullable()->unique();
+            $t->string('password_hash')->nullable();
+            $t->string('email')->nullable();
             $t->timestamp('phone_verified_at')->nullable();
             $t->timestamp('email_verified_at')->nullable();
             $t->boolean('is_active')->default(true);
@@ -138,6 +140,23 @@ class PhoneVerificationTest extends TestCase
             $this->assertSame(0, $connection->table('phone_verification_attempts')->count());
             $connection->table('phone_verification_attempts')->insert($values);
             $this->assertSame(1, $connection->table('phone_verification_attempts')->count());
+            $completionMigration = require database_path('migrations/2026_10_25_000004_create_grooming_completion_sms.php');
+            $completionMigration->up();
+            $completionIndexes = collect($builder->getIndexes('grooming_completion_sms'));
+            $this->assertTrue($completionIndexes->first(fn ($index) => $index['columns'] === ['booking_id'])['unique']);
+            $this->assertNotNull($completionIndexes->first(fn ($index) => $index['columns'] === ['status', 'queued_at']));
+            $completionValues = ['booking_id' => 1, 'user_id' => 1, 'status' => 'pending', 'created_at' => $time, 'updated_at' => $time];
+            $connection->table('grooming_completion_sms')->insert($completionValues);
+            try {
+                $connection->table('grooming_completion_sms')->insert($completionValues);
+                $this->fail('MySQL must reject duplicate completion events.');
+            } catch (QueryException $exception) {
+                $this->assertSame(1062, $exception->errorInfo[1]);
+            }
+            $this->assertSame(1, $connection->table('grooming_completion_sms')->count());
+            $this->assertSame('2026-10-22 12:00:00', $connection->table('grooming_completion_sms')->value('created_at'));
+            $completionMigration->down();
+            $this->assertFalse($builder->hasTable('grooming_completion_sms'));
             Http::assertNothingSent();
         } finally {
             Schema::swap($schema);
@@ -159,6 +178,111 @@ class PhoneVerificationTest extends TestCase
             'phone_number' => '09171234567', 'otp_code' => $code, 'otp_code_confirmed' => false,
             'otp_code_expires_at' => now()->addMinutes(5)->toIso8601String(), 'message' => "Your OTP is $code",
         ]]), '*/verify_otp' => Http::response(['status' => 'success', 'message' => 'OTP verified successfully'])]);
+    }
+
+    public function test_reopening_recovers_safe_challenge_without_sending(): void
+    {
+        $this->fakeSend();
+        $id = $this->send();
+        $this->travel(20)->seconds();
+        $state = $this->getJson('/api/phone-verification/state')->assertOk()
+            ->assertJsonPath('challenge.challenge_id', $id)->assertJsonPath('challenge.expires_in', 280)
+            ->assertJsonPath('challenge.resend_after', 40)->assertJsonPath('challenge.can_verify', true);
+        foreach (['123456', 'test-token', '09171234567', 'fingerprint', 'original_phone'] as $secret) {
+            $state->assertDontSee($secret);
+        }
+        Http::assertSentCount(1);
+        $this->travel(281)->seconds();
+        $this->getJson('/api/phone-verification/state')->assertOk()
+            ->assertJsonPath('challenge.status', 'expired')->assertJsonPath('challenge.can_verify', false);
+    }
+
+    public function test_replacing_verified_phone_requires_password_and_commits_only_after_otp(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@example.test']);
+        $this->fakeSend();
+        foreach ([null, 'incorrect'] as $password) {
+            $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => $password])
+                ->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        }
+        Http::assertNothingSent();
+        $id = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])
+            ->assertOk()->json('challenge_id');
+        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        $this->assertNotNull($this->customer->fresh()->phone_verified_at);
+        $this->verify($id, '000000')->assertUnprocessable();
+        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        $this->verify($id)->assertOk()->assertJsonPath('message', 'Phone number updated.');
+        $this->assertSame('09171234567', $this->customer->fresh()->phone);
+        \Illuminate\Support\Facades\Notification::assertSentTo($this->customer->fresh(), \App\Notifications\PhoneNumberChangedNotification::class);
+    }
+
+    public function test_canceled_replacement_keeps_old_phone_and_cooldown(): void
+    {
+        DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123')]);
+        $this->fakeSend();
+        $id = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])
+            ->assertOk()->json('challenge_id');
+        $this->postJson('/api/phone-verification/cancel', ['challenge_id' => $id])->assertOk();
+        $this->verify($id)->assertStatus(409);
+        $this->getJson('/api/phone-verification/state')->assertOk()->assertJsonPath('challenge', null);
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])->assertStatus(429);
+        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        $this->assertNotNull($this->customer->fresh()->phone_verified_at);
+        Http::assertSentCount(1);
+    }
+
+    public function test_already_verified_number_does_not_send_another_code(): void
+    {
+        DB::table('users')->update(['phone' => '09171234567', 'phone_verified_at' => now()]);
+        Http::fake();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertUnprocessable();
+        Http::assertNothingSent();
+    }
+
+    public function test_replacement_resend_retains_password_authorization_but_rejects_changed_ownership(): void
+    {
+        DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123')]);
+        $this->fakeSend();
+        $id = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])
+            ->assertOk()->json('challenge_id');
+        $this->travel(60)->seconds();
+        $next = $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertOk()->json('challenge_id');
+        $this->assertNotSame($id, $next);
+        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        DB::table('users')->update(['phone' => '09999876543']);
+        $this->travel(60)->seconds();
+        $this->postJson('/api/phone-verification/resend', ['challenge_id' => $next])->assertStatus(409);
+        Http::assertSentCount(2);
+    }
+
+    public function test_replacement_password_attempts_are_account_scoped_across_destinations(): void
+    {
+        DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123')]);
+        Http::fake();
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/phone-verification/send', ['phone' => '0917123456'.$i, 'current_password' => 'wrong'])->assertUnprocessable();
+        }
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])->assertStatus(429);
+        Http::assertNothingSent();
+    }
+
+    public function test_email_queue_failure_does_not_undo_successful_replacement(): void
+    {
+        DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@example.test']);
+        $this->fakeSend();
+        $id = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])
+            ->assertOk()->json('challenge_id');
+        $this->assertFalse(Schema::hasTable('jobs'));
+        $this->verify($id)->assertOk()->assertJsonPath('message', 'Phone number updated.');
+        $this->assertSame('09171234567', $this->customer->fresh()->phone);
+        $this->assertNotNull($this->customer->fresh()->phone_verified_at);
     }
 
     private function send(): string
@@ -186,7 +310,8 @@ class PhoneVerificationTest extends TestCase
         $this->assertSame('09171234567', $this->customer->fresh()->phone);
         $this->assertNotNull($this->customer->fresh()->phone_verified_at);
         Http::assertSent(fn ($r) => $r->url() === 'https://www.iprogsms.com/api/v1/otp/send_otp'
-            && $r['api_token'] === 'test-token' && $r['phone_number'] === '09171234567' && $r['expires_in_minutes'] === 5);
+            && $r['api_token'] === 'test-token' && $r['phone_number'] === '09171234567' && $r['expires_in_minutes'] === 5
+            && $r['message'] === "Bethlehem Animal Clinic\nYour verification code is :otp. Valid for 5 minutes.\nDo not share.");
         Http::assertSent(fn ($r) => $r->url() === 'https://www.iprogsms.com/api/v1/otp/verify_otp'
             && $r['api_token'] === 'test-token' && $r['phone_number'] === '09171234567' && $r['otp'] === '123456');
         Http::assertSentCount(2);
@@ -502,7 +627,7 @@ class PhoneVerificationTest extends TestCase
 
     public static function sendLimitSettings(): array
     {
-        return array_map(fn ($v) => [$v], ['user_hourly_limit', 'phone_hourly_limit', 'ip_hourly_limit', 'global_hourly_limit', 'global_daily_limit']);
+        return array_map(fn ($v) => [$v], ['user_hourly_limit', 'phone_hourly_limit', 'ip_hourly_limit', 'global_hourly_limit', 'global_daily_limit', 'user_daily_limit', 'phone_daily_limit']);
     }
 
     public function test_disabled_and_available_only_flags_preserve_submission_validation(): void
@@ -535,6 +660,8 @@ class PhoneVerificationTest extends TestCase
         foreach (['send', 'verify', 'resend'] as $action) {
             $this->postJson('/api/phone-verification/'.$action, [])->assertUnauthorized();
         }
+        $this->getJson('/api/phone-verification/state')->assertUnauthorized();
+        $this->postJson('/api/phone-verification/cancel', [])->assertUnauthorized();
         foreach (['is_active' => false, 'is_archived' => true, 'email_verified_at' => null] as $field => $value) {
             $user = User::create(['role' => 'customer', 'email_verified_at' => now(), $field => $value]);
             Sanctum::actingAs($user);
