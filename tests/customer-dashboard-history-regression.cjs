@@ -496,10 +496,11 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   let now = originalNow();
   Date.now = () => now;
   const elements = new Map();
-  const calls = { access: 0, dialogs: 0, navigation: [], sends: 0, verifies: 0, resends: 0, profiles: 0 };
+  const calls = { access: 0, dialogs: 0, navigation: [], sends: 0, verifies: 0, resends: 0, profiles: 0, sendArgs: [], resendIds: [] };
   let flags = { available: false, enforced: false };
   let sendError = null, verifyError = null, pendingSend = null;
   let timer;
+  const countdowns = new Set();
   let expectedGeneration = 'generation-one';
   let recovery = null, stateCalls = 0, pendingState = null;
   let eligible = true;
@@ -510,6 +511,11 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     const classes = new Set();
     const node = {
       id, value: '', textContent: '', hidden: false, disabled: false, open: false,
+      set innerHTML(html) {
+        for (const match of html.matchAll(/<([a-z][\w-]*)\b[^>]*\bid="([^"]+)"[^>]*>([^<]*)/gi)) {
+          element(match[2]).textContent = match[3].trim();
+        }
+      },
       href: 'http://127.0.0.1:8000/pages/client/pre-register.html',
       classList: {
         toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
@@ -554,7 +560,8 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     location: { hostname: 'clinic.example', search: '', assign(url) { calls.navigation.push(url); } },
     requestAnimationFrame(callback) { scheduled.push(callback); },
     requestIdleCallback(callback) { return callback(); },
-    setInterval(callback) { timer = callback; return 1; }, clearInterval() {},
+    setInterval(callback, milliseconds) { timer = callback; if (milliseconds === 1000) countdowns.add(callback); return callback; },
+    clearInterval(callback) { countdowns.delete(callback); },
     dispatchEvent() {},
   };
   global.API = {
@@ -562,8 +569,9 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     readCustomerCache: () => ({ fresh: true, data: { allowed: true, sms_verification: flags } }),
     async getPreRegistrationAccess() { calls.access++; return { allowed: eligible, sms_verification: flags }; },
     async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
-    async sendPhoneVerification(phone) {
+    async sendPhoneVerification(phone, password) {
       calls.sends++;
+      calls.sendArgs.push([phone, password]);
       assert.match(phone, /^09\d{9}$/);
       if (pendingSend) await pendingSend;
       if (sendError) throw sendError;
@@ -574,7 +582,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
       if (verifyError) throw verifyError;
       return { success: true };
     },
-    async resendPhoneVerification() { calls.resends++; return { success: true, challenge_id: 'generation-two', expires_in: 300, resend_after: 60 }; },
+    async resendPhoneVerification(id) { calls.resends++; calls.resendIds.push(id); if (sendError) throw sendError; return { success: true, challenge_id: 'generation-two', expires_in: 300, resend_after: 60 }; },
   };
   try {
     const context = { window: global.window, document: global.document };
@@ -604,7 +612,10 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     sendError = new Error('SMS unavailable');
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(element('phoneVerificationOtp').hidden, true, 'Failed sends never claim a sent code.');
-    assert.match(element('phoneVerificationMessage').textContent, /unavailable/i);
+    assert.equal(element('phoneVerificationTitle').textContent, 'Verification Unavailable');
+    assert.match(element('phoneVerificationDescription').textContent, /Try again or use another number/);
+    assert.equal(element('phoneVerificationRecovery').hidden, false);
+    await element('phoneVerificationChange').dispatch('click');
     sendError = null;
     let finishSend;
     pendingSend = new Promise(resolve => { finishSend = resolve; });
@@ -615,6 +626,21 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     finishSend(); await sending; pendingSend = null;
     assert.equal(element('phoneVerificationOtp').hidden, false);
     assert.equal(element('phoneVerificationNumber').textContent, '0917 \u2022\u2022\u2022\u2022 567');
+    assert.equal(element('phoneVerificationChange').hidden, false);
+    assert.equal(element('phoneVerificationNetwork').textContent, 'Smart/TNT numbers are not supported.');
+    const readsBeforeEditing = [stateCalls, calls.profiles, calls.sends];
+    await element('phoneVerificationChange').dispatch('click');
+    assert.equal(element('phoneVerificationTitle').textContent, 'Change Phone Number');
+    assert.equal(element('phoneVerificationEntry').hidden, false);
+    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationNext').disabled, true, 'Editing does not reset cooldown.');
+    assert.equal(global.document.activeElement, element('phoneVerificationPhone'));
+    element('phoneVerificationPhone').value = '09991234567';
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.deepEqual([stateCalls, calls.profiles, calls.sends], readsBeforeEditing, 'Changing/editing during cooldown is local and never sends.');
+    await element('phoneVerificationBack').dispatch('click');
+    assert.equal(element('phoneVerificationOtp').hidden, false);
+    assert.equal(element('phoneVerificationNumber').textContent, '0917 •••• 567');
     assert.equal(global.document.activeElement, element('phoneVerificationCode'));
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.equal(element('phoneVerificationResend').disabled, true);
@@ -632,6 +658,10 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     verifyError = null;
     now += 60000; timer();
     assert.equal(element('phoneVerificationResend').disabled, false);
+    await element('phoneVerificationChange').dispatch('click');
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(calls.sends, 2, 'An unchanged active candidate reuses the challenge.');
+    assert.equal(element('phoneVerificationOtp').hidden, false);
     await element('phoneVerificationResend').dispatch('click');
     assert.equal(calls.resends, 1);
     assert.equal(element('phoneVerificationCode').value, '');
@@ -672,8 +702,13 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     now += 301000; timer();
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.match(element('phoneVerificationMessage').textContent, /expired/i);
+    assert.equal(element('phoneVerificationOtp').hidden, true);
+    assert.equal(element('phoneVerificationChange').hidden, false);
+    assert.equal(global.document.activeElement, element('phoneVerificationRetry'), 'Expiry moves focus out of the hidden code input.');
+    await element('phoneVerificationChange').dispatch('click');
+    assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261025-sms');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261026-recovery');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -684,10 +719,89 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(calls.navigation.length, 3, 'Settings confirmation stays on Settings.');
     assert.equal(calls.profiles, 2);
+    assert.equal(countdowns.size, 0, 'Closing clears the modal countdown.');
     recovery = null;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
     assert.equal(element('phoneVerificationPasswordField').hidden, false);
     await element('phoneVerificationClose').dispatch('click');
+    recovery = { success: true, challenge_id: 'uncertain-one', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 42, status: 'uncertain', can_verify: false };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    assert.equal(element('phoneVerificationTitle').textContent, 'Verification Unavailable');
+    assert.equal(element('phoneVerificationOtp').hidden, true);
+    assert.equal(element('phoneVerificationVerify').disabled, true);
+    assert.equal(element('phoneVerificationRecovery').hidden, false);
+    assert.equal(element('phoneVerificationRetry').disabled, true);
+    assert.match(element('phoneVerificationRetry').textContent, /00:42/);
+    const requestsBeforeRecoveryEdit = [calls.sends, calls.resends, calls.profiles, stateCalls];
+    await element('phoneVerificationChange').dispatch('click');
+    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationPasswordField').hidden, true);
+    element('phoneVerificationPhone').value = '09991234567';
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.deepEqual([calls.sends, calls.resends, calls.profiles, stateCalls], requestsBeforeRecoveryEdit);
+    now += 42000; timer();
+    const uncertainNew = { success: true, challenge_id: 'uncertain-two', masked_destination: '0999 •••• 567', expires_in: 300, resend_after: 60, status: 'uncertain', can_verify: false };
+    sendError = Object.assign(new Error('SMS could not be confirmed.'), { status: 503, code: 'sms_send_uncertain', data: { resend_after: 60, challenge: uncertainNew } });
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(element('phoneVerificationOtp').hidden, true, 'A failed replacement hides unusable code controls immediately.');
+    assert.equal(element('phoneVerificationNumber').textContent, '0999 •••• 567');
+    assert.equal(element('phoneVerificationRetry').disabled, true);
+    sendError = null;
+    now += 60000; timer();
+    assert.equal(element('phoneVerificationRetry').textContent, 'Try Again');
+    await element('phoneVerificationRetry').dispatch('click');
+    assert.equal(calls.resendIds.at(-1), 'uncertain-two', 'Retry must target the newly accepted candidate, never the old one.');
+    assert.equal(element('phoneVerificationOtp').hidden, false);
+    await element('phoneVerificationClose').dispatch('click');
+    recovery = { ...uncertainNew, status: 'locked', resend_after: 0 };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    assert.equal(element('phoneVerificationRetry').disabled, true);
+    await element('phoneVerificationChange').dispatch('click');
+    assert.equal(element('phoneVerificationNext').disabled, true, 'Changing numbers cannot bypass lockout.');
+    await element('phoneVerificationClose').dispatch('click');
+    recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 0, status: 'active', can_verify: true, replacement: true };
+    await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
+    await element('phoneVerificationChange').dispatch('click');
+    assert.equal(element('phoneVerificationPasswordField').hidden, false);
+    element('phoneVerificationPhone').value = '09991234567';
+    const sendsBeforePassword = calls.sends;
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(calls.sends, sendsBeforePassword);
+    element('phoneVerificationPassword').value = 'current-password';
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.deepEqual(calls.sendArgs.at(-1), ['09991234567', 'current-password']);
+    assert.equal(element('phoneVerificationPassword').value, '', 'The password is cleared after requesting a replacement.');
+    await element('phoneVerificationClose').dispatch('click');
+    recovery = { ...recovery, replacement: false };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    await element('phoneVerificationChange').dispatch('click');
+    element('phoneVerificationPhone').value = '09991234567';
+    await element('phoneVerificationBack').dispatch('click');
+    sendError = new Error('Connection lost');
+    await element('phoneVerificationResend').dispatch('click');
+    sendError = null;
+    assert.equal(element('phoneVerificationOtp').hidden, true);
+    await element('phoneVerificationRetry').dispatch('click');
+    assert.equal(calls.sendArgs.at(-1)[0], '09171234567', 'Retry uses the displayed candidate, not an abandoned edit.');
+    assert.equal(countdowns.size, 1, 'Recovery and resend reuse one countdown.');
+    await element('phoneVerificationClose').dispatch('click');
+    assert.equal(countdowns.size, 0);
+    recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 0, status: 'active', can_verify: true };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    await element('phoneVerificationChange').dispatch('click');
+    element('phoneVerificationPhone').value = '09991234567';
+    recovery = { ...uncertainNew, challenge_id: 'lost-response' };
+    sendError = Object.assign(new Error('Connection lost'), { status: 0 });
+    const readsBeforeLostResponse = stateCalls, sendsBeforeLostResponse = calls.sends;
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.equal(stateCalls, readsBeforeLostResponse + 1, 'A lost HTTP response recovers server timing once, without polling.');
+    assert.equal(calls.sends, sendsBeforeLostResponse + 1, 'Network recovery does not retry sending.');
+    assert.equal(element('phoneVerificationNumber').textContent, '0999 •••• 567');
+    assert.equal(element('phoneVerificationRetry').disabled, true);
+    assert.equal(element('phoneVerificationOtp').hidden, true);
+    sendError = null;
+    await element('phoneVerificationClose').dispatch('click');
+    recovery = null;
     let finishState;
     pendingState = new Promise(resolve => { finishState = resolve; });
     const opening = openPhoneVerification(trigger, user);

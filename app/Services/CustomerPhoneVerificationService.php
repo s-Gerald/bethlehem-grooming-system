@@ -122,6 +122,7 @@ class CustomerPhoneVerificationService
                 DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')->update(['status' => 'uncertain']);
                 self::fail('SMS could not be confirmed. Wait a minute, then try again.', 503, 'sms_send_uncertain', [
                     'resend_after' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($values['resend_at']), false))),
+                    'challenge' => $this->timing((object) [...$values, 'status' => 'uncertain']),
                 ]);
             }
             $updated = DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')

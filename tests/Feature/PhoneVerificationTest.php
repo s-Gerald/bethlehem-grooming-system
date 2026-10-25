@@ -170,12 +170,12 @@ class PhoneVerificationTest extends TestCase
         }
     }
 
-    private function fakeSend(string $code = '123456'): void
+    private function fakeSend(string $code = '123456', string $phone = '09171234567'): void
     {
         Http::swap(new Factory);
         Http::preventStrayRequests();
         Http::fake(['*/send_otp' => Http::response(['status' => 'success', 'message' => 'OTP sent successfully', 'data' => [
-            'phone_number' => '09171234567', 'otp_code' => $code, 'otp_code_confirmed' => false,
+            'phone_number' => $phone, 'otp_code' => $code, 'otp_code_confirmed' => false,
             'otp_code_expires_at' => now()->addMinutes(5)->toIso8601String(), 'message' => "Your OTP is $code",
         ]]), '*/verify_otp' => Http::response(['status' => 'success', 'message' => 'OTP verified successfully'])]);
     }
@@ -326,6 +326,45 @@ class PhoneVerificationTest extends TestCase
         $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertStatus(429)->assertJsonPath('resend_after', 60);
         $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertStatus(429);
         Http::assertSentCount(1);
+    }
+
+    public function test_switching_candidate_preserves_cooldown_and_invalidates_old_proof(): void
+    {
+        $this->fakeSend();
+        $old = $this->send();
+        $this->verify($old, '000000')->assertUnprocessable();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])
+            ->assertStatus(429)->assertJsonPath('resend_after', 60);
+        Http::assertSentCount(1);
+        $this->travel(60)->seconds();
+        $this->fakeSend('654321', '09991234567');
+        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertOk()->json('challenge_id');
+        $this->assertNotSame($old, $new);
+        $this->assertSame(1, DB::table('phone_verification_attempts')->value('failed_attempts'));
+        $this->assertNull($this->customer->fresh()->phone);
+        $this->verify($old)->assertStatus(409);
+        $this->verify($new, '123456')->assertUnprocessable();
+        $this->verify($new, '654321')->assertOk();
+        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        $this->assertNotNull($this->customer->fresh()->phone_verified_at);
+        Http::assertSentCount(2);
+    }
+
+    public function test_switching_candidates_cannot_reset_account_attempt_budget(): void
+    {
+        $this->fakeSend();
+        $old = $this->send();
+        for ($i = 0; $i < 4; $i++) $this->verify($old, '000000')->assertUnprocessable();
+        $this->travel(60)->seconds();
+        $this->fakeSend('654321', '09991234567');
+        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertOk()->json('challenge_id');
+        $this->assertSame(4, DB::table('phone_verification_attempts')->value('failed_attempts'));
+        $this->verify($new, '000000')->assertUnprocessable();
+        $this->verify($new, '654321')->assertStatus(429);
+        $this->travel(60)->seconds();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09221234567'])->assertStatus(429);
+        Http::assertSentCount(1);
+        $this->assertNull($this->customer->fresh()->phone_verified_at);
     }
 
     public function test_resend_supersedes_generation_and_retains_failed_attempt_budget(): void
@@ -540,6 +579,10 @@ class PhoneVerificationTest extends TestCase
         Http::fake(['*' => Http::response($payload, $status)]);
         $response = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567']);
         $response->assertStatus(503);
+        $response->assertJsonPath('challenge.status', 'uncertain')->assertJsonPath('challenge.can_verify', false)
+            ->assertJsonPath('challenge.masked_destination', '0917 •••• 567')
+            ->assertJsonPath('challenge.resend_after', 60);
+        $this->assertSame(DB::table('phone_verification_attempts')->value('generation'), $response->json('challenge.challenge_id'));
         foreach (['test-token', '123456', 'sensitive provider'] as $secret) {
             $this->assertStringNotContainsString($secret, $response->getContent());
         }
