@@ -629,7 +629,6 @@ function adminDashboard() {
             await this.loadAdminBookings();
           },
           viewDetails: ({ booking }) => {
-            this._detailsReturnFocus = document.activeElement;
             this.detailsBooking   = booking;
             this.cancelNoteEdit();
             this.sedationConsentCapture = {
@@ -638,9 +637,6 @@ function adminDashboard() {
               error: "",
             };
             this.detailsModalOpen = true;
-            this.$nextTick(() => {
-              this.$refs.groomingDetailsClose?.focus();
-            });
           },
         },
       });
@@ -689,6 +685,7 @@ function adminDashboard() {
     },
 
     destroy() {
+      this.syncGroomingModalFocus(null);
       this._destroyed = true;
       this.stopOnlinePaymentPoll();
       this._bookingRevision++;
@@ -1286,7 +1283,6 @@ function adminDashboard() {
         busy: false,
         error: "",
       };
-      this.$nextTick(() => this.$refs?.groomingActionCancel?.focus());
     },
 
     closeActionConfirmModal(force = false) {
@@ -4316,19 +4312,76 @@ function adminDashboard() {
         busy: false,
         error: "",
       };
-      this._detailsReturnFocus?.focus();
-      this._detailsReturnFocus = null;
+    },
+
+    get activeGroomingModal() {
+      if (this.paymentModal.scannerActive) return 'groomingScanner';
+      if (this.receiptModal.open) return 'groomingReceipt';
+      if (this.actionConfirmModal.open) return 'groomingAction';
+      if (this.pickupModal.open) return 'groomingPickup';
+      if (this.detailsModalOpen) return 'groomingDetails';
+      if (this.paymentModal.open) return 'groomingPayment';
+      return null;
+    },
+
+    syncGroomingModalFocus(name) {
+      const host = this.$el;
+      if (!host) return;
+      const overlay = name ? this.$refs[name] : null;
+      const previous = host._groomingModalFocus;
+      if (previous?.overlay === overlay || (!previous && !overlay)) return;
+      previous?.inerted.forEach(element => { element.inert = false; });
+      host._groomingModalFocus = null;
+      if (!overlay) {
+        const target = previous?.returnFocus;
+        if (target?.isConnected && target.getClientRects().length && !target.closest('[inert]')) target.focus();
+        else host.querySelector('input, button')?.focus();
+        return;
+      }
+
+      // A scanner returns to its payment control; replacement dialogs inherit
+      // the original page trigger instead of returning to a hidden dialog.
+      const returning = previous?.returnFocus && overlay.contains(previous.returnFocus);
+      if (!returning) {
+        overlay._groomingReturnFocus = name !== 'groomingScanner' && previous?.overlay.contains(document.activeElement)
+          ? previous.returnFocus : document.activeElement;
+      }
+      const inerted = [];
+      for (let branch = overlay; branch.parentElement; branch = branch.parentElement) {
+        for (const sibling of branch.parentElement.children) {
+          if (sibling !== branch && !sibling.inert) {
+            sibling.inert = true;
+            inerted.push(sibling);
+          }
+        }
+        if (branch.parentElement === document.body) break;
+      }
+      host._groomingModalFocus = { overlay, inerted, returnFocus: overlay._groomingReturnFocus };
+      // x-show without a transition reveals its content on the next frame.
+      this.$nextTick(() => requestAnimationFrame(() => {
+        if (host._groomingModalFocus?.overlay !== overlay) return;
+        const controls = this.groomingModalControls(overlay);
+        const target = returning ? previous.returnFocus : overlay.querySelector('[data-modal-initial-focus]');
+        (controls.includes(target) ? target : controls[0] || overlay.querySelector('[role="dialog"]'))?.focus();
+      }));
+    },
+
+    groomingModalControls(overlay) {
+      return [...overlay.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
+        .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && !element.closest('[inert]') && element.getClientRects().length);
     },
 
     trapGroomingModalFocus(event) {
-      const controls = [...event.currentTarget.querySelectorAll('button, input, textarea, summary, [tabindex="0"]')]
-        .filter((element) => !element.disabled && element.getClientRects().length);
+      const controls = this.groomingModalControls(event.currentTarget);
       const first = controls[0];
       const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!first) {
+        event.preventDefault();
+        event.currentTarget.querySelector('[role="dialog"]')?.focus();
+      } else if (event.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement))) {
         event.preventDefault();
         last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement))) {
         event.preventDefault();
         first?.focus();
       }

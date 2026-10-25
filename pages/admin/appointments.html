@@ -245,6 +245,7 @@
         <!-- Grooming Body -->
         <main
           x-data="adminDashboard()"
+          x-effect="syncGroomingModalFocus(activeGroomingModal)"
           class="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
           <!-- Top banner -->
@@ -750,15 +751,18 @@
           <div
             x-cloak
             x-show="paymentModal.open"
+            x-ref="groomingPayment"
+            @pointerdown.self.prevent
             x-transition
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
-            @click.self="closePaymentModal()"
+            @keydown.tab="trapGroomingModalFocus($event)"
+            @keydown.escape.stop.prevent
           >
-            <div class="payment-modal-card w-full bg-white shadow-2xl overflow-hidden">
+            <div class="payment-modal-card w-full bg-white shadow-2xl overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="grooming-payment-title" tabindex="-1">
               <!-- Header -->
               <div class="flex items-start justify-between border-b border-slate-200 bg-white px-6 py-5">
                 <div>
-                  <h4 class="text-xl font-bold text-[#2f4b66]">Record Payment</h4>
+                  <h4 id="grooming-payment-title" class="text-xl font-bold text-[#2f4b66]">Record Payment</h4>
                   <div class="mt-2 flex flex-wrap items-center gap-2">
                     <span class="rounded-full bg-[#e8f2fa] px-2.5 py-1 text-xs font-semibold text-[#315b7e]"
                       x-text="paymentModal.isEarlyPayment ? 'Early Payment' : 'For Payment'"></span>
@@ -1053,10 +1057,10 @@
           </div>
 
           <!-- Grooming product barcode scanner -->
-          <div x-cloak x-show="paymentModal.scannerActive" x-transition style="display:none;z-index:60;background-color:rgba(15,23,42,0.8)" class="fixed inset-0 flex items-center justify-center px-4" @click.self="closePaymentScanner()" @keydown.escape.window="closePaymentScanner()">
-            <div class="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div x-cloak x-show="paymentModal.scannerActive" x-ref="groomingScanner" x-transition style="display:none;z-index:60;background-color:rgba(15,23,42,0.8)" class="fixed inset-0 flex items-center justify-center px-4" @pointerdown.self.prevent @keydown.tab="trapGroomingModalFocus($event)" @keydown.escape.stop.prevent>
+            <div class="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="grooming-scanner-title" tabindex="-1">
               <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                <h4 class="font-bold text-slate-800">Scan Barcode</h4>
+                <h4 id="grooming-scanner-title" class="font-bold text-slate-800">Scan Barcode</h4>
                 <button type="button" @click="closePaymentScanner()" aria-label="Close barcode scanner" class="text-slate-400 transition hover:text-red-500"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
               </div>
               <div class="p-4">
@@ -1070,16 +1074,19 @@
           <div
             x-cloak
             x-show="receiptModal.open"
+            x-ref="groomingReceipt"
+            @pointerdown.self.prevent
             x-transition
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6"
-            @click.self="closeReceiptModal()"
+            @keydown.tab="trapGroomingModalFocus($event)"
+            @keydown.escape.stop.prevent
           >
-            <div class="receipt-modal-card w-full bg-white shadow-2xl overflow-hidden">
+            <div class="receipt-modal-card w-full bg-white shadow-2xl overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="grooming-receipt-title" tabindex="-1">
               <header class="receipt-success-header">
                 <div class="receipt-success-icon">
                   <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check"></use></svg>
                 </div>
-                <h4 class="receipt-success-title">Payment recorded</h4>
+                <h4 id="grooming-receipt-title" class="receipt-success-title">Payment recorded</h4>
                 <p class="receipt-success-amount" x-text="formatPeso(receiptModal.finalPrice)"></p>
                 <p class="receipt-success-label">Amount Paid</p>
                 <div class="receipt-success-reference">
@@ -1163,6 +1170,7 @@
                 <button
                   type="button"
                   @click="closeReceiptModal()"
+                  data-modal-initial-focus
                   class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white btn-confirm-payment"
                 >
                   Done
@@ -1175,13 +1183,15 @@
           <div
             x-cloak
             x-show="actionConfirmModal.open"
+            x-ref="groomingAction"
+            @pointerdown.self.prevent
             x-transition
             style="display:none"
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
-            @click.self="closeActionConfirmModal()"
-            @keydown.escape.window="actionConfirmModal.open && closeActionConfirmModal()"
+            @keydown.tab="trapGroomingModalFocus($event)"
+            @keydown.escape.stop.prevent
           >
-            <div class="admin-action-confirm-dialog w-full max-w-sm overflow-y-auto rounded-3xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="grooming-action-title" aria-describedby="grooming-action-message" @keydown.tab="trapGroomingModalFocus($event)" :class="{ 'admin-checkin-modal': actionConfirmModal.action === 'checkIn' }">
+            <div class="admin-action-confirm-dialog w-full max-w-sm overflow-y-auto rounded-3xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="grooming-action-title" aria-describedby="grooming-action-message" tabindex="-1" :class="{ 'admin-checkin-modal': actionConfirmModal.action === 'checkIn' }">
               <div class="admin-action-confirm-body px-6 py-5 text-center">
                 <div
                   class="admin-action-confirm-icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
@@ -1282,7 +1292,7 @@
                 <button
                   type="button"
                   @click="closeActionConfirmModal()"
-                  x-ref="groomingActionCancel"
+                  data-modal-initial-focus
                   :disabled="actionConfirmModal.busy"
                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
@@ -1305,12 +1315,14 @@
           <div
             x-cloak
             x-show="detailsModalOpen"
+            x-ref="groomingDetails"
+            @pointerdown.self.prevent
             x-transition
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
-            @click.self="closeDetailsModal()"
-            @keydown.escape.window="detailsModalOpen && closeDetailsModal()"
+            @keydown.tab="trapGroomingModalFocus($event)"
+            @keydown.escape.stop.prevent
           >
-            <div class="grooming-details-dialog rounded-3xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="grooming-details-title" @keydown.tab="trapGroomingModalFocus($event)">
+            <div class="grooming-details-dialog rounded-3xl bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="grooming-details-title" tabindex="-1">
 
               <!-- Header -->
               <div class="flex items-center justify-between bg-[#315b7e] px-6 py-4">
@@ -1322,7 +1334,7 @@
                     <span class="grooming-status" :data-tone="groomingCardTone(detailsBooking)" x-text="groomingStatusLabel(detailsBooking)"></span>
                   </div>
                 </div>
-                <button type="button" @click="closeDetailsModal()" x-ref="groomingDetailsClose" aria-label="Close Grooming Details" class="grooming-details-close text-white/70 hover:text-white">
+                <button type="button" @click="closeDetailsModal()" aria-label="Close Grooming Details" class="grooming-details-close text-white/70 hover:text-white">
                   <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                 </button>
               </div>
@@ -1509,16 +1521,19 @@
           <!-- Pickup Confirmation Modal -->
           <div
             x-show="pickupModal.open"
+            x-ref="groomingPickup"
+            @pointerdown.self.prevent
             style="display:none"
             class="pickup-confirm-overlay"
-            @click.self="pickupModal.open = false"
+            @keydown.tab="trapGroomingModalFocus($event)"
+            @keydown.escape.stop.prevent
           >
-            <div class="pickup-confirm-card">
+            <div class="pickup-confirm-card" role="dialog" aria-modal="true" aria-labelledby="grooming-pickup-title" tabindex="-1">
               <div style="padding:1.5rem;text-align:center">
                 <div class="pickup-confirm-icon-wrap">
                   <svg  style="width:1.75rem;height:1.75rem;color:#0e7490" class="ph-icon" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#package"></use></svg>
                 </div>
-                <h4 style="font-size:1.125rem;font-weight:700;color:#1e293b">Confirm Pickup</h4>
+                <h4 id="grooming-pickup-title" style="font-size:1.125rem;font-weight:700;color:#1e293b">Confirm Pickup</h4>
                 <p style="margin-top:0.5rem;font-size:0.875rem;color:#64748b">
                   Has
                   <span style="font-weight:600;color:#334155" x-text="pickupModal.booking?.ownerName"></span>
@@ -1578,6 +1593,6 @@
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025"></script>
   </body>
 </html>
