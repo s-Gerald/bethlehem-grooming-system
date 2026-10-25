@@ -91,6 +91,30 @@ class PetInformationVerificationInterfaceTest extends TestCase
         $this->assertStringNotContainsString('confirm(', $this->myPetsComponent);
     }
 
+    public function test_my_pets_modal_dialogs_have_accessible_names_and_internal_dismissal_controls(): void
+    {
+        $document = new \DOMDocument;
+        @$document->loadHTML($this->myPetsPage);
+        $xpath = new \DOMXPath($document);
+
+        foreach ([
+            ['petModal', 'dialog', 'petModalTitle', 'closePetModal'],
+            ['petConfirmationModal', 'alertdialog', 'petConfirmationTitle', 'cancelPetConfirmation'],
+        ] as [$id, $role, $titleId, $dismissId]) {
+            $modal = $document->getElementById($id);
+            $this->assertNotNull($modal);
+            $this->assertSame($role, $modal->getAttribute('role'));
+            $this->assertSame('true', $modal->getAttribute('aria-modal'));
+            $this->assertSame($titleId, $modal->getAttribute('aria-labelledby'));
+            $this->assertNotNull($document->getElementById($titleId));
+            $dismiss = $xpath->query('.//*[@id="'.$dismissId.'"]', $modal)->item(0);
+            $this->assertInstanceOf(\DOMElement::class, $dismiss);
+            $this->assertSame('button', $dismiss->tagName);
+            $this->assertSame('button', $dismiss->getAttribute('type'));
+            $this->assertFalse($dismiss->hasAttribute('disabled'));
+        }
+    }
+
     public function test_my_pets_prevents_duplicate_names_across_active_and_archived_pets(): void
     {
         $petController = file_get_contents(base_path('app/Http/Controllers/PetController.php'));

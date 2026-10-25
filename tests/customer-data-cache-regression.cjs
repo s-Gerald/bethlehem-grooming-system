@@ -9,6 +9,8 @@ const pets = { success: true, pets: [{ pet_id: 1, pet_name: "Mochi", species: "D
 const profile = { user: { user_id: 1, first_name: "Test", last_name: "Customer", role: "customer" } };
 const bookings = { bookings: [], history: [], history_total: 0 };
 let healthRecordTools;
+let petWeightTools;
+let normalizePetSize;
 
 class Storage {
   constructor() { this.values = new Map(); }
@@ -263,12 +265,35 @@ function mountPage(env, page) {
   const elements = new Map(), idle = [], ready = [], intervals = [];
   function element(id) {
     if (elements.has(id)) return elements.get(id);
-    const hidden = ["petsContent", "historyContent", "settingsContent"].includes(id);
+    const hidden = ["petsContent", "historyContent", "settingsContent", "petModal", "petConfirmationModal"].includes(id);
     const classes = new Set(hidden ? ["hidden"] : []);
-    const attributes = new Map(hidden ? [["inert", ""], ["aria-hidden", "true"]] : []);
+    const attributes = new Map(hidden && !["petModal", "petConfirmationModal"].includes(id) ? [["inert", ""], ["aria-hidden", "true"]] : []);
     const events = new Map();
+    let markup = "";
     const node = {
-      id, value: id === "historyServiceFilter" ? "all" : "", innerHTML: "", textContent: "", style: {}, dataset: {},
+      id, value: id === "historyServiceFilter" ? "all" : "", textContent: "", style: {}, dataset: {},
+      get innerHTML() { return markup; },
+      set innerHTML(value) {
+        markup = value;
+        if (id === "petsGrid") for (const [key, child] of elements) {
+          if (/^(edit|archive|unarchive)-/.test(key)) { child.isConnected = false; elements.delete(key); }
+        }
+      },
+      isConnected: true, tabIndex: 0, scrollTop: 0,
+      get inert() { return attributes.has("inert"); },
+      set inert(value) { if (value) attributes.set("inert", ""); else attributes.delete("inert"); },
+      get ownerDocument() { return context.document; },
+      get parentElement() {
+        if (["petModal", "petConfirmationModal", "petsPageShell"].includes(id)) return element("body");
+        if (["petConfirmationCard", "cancelPetConfirmation", "confirmPetAction"].includes(id)) return element("petConfirmationModal");
+        if ((/^pet/.test(id) && !["petSearch", "petsGrid", "petsContent", "petsLoadingScreen", "petsLoadingMessage"].includes(id)) || id === "closePetModal") return element("petModal");
+        return id === "body" ? null : element("petsPageShell");
+      },
+      contains(target) { return target === node || Boolean(target?.parentElement && node.contains(target.parentElement)); },
+      closest(selector) { return selector === "[inert]" && node.inert ? node : node.parentElement?.closest(selector); },
+      matches: () => Boolean(node.disabled),
+      getClientRects: () => node.classList.contains("hidden") ? [] : [{}],
+      focus() { if (!node.disabled && !node.closest("[inert]")) context.document.activeElement = node; },
       classList: {
         add: (...names) => names.forEach((name) => classes.add(name)),
         remove: (...names) => names.forEach((name) => classes.delete(name)),
@@ -278,19 +303,41 @@ function mountPage(env, page) {
       setAttribute: (name, value) => attributes.set(name, value),
       removeAttribute: (name) => attributes.delete(name),
       hasAttribute: (name) => attributes.has(name),
-      querySelectorAll: () => [],
+      querySelectorAll(selector) {
+        if (id === "petsGrid") {
+          const attribute = selector.match(/^\[data-(edit|archive|unarchive)\]$/)?.[1];
+          return attribute ? [...node.innerHTML.matchAll(new RegExp(`data-${attribute}="(\\d+)"`, "g"))].map((match) => {
+            const button = element(`${attribute}-${match[1]}`);
+            button.dataset[attribute] = match[1];
+            return button;
+          }) : [];
+        }
+        if (id === "petModal") return ["closePetModal", "petName", "petFormSubmit"].map(element);
+        if (id === "petConfirmationModal") return ["cancelPetConfirmation", "confirmPetAction"].map(element);
+        return [];
+      },
       querySelector: () => null,
-      addEventListener: (name, callback) => events.set(name, callback),
-      dispatch: (name) => events.get(name)?.(),
+      addEventListener(name, callback) { events.set(name, [...(events.get(name) || []), callback]); },
+      async dispatch(name, details = {}) {
+        const event = { target: node, currentTarget: node, preventDefault() { this.defaultPrevented = true; }, ...details };
+        await Promise.all((events.get(name) || []).map(callback => callback(event)));
+        for (const callback of documentEvents.get(name) || []) callback(event);
+        return event;
+      },
     };
     elements.set(id, node);
     return node;
   }
   const context = browser.context;
+  const documentEvents = new Map();
   context.document = {
     getElementById: element, querySelectorAll: () => [], body: element("body"), visibilityState: "visible",
-    addEventListener: (name, callback) => { if (name === "DOMContentLoaded") ready.push(callback); },
+    addEventListener(name, callback) {
+      if (name === "DOMContentLoaded") ready.push(callback);
+      else documentEvents.set(name, [...(documentEvents.get(name) || []), callback]);
+    },
   };
+  context.HTMLElement = Object;
   context.window.location.search = "";
   context.window.matchMedia = () => ({ matches: false, addEventListener() {} });
   context.window.requestIdleCallback = (callback) => idle.push(callback);
@@ -299,9 +346,13 @@ function mountPage(env, page) {
   context.window.setTimeout = (callback) => idle.push(callback);
   context.setInterval = context.window.setInterval;
   context.window.ClientNotificationUI = { ensureDropdownControls: () => () => "all", setUnreadCount() {}, render() {} };
-  const combobox = () => ({ setValue() {}, reset() {}, update() {}, setOptions() {}, setDisabled() {}, getValue: () => "" });
+  const combobox = ({ input }) => ({
+    setValue(value) { input.value = value; }, reset() { input.value = ""; }, update() {}, setOptions() {},
+    setDisabled(value) { input.disabled = value; }, getValue: () => input.value, getValidationMessage: () => "", showValidation() {},
+  });
   Object.assign(context, {
     ...healthRecordTools,
+    ...petWeightTools, normalizePetSize, syncWeightSizeFields: petWeightTools?.syncPetWeightAndSize,
     createBreedCombobox: combobox, createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
     breedCoatCatalogueReady: Promise.resolve(), URLSearchParams,
   });
@@ -320,7 +371,7 @@ function mountPage(env, page) {
   }
   vm.runInContext(script, context);
   ready.forEach((callback) => callback());
-  return { element, idle, intervals, API: browser.API };
+  return { element, idle, intervals, API: browser.API, document: context.document };
 }
 
 async function testActualPageLoaders() {
@@ -395,10 +446,145 @@ async function testActualPageLoaders() {
   assert.match(dashboard.element("appointmentsList").innerHTML, /Updated appointment/);
 }
 
+async function testMyPetsStaticModalsAndWorkflows() {
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  const env = environment();
+  const activePet = { ...pets.pets[0], breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"] };
+  const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
+  const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
+    ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
+  env.respond(petResponse);
+  const ui = mountPage(env, "my-pets.html");
+  await flush();
+  const el = ui.element;
+  const form = el("petModal"), confirmation = el("petConfirmationModal");
+  const open = modal => !modal.classList.contains("hidden");
+  const writes = () => env.calls.filter(call => call.method !== "GET");
+
+  async function accidentalDismissal(modal) {
+    const callsBefore = env.calls.length;
+    const pointer = await modal.dispatch("pointerdown");
+    await modal.dispatch("click");
+    await modal.dispatch("keydown", { key: "Escape" });
+    assert.equal(open(modal), true, `${modal.id} must survive outside clicks and Escape`);
+    assert.equal(env.calls.length, callsBefore, "Accidental interactions must not fetch or mutate data");
+    assert.equal(pointer.defaultPrevented, true, "Backdrop pointerdown must preserve focus and scroll");
+  }
+
+  el("addPetBtn").focus();
+  await el("addPetBtn").dispatch("click");
+  el("petName").value = "New pet";
+  el("petWeight").value = "-1";
+  await el("petForm").dispatch("submit");
+  const validation = el("petFormError").textContent;
+  assert.match(validation, /greater than 0/);
+  form.scrollTop = 120;
+  await accidentalDismissal(form);
+  assert.equal(el("petName").value, "New pet");
+  assert.equal(el("petSpecies").value, "Dog");
+  assert.equal(el("petFormError").textContent, validation);
+  assert.equal(form.scrollTop, 120);
+  assert.equal(el("petsPageShell").inert, true);
+  el("petSearch").focus();
+  assert.equal(ui.document.activeElement, el("closePetModal"), "Background controls cannot take focus");
+  await form.dispatch("keydown", { key: "Tab", shiftKey: true });
+  assert.equal(ui.document.activeElement, el("petFormSubmit"));
+  await form.dispatch("keydown", { key: "Tab" });
+  assert.equal(ui.document.activeElement, el("closePetModal"));
+  await el("closePetModal").dispatch("click");
+  assert.equal(open(form), false);
+  assert.equal(el("petsPageShell").inert, false);
+  assert.equal(ui.document.activeElement, el("addPetBtn"));
+
+  await el("addPetBtn").dispatch("click");
+  el("petName").value = "New pet";
+  el("petWeight").value = "5";
+  el("petFormSubmit").focus();
+  const pendingSave = deferred();
+  env.respond((endpoint, options) => endpoint === "/pets" && options.method === "POST" ? pendingSave.promise : petResponse(endpoint));
+  const creating = el("petForm").dispatch("submit");
+  await flush();
+  assert.equal(form.contains(ui.document.activeElement) && !ui.document.activeElement.disabled, true,
+    "Saving must keep focus on an enabled control inside the form");
+  pendingSave.resolve({ success: true });
+  await creating;
+  env.respond(petResponse);
+  assert.equal(open(form), false, "Successful Add Pet still closes the form");
+  assert.equal(writes().at(-1).endpoint, "/pets");
+
+  el("edit-1").focus();
+  await el("edit-1").dispatch("click");
+  el("petName").value = "Edited pet";
+  el("petWeight").value = "6";
+  await accidentalDismissal(form);
+  el("petFormSubmit").focus();
+  let saving = el("petForm").dispatch("submit");
+  await flush();
+  assert.equal(open(confirmation), true, "Verified edits require the existing confirmation");
+  const beforeCancel = writes().length;
+  await accidentalDismissal(confirmation);
+  assert.equal(form.inert, true, "Only the topmost modal is interactive");
+  el("petName").focus();
+  assert.equal(confirmation.contains(ui.document.activeElement), true);
+  el("confirmPetAction").focus();
+  await confirmation.dispatch("keydown", { key: "Tab" });
+  assert.equal(ui.document.activeElement, el("cancelPetConfirmation"));
+  await confirmation.dispatch("keydown", { key: "Tab", shiftKey: true });
+  assert.equal(ui.document.activeElement, el("confirmPetAction"));
+  await el("cancelPetConfirmation").dispatch("click");
+  await saving;
+  assert.equal(open(confirmation), false);
+  assert.equal(open(form), true);
+  assert.equal(form.inert, false);
+  assert.equal(el("petsPageShell").inert, true);
+  assert.equal(ui.document.activeElement, el("petFormSubmit"));
+  assert.equal(el("petName").value, "Edited pet");
+  assert.equal(el("petWeight").value, "6");
+  assert.equal(writes().length, beforeCancel, "Cancel must resolve without saving");
+  saving = el("petForm").dispatch("submit");
+  await flush();
+  await el("confirmPetAction").dispatch("click");
+  await saving;
+  assert.equal(open(form), false, "Save Changes still completes the update");
+  assert.equal(writes().at(-1).endpoint, "/pets/1");
+
+  for (const [button, endpoint] of [["archive-1", "/pets/1/archive"], ["unarchive-2", "/pets/2/unarchive"]]) {
+    if (button === "unarchive-2") { await el("filterArchivedBtn").dispatch("click"); await flush(); }
+    el(button).focus();
+    let action = el(button).dispatch("click");
+    await flush();
+    await accidentalDismissal(confirmation);
+    const before = writes().length;
+    await el("cancelPetConfirmation").dispatch("click");
+    await action;
+    assert.equal(writes().length, before);
+    assert.equal(ui.document.activeElement, el(button));
+    action = el(button).dispatch("click");
+    await flush();
+    await el("confirmPetAction").dispatch("click");
+    await action;
+    assert.equal(writes().at(-1).endpoint, endpoint);
+    assert.equal(open(confirmation), false);
+    assert.equal(el("petsPageShell").inert, false);
+  }
+  el("notifDropdown").style.display = "flex";
+  await el("petSearch").dispatch("click");
+  assert.equal(el("notifDropdown").style.display, "none", "Notification outside-click dismissal remains active");
+}
+
 async function main() {
   healthRecordTools = await import('../scripts/components/customer-health-records.js');
-  for (const test of [testCrossDocumentFlowAndColdMiss, testRevalidationAndFailure, testDeduplicationAndRaces, testInvalidation, testSessionIsolationAndFreshness, testExcludedDataAndStorageFailure, testActualPageLoaders]) {
-    await test();
+  petWeightTools = await import('../scripts/components/pet-weight-size.js');
+  ({ normalizePetSize } = await import('../scripts/services/booking-draft-service.js'));
+  for (const test of [testCrossDocumentFlowAndColdMiss, testRevalidationAndFailure, testDeduplicationAndRaces, testInvalidation, testSessionIsolationAndFreshness, testExcludedDataAndStorageFailure, testActualPageLoaders, testMyPetsStaticModalsAndWorkflows]) {
+    let timeout;
+    try {
+      await Promise.race([test(), new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${test.name} did not settle`)), 5000);
+      })]);
+    } finally {
+      clearTimeout(timeout);
+    }
     console.log(`${test.name} passed`);
   }
 }

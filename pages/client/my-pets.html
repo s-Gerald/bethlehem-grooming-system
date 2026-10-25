@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="../../css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001" />
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
-    <div class="min-h-screen flex">
+    <div id="petsPageShell" class="min-h-screen flex">
 
       <button
         type="button"
@@ -233,7 +233,8 @@
     </div>
 
     <!-- Pet Modal (Add / Edit) -->
-    <div id="petModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4">
+    <div id="petModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4"
+      role="dialog" aria-modal="true" aria-labelledby="petModalTitle">
       <div class="w-full max-w-lg rounded-portal border border-portal-border bg-white shadow-2xl overflow-y-auto max-h-[90vh]">
         <div class="flex items-center justify-between px-6 pt-6 pb-4 border-b border-portal-border">
           <h3 id="petModalTitle" class="text-xl font-bold text-portal-text">Add Pet</h3>
@@ -451,7 +452,7 @@
 
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261022&auth-races=20261024&security=single-session-20261025"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
-    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3"></script>
+    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3&modal=static-20261025"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261022"></script>
   </body>
 </html>

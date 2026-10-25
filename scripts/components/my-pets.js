@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let notificationsLoading = false;
   let notificationsLoaded = false;
   let editingPet = null;
+  let petModalReturnFocus = null;
   let confirmationResolver = null;
   let confirmationReturnFocus = null;
 
@@ -59,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const filterArchivedBtn= document.getElementById("filterArchivedBtn");
   const addPetBtn        = document.getElementById("addPetBtn");
   const petModal         = document.getElementById("petModal");
+  const petsPageShell    = document.getElementById("petsPageShell");
   const closePetModal    = document.getElementById("closePetModal");
   const petForm          = document.getElementById("petForm");
   const petModalTitle    = document.getElementById("petModalTitle");
@@ -620,29 +622,56 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showModal() {
+    petModalReturnFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    petsPageShell.inert = true;
     petModal.classList.remove("hidden");
     petModal.classList.add("flex");
+    closePetModal.focus({ preventScroll: true });
   }
 
   function closeModal() {
     petModal.classList.add("hidden");
     petModal.classList.remove("flex");
     editingPet = null;
+    petsPageShell.inert = !petConfirmationModal.classList.contains("hidden");
+    const returnFocus = petModalReturnFocus;
+    petModalReturnFocus = null;
+    if (returnFocus?.isConnected && !returnFocus.disabled) {
+      returnFocus.focus({ preventScroll: true });
+    } else {
+      addPetBtn.focus({ preventScroll: true });
+    }
+  }
+
+  function trapPetModalFocus(event) {
+    if (event.key !== "Tab" || event.defaultPrevented) return;
+    const controls = [...event.currentTarget.querySelectorAll(
+      "button, input, select, textarea, a[href], [tabindex]",
+    )].filter((element) => element.tabIndex >= 0 && !element.matches(":disabled")
+      && !element.closest("[inert]") && element.getClientRects().length);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement))) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement))) {
+      event.preventDefault();
+      first?.focus();
+    }
   }
 
   addPetBtn.addEventListener("click", openAddModal);
   closePetModal.addEventListener("click", closeModal);
-  petModal.addEventListener("click", (e) => { if (e.target === petModal) closeModal(); });
   cancelPetConfirmation.addEventListener("click", () => resolvePetConfirmation(false));
   confirmPetAction.addEventListener("click", () => resolvePetConfirmation(true));
-  petConfirmationModal.addEventListener("click", (event) => {
-    if (event.target === petConfirmationModal) resolvePetConfirmation(false);
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !petConfirmationModal.classList.contains("hidden")) {
-      resolvePetConfirmation(false);
-    }
-  });
+  for (const modal of [petModal, petConfirmationModal]) {
+    modal.addEventListener("pointerdown", (event) => {
+      if (event.target === modal) event.preventDefault();
+    });
+    modal.addEventListener("keydown", trapPetModalFocus);
+  }
   petSpecies.addEventListener("change", () => {
     syncWeightAndSize({ clearManualSize: true });
     validateWeightOnCommit();
@@ -708,6 +737,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     petFormSubmit.disabled = true;
     petFormSubmit.textContent = "Saving...";
+    if (document.activeElement === petFormSubmit) {
+      closePetModal.focus({ preventScroll: true });
+    }
 
     try {
       if (id) {
@@ -786,10 +818,12 @@ document.addEventListener("DOMContentLoaded", () => {
     petConfirmationDetails.textContent = details;
     petConfirmationDetails.classList.toggle("hidden", !details);
     confirmPetAction.textContent = confirmLabel;
+    petsPageShell.inert = true;
+    petModal.inert = !petModal.classList.contains("hidden");
     petConfirmationModal.classList.remove("hidden");
     petConfirmationModal.classList.add("flex");
 
-    window.setTimeout(() => petConfirmationCard.focus(), 0);
+    petConfirmationCard.focus({ preventScroll: true });
 
     return new Promise((resolve) => {
       confirmationResolver = resolve;
@@ -805,8 +839,13 @@ document.addEventListener("DOMContentLoaded", () => {
     confirmationReturnFocus = null;
     petConfirmationModal.classList.add("hidden");
     petConfirmationModal.classList.remove("flex");
+    petModal.inert = false;
+    const editing = !petModal.classList.contains("hidden");
+    petsPageShell.inert = editing;
+    const fallbackFocus = editing ? petFormSubmit : addPetBtn;
+    (returnFocus?.isConnected && !returnFocus.disabled ? returnFocus : fallbackFocus)
+      .focus({ preventScroll: true });
     resolve(confirmed);
-    window.setTimeout(() => returnFocus?.focus(), 0);
   }
 
   function isClinicVerified(pet, field) {
