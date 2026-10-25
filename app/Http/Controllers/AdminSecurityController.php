@@ -218,12 +218,7 @@ class AdminSecurityController extends Controller
             ],
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
-            'email' => [
-                'required',
-                'email:rfc',
-                'regex:/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/',
-                'max:150',
-            ],
+            'email' => PendingStaffAccountService::emailRules(),
         ]);
 
         try {
@@ -324,6 +319,42 @@ class AdminSecurityController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Role updated successfully',
+            'staff' => $this->accountPayload($updated),
+        ]);
+    }
+
+    public function correctStaffSetupEmail(Request $request, User $staff, PendingStaffAccountService $staffAccounts)
+    {
+        $unexpected = array_diff(array_keys($request->all()), ['email', 'current_password']);
+        if ($unexpected) {
+            throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
+        }
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => Str::lower(trim($request->input('email')))]);
+        }
+        $data = $request->validate([
+            'email' => PendingStaffAccountService::emailRules(),
+            'current_password' => ['required', 'string'],
+        ], [
+            'email.required' => 'Enter a valid email address.',
+            'email.email' => 'Enter a valid email address.',
+            'email.regex' => 'Enter a valid email address.',
+            'email.max' => 'Use an email address of 150 characters or fewer.',
+            'current_password.required' => 'Enter your admin password.',
+        ]);
+
+        try {
+            $updated = $staffAccounts->correctEmail($request->user(), $staff, $data['email'], $data['current_password']);
+        } catch (ValidationException | \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['success' => false, 'message' => 'The setup email could not be queued. Please try again.'], 503);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Setup email queued for {$updated->email}.",
             'staff' => $this->accountPayload($updated),
         ]);
     }

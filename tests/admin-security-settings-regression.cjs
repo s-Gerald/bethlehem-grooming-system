@@ -69,7 +69,7 @@ global.API = {
           email: "clinic.staff.test@gmail.com",
           staff_type: "clinic",
           staff_subrole: "veterinarian",
-          is_active: true,
+          is_active: false,
           is_archived: false,
           password_setup_required: true,
         },
@@ -471,6 +471,115 @@ vm.runInThisContext(componentSource, {
   settings.staffDetailsModal.selectedRole = "veterinarian";
   settings.changeStaffRole();
   assert.equal(settings.staffRoleChangePending, true);
+
+  const emailStaff = settings.staffAccounts[1];
+  settings.openStaffDetails(settings.staffAccounts[0]);
+  settings.openStaffEmailCorrection();
+  assert.equal(settings.staffDetailsModal.view, "details");
+  settings.openStaffDetails({ ...emailStaff, archived: true });
+  settings.openStaffEmailCorrection();
+  assert.equal(settings.staffDetailsModal.view, "details");
+  settings.openStaffDetails(emailStaff);
+  settings.openStaffEmailCorrection();
+  assert.equal(settings.staffDetailsModal.view, "email");
+  assert.equal(settings.staffEmailCorrection.email, "");
+  assert.equal(focusedFields.at(-1), "staffNewEmail");
+  assert.equal(settings.canSubmitStaffEmailCorrection, false);
+  settings.staffEmailCorrection.email = "invalid@-domain..com";
+  settings.staffEmailCorrection.password = "CurrentAdmin!234";
+  settings.validateStaffEmailField("email");
+  assert.match(settings.staffEmailCorrection.errors.email, /valid email/);
+  await settings.submitStaffEmailCorrection();
+  assert.match(settings.staffEmailCorrection.errors.email, /valid email/);
+  settings.staffEmailCorrection.email = ` ${emailStaff.email.toUpperCase()} `;
+  assert.equal(settings.canSubmitStaffEmailCorrection, false);
+  await settings.submitStaffEmailCorrection();
+  assert.match(settings.staffEmailCorrection.errors.email, /different/);
+  settings.staffEmailCorrection.email = "corrected@example.test";
+  settings.staffEmailCorrection.password = "";
+  await settings.submitStaffEmailCorrection();
+  assert.match(settings.staffEmailCorrection.errors.current_password, /password/);
+  settings.staffEmailCorrection.password = "discard";
+  settings.cancelStaffEmailCorrection();
+  assert.equal(settings.staffDetailsModal.open, true);
+  assert.equal(settings.staffDetailsModal.view, "details");
+  assert.equal(settings.staffEmailCorrection.password, "");
+  assert.equal(focusedFields.at(-1), "staffChangeEmail");
+
+  settings.openStaffEmailCorrection();
+  settings.staffEmailCorrection.email = "corrected@example.test";
+  settings.staffEmailCorrection.password = "wrong";
+  API.correctStaffSetupEmail = async () => { throw { errors: { current_password: ["The admin password is incorrect."] } }; };
+  await settings.submitStaffEmailCorrection();
+  assert.match(settings.staffEmailCorrection.errors.current_password, /incorrect/);
+  assert.equal(settings.staffEmailCorrection.password, "");
+  assert.equal(settings.staffEmailCorrection.email, "corrected@example.test");
+  assert.equal(settings.staffDetailsModal.view, "email");
+  settings.staffEmailCorrection.password = "CurrentAdmin!234";
+  API.correctStaffSetupEmail = async () => { throw { message: "The setup email could not be queued. Please try again." }; };
+  await settings.submitStaffEmailCorrection();
+  assert.match(settings.staffEmailCorrection.error, /could not be queued/);
+  assert.equal(settings.staffEmailCorrection.email, "corrected@example.test");
+  assert.equal(emailStaff.email, "clinic.staff.test@gmail.com");
+
+  const realAccounts = API.getAdminSecurityAccounts;
+  let finishList;
+  API.getAdminSecurityAccounts = () => new Promise(resolve => { finishList = resolve; });
+  const staleList = settings.loadSecurityAccounts();
+  let finishEmail;
+  API.correctStaffSetupEmail = (id, email, password) => {
+    calls.push(["staff-email", id, email, password]);
+    return new Promise(resolve => { finishEmail = resolve; });
+  };
+  settings.staffEmailCorrection.password = "CurrentAdmin!234";
+  assert.equal(settings.canSubmitStaffEmailCorrection, true);
+  settings.staffEmailCorrection.errors.email = "That email address is already in use.";
+  assert.equal(settings.canSubmitStaffEmailCorrection, false);
+  delete settings.staffEmailCorrection.errors.email;
+  const sendingEmail = settings.submitStaffEmailCorrection();
+  await settings.submitStaffEmailCorrection();
+  settings.cancelStaffEmailCorrection();
+  settings.closeStaffDetails();
+  settings.openStaffDetails(settings.staffAccounts[0]);
+  assert.equal(settings.staffDetailsModal.staff.id, emailStaff.id);
+  assert.equal(settings.staffDetailsModal.view, "email");
+  assert.equal(settings.staffDetailsModal.busy, true);
+  assert.equal(calls.filter(call => call[0] === "staff-email").length, 1);
+  assert.deepEqual(calls.at(-1), ["staff-email", emailStaff.id, "corrected@example.test", "CurrentAdmin!234"]);
+  const toastCount = toasts.length;
+  finishEmail({ message: "Setup email queued for corrected@example.test.", staff: {
+    user_id: emailStaff.id, first_name: "Pending", last_name: "Staff", username: null,
+    email: "corrected@example.test", staff_type: "clinic", staff_subrole: "veterinarian",
+    is_active: false, is_archived: false, password_setup_required: true, setup_link_expired: false,
+  } });
+  await sendingEmail;
+  assert.equal(settings.staffDetailsModal.view, "details");
+  assert.equal(settings.staffDetailsModal.open, true);
+  assert.equal(settings.staffDetailsModal.staff.email, "corrected@example.test");
+  assert.equal(settings.staffAccounts[1].email, "corrected@example.test");
+  assert.equal(settings.staffAccounts[1].statusLabel, "Pending setup");
+  assert.equal(settings.staffEmailCorrection.password, "");
+  assert.equal(toasts.length, toastCount + 1);
+  assert.equal(toasts.at(-1), "Setup email queued for corrected@example.test.");
+  finishList(await realAccounts());
+  await staleList;
+  assert.equal(settings.staffAccounts[1].email, "corrected@example.test");
+  assert.equal(settings.staffLoading, false);
+  API.getAdminSecurityAccounts = realAccounts;
+
+  const firstControl = { getClientRects: () => [1], focus() { document.activeElement = this; } };
+  const lastControl = { getClientRects: () => [1], focus() { document.activeElement = this; } };
+  const hiddenControl = { getClientRects: () => [], focus() { assert.fail("Hidden controls must not receive focus"); } };
+  let prevented = 0;
+  const focusEvent = { currentTarget: { querySelectorAll: () => [firstControl, hiddenControl, lastControl] }, preventDefault() { prevented++; }, shiftKey: false };
+  document.activeElement = lastControl;
+  settings.trapStaffDetailsFocus(focusEvent);
+  assert.equal(document.activeElement, firstControl);
+  focusEvent.shiftKey = true;
+  settings.trapStaffDetailsFocus(focusEvent);
+  assert.equal(document.activeElement, lastControl);
+  assert.equal(prevented, 2);
+  document.activeElement = null;
 
   settings.openAddStaffAccount();
   settings.chooseStaffType("grooming");

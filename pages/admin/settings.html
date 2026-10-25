@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qr-ux-20261023&profile=20261024" />
+    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qr-ux-20261023&profile=20261024" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-methods" />
@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025" />
+    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -131,7 +131,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025"></script>
+      <script src="../../scripts/api.js?pending-email=20261025&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024"></script>
 
       <!-- Main Content -->
@@ -1251,18 +1251,18 @@
               <!-- Staff account details modal -->
               <template x-teleport="body">
                 <div x-cloak x-show="staffDetailsModal.open" x-transition.opacity class="fixed inset-0 flex items-center justify-center px-4 py-6" style="z-index: 10000; background-color: rgba(15, 23, 42, 0.65)" @click.self="closeStaffDetails()">
-                  <div class="flex w-full max-w-md flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" style="max-height: calc(100dvh - 3rem)" role="dialog" aria-modal="true" aria-labelledby="staffDetailsTitle" :aria-busy="staffDetailsModal.busy">
+                  <div class="flex w-full max-w-md flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" style="max-height: calc(100dvh - 3rem)" role="dialog" aria-modal="true" aria-labelledby="staffDetailsTitle" :aria-busy="staffDetailsModal.busy" @keydown.tab="trapStaffDetailsFocus($event)">
                     <div class="flex shrink-0 items-start justify-between gap-4 border-b border-[#e8f0f8] px-5 py-5 sm:px-6">
                       <div class="flex items-center gap-3">
                         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg></div>
-                        <div><h3 id="staffDetailsTitle" class="text-xl font-bold text-[#1f3850]">Staff account details</h3><p class="mt-1 text-sm text-slate-500">Account information</p></div>
+                        <div class="min-w-0"><h3 id="staffDetailsTitle" class="text-xl font-bold text-[#1f3850]" x-text="staffDetailsModal.view === 'email' ? 'Change Staff Email' : 'Staff account details'">Staff account details</h3><p class="mt-1 break-words text-sm text-slate-500" x-text="staffDetailsModal.view === 'email' ? staffDetailsModal.staff?.fullName : 'Account information'">Account information</p></div>
                       </div>
-                      <button type="button" @click="closeStaffDetails()" :disabled="staffDetailsModal.busy" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60" aria-label="Close staff account details"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
+                      <button id="staffDetailsClose" type="button" @click="closeStaffDetails()" :disabled="staffDetailsModal.busy" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60" aria-label="Close staff account details"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
                     </div>
-                    <dl class="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                    <dl id="staffDetailsBody" x-show="staffDetailsModal.view === 'details'" class="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
                       <div><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Staff name</dt><dd class="mt-1 text-sm font-semibold text-[#1f3850]" x-text="staffDetailsModal.staff?.fullName"></dd></div>
                       <div x-show="!staffDetailsModal.staff?.setupRequired && staffDetailsModal.staff?.username"><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Username</dt><dd class="mt-1 text-sm font-semibold text-[#1f3850]" x-text="staffDetailsModal.staff?.username || ''"></dd></div>
-                      <div><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Email</dt><dd class="mt-1 break-all text-sm font-semibold text-[#1f3850]" x-text="staffDetailsModal.staff?.email"></dd></div>
+                      <div><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Email</dt><dd class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-[#1f3850]"><span class="min-w-0 break-all" x-text="staffDetailsModal.staff?.email"></span><button id="staffChangeEmail" x-show="canCorrectStaffEmail" type="button" @click="openStaffEmailCorrection()" :disabled="staffDetailsModal.busy || Boolean(staffSetupBusyId)" class="shrink-0 rounded text-sm font-semibold text-[#315b7e] underline decoration-[#c9d9e8] underline-offset-4 transition hover:text-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60">Change Email</button></dd></div>
                       <div>
                         <dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500"><label for="staffDetailsRole">Role</label></dt>
                         <dd class="mt-1">
@@ -1292,7 +1292,7 @@
                       <div><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Status</dt><dd class="mt-2"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="staffDetailsModal.staff?.statusClass" x-text="staffDetailsModal.staff?.statusLabel"></span></dd></div>
                       <p x-show="staffDetailsModal.staff?.setupLinkExpired" class="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">The setup link has expired. Send a new setup email to continue.</p>
                     </dl>
-                    <div class="flex shrink-0 flex-wrap items-center gap-2 border-t border-[#e8f0f8] px-5 py-4 sm:px-6">
+                    <div x-show="staffDetailsModal.view === 'details'" class="flex shrink-0 flex-wrap items-center gap-2 border-t border-[#e8f0f8] px-5 py-4 sm:px-6">
                       <template x-if="staffDetailsModal.staff?.setupRequired">
                         <div class="flex flex-wrap gap-2">
                           <button type="button" @click="resendStaffSetup(staffDetailsModal.staff)" :disabled="staffDetailsModal.busy || staffSetupBusyId === staffDetailsModal.staff?.id" class="rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] disabled:opacity-60">Resend Setup Email</button>
@@ -1309,6 +1309,34 @@
                         <button x-cloak x-show="staffRoleChangePending" type="button" @click="saveStaffRoleChange()" :disabled="staffDetailsModal.busy || !staffDetailsModal.password" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:opacity-60" x-text="staffDetailsModal.busy ? 'Saving...' : 'Save Changes'"></button>
                       </div>
                     </div>
+                    <form x-cloak x-show="staffDetailsModal.view === 'email'" @submit.prevent="submitStaffEmailCorrection()" novalidate class="flex min-h-0 flex-col">
+                      <div class="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                        <button type="button" @click="cancelStaffEmailCorrection()" :disabled="staffDetailsModal.busy" class="rounded text-sm font-semibold text-[#315b7e] transition hover:text-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60">Back to details</button>
+                        <div><p class="mb-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Current email</p><p class="break-all text-sm font-semibold text-[#1f3850]" x-text="staffDetailsModal.staff?.email"></p></div>
+                        <div>
+                          <label for="staffNewEmail" class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">New email</label>
+                          <input id="staffNewEmail" type="email" x-model="staffEmailCorrection.email" @blur="validateStaffEmailField('email')" @input="delete staffEmailCorrection.errors.email; staffEmailCorrection.error = ''" :disabled="staffDetailsModal.busy" :aria-invalid="Boolean(staffEmailCorrection.errors.email)" aria-describedby="staffNewEmailError" required maxlength="150" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Enter the new email address" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" />
+                          <p id="staffNewEmailError" x-show="staffEmailCorrection.errors.email" x-text="staffEmailCorrection.errors.email" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p>
+                        </div>
+                        <div>
+                          <label for="staffEmailAdminPassword" class="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Admin password</label>
+                          <div class="relative">
+                            <input id="staffEmailAdminPassword" :type="staffEmailCorrection.showPassword ? 'text' : 'password'" x-model="staffEmailCorrection.password" @blur="validateStaffEmailField('current_password')" @input="delete staffEmailCorrection.errors.current_password; staffEmailCorrection.error = ''" :disabled="staffDetailsModal.busy" :aria-invalid="Boolean(staffEmailCorrection.errors.current_password)" aria-describedby="staffEmailPasswordError" required placeholder="Enter your password" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" />
+                            <button type="button" @click="staffEmailCorrection.showPassword = !staffEmailCorrection.showPassword" :disabled="staffDetailsModal.busy" :aria-label="staffEmailCorrection.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffEmailCorrection.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-xl text-slate-400 transition hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]">
+                              <svg x-show="!staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                              <svg x-show="staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                            </button>
+                          </div>
+                          <p id="staffEmailPasswordError" x-show="staffEmailCorrection.errors.current_password" x-text="staffEmailCorrection.errors.current_password" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p>
+                        </div>
+                        <p class="text-sm text-slate-500">A new setup link will replace the previous one.</p>
+                        <p x-show="staffEmailCorrection.error" x-text="staffEmailCorrection.error" class="text-sm font-semibold text-red-600" role="alert"></p>
+                      </div>
+                      <div class="flex shrink-0 flex-col-reverse gap-2 border-t border-[#e8f0f8] px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+                        <button type="button" @click="cancelStaffEmailCorrection()" :disabled="staffDetailsModal.busy" class="whitespace-nowrap rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60">Cancel</button>
+                        <button type="submit" :disabled="!canSubmitStaffEmailCorrection" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60" x-text="staffDetailsModal.busy ? 'Sending...' : 'Update & Send Setup Email'"></button>
+                      </div>
+                    </form>
                   </div>
                 </div>
               </template>
@@ -1556,6 +1584,6 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/components/admin-settings.js?services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024"></script>
+    <script src="../../scripts/components/admin-settings.js?pending-email=20261025&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024"></script>
   </body>
 </html>

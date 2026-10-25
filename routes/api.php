@@ -317,6 +317,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
             ->middleware('throttle:10,1');
         Route::post('/admin/security/staff/{staff}/setup-email', [AdminSecurityController::class, 'resendStaffSetupEmail'])
             ->middleware('throttle:3,10');
+        Route::patch('/admin/security/staff/{staff}/setup-email', [AdminSecurityController::class, 'correctStaffSetupEmail'])
+            ->middleware('throttle:10,1');
         Route::delete('/admin/security/staff/{staff}/setup', [AdminSecurityController::class, 'cancelStaffSetup'])
             ->middleware('throttle:10,1');
         Route::post('/admin/security/credential-changes/{change}/confirm', [AdminSecurityController::class, 'confirm'])

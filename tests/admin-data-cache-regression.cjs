@@ -90,6 +90,15 @@ async function preciseInvalidationAndCrossTab() {
   assert.ok(e.API.readAdminCache('/admin/clinic-cases'), 'Cross-tab invalidation remains group-specific');
   await e.API.adminRequest('POST', '/admin/security/password', {});
   assert.ok(e.API.readAdminCache('/admin/clinic-cases'));
+  await seed();
+  let correctionRequest;
+  e.respond((endpoint, options) => { correctionRequest = { endpoint, method: options.method, payload: JSON.parse(options.body) }; return { success: true }; });
+  await e.API.correctStaffSetupEmail(3, 'corrected@example.test', 'CurrentAdmin!234');
+  assert.deepEqual(correctionRequest, { endpoint: '/admin/security/staff/3/setup-email', method: 'PATCH',
+    payload: { email: 'corrected@example.test', current_password: 'CurrentAdmin!234' } });
+  for (const key of ['/admin/customers?status=active', '/admin/dashboard/summary', '/admin/bookings?date=2026-10-19&view=board', '/admin/clinic-cases']) {
+    assert.ok(e.API.readAdminCache(key), 'Pending staff email correction must preserve unrelated caches');
+  }
 }
 async function failuresAndSessionOwnership() {
   const e = environment(); await e.API.getActiveClinicCases(); e.advance(6000);

@@ -9,7 +9,10 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Notifications\SetUpStaffPasswordNotification;
 use App\Support\StaffRole;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -104,24 +107,82 @@ class PendingStaffAccountService
         ];
     }
 
-    private function assertEmailIsAvailable(string $email): void
+    public static function emailRules(): array
     {
-        if (! $this->emailIsAvailable($email)) {
+        return [
+            'required', 'string', 'email:rfc',
+            'regex:/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/',
+            'max:150',
+        ];
+    }
+
+    public function correctEmail(User $requester, User $staff, string $email, string $password): User
+    {
+        $email = Str::lower(trim($email));
+        Validator::make(['email' => $email], ['email' => self::emailRules()])->validate();
+
+        try {
+            return DB::transaction(function () use ($requester, $staff, $email, $password): User {
+                $admin = User::query()->whereKey($requester->getKey())->lockForUpdate()->first();
+                abort_unless($admin && $this->adminIsEligible($admin), 403);
+                if (! Hash::check($password, $admin->password_hash)) {
+                    throw ValidationException::withMessages(['current_password' => 'The admin password is incorrect.']);
+                }
+
+                // Match setup completion/resend: lock the issuance before the account.
+                PasswordResetRequest::query()->where('user_id', $staff->getKey())->lockForUpdate()->first();
+                $target = User::query()->whereKey($staff->getKey())->lockForUpdate()->first();
+                abort_if(! $target || $target->role !== 'staff' || $target->is_archived || $target->account_deleted_at !== null, 404);
+                if ($target->is_active || ! $target->requiresPasswordSetup()) {
+                    throw ValidationException::withMessages(['account' => 'This account no longer requires initial setup.']);
+                }
+                if ($email === Str::lower(trim($target->email))) {
+                    throw ValidationException::withMessages(['email' => 'Enter a different email address.']);
+                }
+                $this->assertEmailIsAvailable($email, $target);
+                $target->email = $email;
+                $target->save();
+
+                $result = app(PasswordResetService::class)->resendStaffSetupLink($target);
+                if ($result['status'] !== 'sent') {
+                    throw ValidationException::withMessages(['account' => 'This setup invitation is no longer available.']);
+                }
+
+                return $target->load('passwordResetRequest');
+            }, 3);
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages(['email' => 'That email address is already in use.']);
+        }
+    }
+
+    private function assertEmailIsAvailable(string $email, ?User $except = null): void
+    {
+        if (! $this->emailIsAvailable($email, $except)) {
             throw ValidationException::withMessages([
                 'email' => 'That email address is already in use.',
             ]);
         }
     }
 
-    private function emailIsAvailable(string $email): bool
+    private function emailIsAvailable(string $email, ?User $except = null): bool
     {
-        if (User::query()->whereRaw('LOWER(email) = ?', [Str::lower($email)])->exists()) {
+        // MySQL's email collation is case-insensitive; retain the email index.
+        // SQLite test databases need an explicit case-insensitive comparison.
+        $column = DB::getDriverName() === 'sqlite' ? 'email COLLATE NOCASE' : 'email';
+        $pending = PendingCustomerRegistration::query()->unexpired()->whereRaw($column.' = ?', [$email]);
+        $users = User::query()->whereRaw($column.' = ?', [$email])
+            ->when($except, fn ($query) => $query->whereKeyNot($except->getKey()));
+        if ($except) {
+            // Match registration's reservation → user ordering and lock missing
+            // email ranges as well as existing claims during the mutation.
+            $pending->lockForUpdate();
+            $users->lockForUpdate();
+        }
+        if ($pending->first(['id'])) {
             return false;
         }
 
-        return ! PendingCustomerRegistration::query()->unexpired()
-            ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
-            ->exists();
+        return $users->first(['user_id']) === null;
     }
 
     private function assertAdminIsEligible(User $admin): void

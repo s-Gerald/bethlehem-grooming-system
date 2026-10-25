@@ -2588,6 +2588,11 @@ var API = (() => {
     return request("POST", `/admin/security/staff/${encodeURIComponent(staffId)}/setup-email`, null, getAdminToken());
   }
 
+  async function correctStaffSetupEmail(staffId, email, currentPassword) {
+    return request("PATCH", `/admin/security/staff/${encodeURIComponent(staffId)}/setup-email`,
+      { email, current_password: currentPassword }, getAdminToken());
+  }
+
   async function cancelStaffSetup(staffId, currentPassword) {
     return request("DELETE", `/admin/security/staff/${encodeURIComponent(staffId)}/setup`, { current_password: currentPassword }, getAdminToken());
   }
@@ -3144,6 +3149,7 @@ var API = (() => {
     updateStaffAccountStatus,
     updateStaffAccountRole,
     resendStaffSetupEmail,
+    correctStaffSetupEmail,
     cancelStaffSetup,
     confirmSecurityCredentialChange,
     resendSecurityCredentialChangeCode,

@@ -287,17 +287,17 @@ class PasswordResetService
 
         $plainToken = Str::random(64);
         $tokenHash = hash('sha256', $plainToken);
-        $result = DB::transaction(function () use ($staff, $expiredPlainToken, $tokenHash): array {
+        return DB::transaction(function () use ($staff, $expiredPlainToken, $plainToken, $tokenHash): array {
             $request = PasswordResetRequest::query()
                 ->when($staff, fn ($query) => $query->where('user_id', $staff->getKey()))
                 ->when($expiredPlainToken, fn ($query) => $query->where('token_hash', hash('sha256', $expiredPlainToken)))
                 ->lockForUpdate()
                 ->first();
-            if (! $request) {
+            if (! $request && ! $staff) {
                 return ['status' => 'invalid'];
             }
 
-            $user = User::query()->whereKey($request->user_id)->lockForUpdate()->first();
+            $user = User::query()->whereKey($staff?->getKey() ?? $request->user_id)->lockForUpdate()->first();
             if (! $user || ! $this->staffSetupIsEligible($user)) {
                 return ['status' => 'invalid'];
             }
@@ -306,44 +306,20 @@ class PasswordResetService
                 return ['status' => 'not_expired'];
             }
 
-            $previousState = $request->only(['token_hash', 'expires_at', 'last_sent_at']);
-            $request->update([
+            $request ??= new PasswordResetRequest(['user_id' => $user->getKey()]);
+            $request->fill([
                 'token_hash' => $tokenHash,
                 'expires_at' => now()->addHours(24),
                 'last_sent_at' => now(),
-            ]);
+            ])->save();
 
-            return [
-                'status' => 'sent',
-                'user' => $user,
-                'previous_state' => $previousState,
-            ];
-        });
+            $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
+            $setupUrl = $frontendUrl.'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
+            // Durable queue insertion and token rotation commit or roll back together.
+            AuthenticationMailDelivery::queue($user, new SetUpStaffPasswordNotification($setupUrl), $request);
 
-        if ($result['status'] !== 'sent') {
-            return $result;
-        }
-
-        $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
-        $setupUrl = $frontendUrl
-            .'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
-
-        try {
-            AuthenticationMailDelivery::queue($result['user'], new SetUpStaffPasswordNotification($setupUrl),
-                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail());
-        } catch (Throwable $exception) {
-            DB::transaction(function () use ($result, $tokenHash): void {
-                PasswordResetRequest::query()
-                    ->where('user_id', $result['user']->getKey())
-                    ->where('token_hash', $tokenHash)
-                    ->lockForUpdate()
-                    ->first()
-                    ?->update($result['previous_state']);
-            });
-            throw $exception;
-        }
-
-        return ['status' => 'sent'];
+            return ['status' => 'sent'];
+        }, 3);
     }
 
     private function userIsEligible(User $user): bool

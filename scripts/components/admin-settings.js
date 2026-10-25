@@ -144,8 +144,12 @@ function adminSettings() {
     },
     staffSetupModal: { open: false, staff: null, password: "", showPassword: false, busy: false, error: "" },
     staffSetupBusyId: null,
+    staffEmailCorrection: { email: "", password: "", showPassword: false, errors: {}, error: "" },
+    _staffDetailsOpener: null,
+    _staffDetailsScrollTop: 0,
     staffDetailsModal: {
       open: false,
+      view: "details",
       staff: null,
       selectedRole: "",
       password: "",
@@ -799,27 +803,7 @@ function adminSettings() {
           username: response?.admin?.username || "",
         };
         this.adminPassword.username = this.adminAccount.username;
-        this.staffAccounts = (response?.staff || []).map((staff) => {
-          const fullName = `${staff.first_name || ""} ${staff.last_name || ""}`.trim()
-            || "Staff account";
-          const setupRequired = Boolean(staff.password_setup_required);
-          const state = setupRequired ? "pending" : staff.is_active && !staff.is_archived ? "active" : "deactivated";
-          const active = state === "active";
-          return {
-            id: staff.user_id,
-            fullName,
-            initials: `${staff.first_name?.charAt(0) || "S"}${staff.last_name?.charAt(0) || ""}`.toUpperCase(),
-            username: setupRequired ? "" : staff.username || "",
-            email: staff.email || "",
-            ...this.staffRoleFields(staff),
-            active,
-            state,
-            setupRequired,
-            setupLinkExpired: Boolean(staff.setup_link_expired),
-            statusLabel: state === "pending" ? "Pending setup" : state === "active" ? "Active" : "Deactivated",
-            statusClass: state === "pending" ? "bg-amber-50 text-amber-700" : state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
-          };
-        });
+        this.staffAccounts = (response?.staff || []).map((staff) => this.staffAccountFields(staff));
         this.staffLoaded = true;
       }).catch(error => {
         if (revision !== this._securityRevision) return;
@@ -832,6 +816,27 @@ function adminSettings() {
       });
       this._staffAccountsRequest = pending;
       return pending;
+    },
+
+    staffAccountFields(staff) {
+      const fullName = `${staff.first_name || ""} ${staff.last_name || ""}`.trim() || "Staff account";
+      const setupRequired = Boolean(staff.password_setup_required);
+      const state = setupRequired ? "pending" : staff.is_active && !staff.is_archived ? "active" : "deactivated";
+      return {
+        id: staff.user_id,
+        fullName,
+        initials: `${staff.first_name?.charAt(0) || "S"}${staff.last_name?.charAt(0) || ""}`.toUpperCase(),
+        username: setupRequired ? "" : staff.username || "",
+        email: staff.email || "",
+        ...this.staffRoleFields(staff),
+        active: state === "active",
+        archived: Boolean(staff.is_archived),
+        state,
+        setupRequired,
+        setupLinkExpired: Boolean(staff.setup_link_expired),
+        statusLabel: state === "pending" ? "Pending setup" : state === "active" ? "Active" : "Deactivated",
+        statusClass: state === "pending" ? "bg-amber-50 text-amber-700" : state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
+      };
     },
 
     selectAvailabilityService(service) {
@@ -1159,19 +1164,125 @@ function adminSettings() {
     },
 
     openStaffDetails(staff) {
-      if (!staff) return;
+      if (!staff || this.staffDetailsModal.busy) return;
 
-      this.staffDetailsModal = { open: true, staff, selectedRole: "", password: "", showPassword: false, busy: false, error: "" };
+      this._staffDetailsOpener = document.activeElement;
+      this.staffDetailsModal = { open: true, view: "details", staff, selectedRole: "", password: "", showPassword: false, busy: false, error: "" };
+      this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
       this.staffDetailsModal.selectedRole = this.savedStaffRole;
-
+      this.$nextTick(() => document.getElementById("staffDetailsClose")?.focus());
     },
 
     closeStaffDetails() {
       if (this.staffDetailsModal.busy) return;
       this.cancelStaffRoleChange();
+      this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
+      this.staffDetailsModal.view = "details";
       this.staffDetailsModal.open = false;
       this.staffDetailsModal.staff = null;
       this.staffDetailsModal.selectedRole = "";
+      this._staffDetailsOpener?.focus();
+      this._staffDetailsOpener = null;
+    },
+
+    get canCorrectStaffEmail() {
+      const staff = this.staffDetailsModal.staff;
+      return Boolean(this.isAdmin && staff?.setupRequired && !staff.active && !staff.archived);
+    },
+
+    staffEmailValidation() {
+      const email = this.staffEmailCorrection.email.trim().toLowerCase();
+      const errors = {};
+      if (email.length > 150 || !/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email)) {
+        errors.email = "Enter a valid email address.";
+      } else if (email === this.staffDetailsModal.staff?.email.trim().toLowerCase()) {
+        errors.email = "Enter a different email address.";
+      }
+      if (!this.staffEmailCorrection.password) errors.current_password = "Enter your admin password.";
+      return errors;
+    },
+
+    get canSubmitStaffEmailCorrection() {
+      return this.canCorrectStaffEmail && !this.staffDetailsModal.busy && !this.staffSetupBusyId
+        && Object.keys(this.staffEmailValidation()).length === 0
+        && Object.keys(this.staffEmailCorrection.errors).length === 0;
+    },
+
+    validateStaffEmailField(field) {
+      const error = this.staffEmailValidation()[field];
+      if (error) this.staffEmailCorrection.errors[field] = error;
+      else delete this.staffEmailCorrection.errors[field];
+    },
+
+    openStaffEmailCorrection() {
+      if (!this.canCorrectStaffEmail || this.staffDetailsModal.busy || this.staffSetupBusyId) return;
+      this._staffDetailsScrollTop = document.getElementById("staffDetailsBody")?.scrollTop || 0;
+      this.cancelStaffRoleChange();
+      this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
+      this.staffDetailsModal.view = "email";
+      this.$nextTick(() => document.getElementById("staffNewEmail")?.focus());
+    },
+
+    cancelStaffEmailCorrection() {
+      if (this.staffDetailsModal.busy) return;
+      this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
+      this.staffDetailsModal.view = "details";
+      this.$nextTick(() => {
+        const body = document.getElementById("staffDetailsBody");
+        if (body) body.scrollTop = this._staffDetailsScrollTop;
+        document.getElementById("staffChangeEmail")?.focus();
+      });
+    },
+
+    trapStaffDetailsFocus(event) {
+      const controls = [...event.currentTarget.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]')]
+        .filter(element => element.getClientRects().length > 0);
+      const first = controls[0], last = controls.at(-1);
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    },
+
+    async submitStaffEmailCorrection() {
+      const modal = this.staffDetailsModal, form = this.staffEmailCorrection;
+      if (modal.view !== "email" || modal.busy || !this.canCorrectStaffEmail || this.staffSetupBusyId) return;
+      form.errors = this.staffEmailValidation();
+      form.error = "";
+      if (Object.keys(form.errors).length) {
+        this.$nextTick(() => document.getElementById(form.errors.email ? "staffNewEmail" : "staffEmailAdminPassword")?.focus());
+        return;
+      }
+      modal.busy = true;
+      try {
+        const response = await API.correctStaffSetupEmail(modal.staff.id, form.email.trim().toLowerCase(), form.password);
+        // Reject account-list reads that began before this mutation completed.
+        ++this._securityRevision;
+        this._staffAccountsRequest = null;
+        this.staffLoading = false;
+        const updated = this.staffAccountFields(response.staff);
+        const account = this.staffAccounts.find(account => account.id === updated.id);
+        if (account) Object.assign(account, updated);
+        Object.assign(modal.staff, updated);
+        this.staffNotice = "";
+        modal.busy = false;
+        this.cancelStaffEmailCorrection();
+        window.showSuccessToast(response.message);
+      } catch (error) {
+        form.errors = {};
+        for (const field of ["email", "current_password"]) {
+          if (error.errors?.[field]) form.errors[field] = [].concat(error.errors[field])[0];
+        }
+        if (!Object.keys(form.errors).length) form.error = error.errors?.account?.[0]
+          || "The setup email could not be queued. Please try again.";
+        form.password = "";
+        form.showPassword = false;
+        this.$nextTick(() => document.getElementById(form.errors.email ? "staffNewEmail" : "staffEmailAdminPassword")?.focus());
+      } finally {
+        modal.busy = false;
+      }
     },
 
     changeStaffRole() {
@@ -1247,7 +1358,7 @@ function adminSettings() {
     },
 
     async resendStaffSetup(staff) {
-      if (!staff?.setupRequired || this.staffSetupBusyId) return;
+      if (!staff?.setupRequired || this.staffSetupBusyId || this.staffDetailsModal.busy) return;
       this.staffSetupBusyId = staff.id;
       this.staffNotice = "";
       this.staffError = "";
@@ -1266,7 +1377,7 @@ function adminSettings() {
     },
 
     openStaffSetupModal(staff) {
-      if (!staff?.setupRequired) return;
+      if (!staff?.setupRequired || this.staffDetailsModal.busy) return;
       this.closeStaffDetails();
       this.staffSetupModal = { open: true, staff, password: "", showPassword: false, busy: false, error: "" };
 

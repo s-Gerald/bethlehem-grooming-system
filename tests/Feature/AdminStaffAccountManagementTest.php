@@ -125,6 +125,9 @@ class AdminStaffAccountManagementTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
         Schema::dropIfExists('personal_access_tokens');
         Schema::dropIfExists('privileged_credential_changes');
         Schema::dropIfExists('login_email_challenges');
@@ -1136,6 +1139,389 @@ class AdminStaffAccountManagementTest extends TestCase
             'email' => 'invalid@-example..com',
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
         Notification::assertNothingSent();
+    }
+
+    #[DataProvider('pendingEmailRoles')]
+    public function test_pending_email_correction_preserves_identity_and_rotates_setup_link(string $type, string $subrole): void
+    {
+        [$admin, $staff, $oldToken] = $this->pendingEmailFixture($type, $subrole);
+        $original = $staff->getAttributes();
+        $admin->createToken('admin');
+        $other = $this->createUser('staff', 'other@example.test', 'Other', 'grooming');
+        $other->createToken('staff');
+
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => '  CORRECTED@example.test  ', 'current_password' => 'CurrentAdmin!234',
+        ])->assertOk()
+            ->assertJsonPath('staff.user_id', $staff->user_id)
+            ->assertJsonPath('staff.email', 'corrected@example.test')
+            ->assertJsonPath('staff.password_setup_required', true)
+            ->assertJsonPath('staff.is_active', false)
+            ->assertJsonMissingPath('token');
+
+        $staff->refresh();
+        foreach (['user_id', 'first_name', 'last_name', 'username', 'password_hash', 'role', 'staff_type', 'staff_subrole', 'email_verified_at'] as $field) {
+            $this->assertSame($original[$field], $staff->getAttributes()[$field]);
+        }
+        $this->assertDatabaseCount('personal_access_tokens', 2);
+        $notification = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
+        parse_str((string) parse_url($notification->setupUrl, PHP_URL_FRAGMENT), $fragment);
+        $newToken = $fragment['token'];
+        $this->assertNotSame($oldToken, $newToken);
+        Notification::assertSentTo($staff, SetUpStaffPasswordNotification::class,
+            fn ($sent, $channels, $recipient) => $sent === $notification && $recipient->email === 'corrected@example.test');
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
+        $this->postJson('/api/staff/password-setup/complete', [
+            'token' => $oldToken, 'username' => 'CorrectedStaff',
+            'password' => 'CreatedPassword!234', 'password_confirmation' => 'CreatedPassword!234',
+        ])->assertUnprocessable();
+        $this->postJson('/api/staff/password-setup/complete', [
+            'token' => $newToken, 'username' => 'CorrectedStaff',
+            'password' => 'CreatedPassword!234', 'password_confirmation' => 'CreatedPassword!234',
+        ])->assertOk();
+        $this->assertTrue($staff->fresh()->is_active);
+        $this->assertNotNull($staff->fresh()->email_verified_at);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $newToken])->assertUnprocessable();
+    }
+
+    public static function pendingEmailRoles(): array
+    {
+        return [['clinic', 'veterinarian'], ['clinic', 'clinic_receptionist'], ['grooming', 'grooming_receptionist']];
+    }
+
+    public function test_pending_email_correction_rejects_bad_email_password_and_unrelated_fields(): void
+    {
+        [, $staff, $token] = $this->pendingEmailFixture();
+        $this->createUser('staff', 'USED@example.test', 'Used', 'clinic');
+        DB::table('pending_customer_registrations')->insert([
+            'first_name' => 'Pending', 'last_name' => 'Customer', 'email' => 'reserved@example.test',
+            'phone' => '09170009999', 'password_hash' => 'unused',
+            'email_verification_expires_at' => now()->addMinutes(15),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach (['invalid@-example..com', 'invalid', str_repeat('a', 150).'@example.test', ' USED@example.test ', 'reserved@example.test', ' WRONG@example.test '] as $email) {
+            $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+                'email' => $email, 'current_password' => 'CurrentAdmin!234',
+            ])->assertUnprocessable()->assertJsonValidationErrors('email');
+        }
+        $this->travel(11)->minutes();
+        foreach ([null, '', 'incorrect', 'CurrentStaff!234'] as $password) {
+            $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+                'email' => 'corrected@example.test', 'current_password' => $password,
+            ])->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        }
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234', 'is_active' => true,
+        ])->assertUnprocessable()->assertJsonValidationErrors('is_active');
+        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertDatabaseHas('password_reset_requests', ['token_hash' => hash('sha256', $token)]);
+        Notification::assertSentTimes(SetUpStaffPasswordNotification::class, 1);
+    }
+
+    public function test_pending_email_correction_rejects_ineligible_accounts_and_requesters(): void
+    {
+        [$admin, $staff] = $this->pendingEmailFixture();
+        $url = "/api/admin/security/staff/{$staff->user_id}/setup-email";
+        $payload = ['email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234'];
+        $staff->is_archived = true;
+        $staff->save();
+        $this->patchJson($url, $payload)->assertNotFound();
+        $staff->is_archived = false;
+        $staff->password_hash = Hash::make('CompletedStaff!234');
+        $staff->email_verified_at = now();
+        foreach ([true, false] as $active) {
+            $staff->is_active = $active;
+            $staff->save();
+            $this->patchJson($url, $payload)->assertUnprocessable();
+        }
+        $this->patchJson("/api/admin/security/staff/{$admin->user_id}/setup-email", $payload)->assertNotFound();
+        Sanctum::actingAs($staff);
+        $this->patchJson($url, $payload)->assertForbidden();
+        Sanctum::actingAs($admin);
+        $admin->is_active = false;
+        $admin->save();
+        $this->patchJson($url, $payload)->assertForbidden();
+        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+    }
+
+    public function test_pending_email_correction_rolls_back_when_mail_cannot_be_queued(): void
+    {
+        [, $staff, $token] = $this->pendingEmailFixture();
+        $before = PasswordResetRequest::query()->sole()->getAttributes();
+        Notification::shouldReceive('send')->once()->andThrow(new \RuntimeException('private SMTP failure'));
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertStatus(503)->assertDontSee('private SMTP failure');
+        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertOk();
+    }
+
+    public function test_correction_then_resend_uses_corrected_mailbox_and_cancel_still_works(): void
+    {
+        [, $staff, $oldToken] = $this->pendingEmailFixture();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertOk();
+        $corrected = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
+        parse_str((string) parse_url($corrected->setupUrl, PHP_URL_FRAGMENT), $fragment);
+        $this->postJson("/api/admin/security/staff/{$staff->user_id}/setup-email")->assertOk();
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertUnprocessable();
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
+        $latest = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
+        parse_str((string) parse_url($latest->setupUrl, PHP_URL_FRAGMENT), $fragment);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertOk();
+        $this->assertSame('corrected@example.test', $staff->fresh()->email);
+        $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", ['current_password' => 'CurrentAdmin!234'])->assertOk();
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertUnprocessable();
+    }
+
+    public function test_pending_email_correction_rechecks_setup_and_admin_password_from_stale_models(): void
+    {
+        [$admin, $staff, $token] = $this->pendingEmailFixture();
+        $this->postJson('/api/staff/password-setup/complete', [
+            'token' => $token, 'username' => 'CompletedStaff',
+            'password' => 'CreatedPassword!234', 'password_confirmation' => 'CreatedPassword!234',
+        ])->assertOk();
+        try {
+            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@example.test', 'CurrentAdmin!234');
+            $this->fail('A completed account must be rechecked at mutation time.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('account', $exception->errors());
+        }
+        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        User::query()->whereKey($admin->getKey())->update(['password_hash' => Hash::make('UpdatedAdmin!234')]);
+        try {
+            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@example.test', 'CurrentAdmin!234');
+            $this->fail('The current admin password must be read again.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('current_password', $exception->errors());
+        }
+    }
+
+    public function test_expired_setup_can_be_corrected_and_an_expired_registration_does_not_reserve_email(): void
+    {
+        [, $staff, $oldToken] = $this->pendingEmailFixture();
+        PasswordResetRequest::query()->where('user_id', $staff->user_id)->update(['expires_at' => now()->subMinute()]);
+        DB::table('pending_customer_registrations')->insert([
+            'first_name' => 'Expired', 'last_name' => 'Customer', 'email' => 'corrected@example.test',
+            'phone' => '09170009999', 'password_hash' => 'unused',
+            'created_at' => now()->subDays(7), 'updated_at' => now()->subDays(7),
+        ]);
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertOk()->assertJsonPath('staff.setup_link_expired', false);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
+        $this->assertTrue(PasswordResetRequest::query()->sole()->expires_at->between(now()->addHours(23), now()->addHours(25)));
+    }
+
+    public function test_correction_rejects_a_target_cancelled_after_the_details_were_loaded(): void
+    {
+        [$admin, $staff] = $this->pendingEmailFixture();
+        $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", ['current_password' => 'CurrentAdmin!234'])->assertOk();
+        $request = \Illuminate\Http\Request::create('/api/admin/security/staff/'.$staff->user_id.'/setup-email', 'PATCH', [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+        ]);
+        $request->setUserResolver(fn () => $admin);
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
+        app(\App\Http\Controllers\AdminSecurityController::class)->correctStaffSetupEmail($request, $staff, app(PendingStaffAccountService::class));
+    }
+
+    public function test_email_claimed_between_validation_and_save_is_a_field_error_and_preserves_the_link(): void
+    {
+        [, $staff, $token] = $this->pendingEmailFixture();
+        $other = $this->createUser('staff', 'other@example.test', 'Other', 'clinic');
+        $event = 'eloquent.updating: '.User::class;
+        Event::listen($event, function (User $saving) use ($staff, $other): void {
+            if ($saving->getKey() === $staff->getKey() && $saving->isDirty('email')) {
+                DB::table('users')->where('user_id', $other->getKey())->update(['email' => $saving->email]);
+            }
+        });
+        try {
+            $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+                'email' => 'claimed@example.test', 'current_password' => 'CurrentAdmin!234',
+            ])->assertUnprocessable()->assertJsonValidationErrors('email');
+            $this->assertSame('wrong@example.test', $staff->fresh()->email);
+            $this->assertDatabaseHas('password_reset_requests', ['token_hash' => hash('sha256', $token)]);
+            Notification::assertSentTimes(SetUpStaffPasswordNotification::class, 1);
+        } finally {
+            Event::forget($event);
+        }
+    }
+
+    public function test_durable_correction_mail_targets_the_new_email_and_supersedes_queued_links(): void
+    {
+        [, $staff, $token] = $this->pendingEmailFixture();
+        (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
+        config(['queue.default' => 'database', 'mail.default' => 'array']);
+        Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'first@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertOk();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'latest@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertOk();
+        $this->assertDatabaseCount('jobs', 2);
+        $payload = json_decode(DB::table('jobs')->value('payload'), true);
+        $this->assertStringNotContainsString('SetUpStaffPasswordNotification', $payload['data']['command']);
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $email = $messages[0]->getOriginalMessage();
+        $this->assertSame('latest@example.test', $email->getTo()[0]->getAddress());
+        $this->assertDatabaseCount('jobs', 0);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertUnprocessable();
+    }
+
+    public function test_durable_queue_insertion_failure_rolls_back_correction_and_resend(): void
+    {
+        [, $staff, $token] = $this->pendingEmailFixture();
+        (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
+        config(['queue.default' => 'database']);
+        Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
+        DB::statement("CREATE TRIGGER reject_setup_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $before = PasswordResetRequest::query()->sole()->getAttributes();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+        ])->assertStatus(503);
+        $this->postJson("/api/admin/security/staff/{$staff->user_id}/setup-email")->assertStatus(503);
+        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
+        $this->assertDatabaseCount('jobs', 0);
+        $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertOk();
+    }
+
+    #[DataProvider('overlappingSetupOperations')]
+    public function test_overlapping_pending_setup_operations_are_serialized(string $firstOperation, string $secondOperation, string $firstStatus, string $secondStatus, string $finalEmail, bool $active): void
+    {
+        [$admin, $staff, $token] = $this->pendingEmailFixture();
+        $directory = sys_get_temp_dir().'/bethlehem-setup-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/setup.sqlite';
+        $first = $second = $connection = null;
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                [$script, $database, $position, $operation, $adminId, $staffId, $oldToken] = $argv;
+                $directory = realpath(dirname($database));
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-setup-[a-f0-9]{12}\z/', basename($directory))
+                    || basename($database) !== 'setup.sqlite' || !is_file($database)) {
+                    throw new RuntimeException('Only the disposable setup test database is allowed.');
+                }
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                Illuminate\Support\Facades\DB::purge('sqlite');
+                $connection = Illuminate\Support\Facades\DB::connection();
+                if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
+                    throw new RuntimeException('Unexpected database.');
+                }
+                Illuminate\Support\Facades\Notification::fake();
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('Setup test barrier timed out.');
+                };
+                $busy = false;
+                $connection->beforeStartingTransaction(function () use ($position, $directory, $database, $wait, &$busy) {
+                    if ($position !== 'second') return;
+                    $wait($directory.'/first-lock');
+                    $probe = new PDO('sqlite:'.$database);
+                    $probe->exec('PRAGMA busy_timeout=0');
+                    try { $probe->exec('BEGIN IMMEDIATE'); $probe->exec('ROLLBACK'); }
+                    catch (PDOException $e) { if (($e->errorInfo[1] ?? null) !== 5) throw $e; $busy = true; }
+                    touch($directory.'/second-attempt');
+                });
+                $app['events']->listen(Illuminate\Database\Events\TransactionBeginning::class,
+                    function () use ($position, $directory, $wait) {
+                        if ($position !== 'first') return;
+                        touch($directory.'/first-lock');
+                        $wait($directory.'/second-attempt');
+                    });
+                $staff = App\Models\User::findOrFail($staffId);
+                $admin = App\Models\User::findOrFail($adminId);
+                try {
+                    $status = match ($operation) {
+                        'correct' => app(App\Services\PendingStaffAccountService::class)->correctEmail(
+                            $admin, $staff, $position.'@example.test', 'CurrentAdmin!234') ? 'corrected' : 'invalid',
+                        'resend' => app(App\Services\PasswordResetService::class)->resendStaffSetupLink($staff)['status'],
+                        'complete' => app(App\Services\PasswordResetService::class)->completeStaffSetup(
+                            $oldToken, 'CreatedPassword!234', 'CompletedStaff')['status'],
+                    };
+                } catch (Illuminate\Validation\ValidationException) { $status = 'rejected'; }
+                $hash = $mailbox = null;
+                if (Illuminate\Support\Facades\Notification::sent($staff, App\Notifications\SetUpStaffPasswordNotification::class)->isNotEmpty()) {
+                    Illuminate\Support\Facades\Notification::assertSentTo($staff, App\Notifications\SetUpStaffPasswordNotification::class,
+                        function ($notification, $channels, $recipient) use (&$hash, &$mailbox) {
+                            parse_str((string) parse_url($notification->setupUrl, PHP_URL_FRAGMENT), $fragment);
+                            $hash = hash('sha256', $fragment['token']); $mailbox = $recipient->email; return true;
+                        });
+                }
+                echo json_encode(['pid' => getmypid(), 'status' => $status, 'busy' => $busy, 'hash' => $hash, 'mailbox' => $mailbox]);
+                PHP;
+            $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
+                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array', 'AUTH_MAIL_DELIVERY' => 'queued'];
+            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $firstOperation, $admin->user_id, $staff->user_id, $token], base_path(), $environment);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $secondOperation, $admin->user_id, $staff->user_id, $token], base_path(), $environment);
+            $first->setTimeout(15); $second->setTimeout(15);
+            $first->start(); $second->start();
+            $first->wait(); $second->wait();
+            $this->assertTrue($first->isSuccessful(), $first->getErrorOutput());
+            $this->assertTrue($second->isSuccessful(), $second->getErrorOutput());
+            $one = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $two = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertNotSame($one['pid'], $two['pid']);
+            $this->assertTrue($two['busy'], 'The second request must overlap a locked transaction.');
+            $this->assertSame($firstStatus, $one['status']);
+            $this->assertSame($secondStatus, $two['status']);
+            $connection = new \PDO('sqlite:'.$database);
+            $account = $connection->query('SELECT email, is_active FROM users WHERE user_id = '.$staff->user_id)->fetch(\PDO::FETCH_ASSOC);
+            $this->assertSame($finalEmail, $account['email']);
+            $this->assertSame($active, (bool) $account['is_active']);
+            $hash = $connection->query('SELECT token_hash FROM password_reset_requests')->fetchColumn();
+            if ($active) {
+                $this->assertFalse($hash);
+            } else {
+                $this->assertSame($two['hash'] ?? $one['hash'], $hash);
+                $this->assertNotSame(hash('sha256', $token), $hash);
+                $this->assertSame($finalEmail, $two['mailbox'] ?? $one['mailbox']);
+            }
+        } finally {
+            $first?->stop(); $second?->stop(); $connection = null;
+            foreach (['setup.sqlite', 'setup.sqlite-journal', 'setup.sqlite-wal', 'setup.sqlite-shm', 'first-lock', 'second-attempt'] as $file) {
+                if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
+            }
+            rmdir($directory);
+        }
+    }
+
+    public static function overlappingSetupOperations(): array
+    {
+        return [
+            ['correct', 'correct', 'corrected', 'corrected', 'second@example.test', false],
+            ['correct', 'resend', 'corrected', 'sent', 'first@example.test', false],
+            ['resend', 'correct', 'sent', 'corrected', 'second@example.test', false],
+            ['correct', 'complete', 'corrected', 'invalid', 'first@example.test', false],
+            ['complete', 'correct', 'completed', 'rejected', 'wrong@example.test', true],
+        ];
+    }
+
+    private function pendingEmailFixture(string $type = 'clinic', string $subrole = 'veterinarian'): array
+    {
+        Notification::fake();
+        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/admin/security/staff-accounts', [
+            'staff_type' => $type, 'staff_subrole' => $subrole,
+            'first_name' => 'Pending', 'last_name' => 'Staff', 'email' => 'wrong@example.test',
+        ])->assertCreated();
+        $staff = User::query()->where('email', 'wrong@example.test')->sole();
+        return [$admin, $staff, $this->staffSetupLinkSentTo($staff)];
     }
 
     private function signInWithCode(User $staff, string $identifier, string $password): \Illuminate\Testing\TestResponse

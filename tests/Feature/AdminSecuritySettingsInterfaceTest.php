@@ -87,6 +87,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             'staffStatusModal.showPassword',
             'staffDetailsModal.showPassword',
             'staffSetupModal.showPassword',
+            'staffEmailCorrection.showPassword',
         ] as $visibility) {
             $this->assertStringContainsString(':type="'.$visibility.' ? \'text\' : \'password\'"', $adminSecurity);
             $this->assertSame(1, preg_match(
@@ -206,9 +207,9 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         $this->assertStringNotContainsString('autocomplete="current-password"', $adminSecurity);
         $this->assertStringNotContainsString('autocomplete="new-password"', $adminSecurity);
-        $this->assertSame(10, substr_count($adminSecurity, 'data-lpignore="true"'));
-        $this->assertSame(10, substr_count($adminSecurity, 'data-1p-ignore'));
-        $this->assertSame(10, substr_count($adminSecurity, 'data-bwignore'));
+        $this->assertSame(11, substr_count($adminSecurity, 'data-lpignore="true"'));
+        $this->assertSame(11, substr_count($adminSecurity, 'data-1p-ignore'));
+        $this->assertSame(11, substr_count($adminSecurity, 'data-bwignore'));
 
         $this->assertStringContainsString('autocomplete="username"', $signIn);
         $this->assertStringContainsString('autocomplete="current-password"', $signIn);

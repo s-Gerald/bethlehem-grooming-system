@@ -3703,8 +3703,16 @@ video {
   text-decoration-line: underline;
 }
 
+.decoration-\[\#c9d9e8\] {
+  text-decoration-color: #c9d9e8;
+}
+
 .underline-offset-2 {
   text-underline-offset: 2px;
+}
+
+.underline-offset-4 {
+  text-underline-offset: 4px;
 }
 
 .accent-\[\#315b7e\] {
