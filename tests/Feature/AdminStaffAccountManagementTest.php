@@ -122,10 +122,12 @@ class AdminStaffAccountManagementTest extends TestCase
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
         (require base_path('database/migrations/2026_10_25_000002_create_staff_email_changes.php'))->up();
+        (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->down();
         Schema::dropIfExists('staff_email_changes');
         Schema::dropIfExists('jobs');
         Schema::dropIfExists('job_batches');

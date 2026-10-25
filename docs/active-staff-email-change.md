@@ -48,9 +48,9 @@ The frontend clears only the completing session through existing auth clearing/l
 
 Pending staff creation/correction, resend, cancellation, activation, expired links and account identity remain covered by the existing AdminStaffAccountManagementTest and settings regressions. Phase 1 now delegates normalization/rules/availability to AccountEmail with the same behavior. Its endpoint, setup tokens and admin dialog remain separate from active self-service verification.
 
-## Phase 3 readiness
+## Phase 3 integration
 
-Future authorized recovery can reuse AccountEmail, SecurityCode, AuthenticationMailDelivery, existing session mechanisms, and the shared OTP input/countdown behavior. Self-service authorization, pending state and final mutation are isolated in StaffEmailChangeService. No admin recovery endpoints, controls, bypasses, audit placeholders or unused schema fields were introduced; Phase 3 is not implemented.
+Phase 3 now adds a separate administrator authorization/recovery path, documented in [Admin-assisted staff email recovery](admin-assisted-staff-email-recovery.md). It reuses AccountEmail, SecurityCode, AuthenticationMailDelivery and the OTP handlers. Both workflows use AccountEmailChangeService for final account mutation/revocation and AccountSessionService for session freshness. A specifically authorized recovery hold supersedes that user's self-service request; it does not bypass either mailbox check within this Phase 2 workflow. The results below document the original Phase 2 verification; current combined verification appears in the Phase 3 report.
 
 ## Tests
 

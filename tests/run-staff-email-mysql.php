@@ -32,13 +32,13 @@ try {
     $xml->save($configuration);
     $process = new Symfony\Component\Process\Process([
         PHP_BINARY, base_path('vendor/phpunit/phpunit/phpunit'), '--configuration', $configuration,
-        '--filter', 'active_staff_verify|overlapping_email|email_change_migration|completed_email_change',
+        '--filter', $argv[1] ?? 'active_staff_verify|overlapping_email|email_change_migration|completed_email_change|admin_recovery_preserves|overlapping_recovery|recovery_durable_queue|recovery_migration',
         base_path('tests/Feature/AdminCredentialChangeTest.php'),
     ], base_path(), [
         'DB_HOST' => $config['host'], 'DB_PORT' => (string) $config['port'],
         'DB_USERNAME' => $config['username'], 'DB_PASSWORD' => $config['password'],
     ]);
-    $process->setTimeout(120);
+    $process->setTimeout(300);
     $exitCode = $process->run(fn ($type, $buffer) => print($buffer));
 } finally {
     if ($created && preg_match('/\Abethlehem_email_test_[a-f0-9]{12}\z/', $database)) {

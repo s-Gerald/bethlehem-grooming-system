@@ -45,3 +45,7 @@ Artisan::command('qr-payments:prune-orphans', function () {
 })->purpose('Remove unreferenced payment uploads older than 24 hours; retain recorded proofs');
 
 Schedule::command('qr-payments:prune-orphans')->daily()->withoutOverlapping();
+
+// Record expiration for security review; expiry never releases a recovery hold.
+Schedule::call(fn () => app(\App\Services\StaffEmailRecoveryService::class)->recordExpirations())
+    ->name('staff-email-recoveries:record-expiration')->everyFiveMinutes()->withoutOverlapping();

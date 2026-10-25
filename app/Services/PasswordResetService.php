@@ -64,7 +64,7 @@ class PasswordResetService
                 'verification_attempts' => $attempts,
             ])->save();
 
-            AuthenticationMailDelivery::queue($user, new PasswordResetCodeNotification($code), $issuance);
+            AuthenticationMailDelivery::queue($lockedUser, new PasswordResetCodeNotification($code), $issuance);
         });
     }
 
@@ -328,6 +328,7 @@ class PasswordResetService
     private function userIsEligible(User $user): bool
     {
         return (bool) $user->is_active
+            && ! $user->hasEmailRecoveryHold()
             && ! (bool) $user->is_archived
             && $user->account_deleted_at === null
             && password_get_info((string) $user->password_hash)['algoName'] !== 'unknown'

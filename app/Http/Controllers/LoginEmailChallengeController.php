@@ -148,7 +148,7 @@ class LoginEmailChallengeController extends Controller
             || ! in_array($user->role, ['customer', 'admin', 'staff'], true)
             || ($user->role === 'customer' && ! $user->email_verified_at)
             || ! $user->is_active
-            || $user->is_archived) {
+            || $user->is_archived || $user->hasEmailRecoveryHold()) {
             return null;
         }
 

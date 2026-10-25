@@ -3,9 +3,6 @@
 namespace App\Services;
 
 use App\Http\Controllers\EmailVerificationController;
-use App\Models\LoginEmailChallenge;
-use App\Models\PasswordResetRequest;
-use App\Models\PrivilegedCredentialChange;
 use App\Models\StaffEmailChange;
 use App\Models\User;
 use App\Notifications\StaffEmailChangedNotification;
@@ -20,7 +17,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Throwable;
@@ -94,17 +90,8 @@ class StaffEmailChangeService
                     return ['status' => 'pending', 'pending_email_change' => $this->payload($change), 'email_delivery_token' => $receipt];
                 }
 
-                AccountEmail::assertAvailable($change->new_email, $user, true);
                 $oldEmail = $user->email;
-                $user->email = $change->new_email;
-                $user->email_verified_at = now();
-                $user->save();
-                // Credentials issued through the former mailbox cannot outlive the change.
-                LoginEmailChallenge::where('user_id', $user->getKey())->delete();
-                PasswordResetRequest::where('user_id', $user->getKey())->delete();
-                PrivilegedCredentialChange::where('target_user_id', $user->getKey())->whereNull('confirmed_at')->delete();
-                $user->tokens()->delete();
-                $change->delete();
+                app(AccountEmailChangeService::class)->complete($user, $change->new_email);
                 DB::afterCommit(function () use ($oldEmail, $user): void {
                     try { Notification::route('mail', $oldEmail)->notify(new StaffEmailChangedNotification); }
                     catch (Throwable) { Log::warning('Staff email change notification could not be queued.', ['user_id' => $user->getKey()]); }
@@ -149,7 +136,7 @@ class StaffEmailChangeService
     {
         $user = User::find($change->user_id);
         $token = PersonalAccessToken::find($change->session_token_id);
-        return $user && $token && self::eligible($user) && $this->sessionIsUsable($token, $user)
+        return $user && $token && self::eligible($user) && app(AccountSessionService::class)->isUsable($token, $user)
             && $this->valid($change, $user, $token);
     }
 
@@ -162,7 +149,7 @@ class StaffEmailChangeService
             $session = $requester->currentAccessToken();
             abort_unless($session instanceof Model && $session->exists, 401);
             $token = PersonalAccessToken::whereKey($session->getKey())->lockForUpdate()->first();
-            abort_unless($token && $this->sessionIsUsable($token, $user), 401);
+            abort_unless($token && app(AccountSessionService::class)->isUsable($token, $user), 401);
             return $action($user, $token);
         }, 3);
     }
@@ -182,22 +169,13 @@ class StaffEmailChangeService
             && hash_equals($change->account_fingerprint, self::fingerprint($user));
     }
 
-    private function sessionIsUsable(PersonalAccessToken $token, User $user): bool
-    {
-        return $token->tokenable_type === $user->getMorphClass() && (int) $token->tokenable_id === (int) $user->getKey()
-            && ! $token->replaced_at && ! $token->locked_at
-            && (! $token->expires_at || now()->lt($token->expires_at))
-            && now()->lt($token->created_at->copy()->addHours(12))
-            && now()->lt(Carbon::parse($token->last_interaction_at ?? $token->created_at)->addMinutes(30));
-    }
-
     private static function eligible(User $user): bool
     {
-        return $user->role === 'staff' && $user->is_active && ! $user->is_archived
+        return $user->role === 'staff' && ! $user->hasEmailRecoveryHold() && $user->is_active && ! $user->is_archived
             && $user->account_deleted_at === null && ! $user->requiresPasswordSetup();
     }
 
-    private static function fingerprint(User $user): string
+    public static function fingerprint(User $user): string
     {
         return hash('sha256', json_encode([$user->role, $user->staff_type, $user->staff_subrole, $user->password_hash], JSON_THROW_ON_ERROR));
     }

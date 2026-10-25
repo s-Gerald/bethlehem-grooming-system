@@ -50,6 +50,7 @@ class User extends Authenticatable
     ];
 
     protected $hidden = [
+        'email_recovery_id',
         'password_hash',
         'email_verification_token',
         'email_verification_code_hash',
@@ -96,6 +97,16 @@ class User extends Authenticatable
     public static function passwordSetupPlaceholder(): string
     {
         return self::PASSWORD_SETUP_REQUIRED_PREFIX.Str::random(40);
+    }
+
+    public function hasEmailRecoveryHold(): bool
+    {
+        return $this->getAttribute('email_recovery_id') !== null;
+    }
+
+    public function emailRecovery()
+    {
+        return $this->belongsTo(StaffEmailRecovery::class, 'email_recovery_id');
     }
 
     public function requiresPasswordSetup(): bool

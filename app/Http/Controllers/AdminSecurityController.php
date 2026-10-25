@@ -27,7 +27,7 @@ class AdminSecurityController extends Controller
     {
         $admin = $request->user();
         $staff = User::query()
-            ->with('passwordResetRequest')
+            ->with(['passwordResetRequest', 'emailRecovery'])
             ->where('role', 'staff')
             ->where('is_archived', false)
             ->orderBy('first_name')
@@ -282,7 +282,7 @@ class AdminSecurityController extends Controller
             'message' => $active
                 ? 'Staff account reactivated.'
                 : 'Staff account deactivated.',
-            'staff' => $this->accountPayload($staff->fresh()),
+            'staff' => $this->accountPayload($staff->fresh()->load('emailRecovery')),
         ]);
     }
 
@@ -314,7 +314,7 @@ class AdminSecurityController extends Controller
                 LoginEmailChallenge::query()->where('user_id', $target->user_id)->delete();
             }
 
-            return $target->load('passwordResetRequest');
+            return $target->load(['passwordResetRequest', 'emailRecovery']);
         });
 
         return response()->json([
@@ -592,7 +592,7 @@ class AdminSecurityController extends Controller
         ]);
     }
 
-    private function accountPayload(User $user): array
+    public function accountPayload(User $user): array
     {
         return [
             'user_id' => $user->user_id,
@@ -605,6 +605,8 @@ class AdminSecurityController extends Controller
             'staff_subrole' => $user->staff_subrole,
             'is_active' => (bool) $user->is_active,
             'is_archived' => (bool) $user->is_archived,
+            'email_recovery' => $user->relationLoaded('emailRecovery') && $user->emailRecovery
+                ? app(\App\Services\StaffEmailRecoveryService::class)->payload($user->emailRecovery) : null,
             'password_setup_required' => $user->requiresPasswordSetup(),
             'setup_link_expired' => $user->requiresPasswordSetup()
                 && $user->relationLoaded('passwordResetRequest')

@@ -29,12 +29,15 @@ class EnsureSessionIsActive
 
         // Email changes revalidate account/session inside their own retryable
         // transaction. Keep that transaction outside the HTTP exception renderer.
-        $ownsTransaction = $request->routeIs('staff.email-change.*');
+        $ownsTransaction = $request->routeIs('staff.email-change.*', 'admin.staff-recovery.*');
         $response = DB::transaction(function () use ($request, $accessToken, $next, $ownsTransaction) {
             // Keep mutations ordered against takeover through their controller.
             if (! $request->isMethodSafe() && ! $ownsTransaction) {
-                $request->user()->newQuery()->whereKey($request->user()->getKey())
-                    ->lockForUpdate()->firstOrFail([$request->user()->getKeyName()]);
+                $account = $request->user()->newQuery()->whereKey($request->user()->getKey())
+                    ->lockForUpdate()->firstOrFail();
+                if ($account->hasEmailRecoveryHold()) {
+                    return response()->json(['code' => 'account_disabled', 'message' => 'This account is in recovery. Contact the clinic.'], 403);
+                }
             }
             $token = $accessToken->newQuery()->lockForUpdate()->find($accessToken->getKey());
             if (! $token) {

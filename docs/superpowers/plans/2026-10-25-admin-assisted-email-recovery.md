@@ -1,0 +1,10 @@
+# Phase 3: Admin-assisted staff email recovery
+
+Work on the current branch and preserve Phases 1 and 2. No commits, production changes, or browser functional submissions.
+
+1. Add durable recovery and audit records, with a nullable recovery pointer on users. Serialize mutations on the account; the pointer enforces a hold without extra queries on ordinary requests. Separate admin password/session-bound OTP authorization from staff token/password completion. Verify observable authorization, expiry, replay, queue rollback, and hold behavior with focused failing-then-passing tests.
+2. Share existing email mutation/revocation behavior between both real email-change consumers. Enforce the hold in session issuance, login challenges, password recovery, middleware, and self-service email changes. Preserve account identifiers and underlying active state. Verify existing authentication and email-change regressions and disposable MySQL races.
+3. Extend the existing staff details modal with form, admin OTP, and recovery management views. Add only the narrow fragment-token confirmation page. Reuse established inputs, OTP handling, API and queue patterns. Verify frontend transitions, duplicate/stale request protection, cache isolation, focus, and asset compilation.
+4. Document independent in-person identity verification against trusted employment records, security properties, operational recovery resolution, migration order, queue/cache deployment steps, executed checks and manual acceptance. Inspect only the existing admin browser session; manual functional browser testing remains with the user.
+
+Policy: expired recovery retains its hold. Resend rotates the link after admin password verification, preserves staff password attempts, and cannot authorize a changed target snapshot. A changed target requires explicit cancellation and a new full authorization. Cancellation requires attestation that old-email access is safe; underlying deactivation/archival remains authoritative. History is durable and administrator-only. Tokens/passwords never enter audit data.

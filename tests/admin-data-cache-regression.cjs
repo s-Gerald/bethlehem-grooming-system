@@ -104,8 +104,13 @@ async function preciseInvalidationAndCrossTab() {
   await e.API.confirmStaffEmailChange('request', 'current', '123456');
   await e.API.resendStaffEmailChange('request', 'current');
   await e.API.cancelStaffEmailChange('request');
+  await e.API.startStaffEmailRecovery(3, { email: 'replacement@example.test', current_password: 'AdminPassword!234', identity_verified: true, identity_method: 'in_person_employment_record', reason: 'inaccessible' });
+  await e.API.confirmStaffEmailRecovery(3, 'recovery', '123456');
+  await e.API.resendStaffRecoveryCode(3, 'recovery');
+  await e.API.resendStaffEmailRecovery(3, 'recovery', 'AdminPassword!234');
+  await e.API.cancelStaffEmailRecovery(3, 'recovery', 'AdminPassword!234', true);
   for (const key of ['/admin/customers?status=active', '/admin/dashboard/summary', '/admin/bookings?date=2026-10-19&view=board', '/admin/clinic-cases']) {
-    assert.ok(e.API.readAdminCache(key), 'Self-service verification must preserve operational caches before sign-out');
+    assert.ok(e.API.readAdminCache(key), 'Email verification and admin recovery must preserve operational caches');
   }
 }
 async function failuresAndSessionOwnership() {

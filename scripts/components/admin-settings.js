@@ -163,6 +163,8 @@ function adminSettings() {
       busy: false,
       error: "",
     },
+    staffRecovery: { email: '', reason: '', identityVerified: false, password: '', showPassword: false,
+      oldEmailSafe: false, challenge: null, digits: ['', '', '', '', '', ''], errors: {}, error: '', resendRemaining: 0 },
     securityVerification: {
       open: false,
       changeId: null,
@@ -253,6 +255,8 @@ function adminSettings() {
       if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
       this.stopSecurityVerificationFeedback();
       window.clearInterval(this._staffEmailResendTimer);
+      window.clearInterval(this._staffRecoveryResendTimer);
+      window.clearTimeout(this._staffRecoveryExpiryTimer);
       ++this._ownAccountRevision;
       window.removeEventListener?.('focus', this._intakeRefreshListener);
       window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
@@ -1002,6 +1006,7 @@ function adminSettings() {
         state,
         setupRequired,
         setupLinkExpired: Boolean(staff.setup_link_expired),
+        emailRecovery: staff.email_recovery || null,
         statusLabel: state === "pending" ? "Pending setup" : state === "active" ? "Active" : "Deactivated",
         statusClass: state === "pending" ? "bg-amber-50 text-amber-700" : state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
       };
@@ -1339,12 +1344,16 @@ function adminSettings() {
       this.staffDetailsModal = { open: true, view: "details", staff, selectedRole: "", password: "", showPassword: false, busy: false, error: "" };
       this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
       this.staffDetailsModal.selectedRole = this.savedStaffRole;
+      this.armStaffRecoveryExpiry();
       this.$nextTick(() => document.getElementById("staffDetailsClose")?.focus());
     },
 
-    closeStaffDetails() {
+    async closeStaffDetails() {
       if (this.staffDetailsModal.busy) return;
+      if (this.staffDetailsModal.view === 'recovery-code' && !await this.cancelStaffRecovery()) return;
       this.cancelStaffRoleChange();
+      this.resetStaffRecovery();
+      window.clearTimeout(this._staffRecoveryExpiryTimer);
       this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
       this.staffDetailsModal.view = "details";
       this.staffDetailsModal.open = false;
@@ -1352,6 +1361,191 @@ function adminSettings() {
       this.staffDetailsModal.selectedRole = "";
       this._staffDetailsOpener?.focus();
       this._staffDetailsOpener = null;
+    },
+
+    resetStaffRecovery() {
+      window.clearInterval(this._staffRecoveryResendTimer);
+      this.staffRecovery = { email: '', reason: '', identityVerified: false, password: '', showPassword: false,
+        oldEmailSafe: false, challenge: null, digits: ['', '', '', '', '', ''], errors: {}, error: '', resendRemaining: 0 };
+    },
+
+    get canAssistStaffEmail() {
+      const staff = this.staffDetailsModal.staff;
+      return Boolean(this.isAdmin && staff?.active && !staff.setupRequired && !staff.archived && !staff.emailRecovery);
+    },
+
+    armStaffRecoveryExpiry() {
+      window.clearTimeout(this._staffRecoveryExpiryTimer);
+      const staff = this.staffDetailsModal.staff, recovery = staff?.emailRecovery;
+      const expires = Date.parse(recovery?.expires_at);
+      if (!recovery || recovery.status !== 'pending' || !Number.isFinite(expires)) return;
+      if (expires <= Date.now()) { recovery.status = 'expired'; return; }
+      this._staffRecoveryExpiryTimer = window.setTimeout(() => {
+        if (this.staffDetailsModal.staff?.id === staff.id && this.staffDetailsModal.staff?.emailRecovery?.id === recovery.id) {
+          this.staffDetailsModal.staff.emailRecovery.status = 'expired';
+        }
+      }, expires - Date.now());
+    },
+
+    get staffRecoveryExpired() {
+      const recovery = this.staffDetailsModal.staff?.emailRecovery;
+      return Boolean(recovery && (recovery.status === 'expired' || Date.parse(recovery.expires_at) <= Date.now()));
+    },
+
+    get staffDetailsTitle() {
+      return ({ email: 'Change Staff Email', recovery: 'Assist Email Change', 'recovery-code': 'Verify Recovery Request',
+        'recovery-manage': this.staffRecoveryExpired ? 'Recovery Expired' : 'Recovery Pending' })[this.staffDetailsModal.view] || 'Staff account details';
+    },
+
+    recoveryValidation() {
+      const form = this.staffRecovery, errors = {};
+      const email = this.emailReplacementError(form.email, this.staffDetailsModal.staff?.email);
+      if (email) errors.email = email;
+      if (!['inaccessible', 'compromised'].includes(form.reason)) errors.reason = 'Select a recovery reason.';
+      if (!form.identityVerified) errors.identity_verified = "Verify this staff member's identity.";
+      if (!form.password) errors.current_password = 'Enter your admin password.';
+      return errors;
+    },
+
+    get canStartStaffRecovery() {
+      return this.canAssistStaffEmail && !this.staffDetailsModal.busy && !Object.keys(this.recoveryValidation()).length && !Object.keys(this.staffRecovery.errors).length;
+    },
+
+    openStaffRecovery() {
+      if (this.staffDetailsModal.busy || this.staffDetailsModal.staff?.archived || (!this.canAssistStaffEmail && !this.staffDetailsModal.staff?.emailRecovery)) return;
+      this._staffDetailsScrollTop = document.getElementById('staffDetailsBody')?.scrollTop || 0;
+      this.cancelStaffRoleChange();
+      this.resetStaffRecovery();
+      const recovery = this.staffDetailsModal.staff.emailRecovery;
+      this.staffDetailsModal.view = recovery ? 'recovery-manage' : 'recovery';
+      if (recovery) this.startSecurityResendCountdown(recovery.resend_after || 0, this.staffRecovery, '_staffRecoveryResendTimer');
+      this.$nextTick(() => document.getElementById(recovery ? 'recoveryAdminPassword' : 'recoveryNewEmail')?.focus());
+    },
+
+    recoveryDetails() {
+      this.resetStaffRecovery();
+      this.staffDetailsModal.view = 'details';
+      this.$nextTick(() => {
+        const body = document.getElementById('staffDetailsBody');
+        if (body) body.scrollTop = this._staffDetailsScrollTop;
+        document.getElementById(this.staffDetailsModal.staff?.emailRecovery ? 'staffViewRecovery' : 'staffAssistEmail')?.focus();
+      });
+    },
+
+    applyRecoveryAccount(response) {
+      if (!response?.staff) return;
+      ++this._securityRevision;
+      this._staffAccountsRequest = null;
+      this.staffLoading = false;
+      const updated = this.staffAccountFields(response.staff);
+      const account = this.staffAccounts.find(account => account.id === updated.id);
+      if (account) Object.assign(account, updated);
+      Object.assign(this.staffDetailsModal.staff, updated);
+      this.armStaffRecoveryExpiry();
+    },
+
+    recoveryError(error) {
+      const form = this.staffRecovery;
+      form.errors = {};
+      for (const field of ['email', 'current_password', 'reason', 'identity_verified', 'old_email_safe']) {
+        if (error.errors?.[field]) form.errors[field] = [].concat(error.errors[field])[0];
+      }
+      form.error = Object.keys(form.errors).length ? '' : error.message || 'Recovery could not be processed. Please try again.';
+      if (this.staffDetailsModal.view === 'recovery-code' || (this.staffDetailsModal.view === 'recovery-manage' && form.errors.email)) {
+        form.error = form.errors.email || error.message || 'Recovery could not be processed. Please try again.';
+      }
+      if (error.retryAfter) this.startSecurityResendCountdown(error.retryAfter, form, '_staffRecoveryResendTimer');
+      this.$nextTick(() => document.getElementById(this.staffDetailsModal.view === 'recovery-code' ? 'recoveryCodeDigit0'
+        : form.errors.email && this.staffDetailsModal.view === 'recovery' ? 'recoveryNewEmail' : 'recoveryAdminPassword')?.focus());
+    },
+
+    async startStaffRecovery() {
+      const modal = this.staffDetailsModal, form = this.staffRecovery;
+      if (modal.busy || modal.view !== 'recovery' || !this.canAssistStaffEmail) return;
+      form.errors = this.recoveryValidation(); form.error = '';
+      if (Object.keys(form.errors).length) {
+        const first = Object.keys(form.errors)[0];
+        this.$nextTick(() => document.getElementById(({ email: 'recoveryNewEmail', reason: 'recoveryReason',
+          identity_verified: 'recoveryIdentity', current_password: 'recoveryAdminPassword' })[first])?.focus());
+        return;
+      }
+      modal.busy = true;
+      this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
+      try {
+        const result = await API.startStaffEmailRecovery(modal.staff.id, { email: form.email.trim().toLowerCase(), reason: form.reason,
+          identity_verified: form.identityVerified, identity_method: 'in_person_employment_record', current_password: form.password });
+        form.challenge = result.recovery;
+        modal.view = 'recovery-code';
+        this.startSecurityResendCountdown(result.recovery.resend_after || 0, form, '_staffRecoveryResendTimer');
+        this.$nextTick(() => document.getElementById('recoveryCodeDigit0')?.focus());
+      } catch (error) { this.recoveryError(error); }
+      finally { form.password = ''; form.showPassword = false; modal.busy = false; }
+    },
+
+    async confirmStaffRecovery() {
+      const modal = this.staffDetailsModal, form = this.staffRecovery;
+      if (modal.busy || modal.view !== 'recovery-code' || form.digits.join('').length !== 6) return;
+      modal.busy = true; form.error = '';
+      this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
+      try {
+        const result = await API.confirmStaffEmailRecovery(modal.staff.id, form.challenge.id, form.digits.join(''));
+        this.applyRecoveryAccount(result);
+        modal.busy = false;
+        this.recoveryDetails();
+        window.showSuccessToast('Recovery email queued.');
+      } catch (error) { form.digits = ['', '', '', '', '', '']; this.recoveryError(error); }
+      finally { modal.busy = false; }
+    },
+
+    async resendStaffRecoveryCode() {
+      const modal = this.staffDetailsModal, form = this.staffRecovery;
+      if (modal.busy || form.resendRemaining || modal.view !== 'recovery-code') return;
+      modal.busy = true; form.error = '';
+      this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
+      try {
+        const result = await API.resendStaffRecoveryCode(modal.staff.id, form.challenge.id);
+        form.challenge = result.recovery; form.digits = ['', '', '', '', '', ''];
+        this.startSecurityResendCountdown(result.recovery.resend_after || 0, form, '_staffRecoveryResendTimer');
+        this.$nextTick(() => document.getElementById('recoveryCodeDigit0')?.focus());
+      } catch (error) { this.recoveryError(error); }
+      finally { modal.busy = false; }
+    },
+
+    async cancelStaffRecovery() {
+      const modal = this.staffDetailsModal, form = this.staffRecovery;
+      if (modal.busy) return false;
+      if (modal.view === 'recovery-code' && form.challenge) {
+        modal.busy = true;
+        this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
+        try { this.applyRecoveryAccount(await API.cancelStaffEmailRecovery(modal.staff.id, form.challenge.id, '', false)); }
+        catch (error) { this.recoveryError(error); return false; }
+        finally { modal.busy = false; }
+      }
+      this.recoveryDetails();
+      return true;
+    },
+
+    async resendStaffRecoveryLink() { await this.manageStaffRecovery('resend'); },
+    async cancelStaffRecoveryRequest() { await this.manageStaffRecovery('cancel'); },
+    async manageStaffRecovery(action) {
+      const modal = this.staffDetailsModal, form = this.staffRecovery, recovery = modal.staff?.emailRecovery;
+      if (modal.busy || modal.view !== 'recovery-manage' || !recovery || (action === 'resend' && form.resendRemaining)) return;
+      form.errors = {}; form.error = '';
+      if (!form.password) form.errors.current_password = 'Enter your admin password.';
+      if (action === 'cancel' && !form.oldEmailSafe) form.errors.old_email_safe = 'Confirm that current email access is safe to restore.';
+      if (Object.keys(form.errors).length) return;
+      modal.busy = true;
+      this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
+      try {
+        const result = action === 'cancel'
+          ? await API.cancelStaffEmailRecovery(modal.staff.id, recovery.id, form.password, form.oldEmailSafe)
+          : await API.resendStaffEmailRecovery(modal.staff.id, recovery.id, form.password);
+        this.applyRecoveryAccount(result);
+        modal.busy = false;
+        this.recoveryDetails();
+        window.showSuccessToast(action === 'cancel' ? 'Recovery cancelled.' : 'Recovery email queued.');
+      } catch (error) { this.recoveryError(error); }
+      finally { form.password = ''; form.showPassword = false; modal.busy = false; }
     },
 
     get canCorrectStaffEmail() {
@@ -1513,7 +1707,7 @@ function adminSettings() {
           ? staff.fullName
           : staff.subroleLabel || staff.roleLabel || "Staff account";
         this.showStaffActionToast(targetActive
-          ? `${staffName} was reactivated and can sign in again.`
+          ? staff.emailRecovery ? `${staffName} was reactivated. Recovery access remains suspended.` : `${staffName} was reactivated and can sign in again.`
           : `${staffName} was deactivated and signed out.`);
         await this.loadSecurityAccounts();
       } catch (error) {

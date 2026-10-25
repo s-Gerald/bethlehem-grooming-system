@@ -483,6 +483,7 @@ var API = (() => {
     "verify-email.html",
     "forgot-password.html",
     "set-up-password.html",
+    "confirm-email-recovery.html",
   ]);
   const INVALID_SESSION_CODES = new Set([
     "account_disabled",
@@ -2601,6 +2602,24 @@ var API = (() => {
       { email, current_password: currentPassword }, getAdminToken());
   }
 
+  function startStaffEmailRecovery(staffId, payload) {
+    return request('POST', `/admin/security/staff/${encodeURIComponent(staffId)}/email-recovery`, payload, getAdminToken());
+  }
+  function confirmStaffEmailRecovery(staffId, id, code) {
+    return request('POST', `/admin/security/staff/${encodeURIComponent(staffId)}/email-recovery/${encodeURIComponent(id)}/confirm`, { code }, getAdminToken());
+  }
+  function resendStaffRecoveryCode(staffId, id) {
+    return request('POST', `/admin/security/staff/${encodeURIComponent(staffId)}/email-recovery/${encodeURIComponent(id)}/code`, null, getAdminToken());
+  }
+  function resendStaffEmailRecovery(staffId, id, password) {
+    return request('POST', `/admin/security/staff/${encodeURIComponent(staffId)}/email-recovery/${encodeURIComponent(id)}/resend`, { current_password: password }, getAdminToken());
+  }
+  function cancelStaffEmailRecovery(staffId, id, password, safe) {
+    return request('POST', `/admin/security/staff/${encodeURIComponent(staffId)}/email-recovery/${encodeURIComponent(id)}/cancel`, { current_password: password || null, old_email_safe: safe }, getAdminToken());
+  }
+  function verifyStaffEmailRecovery(token) { return request('POST', '/staff/email-recovery/verify', { token }); }
+  function completeStaffEmailRecovery(token, password) { return request('POST', '/staff/email-recovery/complete', { token, current_password: password }); }
+
   async function requestStaffEmailChange(payload) {
     return request('POST', '/settings/security/email-change', payload, getAdminToken());
   }
@@ -3193,6 +3212,13 @@ var API = (() => {
     updateStaffAccountRole,
     resendStaffSetupEmail,
     correctStaffSetupEmail,
+    startStaffEmailRecovery,
+    confirmStaffEmailRecovery,
+    resendStaffRecoveryCode,
+    resendStaffEmailRecovery,
+    cancelStaffEmailRecovery,
+    verifyStaffEmailRecovery,
+    completeStaffEmailRecovery,
     requestStaffEmailChange,
     confirmStaffEmailChange,
     resendStaffEmailChange,

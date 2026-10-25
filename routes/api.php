@@ -50,6 +50,10 @@ Route::post('/staff/password-setup/complete', [PasswordResetController::class, '
     ->middleware('throttle:10,1');
 Route::post('/staff/password-setup/request-new-link', [PasswordResetController::class, 'requestNewStaffSetupLink'])
     ->middleware('throttle:3,10');
+Route::post('/staff/email-recovery/verify', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'verify'])
+    ->middleware('throttle:10,1,staff-recovery-link');
+Route::post('/staff/email-recovery/complete', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'complete'])
+    ->middleware('throttle:10,1,staff-recovery-complete');
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:registration-verify');
 Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware(ThrottleAuthenticationResends::class.':registration-resend');
 Route::post('/email/delivery-status', [EmailVerificationController::class, 'deliveryStatus'])
@@ -314,7 +318,15 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::middleware('role:admin')->group(function () {
         Route::get('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'show']);
         Route::post('/admin/qr-payments/settings', [\App\Http\Controllers\QrPaymentSettingController::class, 'save'])->middleware('throttle:10,1');
-        Route::get('/admin/security/accounts', [AdminSecurityController::class, 'accounts']);
+        Route::middleware('role:admin')->prefix('admin/security/staff/{staff}/email-recovery')->name('admin.staff-recovery.')->group(function () {
+        Route::post('/', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'start'])->middleware('throttle:3,10,admin-recovery-start')->name('start');
+        Route::post('/{recovery}/confirm', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'confirm'])->middleware('throttle:10,1,admin-recovery-confirm')->name('confirm');
+        Route::post('/{recovery}/code', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'resendCode'])->middleware('throttle:3,10,admin-recovery-code')->name('code');
+        Route::post('/{recovery}/resend', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'resendLink'])->middleware('throttle:3,10,admin-recovery-resend')->name('resend');
+        Route::post('/{recovery}/cancel', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'cancel'])->middleware('throttle:10,1,admin-recovery-cancel')->name('cancel');
+        Route::get('/history', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'history'])->name('history');
+    });
+    Route::get('/admin/security/accounts', [AdminSecurityController::class, 'accounts']);
         Route::post('/admin/security/account/credential-change', [AdminSecurityController::class, 'requestOwnChange'])
             ->middleware('throttle:3,10');
         Route::post('/admin/security/staff-accounts', [AdminSecurityController::class, 'requestStaffAccount'])

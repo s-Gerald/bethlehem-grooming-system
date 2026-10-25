@@ -263,7 +263,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        if (! $user->is_active || $user->is_archived) {
+        if (! $user->is_active || $user->is_archived || $user->hasEmailRecoveryHold()) {
             return response()->json([
                 'success' => false,
                 'code' => 'account_disabled',

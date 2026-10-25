@@ -578,6 +578,23 @@ async function testDelayedPasswordResponseCannotClearNewerStaffSession() {
   assert.equal(browser.API.hasPendingLoginConfirmation(), false);
 }
 
+async function testRecoveryLinksNeverSendOrReplaceTheExistingBrowserSession() {
+  const requests = [];
+  const browser = createBrowser({ pathname: '/pages/client/confirm-email-recovery.html',
+    local: { admin_token: '920|admin-secret', user_role: 'admin' },
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return jsonResponse(200, {status: 'completed'}); },
+  });
+  await browser.API.verifyStaffEmailRecovery('a'.repeat(64));
+  await browser.API.completeStaffEmailRecovery('a'.repeat(64), 'CurrentStaff!234');
+  for (const { url, options } of requests) {
+    assert.equal(options.headers.Authorization, undefined, 'Recovery proof does not forward the unrelated admin bearer');
+    assert.equal(url.includes('a'.repeat(64)), false, 'Recovery token stays out of URLs');
+  }
+  assert.equal(browser.API.getAdminToken(), '920|admin-secret');
+  assert.equal(browser.replacements.length, 0);
+  assert.equal(browser.localStorage.getItem('bethlehem.auth.logout'), null);
+}
+
 async function testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect() {
   let release;
   const browser = createBrowser({ pathname: '/pages/admin/settings.html',
@@ -1682,6 +1699,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testReceptionistAccountSwitchSynchronizesSharedTabs();
   await testDelayedPasswordResponseCannotClearNewerStaffSession();
   await testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect();
+  await testRecoveryLinksNeverSendOrReplaceTheExistingBrowserSession();
   await testDelayedRevocationCannotClearNewerStaffSession();
   await testDelayedStaffLoginCannotReplaceNewerSession();
   testSharedPersistentLogoutDoesNotErasePendingConfirmation();

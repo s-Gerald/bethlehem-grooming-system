@@ -207,9 +207,9 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
 
         $this->assertStringNotContainsString('autocomplete="current-password"', $adminSecurity);
         $this->assertStringNotContainsString('autocomplete="new-password"', $adminSecurity);
-        $this->assertSame(11, substr_count($adminSecurity, 'data-lpignore="true"'));
-        $this->assertSame(11, substr_count($adminSecurity, 'data-1p-ignore'));
-        $this->assertSame(11, substr_count($adminSecurity, 'data-bwignore'));
+        $this->assertSame(12, substr_count($adminSecurity, 'data-lpignore="true"'));
+        $this->assertSame(12, substr_count($adminSecurity, 'data-1p-ignore'));
+        $this->assertSame(12, substr_count($adminSecurity, 'data-bwignore'));
 
         $this->assertStringContainsString('autocomplete="username"', $signIn);
         $this->assertStringContainsString('autocomplete="current-password"', $signIn);

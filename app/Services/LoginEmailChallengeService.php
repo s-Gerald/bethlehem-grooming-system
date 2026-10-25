@@ -25,6 +25,8 @@ class LoginEmailChallengeService
         $pollTokenHash = hash('sha256', $plainPollToken);
 
         return DB::transaction(function () use ($plainPollToken, $pollTokenHash): string {
+            $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
+            $user = $userId ? User::whereKey($userId)->lockForUpdate()->first() : null;
             $challenge = LoginEmailChallenge::query()
                 ->where('poll_token_hash', $pollTokenHash)
                 ->lockForUpdate()
@@ -38,9 +40,7 @@ class LoginEmailChallengeService
                 ], 422));
             }
 
-            $user = User::find($challenge->user_id);
-
-            if (! $user || ! $user->is_active || $user->is_archived) {
+            if (! $user || ! $user->is_active || $user->is_archived || $user->hasEmailRecoveryHold()) {
                 throw new HttpResponseException(response()->json([
                     'success' => false,
                     'code' => 'account_disabled',
@@ -101,7 +101,7 @@ class LoginEmailChallengeService
             if (! $eligibleRole
                 || ! $customerEmailIsVerified
                 || ! $lockedUser->is_active
-                || $lockedUser->is_archived) {
+                || $lockedUser->is_archived || $lockedUser->hasEmailRecoveryHold()) {
                 throw new \RuntimeException('This account is not eligible for login confirmation.');
             }
 
@@ -121,7 +121,7 @@ class LoginEmailChallengeService
                 'approved_at' => null,
             ])->save();
 
-            return AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code), $challenge);
+            return AuthenticationMailDelivery::queue($lockedUser, new ConfirmLoginNotification($code), $challenge);
         });
 
         return [
