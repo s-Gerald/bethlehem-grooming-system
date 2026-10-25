@@ -17,6 +17,10 @@ $staticFileMiddleware = [
     ValidateCsrfToken::class,
 ];
 
+// Keep the page outside the public static tree; its HTML is admin-authorized too.
+Route::get('/pages/admin/activity-log.html', fn () => redirect('api/admin/activity-log/page'))
+    ->withoutMiddleware($staticFileMiddleware);
+
 Route::get('/', function () {
     return response()->file(base_path('index.html'), [
         'Cache-Control' => 'no-store, private, max-age=0, must-revalidate',

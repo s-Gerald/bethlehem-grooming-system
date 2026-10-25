@@ -71,6 +71,12 @@ Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
 
 // ── PROTECTED ROUTES (token required) ────────────────
 Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(function () {
+    Route::middleware('role:admin')->prefix('admin/activity-log')->group(function () {
+        Route::get('/page', [\App\Http\Controllers\ActivityLogController::class, 'page']);
+        Route::get('/options', [\App\Http\Controllers\ActivityLogController::class, 'options']);
+        Route::get('/', [\App\Http\Controllers\ActivityLogController::class, 'index']);
+        Route::get('/{activity}', [\App\Http\Controllers\ActivityLogController::class, 'show'])->whereNumber('activity');
+    });
     Route::get('/session', [\App\Http\Controllers\SessionController::class, 'status'])->name('session.status');
     Route::post('/session/activity', [\App\Http\Controllers\SessionController::class, 'status'])->name('session.activity');
     Route::post('/session/unlock', [\App\Http\Controllers\SessionController::class, 'unlock'])

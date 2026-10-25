@@ -8,6 +8,8 @@ use Carbon\Carbon;
 
 class Booking extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $table = 'bookings';
 
     protected $primaryKey = 'booking_id';

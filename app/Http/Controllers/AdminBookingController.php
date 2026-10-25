@@ -190,7 +190,6 @@ class AdminBookingController extends Controller
             'releasedList' => $released->values(),
             ...($request->query('view') === 'board' ? ['summary' => $this->groomingCounts()] : [
                 'summary' => $this->dashboardMetrics(true, $request->user()?->role === 'admin'),
-                'recentActivity' => $this->recentActivity(),
             ]),
             'activeTodayCount' => $this->activeTodayCount(),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
@@ -249,9 +248,7 @@ class AdminBookingController extends Controller
 
     public function dashboardActivity()
     {
-        return response()->json(['recentActivity' => request()->user()?->isVeterinarian()
-            ? $this->clinicDashboardActivity() : $this->recentActivity()])
-            ->header('Cache-Control', 'no-store, private');
+        return app(ActivityLogController::class)->recent(request(), app(\App\Services\ActivityRecorder::class));
     }
 
     private function clinicDashboardSummary()
@@ -288,24 +285,6 @@ class AdminBookingController extends Controller
         return ['petName' => $case->pet?->pet_name ?? 'Patient', 'breed' => $case->pet?->breed ?? '—',
             'ownerName' => $owner ? trim($owner->first_name.' '.$owner->last_name)
                 : (trim(($case->walkin?->fname ?? '').' '.($case->walkin?->lname ?? '')) ?: 'Customer')];
-    }
-
-    private function clinicDashboardActivity(): array
-    {
-        if (! Schema::hasTable('clinic_appointments')) return [];
-        return ClinicAppointment::with(['user:user_id,first_name,last_name', 'walkin', 'pet.unregisteredCustomer'])
-            ->whereIn('status', ['checked_in', 'in_consultation', 'for_payment', 'completed', 'archived'])
-            ->orderByDesc('updated_at')->limit(6)->get()->map(function ($case) {
-                $identity = $this->clinicDashboardIdentity($case);
-                [$type, $title, $time] = match ($case->status) {
-                    'checked_in' => ['queued', 'Clinic check-in', $case->checked_in_at],
-                    'in_consultation' => ['in_progress', 'Consultation started', $case->consultation_started_at],
-                    default => ['completed', 'Consultation completed', $case->consultation_finished_at],
-                };
-                return ['id' => 'clinic-'.$case->id, 'type' => $type, 'title' => $title,
-                    'subtitle' => $identity['petName'].' - '.$identity['ownerName'],
-                    'time' => $time?->toIso8601String()];
-            })->all();
     }
 
     private function groomingCounts(bool $includeWeek = true): array
@@ -661,6 +640,10 @@ class AdminBookingController extends Controller
                         'grooming_start_time' => $startedAt,
                         'grooming_state' => BookingPet::GROOMING_STATE_IN_PROGRESS,
                     ]);
+                foreach ($petsToStart as $pet) {
+                    app(\App\Services\ActivityRecorder::class)->record('grooming_started', 'grooming', 'grooming_pet',
+                        (string) $pet->getKey(), $booking->booking_reference, [], true, request()->user(), null, $pet->pet_id);
+                }
             }
 
             $booking->update([
@@ -938,6 +921,10 @@ class AdminBookingController extends Controller
                 'grooming_end_time' => $finishedAt,
                 'grooming_state' => BookingPet::GROOMING_STATE_FINISHED,
             ]);
+            foreach ($petsToFinish as $pet) {
+                app(\App\Services\ActivityRecorder::class)->record('grooming_completed', 'grooming', 'grooming_pet',
+                    (string) $pet->getKey(), $booking->booking_reference, [], true, request()->user(), null, $pet->pet_id);
+            }
 
             return [
                 'booking' => $booking,
@@ -1832,92 +1819,6 @@ class AdminBookingController extends Controller
             ->first();
     }
 
-    private function recentActivity(): array
-    {
-        $payments = Payment::with(['booking.user', 'booking.walkin'])
-            ->where('payment_status', 'paid')
-            ->whereNotNull('paid_at')
-            ->orderBy('paid_at', 'desc')
-            ->limit(6)
-            ->get()
-            ->map(function (Payment $payment) {
-                $booking = $payment->booking;
-                $ownerLastName = $booking?->user?->last_name ?: $this->ownerName($booking);
-
-                return [
-                    'id' => 'payment-'.$payment->getKey(),
-                    'type' => 'payment',
-                    'title' => 'Payment collected',
-                    'subtitle' => "\u{20B1}".number_format((float) $payment->total_amount).' - '.($ownerLastName ?: 'Customer'),
-                    'time' => $payment->paid_at,
-                ];
-            });
-
-        $checkIns = Booking::with(['user', 'walkin', 'bookingPets.pet'])
-            ->whereNotNull('dropped_off_at')
-            ->orderBy('dropped_off_at', 'desc')
-            ->limit(6)
-            ->get()
-            ->map(function (Booking $booking) {
-                return [
-                    'id' => 'check-in-'.$booking->booking_id,
-                    'type' => 'queued',
-                    'title' => 'Checked in',
-                    'subtitle' => $this->petNames($booking).' - '.($this->ownerName($booking) ?: 'Customer'),
-                    'time' => $booking->dropped_off_at,
-                ];
-            });
-
-        $groomingStarted = Booking::with(['bookingPets.pet', 'bookingServices.service'])
-            ->whereNotNull('grooming_started_at')
-            ->orderBy('grooming_started_at', 'desc')
-            ->limit(6)
-            ->get()
-            ->map(function (Booking $booking) {
-                return [
-                    'id' => 'grooming-started-'.$booking->booking_id,
-                    'type' => 'in_progress',
-                    'title' => 'Grooming started',
-                    'subtitle' => $this->petNames($booking).' - '.$this->serviceLabel($booking),
-                    'time' => $booking->grooming_started_at,
-                ];
-            });
-
-        $completed = Booking::with(['bookingPets.pet', 'bookingServices.service'])
-            ->whereNotNull('grooming_finished_at')
-            ->orderBy('grooming_finished_at', 'desc')
-            ->limit(6)
-            ->get()
-            ->map(function (Booking $booking) {
-                return [
-                    'id' => 'completed-'.$booking->booking_id,
-                    'type' => 'completed',
-                    'title' => 'Grooming Service Completed',
-                    'subtitle' => $this->petNames($booking).' - '.$this->serviceLabel($booking),
-                    'time' => $booking->grooming_finished_at,
-                ];
-            });
-
-        return $payments
-            ->concat($checkIns)
-            ->concat($groomingStarted)
-            ->concat($completed)
-            ->filter(fn ($activity) => ! empty($activity['time']))
-            ->sortByDesc(fn ($activity) => Carbon::parse($activity['time'])->timestamp)
-            ->take(5)
-            ->map(function ($activity) {
-                $time = Carbon::parse($activity['time']);
-
-                return [
-                    ...$activity,
-                    'createdAt' => $time->toIso8601String(),
-                    'timeLabel' => $time->format('g:i A'),
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
     private function ownerName(?Booking $booking): string
     {
         if ($booking?->user) {
@@ -1962,17 +1863,6 @@ class AdminBookingController extends Controller
             ->filter()
             ->unique()
             ->count() > 1;
-    }
-
-    private function serviceLabel(Booking $booking): string
-    {
-        $services = ($booking->bookingServices ?? collect())
-            ->map(fn ($bookingService) => $bookingService->service?->service_name)
-            ->filter()
-            ->unique()
-            ->values();
-
-        return $services->isNotEmpty() ? $services->implode(', ') : 'Grooming';
     }
 
     private function bookingPetGroomingState(BookingPet $bookingPet): string

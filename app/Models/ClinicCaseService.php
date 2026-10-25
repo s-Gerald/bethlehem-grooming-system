@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ClinicCaseService extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const STATUSES = ['ordered', 'performed', 'cancelled'];
 
     protected $fillable = ['clinic_service_id', 'request_key', 'quantity', 'notes'];

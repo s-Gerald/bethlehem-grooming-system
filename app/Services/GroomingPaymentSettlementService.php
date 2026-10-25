@@ -22,11 +22,7 @@ class GroomingPaymentSettlementService
         ?string $notes, ?User $actor, bool $early, array $productLines,
         ?GatewayPayment $gateway = null,
     ): array {
-        $payment = $this->recordPaidPayment($booking, $total, $tendered, $method, $notes, $actor?->user_id);
-        if ($gateway) {
-            $payment->update(['payment_provider' => 'paymongo', 'provider_method' => $gateway->provider_method,
-                'gateway_payment_id' => $gateway->id, 'paid_at' => $gateway->paid_at]);
-        }
+        $payment = $this->recordPaidPayment($booking, $total, $tendered, $method, $notes, $actor?->user_id, $gateway);
         if ($productLines !== []) {
             app(GroomingProductSaleService::class)->record($payment, $actor, $productLines);
         }
@@ -67,6 +63,7 @@ class GroomingPaymentSettlementService
         string $paymentMethod,
         ?string $notes,
         ?int $processedBy,
+        ?GatewayPayment $gateway = null,
     ): Payment {
         $attributes = [
             'booking_id' => $booking->booking_id,
@@ -79,7 +76,9 @@ class GroomingPaymentSettlementService
             'payment_method' => $paymentMethod,
             'payment_status' => 'paid',
             'notes' => $notes,
-            'paid_at' => now(),
+            'paid_at' => $gateway?->paid_at ?? now(),
+            ...($gateway ? ['payment_provider' => 'paymongo', 'provider_method' => $gateway->provider_method,
+                'gateway_payment_id' => $gateway->id] : []),
         ];
 
         if (Schema::hasColumn('payments', 'processed_by')) {

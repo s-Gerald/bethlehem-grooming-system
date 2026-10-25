@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ClinicService extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const MAX_PRICE = 100000;
 
     protected $fillable = [

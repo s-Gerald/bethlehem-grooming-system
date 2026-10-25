@@ -333,6 +333,10 @@ function adminDashboard() {
     summaryLoaded: false,
     summaryLoading: true,
     summaryError: "",
+    activityArea: '',
+    activityCanFilter: false,
+    _activitySequence: 0,
+    _activityRequestArea: '',
     activityLoaded: false,
     activityLoading: true,
     activityError: "",
@@ -666,6 +670,10 @@ function adminDashboard() {
       if (this.pageMode === 'dashboard') {
         this._dashboardAccessInvalidated = () => {
           this._dashboardAccessRevision++;
+          this._activitySequence++;
+          this._activityRequest = null;
+          this.activityArea = '';
+          this.activityCanFilter = false;
           this.canViewRevenue = false;
           this.revenueToday = this.revenuePaymentCount = 0;
           this.dashboardQueuePreview = [];
@@ -723,24 +731,41 @@ function adminDashboard() {
       return this._summaryRequest;
     },
 
+    setActivityArea(area) {
+      if (!this.activityCanFilter || this.activityArea === area) return;
+      this.activityArea = area;
+      this.activityLoaded = false;
+      this.activityError = '';
+      this.recentActivity = [];
+      this._dashboardRetryAt.activity = 0;
+      return this.loadDashboardActivity();
+    },
+
     loadDashboardActivity({ force = false } = {}) {
       if (this._destroyed || this.pageMode !== 'dashboard' || document.visibilityState === 'hidden') return Promise.resolve();
-      if (this._activityRequest) return this._activityRequest;
+      const area = this.activityArea;
+      if (this._activityRequest && this._activityRequestArea === area) return this._activityRequest;
       if (!force && Date.now() < this._dashboardRetryAt.activity) return Promise.resolve();
+      const sequence = ++this._activitySequence;
+      const current = () => !this._destroyed && sequence === this._activitySequence;
+      this._activityRequestArea = area;
       this.activityLoading = !this.activityLoaded;
       let failed = false;
-      const onRefreshError = error => { failed = true; this.dashboardRefreshFailed('activity', error); };
-      this._activityRequest = API.loadAdminData("/admin/dashboard/activity", () => API.getAdminDashboardActivity({ force }), data => {
-        if (this._destroyed) return;
+      const onRefreshError = error => { if (current()) { failed = true; this.dashboardRefreshFailed('activity', error); } };
+      const endpoint = `/admin/dashboard/activity${area ? '?area=' + encodeURIComponent(area) : ''}`;
+      this._activityRequest = API.loadAdminData(endpoint, () => API.getAdminDashboardActivity({ force, area }), data => {
+        if (!current()) return;
         this.recentActivity = this.normalizeRecentActivity(data.recentActivity);
+        this.activityArea = data.area || area;
+        this.activityCanFilter = data.canFilter === true;
         this.activityLoaded = true;
       }, { force, onRefreshError }).then(() => {
-        if (!failed && !this._destroyed) {
+        if (!failed && current()) {
           this.activityError = '';
           this._pollFailures.activity = this._dashboardRetryAt.activity = 0;
         }
       }).catch(onRefreshError)
-        .finally(() => { this.activityLoading = false; this._activityRequest = null; });
+        .finally(() => { if (current()) { this.activityLoading = false; this._activityRequest = null; } });
       return this._activityRequest;
     },
 
@@ -3032,16 +3057,16 @@ function adminDashboard() {
     },
 
     activityTimeLabel(activity) {
-      if (activity?.timeLabel) return activity.timeLabel;
-      if (!activity?.createdAt) return "";
-
+      if (!activity?.createdAt) return activity?.timeLabel || '';
       const date = new Date(activity.createdAt);
-      if (Number.isNaN(date.getTime())) return "";
-
-      return date.toLocaleTimeString("en-PH", {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+      if (Number.isNaN(date.getTime())) return '';
+      const localDay = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value);
+      const today = new Date();
+      const day = localDay(date);
+      const time = date.toLocaleTimeString('en-PH', {timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit'});
+      if (day === localDay(today)) return 'Today · ' + time;
+      if (day === localDay(new Date(today.getTime() - 86400000))) return 'Yesterday · ' + time;
+      return date.toLocaleDateString('en-PH', {timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric'}) + ' · ' + time;
     },
 
     // Converts nullable values into template-safe strings.

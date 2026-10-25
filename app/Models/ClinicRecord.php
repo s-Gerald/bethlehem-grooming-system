@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ClinicRecord extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $table = 'clinic_records';
 
     protected $fillable = [

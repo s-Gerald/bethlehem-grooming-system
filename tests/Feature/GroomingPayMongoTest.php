@@ -17,6 +17,7 @@ class GroomingPayMongoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        (require base_path('database/migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');
             $table->string('booking_reference');
@@ -222,6 +223,9 @@ class GroomingPayMongoTest extends TestCase
         $this->assertSame(1, DB::table('notifications')->count());
         $this->assertDatabaseHas('payments', ['payment_method' => 'online', 'payment_provider' => 'paymongo', 'provider_method' => 'qrph']);
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'status' => 'released', 'paid' => true]);
+        $activity = \App\Models\ActivityLog::where('action', 'payment_recorded')->sole();
+        $this->assertSame('System', $activity->actor_display);
+        $this->assertNull($activity->actor_id);
         $this->assertSame('paid', GatewayPayment::first()->status);
         $this->staff();
         $this->getJson('/api/admin/bookings/1/online-payment')->assertOk()

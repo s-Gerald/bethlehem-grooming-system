@@ -17,6 +17,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(\App\Services\GroomingTimeEstimate::class);
+        $this->app->scoped(\App\Services\ActivityRecorder::class);
     }
 
     /**
@@ -24,6 +25,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        foreach ([\App\Models\Booking::class, \App\Models\BookingPet::class, \App\Models\ClinicAppointment::class,
+            \App\Models\Payment::class, \App\Models\PosTransaction::class, \App\Models\InventoryItem::class,
+            \App\Models\Service::class, \App\Models\ClinicService::class, \App\Models\Pet::class,
+            \App\Models\UnregisteredCustomer::class, \App\Models\User::class, \App\Models\ClinicRecord::class,
+            \App\Models\VaccinationRecord::class, \App\Models\ClinicSetting::class, \App\Models\QrPaymentSettings::class,
+            \App\Models\ClinicClosure::class, \App\Models\PetGroomer::class, \App\Models\BookingService::class,
+            \App\Models\ClinicVital::class, \App\Models\ClinicCaseService::class, \App\Models\ClinicCharge::class,
+            \App\Models\ClinicConfinement::class, \App\Models\ClinicConfinementObservation::class,
+            \App\Models\ClinicAttachment::class] as $model) {
+            $model::observe(\App\Observers\ActivityObserver::class);
+        }
         // Sanctum rejects expired tokens before route middleware can revoke them.
         \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(function ($token, bool $valid): bool {
             if (! $valid) {

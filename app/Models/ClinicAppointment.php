@@ -8,6 +8,8 @@ use Illuminate\Validation\ValidationException;
 
 class ClinicAppointment extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const TERMINAL_STATUSES = ['completed', 'cancelled', 'no_show', 'expired', 'archived'];
 
     public const OPERATIONAL_STATUSES = ['checked_in', 'in_consultation', 'for_payment'];

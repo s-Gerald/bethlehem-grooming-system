@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class BookingPet extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const GROOMING_STATE_NOT_STARTED = 'not_started';
 
     public const GROOMING_STATE_IN_PROGRESS = 'in_progress';

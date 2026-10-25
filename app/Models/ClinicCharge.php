@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ClinicCharge extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     // Catalog prices are never used to recalculate existing financial lines.
     public function clinicService(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {

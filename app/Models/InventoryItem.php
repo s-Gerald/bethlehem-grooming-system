@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class InventoryItem extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const RETAIL_CATEGORIES = ['food', 'grooming_supply', 'pet_shop', 'miscellaneous'];
     public const MEDICINE_TYPES = ['deworming', 'heartworm_prevention', 'heartworm_treatment', 'mange_treatment', 'general_medication'];
 

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Pet extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const CLINIC_VERIFIABLE_FIELDS = [
         'breed',
         'fur_type',

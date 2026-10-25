@@ -9,6 +9,8 @@ use InvalidArgumentException;
 
 class ClinicSetting extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const SINGLETON_ID = 1;
 
     public const MIN_GROOMERS_ON_DUTY = 0;

@@ -1,0 +1,50 @@
+.activity-segments { display: inline-flex; max-width: 100%; gap: 3px; padding: 3px; border: 1px solid #d7e3ef; border-radius: 10px; background: #f5f8fb; }
+.activity-segments button { min-height: 36px; padding: 6px 13px; border-radius: 7px; color: #355674; font-size: 13px; font-weight: 600; }
+.activity-segments button:hover { background: #e5edf5; }
+.activity-segments button[aria-pressed="true"] { background: #315b7e; color: white; }
+.activity-time { max-width: 140px; text-align: right; font-size: 12px; }
+.activity-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 20px; border-bottom: 1px solid #d7e3ef; }
+.activity-toolbar label { display: flex; flex: 1 1 130px; min-width: 0; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: #355674; }
+.activity-toolbar .activity-search { flex: 2 1 220px; }
+.activity-toolbar input, .activity-toolbar select { width: 100%; min-width: 0; min-height: 42px; border: 1px solid #c9d9e8; border-radius: 10px; padding: 9px 10px; background: white; color: #1f3850; font: inherit; font-size: 14px; }
+.activity-toolbar input:focus, .activity-toolbar select:focus { border-color: #315b7e; }
+.activity-button { min-height: 42px; padding: 9px 14px; border: 1px solid #c9d9e8; border-radius: 10px; background: white; color: #315b7e; font-size: 13px; font-weight: 600; }
+.activity-button:hover { background: #eef5fb; }
+.activity-button:disabled { opacity: .45; cursor: default; }
+.activity-segments button:focus-visible, .activity-button:focus-visible, .activity-table button:focus-visible, .activity-toolbar :focus-visible { outline: 2px solid #315b7e; outline-offset: 3px; }
+.activity-table-wrap { overflow-x: auto; }
+.activity-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; color: #1f3850; }
+.activity-table th { padding: 13px 20px; background: #f5f8fb; color: #5c7690; font-size: 12px; font-weight: 600; }
+.activity-table td { padding: 16px 20px; border-top: 1px solid #e8f0f8; vertical-align: top; }
+.activity-table tbody tr { cursor: pointer; }
+.activity-table tbody tr:hover { background: #f5f8fb; }
+.activity-table button { display: block; width: 100%; text-align: left; font-weight: 600; }
+.activity-mobile-actor { display: none !important; }
+.activity-table small { display: block; margin-top: 4px; color: #64748b; font-size: 12px; overflow-wrap: anywhere; }
+.activity-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-top: 1px solid #d7e3ef; font-size: 13px; color: #5c7690; }
+.activity-pagination div { display: flex; align-items: center; gap: 12px; }
+.activity-state { padding: 48px 20px; text-align: center; font-size: 14px; color: #64748b; }
+.activity-state button { margin-top: 12px; }
+.activity-overlay { position: fixed; inset: 0; z-index: 70; background: rgb(31 56 80 / .3); }
+.activity-drawer { position: absolute; inset: 0 0 0 auto; width: min(100%, 480px); background: white; box-shadow: -8px 0 36px rgb(31 56 80 / .12); overflow-y: auto; overscroll-behavior: contain; color: #1f3850; }
+.activity-drawer header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #d7e3ef; background: white; }
+.activity-drawer h2, .activity-drawer h3 { font-style: normal; font-weight: 700; overflow-wrap: anywhere; }
+.activity-drawer h3 { font-size: 20px; margin-bottom: 24px; }
+.activity-drawer-body { padding: 24px; }
+.activity-drawer dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px 18px; font-size: 14px; }
+.activity-drawer dt { color: #64748b; }
+.activity-drawer dd { overflow-wrap: anywhere; }
+.activity-changes { margin-top: 28px; border-top: 1px solid #d7e3ef; padding-top: 20px; }
+.activity-changes h4 { margin-bottom: 16px; font-size: 14px; font-weight: 600; }
+.activity-changes section { margin-top: 16px; font-size: 13px; }
+.activity-changes p { margin-top: 4px; color: #64748b; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .activity-toolbar { padding: 16px; gap: 10px; }
+  .activity-toolbar .activity-search { flex-basis: 100%; }
+  .activity-table th, .activity-table td { padding: 14px 12px; }
+  .activity-table th:nth-child(2), .activity-table td:nth-child(2) { display: none; }
+  .activity-mobile-actor { display: block !important; }
+  .activity-time { max-width: 100px; }
+  .activity-drawer dl { grid-template-columns: 90px minmax(0, 1fr); gap: 12px; }
+}
+@media print { .activity-overlay, .activity-toolbar, .activity-pagination { display: none; } }

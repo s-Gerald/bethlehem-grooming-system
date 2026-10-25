@@ -13,6 +13,8 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     use HasApiTokens, HasFactory, Notifiable;
 
     private const PASSWORD_SETUP_REQUIRED_PREFIX = '!staff-password-setup-required!';

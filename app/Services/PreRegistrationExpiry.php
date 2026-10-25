@@ -36,6 +36,7 @@ class PreRegistrationExpiry
                     $registrations = $unused()->orderBy($key)->limit(200)->lockForUpdate()->get();
                     if ($registrations->isEmpty()) return 0;
                     DB::table($table)->whereIn($key, $registrations->modelKeys())->update(['status' => 'expired']);
+                    app(ActivityRecorder::class)->recordExpirations($registrations, $service);
 
                     if (Schema::hasTable('notifications')) {
                         $registrations->load($service === 'grooming' ? ['user', 'walkin', 'bookingPets.pet'] : ['user', 'walkin', 'pet']);

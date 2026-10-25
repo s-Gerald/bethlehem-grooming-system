@@ -754,7 +754,8 @@ var API = (() => {
   }
 
   function isAdminPage() {
-    return window.location.pathname.replace(/\\/g, "/").includes("/pages/admin/");
+    return window.location.pathname.replace(/\\/g, "/").includes("/pages/admin/")
+      || window.location.pathname.endsWith("/api/admin/activity-log/page");
   }
 
   function isSignInPage() {
@@ -769,7 +770,7 @@ var API = (() => {
 
   function appBasePath(pathname = window.location.pathname) {
     const path = String(pathname || "/").replace(/\\/g, "/");
-    const markerIndex = path.toLowerCase().indexOf("/pages/");
+    const markerIndex = path.toLowerCase().indexOf(path.endsWith("/api/admin/activity-log/page") ? "/api/" : "/pages/");
 
     if (markerIndex >= 0) {
       return path.slice(0, markerIndex).replace(/\/$/, "");
@@ -809,7 +810,7 @@ var API = (() => {
   }
 
   function isAdminOnlyPage() {
-    return isAdminPage() && ADMIN_ONLY_PAGE_NAMES.includes(currentPageName());
+    return isAdminPage() && (ADMIN_ONLY_PAGE_NAMES.includes(currentPageName()) || window.location.pathname.endsWith("/api/admin/activity-log/page"));
   }
 
   function redirectToAdminDashboard() {
@@ -2245,9 +2246,21 @@ var API = (() => {
   function getAdminDashboardSummary({ force = false } = {}) {
     return request("GET", "/admin/dashboard/summary", null, getAdminToken(), { force });
   }
-  function getAdminDashboardActivity({ force = false } = {}) {
-    return request("GET", "/admin/dashboard/activity", null, getAdminToken(), { force });
+  function getAdminDashboardActivity({ force = false, area = '' } = {}) {
+    const query = area ? `?area=${encodeURIComponent(area)}` : '';
+    return request("GET", `/admin/dashboard/activity${query}`, null, getAdminToken(), { force });
   }
+  function getAdminActivityLog(params = {}) {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value != null));
+    return request('GET', `/admin/activity-log?${query}`, null, getAdminToken());
+  }
+  function getAdminActivityDetails(id) {
+    return request('GET', `/admin/activity-log/${encodeURIComponent(id)}`, null, getAdminToken());
+  }
+  function getAdminActivityOptions() {
+    return request('GET', '/admin/activity-log/options', null, getAdminToken());
+  }
+
   function getAdminGroomingActivity({ force = false } = {}) {
     return request("GET", "/admin/grooming/activity", null, getAdminToken(), { force });
   }
@@ -3157,6 +3170,9 @@ var API = (() => {
     getAdminBookings,
     getAdminDashboardSummary,
     getAdminDashboardActivity,
+    getAdminActivityLog,
+    getAdminActivityDetails,
+    getAdminActivityOptions,
     getAdminGroomingActivity,
     adminCheckIn,
     adminUpdateInternalStaffNote,

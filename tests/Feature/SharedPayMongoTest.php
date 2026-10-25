@@ -17,6 +17,7 @@ class SharedPayMongoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        (require base_path('database/migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');
             $table->string('booking_reference');
@@ -286,6 +287,9 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('gateway_payments', 1);
         $this->assertDatabaseCount('payments', 0);
         $this->assertDatabaseHas('gateway_payments', ['provider' => 'paymongo', 'provider_method' => 'qrph']);
+        $activity = \App\Models\ActivityLog::where('action', 'payment_recorded')->sole();
+        $this->assertSame('System', $activity->actor_display);
+        $this->assertNull($activity->actor_id);
         $this->getJson('/api/admin/clinic-appointments/1/online-payment')->assertOk()
             ->assertJsonPath('appointment.payment_method_label', 'Online Payment');
     }
@@ -405,6 +409,9 @@ class SharedPayMongoTest extends TestCase
         $this->postJson('/api/pos/transactions', ['items' => [['item_id' => 10, 'quantity' => 2]], 'amount_tendered' => 160])->assertUnprocessable();
         $this->webhook($this->event(16000))->assertOk(); $this->webhook($this->event(16000))->assertOk();
         $this->assertDatabaseCount('pos_transactions', 1); $this->assertDatabaseCount('inventory_transactions', 1);
+        $activity = \App\Models\ActivityLog::where('action', 'payment_recorded')->sole();
+        $this->assertSame('System', $activity->actor_display);
+        $this->assertNull($activity->actor_id);
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
         $this->assertDatabaseCount('gateway_stock_reservations', 0);
         $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'online')

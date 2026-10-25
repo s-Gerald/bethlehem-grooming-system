@@ -269,8 +269,32 @@ async function profileSessionSwitchRace() {
   assert.equal(e.c.API.getCachedStaffIdentity(), null);
 }
 
+async function activityLogNavigationUsesVerifiedAdminIdentity() {
+  for (const subrole of [null, 'grooming_receptionist', 'clinic_receptionist', 'veterinarian']) {
+    const e = environment(), admin = subrole === null;
+    if (admin) e.c.API.setUserRole('admin');
+    e.respond(() => identity({role: admin ? 'admin' : 'staff', staff_subrole: subrole}));
+    await e.c.API.getStaffIdentity();
+    const makeLink = () => ({attrs: new Map(), style: {},
+      setAttribute(name, value) {this.attrs.set(name, value);}, getAttribute(name) {return this.attrs.get(name);}});
+    let inserted;
+    const settings = {href: 'http://127.0.0.1:8000/pages/admin/settings.html',
+      cloneNode: () => makeLink(), before: link => {inserted = link;}};
+    const aside = {querySelector: () => null, closest: () => null, setAttribute() {}, removeAttribute() {},
+      querySelectorAll: selector => selector === '[x-show]' ? [inserted] : []};
+    e.c.document.currentScript = {src: 'http://127.0.0.1:8000/scripts/components/admin-sidebar.js'};
+    e.c.document.querySelector = selector => selector.includes('settings.html') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
+    e.c.installAdminActivityNavigation();
+    assert.equal(inserted.href, 'http://127.0.0.1:8000/pages/admin/activity-log.html');
+    e.c.renderCachedAdminSidebar();
+    assert.equal(inserted.style.display, admin ? '' : 'none', 'Activity Log precedes Settings and is visible only to verified admins');
+    assert.equal(e.c.getAdminSidebarActivePage('/api/admin/activity-log/page'), 'activity-log');
+    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/activity-log.html'), 'activity-log');
+  }
+}
+
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

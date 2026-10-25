@@ -10,6 +10,7 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
     return "inventory";
   }
 
+  if (normalizedPath.endsWith('/api/admin/activity-log/page')) return 'activity-log';
   const pageName = normalizedPath.split("/").filter(Boolean).pop() || "";
   if (pageName === 'notifications.html') {
     const origin = new URLSearchParams(search).get('from');
@@ -25,6 +26,7 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
     "transactions.html": "transactions",
     "reports.html": "reports",
     "settings.html": "settings",
+    "activity-log.html": "activity-log",
   };
 
   return pageMap[pageName] || "";
@@ -89,6 +91,19 @@ function installAdminServicesNavigation() {
   services.setAttribute('@click', 'sidebarOpen = false');
   services.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#tag"></use></svg><span>Services</span>`;
   clinic.after(services);
+}
+
+function installAdminActivityNavigation() {
+  const settings = document.querySelector('.admin-sidebar-menu a[href$="settings.html"]');
+  if (!settings) return;
+  const link = settings.cloneNode(false);
+  link.href = new URL('activity-log.html', settings.href).href;
+  link.setAttribute('x-show', 'isAdmin');
+  link.setAttribute('data-admin-permission', '');
+  link.style.display = 'none';
+  link.setAttribute('@click', 'sidebarOpen = false');
+  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock-counter-clockwise"></use></svg><span>Activity Log</span>`;
+  settings.before(link);
 }
 
 function getAdminSidebarIdentityState(user) {
@@ -172,12 +187,13 @@ function renderCachedAdminSidebar() {
 if (typeof document !== "undefined" && document.querySelector) {
   installAdminInventoryNavigation();
   installAdminServicesNavigation();
+  installAdminActivityNavigation();
   document.querySelectorAll('.admin-sidebar-menu nav a').forEach(link => {
     link.setAttribute('@click', 'sidebarOpen = false');
     if (link.closest('.admin-inventory-submenu')) return;
     const page = getAdminSidebarActivePage(new URL(link.href).pathname);
     link.setAttribute(':class', `activePage === '${page}' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'`);
-    link.setAttribute(':aria-current', window.location.pathname === new URL(link.href).pathname
+    link.setAttribute(':aria-current', (window.location.pathname === new URL(link.href).pathname || page === 'activity-log' && getAdminSidebarActivePage() === page)
       ? `activePage === '${page}' ? 'page' : null` : 'null');
   });
   renderCachedAdminSidebar();

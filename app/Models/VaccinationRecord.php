@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class VaccinationRecord extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     public const DUE_SOON_DAYS = 30;
 
     public const STATUS_CURRENT = 'current';

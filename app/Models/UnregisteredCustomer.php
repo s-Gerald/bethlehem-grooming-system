@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 class UnregisteredCustomer extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $fillable = [
         'first_name',
         'last_name',

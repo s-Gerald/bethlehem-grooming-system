@@ -244,6 +244,11 @@ class AuthController extends Controller
         if ((! $user && ! $pendingRegistration) || ! $passwordMatches) {
             RateLimiter::hit($throttleKey, 60);
             RateLimiter::hit($ipThrottleKey, 60);
+            if ($user && in_array($user->role, ['admin', 'staff'], true)) {
+                // The attempted account is the subject, never a falsely authenticated actor.
+                app(\App\Services\ActivityRecorder::class)->record('sign_in_failed', 'system', 'account',
+                    (string) $user->getKey(), 'Staff sign-in', [], false, null, null, null, 'failed');
+            }
 
             return response()->json([
                 'success' => false,

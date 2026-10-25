@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class BookingService extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $table = 'booking_services';
     protected $primaryKey = 'booking_service_id';
     public $timestamps = false;

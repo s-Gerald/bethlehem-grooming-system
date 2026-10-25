@@ -1,0 +1,192 @@
+<!doctype html>
+<html data-session-gate="checking" lang="en">
+  <head>
+    <base href="../../../pages/admin/" />
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activity Log | Bethlehem Animal Clinic</title>
+    <link rel="stylesheet" href="../../css/output.css" />
+    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
+    <link rel="stylesheet" href="../../css/custom.css?v=admin-notification-filter-20260821&release=20261001&intake=20261019" />
+    <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
+    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025" />
+      <link rel="stylesheet" href="../../css/components/admin-activity.css?v=20261025" />
+  </head>
+  <body class="bg-[#f5f8fb] text-slate-800">
+    <div x-data="adminSidebar()" data-admin-shell class="min-h-screen flex bg-[#f5f8fb]">
+      <div
+        x-cloak
+        x-show="sidebarOpen"
+        x-transition.opacity
+        class="fixed inset-0 z-40 bg-slate-900/40 lg:hidden"
+        @click="sidebarOpen = false"
+      ></div>
+
+      <aside
+        class="admin-sidebar-menu -translate-x-full fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-[#d7e3ef] bg-[#a9bfd6] shadow-xl transition-transform duration-300 lg:translate-x-0" data-session-surface
+        :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+      >
+        <div class="px-6 py-6" data-session-public>
+          <div class="flex items-start gap-4">
+            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
+              <img
+                src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                alt="Bethlehem Animal Clinic logo"
+                class="h-full w-full object-contain"
+              />
+            </div>
+            <div class="min-w-0">
+              <h1 class="text-xl font-extrabold leading-tight text-[#1f3850]">Bethlehem Animal</h1>
+              <p class="text-sm font-medium text-[#355674]">Clinic &amp; Grooming</p>
+            </div>
+          </div>
+        </div>
+
+        <p data-session-public x-cloak x-show="sidebarError" class="admin-load-error px-6" role="alert"><span x-text="sidebarError"></span><button type="button" @click="loadLoggedInIdentity()">Retry</button></p>
+        <nav class="px-4 py-6" data-admin-navigation inert>
+          <div class="mb-8">
+            <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
+            <div class="space-y-1.5">
+              <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
+                <span>Dashboard</span>
+              </a>
+              <a href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+                <span>Customers</span>
+              </a>
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
+                <span>Grooming</span>
+                <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
+              </a>
+              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+                <span>Clinic</span>
+              </a>
+              <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
+                <span>Inventory</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="mb-8">
+            <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
+            <div class="space-y-1.5">
+              <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+                <span>History</span>
+              </a>
+              <a href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
+                <span>Transactions</span>
+              </a>
+              <a data-admin-permission href="./reports.html" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+                <span>Reports</span>
+              </a>
+            </div>
+          </div>
+
+          <div>
+            <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
+            <div class="space-y-1.5">
+              <a href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
+                <span>Settings</span>
+              </a>
+            </div>
+          </div>
+        </nav>
+
+        <div class="admin-sidebar-footer p-4" data-admin-navigation inert>
+          <div data-admin-account aria-busy="true" :aria-busy="String(!sidebarReady)" class="mb-4 flex items-center gap-3 rounded-2xl bg-[#355c84] p-3">
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-sm font-extrabold text-white" x-text="isAdmin ? 'AD' : staffInitials"></div>
+            <div class="min-w-0">
+              <p class="truncate font-bold text-white" x-text="isAdmin ? 'Admin' : staffDisplayName"></p>
+              <p class="truncate text-sm text-white/80" x-text="isAdmin ? 'Clinic Manager' : staffRoleLabel"></p>
+            </div>
+          </div>
+          <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025"></script>
+
+
+
+      <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
+        <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden" data-session-surface>
+          <div data-session-public>
+            <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
+            <h2 class="text-lg font-extrabold text-[#1f3850]">Activity Log</h2>
+          </div>
+          <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
+          </button>
+        </header>
+
+        <main x-data="adminActivityLog()" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0">
+          <div x-ref="content" data-session-surface>
+            <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
+              <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6" data-session-public>
+                <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Activity Log</h2>
+                <p class="mt-1 text-sm text-[#355674]">Review activity across Clinic and Grooming.</p>
+              </div>
+            </section>
+            <section class="mt-6 overflow-hidden rounded-2xl border border-[#d7e3ef] bg-white shadow-sm" aria-label="Activity history" :aria-busy="loading">
+              <form class="activity-toolbar" @submit.prevent="changeFilters()">
+                <label class="activity-search">Search<input type="search" placeholder="Search activity, staff, or record" x-model="filters.search" @input.debounce.350ms="changeFilters()" maxlength="150" /></label>
+                <label>Area<select x-model="filters.area" @change="changeFilters()"><option value="all">All areas</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option><option value="system">System</option></select></label>
+                <label>From<input type="date" x-model="filters.from" :max="filters.to" @change="changeFilters()" required /></label>
+                <label>To<input type="date" x-model="filters.to" :min="filters.from" @change="changeFilters()" required /></label>
+                <label>Staff member<select x-model="filters.staff" @change="changeFilters()"><option value="">All staff</option><template x-for="(person, index) in staff" :key="person.actor_id + '-' + index"><option :value="person.actor_id" x-text="person.actor_display"></option></template></select></label>
+                <label>Activity type<select x-model="filters.type" @change="changeFilters()"><option value="">All activities</option><template x-for="(label, key) in types" :key="key"><option :value="key" x-text="label"></option></template></select></label>
+                <button type="button" class="activity-button" @click="clearFilters()">Clear filters</button>
+              </form>
+              <p x-cloak x-show="optionsError" class="admin-load-error px-5" role="alert"><span x-text="optionsError"></span><button type="button" @click="loadOptions()">Retry</button></p>
+              <admin-loader x-cloak x-show="loading"></admin-loader>
+              <div x-cloak x-show="error" class="activity-state" role="alert"><p x-text="error"></p><button type="button" class="activity-button" @click="load()">Retry</button></div>
+              <div x-cloak x-show="loaded && !loading && !error && !rows.length" class="activity-state"><p x-text="filters.search || filters.area !== 'all' || filters.staff || filters.type ? 'No activity found' : 'No activity yet'"></p></div>
+              <div x-cloak x-show="loaded && !loading && !error && rows.length" class="activity-table-wrap">
+                <table class="activity-table"><thead><tr><th scope="col">Activity</th><th scope="col">Performed by</th><th scope="col">Date &amp; Time</th></tr></thead>
+                  <tbody><template x-for="row in rows" :key="row.id"><tr @click="openDetails(row, $el.querySelector('button'))">
+                    <td><button type="button" @click.stop="openDetails(row, $el)" :aria-label="row.title + ': ' + row.context" x-text="row.title"></button><small x-text="row.context"></small><small class="activity-mobile-actor" x-text="row.actor_display"></small></td>
+                    <td x-text="row.actor_display"></td><td><time :datetime="row.occurred_at" x-text="formatDate(row.occurred_at)"></time></td>
+                  </tr></template></tbody>
+                </table>
+              </div>
+              <div x-cloak x-show="loaded && !error && total" class="activity-pagination"><span x-text="total + (total === 1 ? ' activity' : ' activities')"></span><div><button type="button" class="activity-button" @click="load(page - 1)" :disabled="loading || page <= 1">Previous</button><span x-text="page + ' / ' + lastPage"></span><button type="button" class="activity-button" @click="load(page + 1)" :disabled="loading || page >= lastPage">Next</button></div></div>
+            </section>
+          </div>
+          <div x-cloak x-show="drawerOpen" class="activity-overlay" @click.self="closeDetails()" @keydown.escape.stop.prevent="closeDetails()" data-session-surface>
+            <section x-ref="drawer" class="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-details-title" @keydown="trapFocus($event)">
+              <header><h2 id="activity-details-title">Activity details</h2><button x-ref="drawerClose" type="button" class="activity-button" @click="closeDetails()" aria-label="Close activity details"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button></header>
+              <admin-loader x-cloak x-show="detailLoading"></admin-loader>
+              <div x-cloak x-show="detailError" class="activity-state" role="alert"><p x-text="detailError"></p><button type="button" class="activity-button" @click="closeDetails()">Close</button></div>
+              <template x-if="detail"><div class="activity-drawer-body"><h3 x-text="detail.title"></h3><dl>
+                <dt>Performed by</dt><dd x-text="detail.actor_display"></dd>
+                <template x-if="detail.actor_role"><dt>Role</dt></template><template x-if="detail.actor_role"><dd x-text="detail.actor_role"></dd></template>
+                <template x-if="detail.actor_identity"><dt>Account</dt></template><template x-if="detail.actor_identity"><dd x-text="detail.actor_identity"></dd></template>
+                <dt>Area</dt><dd x-text="detail.area[0].toUpperCase() + detail.area.slice(1)"></dd>
+                <dt>Date &amp; Time</dt><dd x-text="formatDate(detail.occurred_at, true)"></dd>
+                <dt>Record</dt><dd x-text="detail.context"></dd>
+                <dt>Result</dt><dd x-text="detail.result === 'success' ? 'Successful' : 'Failed'"></dd>
+              </dl><section x-show="Object.keys(detail.changes || {}).length" class="activity-changes"><h4>Changes</h4><template x-for="(change, field) in detail.changes" :key="field"><section><strong x-text="changeLabel(field)"></strong><p x-show="change.before !== undefined && change.before !== null && change.before !== ''">Previous: <span x-text="changeValue(change.before)"></span></p><p x-show="change.after !== undefined">New: <span x-text="change.after === null || change.after === '' ? 'Cleared' : changeValue(change.after)"></span></p></section></template></section></div></template>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script src="../../scripts/components/admin-activity-log.js?v=20261025"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  </body>
+</html>

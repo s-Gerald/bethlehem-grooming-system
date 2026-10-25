@@ -175,6 +175,8 @@ class StaffEmailRecoveryService
             $target->forceFill(['email_recovery_id' => null])->save();
             $recovery->update(['status' => 'completed', 'active_user_id' => null, 'token_hash' => null, 'resolved_at' => now()]);
             $this->audit($recovery, 'completed', $target->getKey());
+            app(ActivityRecorder::class)->record('recovery_completed', 'system', 'account', (string) $target->getKey(),
+                trim($target->first_name.' '.$target->last_name), [], false, $target, 'recovery:'.$recovery->id);
             $this->notice($recovery, true);
             return ['status' => 'completed'];
         });

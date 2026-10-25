@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ClinicConfinement extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $guarded = ['id'];
 
     protected $casts = ['admitted_at' => 'datetime', 'discharged_at' => 'datetime'];

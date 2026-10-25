@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Storage;
 
 class QrPaymentSettings extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $table = 'qr_payment_settings';
 
     protected $guarded = ['id'];

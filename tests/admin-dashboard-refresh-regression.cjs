@@ -147,11 +147,31 @@ async function revenueRequiresServerAuthorizationAndClearsOnRoleChange() {
   assert.equal(ui.revenuePaymentCount, 0);
   ui.destroy();
 }
+async function activityFiltersRejectStaleResponsesAndPreserveSummary() {
+  const e = environment(), ui = component(e);
+  ui.activityCanFilter = true; ui.activityArea = 'all'; ui.todayCount = 9;
+  const first = deferred(), second = deferred();
+  e.respond(endpoint => endpoint.includes('area=grooming') ? first.promise : second.promise);
+  const grooming = ui.setActivityArea('grooming');
+  const clinic = ui.setActivityArea('clinic');
+  second.resolve({area: 'clinic', canFilter: true, recentActivity: [{id: 2, title: 'Consultation started'}]});
+  await clinic;
+  first.resolve({area: 'grooming', canFilter: true, recentActivity: [{id: 1, title: 'Grooming started'}]});
+  await grooming;
+  assert.equal(ui.activityArea, 'clinic'); assert.equal(ui.recentActivity[0].id, 2);
+  assert.equal(ui.todayCount, 9, 'Changing activity must preserve dashboard metrics');
+  assert.equal(e.calls.length, 2);
+  ui.activityCanFilter = false;
+  await ui.setActivityArea('grooming');
+  assert.equal(e.calls.length, 2, 'Clinic-only users have no interactive cross-area filter');
+}
+
 (async () => {
   let failed = 0;
   for (const test of [retainedFailureIsVisibleAndRetryRecovers, boundedFailuresAndManualRetryShareOneRequest,
     singlePollAndVisibilityLifecycle, navigationRefreshAndSessionOwnership, activityFailuresAlsoRetainAndRecover,
-    invalidationDoesNotOverlapSummaryRequests, revenueRequiresServerAuthorizationAndClearsOnRoleChange]) {
+    invalidationDoesNotOverlapSummaryRequests, revenueRequiresServerAuthorizationAndClearsOnRoleChange,
+    activityFiltersRejectStaleResponsesAndPreserveSummary]) {
     try { await test(); console.log(test.name+' passed'); }
     catch (error) { failed++; console.error(test.name, error); }
   }

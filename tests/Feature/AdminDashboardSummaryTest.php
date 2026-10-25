@@ -51,10 +51,12 @@ class AdminDashboardSummaryTest extends TestCase
                 ->assertJsonPath('summary.inConsultation', 1)->assertJsonPath('summary.today', 2)
                 ->assertJsonMissingPath('capacity')->assertJsonMissingPath('summary.revenueToday')
                 ->assertJsonCount(2, 'queuePreview')->assertJsonPath('queuePreview.0.serviceType', 'clinic');
+            app(\App\Services\ActivityRecorder::class)->record('checked_in', 'clinic', 'clinic_visit', '1', 'Clinic', [], true);
+            app(\App\Services\ActivityRecorder::class)->record('grooming_started', 'grooming', 'grooming_visit', '1', 'Grooming', [], true);
             $activity = $this->getJson('/api/admin/dashboard/activity')->assertOk()->json('recentActivity');
             $this->assertNotEmpty($activity);
             foreach ($activity as $item) {
-                $this->assertStringStartsWith('clinic-', $item['id']);
+                $this->assertStringStartsWith('activity-', $item['id']);
                 $this->assertStringNotContainsString('Grooming', $item['title']);
             }
         } finally {
@@ -149,6 +151,7 @@ class AdminDashboardSummaryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        (require base_path('database/migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
         $this->createPetGroomers();
 
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
@@ -537,6 +540,7 @@ class AdminDashboardSummaryTest extends TestCase
 
         $this->assertSame(200, $firstResponse->getStatusCode());
         $this->assertFalse($firstResponse->getData(true)['all_pets_started']);
+        $this->assertSame(1, \App\Models\ActivityLog::where('action', 'grooming_started')->count());
         $this->assertSame('checked_in', DB::table('bookings')->where('booking_id', 1)->value('status'));
         $this->assertNotNull(DB::table('booking_pets')->where('booking_pet_id', 1)->value('grooming_start_time'));
         $this->assertNull(DB::table('booking_pets')->where('booking_pet_id', 2)->value('grooming_start_time'));
@@ -557,6 +561,7 @@ class AdminDashboardSummaryTest extends TestCase
 
         $this->assertSame(200, $secondResponse->getStatusCode());
         $this->assertTrue($secondResponse->getData(true)['all_pets_started']);
+        $this->assertSame(2, \App\Models\ActivityLog::where('action', 'grooming_started')->count());
         $this->assertSame('in_progress', DB::table('bookings')->where('booking_id', 1)->value('status'));
         $this->assertNotNull(DB::table('bookings')->where('booking_id', 1)->value('grooming_started_at'));
     }
@@ -873,6 +878,7 @@ class AdminDashboardSummaryTest extends TestCase
         $blockedPetId = $groomersOnDuty + 1;
         $blockedResponse = $controller->startPetGrooming($blockedPetId, $blockedPetId);
         $this->assertSame(422, $blockedResponse->getStatusCode());
+        $this->assertSame($groomersOnDuty, \App\Models\ActivityLog::where('action', 'grooming_started')->count());
         $this->assertStringContainsString('Groomer capacity is full', $blockedResponse->getData(true)['message']);
 
         $schedule = $controller->index(Request::create('/api/admin/bookings', 'GET'))->getData(true);
@@ -880,6 +886,7 @@ class AdminDashboardSummaryTest extends TestCase
         $this->assertTrue($schedule['groomerCapacity']['is_full']);
 
         $this->assertSame(200, $controller->markPetDone(1, 1)->getStatusCode());
+        $this->assertSame(1, \App\Models\ActivityLog::where('action', 'grooming_completed')->count());
         $this->assertSame(200, $controller->startPetGrooming($blockedPetId, $blockedPetId)->getStatusCode());
     }
 

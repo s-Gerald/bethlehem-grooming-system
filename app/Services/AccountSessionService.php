@@ -34,6 +34,10 @@ class AccountSessionService
                 Log::info('Account session replaced.', ['user_id' => $account->getKey(), 'sessions_replaced' => $replaced]);
             }
 
+            if (in_array($account->role, ['admin', 'staff'], true)) {
+                app(ActivityRecorder::class)->record('sign_in', 'system', 'account', (string) $account->getKey(),
+                    'Staff sign-in', [], false, $account, 'sign-in:'.$token->accessToken->getKey());
+            }
             return $token->plainTextToken;
         });
     }

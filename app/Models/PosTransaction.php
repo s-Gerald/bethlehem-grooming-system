@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosTransaction extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     protected $table      = 'pos_transactions';
     protected $primaryKey = 'pos_id';
 

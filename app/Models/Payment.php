@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Payment extends Model
 {
+    use \App\Models\Concerns\RecordsActivityAtomically;
+
     private ?string $resolvedKeyName = null;
 
     protected $table = 'payments';
