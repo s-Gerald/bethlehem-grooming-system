@@ -27,7 +27,12 @@ class EnsureSessionIsActive
                 : response()->json(['message' => 'Please sign in again.'], 401);
         }
 
-        $response = DB::transaction(function () use ($request, $accessToken) {
+        $response = DB::transaction(function () use ($request, $accessToken, $next) {
+            // Keep mutations ordered against takeover through their controller.
+            if (! $request->isMethodSafe()) {
+                $request->user()->newQuery()->whereKey($request->user()->getKey())
+                    ->lockForUpdate()->firstOrFail([$request->user()->getKeyName()]);
+            }
             $token = $accessToken->newQuery()->lockForUpdate()->find($accessToken->getKey());
             if (! $token) {
                 return response()->json(['message' => 'Please sign in again.'], 401);
@@ -43,6 +48,13 @@ class EnsureSessionIsActive
                 return response()->json([
                     'success' => false, 'code' => 'session_expired', 'message' => 'Session expired. Please sign in again.',
                 ], 401);
+            }
+
+            if ($token->getAttribute('replaced_at')) {
+                return response()->json([
+                    'success' => false, 'code' => 'session_replaced',
+                    'message' => 'Your account was signed in on another browser or device, so this session ended.',
+                ], 401)->header('Cache-Control', 'no-store');
             }
 
             if ($privileged && ! $token->locked_at && $now->gte($idleAt)) {
@@ -73,7 +85,7 @@ class EnsureSessionIsActive
                 ]);
             }
 
-            return null;
+            return $request->isMethodSafe() ? null : $next($request);
         });
 
         return $response ?? $next($request);

@@ -28,6 +28,7 @@ class SessionLockTest extends TestCase
         });
         (require base_path('database/migrations/2026_04_01_145449_create_personal_access_tokens_table.php'))->up();
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
+        (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
     }
 
     protected function tearDown(): void
@@ -140,24 +141,27 @@ class SessionLockTest extends TestCase
     public function test_unlock_failures_are_rate_limited_across_tokens_for_the_account(): void
     {
         $token = $this->token();
-        $second = User::first()->createToken('admin_token')->plainTextToken;
         $this->travel(30)->minutes();
-        for ($i = 0; $i < 5; $i++) {
-            $this->api($i % 2 ? $second : $token, 'POST', '/session/unlock', ['password' => 'wrong'])
+        for ($i = 0; $i < 3; $i++) {
+            $this->api($token, 'POST', '/session/unlock', ['password' => 'wrong'])
                 ->assertUnprocessable();
         }
-        $this->api($token, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertStatus(429)
+        $second = app(\App\Services\AccountSessionService::class)->issue(User::first());
+        for ($i = 0; $i < 2; $i++) {
+            $this->api($second, 'POST', '/session/unlock', ['password' => 'wrong'])->assertUnprocessable();
+        }
+        $this->api($second, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertStatus(429)
             ->assertHeader('Retry-After');
-        $this->api($token, 'GET', '/me')->assertStatus(423);
+        $this->api($token, 'GET', '/me')->assertUnauthorized()->assertJsonPath('code', 'session_replaced');
         $this->travel(1)->minutes();
-        $this->api($token, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertOk();
+        $this->api($second, 'POST', '/session/unlock', ['password' => 'SessionTest!123'])->assertOk();
     }
 
     public function test_locked_logout_revokes_only_current_token_and_other_session_remains_independent(): void
     {
         $token = $this->token();
         $this->travel(20)->minutes();
-        $other = User::first()->createToken('admin_token')->plainTextToken;
+        $other = $this->token();
         $this->travel(10)->minutes();
         $this->api($token, 'GET', '/me')->assertStatus(423);
         $this->api($other, 'GET', '/me')->assertOk();
@@ -176,6 +180,15 @@ class SessionLockTest extends TestCase
         $this->travel(1)->minutes();
         $this->api($token, 'POST', '/session/activity', ['at' => now()->addDay()->timestamp])->assertUnauthorized();
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_an_already_expired_session_is_not_reported_as_a_replacement(): void
+    {
+        $token = $this->token('customer');
+        $this->travel(31)->minutes();
+        $new = app(\App\Services\AccountSessionService::class)->issue(User::first());
+        $this->api($token, 'GET', '/me')->assertUnauthorized()->assertJsonPath('code', 'session_expired');
+        $this->api($new, 'GET', '/me')->assertOk();
     }
 
     public function test_customer_absolute_limit_remains_24_hours_despite_activity(): void

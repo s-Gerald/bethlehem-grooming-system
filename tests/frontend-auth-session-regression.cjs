@@ -1536,7 +1536,78 @@ async function testStaffSetupUsernameForm() {
   }
 }
 
+async function testReplacementReasonAndCookieTransport() {
+  const calls = [];
+  const browser = createBrowser({pathname: '/pages/client/my-pets.html',
+    local: {customer_token: '81|cookie', user_role: 'customer'},
+    fetchImpl: async (url, options) => {
+      calls.push(options);
+      return jsonResponse(401, {code: 'session_replaced', message: 'Session ended.'});
+    }});
+  await assert.rejects(browser.API.getMe(), error => error.status === 401);
+  assert.equal(calls[0].credentials, 'include');
+  assert.equal(calls[0].headers['X-Requested-With'], 'XMLHttpRequest');
+  assert.equal(browser.sessionStorage.getItem('bethlehem.auth.signout_reason'), 'session_replaced');
+  assert.equal(browser.localStorage.getItem('customer_token'), null);
+  assert.equal(browser.replacements.length, 1);
+  assert.ok(!JSON.stringify([...browser.localStorage.values]).includes('secret'));
+}
+
+async function testReplacementNotifiesEveryAffectedTab() {
+  const profile = createBrowserProfile(async url => url.endsWith('/sign-in')
+    ? jsonResponse(200, {token: '91|cookie', user: {role: 'staff'}})
+    : jsonResponse(401, {code: 'session_replaced'}));
+  const login = profile.page();
+  await login.API.signIn('staff', 'password');
+  const tabs = [profile.page(new MemoryStorage(), '/pages/admin/clinic.html'),
+    profile.page(new MemoryStorage(), '/pages/admin/dashboard.html')];
+  await assert.rejects(tabs[0].API.getMe('staff'));
+  for (const tab of tabs) {
+    assert.equal(tab.sessionStorage.getItem('bethlehem.auth.signout_reason'), 'session_replaced');
+    assert.deepEqual(tab.replacements, ['/pages/client/sign-in.html']);
+  }
+}
+
+async function testNetworkFailureDoesNotCreateReplacementReason() {
+  const browser = createBrowser({pathname: '/pages/admin/clinic.html',
+    local: {admin_token: '92|cookie', user_role: 'staff'},
+    fetchImpl: async () => { throw new Error('Offline'); }});
+  await assert.rejects(browser.API.getMe('staff'), error => error.status === 0);
+  assert.equal(browser.sessionStorage.getItem('bethlehem.auth.signout_reason'), null);
+  assert.equal(browser.API.getAdminToken(), '92|cookie');
+  assert.deepEqual(browser.replacements, []);
+}
+
+async function testDelayedReplacementDoesNotEraseANewPendingLogin() {
+  const browser = createBrowser({local: {admin_token: '99|cookie', user_role: 'staff'},
+    fetchImpl: async () => jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'new-challenge'})});
+  await browser.API.signIn('staff', 'password');
+  browser.dispatch('storage', {storageArea: browser.localStorage, key: 'bethlehem.auth.logout',
+    newValue: JSON.stringify({sessionId: 'staff:99', role: 'staff', reason: 'session_replaced'})});
+  assert.equal(browser.API.hasPendingLoginConfirmation(), true);
+  assert.equal(browser.sessionStorage.getItem('bethlehem.auth.signout_reason'), null);
+}
+
+async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
+  for (const persistent of [true, false]) {
+    const raw = '121|clinic_' + 'a'.repeat(48);
+    let request;
+    const browser = createBrowser({[persistent ? 'local' : 'session']: {customer_token: raw, user_role: 'customer'},
+      fetchImpl: async (url, options) => { request=options; return jsonResponse(200, {}); }});
+    assert.equal(browser.API.getCustomerToken(), '121|cookie');
+    assert.ok(!JSON.stringify([...browser.localStorage.values, ...browser.sessionStorage.values]).includes(raw));
+    await browser.API.getMe();
+    assert.equal(request.headers.Authorization, `Bearer ${raw}`, 'Upgrade retains the credential only in memory until a cookie is issued');
+    assert.equal(request.headers['X-Session-Persistent'], persistent ? '1' : '0');
+  }
+}
+
 (async () => {
+  await testReplacementReasonAndCookieTransport();
+  await testReplacementNotifiesEveryAffectedTab();
+  await testNetworkFailureDoesNotCreateReplacementReason();
+  await testDelayedReplacementDoesNotEraseANewPendingLogin();
+  await testLegacyCredentialsLeaveBrowserStorageImmediately();
   await testStaffSetupUsernameAndResetApiContracts();
   await testStaffSetupUsernameForm();
   if (process.argv.includes("--staff-setup")) {

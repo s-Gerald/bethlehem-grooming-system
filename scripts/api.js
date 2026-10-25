@@ -58,6 +58,12 @@ var API = (() => {
   const AUTH_LOGOUT_EVENT_KEY = "bethlehem.auth.logout";
   const AUTH_LAST_ACTIVITY_KEY = "bethlehem.auth.last_activity";
   const AUTH_SESSION_STATE_KEY = "bethlehem.auth.session_state";
+  const SIGNOUT_REASON_KEY = "bethlehem.auth.signout_reason";
+  // One-time upgrade of credentials left by older deployed frontend versions.
+  // Raw credentials are removed from storage immediately and never persisted again.
+  const legacyCredentials = new Map();
+  let observedSession = null;
+  let authRedirectStarted = false;
   const CUSTOMER_PROFILE_NAME_KEY = "bethlehem.customer.profile_name";
   const CUSTOMER_CACHE_KEY = "bethlehem.customer.data.v1";
   const CUSTOMER_CACHE_SESSION_KEY = "bethlehem.customer.cache_session";
@@ -567,9 +573,17 @@ var API = (() => {
   function readAuthSessionFrom(storage, persistent) {
     const role = safeStorageGet(storage, USER_ROLE_KEY);
     const tokenKey = isAdminRole(role) ? ADMIN_TOKEN_KEY : CUSTOMER_TOKEN_KEY;
-    const token = role === "customer" || isAdminRole(role)
+    let token = role === "customer" || isAdminRole(role)
       ? safeStorageGet(storage, tokenKey)
       : null;
+    const legacy = /^(\d+)\|[^|]*[A-Za-z0-9]{48}$/.exec(token || "");
+    if (legacy) {
+      const publicId = `${legacy[1]}|cookie`;
+      legacyCredentials.set(publicId, token);
+      safeStorageRemove(storage, tokenKey);
+      try { storage.setItem(tokenKey, publicId); } catch { return null; }
+      token = publicId;
+    }
 
     return token ? { token, role, tokenKey, persistent } : null;
   }
@@ -586,6 +600,8 @@ var API = (() => {
   }
 
   function clearAuthStorage() {
+    observedSession = null;
+    safeStorageRemove(sessionStorage, SIGNOUT_REASON_KEY);
     clearAdminCache();
     clearStaffIdentity();
     verifiedSidebarRevision = null;
@@ -667,7 +683,9 @@ var API = (() => {
     }
 
     inactivityLogoutStarted = false;
+    authRedirectStarted = false;
     const session = getAuthSession();
+    observedSession = session;
     const timestamp = Date.now();
     writeSessionActivity(session, timestamp);
     lastActivityWriteAt = timestamp;
@@ -772,7 +790,8 @@ var API = (() => {
   }
 
   function redirectToSignIn({ replace = true } = {}) {
-    if (!isSignInPage()) {
+    if (!isSignInPage() && !authRedirectStarted) {
+      authRedirectStarted = true;
       const target = signInPath();
       if (replace && typeof window.location.replace === "function") {
         window.location.replace(target);
@@ -862,11 +881,18 @@ var API = (() => {
     clearAuthStorage();
     if (resolvedRole === "customer") clearBookingDraft();
     notifyLogout(resolvedRole, reason, session);
+    rememberSignoutReason(reason);
     redirectToSignIn();
   }
 
+  function rememberSignoutReason(reason) {
+    if (reason === 'session_replaced') {
+      try { sessionStorage.setItem(SIGNOUT_REASON_KEY, reason); } catch { /* Storage may be unavailable. */ }
+    } else safeStorageRemove(sessionStorage, SIGNOUT_REASON_KEY);
+  }
+
   function handleCrossTabLogout(event) {
-    const session = getAuthSession();
+    const session = getAuthSession() || observedSession;
     if (!session) {
       // Persistent auth may already have been removed by another tab.
       // Do not erase a pending login confirmation or unrelated draft.
@@ -877,6 +903,7 @@ var API = (() => {
 
     clearAuthStorage();
     if (session.role === "customer") clearBookingDraft();
+    rememberSignoutReason(event.reason);
 
     if (isAdminPage() || isProtectedClientPage()) {
       redirectToSignIn();
@@ -1403,8 +1430,11 @@ var API = (() => {
   }
 
   if (typeof window !== "undefined") {
+    observedSession = getAuthSession();
     window.addEventListener("storage", (event) => {
       if (event.storageArea !== localStorage) return;
+      const current = getAuthSession();
+      if (current) observedSession = current;
       if (event.key === CUSTOMER_TOKEN_KEY || event.key === CUSTOMER_CACHE_SESSION_KEY || event.key === USER_ROLE_KEY) {
         clearCustomerCache();
       }
@@ -1530,6 +1560,7 @@ var API = (() => {
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
     const headers = {
       Accept: "application/json",
+      "X-Requested-With": "XMLHttpRequest",
     };
 
     if (!isFormData) {
@@ -1537,10 +1568,11 @@ var API = (() => {
     }
 
     if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+      headers["Authorization"] = `Bearer ${legacyCredentials.get(token) || token}`;
+      if (legacyCredentials.has(token)) headers['X-Session-Persistent'] = getAuthSession()?.persistent ? '1' : '0';
     }
 
-    const options = { method, headers };
+    const options = { method, headers, credentials: "include" };
     if (requestOptions.cache) options.cache = requestOptions.cache;
 
     if (body !== null) {
@@ -1588,6 +1620,7 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    if (response.ok && endpoint === '/session') legacyCredentials.delete(token);
     // Creation can commit a stock hold before returning an uncertain HTTP 502;
     // provider-confirmed expiry can release it during a GET status check.
     if (responseBelongsToCurrentSession && token === getAdminToken() && data.online_payment?.id
@@ -1631,7 +1664,7 @@ var API = (() => {
       const failedRole = token === rawAdminToken() ? "admin" : "customer";
       invalidateSession(
         failedRole,
-        invalidAccountSession ? data.code : "expired",
+        invalidAccountSession ? data.code : data.code === 'session_replaced' ? 'session_replaced' : "expired",
       );
     }
 

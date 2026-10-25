@@ -74,7 +74,7 @@ class CustomerRegistrationService
         return response()->json([
             'success' => true,
             'message' => 'Email verified and account registered successfully.',
-            'token' => $user->createToken('auth_token')->plainTextToken,
+            'token' => app(AccountSessionService::class)->issue($user),
             'user' => $user->only(['user_id', 'first_name', 'last_name', 'email', 'phone', 'role']),
         ])->header('Cache-Control', 'no-store');
     }

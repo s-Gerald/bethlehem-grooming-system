@@ -42,8 +42,7 @@ class BookingController extends Controller
         $availability = $settings->serviceAvailability('grooming');
         $windows = $timeWindows->preferredWindows($settings, 'grooming', $date);
         if ($request->filled('booking_id')) {
-            $user = auth('sanctum')->user();
-            abort_unless($user, 401);
+            $user = $request->user();
             $request->validate(['booking_id' => ['integer']]);
             $booking = Booking::with(['bookingPets.pet', 'bookingServices.service'])
                 ->where('user_id', $user->user_id)->where('status', 'waiting_to_arrive')

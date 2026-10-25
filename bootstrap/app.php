@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(prepend: [
             HandleCors::class,
+            \App\Http\Middleware\UseAccountSessionCookie::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

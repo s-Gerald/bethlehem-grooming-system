@@ -77,6 +77,7 @@ class EmailVerificationTest extends TestCase
             $table->index(['tokenable_type', 'tokenable_id']);
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
+        (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
         (require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php'))->up();
         (require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
     }
@@ -365,7 +366,7 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('login_email_challenges', 1);
         $this->assertDatabaseCount('personal_access_tokens', 2);
 
-        $this->withToken($secondSessionResponse->json('token'))
+        $this->withAccountSession($secondSessionResponse)
             ->postJson('/api/email/login/complete', [
                 'poll_token' => $plainPollToken,
             ])
@@ -710,7 +711,7 @@ class EmailVerificationTest extends TestCase
         ]);
     }
 
-    public function test_sign_in_keeps_other_sessions_and_logout_revokes_only_current_token(): void
+    public function test_sign_in_replaces_previous_session_and_old_logout_cannot_revoke_new_session(): void
     {
         Notification::fake();
         $user = User::factory()->create([
@@ -726,8 +727,8 @@ class EmailVerificationTest extends TestCase
         $firstToken = $this->postJson('/api/email/login/confirm', [
             'poll_token' => $firstLogin->json('login_poll_token'),
             'code' => $this->loginCodeSentTo($user),
-        ])->assertOk()->json('token');
-        $this->withToken($firstToken)->postJson('/api/email/login/complete', [
+        ])->assertOk();
+        $this->withAccountSession($firstToken)->postJson('/api/email/login/complete', [
             'poll_token' => $firstLogin->json('login_poll_token'),
         ])->assertOk();
 
@@ -739,17 +740,17 @@ class EmailVerificationTest extends TestCase
         $secondToken = $this->postJson('/api/email/login/confirm', [
             'poll_token' => $secondLogin->json('login_poll_token'),
             'code' => $this->loginCodeSentTo($user),
-        ])->assertOk()->json('token');
+        ])->assertOk();
 
         $this->assertDatabaseCount('personal_access_tokens', 2);
 
-        $this->withToken($firstToken)->postJson('/api/logout')->assertOk();
-        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->withAccountSession($firstToken)->postJson('/api/logout')->assertUnauthorized()->assertJsonPath('code', 'session_replaced');
+        $this->assertDatabaseCount('personal_access_tokens', 2);
 
         $this->app['auth']->forgetGuards();
-        $this->withToken($firstToken)->getJson('/api/me')->assertUnauthorized();
+        $this->withAccountSession($firstToken)->getJson('/api/me')->assertUnauthorized();
         $this->app['auth']->forgetGuards();
-        $this->withToken($secondToken)->getJson('/api/me')
+        $this->withAccountSession($secondToken)->getJson('/api/me')
             ->assertOk()
             ->assertJsonPath('user.user_id', $user->user_id);
     }
@@ -932,7 +933,7 @@ class EmailVerificationTest extends TestCase
         $this->assertSame($expectedPhone, $user->phone);
         $this->assertNull($user->phone_verified_at);
         $this->assertNotNull($user->email_verified_at);
-        $this->withToken($verified->json('token'))->getJson('/api/me')
+        $this->withAccountSession($verified)->getJson('/api/me')
             ->assertOk()->assertJsonPath('user.phone', $expectedPhone)
             ->assertJsonPath('user.phone_verification_status', $expectedPhone ? 'unverified' : 'not_added');
         $this->assertDatabaseCount('users', 2);
@@ -2145,7 +2146,7 @@ class EmailVerificationTest extends TestCase
                         usleep(200000);
                     });
                 $request = Illuminate\Http\Request::create('/api/email/verify', 'POST', json_decode($payload, true),
-                    server: ['HTTP_ACCEPT' => 'application/json']);
+                    server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy]);
                 PHP;

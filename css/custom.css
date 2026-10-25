@@ -5,6 +5,41 @@
   display: none !important;
 }
 
+/* Persistent security notice on the shared sign-in screen. */
+.session-signout-alert {
+  --signout-ink: #1e3a5f;
+  --signout-border: #cbd5e1;
+  --signout-surface: #f1f5f9;
+  --signout-focus: #315b7e;
+  position: relative;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--signout-border);
+  border-radius: 16px;
+  color: var(--signout-ink);
+  background: var(--signout-surface);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.session-signout-alert[hidden] { display: none; }
+.session-signout-alert__content { min-width: 0; overflow-wrap: anywhere; }
+.session-signout-alert h3 { margin: 0; padding: 0 24px 0 30px; font-size: 15px; font-weight: 700; }
+.session-signout-alert p { margin: 8px 0 0; }
+.session-signout-alert__icon { position: absolute; top: 16px; left: 16px; width: 22px; height: 22px; fill: currentColor; }
+.session-signout-alert__dismiss {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.session-signout-alert__dismiss svg { width: 18px; height: 18px; fill: currentColor; }
+.session-signout-alert__dismiss:hover { background: var(--signout-border); }
+.session-signout-alert__dismiss:focus-visible { outline: 2px solid var(--signout-focus); outline-offset: 2px; }
+
 /* Transactions defines the shared record typography for admin history. */
 .transactions-page,
 .history-page {

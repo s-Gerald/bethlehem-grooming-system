@@ -188,7 +188,7 @@ class PasswordResetController extends Controller
             'success' => true,
             'message' => 'Your staff account is ready.',
             'completed_setup' => true,
-            'token' => $user->createToken('admin_token')->plainTextToken,
+            'token' => app(\App\Services\AccountSessionService::class)->issue($user),
             'user' => [
                 'user_id' => $user->user_id,
                 'first_name' => $user->first_name,

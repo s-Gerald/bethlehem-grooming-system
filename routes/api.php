@@ -60,7 +60,8 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
     ->middleware(ThrottleAuthenticationResends::class.':3,5');
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
-Route::get('/timeslots', [BookingController::class,   'getTimeslots']);
+Route::get('/timeslots', [BookingController::class,   'getTimeslots'])
+    ->middleware(\App\Http\Middleware\EnsureBookingForecastSession::class);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
 

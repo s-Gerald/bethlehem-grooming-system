@@ -37,6 +37,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!signInForm || !identifierInput || !passwordInput) return;
 
+  const replacementAlert = document.getElementById('sessionReplacedAlert');
+  const signoutReasonKey = 'bethlehem.auth.signout_reason';
+  try {
+    if (sessionStorage.getItem(signoutReasonKey) === 'session_replaced' && replacementAlert) {
+      replacementAlert.hidden = false;
+      messageBox?.classList.add('hidden');
+    }
+  } catch { /* The form remains available when storage is blocked. */ }
+  function dismissReplacementAlert() {
+    if (replacementAlert) replacementAlert.hidden = true;
+    try { sessionStorage.removeItem(signoutReasonKey); } catch { /* Optional UI state. */ }
+  }
+  document.getElementById('dismissSessionReplaced')?.addEventListener('click', () => {
+    dismissReplacementAlert();
+    identifierInput.focus();
+  });
+  signInForm.addEventListener('input', dismissReplacementAlert, { once: true });
+
   document.getElementById("forgotPasswordLink")?.addEventListener("click", () => {
     const email = document.createElement("input");
     email.type = "email";
@@ -74,6 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
   signInForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (countdownTimer) return; // rate-limit lockout still active
+    dismissReplacementAlert();
 
     const identifier = identifierInput.value.trim();
     const password   = passwordInput.value;
@@ -172,6 +191,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showMessage(type, text, prefillEmail = "") {
+    if (type && replacementAlert && !replacementAlert.hidden) return;
     if (!type) {
       messageBox.className = "hidden rounded-2xl border px-4 py-3 text-sm";
       messageBox.innerHTML = "";

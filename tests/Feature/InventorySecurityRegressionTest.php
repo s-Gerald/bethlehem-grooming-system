@@ -1527,7 +1527,7 @@ class InventorySecurityRegressionTest extends TestCase
                 });
                 $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
                 $request = Illuminate\Http\Request::create('/api/inventory/stock-in', 'POST', [], [], [],
-                    ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json'],
+                    ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
                     json_encode(['items' => [['item_id' => (int) $argv[3], 'quantity' => 2, 'reason' => 'purchase']]]));
                 $response = $kernel->handle($request);
                 echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pid' => getmypid(),

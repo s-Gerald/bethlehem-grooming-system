@@ -120,6 +120,7 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->index(['tokenable_type', 'tokenable_id']);
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
+        (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
     }
 
     protected function tearDown(): void
@@ -685,21 +686,21 @@ class AdminStaffAccountManagementTest extends TestCase
             ->assertJsonPath('user.staff_permissions.grooming', $to !== 'veterinarian');
 
         app('auth')->forgetGuards();
-        $this->withToken($login->json('token'))->getJson('/api/settings/security/account')->assertOk();
+        $this->withAccountSession($login)->getJson('/api/settings/security/account')->assertOk();
         app('auth')->forgetGuards();
-        $this->withToken($login->json('token'))->getJson('/api/admin/bookings')
+        $this->withAccountSession($login)->getJson('/api/admin/bookings')
             ->assertStatus($to !== 'veterinarian' ? 200 : 403);
         app('auth')->forgetGuards();
-        $this->withToken($login->json('token'))->getJson('/api/admin/clinic-cases')->assertOk();
+        $this->withAccountSession($login)->getJson('/api/admin/clinic-cases')->assertOk();
         if ($to === 'veterinarian') {
             app('auth')->forgetGuards();
-            $this->withToken($login->json('token'))->postJson('/api/admin/walk-in')->assertForbidden();
+            $this->withAccountSession($login)->postJson('/api/admin/walk-in')->assertForbidden();
             app('auth')->forgetGuards();
-            $this->withToken($login->json('token'))->postJson('/api/admin/bookings/1/pay')->assertForbidden();
+            $this->withAccountSession($login)->postJson('/api/admin/bookings/1/pay')->assertForbidden();
         }
         if ($to !== 'veterinarian') {
             app('auth')->forgetGuards();
-            $this->withToken($login->json('token'))->postJson('/api/admin/clinic-cases/1/start')->assertForbidden();
+            $this->withAccountSession($login)->postJson('/api/admin/clinic-cases/1/start')->assertForbidden();
         }
     }
 

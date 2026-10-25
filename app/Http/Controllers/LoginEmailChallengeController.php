@@ -54,6 +54,9 @@ class LoginEmailChallengeController extends Controller
         }
 
         return DB::transaction(function () use ($data, $pollTokenHash, $attemptKey) {
+            // Match issuance/resend lock order: account, then challenge/token.
+            $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
+            if ($userId) User::whereKey($userId)->lockForUpdate()->first();
             $challenge = LoginEmailChallenge::query()
                 ->where('poll_token_hash', $pollTokenHash)
                 ->lockForUpdate()
@@ -198,10 +201,7 @@ class LoginEmailChallengeController extends Controller
 
     private function authenticatedResponse(User $user, bool $rememberMe)
     {
-        $tokenName = in_array($user->role, ['admin', 'staff'], true)
-            ? 'admin_token'
-            : 'auth_token';
-        $token = $user->createToken($tokenName)->plainTextToken;
+        $token = app(\App\Services\AccountSessionService::class)->issue($user);
 
         return response()->json([
             'success' => true,

@@ -326,8 +326,7 @@ class AuthController extends Controller
         }
 
         RateLimiter::clear($throttleKey);
-        $tokenName = 'admin_token';
-        $token = $user->createToken($tokenName)->plainTextToken;
+        $token = app(\App\Services\AccountSessionService::class)->issue($user);
 
         return response()->json([
             'success' => true,

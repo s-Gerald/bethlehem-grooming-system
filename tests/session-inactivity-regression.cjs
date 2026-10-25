@@ -165,6 +165,7 @@ function createIdleBrowser(role, fixture = {}) {
     document,
     fetch: async (url, options) => {
       requests.push({ url, options });
+      if (fixture.replaced) return jsonResponse(401, {code: 'session_replaced'});
       if (fixture.user) assert.equal(options.headers.Authorization, `Bearer ${token}`, 'Every request uses this context\'s token');
       if (url.endsWith("/logout") && fixture.failLogout) throw new Error("Offline");
       if (url.endsWith("/session") && fixture.statusFailure !== undefined) {
@@ -675,7 +676,34 @@ async function testReceptionistContextsLockUnlockAndExpireIndependently() {
   }
 }
 
+async function testReplacementDetectionReusesTheSessionLifecycle() {
+  for (const role of ['admin', 'staff', 'customer']) {
+    const fixture = {};
+    const browser = createIdleBrowser(role, fixture);
+    await browser.settle();
+    const idleAt = browser.server.idleAt;
+    await browser.advance(1);
+    assert.equal(browser.server.idleAt, idleAt, 'Validation does not extend inactivity');
+    const beforeHidden = browser.requests.length;
+    browser.document.visibilityState = 'hidden';
+    await browser.advance(2);
+    assert.equal(browser.requests.length, beforeHidden, 'Hidden pages do not poll');
+    fixture.replaced = true;
+    browser.document.visibilityState = 'visible';
+    browser.dispatchWindow('focus');
+    browser.dispatchDocument('visibilitychange');
+    await browser.settle();
+    assert.equal(browser.requests.length, beforeHidden + 1, 'Focus and visibility share one validation');
+    assert.equal(browser.sessionStorage.getItem('bethlehem.auth.signout_reason'), 'session_replaced');
+    assert.deepEqual(browser.replacements, ['/pages/client/sign-in.html']);
+    const after = browser.requests.length;
+    await browser.advance(2);
+    assert.equal(browser.requests.length, after, 'Replacement stops background validation');
+  }
+}
+
 (async () => {
+  await testReplacementDetectionReusesTheSessionLifecycle();
   await testTabReturnKeepsUnlockedWorkflow("admin");
   await testTabReturnKeepsUnlockedWorkflow("staff");
   await testVerificationFailuresAreNotPasswordLocks();
