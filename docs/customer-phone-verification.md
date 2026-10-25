@@ -1,5 +1,60 @@
 # Customer phone management and grooming completion SMS
 
+## OTP transport diagnosis and fix — October 26, 2026
+
+### Confirmed local cause and evidence
+
+The PHP **8.4.26** executable serving port 8000 had no configured CA bundle in its own `php.ini`. A non-sending Laravel HTTP GET of the public iProgSMS documentation reproduced **cURL error 60**, categorized as `tls_verification_failed`, with **no HTTP response**. Certificate verification failed before an authenticated OTP request could be submitted. The separate XAMPP PHP installation already had usable CA settings; changing its INI would not correct the running PHP 8.4 server.
+
+Laravel configuration inspection showed that configuration was **not cached**, the provider base was the official HTTPS domain, a token was configured and matched the private local `.env`, the application key was present, and verification was available/enforced. Only booleans were reported; no token was printed. Incorrect credentials, insufficient credits, DITO routing, and an obsolete payload were not established as causes. The reproduced transport failure is conclusive for the tested PHP runtime, but individual historical browser submissions were not replayed or traced retrospectively.
+
+The local environment fix was applied to `C:/Users/Gerald/AppData/Local/Programs/BethlehemTestTools/php84/php.ini`, after saving `php.ini.before-otp-ca-20261026-012358.bak` alongside it:
+
+```ini
+curl.cainfo="C:/xampp/apache/bin/curl-ca-bundle.crt"
+openssl.cafile="C:/xampp/apache/bin/curl-ca-bundle.crt"
+```
+
+This existing CA bundle is readable. TLS verification stays enabled. With the corrected INI, the same **unauthenticated public documentation GET returned HTTP 200**, including a final check in 1,335 ms. The owner restarted localhost; port 8000 was then confirmed to use PHP 8.4 with a process start time after the INI update. No production configuration was changed, and no token-bearing provider request, private account endpoint, paid send or live OTP verification was used. The temporary command-line diagnostic helper was removed after inspection.
+
+### Provider contract and focused code correction
+
+Rechecked the [official iProgSMS documentation](https://www.iprogsms.com/api/v1/documentation). The existing HTTPS JSON POST to `/api/v1/otp/send_otp`, `api_token`, local `09` destination, `expires_in_minutes`, and `message` containing `:otp` match the documented request. The documented success includes string `status: "success"`, a string six-digit `otp_code`, `otp_code_confirmed: false`, the local destination and an expiry timestamp. Verification remains `/api/v1/otp/verify_otp` with the same bound destination and the submitted code. The documented invalid-token example has numeric body `status: 500` and `message: "Invalid Token"`; tests now confirm rejection classification with both HTTP 200 and HTTP 500 envelopes. Generic HTTP 500 errors and HTTP 408 timeouts remain uncertain. The account's real token has not been tested with a paid request.
+
+No phone-normalization or success-validation rule was relaxed. A genuinely different destination, numeric rather than string code, missing data, invalid/expired timestamp or excessive expiry still fails closed. No evidence supported a provider-format workaround. The unchanged full clinic OTP message meets the application GSM-7 limit; actual provider/template acceptance and handset text remain unverified until the owner test.
+
+`IprogSmsOtpService` now emits one warning per failed OTP operation through Laravel's logger, with message `iProgSMS OTP failure`. Context is limited to operation, an internal failure category, HTTP status (or null), elapsed milliseconds, allowlisted content type (`json`, `html`, `other`, `unknown`), numeric cURL errno when available, and expected-field presence booleans when useful. Categories include `tls_verification_failed`, `connection_failed`, `request_timeout`, `provider_rejected`, `http_error`, `unexpected_response`, `destination_mismatch`, `invalid_expiry`, and `configuration_unavailable`. No request/response body, raw error text, URL, headers, token, full phone, OTP, fingerprint or SMS text is logged or returned to customers. Use the configured Laravel log destination, normally `storage/logs/laravel.log`, and inspect only this diagnostic event's allowlisted context.
+
+Confirmed pre-submission failures (certificate validation, DNS resolution, connection establishment), explicit provider rejection and definite HTTP client rejection now persist **failed**. Ambiguous timeout, server error or malformed acceptance remains **uncertain**. Both preserve the existing send reservation, cooldown and budgets; neither can verify a phone. The existing recovery modal uses the short `SMS could not be sent. Try again or use another number.` copy for failed attempts and retains the uncertain wording otherwise. There is no automatic retry. Existing three-second connection/eight-second request timeouts, redirect blocking, shared locks, five-minute expiry, single-use HMAC proof, attempt limits, account/phone/IP/global budgets, uniqueness, password-authorized replacement, recovery and cached `/api/me` behavior remain. Grooming SMS sending and dynamic pet-name formatting are unchanged.
+
+### Exact files updated
+
+- `app/Services/IprogSmsOtpService.php`: safe failure classification and diagnostics.
+- `app/Services/CustomerPhoneVerificationService.php`: persist failed versus uncertain and return safe recovery metadata without extra requests.
+- `scripts/components/customer-phone-verification.js`: failed-send wording in the existing recovery view.
+- `tests/Feature/PhoneVerificationTest.php`, `tests/customer-dashboard-history-regression.cjs`: update existing failure expectations and cover safe logging, TLS/DNS/connect/timeout failures, rejection, malformed responses, cooldowns, no retry, and failed recovery.
+- Cache references only: `scripts/components/client-settings.js`, `scripts/components/customer-pre-registration-button.js`, `scripts/components/pre-registration-options.js`, and `pages/client/dashboard.html`, `pages/client/grooming-history.html`, `pages/client/my-pets.html`, `pages/client/notifications.html`, `pages/client/pet-details.html`, `pages/client/pre-register.html`, `pages/client/settings.html`. Related imports use `20261026-otp`; API/CSS versions stay unchanged.
+- `docs/customer-phone-verification.md`: this report and acceptance procedure.
+- Local runtime configuration outside Git: the PHP 8.4 INI and its backup identified above.
+
+### Verification and visual inspection
+
+- PHP 8.4 PHPUnit filter `PhoneVerificationTest|GroomingCompletionSmsTest|ClinicSmsMessageTest|CustomerPreRegistrationAccessTest`: **82 tests, 816 assertions, zero failures, one optional MySQL check skipped**. Provider calls are faked, including transport exceptions with synthetic secrets; assertions confirm safe logs/client responses and preserved cooldowns/budgets/security.
+- Full `npm test`: **81/81 regression scripts passed**, including Settings, shared verification modal, pre-registration/cache/navigation and the previously repaired admin timer mock.
+- `npm run build`: **passed**, including OCR assets, Tailwind and Vite. Existing Browserslist-data/experimental VM-module notices are non-fatal.
+- `git diff --check`: passed.
+- Inspected the existing signed-in Gerald Settings page in the ChatGPT browser. Its verified-number card retains the Bethlehem blue/white styling, spacing and controls. No manual navigation, data entry, OTP submission or password reset was performed. The failed recovery view is covered by the existing mocked frontend suite; no live send was used to force that view.
+
+### Hostinger and one-handset acceptance
+
+No migration, new environment variable, queue worker or scheduled task is needed. No commit, push or deployment was performed. Deploy the changed application files and cache-version references together through the existing release process, with the normal frontend build. Existing SMS flag/limit names remain. Hostinger must have working outbound HTTPS and a trusted CA bundle for its own PHP runtime; inspect that runtime if it reports cURL 60. **Do not copy the Windows CA path to Hostinger or disable certificate verification.** A host already using valid CA trust needs no corresponding INI edit. Follow the host's normal reload/config-cache procedure only when its runtime/configuration changes. No Hostinger account or production configuration was changed or verified here.
+
+1. On the restarted local server, refresh Settings and let existing cooldowns/limits expire naturally. Use the existing verification/change flow for one owner-controlled DITO number. If replacing the verified number, provide the current password yourself. Select **Send Code once**; do not clear budgets or repeatedly resend.
+2. If accepted, confirm the handset receives one message with the clinic header, six-digit code, five-minute validity and `Do not share.` footer, with no unintended provider-added text. Submit the code yourself and confirm the new number becomes verified only afterward. Confirm the provider's actual credit usage privately.
+3. If it fails, stop sending and inspect the single safe `iProgSMS OTP failure` event. A transport error has no HTTP status; `provider_rejected` records a rejection; timeout/malformed acceptance remains uncertain and must not be automatically retried. Inspect the corresponding provider activity privately rather than resubmitting. If an accepted request has no handset delivery, or a rejection persists after secure transport succeeds, contact iProgSMS with the operation, timestamp/timezone, HTTP status/category and any independently known provider activity/message ID. Never supply tokens, OTPs, full payloads or private log files.
+
+No provider-side fault is confirmed, and **real OTP acceptance/delivery is not claimed**. The owner-controlled acceptance test is the remaining step to establish DITO delivery and actual template behavior.
+
 ## Phone-verification recovery update — October 26, 2026
 
 The shared modal now shows **Change number** beside the masked destination for active, expired, uncertain and attempt-locked challenges. It returns to the existing phone-entry form in the same dialog, prefills a candidate already known to this browser session, focuses the input and sends no request. **Back to code** restores a still-valid challenge until a new attempt is submitted. Re-entering the same known active candidate reuses its code instead of sending another SMS. The helper now reads `Smart/TNT numbers are not supported.` for the owner's current SMS setup; validation still accepts Philippine mobile formats without prefix blocking or carrier detection.

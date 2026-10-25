@@ -118,11 +118,13 @@ class CustomerPhoneVerificationService
             DB::table('phone_verification_attempts')->updateOrInsert(['user_id' => $user->getKey()], [...$values, 'created_at' => now()]);
             $expires = $this->provider->send($phone, $id);
             if (! $expires) {
-                // An ambiguous send may have been accepted. Reserve its expiry and cooldown.
-                DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')->update(['status' => 'uncertain']);
-                self::fail('SMS could not be confirmed. Wait a minute, then try again.', 503, 'sms_send_uncertain', [
+                // Both rejection and uncertainty retain the reserved cost/cooldown.
+                $status = $this->provider->sendFailureStatus();
+                DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')->update(['status' => $status]);
+                self::fail($status === 'failed' ? 'SMS could not be sent. Try again or use another number.'
+                    : 'SMS could not be confirmed. Wait a minute, then try again.', 503, $status === 'failed' ? 'sms_send_failed' : 'sms_send_uncertain', [
                     'resend_after' => max(0, (int) ceil(now()->diffInSeconds(Carbon::parse($values['resend_at']), false))),
-                    'challenge' => $this->timing((object) [...$values, 'status' => 'uncertain']),
+                    'challenge' => $this->timing((object) [...$values, 'status' => $status]),
                 ]);
             }
             $updated = DB::table('phone_verification_attempts')->where('generation', $id)->where('status', 'sending')

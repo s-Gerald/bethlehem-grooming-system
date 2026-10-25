@@ -82,7 +82,8 @@ function showChallenge() {
   step = "challenge";
   const unavailable = !canVerify && !["expired", "locked"].includes(challengeStatus);
   field("Title").textContent = unavailable ? "Verification Unavailable" : "Verify Phone Number";
-  field("Description").textContent = unavailable ? "SMS could not be confirmed. Try again or use another number."
+  field("Description").textContent = unavailable ? (challengeStatus === "failed"
+    ? "SMS could not be sent. Try again or use another number." : "SMS could not be confirmed. Try again or use another number.")
     : canVerify ? "Enter the 6-digit code sent to" : "";
   field("Number").textContent = maskedDestination;
   field("Number").hidden = false;

@@ -708,7 +708,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261026-recovery');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261026-otp');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -752,6 +752,13 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationRetry').dispatch('click');
     assert.equal(calls.resendIds.at(-1), 'uncertain-two', 'Retry must target the newly accepted candidate, never the old one.');
     assert.equal(element('phoneVerificationOtp').hidden, false);
+    await element('phoneVerificationClose').dispatch('click');
+    recovery = { ...uncertainNew, status: 'failed' };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    assert.equal(element('phoneVerificationDescription').textContent, 'SMS could not be sent. Try again or use another number.');
+    assert.equal(element('phoneVerificationOtp').hidden, true);
+    assert.equal(element('phoneVerificationRetry').disabled, true);
+    assert.equal(element('phoneVerificationChange').disabled, false);
     await element('phoneVerificationClose').dispatch('click');
     recovery = { ...uncertainNew, status: 'locked', resend_after: 0 };
     await openPhoneVerification(trigger, user, { navigate: false });

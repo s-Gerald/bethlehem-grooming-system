@@ -7,7 +7,7 @@ import {
   setPreRegistrationLinkAccess,
 } from "../services/booking-form-access-guard.js?v=phone-20261022";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
-import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261026-recovery";
+import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261026-otp";
 
 if (requireCustomerSession("./sign-in.html")) {
   const groomingOption = document.getElementById("groomingOption");

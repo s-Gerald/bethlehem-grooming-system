@@ -12,6 +12,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -22,6 +23,7 @@ use Tests\TestCase;
 class PhoneVerificationTest extends TestCase
 {
     private User $customer;
+    private array $smsDiagnostics = [];
 
     protected function setUp(): void
     {
@@ -30,6 +32,9 @@ class PhoneVerificationTest extends TestCase
         config(['services.sms_verification.available' => true, 'services.sms_verification.enforced' => false,
             'services.iprogsms.api_token' => 'test-token', 'app.key' => 'test-key']);
         Http::preventStrayRequests();
+        Log::listen(function (\Illuminate\Log\Events\MessageLogged $event) {
+            if ($event->message === 'iProgSMS OTP failure') $this->smsDiagnostics[] = $event->context;
+        });
         Schema::create('users', function (Blueprint $t) {
             $t->increments('user_id');
             $t->string('role')->default('customer');
@@ -574,12 +579,12 @@ class PhoneVerificationTest extends TestCase
     }
 
     #[DataProvider('badSendResponses')]
-    public function test_failed_sends_are_sanitized_and_not_retried(array $payload, int $status): void
+    public function test_failed_sends_are_sanitized_and_not_retried(array $payload, int $status, string $category, string $state = 'uncertain'): void
     {
         Http::fake(['*' => Http::response($payload, $status)]);
         $response = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567']);
         $response->assertStatus(503);
-        $response->assertJsonPath('challenge.status', 'uncertain')->assertJsonPath('challenge.can_verify', false)
+        $response->assertJsonPath('challenge.status', $state)->assertJsonPath('challenge.can_verify', false)
             ->assertJsonPath('challenge.masked_destination', '0917 •••• 567')
             ->assertJsonPath('challenge.resend_after', 60);
         $this->assertSame(DB::table('phone_verification_attempts')->value('generation'), $response->json('challenge.challenge_id'));
@@ -587,6 +592,16 @@ class PhoneVerificationTest extends TestCase
             $this->assertStringNotContainsString($secret, $response->getContent());
         }
         $this->assertNull($this->customer->fresh()->phone_verified_at);
+        $this->assertSame($state, DB::table('phone_verification_attempts')->value('status'));
+        $this->assertCount(1, $this->smsDiagnostics);
+        $diagnostic = $this->smsDiagnostics[0];
+        $this->assertSame('send_otp', $diagnostic['operation']);
+        $this->assertSame($category, $diagnostic['category']);
+        $this->assertSame($status, $diagnostic['http_status']);
+        $this->assertIsInt($diagnostic['duration_ms']);
+        foreach (['test-token', '123456', 'sensitive provider', '09171234567', ':otp', 'fingerprint'] as $secret) {
+            $this->assertStringNotContainsString($secret, json_encode($diagnostic));
+        }
         Http::assertSentCount(1);
         $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertStatus(429);
         Http::assertSentCount(1);
@@ -595,14 +610,69 @@ class PhoneVerificationTest extends TestCase
     public static function badSendResponses(): array
     {
         return [
-            'http error' => [['status' => 'success', 'message' => 'sensitive provider 123456'], 500],
-            'provider error' => [['status' => 'error', 'message' => 'sensitive provider 123456'], 200],
-            'missing data' => [['status' => 'success'], 200],
-            'wrong status type' => [['status' => 200], 200],
-            'not an object' => [[], 200],
-            'invalid expiry' => [['status' => 'success', 'data' => ['phone_number' => '09171234567', 'otp_code' => '123456', 'otp_code_confirmed' => false, 'otp_code_expires_at' => 'invalid']], 200],
-            'wrong destination' => [['status' => 'success', 'data' => ['phone_number' => '09991234567', 'otp_code' => '123456', 'otp_code_confirmed' => false, 'otp_code_expires_at' => '2026-10-22T12:00:00Z']], 200],
+            'http error' => [['status' => 'success', 'message' => 'sensitive provider 123456'], 500, 'http_error'],
+            'provider error' => [['status' => 'error', 'message' => 'sensitive provider 123456'], 200, 'provider_rejected', 'failed'],
+            'documented token rejection' => [['status' => 500, 'message' => 'Invalid Token'], 200, 'provider_rejected', 'failed'],
+            'documented token rejection with http error' => [['status' => 500, 'message' => 'Invalid Token'], 500, 'provider_rejected', 'failed'],
+            'ambiguous server error' => [['status' => 'error', 'message' => 'sensitive provider 123456'], 500, 'http_error'],
+            'http timeout' => [['status' => 'error'], 408, 'http_error'],
+            'http rejection' => [['status' => 'error', 'message' => 'sensitive provider 123456'], 422, 'provider_rejected', 'failed'],
+            'missing data' => [['status' => 'success'], 200, 'unexpected_response'],
+            'wrong status type' => [['status' => 200], 200, 'unexpected_response'],
+            'not an object' => [[], 200, 'unexpected_response'],
+            'invalid expiry' => [['status' => 'success', 'data' => ['phone_number' => '09171234567', 'otp_code' => '123456', 'otp_code_confirmed' => false, 'otp_code_expires_at' => 'invalid']], 200, 'invalid_expiry'],
+            'wrong destination' => [['status' => 'success', 'data' => ['phone_number' => '09991234567', 'otp_code' => '123456', 'otp_code_confirmed' => false, 'otp_code_expires_at' => '2026-10-22T12:00:00Z']], 200, 'destination_mismatch'],
+            'numeric code is not documented' => [['status' => 'success', 'data' => ['phone_number' => '09171234567', 'otp_code' => 123456, 'otp_code_confirmed' => false, 'otp_code_expires_at' => '2026-10-22T12:00:00Z']], 200, 'unexpected_response'],
         ];
+    }
+
+    #[DataProvider('transportFailures')]
+    public function test_transport_failure_diagnostics_are_safe_and_never_retry(int $errno, string $category, string $state): void
+    {
+        $previous = new \GuzzleHttp\Exception\ConnectException('test-token 123456 09171234567',
+            new \GuzzleHttp\Psr7\Request('POST', 'https://www.iprogsms.com/api/v1/otp/send_otp'), null, ['errno' => $errno]);
+        $calls = 0;
+        Http::fake(function () use ($previous, &$calls) { $calls++; throw new ConnectionException('private request failed', 0, $previous); });
+        $response = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567']);
+        $response->assertStatus(503)->assertJsonPath('challenge.status', $state)->assertJsonPath('challenge.can_verify', false)
+            ->assertJsonPath('challenge.resend_after', 60)->assertDontSee('test-token')->assertDontSee('123456');
+        $this->assertSame($state, DB::table('phone_verification_attempts')->value('status'));
+        $this->assertCount(1, $this->smsDiagnostics);
+        $this->assertSame($category, $this->smsDiagnostics[0]['category']);
+        $this->assertSame($errno, $this->smsDiagnostics[0]['curl_errno']);
+        $this->assertNull($this->smsDiagnostics[0]['http_status']);
+        foreach (['test-token', '123456', '09171234567', 'private request'] as $secret) {
+            $this->assertStringNotContainsString($secret, json_encode($this->smsDiagnostics));
+        }
+        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertStatus(429);
+        $this->assertSame(1, $calls);
+        $this->assertNull($this->customer->fresh()->phone_verified_at);
+    }
+
+    public static function transportFailures(): array
+    {
+        return [[60, 'tls_verification_failed', 'failed'], [6, 'connection_failed', 'failed'],
+            [7, 'connection_failed', 'failed'], [28, 'request_timeout', 'uncertain']];
+    }
+
+    public function test_invalid_json_logs_only_its_allowlisted_response_type(): void
+    {
+        Http::fake(['*' => Http::response('<html>test-token 123456 09171234567</html>', 200, ['Content-Type' => 'text/html'])]);
+        $this->postJson('/api/phone-verification/send', ['phone' => '09171234567'])->assertStatus(503)
+            ->assertJsonPath('challenge.status', 'uncertain');
+        $this->assertSame('unexpected_response', $this->smsDiagnostics[0]['category']);
+        $this->assertSame('html', $this->smsDiagnostics[0]['response_type']);
+        $this->assertStringNotContainsString('test-token', json_encode($this->smsDiagnostics));
+        Http::assertSentCount(1);
+    }
+
+    public function test_unconfigured_provider_logs_no_credentials_and_never_contacts_http(): void
+    {
+        config(['services.iprogsms.api_token' => null]);
+        Http::fake();
+        $this->assertNull(app(\App\Services\IprogSmsOtpService::class)->send('09171234567', (string) Str::uuid()));
+        $this->assertSame('configuration_unavailable', $this->smsDiagnostics[0]['category']);
+        Http::assertNothingSent();
     }
 
     public function test_connection_failure_has_no_retry_and_no_sensitive_exception_output(): void
