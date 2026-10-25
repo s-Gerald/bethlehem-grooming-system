@@ -154,11 +154,12 @@ async function activityFiltersRejectStaleResponsesAndPreserveSummary() {
   e.respond(endpoint => endpoint.includes('area=grooming') ? first.promise : second.promise);
   const grooming = ui.setActivityArea('grooming');
   const clinic = ui.setActivityArea('clinic');
-  second.resolve({area: 'clinic', canFilter: true, recentActivity: [{id: 2, title: 'Consultation started'}]});
+  second.resolve({area: 'clinic', canFilter: true, recentActivity: [{id: 2, area: 'clinic', title: 'Consultation started'}]});
   await clinic;
   first.resolve({area: 'grooming', canFilter: true, recentActivity: [{id: 1, title: 'Grooming started'}]});
   await grooming;
   assert.equal(ui.activityArea, 'clinic'); assert.equal(ui.recentActivity[0].id, 2);
+  assert.equal(ui.recentActivity[0].area, 'clinic', 'The feed retains recorded department metadata for the shared color rules');
   assert.equal(ui.todayCount, 9, 'Changing activity must preserve dashboard metrics');
   assert.equal(e.calls.length, 2);
   ui.activityCanFilter = false;

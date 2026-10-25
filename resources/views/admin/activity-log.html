@@ -14,7 +14,7 @@
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
     <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025" />
-      <link rel="stylesheet" href="../../css/components/admin-activity.css?v=20261025" />
+      <link rel="stylesheet" href="../../css/components/admin-activity.css?v=20261025-refinements" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div x-data="adminSidebar()" data-admin-shell class="min-h-screen flex bg-[#f5f8fb]">
@@ -134,7 +134,7 @@
           </button>
         </header>
 
-        <main x-data="adminActivityLog()" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0">
+        <main x-data="adminActivityLog()" @pointerdown.capture="setInteractionMode(false)" @keydown.capture="setInteractionMode(true)" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0">
           <div x-ref="content" data-session-surface>
             <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
               <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6" data-session-public>
@@ -145,11 +145,11 @@
             <section class="mt-6 overflow-hidden rounded-2xl border border-[#d7e3ef] bg-white shadow-sm" aria-label="Activity history" :aria-busy="loading">
               <form class="activity-toolbar" @submit.prevent="changeFilters()">
                 <label class="activity-search">Search<input type="search" placeholder="Search activity, staff, or record" x-model="filters.search" @input.debounce.350ms="changeFilters()" maxlength="150" /></label>
-                <label>Area<select x-model="filters.area" @change="changeFilters()"><option value="all">All areas</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option><option value="system">System</option></select></label>
+                <label>Area<select x-model="filters.area" @change="changeFilters()"><option value="all">All areas</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option><option value="system">System</option><option value="shared">Shared operations</option></select></label>
                 <label>From<input type="date" x-model="filters.from" :max="filters.to" @change="changeFilters()" required /></label>
                 <label>To<input type="date" x-model="filters.to" :min="filters.from" @change="changeFilters()" required /></label>
                 <label>Staff member<select x-model="filters.staff" @change="changeFilters()"><option value="">All staff</option><template x-for="(person, index) in staff" :key="person.actor_id + '-' + index"><option :value="person.actor_id" x-text="person.actor_display"></option></template></select></label>
-                <label>Activity type<select x-model="filters.type" @change="changeFilters()"><option value="">All activities</option><template x-for="(label, key) in types" :key="key"><option :value="key" x-text="label"></option></template></select></label>
+                <label>Activity type<select x-model="filters.type" @change="changeFilters()"><option value="">All activities</option><template x-for="group in typeGroups" :key="group.label"><optgroup :label="group.label"><template x-for="option in group.options" :key="option.value"><option :value="option.value" x-text="option.label"></option></template></optgroup></template></select></label>
                 <button type="button" class="activity-button" @click="clearFilters()">Clear filters</button>
               </form>
               <p x-cloak x-show="optionsError" class="admin-load-error px-5" role="alert"><span x-text="optionsError"></span><button type="button" @click="loadOptions()">Retry</button></p>
@@ -158,8 +158,8 @@
               <div x-cloak x-show="loaded && !loading && !error && !rows.length" class="activity-state"><p x-text="filters.search || filters.area !== 'all' || filters.staff || filters.type ? 'No activity found' : 'No activity yet'"></p></div>
               <div x-cloak x-show="loaded && !loading && !error && rows.length" class="activity-table-wrap">
                 <table class="activity-table"><thead><tr><th scope="col">Activity</th><th scope="col">Performed by</th><th scope="col">Date &amp; Time</th></tr></thead>
-                  <tbody><template x-for="row in rows" :key="row.id"><tr @click="openDetails(row, $el.querySelector('button'))">
-                    <td><button type="button" @click.stop="openDetails(row, $el)" :aria-label="row.title + ': ' + row.context" x-text="row.title"></button><small x-text="row.context"></small><small class="activity-mobile-actor" x-text="row.actor_display"></small></td>
+                  <tbody><template x-for="row in rows" :key="row.id"><tr @click="openDetails(row, $el.querySelector('button'), $event)">
+                    <td><div class="activity-name"><span class="activity-dot" :data-activity-area="row.area" aria-hidden="true"></span><div><button type="button" @click.stop="openDetails(row, $el, $event)" :aria-label="row.title + ': ' + row.context" x-text="row.title"></button><small x-text="row.context"></small><small class="activity-mobile-actor" x-text="row.actor_display"></small></div></div></td>
                     <td x-text="row.actor_display"></td><td><time :datetime="row.occurred_at" x-text="formatDate(row.occurred_at)"></time></td>
                   </tr></template></tbody>
                 </table>
@@ -174,19 +174,18 @@
               <div x-cloak x-show="detailError" class="activity-state" role="alert"><p x-text="detailError"></p><button type="button" class="activity-button" @click="closeDetails()">Close</button></div>
               <template x-if="detail"><div class="activity-drawer-body"><h3 x-text="detail.title"></h3><dl>
                 <dt>Performed by</dt><dd x-text="detail.actor_display"></dd>
-                <template x-if="detail.actor_role"><dt>Role</dt></template><template x-if="detail.actor_role"><dd x-text="detail.actor_role"></dd></template>
-                <template x-if="detail.actor_identity"><dt>Account</dt></template><template x-if="detail.actor_identity"><dd x-text="detail.actor_identity"></dd></template>
-                <dt>Area</dt><dd x-text="detail.area[0].toUpperCase() + detail.area.slice(1)"></dd>
+                <template x-if="detail.account_name"><dt>Account</dt></template><template x-if="detail.account_name"><dd x-text="detail.account_name"></dd></template>
+                <dt>Area</dt><dd x-text="detail.area === 'shared' ? 'Shared operations' : detail.area[0].toUpperCase() + detail.area.slice(1)"></dd>
                 <dt>Date &amp; Time</dt><dd x-text="formatDate(detail.occurred_at, true)"></dd>
                 <dt>Record</dt><dd x-text="detail.context"></dd>
                 <dt>Result</dt><dd x-text="detail.result === 'success' ? 'Successful' : 'Failed'"></dd>
-              </dl><section x-show="Object.keys(detail.changes || {}).length" class="activity-changes"><h4>Changes</h4><template x-for="(change, field) in detail.changes" :key="field"><section><strong x-text="changeLabel(field)"></strong><p x-show="change.before !== undefined && change.before !== null && change.before !== ''">Previous: <span x-text="changeValue(change.before)"></span></p><p x-show="change.after !== undefined">New: <span x-text="change.after === null || change.after === '' ? 'Cleared' : changeValue(change.after)"></span></p></section></template></section></div></template>
+              </dl><section x-show="Object.keys(detail.changes || {}).length" class="activity-changes"><h4>Changes</h4><template x-for="(change, field) in detail.changes" :key="field"><section><strong x-text="changeLabel(field)"></strong><p x-show="change.before !== undefined && change.before !== null && change.before !== ''">Previous: <span x-text="changeValue(change.before, field)"></span></p><p x-show="change.after !== undefined">New: <span x-text="change.after === null || change.after === '' ? 'Cleared' : changeValue(change.after, field)"></span></p></section></template></section></div></template>
             </section>
           </div>
         </main>
       </div>
     </div>
-    <script src="../../scripts/components/admin-activity-log.js?v=20261025"></script>
+    <script src="../../scripts/components/admin-activity-log.js?v=20261025-refinements"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   </body>
 </html>

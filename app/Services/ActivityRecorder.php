@@ -99,7 +99,8 @@ class ActivityRecorder
             : trim($actor->first_name).' · '.$role);
         return [
             'actor_id' => $actor?->getKey(), 'actor_display' => $display ?: 'Admin', 'actor_role' => $role,
-            'actor_identity' => $actor && $actor->role !== 'admin' ? trim($actor->first_name.' '.$actor->last_name).' · '.$actor->username.' · #'.$actor->getKey() : null,
+            'actor_identity' => ! $actor ? null : ($actor->role === 'admin' ? (trim($actor->first_name.' '.$actor->last_name) ?: null)
+                : trim($actor->first_name.' '.$actor->last_name).' · '.$actor->username.' · #'.$actor->getKey()),
             'action' => $action, 'area' => $area, 'subject_type' => $subjectType, 'subject_id' => $subjectId,
             'context' => mb_substr($context, 0, 255), 'pet_id' => $petId,
             'changes' => array_intersect_key($changes, array_flip(self::SAFE_CHANGES)),

@@ -2987,6 +2987,7 @@ function adminDashboard() {
         .map((item, index) => ({
           id: item?.id ?? `activity-${index}`,
           type: this.toStringValue(item?.type || "activity"),
+          area: this.toStringValue(item?.area || "shared"),
           title: this.toStringValue(item?.title || "Activity"),
           subtitle: this.toStringValue(item?.subtitle || item?.message),
           createdAt: this.toStringValue(item?.createdAt ?? item?.created_at ?? item?.time),
@@ -3045,15 +3046,6 @@ function adminDashboard() {
     queuePreviewDetail(booking) {
       const service = booking?.serviceType === "clinic" ? "Clinic" : "Grooming";
       return `${service} · Checked in${booking?.dropOffTime ? ` ${booking.dropOffTime}` : ""}`;
-    },
-
-    activityDotClass(type) {
-      const normalizedType = this.toStringValue(type);
-      if (normalizedType === "completed") return "admin-activity-dot-pickup";
-      if (normalizedType === "in_progress") return "bg-sky-600";
-      if (normalizedType === "queued" || normalizedType === "check_in") return "bg-amber-700";
-      if (normalizedType === "payment") return "bg-green-600";
-      return "bg-slate-400";
     },
 
     activityTimeLabel(activity) {

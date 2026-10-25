@@ -49,6 +49,9 @@ class ActivityLogTest extends TestCase
         $this->getJson('/api/admin/activity-log/'.$event->id)->assertOk();
         $page = $this->get('/api/admin/activity-log/page')->assertOk();
         $this->assertDoesNotMatchRegularExpression('/\b(appointments?|bookings?)\b/i', strip_tags($page->getContent()));
+        $dom = new \DOMDocument;
+        $dom->loadHTML($page->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $this->assertSame(0, (new \DOMXPath($dom))->query('//dt[normalize-space()="Role"]')->length);
         foreach (ActivityRecorder::LABELS as $label) $this->assertDoesNotMatchRegularExpression('/\b(appointments?|bookings?)\b/i', $label);
         foreach (['grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $role) {
             $this->actor('staff', $role);
@@ -67,7 +70,7 @@ class ActivityLogTest extends TestCase
             $response = $this->getJson('/api/admin/dashboard/activity')->assertOk()->assertJsonPath('area', $area);
             $this->assertCount($area === 'all' ? 2 : 1, $response->json('recentActivity'));
             foreach ($response->json('recentActivity') as $entry) {
-                $this->assertSame(['id', 'type', 'title', 'subtitle', 'createdAt'], array_keys($entry));
+                $this->assertSame(['id', 'type', 'title', 'subtitle', 'createdAt', 'area'], array_keys($entry));
             }
         }
         $this->getJson('/api/admin/dashboard/activity?area=grooming')->assertForbidden();
@@ -77,6 +80,7 @@ class ActivityLogTest extends TestCase
     public function test_actor_snapshots_system_identity_deduplication_and_rollback(): void
     {
         $actor = $this->actor('staff', 'grooming_receptionist');
+        $this->assertSame('system', ActivityLog::where('action', 'staff_created')->sole()->area);
         $recorder = app(ActivityRecorder::class);
         $event = $recorder->record('checked_in', 'grooming', 'visit', '1', 'GR-1', [], true, $actor, 'check-in-1');
         $recorder->record('checked_in', 'grooming', 'visit', '1', 'GR-1', [], true, $actor, 'check-in-1');
@@ -149,6 +153,7 @@ class ActivityLogTest extends TestCase
         $item = \App\Models\InventoryItem::create(['item_name' => 'Shampoo', 'quantity_on_hand' => 20]);
         $item->decrement('quantity_on_hand', 5); $item->save();
         $stock = ActivityLog::where('action', 'inventory_stock_adjusted')->sole();
+        $this->assertSame('shared', $stock->area);
         $this->assertEquals(['before' => 20, 'after' => 15], $stock->changes['quantity_on_hand']);
         $before = ActivityLog::count();
         try {
@@ -236,5 +241,71 @@ class ActivityLogTest extends TestCase
         $this->assertCount(12, $events);
         $this->assertSame(['System'], $events->pluck('actor_display')->unique()->values()->all());
         $this->assertTrue($events->every(fn ($event) => $event->actor_id === null));
+    }
+
+    public function test_historical_transition_titles_filters_and_groups_use_the_same_labels(): void
+    {
+        $actor = $this->actor();
+        $cases = [
+            ['queue_status_changed', 'status', 'checked_in', 'cancelled', 'Queue entry cancelled', 'queue_entry_cancelled'],
+            ['queue_status_changed', 'status', 'waiting_to_arrive', 'cancelled', 'Pre-registration cancelled', 'pre_registration_cancelled'],
+            ['queue_status_changed', 'status', 'waiting_to_arrive', 'checked_in', 'Checked in', 'checked_in'],
+            ['queue_status_changed', 'status', 'checked_in', 'waiting_to_arrive', 'Check-in reversed', 'check_in_reversed'],
+            ['grooming_corrected', 'grooming_state', 'not_started', 'cancelled', 'Grooming cancelled', 'grooming_cancelled'],
+            ['grooming_corrected', 'grooming_state', 'in_progress', 'not_started', 'Grooming start reversed', 'grooming_start_reversed'],
+            ['queue_status_changed', 'status', null, 'cancelled', 'Queue status changed', 'queue_status_changed'],
+            ['grooming_corrected', 'grooming_state', 'finished', 'not_started', 'Grooming status corrected', 'grooming_corrected'],
+        ];
+        foreach ($cases as [$action, $field, $before, $after, $title, $filter]) {
+            $event = app(ActivityRecorder::class)->record($action, 'grooming', 'grooming_visit', '1', 'GR-1',
+                [$field => compact('before', 'after')], true, $actor);
+            $original = $event->fresh()->getRawOriginal();
+            $this->getJson('/api/admin/activity-log/'.$event->id)->assertOk()->assertJsonPath('title', $title);
+            $rows = $this->getJson('/api/admin/activity-log?type='.$filter)->assertOk()->json('data');
+            $this->assertContains($event->id, array_column($rows, 'id'));
+            $this->assertSame($original, $event->fresh()->getRawOriginal(), 'Presentation must not rewrite history.');
+        }
+        $this->getJson('/api/admin/activity-log?search=Queue%20entry%20cancelled')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Queue entry cancelled');
+        $groups = $this->getJson('/api/admin/activity-log/options')->assertOk()->json('type_groups');
+        $options = collect($groups)->flatMap(fn ($group) => $group['options'])->pluck('label', 'value')->all();
+        foreach (ActivityRecorder::LABELS as $key => $label) $this->assertSame($label, $options[$key]);
+        $this->assertSame('Queue entry cancelled', $options['queue_entry_cancelled']);
+        $this->assertSame(count($options), collect($groups)->sum(fn ($group) => count($group['options'])));
+        $feed = $this->getJson('/api/admin/dashboard/activity')->assertOk()->json('recentActivity');
+        $this->assertContains('Grooming cancelled', array_column($feed, 'title'));
+    }
+
+    public function test_drawer_uses_historical_full_names_without_exposing_account_identifiers(): void
+    {
+        $staff = $this->actor('staff', 'grooming_receptionist');
+        $event = $this->event();
+        $staff->update(['first_name' => 'Renamed']);
+        $this->actor();
+        $this->getJson('/api/admin/activity-log/'.$event->id)->assertOk()->assertJsonPath('account_name', 'Angelyn Reyes')
+            ->assertJsonPath('actor_display', 'Angelyn · Grooming Receptionist')
+            ->assertJsonMissingPath('actor_identity')->assertJsonMissingPath('actor_id')->assertJsonMissingPath('actor_role');
+        $admin = $this->event();
+        $this->getJson('/api/admin/activity-log/'.$admin->id)->assertOk()->assertJsonPath('actor_display', 'clinic-admin')
+            ->assertJsonPath('account_name', 'Angelyn Reyes');
+        DB::table('activity_logs')->where('id', $admin->id)->update(['actor_identity' => null]);
+        $this->getJson('/api/admin/activity-log/'.$admin->id)->assertOk()->assertJsonPath('account_name', null);
+    }
+
+    public function test_shared_legacy_areas_and_explicit_departments_filter_consistently(): void
+    {
+        $actor = $this->actor();
+        $recorder = app(ActivityRecorder::class);
+        foreach (['system', 'shared', 'clinic', 'grooming'] as $area) {
+            $recorder->record('inventory_stock_adjusted', $area, 'inventory', '1', 'Inventory', [], false, $actor);
+        }
+        $recorder->record('staff_deactivated', 'system', 'account', '1', 'Staff account', [], false, $actor);
+        $this->getJson('/api/admin/activity-log?area=shared')->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('data.0.area', 'shared');
+        $this->getJson('/api/admin/activity-log?area=system')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.area', 'system');
+        $this->getJson('/api/admin/activity-log?area=clinic')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.area', 'clinic');
+        $this->getJson('/api/admin/activity-log?area=grooming')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.area', 'grooming');
+        $feedEvent = $this->event('clinic');
+        $this->getJson('/api/admin/dashboard/activity')->assertOk()->assertJsonPath('recentActivity.0.area', 'clinic');
+        $this->assertSame('system', ActivityLog::where('action', 'inventory_stock_adjusted')->oldest('id')->first()->area);
     }
 }

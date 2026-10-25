@@ -3,6 +3,12 @@
 .activity-segments button:hover { background: #e5edf5; }
 .activity-segments button[aria-pressed="true"] { background: #315b7e; color: white; }
 .activity-time { max-width: 140px; text-align: right; font-size: 12px; }
+.activity-dot { --activity-grooming: #247FC0; --activity-clinic: #15947D; --activity-system: #7861A8; --activity-shared: #7B8796; display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background-color: var(--activity-shared); }
+.activity-dot[data-activity-area="grooming"] { background-color: var(--activity-grooming); }
+.activity-dot[data-activity-area="clinic"] { background-color: var(--activity-clinic); }
+.activity-dot[data-activity-area="system"] { background-color: var(--activity-system); }
+.activity-name { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 10px; }
+.activity-name > .activity-dot { margin-top: 6px; }
 .activity-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 20px; border-bottom: 1px solid #d7e3ef; }
 .activity-toolbar label { display: flex; flex: 1 1 130px; min-width: 0; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: #355674; }
 .activity-toolbar .activity-search { flex: 2 1 220px; }
@@ -12,13 +18,14 @@
 .activity-button:hover { background: #eef5fb; }
 .activity-button:disabled { opacity: .45; cursor: default; }
 .activity-segments button:focus-visible, .activity-button:focus-visible, .activity-table button:focus-visible, .activity-toolbar :focus-visible { outline: 2px solid #315b7e; outline-offset: 3px; }
+.activity-button[data-pointer-focus]:focus, .activity-table button[data-pointer-focus]:focus { outline: none; }
 .activity-table-wrap { overflow-x: auto; }
 .activity-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; color: #1f3850; }
 .activity-table th { padding: 13px 20px; background: #f5f8fb; color: #5c7690; font-size: 12px; font-weight: 600; }
 .activity-table td { padding: 16px 20px; border-top: 1px solid #e8f0f8; vertical-align: top; }
 .activity-table tbody tr { cursor: pointer; }
 .activity-table tbody tr:hover { background: #f5f8fb; }
-.activity-table button { display: block; width: 100%; text-align: left; font-weight: 600; }
+.activity-table button { display: inline-block; max-width: 100%; border-radius: 4px; text-align: left; font-weight: 600; }
 .activity-mobile-actor { display: none !important; }
 .activity-table small { display: block; margin-top: 4px; color: #64748b; font-size: 12px; overflow-wrap: anywhere; }
 .activity-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-top: 1px solid #d7e3ef; font-size: 13px; color: #5c7690; }

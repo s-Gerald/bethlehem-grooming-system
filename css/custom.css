@@ -50,11 +50,6 @@
   --admin-record-emphasis-weight: 700;
 }
 
-/* ----- Admin Activity Status Indicators ----- */
-.admin-activity-dot-pickup {
-  background-color: #0e7490;
-}
-
 /* ----- Site Navigation ----- */
 .site-nav {
   z-index: 30;

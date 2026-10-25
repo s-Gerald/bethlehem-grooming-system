@@ -40,7 +40,7 @@ class ActivityObserver
             }
         }
         $actor = auth()->user();
-        $area = 'system'; $action = null; $operational = false; $key = null;
+        $area = 'shared'; $action = null; $operational = false; $key = null;
         $subject = match (true) {
             $model instanceof Booking => 'grooming_visit', $model instanceof BookingPet => 'grooming_pet',
             $model instanceof ClinicAppointment => 'clinic_visit', $model instanceof User => 'account',
@@ -97,7 +97,7 @@ class ActivityObserver
                 $this->payment($model, $area, 'payment', $context, $model->gateway_payment_id ? null : $model->processed_by, null);
             } elseif (! $created && $model->wasChanged('payment_status')) $action = 'payment_status_updated';
         } elseif ($model instanceof PosTransaction) {
-            if ($created) $this->payment($model, 'system', 'product_sale', PosTransaction::referenceFor($model->getKey()),
+            if ($created) $this->payment($model, 'shared', 'product_sale', PosTransaction::referenceFor($model->getKey()),
                 $model->gateway_payment_id ? null : $model->cashier_id, null);
         } elseif ($model instanceof InventoryItem) {
             $action = $created ? 'inventory_created' : ($model->wasChanged('quantity_on_hand') ? 'inventory_stock_adjusted'
@@ -114,6 +114,7 @@ class ActivityObserver
             $action = $created ? $prefix.'_registered' : ($model->wasChanged('is_archived')
                 ? $prefix.($model->is_archived ? '_archived' : '_restored') : ($model->wasChanged($model->getFillable()) ? $prefix.'_updated' : null));
         } elseif ($model instanceof User) {
+            $area = $model->role === 'customer' ? 'shared' : 'system';
             $context = $model->role === 'admin' ? $model->username : trim($model->first_name.' '.$model->last_name);
             if ($created) {
                 $action = $model->role === 'staff' ? 'staff_created' : ($model->role === 'customer' && $model->email_verified_at ? 'customer_registered' : null);
@@ -147,6 +148,7 @@ class ActivityObserver
             $context = 'Clinical record #'.$model->getKey();
         } elseif ($model instanceof ClinicSetting || $model instanceof \App\Models\QrPaymentSettings
             || $model instanceof \App\Models\ClinicClosure || $model instanceof \App\Models\PetGroomer) {
+            $area = 'system';
             $action = (! $created || $model instanceof \App\Models\ClinicClosure || $model instanceof \App\Models\PetGroomer)
                 && ($created || array_diff(array_keys($model->getChanges()), ['updated_at'])) ? 'settings_updated' : null;
             $changes = []; $context = 'Clinic and Grooming settings';

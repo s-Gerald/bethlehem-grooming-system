@@ -1,12 +1,12 @@
 function adminActivityLog() {
   return {
-    rows: [], staff: [], types: {}, loading: true, loaded: false, error: '', optionsError: '',
+    rows: [], staff: [], typeGroups: [], loading: true, loaded: false, error: '', optionsError: '',
     page: 1, lastPage: 1, total: 0, filters: {},
     drawerOpen: false, detail: null, detailLoading: false, detailError: '',
-    _request: 0, _optionsRequest: 0, _detailRequest: 0, _trigger: null, _destroyed: false,
+    _request: 0, _optionsRequest: 0, _detailRequest: 0, _trigger: null, _destroyed: false, _keyboardInteraction: true,
     init() {
       this.resetFilters();
-      this._sessionListener = () => { this._request++; this._optionsRequest++; this.rows = []; this.staff = []; this.types = {}; this.closeDetails(); this.loaded = false; this._needsReload = true; };
+      this._sessionListener = () => { this._request++; this._optionsRequest++; this.rows = []; this.staff = []; this.typeGroups = []; this.closeDetails(); this.loaded = false; this._needsReload = true; };
       this._resumeListener = () => { if (this._needsReload) { this._needsReload = false; this.load(); this.loadOptions(); } };
       window.addEventListener('admin-session:locked', this._sessionListener);
       window.addEventListener('admin-navigation:invalidated', this._sessionListener);
@@ -19,7 +19,7 @@ function adminActivityLog() {
       this.optionsError = '';
       const request = ++this._optionsRequest;
       return API.getAdminActivityOptions().then(data => {
-        if (!this._destroyed && request === this._optionsRequest) { this.staff = data.staff; this.types = data.types; }
+        if (!this._destroyed && request === this._optionsRequest) { this.staff = data.staff; this.typeGroups = data.type_groups; }
       }).catch(() => { if (!this._destroyed && request === this._optionsRequest) this.optionsError = "Couldn't load filters."; });
     },
     destroy() {
@@ -50,11 +50,22 @@ function adminActivityLog() {
         if (!this._destroyed && request === this._request) this.loading = false;
       }
     },
-    async openDetails(row, trigger) {
+    setInteractionMode(keyboard) {
+      this._keyboardInteraction = keyboard;
+      if (keyboard) this.$root.querySelectorAll('[data-pointer-focus]').forEach(element => element.removeAttribute('data-pointer-focus'));
+    },
+    focusElement(element) {
+      if (this._keyboardInteraction) element.removeAttribute('data-pointer-focus');
+      else element.setAttribute('data-pointer-focus', 'true');
+      element.focus({preventScroll: true});
+    },
+    async openDetails(row, trigger, event) {
+      if (event) this.setInteractionMode(event.detail === 0 && !event.pointerType);
       const request = ++this._detailRequest;
       this._trigger = trigger; this.detail = null; this.detailError = ''; this.detailLoading = true; this.drawerOpen = true;
       this.$nextTick(() => {
-        this.$refs.drawerClose.focus();
+        if (!this.drawerOpen || this._destroyed || request !== this._detailRequest) return;
+        this.focusElement(this.$refs.drawerClose);
         this.$refs.content.inert = true;
         const shell = this.$root.closest('[data-admin-shell]');
         this._inertRegions = shell ? [...shell.querySelectorAll('.admin-sidebar-menu, header')].filter(region => !this.$refs.drawer.contains(region)) : [];
@@ -73,7 +84,7 @@ function adminActivityLog() {
       this._detailRequest++; this.drawerOpen = false; this.detail = null;
       if (this.$refs?.content) this.$refs.content.inert = false;
       this._inertRegions?.forEach(region => { region.inert = false; });
-      if (!this._destroyed && this._trigger?.isConnected) this._trigger.focus();
+      if (!this._destroyed && this._trigger?.isConnected) this.focusElement(this._trigger);
     },
     trapFocus(event) {
       if (event.key !== 'Tab') return;
@@ -92,9 +103,12 @@ function adminActivityLog() {
         is_active: 'Active', is_archived: 'Archived', staff_type: 'Department', staff_subrole: 'Role'})[key]
         || key.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
     },
-    changeValue(value) {
+    changeValue(value, field) {
       if (value === null || value === undefined || value === '') return '—';
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      if (['status', 'grooming_state', 'payment_status'].includes(field) && typeof value === 'string') {
+        return value.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
+      }
       return typeof value === 'object' ? JSON.stringify(value) : String(value).replaceAll('_', ' ');
     },
   };
