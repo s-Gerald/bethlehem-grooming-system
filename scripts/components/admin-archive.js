@@ -356,8 +356,8 @@ function adminArchive() {
       const booking = this.detailsBooking;
       if (!booking) return [];
       return [
-        {label: 'Visit date', value: this.groomingText(booking.appointmentDate) ? this.formatAppointmentDate(booking.appointmentDate, '') : ''},
-        {label: 'Entry source', value: booking.bookingType === 'Walk-In' ? 'Walk-in' : 'Pre-registration'},
+        {label: 'Visit day', value: this.groomingText(booking.appointmentDate) ? this.formatAppointmentDate(booking.appointmentDate, '') : ''},
+        {label: 'Entry source', value: booking.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Registration'},
         {label: 'Arrival window', value: booking.bookingType !== 'Walk-In' ? booking.appointmentTime : ''},
         {label: 'Queue number', value: booking.queueNumber || ''},
         {label: 'Dropped off', value: this.groomingText(booking.dropOffAtIso) ? this.formatDateTime(booking.dropOffAtIso, '') : booking.dropOffTime},

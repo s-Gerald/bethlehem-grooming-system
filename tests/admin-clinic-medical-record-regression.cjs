@@ -204,6 +204,6 @@ function component(user) {
   const complaintField = html.match(/<textarea id="medical-chief_complaint"[^>]*>/)[0];
   assert.ok(complaintField.includes(':readonly="isPreRegistered"'));
   assert.ok(complaintField.includes(':disabled="!isPreRegistered && (!canEditClinical || saving)"'));
-  assert.ok(html.includes('Submitted by the pet owner during pre-registration.'));
+  assert.ok(html.includes('Submitted by the pet owner during online registration.'));
   console.log('Medical Record frontend workflow regression checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

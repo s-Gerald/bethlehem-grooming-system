@@ -7,10 +7,10 @@
     <title>Client Dashboard | Bethlehem Animal Clinic</title>
 
     <!-- Tailwind output -->
-    <link rel="stylesheet" href="../../css/output.css?v=20261005-dashboard-loading-v1&notif=20260915-client-notifications&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" />
-    <link rel="stylesheet" href="../../css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration=fcfs-20261027-v1" />
-    <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261017" />
-    <link rel="stylesheet" href="../../css/components/grooming-visit-summary.css?v=20261017" />
+    <link rel="stylesheet" href="../../css/output.css?v=20261005-dashboard-loading-v1&notif=20260915-client-notifications&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261017&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/components/grooming-visit-summary.css?v=20261017&registration-ui=20261027-v3" />
 
   </head>
   <body class="portal-theme customer-dashboard group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
@@ -218,7 +218,7 @@
                 title="Checking availability"
                 class="portal-button-primary cursor-not-allowed font-semibold opacity-60 max-[639px]:flex-1"
               >
-                Pre-register
+                Register Online
               </a>
             </div>
           </div>
@@ -238,7 +238,7 @@
             </section>
 
             <section id="upcomingSection" class="portal-card order-2 flex flex-col xl:col-span-2 max-[639px]:p-5" aria-labelledby="upcomingHeading">
-              <h3 id="upcomingHeading" class="mb-5 flex items-center gap-3 text-[22px] font-bold leading-[1.3]"><svg class="ph-icon h-6 w-6 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#calendar-check"></use></svg>Upcoming Schedule</h3>
+              <h3 id="upcomingHeading" class="mb-5 flex items-center gap-3 text-[22px] font-bold leading-[1.3]"><svg class="ph-icon h-6 w-6 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#calendar-check"></use></svg>Upcoming Visits</h3>
               <div id="appointmentsList" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
             </section>
 
@@ -281,7 +281,7 @@
         <div id="cancelModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4">
           <div class="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
             <div class="flex items-center justify-between mb-4">
-              <h4 class="text-lg font-bold text-portal-text">Cancel pre-registration?</h4>
+              <h4 class="text-lg font-bold text-portal-text">Cancel online registration?</h4>
               <button type="button" id="closeCancelModal" aria-label="Close cancellation dialog" class="text-portal-muted hover:text-slate-600">
                 <svg class="ph-icon w-5 h-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
               </button>
@@ -307,7 +307,7 @@
     <dialog id="groomingVisitSummary" class="grooming-summary-dialog" aria-labelledby="groomingVisitSummaryHeading">
       <div class="grooming-summary-shell">
         <header class="grooming-summary-heading">
-          <h2 id="groomingVisitSummaryHeading">Grooming Visit Summary</h2>
+          <h2 id="groomingVisitSummaryHeading">Registration Summary</h2>
           <button type="button" id="closeVisitSummary" class="grooming-summary-close" aria-label="Close grooming visit summary" autofocus>
             <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
           </button>
@@ -315,7 +315,7 @@
         <div id="groomingVisitSummaryContent" class="grooming-summary-content"></div>
         <footer class="grooming-summary-footer">
           <button type="button" id="dismissVisitSummary" class="portal-button-secondary">Close</button>
-          <button type="button" id="printVisitSummary" class="portal-button-primary" disabled>Print Confirmation</button>
+          <button type="button" id="printVisitSummary" class="portal-button-primary" disabled>Print Summary</button>
         </footer>
       </div>
     </dialog>
@@ -345,7 +345,7 @@
 
     <script src="../../scripts/api.js?grooming-summary=20261017&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications" defer></script>
-    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp"></script>
-    <script src="../../scripts/components/client-dashboard.js?v=phone-20261022&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" defer></script>
+    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp&registration-ui=20261027-v3"></script>
+    <script src="../../scripts/components/client-dashboard.js?v=phone-20261022&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3" defer></script>
   </body>
 </html>

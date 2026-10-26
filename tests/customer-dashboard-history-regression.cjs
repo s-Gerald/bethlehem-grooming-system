@@ -119,7 +119,7 @@ async function testCompletedHistoryDoesNotBreakEmptySchedule() {
   const schedule = element("appointmentsList").innerHTML;
   const history = element("groomingHistory").innerHTML;
 
-  assert.match(schedule, /No upcoming grooming scheduled/);
+  assert.match(schedule, /No upcoming visits/);
   assert.doesNotMatch(schedule, /Failed to load schedule/);
   assert.match(history, /Peter/);
   assert.doesNotMatch(history, /<initial>Loading/);
@@ -267,7 +267,8 @@ async function testPreviewsAndNearestSchedule() {
   assert.ok(schedule.indexOf("Pet 1") < schedule.indexOf("Pet 2"));
   assert.ok(schedule.indexOf("Pet 2") < schedule.indexOf("Pet 3"));
   assert.doesNotMatch(schedule, /Pet 4|reschedule-2|cancel-2/);
-  assert.match(schedule, /Regular Grooming/);
+  assert.match(schedule, /Grooming/);
+  assert.doesNotMatch(schedule, /Regular Grooming/);
   const preview = element("myPetsPreview").innerHTML;
   assert.match(preview, /Maltese/);
   assert.doesNotMatch(preview, /Maltese ·|Outside preview|<Pet>|· -|· —/);
@@ -423,21 +424,31 @@ async function testTrackerDisclosureAndPrioritySurviveRefresh() {
 }
 
 async function testVisitSummaryFollowsVisitState() {
-  let booking = { booking_id: 701, status: "waiting_to_arrive", pets: [{ pet_name: "Coco" }] };
+  let booking = { booking_id: 701, booking_type: "online", status: "waiting_to_arrive", pets: [{ pet_name: "Coco" }] };
   const dashboard = await runDashboard(async () => ({ bookings: [booking], history: [] }));
-  assert.match(dashboard.element("appointmentsList").innerHTML, /View registration summary/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /Waiting to arrive/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /View online registration summary/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /Waiting to Arrive/);
   assert.match(dashboard.element("appointmentsList").innerHTML, /Cancel/);
-  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View visit details/);
+  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   for (const status of ["checked_in", "in_progress", "for_payment", "released"]) {
     booking.status = status;
     await dashboard.refresh();
-    assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco|View registration summary/);
-    assert.match(dashboard.element("groomingTracker").innerHTML, /View visit details/);
+    assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco|View online registration summary/);
+    assert.match(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   }
+  booking.status = "checked_in";
+  booking.pets = [{ pet_name: "Coco", grooming_status: "checked_in", pet_queue_number: 2 }, { pet_name: "Luna", grooming_status: "checked_in", pet_queue_number: 3 }];
+  await dashboard.refresh();
+  const uniform = dashboard.element("groomingTracker").innerHTML;
+  assert.match(uniform, /Queue #2/); assert.match(uniform, /Queue #3/);
+  assert.doesNotMatch(uniform, /Waiting to start grooming|All 2 pets|>Checked In<\/p>/);
+  booking.booking_type = "walk_in";
+  await dashboard.refresh();
+  assert.match(dashboard.element("groomingTracker").innerHTML, /View visit details/);
+  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   booking.show_grooming_tracker = false;
   await dashboard.refresh();
-  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View visit details/);
+  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   booking = { ...booking, status: "archived" };
   await dashboard.refresh();
   assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco/);
@@ -790,9 +801,9 @@ async function testClinicRegistrationUsesServerStatusAndCheckInNumber() {
   const dashboard = await runDashboard(async () => ({ bookings: [], history: [], clinic_visits: [visit] }));
   let card = dashboard.element("appointmentsList").innerHTML;
   assert.match(card, /Clinic patient/);
-  assert.match(card, /Queue number: Not assigned/);
+  assert.match(card, /Waiting to Arrive/);
   assert.match(card, /CL-20261026-017/);
-  assert.match(card, /Valid service day/);
+  assert.match(card, /Visit day/);
   visit = { ...visit, status: "checked_in", queue_number: 11, checked_in_at: "2026-10-26T09:30:00+08:00" };
   await dashboard.refresh();
   card = dashboard.element("appointmentsList").innerHTML;

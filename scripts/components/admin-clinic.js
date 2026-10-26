@@ -708,10 +708,17 @@ function adminClinicPage() {
       window.scrollTo(0, 0);
     },
 
-    caseLabel(item) { return ({ online_request: "Online Pre-registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
-    caseStatus(item) { return ({ waiting_to_arrive: "Waiting for Arrival", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" })[item.status] || item.status; },
+    caseLabel(item) { return ({ online_request: "Online Registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
+    caseStatus(item) { return ({ waiting_to_arrive: "Waiting to Arrive", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" })[item.status] || item.status; },
     casePatientLabel(item) {
       return (item.status !== 'waiting_to_arrive' && item.queue_number ? `#${item.queue_number} · ` : '') + (item.pet?.name || 'Patient');
+    },
+    caseVisitDay(value) {
+      if (!value) return "Not recorded";
+      const date = new Date(String(value).slice(0, 10) + "T00:00:00+08:00");
+      return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric",
+      }).format(date);
     },
     caseTimestamp(value) {
       if (!value) return "Not recorded";

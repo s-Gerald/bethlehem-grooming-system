@@ -53,7 +53,7 @@ async function run() {
   await ui.openDetails({id: 2}, trigger, {detail: 0, pointerType: 'touch'});
   assert.equal(close.getAttribute('data-pointer-focus'), 'true', 'Touch activation is treated as pointer input even with zero click detail');
   ui.closeDetails();
-  assert.equal(ui.changeLabel('booking_date'), 'Pre-registration date');
+  assert.equal(ui.changeLabel('booking_date'), 'Visit day');
   assert.equal(ui.changeValue(false), 'No');
   assert.equal(ui.changeValue('checked_in', 'status'), 'Checked in');
   const css = postcss.parse(fs.readFileSync('css/components/admin-activity.css', 'utf8'));

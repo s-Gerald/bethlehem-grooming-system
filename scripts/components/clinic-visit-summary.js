@@ -1,4 +1,4 @@
-import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3";
 import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_CONFIRMATION_KEY,
@@ -43,7 +43,7 @@ async function submitClinicVisit(draft) {
   } catch (error) {
     showError(error.message || "The clinic visit could not be submitted. Please try again.");
     elements.submit.disabled = false;
-    elements.submit.textContent = "Submit Pre-registration";
+    elements.submit.textContent = "Submit Online Registration";
   }
 }
 
@@ -65,7 +65,7 @@ function init() {
   }
 
   elements.details.innerHTML = getClinicVisitSummaryMarkup({
-    visitType: "Clinic Visit Pre-registration",
+    visitType: "Clinic Online Registration",
     pet: draft.pet,
     reason: formatClinicVisitReason(draft.commonConcerns, draft.chiefComplaint),
   });

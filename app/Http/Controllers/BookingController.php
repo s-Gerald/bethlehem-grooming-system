@@ -271,7 +271,7 @@ class BookingController extends Controller
             Notification::create([
                 'type' => 'booked',
                 'booking_id' => $booking->booking_id,
-                'message' => "New pre-registration {$reference} by {$user->first_name} {$user->last_name} on {$schedule}.",
+                'message' => "New online registration {$reference} by {$user->first_name} {$user->last_name} on {$schedule}.",
                 'is_read' => 0,
                 'created_at' => now(),
             ]);
@@ -286,7 +286,7 @@ class BookingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your pre-registration has been received. Your queue position will be assigned when you check in at the clinic.',
+                'message' => 'Your online registration has been received. Your queue position will be assigned when you check in at the clinic.',
                 'consent' => $signedConsent->only(['grooming_consent', 'sedation_consent', 'signer_name', 'signed_at', 'consent_version']),
                 'booking' => [
                     'booking_id' => $booking->booking_id,
@@ -556,7 +556,8 @@ class BookingController extends Controller
                 ->with('pet:pet_id,pet_name,species,breed')->orderBy('created_at')->orderBy('id')
                 ->get()->map(fn ($visit) => [
                     'id' => $visit->id, 'reference' => $visit->appointment_reference,
-                    'status' => $visit->status, 'service_day' => $visit->appointment_date?->toDateString(),
+                    'status' => $visit->status, 'appointment_type' => $visit->appointment_type,
+                    'service_day' => $visit->appointment_date?->toDateString(),
                     'queue_number' => $visit->queue_number,
                     'created_at' => $visit->created_at?->toIso8601String(),
                     'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
@@ -631,6 +632,11 @@ class BookingController extends Controller
         });
         $booking->setAttribute('consent', $booking->groomingConsent);
         $booking->unsetRelation('groomingConsent');
+        $owner = $request->user();
+        $booking->setAttribute('owner', [
+            'first_name' => $owner->first_name, 'last_name' => $owner->last_name,
+            'phone' => $owner->phone, 'email' => $owner->email,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -690,7 +696,7 @@ class BookingController extends Controller
             Notification::create([
                 'type' => 'cancelled',
                 'booking_id' => $booking->booking_id,
-                'message' => "Pre-registration {$booking->booking_reference} was cancelled by {$user->first_name} {$user->last_name}.",
+                'message' => "Online Registration {$booking->booking_reference} was cancelled by {$user->first_name} {$user->last_name}.",
                 'is_read' => 0,
                 'created_at' => now(),
             ]);

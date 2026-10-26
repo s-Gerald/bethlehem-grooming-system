@@ -1564,7 +1564,14 @@ body.customer-detail-modal-open {
 .grooming-note-flag { display: inline-flex; align-items: center; gap: 4px; color: #315b7e; font-size: 12px; font-weight: 600; }
 .grooming-booking-actions, .grooming-stage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .grooming-booking-actions { flex: 0 1 auto; min-width: 0; justify-content: flex-end; }
-.grooming-incoming-pets { flex: 1; min-width: 0; }
+.grooming-incoming-pets { min-width: 0; margin-top: 10px; }
+.grooming-incoming-card .grooming-booking-main { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(210px, .8fr); align-items: center; gap: 20px; }
+.grooming-incoming-badges { display: flex; flex-wrap: wrap; gap: 6px; max-width: 160px; }
+.grooming-incoming-timing { display: grid; gap: 10px; min-width: 0; }
+.grooming-incoming-timing > div { display: flex; align-items: flex-start; gap: 8px; }
+.grooming-incoming-timing svg { flex: none; color: var(--grooming-accent); }
+.grooming-incoming-timing dt { color: #64748b; font-size: .75rem; }
+.grooming-incoming-timing dd { color: #2f4b66; font-size: .875rem; font-weight: 600; overflow-wrap: anywhere; }
 .grooming-service { color: #315b7e; font-size: .875rem; line-height: 1.5; }
 .grooming-appointment-time { color: #1f3850; font-size: 14px; font-weight: 600; }
 .grooming-empty { border: 1px dashed #bfd3e3; border-radius: 20px; background: white; padding: 32px 16px; color: #2f4b66; font-weight: 600; text-align: center; }
@@ -1638,9 +1645,9 @@ body.customer-detail-modal-open {
   .grooming-tabs button { flex: 1 0 auto; min-width: 125px; }
   .grooming-booking-card { padding: 16px; }
   .grooming-booking-main { gap: 12px; }
-  .grooming-incoming-card .grooming-booking-main { flex-wrap: wrap; }
-  .grooming-incoming-card .grooming-booking-identity { flex-basis: calc(100% - 140px); }
-  .grooming-incoming-pets { flex-basis: 100%; order: 3; }
+  .grooming-incoming-card .grooming-booking-main { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .grooming-incoming-badges { max-width: none; }
+  .grooming-incoming-timing { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grooming-appointment-time { max-width: 128px; }
   .grooming-booking-actions { justify-content: flex-start; }
   .admin-queued-pet-main { grid-template-columns: auto minmax(0, 1fr); }

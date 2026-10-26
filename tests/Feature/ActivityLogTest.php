@@ -248,7 +248,7 @@ class ActivityLogTest extends TestCase
         $actor = $this->actor();
         $cases = [
             ['queue_status_changed', 'status', 'checked_in', 'cancelled', 'Queue entry cancelled', 'queue_entry_cancelled'],
-            ['queue_status_changed', 'status', 'waiting_to_arrive', 'cancelled', 'Pre-registration cancelled', 'pre_registration_cancelled'],
+            ['queue_status_changed', 'status', 'waiting_to_arrive', 'cancelled', 'Online Registration cancelled', 'pre_registration_cancelled'],
             ['queue_status_changed', 'status', 'waiting_to_arrive', 'checked_in', 'Checked in', 'checked_in'],
             ['queue_status_changed', 'status', 'checked_in', 'waiting_to_arrive', 'Check-in reversed', 'check_in_reversed'],
             ['grooming_corrected', 'grooming_state', 'not_started', 'cancelled', 'Grooming cancelled', 'grooming_cancelled'],

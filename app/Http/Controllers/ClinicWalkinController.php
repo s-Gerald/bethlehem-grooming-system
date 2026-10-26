@@ -119,12 +119,12 @@ class ClinicWalkinController extends Controller
             Notification::createForClinic(
                 $appointment,
                 Notification::TYPE_CLINIC_BOOKED,
-                "Clinic pre-registration {$reference} was submitted by {$ownerName} for {$pet->pet_name}.",
+                "Clinic online registration {$reference} was submitted by {$ownerName} for {$pet->pet_name}.",
             );
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your pre-registration has been received. Your queue position will be assigned when you check in at the clinic.',
+                'message' => 'Your online registration has been received. Your queue position will be assigned when you check in at the clinic.',
                 'appointment' => [
                     'appointment_id' => $appointment->id,
                     'appointment_reference' => $appointment->appointment_reference,

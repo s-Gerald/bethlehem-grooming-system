@@ -23,7 +23,7 @@ class AdminBookingCancellationNotificationInterfaceTest extends TestCase
         }
 
         $this->assertStringNotContainsString(
-            'If left blank, the customer will be told that the grooming pre-registration was cancelled by the clinic.',
+            'If left blank, the customer will be told that the grooming online registration was cancelled by the clinic.',
             $appointments,
         );
         $this->assertStringNotContainsString(

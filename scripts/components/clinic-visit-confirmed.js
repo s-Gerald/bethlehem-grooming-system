@@ -5,7 +5,7 @@ import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
   renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3";
 
 export function clinicReasonConfirmation(appointment) {
   const concerns = Array.isArray(appointment.common_concerns) ? appointment.common_concerns : [];
@@ -48,14 +48,16 @@ export async function initClinicVisitConfirmation() {
     ])),
     confirmationSection("Reason for Visit", clinicReasonConfirmation(appointment)),
     confirmationSection(walkIn ? "Check-in Details" : "Registration Details", confirmationFields(walkIn ? [
+      ["Entry source", "Walk-in"],
       ["Queue number", appointment.queue_number ?? "Not assigned"],
       ["Checked in at", checkedInAt || "Not available"],
       ["Current status", currentStatus],
     ] : [
-      ["Valid service day", formatClinicVisitDate(appointment.appointment_date)],
+      ["Entry source", "Online Registration"],
+      ["Visit day", formatClinicVisitDate(appointment.appointment_date)],
       ["Queue number", appointment.queue_number ?? "Not assigned"],
       ["Status", currentStatus],
-      ...(checkedInAt ? [["Submitted at", checkedInAt]] : []),
+      ...(checkedInAt ? [["Submitted online", checkedInAt]] : []),
     ])),
     typeof appointment.terms_agreed === "boolean" ? confirmationSection("Clinic Visit Agreement", confirmationFields([
       ["Clinic visit terms", appointment.terms_agreed ? "Agreed" : "Not agreed"],
@@ -63,8 +65,8 @@ export async function initClinicVisitConfirmation() {
     !walkIn ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
   ].join("");
   renderConfirmation(root, {
-    title: walkIn ? "Clinic Walk-in Checked In" : "Registration Received",
-    printTitle: walkIn ? "CLINIC WALK-IN CHECK-IN CONFIRMATION" : "CLINIC VISIT PRE-REGISTRATION CONFIRMATION",
+    title: walkIn ? "Clinic Walk-in Checked In" : "Online Registration Received",
+    printTitle: walkIn ? "CLINIC WALK-IN CHECK-IN CONFIRMATION" : "Clinic Online Registration Confirmation",
     message: walkIn ? "The patient has been checked in and added to the clinic queue." : "",
     reference: appointment.appointment_reference, status: walkIn ? "Checked In" : "Waiting to Arrive",
     walkIn, queueNumber: appointment.queue_number, sections,

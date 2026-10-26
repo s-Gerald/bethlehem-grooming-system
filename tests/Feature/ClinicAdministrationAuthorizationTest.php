@@ -891,7 +891,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('total', 3)
-            ->assertJsonPath('archived.0.appointment_type_label', 'Pre-Registered')
+            ->assertJsonPath('archived.0.appointment_type_label', 'Online Registration')
             ->assertJsonPath('archived.0.time_window.window_label', '8:00 AM - 9:00 AM')
             ->assertJsonPath('archived.0.final_status_label', 'Completed')
             ->assertJsonPath('archived.0.treatment_count', 1)
@@ -1360,7 +1360,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('code', 'pre_registration_exists')
             ->assertJsonPath('arrival.id', 1)
             ->assertJsonMissingPath('case')
-            ->assertJsonPath('message', 'Mochi already has a pre-registration waiting for arrival (CL-20260722-001).');
+            ->assertJsonPath('message', 'Mochi already has an online registration waiting for arrival (CL-20260722-001).');
         $this->assertSame('waiting_to_arrive', DB::table('clinic_appointments')->where('id', 1)->value('status'));
 
         $this->postJson('/api/admin/clinic-cases/1/start')
@@ -1753,6 +1753,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         );
         $this->getJson('/api/booking/history?history_limit=0')->assertOk()
             ->assertJsonPath('clinic_visits.0.status', 'waiting_to_arrive')
+            ->assertJsonPath('clinic_visits.0.appointment_type', 'pre_registered')
             ->assertJsonPath('clinic_visits.0.queue_number', null)
             ->assertJsonPath('clinic_visits.0.pet_name', 'Mochi')
             ->assertJsonPath('clinic_visits.0.service_day', $appointmentDate);

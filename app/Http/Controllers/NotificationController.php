@@ -239,13 +239,13 @@ class NotificationController extends Controller
         $schedule = $this->bookingSchedule($booking);
         $message = $fallback !== ''
             ? $this->normalizeStoredScheduleMessage($fallback)
-            : ($reference ? 'New pre-registration '.$reference
+            : ($reference ? 'New online registration '.$reference
                 .($owner ? " by {$owner}" : '')
                 .($schedule ? " on {$schedule}" : '').'.'
                 : $fallback);
 
         return $this->content(
-            'New pre-registration',
+            'New online registration',
             $message,
             null,
             [$reference, $owner],
@@ -259,13 +259,13 @@ class NotificationController extends Controller
         $schedule = $this->bookingSchedule($booking);
         $message = $fallback !== ''
             ? $this->normalizeStoredScheduleMessage($fallback)
-            : ($reference ? 'Pre-registration '.$reference.' was rescheduled'
+            : ($reference ? 'Online Registration '.$reference.' was rescheduled'
                 .($owner ? " by {$owner}" : '')
                 .($schedule ? " to {$schedule}" : '').'.'
                 : $fallback);
 
         return $this->content(
-            'Grooming pre-registration rescheduled',
+            'Grooming online registration rescheduled',
             $message,
             null,
             [$reference, $owner],
@@ -279,7 +279,7 @@ class NotificationController extends Controller
         $cancelledByClinic = Str::contains(Str::lower($fallback), 'clinic staff');
         $actor = $cancelledByClinic ? 'clinic staff' : $owner;
         $message = $reference
-            ? "Pre-registration cancelled: {$reference}"
+            ? "Online Registration cancelled: {$reference}"
                 .($actor ? " by {$actor}." : '.')
             : $fallback;
         $reason = trim((string) $booking?->cancellation_reason);
@@ -289,7 +289,7 @@ class NotificationController extends Controller
         }
 
         return $this->content(
-            'Grooming pre-registration cancelled',
+            'Grooming online registration cancelled',
             $message,
             $reason ? "Reason: {$reason}" : null,
             [$reference, $actor],
@@ -358,14 +358,14 @@ class NotificationController extends Controller
         $pet = trim((string) $appointment?->pet?->pet_name);
         $schedule = $this->clinicSchedule($appointment);
         $message = $reference
-            ? ($walkIn ? 'New clinic walk-in ' : 'New clinic pre-registration ').$reference
+            ? ($walkIn ? 'New clinic walk-in ' : 'New clinic online registration ').$reference
                 .($owner ? " for {$owner}" : '')
                 .($pet ? " and {$pet}" : '')
                 .($schedule ? " on {$schedule}" : '').'.'
             : $fallback;
 
         return $this->content(
-            $walkIn ? 'New clinic walk-in' : 'New clinic pre-registration',
+            $walkIn ? 'New clinic walk-in' : 'New clinic online registration',
             $message,
             null,
             [$reference, $owner, $pet],
@@ -569,7 +569,7 @@ class NotificationController extends Controller
 
     private function normalizeStoredMessage(?string $message): string
     {
-        return trim((string) preg_replace('/\s+/', ' ', (string) $message));
+        return str_ireplace('pre-registration', 'Online Registration', trim((string) preg_replace('/\s+/', ' ', (string) $message)));
     }
 
     private function normalizeStoredScheduleMessage(string $message): string
@@ -582,7 +582,7 @@ class NotificationController extends Controller
 
         return preg_replace(
             '/\bNew Pre-registration\b/i',
-            'New pre-registration',
+            'New online registration',
             $message,
         ) ?? $message;
     }

@@ -34,3 +34,7 @@ assert.equal(ui.getIncomingPets(legacyBooking).length, 1);
 assert.equal(ui.formatIncomingPetServices(ui.getIncomingPets(legacyBooking)[0], legacyBooking), "Partial Grooming");
 
 console.log("Admin grooming incoming card tests passed.");
+
+assert.equal(ui.registrationVisitDay('2026-10-27'), 'Oct 27, 2026');
+assert.match(ui.registrationTimestamp('2026-10-26T20:10:00Z'), /Oct 27, 2026.*4:10 AM/);
+assert.equal(ui.registrationVisitDay(null), 'Not recorded');

@@ -222,7 +222,7 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertCount(1, $secondPage['notifications']);
         $this->assertFalse($secondPage['pagination']['has_more']);
         $this->assertSame(
-            'New pre-registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
+            'New Online Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
             $firstPage['notifications'][0]['message'],
         );
         $this->assertSame('calendar-days', $firstPage['notifications'][0]['icon']);
@@ -289,11 +289,11 @@ class AdminNotificationCenterTest extends TestCase
         $rescheduled = collect($notifications)->firstWhere('type', 'rescheduled');
 
         $this->assertSame(
-            'New pre-registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
+            'New Online Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
             $booked['message'],
         );
         $this->assertStringNotContainsString('10:00 AM', $booked['message']);
-        $this->assertSame($rescheduledMessage, $rescheduled['message']);
+        $this->assertSame(str_replace('Pre-registration', 'Online Registration', $rescheduledMessage), $rescheduled['message']);
         $this->assertStringContainsString(
             'from Aug 21 at 8:00 AM - 9:00 AM',
             $rescheduled['message'],
@@ -389,7 +389,7 @@ class AdminNotificationCenterTest extends TestCase
 
         $payload = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired']);
         $this->assertCount(2, $payload['notifications']);
-        $this->assertSame(['Pre-registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
+        $this->assertSame(['Online Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
         foreach (['grooming' => 'no_show', 'clinic' => 'clinic_no_show'] as $service => $type) {
             $filtered = $this->notificationPayload(['mode' => 'full', 'service' => $service, 'activity' => 'expired']);
             $this->assertSame([$type], array_column($filtered['notifications'], 'type'));
@@ -433,8 +433,8 @@ class AdminNotificationCenterTest extends TestCase
         $rows = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired'])['notifications'];
         $this->assertCount(3, $rows);
         $this->assertSame('Historical no show record.', $rows[0]['message']);
-        $this->assertSame(str_replace('Grooming', 'Clinic', $message), $rows[1]['message']);
-        $this->assertSame($message, $rows[2]['message']);
+        $this->assertSame(str_replace(['Grooming', 'Pre-registration'], ['Clinic', 'Online Registration'], $message), $rows[1]['message']);
+        $this->assertSame(str_replace('Pre-registration', 'Online Registration', $message), $rows[2]['message']);
     }
 
     public function test_invalid_service_or_activity_is_rejected(): void

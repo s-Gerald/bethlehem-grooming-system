@@ -1,4 +1,4 @@
-import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
@@ -131,7 +131,7 @@ function renderEmptyState(message) {
   elements.totalPriceHeading.textContent = "Total Price";
   elements.totalPriceText.textContent = "₱0";
   elements.totalPriceSubtext.textContent =
-    "Review data is unavailable until the earlier pre-registration steps are completed.";
+    "Review data is unavailable until the earlier online registration steps are completed.";
   elements.confirmBookingBtn.disabled = true;
   elements.confirmBookingBtn.classList.add("opacity-50", "cursor-not-allowed");
 }

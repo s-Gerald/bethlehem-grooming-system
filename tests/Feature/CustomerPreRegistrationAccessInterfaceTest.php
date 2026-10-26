@@ -17,7 +17,7 @@ class CustomerPreRegistrationAccessInterfaceTest extends TestCase
         $this->assertStringContainsString('data-pre-registration-button', $dashboard);
         $this->assertStringContainsString('API.getPreRegistrationAccess()', $buttonScript);
         $this->assertStringNotContainsString('preRegistrationAccessNotice', $dashboard);
-        $this->assertStringContainsString('"Pre-registration ongoing"', $buttonScript);
+        $this->assertStringContainsString('"Online Registration ongoing"', $buttonScript);
         $this->assertStringContainsString('event.preventDefault()', $buttonScript);
         $this->assertStringContainsString('id="groomingOption"', $choicePage);
         $this->assertStringContainsString('id="clinicVisitOption"', $choicePage);

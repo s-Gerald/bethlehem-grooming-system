@@ -98,7 +98,7 @@ function adminActivityLog() {
       return new Date(value).toLocaleString('en-PH', {timeZone: 'Asia/Manila', year: 'numeric', month: long ? 'long' : 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
     },
     changeLabel(key) {
-      return ({booking_date: 'Pre-registration date', appointment_date: 'Pre-registration date', quantity_on_hand: 'Quantity',
+      return ({booking_date: 'Visit day', appointment_date: 'Visit day', quantity_on_hand: 'Quantity',
         price_at_booking: 'Service price', price_min_at_booking: 'Minimum service price', price_max_at_booking: 'Maximum service price',
         is_active: 'Active', is_archived: 'Archived', staff_type: 'Department', staff_subrole: 'Role'})[key]
         || key.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());

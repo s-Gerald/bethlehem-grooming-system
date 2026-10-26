@@ -53,7 +53,7 @@ class PreRegistrationExpiry
                         $label = $day->format($day->year === now()->year ? 'M j' : 'M j, Y');
                         return ['user_id' => $booking->user_id, 'booking_id' => $booking->booking_id,
                             'type' => CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED,
-                            'message' => "Your grooming pre-registration for {$label} was cancelled because the scheduled date passed without check-in.",
+                            'message' => "Your grooming online registration for {$label} was cancelled because the scheduled date passed without check-in.",
                             'is_read' => false, 'created_at' => now()];
                     })->all() : [];
                     if ($notifications !== []) CustomerNotification::insert($notifications);

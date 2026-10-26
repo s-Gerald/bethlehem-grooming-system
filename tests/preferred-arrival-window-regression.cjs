@@ -83,7 +83,9 @@ async function main() {
   global.fetch = async () => ({ ok: true, json: async () => ({ waiting_count: null, accepting_check_ins: false, service_day: '2026-10-27' }) });
   await queue.renderRegistrationQueueInformation(root, 'clinic');
   assert.match(root.innerHTML, /Currently unavailable/);
-  assert.match(root.innerHTML, /valid service day/);
+  assert.match(root.innerHTML, /Visit day/);
+  assert.equal((root.innerHTML.match(/Queue numbers are assigned at check-in\./g) || []).length, 1);
+  assert.doesNotMatch(root.innerHTML, /available during service hours|Received/);
   global.fetch = async () => { throw new Error('offline'); };
   await queue.renderRegistrationQueueInformation(root, 'clinic');
   assert.match(root.innerHTML, /Currently unavailable/);

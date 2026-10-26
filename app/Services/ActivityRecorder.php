@@ -20,8 +20,8 @@ class ActivityRecorder
         'customer_archived' => 'Customer archived', 'customer_restored' => 'Customer restored',
         'pet_registered' => 'Pet registered', 'pet_updated' => 'Pet information updated',
         'pet_archived' => 'Pet archived', 'pet_restored' => 'Pet restored',
-        'pre_registration_submitted' => 'Pre-registration submitted', 'pre_registration_updated' => 'Pre-registration updated',
-        'pre_registration_cancelled' => 'Pre-registration cancelled', 'pre_registration_expired' => 'Pre-registration expired',
+        'pre_registration_submitted' => 'Online Registration submitted', 'pre_registration_updated' => 'Online Registration updated',
+        'pre_registration_cancelled' => 'Online Registration cancelled', 'pre_registration_expired' => 'Online Registration expired',
         'walk_in_registered' => 'Walk-in registered', 'checked_in' => 'Checked in', 'check_in_reversed' => 'Check-in reversed',
         'queue_status_changed' => 'Queue status changed', 'grooming_started' => 'Grooming started',
         'grooming_completed' => 'Grooming completed', 'grooming_corrected' => 'Grooming status corrected',
@@ -77,7 +77,7 @@ class ActivityRecorder
         foreach ($registrations as $registration) {
             $row = $this->attributes('pre_registration_expired', $area,
                 $area === 'grooming' ? 'grooming_visit' : 'clinic_visit', (string) $registration->getKey(),
-                $registration->booking_reference ?? $registration->appointment_reference ?? 'Pre-registration',
+                $registration->booking_reference ?? $registration->appointment_reference ?? 'Online Registration',
                 [], true, null, 'expired:'.$registration->getTable().':'.$registration->getKey(), $registration->pet_id, 'success');
             $row['changes'] = json_encode($row['changes'], JSON_THROW_ON_ERROR);
             $rows[] = $row;

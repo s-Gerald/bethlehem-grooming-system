@@ -407,7 +407,7 @@ class AdminBookingController extends Controller
             }
 
             if ($booking->booking_date !== $queueDate) {
-                return ['error' => ['message' => 'Check-in is only allowed on the pre-registration date.', 'status' => 422]];
+                return ['error' => ['message' => 'Check-in is only allowed on the visit day.', 'status' => 422]];
             }
 
             $booking->setRelation('bookingPets', $booking->bookingPets->where('grooming_state', '!=', BookingPet::GROOMING_STATE_CANCELLED)->values());
@@ -1218,7 +1218,7 @@ class AdminBookingController extends Controller
     {
         $booking->loadMissing('user');
         if (! $booking->user) return false;
-        $subject = $booking->walkin_id === null ? 'grooming pre-registration' : 'grooming visit';
+        $subject = $booking->walkin_id === null ? 'grooming online registration' : 'grooming visit';
         $message = $pet
             ? ($pet->pet?->pet_name ?? 'Your pet')."'s grooming was cancelled. Reason: {$reason}"
             : "Your {$subject} {$booking->booking_reference} has been cancelled by the clinic. Reason: {$reason}";

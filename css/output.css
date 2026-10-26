@@ -2340,10 +2340,6 @@ video {
   border-color: var(--portal-primary);
 }
 
-.border-portal-success {
-  border-color: var(--portal-success);
-}
-
 .border-red-100 {
   --tw-border-opacity: 1;
   border-color: rgb(254 226 226 / var(--tw-border-opacity, 1));
@@ -2652,10 +2648,6 @@ video {
 
 .bg-portal-sidebar {
   background-color: var(--portal-sidebar);
-}
-
-.bg-portal-success {
-  background-color: var(--portal-success);
 }
 
 .bg-portal-success-soft {

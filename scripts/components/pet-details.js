@@ -233,7 +233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       <article class="rounded-2xl border border-slate-200 bg-white p-5">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p class="text-xs font-medium text-slate-500">Booking Reference</p>
+            <p class="text-xs font-medium text-slate-500">Registration reference</p>
             <h4 class="mt-1 text-sm font-bold text-[#2f4b66]">${escapeHtml(displayValue(booking.booking_reference))}</h4>
           </div>
           <span class="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${statusClasses}"><span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>

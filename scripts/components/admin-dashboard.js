@@ -1242,7 +1242,7 @@ function adminDashboard() {
     confirmCancelBooking(booking) {
       if (!this.shouldShowOwnerCancel(booking)) return;
       this.openActionConfirmModal({ action: "cancel", booking,
-        title: booking.bookingType === "Walk-In" ? "Cancel walk-in?" : "Cancel pre-registration?", message: "", confirmLabel: "Confirm cancellation",
+        title: booking.bookingType === "Walk-In" ? "Cancel walk-in?" : "Cancel online registration?", message: "", confirmLabel: "Confirm cancellation",
         busyLabel: "Cancelling...", icon: "cancel", variant: "danger" });
     },
 
@@ -2019,7 +2019,15 @@ function adminDashboard() {
     incomingPetSummary(booking) {
       const pets = this.getIncomingPets(booking);
       const name = pets[0]?.petName ?? pets[0]?.pet_name ?? pets[0]?.name ?? "";
-      return pets.length > 1 ? `${this.groomingPetCount(booking)} · ${name} + ${pets.length - 1} more` : name;
+      return pets.length > 1 ? `${name} · + ${pets.length - 1} more pet${pets.length > 2 ? "s" : ""}` : name;
+    },
+
+    registrationVisitDay(value) {
+      if (!value) return "Not recorded";
+      const date = new Date(String(value).slice(0, 10) + "T00:00:00+08:00");
+      return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric",
+      }).format(date);
     },
 
     registrationTimestamp(value) {

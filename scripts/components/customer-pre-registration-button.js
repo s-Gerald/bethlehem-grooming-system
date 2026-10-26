@@ -11,7 +11,7 @@ function setButtonAccess(button, allowed) {
     return;
   }
   button.setAttribute("tabindex", "-1");
-  button.setAttribute("title", "Pre-registration ongoing");
+  button.setAttribute("title", "Online Registration ongoing");
 }
 function entryMessage(button, text) {
   let notice = document.getElementById("phoneVerificationEntryMessage");
@@ -44,7 +44,7 @@ export function bindPreRegistrationButton(button) {
       if (button.getAttribute("aria-disabled") === "true") return;
       if (!user) throw new Error("Unable to check your phone status. Please try again.");
       if (user.phone && user.phone_verification_status === "verified") { window.location.assign(button.href); return; }
-      if (!flags.available) throw new Error("SMS verification is unavailable. Please contact the clinic before pre-registering.");
+      if (!flags.available) throw new Error("SMS verification is unavailable. Please contact the clinic before registering online.");
       const { openPhoneVerification } = await import("./customer-phone-verification.js?v=20261026-otp");
       if (button.getAttribute("aria-disabled") !== "true") await openPhoneVerification(button, user);
     } catch (error) {

@@ -109,9 +109,9 @@ JS], base_path());
         $html = $rendered['html'];
 
         foreach ([
-            'Registration Received', 'BAC-20261016-0001', 'Waiting to Arrive',
+            'Online Registration Received', 'BAC-20261016-0001', 'Waiting to Arrive',
             'Owner Information', 'Maria Santos', 'Coco', 'Partial Grooming',
-            'Registration Details', 'Valid service day', 'Queue number', 'Submitted at',
+            'Registration Details', 'Visit day', 'Queue number', 'Submitted online',
             'Grooming Consent', 'Keep the face tidy',
         ] as $detail) {
             $this->assertStringContainsString($detail, $html);
@@ -122,6 +122,6 @@ JS], base_path());
         $this->assertStringContainsString('<dt>Queue number</dt><dd>Not assigned</dd>', $html);
         $this->assertTrue($rendered['focused']);
         $this->assertSame(1, $rendered['printed']);
-        $this->assertSame('Registration Received', $rendered['title']);
+        $this->assertSame('Online Registration Received', $rendered['title']);
     }
 }

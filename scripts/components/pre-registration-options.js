@@ -7,7 +7,7 @@ import {
   setPreRegistrationLinkAccess,
 } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=fcfs-20261027-v1";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
-import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261026-otp";
+import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261026-otp&registration-ui=20261027-v3";
 
 if (requireCustomerSession("./sign-in.html")) {
   const groomingOption = document.getElementById("groomingOption");
@@ -34,7 +34,7 @@ if (requireCustomerSession("./sign-in.html")) {
     }
   } catch (error) {
     const unavailableMessage =
-      "We could not verify pre-registration availability. Please refresh and try again.";
+      "We could not verify online registration availability. Please refresh and try again.";
     setPreRegistrationLinkAccess(groomingOption, false, unavailableMessage);
     setPreRegistrationLinkAccess(clinicVisitOption, false, unavailableMessage);
     if (accessMessage) {

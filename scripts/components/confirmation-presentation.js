@@ -50,7 +50,7 @@ export function readConfirmationData(key) {
 }
 
 export function confirmationDocument({
-  message, printTitle, reference, status, walkIn = false, queueNumber, sections, warning = "",
+  message, printTitle, reference, status, walkIn = false, queueNumber, sections, warning = "", showOperational = true,
 }) {
   return `<article class="confirmation-document" aria-label="Confirmation details">
       <header class="confirmation-brand-header">
@@ -64,11 +64,11 @@ export function confirmationDocument({
         </div>
         <p class="confirmation-print-heading">${escapeHtml(printTitle)}</p>
       </header>
-      <div class="confirmation-operational">
+      ${showOperational ? `<div class="confirmation-operational">
         ${walkIn ? `<dl class="confirmation-queue"><dt>Queue number</dt><dd>${escapeHtml(queueNumber ?? "Not assigned")}</dd></dl>` : ""}
-        <dl class="confirmation-reference"><dt>Reference No.</dt><dd>${escapeHtml(reference || "Not available")}</dd></dl>
+        <dl class="confirmation-reference"><dt>Registration reference</dt><dd>${escapeHtml(reference || "Not available")}</dd></dl>
         <span id="confirmationOutcomeStatus" class="confirmation-badge${walkIn ? " confirmation-badge--checked-in" : ""}" role="status">${escapeHtml(status)}</span>
-      </div>
+      </div>` : ""}
       ${message ? `<p id="confirmationOutcomeMessage" class="confirmation-message">${escapeHtml(message)}</p>` : ""}
       ${warning ? `<p class="confirmation-warning" role="status">${escapeHtml(warning)}</p>` : ""}
       ${sections}

@@ -5,15 +5,17 @@ import { formatBookingDate } from "../services/booking-format-service.js";
 export async function renderRegistrationQueueInformation(root, service) {
   if (!root) return;
   const render = (data = {}) => {
-    const count = Number.isInteger(data.waiting_count) ? data.waiting_count : "Currently unavailable";
+    const count = Number.isInteger(data.waiting_count) && data.waiting_count >= 0 ? data.waiting_count : "Currently unavailable";
+    const tile = (icon, label, value) => `<div class="rounded-xl bg-[#eef5fb] p-4">
+      <svg class="ph-icon h-5 w-5 text-[#315b7e] mb-2" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#${icon}"></use></svg>
+      <dt class="text-xs text-slate-600">${label}</dt><dd class="mt-1 font-semibold text-[#2f4b66]">${escapeHtml(value)}</dd></div>`;
     root.innerHTML = `<h2 class="text-lg font-bold text-[#2f4b66]">Queue Information</h2>
-      <dl class="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
-        <div><dt class="text-slate-500">Valid service day</dt><dd class="mt-1 font-semibold text-[#2f4b66]">${escapeHtml(data.service_day ? formatBookingDate(data.service_day) : "Confirmed on submission")}</dd></div>
-        <div><dt class="text-slate-500">Pets currently waiting</dt><dd class="mt-1 font-semibold text-[#2f4b66]">${escapeHtml(count)}</dd></div>
-        <div><dt class="text-slate-500">Your queue number</dt><dd class="mt-1 font-semibold text-[#2f4b66]">Not assigned</dd></div>
+      <dl class="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
+        ${tile("calendar", "Visit day", data.service_day ? formatBookingDate(data.service_day) : "Confirmed on submission")}
+        ${tile("users", "Queue number", "Not assigned")}
+        ${tile("clock", "Pets waiting", count)}
       </dl>
-      ${data.accepting_check_ins === false ? '<p class="mt-3 text-sm text-slate-500">The queue is available during service hours on your valid service day.</p>' : ""}
-      <p class="mt-4 text-sm text-slate-600">Your queue number is assigned when you check in at the clinic. Online registration does not reserve a place.</p>`;
+      <p class="mt-3 rounded-xl bg-[#eef5fb] px-4 py-3 text-sm text-[#315b7e]">Queue numbers are assigned at check-in.</p>`;
   };
   render();
   try {

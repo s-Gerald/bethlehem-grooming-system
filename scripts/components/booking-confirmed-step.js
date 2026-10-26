@@ -5,9 +5,9 @@ import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
   readConfirmationData, renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3";
 
-export function groomingPetConfirmation(pet, review = {}) {
+export function groomingPetConfirmation(pet, review = {}, showPrice = true) {
   const price = getGroomingPricePresentation(review.pricing);
   const preference = review.groomingPreferenceLabel || pet.grooming_preference_label || formatConfirmationLabel(
     review.groomingPreference || review.grooming_preference || pet.grooming_preference,
@@ -23,6 +23,7 @@ export function groomingPetConfirmation(pet, review = {}) {
     ? (review.alaCarteServiceNames || review.alaCarteServices).map(formatConfirmationLabel).join(", ") : "";
   return `<section class="confirmation-pet">
     <h3>${escapeHtml(pet.petName || review.petName || "Unnamed Pet")}</h3>
+    ${pet.pet_queue_number != null ? `<p>Queue #${escapeHtml(pet.pet_queue_number)}</p>` : ""}
     ${confirmationFields([
       ["Pet type", formatConfirmationLabel(pet.petType || review.petType) || "Not specified"],
       ["Breed", pet.breed || review.breed || "Not specified"],
@@ -35,8 +36,8 @@ export function groomingPetConfirmation(pet, review = {}) {
       ...(preference ? [["Grooming preference", preference]] : []),
       ...(review.haircutRequested || pet.haircut_requested ? [["Haircut", "Requested"]] : []),
       ["A la Carte", alaCarte || "None selected"],
-      [price.label, price.amount],
-      ["Special instructions", review.specialInstructions?.trim() || "None provided", null, true],
+      ...(showPrice ? [[price.isEstimate ? "Pet price estimate" : "Pet subtotal", price.amount]] : []),
+      ...(review.specialInstructions?.trim() ? [["Special instructions", review.specialInstructions.trim(), null, true]] : []),
     ])}</div>
   </section>`;
 }
@@ -58,7 +59,7 @@ export async function initBookingConfirmedStep() {
   const reviewPets = Array.isArray(confirmation.review?.pets) ? confirmation.review.pets : [];
   const petDetails = (pets.length ? pets : reviewPets).map((pet, index) => {
     const review = reviewPets.find((item) => item.petId != null && String(item.petId) === String(pet.id ?? pet.petId)) || reviewPets[index] || {};
-    return groomingPetConfirmation(pet, review);
+    return groomingPetConfirmation(pet, review, (pets.length || reviewPets.length) > 1);
   }).join("");
   const groomingConsent = bookingConsentStep?.grooming_consent ?? bookingConsentStep?.groomingAgreementAccepted;
   const sedationConsent = bookingConsentStep?.sedation_consent ?? bookingConsentStep?.sedationConsentAccepted;
@@ -71,33 +72,35 @@ export async function initBookingConfirmedStep() {
   const currentStatus = confirmation.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(confirmation.status) || "Not available";
   const totalPrice = getGroomingPricePresentation(confirmation.review?.totalPricing);
   const sections = [
-    confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
-    confirmationSection("Pet & Grooming Information", `${petDetails || "<p>No pet information available.</p>"}
-      <div class="confirmation-estimate">
-        ${confirmationFields([[totalPrice.label, totalPrice.amount]])}
-        ${totalPrice.isEstimate ? `<span class="confirmation-badge">Estimate Only</span>
-        <p class="confirmation-estimate-note">${escapeHtml(totalPrice.disclaimer)}</p>` : ""}
-      </div>`),
     confirmationSection(isWalkInConfirmation ? "Check-in Details" : "Registration Details", confirmationFields(
       isWalkInConfirmation ? [
+        ["Entry source", "Walk-in"],
         ["Queue number", confirmation.queue_number ?? "Not assigned"],
         ["Checked in at", formatConfirmationTimestamp(confirmation.checked_in_at || confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
         ["Current status", currentStatus],
       ] : [
-        ["Valid service day", formatBookingDate(confirmation.booking_date) || "Not available"],
+        ["Entry source", "Online Registration"],
+        ["Visit day", formatBookingDate(confirmation.booking_date) || "Not available"],
         ["Queue number", confirmation.queue_number ?? "Not assigned"],
         ["Status", currentStatus],
-        ["Submitted at", formatConfirmationTimestamp(confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
+        ["Submitted online", formatConfirmationTimestamp(confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
       ],
     )),
+    confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
+    confirmationSection(`Pets (${pets.length || reviewPets.length})`, petDetails || "<p>No pet information available.</p>"),
     consentFields.length ? confirmationSection("Grooming Consent", confirmationFields(consentFields)) : "",
+    confirmationSection("Price Summary", `      <div class="confirmation-estimate">
+        ${confirmationFields([[totalPrice.label, totalPrice.amount]])}
+        ${totalPrice.isEstimate ? `<span class="confirmation-badge">Estimate Only</span>
+        <p class="confirmation-estimate-note">${escapeHtml(totalPrice.disclaimer)}</p>` : ""}
+      </div>`),
     !isWalkInConfirmation ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
   ].join("");
 
   renderConfirmation(root, {
-    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Registration Received",
+    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Online Registration Received",
     message: isWalkInConfirmation ? "The pet has been added to today’s grooming queue." : "",
-    printTitle: isWalkInConfirmation ? "GROOMING WALK-IN CHECK-IN CONFIRMATION" : "GROOMING PRE-REGISTRATION CONFIRMATION",
+    printTitle: isWalkInConfirmation ? "GROOMING WALK-IN CHECK-IN CONFIRMATION" : "Grooming Online Registration Confirmation",
     reference: confirmation.booking_reference,
     status: isWalkInConfirmation ? currentStatus : "Waiting to Arrive",
     walkIn: isWalkInConfirmation, queueNumber: confirmation.queue_number, sections,

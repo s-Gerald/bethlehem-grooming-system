@@ -123,7 +123,7 @@ export function initBookingConsentStep() {
         goToGroomingStep("pets");
         return;
       }
-      showSubmitError(error.message || "Pre-registration submission failed. Please try again.");
+      showSubmitError(error.message || "Online registration submission failed. Please try again.");
     }
   });
 

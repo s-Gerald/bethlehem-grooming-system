@@ -2181,8 +2181,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ],
         ]);
 
-        $customMessage = 'Your grooming pre-registration CANCEL-CUSTOM-50 has been cancelled by the clinic. Reason: Owner requested a different date.';
-        $defaultMessage = 'Your grooming pre-registration CANCEL-DEFAULT-51 has been cancelled by the clinic. Reason: Clinic unavailable.';
+        $customMessage = 'Your grooming online registration CANCEL-CUSTOM-50 has been cancelled by the clinic. Reason: Owner requested a different date.';
+        $defaultMessage = 'Your grooming online registration CANCEL-DEFAULT-51 has been cancelled by the clinic. Reason: Clinic unavailable.';
 
         $this->postJson('/api/admin/bookings/50/cancel', [
             'cancellation_reason' => '  Owner requested a different date.  ',
@@ -2924,8 +2924,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         Carbon::setTestNow('2026-10-17 00:00:00');
         $this->getJson('/api/customer/notifications')->assertOk()->assertJsonPath('unread_count', 1)
-            ->assertJsonPath('notifications.0.title', 'Grooming pre-registration expired')
-            ->assertJsonPath('notifications.0.display_message', 'Your grooming pre-registration for Oct 16 was cancelled because the scheduled date passed without check-in.');
+            ->assertJsonPath('notifications.0.title', 'Grooming online registration expired')
+            ->assertJsonPath('notifications.0.display_message', 'Your grooming online registration for Oct 16 was cancelled because the scheduled date passed without check-in.');
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseCount('customer_notifications', 1);
         $this->assertSame(1, DB::table('notifications')->where('type', 'no_show')->where('booking_id', $id)->count());

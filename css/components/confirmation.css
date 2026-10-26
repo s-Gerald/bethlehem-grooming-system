@@ -107,6 +107,9 @@
   .confirmation-page .brand-lockup__name { font-size: 12pt; }
   .confirmation-page .brand-lockup__service { font-size: 12pt; padding-left: 0; }
   .confirmation-print-heading { display: block; margin-top: 3mm !important; font-size: 13pt; font-weight: 700; }
+  .confirmation-page :is(h2, h3, .confirmation-print-heading) { color: var(--confirmation-heading) !important; }
+  .confirmation-page .grooming-summary-pet-status { margin: 1mm 0 2mm !important; font-size: 9pt; }
+  .confirmation-page .grooming-summary-pet > .confirmation-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .confirmation-operational { padding: 3mm 0 2mm; gap: 3mm 8mm; break-inside: avoid; }
   .confirmation-queue dd { font-size: 20pt; }
   .confirmation-reference dd { font-size: 11pt; }

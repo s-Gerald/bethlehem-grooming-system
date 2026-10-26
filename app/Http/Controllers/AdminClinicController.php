@@ -207,7 +207,7 @@ class AdminClinicController extends Controller
                     return response()->json([
                         'success' => false,
                         'code' => 'pre_registration_exists',
-                        'message' => "{$pet->pet_name} already has a pre-registration waiting for arrival ({$existing->appointment_reference}).",
+                        'message' => "{$pet->pet_name} already has an online registration waiting for arrival ({$existing->appointment_reference}).",
                         'arrival' => $case,
                     ], 409);
                 }
@@ -361,7 +361,7 @@ class AdminClinicController extends Controller
             }
 
             if ($appointment->appointment_date->toDateString() !== now()->toDateString()) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['check_in' => 'Check-in is only allowed on the pre-registration date.']);
+                throw \Illuminate\Validation\ValidationException::withMessages(['check_in' => 'Check-in is only allowed on the visit day.']);
             }
             app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
 
@@ -827,7 +827,7 @@ class AdminClinicController extends Controller
             : ($user?->phone ?? $walkin?->phone ?? $petOwner?->phone ?? '—');
         $ownerEmail = $ownerAccountDeleted ? null : ($user?->email ?? $walkin?->email ?? $petOwner?->email);
         $appointmentTypeLabel = match ($a->appointment_type) {
-            'pre_registered' => 'Pre-Registered',
+            'pre_registered' => 'Online Registration',
             'scheduled' => 'Scheduled',
             default => 'Walk-in',
         };

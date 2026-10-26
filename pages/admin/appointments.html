@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" />
+    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026" />
+    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3" />
     <link
       rel="stylesheet"
       href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003"
@@ -560,17 +560,25 @@
                       <div class="grooming-booking-identity">
                         <h4 x-text="booking.ownerName"></h4>
                         <p class="grooming-contact" x-text="formatMobileNumber(booking.contactNumber)"></p>
+                        <div class="grooming-incoming-pets">
+                          <p class="font-semibold text-[#1f3850]" x-text="incomingPetSummary(booking)"></p>
+                          <p class="grooming-service" x-text="[formatIncomingPetBreedType(getIncomingPets(booking)[0]), formatIncomingPetServices(getIncomingPets(booking)[0], booking)].filter(Boolean).join(' · ')"></p>
+                        </div>
                       </div>
-                      <div class="grooming-incoming-pets">
-                        <p class="font-semibold text-[#1f3850]" x-text="incomingPetSummary(booking)"></p>
-                        <template x-if="getIncomingPets(booking).length === 1">
-                          <div>
-                            <p class="grooming-contact" x-text="formatIncomingPetBreedType(getIncomingPets(booking)[0])"></p>
-                            <p class="grooming-service" x-text="formatIncomingPetServices(getIncomingPets(booking)[0], booking)"></p>
-                          </div>
-                        </template>
+                      <div class="grooming-incoming-badges">
+                        <span class="grooming-status">Incoming</span>
+                        <span class="grooming-status" x-text="booking.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Registration'"></span>
                       </div>
-                      <div class="grooming-appointment-time"><p x-text="'Valid service day: ' + booking.appointmentDate"></p><p x-text="'Registered: ' + registrationTimestamp(booking.registeredAt)"></p></div>
+                      <dl class="grooming-incoming-timing">
+                        <div>
+                          <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#calendar"></use></svg>
+                          <div><dt>Visit day</dt><dd x-text="registrationVisitDay(booking.appointmentDate)"></dd></div>
+                        </div>
+                        <div>
+                          <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#clock"></use></svg>
+                          <div><dt x-text="booking.bookingType === 'Walk-In' ? 'Registered' : 'Submitted online'"></dt><dd x-text="registrationTimestamp(booking.registeredAt)"></dd></div>
+                        </div>
+                      </dl>
                     </div>
                     <div class="admin-incoming-actions">
                       <button type="button" @click="viewBookingDetails(booking)" class="admin-incoming-details-action">View Details</button>
@@ -580,7 +588,7 @@
                         :disabled="isActionBusy('checkIn', booking.id) || booking.appointmentDate !== todayDate"
                         class="admin-appointment-action admin-appointment-checkin-action rounded-xl text-base font-semibold transition"
                         :class="(isActionBusy('checkIn', booking.id) || booking.appointmentDate !== todayDate) ? 'cursor-not-allowed opacity-40' : ''"
-                        :title="booking.appointmentDate !== todayDate ? 'Check-in is available only on the selected visit date.' : ''"
+                        :title="booking.appointmentDate !== todayDate ? 'Check-in is available only on the visit day.' : ''"
                       >
                         <span x-text="isActionBusy('checkIn', booking.id) ? getActionLabel('checkIn') : 'Check In'"></span>
                       </button>
@@ -1323,14 +1331,14 @@
 
                 <!-- Visit summary -->
                 <div>
-                  <h4 class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Visit summary</h4>
+                  <h4 class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Visit Details</h4>
                   <dl class="grooming-visit-summary">
-                    <div x-show="detailsBooking?.appointmentDate"><dt>Visit date</dt><dd x-text="detailsBooking?.appointmentDate"></dd></div>
-                    <div x-show="detailsBooking?.bookingType !== 'Walk-In' && detailsBooking?.appointmentTime"><dt>Arrival window</dt><dd x-text="detailsBooking?.appointmentTime"></dd></div>
-                    <div x-show="detailsBooking?.dropOffTime"><dt x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Checked in' : 'Dropped off'"></dt><dd x-text="detailsBooking?.dropOffTime"></dd></div>
+                    <div x-show="detailsBooking?.appointmentDate"><dt>Visit day</dt><dd x-text="registrationVisitDay(detailsBooking?.appointmentDate)"></dd></div>
+                    <div x-show="detailsBooking?.dropOffTime"><dt>Checked in</dt><dd x-text="detailsBooking?.dropOffTime"></dd></div>
                     <div x-show="detailsBooking?.startedAt && !(detailsBooking?.pets || []).some(pet => pet.groomingStartedAt)"><dt>Grooming started</dt><dd x-text="detailsBooking?.startedAt"></dd></div>
                     <div x-show="detailsBooking?.completedAt && !(detailsBooking?.pets || []).some(pet => pet.groomingFinishedAt)"><dt>Finished</dt><dd x-text="detailsBooking?.completedAt"></dd></div>
-                    <div x-show="detailsBooking?.bookingType"><dt>Entry source</dt><dd x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Walk-in' : 'Pre-registration'"></dd></div>
+                    <div x-show="detailsBooking?.bookingType !== 'Walk-In' && detailsBooking?.registeredAt"><dt>Submitted online</dt><dd x-text="registrationTimestamp(detailsBooking?.registeredAt)"></dd></div>
+                    <div x-show="detailsBooking?.bookingType"><dt>Entry source</dt><dd x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Registration'"></dd></div>
                     <div><dt>Payment</dt><dd x-text="detailsBooking?.paid ? 'Paid' : 'Unpaid'"></dd></div>
                   </dl>
                 </div>
@@ -1561,6 +1569,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3"></script>
   </body>
 </html>

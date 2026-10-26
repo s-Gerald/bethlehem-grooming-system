@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>History | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?health=20261016&v=20260915-control-height&notif=20260915-client-notifications" />
-    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-session-modal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026" />
+    <link rel="stylesheet" href="../../css/output.css?health=20261016&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-session-modal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
 
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
@@ -195,7 +195,7 @@
               <a id="preRegisterButton" data-pre-registration-button href="./pre-register.html"
                 aria-disabled="true" tabindex="-1" title="Checking availability"
                 class="portal-button-primary cursor-not-allowed font-semibold opacity-60 max-[639px]:flex-1">
-                Pre-register
+                Register Online
               </a>
             </div>
           </div>
@@ -224,7 +224,7 @@
               <input
                 type="date"
                 id="historyDateFilter"
-                aria-label="Visit date"
+                aria-label="Visit day"
                 class="h-full min-w-0 bg-transparent outline-none text-sm text-portal-text"
               />
             </div>
@@ -614,8 +614,8 @@
                 Visit summary
               </h3>
               <dl class="mt-4 space-y-3">
-                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Visit date</dt><dd class="font-medium text-portal-text">${escapeHistoryHtml(booking.booking_date || "Not recorded")}</dd></div>
-                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Entry source</dt><dd class="font-medium text-portal-text">${booking.booking_type === "walk_in" ? "Walk-in" : "Pre-registration"}</dd></div>
+                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Visit day</dt><dd class="font-medium text-portal-text">${escapeHistoryHtml(booking.booking_date || "Not recorded")}</dd></div>
+                <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Entry source</dt><dd class="font-medium text-portal-text">${booking.booking_type === "walk_in" ? "Walk-in" : "Online Registration"}</dd></div>
                 <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Dropped off</dt><dd class="font-medium text-portal-text">${historyDateTime(booking.dropped_off_timestamp)}</dd></div>
                 <div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Grooming</dt><dd class="font-medium text-portal-text">${groomingInterval(groomingTimes.start, groomingTimes.finish)}</dd></div>
                 ${booking.booking_type !== "walk_in" && booking.time_window?.window_label ? `<div class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Arrival window</dt><dd class="font-medium text-portal-text">${arrivalWindow}</dd></div>` : ""}
@@ -728,6 +728,6 @@
     </script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
-    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp"></script>
+    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp&registration-ui=20261027-v3"></script>
   </body>
 </html>

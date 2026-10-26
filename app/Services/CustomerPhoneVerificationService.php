@@ -29,7 +29,7 @@ class CustomerPhoneVerificationService
     {
         if (config('services.sms_verification.enforced', false)
             && (! $user || self::required($user))) {
-            self::fail('Verify your phone number before pre-registering.', 403, 'phone_verification_required');
+            self::fail('Verify your phone number before registering online.', 403, 'phone_verification_required');
         }
     }
 

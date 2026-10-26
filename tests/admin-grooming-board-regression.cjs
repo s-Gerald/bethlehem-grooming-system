@@ -84,7 +84,7 @@ assert.equal(ui.actionConfirmModal.message, '', 'Cancellation adds no helper par
 assert.equal(ui.actionConfirmModal.booking.actionPet.bookingPetId, sibling.bookingPetId);
 ui.closeActionConfirmModal();
 ui.confirmCancelBooking(pair);
-assert.equal(ui.actionConfirmModal.title, 'Cancel pre-registration?');
+assert.equal(ui.actionConfirmModal.title, 'Cancel online registration?');
 assert.equal(ui.actionConfirmModal.confirmLabel, 'Confirm cancellation');
 assert.equal(ui.actionConfirmModal.message, '');
 ui.closeActionConfirmModal();
@@ -105,7 +105,7 @@ assert.equal(ui.getPetServicesAvailed(cancelled, billing).length, 1, 'Original s
 
 const multiple = { ...booking, pets: [pet, { ...pet, bookingPetId: 8, petName: 'Mark' }, { ...pet, bookingPetId: 9, petName: 'Milo' }] };
 assert.equal(ui.incomingPetSummary(booking), 'Hopper');
-assert.equal(ui.incomingPetSummary(multiple), '3 pets · Hopper + 2 more');
+assert.equal(ui.incomingPetSummary(multiple), 'Hopper · + 2 more pets');
 for (const status of ['queued', 'in-progress']) {
   const record = { ...multiple, status };
   assert.equal(ui.isGroomingBookingExpanded(record), false);

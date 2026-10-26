@@ -3,8 +3,8 @@ import { formatBookingDate } from "../services/booking-format-service.js";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import {
   confirmationDocument, confirmationFields, confirmationSection,
-  formatConfirmationLabel, formatConfirmationTimestamp, printConfirmation,
-} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1";
+  formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,
+} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {
@@ -12,41 +12,47 @@ export function groomingVisitPresentation(booking, statusLabel) {
   const pets = booking.booking_pets || [];
   const services = booking.booking_services || [];
   const serviceNames = (items) => items.map((item) => item.service?.service_name).filter(Boolean).join(", ");
-  const names = pets.map((item) => item.pet?.pet_name || "Your pet").join(", ");
-  const packages = serviceNames(services.filter((item) => item.service?.kind === "package"));
-  const header = `<header class="grooming-summary-overview">
-    <h3>${escapeHtml(names || "Your pet")}</h3>
-    <span class="grooming-summary-status">${escapeHtml(statusLabel)}</span>
-    <p>${escapeHtml(packages || serviceNames(services) || "Grooming")}</p>
-    ${confirmationFields([["Valid service day", formatBookingDate(booking.booking_date) || "Not recorded"],
-      ["Registered", formatConfirmationTimestamp(booking.created_at) || "Not recorded"],
-      ["Queue number", booking.queue_number ?? "Not assigned"],
-      ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []), ["Booking reference", booking.booking_reference || "Not recorded"]])}
-  </header>`;
+  const walkIn = booking.booking_type === "walk_in";
+  const title = walkIn ? "Grooming Walk-in Summary" : "Grooming Online Registration Summary";
+  const registrationFields = [
+    ["Registration reference", booking.booking_reference || "Not recorded"],
+    ["Entry source", walkIn ? "Walk-in" : "Online Registration"],
+    ["Visit day", formatBookingDate(booking.booking_date) || "Not recorded"],
+    ...(!walkIn && booking.created_at ? [["Submitted online", formatConfirmationTimestamp(booking.created_at)]] : []),
+    ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []),
+    ["Queue number", booking.queue_number ?? "Not assigned"],
+  ];
+  const header = confirmationSection("Registration Details",
+    `<p class="grooming-summary-status">${escapeHtml(statusLabel)}</p>${confirmationFields(registrationFields)}`);
   const details = pets.map((item) => {
     const pet = item.pet || {};
     const selected = services.filter((service) => String(service.booking_pet_id) === String(item.booking_pet_id));
+    const petPrice = getGroomingPricePresentation(savedServicePricing(selected));
     const size = item.confirmed_size || item.registered_size || pet.size;
     const duration = formatActualGroomingDuration(item.grooming_start_time, item.grooming_end_time);
-    return `<section class="grooming-summary-pet">
-      ${pets.length > 1 ? `<h3>${escapeHtml(pet.pet_name || "Your pet")}</h3>` : ""}
-      ${confirmationSection("Grooming details", confirmationFields([
+    const petStatus = item.grooming_state === "cancelled" ? "Cancelled"
+      : ["for_payment", "released"].includes(booking.status) ? statusLabel
+      : item.grooming_end_time ? "Grooming Finished" : item.grooming_start_time ? "Grooming in Progress"
+      : waiting ? "Waiting to Arrive" : "Checked In";
+    return `<section class="grooming-summary-pet confirmation-pet">
+      <h3>${escapeHtml(pet.pet_name || "Your pet")}</h3>
+      <p class="grooming-summary-pet-status">${escapeHtml(petStatus)} · ${item.pet_queue_number != null ? `Queue #${escapeHtml(item.pet_queue_number)}` : "Queue not assigned"}</p>
+      ${confirmationFields([
         ["Grooming package", serviceNames(selected.filter((service) => service.service?.kind === "package")) || "None selected"],
         ["A la Carte", serviceNames(selected.filter((service) => service.service?.kind !== "package")) || "None selected"],
-        ["Pet Groomer", item.groomer?.first_name || "Any available groomer"],
+        ["Pet groomer", item.groomer?.first_name || "Any available groomer"],
+        ...(pets.length > 1 && selected.length ? [["Saved service subtotal", petPrice.amount]] : []),
         ...(item.haircut_requested ? [["Haircut", "Requested"]] : []),
-        ["Grooming Preference", item.grooming_preference_label || formatConfirmationLabel(item.grooming_preference) || "Not specified"],
+        ...(item.grooming_preference_label || item.grooming_preference ? [["Grooming preference", item.grooming_preference_label || formatConfirmationLabel(item.grooming_preference)]] : []),
+        ...(pet.breed ? [["Breed", pet.breed]] : []),
+        ...(pet.species ? [["Species", formatConfirmationLabel(pet.species)]] : []),
+        ...(size ? [["Size", formatConfirmationLabel(size)]] : []),
+        ...(pet.weight != null && pet.weight !== "" ? [["Weight", `${pet.weight} kg`]] : []),
         ...(item.grooming_start_time ? [["Started", formatConfirmationTimestamp(item.grooming_start_time)]] : []),
         ...(item.grooming_end_time ? [["Finished", formatConfirmationTimestamp(item.grooming_end_time)]] : []),
         ...(duration ? [["Actual Grooming Duration", duration]] : []),
-      ]))}
-      ${confirmationSection("Pet details", confirmationFields([
-        ["Breed", pet.breed || "Not recorded"],
-        ["Size", formatConfirmationLabel(size) || "Not recorded"],
-        ["Weight", pet.weight != null && pet.weight !== "" ? `${pet.weight} kg` : "Not recorded"],
-        ["Pet queue number", item.pet_queue_number ?? "Not assigned"],
-        ["Special instructions", item.special_instructions?.trim() || "None provided", null, true],
-      ]))}
+        ...(item.special_instructions?.trim() ? [["Special instructions", item.special_instructions.trim(), null, true]] : []),
+      ])}
     </section>`;
   }).join("");
   const consent = booking.consent;
@@ -55,34 +61,28 @@ export function groomingVisitPresentation(booking, statusLabel) {
     ["Grooming consent", consentText(consent?.grooming_consent, "Agreed", "Not agreed")],
     ["Sedation consent", consentText(consent?.sedation_consent, "Authorized", "Not authorized")],
     ["Signed by", consent?.signer_name || "Not recorded"],
-    ["Signed date/time", formatConfirmationTimestamp(consent?.signed_at) || "Not recorded"],
+    ["Signed at", formatConfirmationTimestamp(consent?.signed_at) || "Not recorded"],
   ]));
   // Use saved booking bounds, never today's catalogue prices. Paid visits use the saved total.
-  const min = services.reduce((sum, item) => sum + Number(item.price_min_at_booking ?? item.price_at_booking ?? 0), 0);
-  const max = services.some((item) => item.price_min_at_booking != null && item.price_max_at_booking == null)
-    ? null : services.reduce((sum, item) => sum + Number(item.price_max_at_booking ?? item.price_at_booking ?? 0), 0);
   const pricing = booking.paid && booking.total_amount != null
     ? { minAmount: Number(booking.total_amount), maxAmount: Number(booking.total_amount) }
-    : services.length ? { minAmount: min, maxAmount: max } : null;
+    : savedServicePricing(services);
   const price = getGroomingPricePresentation(pricing);
   const priceSection = `<section class="confirmation-section grooming-summary-total">
     ${confirmationFields([[price.label, price.amount]])}
     ${price.isEstimate ? `<p class="confirmation-estimate-note">${escapeHtml(price.disclaimer)}</p>` : ""}
   </section>`;
-  const next = waiting ? "Show your reference number to staff when you arrive. Your pet joins the grooming queue after check-in."
-    : ["for_payment", "released"].includes(booking.status) ? "Your pet is ready for pickup."
-    : ["checked_in", "in_progress"].includes(booking.status) ? "Follow your pet’s progress in the Grooming Tracker." : "";
-  const nextSection = next ? confirmationSection("What happens next", `<p>${escapeHtml(next)}</p>`) : "";
+  const petSections = confirmationSection(`Pets (${pets.length})`, details);
+  const owner = booking.user || booking.owner;
+  const ownerSection = owner ? confirmationSection("Owner Information", ownerConfirmationFields(owner)) : "";
+  const sections = header + petSections + consentSection + priceSection;
   return {
-    html: header + details + consentSection + priceSection + nextSection,
+    title,
+    html: sections,
     print: confirmationDocument({
-      printTitle: "GROOMING VISIT SUMMARY", reference: booking.booking_reference,
-      status: statusLabel, message: "", sections: confirmationSection("Visit", confirmationFields([
-        ["Pet name", names], ["Valid service day", formatBookingDate(booking.booking_date) || "Not recorded"],
-      ["Registered", formatConfirmationTimestamp(booking.created_at) || "Not recorded"],
-      ["Queue number", booking.queue_number ?? "Not assigned"],
-      ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []),
-      ])) + details + consentSection + priceSection + nextSection,
+      printTitle: title, reference: booking.booking_reference,
+      status: statusLabel, message: "", showOperational: false,
+      sections: header + ownerSection + petSections + consentSection + priceSection,
     }),
   };
 }
@@ -131,6 +131,7 @@ export async function openGroomingVisitSummary(bookingId, trigger, statusFor) {
   returnTrigger = trigger;
   printButton.disabled = true;
   printRoot.innerHTML = "";
+  document.getElementById("groomingVisitSummaryHeading").textContent = "Registration Summary";
   content.innerHTML = '<p role="status">Loading visit summary…</p>';
   content.setAttribute("aria-busy", "true");
   if (!dialog.open) dialog.showModal();
@@ -145,6 +146,7 @@ export async function openGroomingVisitSummary(bookingId, trigger, statusFor) {
       grooming_started_at: pet.grooming_start_time || null, grooming_started_timestamp: pet.grooming_start_time || null,
     })) };
     const summary = groomingVisitPresentation(booking, statusFor(statusBooking));
+    document.getElementById("groomingVisitSummaryHeading").textContent = summary.title;
     content.innerHTML = summary.html;
     printRoot.innerHTML = summary.print;
     printButton.disabled = false;
@@ -153,6 +155,15 @@ export async function openGroomingVisitSummary(bookingId, trigger, statusFor) {
   } finally {
     if (currentRequest === requestId) content.setAttribute("aria-busy", "false");
   }
+}
+
+function savedServicePricing(services) {
+  if (!services.length) return null;
+  return {
+    minAmount: services.reduce((sum, item) => sum + Number(item.price_min_at_booking ?? item.price_at_booking ?? 0), 0),
+    maxAmount: services.some((item) => item.price_min_at_booking != null && item.price_max_at_booking == null)
+      ? null : services.reduce((sum, item) => sum + Number(item.price_max_at_booking ?? item.price_at_booking ?? 0), 0),
+  };
 }
 
 function formatActualGroomingDuration(startedAt, finishedAt) {

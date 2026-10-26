@@ -778,8 +778,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const visitMarkup = preview.map(buildBookingCard).join("") + dashboardClinicVisits.map(buildClinicRegistrationCard).join("");
     const markup = visitMarkup || `
       <div class="w-full rounded-[14px] border border-portal-border bg-portal-record px-5 py-6 text-center">
-        <p class="text-sm font-semibold text-portal-text">No upcoming grooming scheduled</p>
-        <p class="mt-2 text-sm leading-relaxed text-portal-muted">Your next grooming visit will appear here once scheduled.</p>
+        <p class="text-sm font-semibold text-portal-text">No upcoming visits</p>
+        <p class="mt-2 text-sm leading-relaxed text-portal-muted">Your online registrations will appear here.</p>
       </div>`;
     // Polls with unchanged schedules must not replace focused action buttons.
     if (lastAppointmentsMarkup === markup) return;
@@ -802,11 +802,12 @@ function scheduleCustomerDashboardAfterPaint(task) {
   function buildClinicRegistrationCard(visit) {
     const status = { waiting_to_arrive: "Waiting to Arrive", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" }[visit.status] || visit.status;
     return `<article class="rounded-[14px] bg-portal-surface-soft p-4 mb-3 [overflow-wrap:anywhere]">
-      <p class="font-semibold text-portal-text">${escapeDashboardHtml(visit.pet_name || "Your pet")} &middot; Clinic</p>
+      <p class="text-xs font-semibold text-portal-primary">${visit.appointment_type === "walk_in" ? "Walk-in" : "Online Registration"}</p>
+      <p class="mt-1 font-semibold text-portal-text">${escapeDashboardHtml(visit.pet_name || "Your pet")} &middot; Clinic</p>
       <p class="mt-1 text-sm text-portal-muted">Registration reference: ${escapeDashboardHtml(visit.reference)}</p>
-      <p class="mt-1 text-sm text-portal-muted">Valid service day: ${formatDate(visit.service_day)}</p>
-      <p class="mt-1 text-sm text-portal-muted">Registered: ${escapeDashboardHtml(registrationTimestamp(visit.created_at))}</p>
-      <p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(visit.queue_number ?? "Not assigned")}</p>
+      <p class="mt-1 text-sm text-portal-muted">Visit day: ${formatDate(visit.service_day)}</p>
+      <p class="mt-1 text-sm text-portal-muted">${visit.appointment_type === "walk_in" ? "Registered" : "Submitted online"}: ${escapeDashboardHtml(registrationTimestamp(visit.created_at))}</p>
+      ${visit.queue_number != null ? `<p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(visit.queue_number)}</p>` : ""}
       ${visit.checked_in_at ? `<p class="mt-1 text-sm text-portal-muted">Checked in: ${escapeDashboardHtml(registrationTimestamp(visit.checked_in_at))}</p>` : ""}
       <span class="mt-2 inline-flex rounded-full bg-portal-active px-2.5 py-1 text-xs font-semibold text-portal-primary">${escapeDashboardHtml(status)}</span>
     </article>`;
@@ -825,14 +826,13 @@ function scheduleCustomerDashboardAfterPaint(task) {
     return `<article class="flex flex-wrap items-center gap-4 rounded-[14px] bg-portal-surface-soft p-4 [overflow-wrap:anywhere] mb-3 last:mb-0">
       <div class="portal-icon-tile h-11 w-11 rounded-full">${petIcon(booking.pets?.[0])}</div>
       <div class="min-w-0 flex-1">
-        <p class="text-base font-semibold text-portal-text">${escapeDashboardHtml(names)}</p>
-        <p class="mt-1 text-sm text-portal-text">${escapeDashboardHtml(serviceLabel(booking))}</p>
-        <p class="mt-1 text-sm text-portal-muted">Valid service day: ${formatDate(booking.booking_date)}</p>
-        <p class="mt-1 text-sm text-portal-muted">Registration reference: ${escapeDashboardHtml(booking.booking_reference || "Unavailable")}</p>
-        <p class="mt-1 text-sm text-portal-muted">Registered: ${escapeDashboardHtml(registrationTimestamp(booking.created_at))}</p>
-        <p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(booking.queue_number ?? "Not assigned")}</p>
+        <p class="text-xs font-semibold text-portal-primary">${booking.booking_type === "walk_in" ? "Walk-in" : "Online Registration"}</p>
+        <p class="mt-1 text-base font-semibold text-portal-text">${escapeDashboardHtml(names)}</p>
+        <p class="mt-1 text-sm text-portal-text">Grooming</p>
+        <p class="mt-1 text-sm text-portal-muted">Visit day: ${formatDate(booking.booking_date)}</p>
+        ${booking.created_at ? `<p class="mt-1 text-sm text-portal-muted">${booking.booking_type === "walk_in" ? "Registered" : "Submitted online"}: ${escapeDashboardHtml(registrationTimestamp(booking.created_at))}</p>` : ""}
         <span class="mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.classes}">${escapeDashboardHtml(status.label)}</span>
-        <div>${visitSummaryAction(booking, "View registration summary")}</div>
+        <div>${visitSummaryAction(booking)}</div>
       </div>
       ${actionable ? `<div class="flex flex-wrap gap-2 max-[639px]:basis-full">
 
@@ -843,14 +843,15 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   // ── Grooming Tracker section ───────────────────────────────────────────────
 
-  function visitSummaryAction(booking, label) {
+  function visitSummaryAction(booking) {
+    const label = booking.booking_type === "walk_in" ? "View visit details" : "View online registration summary";
     return `<button type="button" id="visit-summary-${escapeDashboardHtml(booking.booking_id)}" data-visit-summary="${escapeDashboardHtml(booking.booking_id)}" class="grooming-summary-action" aria-haspopup="dialog">${label}<span class="sr-only"> for ${escapeDashboardHtml(getPetNamesLabel(booking))}</span></button>`;
   }
 
   async function openVisitSummary(event) {
     const trigger = event.target.closest("[data-visit-summary]");
     if (!trigger) return;
-    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1");
+    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3");
     openGroomingVisitSummary(trigger.dataset.visitSummary, trigger, (booking) => {
       if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
       if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;
@@ -972,7 +973,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       lastTrackerMarkup = markup;
     }
     const announcement = bookings.flatMap((booking) => trackerPets(booking).map((pet) =>
-      `${pet.pet_name}: ${getStatusConfig(getPetGroomingStatus(pet, booking)).label}.`
+      `${pet.pet_name}: ${getStatusConfig(getTrackerPetStatus(pet, booking)).label}.`
     )).join(". ") || "No pets at the clinic right now.";
     if (announcement !== lastGroomingAnnouncement) {
       if (groomingStatusAnnouncement) groomingStatusAnnouncement.textContent = announcement;
@@ -989,8 +990,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
     return `<div class="flex flex-col items-end gap-1.5 text-xs text-portal-muted">
       ${booking.paid ? `<span class="rounded-full bg-portal-success-soft px-2.5 py-1 font-semibold text-portal-success">${prePaid ? "Pre-Paid" : "Paid"}</span>` : ""}
       <span class="[overflow-wrap:anywhere]">Ref. ${escapeDashboardHtml(booking.booking_reference || "")}</span>
-      <span>Queue number: ${escapeDashboardHtml(booking.queue_number ?? "Not assigned")}</span>
-      ${booking.dropped_off_timestamp ? `<span>Checked in: ${escapeDashboardHtml(registrationTimestamp(booking.dropped_off_timestamp))}</span>` : ""}
     </div>`;
   }
 
@@ -1018,12 +1017,12 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const id = escapeDashboardHtml(String(booking.booking_id));
     const expanded = expandedTrackerVisits.has(String(booking.booking_id));
     const visiblePets = expanded ? orderedPets : orderedPets.slice(0, 4);
+    const mixedStatuses = new Set(statuses.map((value) => getStatusConfig(value).label)).size > 1;
     const steps = ["Checked In", "Grooming in Progress", "Ready for Pickup"].map((label, index) => {
       const done = index < current;
-      const circle = done ? "border-portal-success bg-portal-success text-white"
-        : index === current ? "border-portal-primary bg-portal-primary text-white"
+      const circle = index <= current ? "border-portal-primary bg-portal-primary text-white"
         : "border-portal-border bg-portal-surface text-portal-muted";
-      const line = index < current ? "bg-portal-success" : "bg-portal-border";
+      const line = index < current ? "bg-portal-primary" : "bg-portal-border";
       return `<li class="relative min-w-0 text-center" ${index === current ? 'aria-current="step"' : ""}>
         ${index < 2 ? `<span class="absolute left-1/2 top-5 h-0.5 w-full ${line}" aria-hidden="true"></span>` : ""}
         <span class="relative mx-auto flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold ${circle}" aria-hidden="true">${done
@@ -1038,24 +1037,24 @@ function scheduleCustomerDashboardAfterPaint(task) {
           <div class="portal-icon-tile rounded-full">${petIcon(pets[0], "h-7 w-7")}</div>
           <div class="min-w-0 [overflow-wrap:anywhere]">
             <h4 class="text-[28px] font-semibold leading-tight text-portal-text max-[639px]:text-2xl">${escapeDashboardHtml(config.label)}</h4>
-            <p class="mt-2 text-sm text-portal-muted">${escapeDashboardHtml(summary)}</p>
+            ${mixedStatuses ? `<p class="mt-2 text-sm text-portal-muted">${escapeDashboardHtml(summary)}</p>` : ""}
           </div>
         </div>
         <div class="mt-5 flex items-center justify-between gap-3">
           <h5 class="text-sm font-semibold text-portal-text">Your pets</h5>
           <span class="text-xs text-portal-muted">${pets.length} pet${pets.length === 1 ? "" : "s"}</span>
         </div>
-        <div id="tracker-pets-${id}" class="mt-3 grid gap-3 sm:grid-cols-2">${visiblePets.map((pet) => buildTrackerPetCard(pet, booking)).join("")}</div>
+        <div id="tracker-pets-${id}" class="mt-3 grid gap-3 sm:grid-cols-2">${visiblePets.map((pet) => buildTrackerPetCard(pet, booking, mixedStatuses)).join("")}</div>
         ${pets.length > 4 ? `<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
           <p class="text-xs text-portal-muted">Showing ${visiblePets.length} of ${pets.length} pets</p>
           <button id="tracker-toggle-${id}" type="button" data-tracker-toggle="${id}" aria-controls="tracker-pets-${id}" aria-expanded="${expanded}" class="portal-button-secondary px-4">${expanded ? "Show fewer" : `Show all ${pets.length} pets`}</button>
         </div>` : ""}
         <ol class="mt-6 grid grid-cols-3" aria-label="Queue status for this grooming visit">${steps}</ol>
-        <div class="mt-3">${visitSummaryAction({ ...booking, pets }, "View visit details")}</div>
+        <div class="mt-3">${visitSummaryAction({ ...booking, pets })}</div>
     </article>`;
   }
 
-  function buildTrackerPetCard(pet, booking) {
+  function buildTrackerPetCard(pet, booking, showStatus) {
     const status = getTrackerPetStatus(pet, booking);
     const config = getStatusConfig(status);
     const context = status === "checked_in" ? "Waiting to start grooming"
@@ -1063,9 +1062,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
       : status === "grooming_finished" ? "Waiting for the grooming visit to be ready for pickup" : "";
     return `<div data-tracker-pet class="min-w-0 rounded-xl border border-portal-border bg-portal-record p-3 text-sm [overflow-wrap:anywhere]">
       <h6 class="font-semibold text-portal-text">${escapeDashboardHtml(pet.pet_name || "Your pet")}</h6>
-      <p class="mt-1 text-xs text-portal-muted">Pet queue number: ${escapeDashboardHtml(pet.pet_queue_number ?? "Not assigned")}</p>
-      <p class="mt-1 text-xs font-semibold ${config.textClass}">${escapeDashboardHtml(config.label)}</p>
-      ${context ? `<p class="mt-2 text-portal-muted">${escapeDashboardHtml(context)}</p>` : ""}
+      <p class="mt-1 text-xs text-portal-muted">${pet.pet_queue_number != null ? `Queue #${escapeDashboardHtml(pet.pet_queue_number)}` : "Queue not assigned"}</p>
+      ${showStatus ? `<p class="mt-1 text-xs font-semibold ${config.textClass}">${escapeDashboardHtml(config.label)}</p>` : ""}
+      ${showStatus && context ? `<p class="mt-2 text-portal-muted">${escapeDashboardHtml(context)}</p>` : ""}
     </div>`;
   }
 
@@ -1106,8 +1105,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function getStatusConfig(status) {
     const map = {
-      waiting_to_arrive: { label: "Waiting to arrive", classes: "bg-portal-active text-portal-primary" },
-      waiting:           { label: "Waiting to arrive", classes: "bg-portal-active text-portal-primary" },
+      waiting_to_arrive: { label: "Waiting to Arrive", classes: "bg-portal-active text-portal-primary" },
+      waiting:           { label: "Waiting to Arrive", classes: "bg-portal-active text-portal-primary" },
       grooming_finished: { label: "Grooming finished", classes: "bg-portal-success-soft text-portal-success" },
       checked_in:        { label: "Checked In",         classes: "bg-portal-warning-soft text-portal-warning" },
       in_progress:       { label: "Grooming in Progress",        classes: "bg-portal-warning-soft text-portal-warning" },

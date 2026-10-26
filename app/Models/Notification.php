@@ -113,7 +113,7 @@ class Notification extends Model
     public static function activities(): array
     {
         return [
-            'pre_registrations' => ['label' => 'Pre-registrations', 'types' => ['booked', self::TYPE_CLINIC_BOOKED]],
+            'pre_registrations' => ['label' => 'Online Registrations', 'types' => ['booked', self::TYPE_CLINIC_BOOKED]],
             'walk_ins' => ['label' => 'Walk-ins', 'types' => ['walk_in_registered', self::TYPE_CLINIC_WALK_IN], 'selectable' => false],
             'schedule_changes' => ['label' => 'Schedule changes', 'types' => ['rescheduled']],
             'status_updates' => ['label' => 'Queue / status updates', 'types' => ['booking_confirmed', 'status_update', 'queue_update'], 'selectable' => false],
@@ -146,7 +146,7 @@ class Notification extends Model
         $day = $selectedDate ? Carbon::parse($selectedDate) : null;
         $date = $day ? ' for '.$day->format($day->year === now()->year ? 'M j' : 'M j, Y') : '';
 
-        return 'No show — '.ucfirst($service).($identity !== '' ? ': '.$identity : '').'. Pre-registration'.$date.' · No check-in recorded';
+        return 'No show — '.ucfirst($service).($identity !== '' ? ': '.$identity : '').'. Online Registration'.$date.' · No check-in recorded';
     }
 
     public static function createForClinic(

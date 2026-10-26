@@ -77,7 +77,10 @@ class CustomerGroomingVisitSummaryTest extends TestCase
     private function readVisit(int $customerId)
     {
         $request = Request::create('/api/booking/71', 'GET');
-        $request->setUserResolver(fn () => (new User())->forceFill(['user_id' => $customerId]));
+        $request->setUserResolver(fn () => (new User())->forceFill([
+            'user_id' => $customerId, 'first_name' => 'Alex', 'last_name' => 'Cruz',
+            'phone' => '09171234567', 'email' => 'alex@example.test',
+        ]));
         return app(BookingController::class)->show($request, 71);
     }
 
@@ -86,6 +89,9 @@ class CustomerGroomingVisitSummaryTest extends TestCase
         $response = $this->readVisit(7);
         $this->assertSame(200, $response->getStatusCode());
         $booking = $response->getData(true)['booking'];
+        $this->assertSame('Alex', $booking['owner']['first_name']);
+        $this->assertSame('09171234567', $booking['owner']['phone']);
+        $this->assertSame('alex@example.test', $booking['owner']['email']);
         $this->assertSame('Coco', $booking['booking_pets'][0]['pet']['pet_name']);
         $this->assertSame('Sensitive paws', $booking['booking_pets'][0]['special_instructions']);
         $this->assertSame('Anna', $booking['booking_pets'][0]['groomer']['first_name']);

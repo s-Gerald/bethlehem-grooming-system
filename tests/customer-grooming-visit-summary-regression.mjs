@@ -141,3 +141,33 @@ assert.equal((actual.match(/Actual Grooming Duration/g)||[]).length, 2);
 assert.match(actual, /2 hr 18 min/);
 assert.match(actual, /1 hr/);
 assert.doesNotMatch(actual, /3 hr 18 min/);
+
+// Shared metadata stays out of pet sections; source and independent pet progress survive print.
+const compact = structuredClone(multi);
+compact.status = 'checked_in'; compact.booking_type = 'online'; compact.queue_number = 12;
+compact.created_at = '2026-10-17T00:30:00Z';
+compact.user = { first_name: 'Alex', last_name: 'Cruz', phone: '09171234567', email: 'alex@example.test' };
+compact.booking_pets[0].pet_queue_number = 12;
+compact.booking_pets[1].pet_queue_number = 13;
+compact.booking_pets[1].grooming_state = 'not_started';
+const compactView = groomingVisitPresentation(compact, 'Grooming in Progress');
+assert.equal(compactView.title, 'Grooming Online Registration Summary');
+for (const output of [compactView.html, compactView.print]) {
+  assert.match(output, /Entry source<\/dt><dd>Online Registration/);
+  assert.match(output, /Submitted online/);
+  assert.match(output, /Queue #12/); assert.match(output, /Queue #13/);
+  assert.match(output, /Grooming Finished/); assert.match(output, /Checked In/);
+  assert.doesNotMatch(output, /<h2>Grooming details|<h2>Pet details|None provided|Not specified/);
+  assert.equal((output.match(/Registration reference/g) || []).length, 1);
+  assert.equal((output.match(/Visit day/g) || []).length, 1);
+  assert.equal((output.match(/Sedation consent/g) || []).length, 1);
+}
+assert.match(compactView.print, /Alex Cruz/); assert.match(compactView.print, /alex@example.test/);
+assert.equal(groomingVisitPresentation({ ...compact, booking_type: 'walk_in' }, 'Checked In').title, 'Grooming Walk-in Summary');
+assert.doesNotMatch(groomingVisitPresentation({ ...compact, booking_type: 'walk_in' }, 'Checked In').print, /Online Registration|Submitted online/);
+
+const petSections = [...compactView.html.matchAll(/<section class="grooming-summary-pet confirmation-pet">([\s\S]*?)<\/section>/g)].map(match => match[1]);
+assert.match(petSections[0], /Regular Dog Grooming/); assert.match(petSections[0], /₱700/);
+assert.doesNotMatch(petSections[0], /Nail Clipping/);
+assert.match(petSections[1], /Nail Clipping/); assert.match(petSections[1], /₱100/);
+assert.doesNotMatch(petSections[1], /Medicated Bath/);
