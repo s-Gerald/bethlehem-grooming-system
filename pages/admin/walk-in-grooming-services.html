@@ -5,9 +5,9 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Walk-in - Grooming Services</title>
-    <link rel="stylesheet" href="../../css/output.css?consent=20261017" />
+    <link rel="stylesheet" href="../../css/output.css?consent=20261017&services=20261026" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
-    <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009">
+    <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009&services=20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
   </head>
 
@@ -51,13 +51,7 @@
           <h2 class="text-2xl font-bold text-[#2f4b66]">Grooming Services</h2>
         </div>
 
-        <div
-          id="serviceNotice"
-          class="mb-6 rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600"
-        >
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Service Rules</p>
-          <p class="mt-2">Choose one package, A la Carte services, or both. Items already included in the selected package will be unavailable.</p>
-        </div>
+        <div id="serviceNotice" role="alert" hidden></div>
 
         <!--
           BACKEND TEAMMATE + CLAUDE CODE:
@@ -67,11 +61,6 @@
         -->
         <form id="walkInServicesForm" class="space-y-8" novalidate>
           <section>
-            <div class="mb-3">
-              <h3 class="text-base font-semibold text-[#2f4b66]">
-                Service Selection per Pet
-              </h3>
-            </div>
 
             <div id="petServiceSelections" class="space-y-6"></div>
           </section>
@@ -103,7 +92,7 @@
     <script src="../../scripts/api.js?v=session-inactivity-20260828&release=grooming-pricing-20261006&auth=session-scope-20261006&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025"></script>
     <script
       type="module"
-      src="../../scripts/components/walk-in-services-step.js?v=grooming-notes-copy-20260927&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&nav=walk-in-home-20261025"
+      src="../../scripts/components/walk-in-services-step.js?v=grooming-notes-copy-20260927&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026"
     ></script>
   </body>
 </html>

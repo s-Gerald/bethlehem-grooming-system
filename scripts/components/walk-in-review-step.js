@@ -1,5 +1,5 @@
 import { renderEstimateReview } from "./grooming-estimate-selection.js?catalog=services-20261017-2";
-import { petGroomerLabel } from "./pet-groomer-selection.js";
+import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
 import {
   escapeHtml,
   formatPetSizeLabel,
@@ -8,12 +8,13 @@ import {
 } from "../services/booking-draft-service.js";
 import {
   hasRequiredGroomingPreference,
+  specialInstructionsError,
   buildBookingReviewPayload,
   getGroomingPricePresentation,
   formatPriceOption,
   getPackageById,
-} from "../services/grooming-service.js?v=managed-services-20261017-2";
-import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025";
+} from "../services/grooming-service.js?v=managed-services-20261026";
+import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026";
 
 const state = {
   bookingDraft: null,
@@ -168,7 +169,7 @@ function handleConfirmClick() {
     return;
   }
 
-  if (state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection))) return;
+  if (state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection))) return;
   saveReviewDraft();
   window.history.pushState(null, "", "./walk-in-consent.html");
   renderWalkInConsentStep({
@@ -342,6 +343,7 @@ function renderPetReviewCard(item, index) {
         <p class="text-sm text-slate-600">Pet Groomer: ${escapeHtml(petGroomerLabel(item.selection))}</p>
         ${packageCard}
         ${renderEstimateReview(item.groomingEstimate)}
+        ${item.selection.haircutRequested ? '<p class="text-sm font-semibold text-[#2f4b66]">Haircut requested</p>' : ""}
         ${alaCarteCard}
         ${missingSelectionNotice}
 
@@ -490,7 +492,7 @@ export async function renderWalkInReviewStep(options = {}) {
   renderReviewNotice();
   renderReviewSelections();
   renderTotalPricing();
-  if (state.reviewPayload.items.every((item) => hasRequiredGroomingPreference(item.selection) && item.groomingEstimate)) {
+  if (state.reviewPayload.items.every((item) => hasRequiredGroomingPreference(item.selection) && !specialInstructionsError(item.pet, item.selection) && item.groomingEstimate)) {
     checkCapacity();
   }
 }

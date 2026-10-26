@@ -11,12 +11,17 @@ class GroomingTimeEstimate
     private ?array $catalogRules = null;
     private ?\Illuminate\Support\Collection $catalogServices = null;
 
+    public function services(): \Illuminate\Support\Collection
+    {
+        return $this->catalogServices ??= \App\Models\Service::all();
+    }
+
     public function rules(?\Illuminate\Support\Collection $services = null): array
     {
         if ($this->catalogRules !== null) return $this->catalogRules;
         $rules = config('grooming_estimates');
         if ($services === null && ! \Illuminate\Support\Facades\Schema::hasColumn('services', 'kind')) return $rules;
-        $services = $this->catalogServices = $services ?? \App\Models\Service::all();
+        $services = $this->catalogServices = $services ?? $this->services();
         $ids = $services->pluck('slug', 'service_id');
         foreach ($services as $service) {
             if ($service->kind === 'package') {

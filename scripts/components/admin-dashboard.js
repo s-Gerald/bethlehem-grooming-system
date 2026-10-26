@@ -2138,7 +2138,7 @@ function adminDashboard() {
 
     groomingSelectionLabels(pet) {
       const factors = new Map(this.estimateFactorOptions.map((option) => [option.value, option.label]));
-      return [...new Set([pet?.groomingEstimate?.preferenceLabel,
+      return [...new Set([pet?.haircutRequested ? "Haircut requested" : null, pet?.groomingEstimate?.preferenceLabel,
         ...(pet?.groomingEstimate?.factors || []).map((factor) => factors.get(factor))]
         .filter((label) => label && label.trim() && label !== "—"))];
     },
@@ -3268,7 +3268,7 @@ function adminDashboard() {
       this.paymentModal.error = "";
       this.paymentModal.petBreakdown = [];
       try {
-        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261017-2");
+        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026");
         applyPaymentCatalogue(await loadGroomingCatalogue({includeInactive: true}));
       } catch (error) {
         this.paymentModal.busy = false;

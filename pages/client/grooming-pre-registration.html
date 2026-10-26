@@ -5,9 +5,9 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grooming Pre-Registration</title>
-    <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017" />
+    <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1" />
-    <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009">
+    <link rel="stylesheet" href="../../css/grooming-estimates.css?v=20261009&services=20261026">
     <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261010" />
   </head>
   <body data-grooming-flow="single-page" class="min-h-screen bg-[#f6fafd] text-slate-800">
@@ -509,30 +509,14 @@
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-[#2f4b66]">Grooming Services</h2>
         </div>
+        <div id="serviceNotice" role="alert" hidden></div>
 
-        <!-- Service rules -->
-        <div
-          id="serviceNotice"
-          class="mb-6 rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600"
-        >
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Service Rules
-          </p>
-          <p class="mt-2">
-            Choose one package, A la Carte services, or both. Items already
-            included in the selected package will be unavailable.
-          </p>
-        </div>
-
-        <form id="bookingServicesForm" class="space-y-8">
+        <form id="bookingServicesForm" class="space-y-8" novalidate>
           <input type="hidden" name="booking_date" id="bookingDate" />
           <input type="hidden" name="booking_time" id="bookingTime" />
           <input type="hidden" name="pet_id" id="petId" />
           <input type="hidden" name="pet_type" id="servicePetType" />
           <section>
-            <div class="mb-3">
-              <h3 class="text-base font-semibold text-[#2f4b66]">Service Selection per Pet</h3>
-            </div>
             <div id="petServiceSelections" class="space-y-6"></div>
           </section>
           <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
@@ -901,6 +885,6 @@
     <main id="confirmationRoot" class="confirmation-page"></main>
     </div>
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025"></script>
-    <script type="module" src="../../scripts/components/grooming-pre-registration.js?v=grooming-workload-20261009&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261026-v1"></script>
+    <script type="module" src="../../scripts/components/grooming-pre-registration.js?v=grooming-workload-20261009&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261026-v1&services=20261026"></script>
   </body>
 </html>

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import * as selector from '../scripts/components/pet-groomer-selection.js';
+import * as selector from '../scripts/components/pet-groomer-selection.js?services=20261026';
 import * as grooming from '../scripts/services/grooming-service.js';
 
 const people = [{ id: 11, first_name: 'Anna' }, { id: 24, first_name: 'Miguel' }];
@@ -48,12 +48,16 @@ for (const walkIn of [false, true]) {
   available = [];
 }
 
-// Both controllers place the shared field after the pet header and before packages.
-for (const file of ['booking-services-step.js', 'walk-in-services-step.js']) {
-  const source = fs.readFileSync(new URL(`../scripts/components/${file}`, import.meta.url), 'utf8');
-  const card = source.slice(source.indexOf('function renderPetSelectionCard('));
-  assert.ok(card.indexOf('pet.petName') < card.indexOf('renderPetGroomerSelection(pet, selection'));
-  assert.ok(card.indexOf('renderPetGroomerSelection(pet, selection') < card.indexOf('Package Options'));
+// Both flows render the same groomer placement and preserve flow-specific options.
+available = people;
+const cards = await import('../scripts/components/grooming-service-selection.js?v=20261026');
+await selector.loadPetGroomers();
+for (const walkIn of [false, true]) {
+  const html = cards.renderPetServiceCard({ id: 'pet1', petName: 'Rigby', petType: 'dog' },
+    { servicePackage: '', alaCarteServices: [], specialInstructions: '', groomerId: null }, 0, walkIn);
+  assert.ok(html.indexOf('Rigby') < html.indexOf('Pet Groomer'));
+  assert.ok(html.indexOf('Pet Groomer') < html.indexOf('Select Services'));
+  assert.equal(html.includes('Any available groomer'), !walkIn && people.length > 1);
 }
 
 // The walk-in request carries each pet's ID, independently of display names.

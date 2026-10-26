@@ -1,6 +1,6 @@
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import { renderEstimateReview } from "./grooming-estimate-selection.js?catalog=services-20261017-2";
-import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js";
+import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
 import {
   BOOKING_STEP_THREE_KEY,
   escapeHtml,
@@ -15,6 +15,7 @@ import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { forecastGroomingWindows } from "../services/grooming-workload-forecast.js?pet-weight=pet-weight-size-20261011-v3&flow=grooming-order-20261016";
 import {
   hasRequiredGroomingPreference,
+  specialInstructionsError,
   loadGroomingCatalogue,
   selectedPricingSignature,
   buildBookingReviewPayload,
@@ -22,7 +23,7 @@ import {
   formatPriceOption,
   getPackageById,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261017-2";
+} from "../services/grooming-service.js?v=managed-services-20261026";
 
 /**
  * Booking Review Step Controller
@@ -109,7 +110,7 @@ export async function refreshBookingReviewStep() {
   renderReviewSelections();
   renderTotalPricing();
   saveReviewDraft();
-  elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection));
+  elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
   elements.confirmBookingBtn.classList.remove("opacity-50", "cursor-not-allowed");
   await refreshBookingWorkloadForecast();
 }
@@ -136,7 +137,7 @@ export async function refreshBookingWorkloadForecast() {
       ? "This arrival window is unavailable. Choose another arrival window."
       : "Grooming capacity is a forecast. Staff will confirm admission at check-in. Your arrival window is not a grooming start time.";
     if (window?.is_workload_unavailable) elements.reviewActionNotice.textContent = "Unavailable — selected services may run past closing. Choose another arrival window.";
-    elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection));
+    elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
     elements.confirmBookingBtn.textContent = state.workloadUnavailable ? "Choose arrival window" : "Next Step";
   } catch {
     elements.reviewActionNotice.classList.remove("hidden");
@@ -257,6 +258,7 @@ function renderPetReviewCard(item, index) {
       <div class="mt-6 space-y-4">
         ${packageCard}
         ${renderEstimateReview(item.groomingEstimate)}
+        ${item.selection.haircutRequested ? '<p class="text-sm font-semibold text-[#2f4b66]">Haircut requested</p>' : ""}
         ${alaCarteCard}
         ${missingSelectionNotice}
 
@@ -398,6 +400,7 @@ function saveReviewDraft() {
       weight: item.pet.weight,
       servicePackage: item.selection.servicePackage,
       groomingPreference: item.selection.groomingPreference,
+      haircutRequested: item.selection.haircutRequested,
       groomerId: item.selection.groomerId,
       petGroomerName: petGroomerLabel(item.selection),
       groomingEstimate: item.groomingEstimate,
@@ -425,7 +428,7 @@ function saveReviewDraft() {
 }
 
 async function handleConfirmClick() {
-  if (!state.reviewPayload || state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection))) {
+  if (!state.reviewPayload || state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection))) {
     return;
   }
 

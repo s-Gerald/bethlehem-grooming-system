@@ -133,6 +133,7 @@ class WalkinController extends Controller
                     'registered_size' => $item['petData']['size'] ?? null,
                     'confirmed_size' => $item['size'],
                     'special_instructions' => trim($item['petData']['special_instructions'] ?? '') ?: null,
+                    'haircut_requested' => (bool) ($item['petData']['haircut_requested'] ?? false),
                     'groomer_id' => $item['petData']['groomer_id'],
                 ]);
 
@@ -159,6 +160,7 @@ class WalkinController extends Controller
                     'pet_groomer' => $groomers->get($bookingPet->groomer_id),
                     'pet_id' => $pet->pet_id,
                     'pet_name' => $item['petData']['pet_name'],
+                    'haircut_requested' => (bool) $bookingPet->haircut_requested,
                     'species' => $item['petData']['species'],
                     'size' => $item['size'],
                     'grooming_estimate' => app(\App\Services\GroomingTimeEstimate::class)->forVisit($bookingPet),
@@ -296,7 +298,7 @@ class WalkinController extends Controller
 
     private function resolveAllPets(array $pets, ?User $user, ?UnregisteredCustomer $unregisteredCustomer): array
     {
-        return array_map(function (array $petData) use ($user, $unregisteredCustomer) {
+        return array_map(function (array $petData, int|string $index) use ($user, $unregisteredCustomer) {
             $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $petData);
             $size = $pet->hasClinicVerifiedSize()
                 ? $pet->size
@@ -305,6 +307,14 @@ class WalkinController extends Controller
                 $pet->confirmClinicSize($size);
             }
 
+            $slugs = array_column($petData['services'], 'service_slug');
+            $packages = app(\App\Services\GroomingTimeEstimate::class)->services()->where('kind', 'package')->pluck('slug')->all();
+            $selectedPackages = array_values(array_intersect($slugs, $packages));
+            if (count($selectedPackages) > 1) {
+                throw ValidationException::withMessages(["pets.{$index}.services" => 'Select one grooming package per pet.']);
+            }
+            app(\App\Services\GroomingServiceSelection::class)->validate($petData, $selectedPackages[0] ?? null,
+                array_values(array_diff($slugs, $selectedPackages)), $pet->species, "pets.{$index}");
             $estimate = $this->estimateWalkInPet($petData, $size);
 
             return [
@@ -314,7 +324,7 @@ class WalkinController extends Controller
                 'size' => $size,
                 'services' => $this->resolveServices($petData['services'], $size),
             ];
-        }, $pets);
+        }, $pets, array_keys($pets));
     }
 
     private function estimateWalkInPet(array $petData, ?string $size): array
@@ -325,8 +335,7 @@ class WalkinController extends Controller
             throw ValidationException::withMessages(['services' => 'Select one grooming package per pet.']);
         }
         return app(\App\Services\GroomingTimeEstimate::class)->calculate($packages[0] ?? null,
-            $petData['grooming_preference'] ?? null, $size, array_values(array_diff($slugs, $packages)),
-            $petData['estimate_factors'] ?? []);
+            $petData['grooming_preference'] ?? null, $size, array_values(array_diff($slugs, $packages)));
     }
 
     private function resolveServices(array $services, ?string $size): array

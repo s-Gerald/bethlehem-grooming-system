@@ -10,7 +10,8 @@
     ],
     "includedAlaCarteServiceIds": [
       "nail_clipping",
-      "ear_cleaning"
+      "ear_cleaning",
+      "facial_trimming"
     ]
   },
   {
@@ -27,7 +28,8 @@
     "includedAlaCarteServiceIds": [
       "nail_clipping",
       "ear_cleaning",
-      "tooth_brushing"
+      "tooth_brushing",
+      "facial_trimming"
     ]
   },
   {
@@ -44,7 +46,8 @@
     "includedAlaCarteServiceIds": [
       "nail_clipping",
       "ear_cleaning",
-      "tooth_brushing"
+      "tooth_brushing",
+      "facial_trimming"
     ]
   },
   {

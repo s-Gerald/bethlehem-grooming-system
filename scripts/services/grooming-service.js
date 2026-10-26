@@ -150,7 +150,7 @@ export function createEmptyPetServiceSelection(pet) {
     servicePackage: "",
     groomingPreference: "",
     groomerId: null,
-    estimateFactors: [],
+    haircutRequested: false,
     alaCarteServices: [],
     addOns: [],
     specialInstructions: "",
@@ -163,7 +163,7 @@ export function sanitizePetServiceSelection(selection) {
     servicePackage: String(selection?.servicePackage || ""),
     groomingPreference: String(selection?.groomingPreference || ""),
     groomerId: selection?.groomerId == null ? null : Number(selection.groomerId),
-    estimateFactors: [...new Set(selection?.estimateFactors || [])],
+    haircutRequested: selection?.haircutRequested === true,
     alaCarteServices: Array.from(
       new Set(
         Array.isArray(selection?.alaCarteServices)
@@ -185,6 +185,10 @@ export function sanitizePetServiceSelection(selection) {
     }
     nextSelection.alaCarteServices = nextSelection.alaCarteServices.filter(id => ALA_CARTE_MAP.has(id));
   }
+
+  const choices = getGroomingPreferences(nextSelection.servicePackage);
+  if (catalogueLoaded && !choices.some((choice) => choice.value === nextSelection.groomingPreference)) nextSelection.groomingPreference = "";
+  if (nextSelection.servicePackage !== "cat_full_grooming") nextSelection.haircutRequested = false;
 
   if (!nextSelection.servicePackage || nextSelection.alaCarteServices.length === 0) {
     return nextSelection;
@@ -276,9 +280,19 @@ export function normalizeStepThreeDraft(rawDraft, bookingDraft) {
     }
   }
 
-  return pets.map(
-    (pet) => defaultSelectionMap.get(pet.id) || createEmptyPetServiceSelection(pet),
-  );
+  return pets.map((pet) => {
+    const selection = defaultSelectionMap.get(pet.id) || createEmptyPetServiceSelection(pet);
+    if (catalogueLoaded) {
+      if (!getPackagesByPetType(pet.petType).some((service) => service.id === selection.servicePackage)) {
+        selection.servicePackage = "";
+        selection.groomingPreference = "";
+        selection.haircutRequested = false;
+      }
+      const supported = new Set(getAlaCarteServicesByPetType(pet.petType).map((service) => service.id));
+      selection.alaCarteServices = selection.alaCarteServices.filter((id) => supported.has(id));
+    }
+    return selection;
+  });
 }
 
 export function buildStepThreeDraftPayload(petSelections) {
@@ -292,7 +306,7 @@ export function buildStepThreeDraftPayload(petSelections) {
         servicePackage: sanitizedSelection.servicePackage,
         groomingPreference: sanitizedSelection.groomingPreference,
         groomerId: sanitizedSelection.groomerId,
-        estimateFactors: [...sanitizedSelection.estimateFactors],
+        haircutRequested: sanitizedSelection.haircutRequested,
         alaCarteServices: [...sanitizedSelection.alaCarteServices],
         addOns: [...sanitizedSelection.addOns],
         specialInstructions: sanitizedSelection.specialInstructions.trim(),
@@ -454,6 +468,7 @@ export function mergePricingSummaries(pricingSummaries) {
 }
 
 export function calculatePetSelectionPricing(selection, pet) {
+  selection = sanitizePetServiceSelection(selection);
   const lineItems = [];
 
   if (selection?.servicePackage) {
@@ -566,4 +581,32 @@ export function hasCompletedRequiredServiceSelection(pet, selection) {
 
 export function estimatePetGrooming(selection, pet) {
   return globalThis.GroomingEstimates.calculate(selection, normalizePetSize(pet?.size));
+}
+
+export function requiresSpecialInstructions(selection) {
+  return (selection?.servicePackage === "deluxe_dog_grooming" && selection.groomingPreference === "custom_hairstyle")
+    || (selection?.servicePackage === "cat_full_grooming" && selection.haircutRequested === true);
+}
+
+export function specialInstructionsError(pet, selection) {
+  if (!requiresSpecialInstructions(selection) || selection.specialInstructions?.trim()) return "";
+  return selection.haircutRequested
+    ? `Describe the requested haircut for ${pet.petName || "this pet"}.`
+    : `Describe the custom hairstyle for ${pet.petName || "this pet"}.`;
+}
+
+export function updatePetServiceSelection(selection, target) {
+  const role = target.dataset.role;
+  if (role === "grooming-preference") selection.groomingPreference = target.value;
+  if (role === "haircut-requested") selection.haircutRequested = target.checked;
+  if (role === "service-package") selection.servicePackage = target.value;
+  if (role === "ala-carte") {
+    const ids = new Set(selection.alaCarteServices);
+    target.checked ? ids.add(target.value) : ids.delete(target.value);
+    selection.alaCarteServices = [...ids];
+    if (selection.servicePackage && !getPackageAlaCarteRules(selection.servicePackage).canCombineWithAlaCarte) selection.servicePackage = "";
+  }
+  Object.assign(selection, sanitizePetServiceSelection(selection));
+  return (role === "grooming-preference" && target.value === "custom_hairstyle")
+    || (role === "haircut-requested" && target.checked);
 }

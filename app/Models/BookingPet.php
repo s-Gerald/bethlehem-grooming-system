@@ -37,6 +37,7 @@ class BookingPet extends Model
         'pet_queue_date',
         'pet_queue_number',
         'special_instructions',
+        'haircut_requested',
         'groomer_id',
         'grooming_start_time',
         'grooming_end_time',
@@ -51,6 +52,7 @@ class BookingPet extends Model
     ];
 
     protected $casts = [
+        'haircut_requested' => 'boolean',
         'cancelled_at' => 'datetime',
         'grooming_estimate_min' => 'integer',
         'grooming_estimate_max' => 'integer',

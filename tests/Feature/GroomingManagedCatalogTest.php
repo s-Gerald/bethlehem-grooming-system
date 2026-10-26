@@ -54,6 +54,26 @@ class GroomingManagedCatalogTest extends TestCase
                 'extra_large' => ['pricing_type' => 'starting_at', 'amount' => '1100']]];
     }
 
+    public function test_facial_inclusion_update_is_additive_idempotent_and_preserves_catalog_settings(): void
+    {
+        $facial = Service::where('slug', 'facial_trimming')->value('service_id');
+        $partial = Service::where('slug', 'partial_grooming')->firstOrFail();
+        $partial->update(['included_ala_carte_ids' => [999], 'is_active' => false, 'price_small' => 432]);
+        $bath = Service::where('slug', 'bath_and_go')->firstOrFail()->getAttributes();
+        $cat = Service::where('slug', 'cat_full_grooming')->firstOrFail()->getAttributes();
+        $migration = require database_path('migrations/2026_10_26_000002_include_facial_trimming_in_dog_packages.php');
+        $migration->up();
+        $migration->up();
+        $this->assertSame([999, $facial], $partial->fresh()->included_ala_carte_ids);
+        $this->assertFalse($partial->fresh()->is_active);
+        $this->assertEquals(432, $partial->fresh()->price_small);
+        $this->assertSame($bath, Service::where('slug', 'bath_and_go')->firstOrFail()->getAttributes());
+        $this->assertSame($cat, Service::where('slug', 'cat_full_grooming')->firstOrFail()->getAttributes());
+        foreach (['regular_dog_grooming', 'deluxe_dog_grooming'] as $slug) {
+            $this->assertContains($facial, Service::where('slug', $slug)->firstOrFail()->included_ala_carte_ids);
+        }
+    }
+
     public function test_managed_catalog_creates_and_updates_complete_booking_metadata(): void
     {
         $ear = Service::where('slug', 'ear_cleaning')->first();

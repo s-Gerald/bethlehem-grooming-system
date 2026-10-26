@@ -5021,6 +5021,10 @@ video {
     padding: 2.5rem;
   }
 
+  .md\:p-5 {
+    padding: 1.25rem;
+  }
+
   .md\:p-6 {
     padding: 1.5rem;
   }

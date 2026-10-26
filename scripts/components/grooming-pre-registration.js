@@ -1,13 +1,13 @@
 import { initBookingCalendar, refreshBookingCalendar } from "./booking-calendar.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016";
 import { initBookingPetStep, refreshBookingPetStep } from "./booking-pet-step.js?v=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&age=20261016&pet-fields=20261026-v1";
-import { initBookingServicesStep, refreshBookingServicesStep } from "./booking-services-step.js?v=grooming-pricing-20261006&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2";
-import { initBookingReviewStep, refreshBookingReviewStep, refreshBookingWorkloadForecast } from "./booking-review-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2";
-import { initBookingConsentStep } from "./booking-consent-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2";
-import { initBookingConfirmedStep } from "./booking-confirmed-step.js?copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261016&catalog=services-20261017-2";
+import { initBookingServicesStep, refreshBookingServicesStep } from "./booking-services-step.js?v=grooming-pricing-20261006&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026";
+import { initBookingReviewStep, refreshBookingReviewStep, refreshBookingWorkloadForecast } from "./booking-review-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026";
+import { initBookingConsentStep } from "./booking-consent-step.js?v=grooming-workload-20261009&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&services=20261026";
+import { initBookingConfirmedStep } from "./booking-confirmed-step.js?copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261016&catalog=services-20261017-2&services=20261026";
 import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=phone-20261022";
-import { hasCompletedRequiredServiceSelection, loadGroomingCatalogue } from "../services/grooming-service.js?v=managed-services-20261017-2";
+import { hasCompletedRequiredServiceSelection, loadGroomingCatalogue } from "../services/grooming-service.js?v=managed-services-20261026";
 import { groomingForecastPets } from "../services/grooming-workload-forecast.js?pet-weight=pet-weight-size-20261011-v3&flow=grooming-order-20261016";
-import { loadPetGroomers, hasPetGroomerSelection } from "./pet-groomer-selection.js";
+import { loadPetGroomers, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
 
 const steps = ["pets", "services", "schedule", "review", "consent", "confirmed"];

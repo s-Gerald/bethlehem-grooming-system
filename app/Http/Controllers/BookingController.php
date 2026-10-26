@@ -110,6 +110,7 @@ class BookingController extends Controller
             'pets.*.color' => 'nullable|string|max:50',
             'pets.*.medical_conditions' => 'nullable|string',
             'pets.*.special_instructions' => 'nullable|string',
+            'pets.*.haircut_requested' => 'sometimes|boolean',
             'pets.*.groomer_id' => 'nullable|integer',
             'pets.*.services' => 'nullable|array',
             'pets.*.grooming_preference' => 'nullable|string|max:32',
@@ -268,12 +269,16 @@ class BookingController extends Controller
                     'booking_id' => $booking->booking_id,
                     'pet_id' => $pet->pet_id,
                     'special_instructions' => $petData['special_instructions'] ?? null,
+                    'haircut_requested' => (bool) ($petData['haircut_requested'] ?? false),
                     'groomer_id' => $petData['groomer_id'],
                 ];
                 if (Schema::hasColumn('booking_pets', 'registered_size')) {
                     $bookingPetAttributes['registered_size'] = $pet->groomingSize();
                 }
                 $engine = app(\App\Services\GroomingTimeEstimate::class);
+                app(\App\Services\GroomingServiceSelection::class)->validate($petData,
+                    $petData['services']['package'] ?? null, $petData['services']['ala_carte'] ?? [],
+                    $pet->species, "pets.{$index}");
                 $estimate = $engine->calculate($petData['services']['package'] ?? null, $petData['grooming_preference'] ?? null,
                     $pet->groomingSize(), $petData['services']['ala_carte'] ?? []);
                 $bookingPet = BookingPet::create($bookingPetAttributes);
@@ -367,6 +372,7 @@ class BookingController extends Controller
                     'status' => $booking->status,
                     'number_of_pets' => $booking->number_of_pets,
                     'pets' => $booking->bookingPets->map(fn ($bp) => ['pet_id' => $bp->pet_id,
+                        'haircut_requested' => (bool) $bp->haircut_requested,
                         'groomer_id' => $bp->groomer_id, 'pet_groomer' => $bp->groomer,
                         'grooming_estimate' => app(\App\Services\GroomingTimeEstimate::class)->forVisit($bp)])->values(),
                 ],
@@ -504,6 +510,7 @@ class BookingController extends Controller
                     'booking_pet_id' => $bp->booking_pet_id,
                     'groomer_id' => $bp->groomer_id,
                     'pet_groomer' => $bp->groomer,
+                    'haircut_requested' => (bool) $bp->haircut_requested,
                     'pet_name' => $bp->pet?->pet_name ?? '—',
                     'breed' => $bp->pet?->breed ?? '—',
                     'species' => $bp->pet?->species,

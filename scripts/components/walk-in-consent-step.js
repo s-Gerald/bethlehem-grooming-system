@@ -224,7 +224,7 @@ export function buildWalkInPets(reviewPayload) {
       special_instructions: item.selection.specialInstructions?.trim() || null,
       grooming_preference: item.selection.groomingPreference || null,
       groomer_id: item.selection.groomerId ?? null,
-      estimate_factors: item.selection.estimateFactors || [],
+      haircut_requested: item.selection.haircutRequested === true,
       services:             item.pricing.lineItems.map((lineItem) => ({
         service_slug: lineItem.serviceId,
       })),
@@ -285,6 +285,7 @@ function buildConfirmationPayload(response, reviewPayload) {
           petName:              item.pet.petName,
           servicePackage:       packageLine?.serviceName || null,
           groomingPreference: item.selection.groomingPreference,
+          haircutRequested: item.selection.haircutRequested === true,
           groomerId: item.selection.groomerId,
           petGroomerName: response.pets?.[index]?.pet_groomer?.first_name,
           groomingEstimate: response.pets?.[index]?.grooming_estimate || item.groomingEstimate,
@@ -377,6 +378,7 @@ function buildConfirmationReview(reviewPayload) {
         specialInstructions: String(
           item.selection?.specialInstructions || "",
         ).trim(),
+        haircutRequested: item.selection?.haircutRequested === true,
         pricing: item.pricing?.total || null,
       };
     }),

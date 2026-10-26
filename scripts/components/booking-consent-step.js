@@ -1,6 +1,6 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261017-2";
+import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026";
 import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
@@ -70,6 +70,7 @@ export function initBookingConsentStep() {
         medical_conditions: pet.medicalNotes || null,
         special_instructions: reviewPet?.specialInstructions || null,
         grooming_preference: serviceSelection.groomingPreference || null,
+        haircut_requested: serviceSelection.haircutRequested === true,
         groomer_id: serviceSelection.groomerId ?? null,
         services: {
           package:   serviceSelection.servicePackage || null,

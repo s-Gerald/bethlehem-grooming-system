@@ -48,6 +48,7 @@ function setup(preview) {
     buildWalkInPets: consent.buildWalkInPets,
     buildBookingReviewPayload: () => payload,
     hasRequiredGroomingPreference: () => true,
+    specialInstructionsError: () => "",
     renderWalkInConsentStep: (options) => consentCalls.push(options),
     getGroomingPricePresentation: () => ({ label: "Estimated price", amount: "P100" }),
     petGroomerLabel: () => "Anna",
@@ -75,9 +76,10 @@ async function main() {
   assert.equal(pending.calls.length, 1);
   assert.equal(pending.calls[0].customer_user_id, 7);
   assert.deepEqual(pending.calls[0].pets, consent.buildApiPayload({}, pending.payload, {}).pets,
-    "Preview and final submission send identical pet selections and staff factors");
+    "Preview and final submission send identical pet selections without retired factors");
   assert.equal(pending.calls[0].pets[0].grooming_preference, "summer_cut");
-  assert.deepEqual(Array.from(pending.calls[0].pets[0].estimate_factors), ["thick_coat"]);
+  assert.equal("estimate_factors" in pending.calls[0].pets[0], false);
+  assert.equal(pending.calls[0].pets[0].haircut_requested, false);
   resolve(capacity(false));
   await flush();
   assert.equal(pending.get("confirmBookingBtn").disabled, true);

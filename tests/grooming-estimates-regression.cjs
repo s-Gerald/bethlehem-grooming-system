@@ -11,30 +11,31 @@ async function main() {
   await import('../scripts/services/grooming-estimate-engine.js');
   const engine = globalThis.GroomingEstimates;
   engine.configure(rules);
-  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006');
-  const component = await import('../scripts/components/grooming-estimate-selection.js');
+  const grooming = await import('../scripts/services/grooming-service.js?v=managed-services-20261026');
+  const { renderEstimateReview } = await import('../scripts/components/grooming-estimate-selection.js');
+  const component = await import('../scripts/components/grooming-service-selection.js?v=20261026');
   assert.deepEqual(engine.preferences('regular_dog_grooming').map((p) => p.label), ['Summer Cut', 'Semi-Kalbo', 'Kalbo', 'Regular Trim']);
   assert.deepEqual(engine.preferences('deluxe_dog_grooming').map((p) => p.label), ['Puppy Cut', 'Custom Hairstyle']);
   for (const packageId of ['partial_grooming', 'bath_and_go', 'cat_full_grooming']) {
     assert.deepEqual(engine.preferences(packageId), []);
-    const html = component.renderEstimateSelection({ id: 1, size: 'small' }, { servicePackage: packageId });
+    const html = component.renderHaircutPreference({ id: 1, size: 'small' }, { servicePackage: packageId });
     assert.doesNotMatch(html, /data-role="grooming-preference"|<legend>Grooming preference/);
   }
   for (const [size, minutes, formatted] of [['small', 90, '1 hr 30 min'], ['medium', 105, '1 hr 45 min']]) {
     const selection = { servicePackage: 'cat_full_grooming' };
     const estimate = engine.calculate(selection, size);
     assert.deepEqual([estimate.minMinutes, estimate.maxMinutes, estimate.formatted], [minutes, minutes, formatted]);
-    assert.doesNotMatch(component.renderEstimateSelection({ id: 1, size }, selection), /data-role="grooming-preference"|<legend>Grooming preference/);
+    assert.doesNotMatch(component.renderHaircutPreference({ id: 1, size }, selection), /data-role="grooming-preference"|<legend>Grooming preference/);
     for (const factor of engine.factors()) {
       const extended = engine.calculate({ ...selection, estimateFactors: [factor.value] }, size);
       const minutesAdded = rules.factor_minutes[factor.value];
       assert.deepEqual([extended.minMinutes, extended.maxMinutes], [minutes + minutesAdded[0], minutes + minutesAdded[1]]);
     }
   }
-  const regular = component.renderEstimateSelection({ id: 1, size: 'small' }, { servicePackage: 'regular_dog_grooming' });
+  const regular = component.renderHaircutPreference({ id: 1, size: 'small' }, { servicePackage: 'regular_dog_grooming' });
   assert.equal((regular.match(/type="radio"/g) || []).length, 4);
   assert.doesNotMatch(regular, /Puppy Cut|Custom Hairstyle/);
-  const deluxe = component.renderEstimateSelection({ id: 1, size: 'small' }, { servicePackage: 'deluxe_dog_grooming' });
+  const deluxe = component.renderHaircutPreference({ id: 1, size: 'small' }, { servicePackage: 'deluxe_dog_grooming' });
   assert.equal((deluxe.match(/type="radio"/g) || []).length, 2);
   assert.doesNotMatch(deluxe, /Summer Cut|Semi-Kalbo|Kalbo|Regular Trim/);
   assert.equal(grooming.hasRequiredGroomingPreference({ servicePackage: 'regular_dog_grooming' }), false);
@@ -44,7 +45,7 @@ async function main() {
   }
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8').replace(/^\uFEFF/, ''));
   grooming.applyGroomingCatalogue(fixture.data);
-  const pets = [{ id: 'coco', size: 'medium' }, { id: 'bruno', size: 'large' }];
+  const pets = [{ id: 'coco', petType: 'dog', size: 'medium' }, { id: 'bruno', petType: 'dog', size: 'large' }];
   const selections = pets.map((pet) => ({ petId: pet.id, servicePackage: 'regular_dog_grooming', groomingPreference: 'regular_trim', alaCarteServices: [] }));
   const review = grooming.buildBookingReviewPayload({ pets }, selections);
   assert.equal(review.items[0].groomingEstimate.formatted, '1 hr 30 min–1 hr 45 min');
@@ -55,12 +56,11 @@ async function main() {
   assert.equal(engine.formatRange(120, 240), '2–4 hrs');
 
   const draft = await import('../scripts/services/booking-draft-service.js');
-  const cardContexts = ['booking-services-step', 'walk-in-services-step'].map((file) => {
-    const source = fs.readFileSync(path.join(__dirname, `../scripts/components/${file}.js`), 'utf8');
-    const context = { ...grooming, escapeHtml: draft.escapeHtml };
-    vm.runInNewContext(source.slice(source.indexOf('function renderAlaCarteCard('), source.indexOf('function getSelectionByPetId(')), context);
-    return context;
-  });
+  const cardContexts = [component];
+  for (const row of fixture.data) {
+    if (row.kind === 'package') rules.packages[row.id].included = row.includedAlaCarteServiceIds;
+  }
+  engine.configure(rules);
   for (const pkg of grooming.GROOMING_PACKAGES) {
     assert.deepEqual([...pkg.includedAlaCarteServiceIds].sort(), [...rules.packages[pkg.id].included].sort(), pkg.id);
     const pet = { id: pkg.id, size: 'small', petType: pkg.petType };
@@ -87,8 +87,8 @@ async function main() {
   const small = { id: 'small', size: 'small' };
   assert.equal(grooming.estimatePetGrooming(summer, small).formatted, '1 hr 15 min');
   summer.alaCarteServices = ['facial_trimming'];
-  assert.equal(grooming.estimatePetGrooming(summer, small).formatted, '1 hr 30 min–1 hr 45 min');
-  assert.match(component.renderEstimateReview(grooming.estimatePetGrooming(summer, small)), /1 hr 30 min–1 hr 45 min/);
+  assert.equal(grooming.estimatePetGrooming(summer, small).formatted, '1 hr 15 min');
+  assert.match(renderEstimateReview(grooming.estimatePetGrooming(summer, small)), /1 hr 15 min/);
   summer.alaCarteServices = [];
   assert.equal(grooming.estimatePetGrooming(summer, small).formatted, '1 hr 15 min');
 
@@ -166,15 +166,10 @@ async function main() {
   ui.groomingWorkload.pets[1].state = 'Needs staff action';
   assert.equal(ui.getPetWorkloadState(first), 'Needs staff action');
   assert.equal(ui.inProgressList[0].pets[0].isGroomingStarted, true);
-  for (const file of ['booking-services-step', 'walk-in-services-step']) {
-    const source = fs.readFileSync(path.join(__dirname, `../scripts/components/${file}.js`), 'utf8');
-    assert.match(source, /renderEstimateSelection\(pet, selection,/);
-    if (file === 'booking-services-step') {
-      assert.match(source, /hasCompletedRequiredServiceSelection\(pet, selection\)/);
-      assert.match(fs.readFileSync(path.join(__dirname, '../scripts/services/grooming-service.js'), 'utf8'), /hasRequiredGroomingPreference\(selection\)/);
-    } else {
-      assert.match(source, /hasRequiredGroomingPreference\(selection\)/);
-    }
+  for (const item of review.items) {
+    const html = component.renderPetServiceCard(item.pet, item.selection, 0);
+    assert.doesNotMatch(html, /Estimated grooming time|Estimate factors|Service Rules/);
+    assert.match(html, /Haircut Preference/);
   }
   console.log(`Grooming estimate regression tests passed (${cases.length} server/preview comparisons).`);
 }

@@ -867,7 +867,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   async function openVisitSummary(event) {
     const trigger = event.target.closest("[data-visit-summary]");
     if (!trigger) return;
-    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2");
+    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026");
     openGroomingVisitSummary(trigger.dataset.visitSummary, trigger, (booking) => {
       if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
       if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;

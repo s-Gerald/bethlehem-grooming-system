@@ -1514,6 +1514,7 @@ class AdminBookingController extends Controller
                     'weight' => $pet?->weight ? $pet->weight.' kg' : '—',
                     'medicalConditions' => $pet?->medical_conditions ?? null,
                     'specialInstructions' => $bp->special_instructions ?? null,
+                    'haircutRequested' => (bool) $bp->haircut_requested,
                     'groomerId' => $bp->groomer_id,
                     'petGroomerName' => $bp->groomer?->first_name,
                     'petQueueNumber' => $bp->pet_queue_number ?? $petIndex + 1,
