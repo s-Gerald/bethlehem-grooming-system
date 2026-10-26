@@ -46,22 +46,23 @@ class BookingPet extends Model
         'cancellation_reason',
         'cancelled_by',
         'grooming_preference',
-        'grooming_estimate_min',
-        'grooming_estimate_max',
-        'grooming_estimate_factors',
     ];
 
     protected $casts = [
         'haircut_requested' => 'boolean',
         'cancelled_at' => 'datetime',
-        'grooming_estimate_min' => 'integer',
-        'grooming_estimate_max' => 'integer',
-        'grooming_estimate_factors' => 'array',
         'pet_queue_date' => 'date',
         'pet_queue_number' => 'integer',
         'grooming_start_time' => 'datetime',
         'grooming_end_time' => 'datetime',
     ];
+
+    protected $appends = ['grooming_preference_label'];
+
+    public function getGroomingPreferenceLabelAttribute(): ?string
+    {
+        return collect(config('grooming_services.preferences'))->flatMap(fn ($choices) => $choices)->get($this->grooming_preference);
+    }
 
     // BookingPet belongs to a booking
     public function booking()

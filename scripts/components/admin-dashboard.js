@@ -401,7 +401,7 @@ function adminDashboard() {
     forPaymentList: [],
     activeGroomers: 2,
     activeGroomingPets: 0,
-    groomingWorkload: null,
+    groomingPreferences: {},
     groomerCapacityBusy: false,
     groomerCapacityError: "",
     pickupModal: { open: false, booking: null, busy: false },
@@ -579,7 +579,6 @@ function adminDashboard() {
             }
 
             const assessment = booking.bookingType === "Walk-In" ? {} : {
-              estimate_factors: pet.estimateFactors || [],
               grooming_preference: pet.groomingPreference || null,
             };
             const response = await API.adminStartPetGrooming(booking.id, bookingPetId, assessment);
@@ -983,11 +982,9 @@ function adminDashboard() {
         weight: pet.weight ?? "—",
         currentSize: normalizePaymentSize(pet.size) || "",
         verified: Boolean(pet.sizeVerified),
-        groomingEstimate: pet.groomingEstimate,
         species: pet.species ?? pet.petType,
         size: normalizePaymentSizeForPet(pet.size, pet.species ?? pet.petType),
-        estimateFactors: [...(pet.groomingEstimate?.factors || [])],
-        groomingPreference: pet.groomingEstimate?.preference || "",
+        groomingPreference: pet.groomingPreference || "",
       }));
       this.actionConfirmModal.internalStaffNote = booking?.internalStaffNote || "";
     },
@@ -1036,7 +1033,7 @@ function adminDashboard() {
         action: "startPetGrooming",
         booking: {
           ...booking,
-          actionPet: isWalkIn ? { ...pet } : { ...pet, estimateFactors: [...(pet.groomingEstimate?.factors || [])], groomingPreference: pet.groomingEstimate?.preference || "" },
+          actionPet: isWalkIn ? { ...pet } : { ...pet, groomingPreference: pet.groomingPreference || "" },
         },
         title: hasEarlierUnfinishedPets ? "Queue Order Warning" : (isWalkIn ? "Start Grooming" : "Confirm Start Grooming"),
         message: hasEarlierUnfinishedPets
@@ -1217,7 +1214,7 @@ function adminDashboard() {
         action: "markPetDone",
         booking: {
           ...booking,
-          actionPet: { ...pet, estimateFactors: [...(pet.groomingEstimate?.factors || [])], groomingPreference: pet.groomingEstimate?.preference || "" },
+          actionPet: { ...pet, groomingPreference: pet.groomingPreference || "" },
         },
         title: "Confirm Finished",
         message: `Are you sure you want to mark ${petName} as finished?`,
@@ -1353,7 +1350,7 @@ function adminDashboard() {
     // Starts the Incoming -> Queued transition for a booking.
     async checkInBooking(booking, petSizes = [], internalStaffNote = "") {
       await this.runBookingAction("checkIn", booking, {
-        petSizes: petSizes.map((pet) => ({ booking_pet_id: pet.bookingPetId, size: pet.size, estimate_factors: pet.estimateFactors || [] })),
+        petSizes: petSizes.map((pet) => ({ booking_pet_id: pet.bookingPetId, size: pet.size })),
         internalStaffNote,
       });
     },
@@ -1586,7 +1583,6 @@ function adminDashboard() {
     // Normalizes and applies dashboard metrics plus all booking lists into Alpine state.
     applyDashboardData(payload = {}) {
       if ('activeTodayCount' in payload) this.activeTodayCount = payload.activeTodayCount;
-      if (payload.estimateRules) window.GroomingEstimates.configure(payload.estimateRules);
       const nextPayload = this.normalizeDashboardPayload(payload);
 
       if ("completedToday" in nextPayload) this.completedToday = nextPayload.completedToday;
@@ -1621,7 +1617,7 @@ function adminDashboard() {
       if ("activeGroomers" in nextPayload) {
         this.activeGroomers = nextPayload.activeGroomers;
       }
-      if ("groomingWorkload" in nextPayload) this.groomingWorkload = nextPayload.groomingWorkload;
+      if ("groomingPreferences" in nextPayload) this.groomingPreferences = nextPayload.groomingPreferences;
 
       if ("activeGroomingPets" in nextPayload) {
         this.activeGroomingPets = nextPayload.activeGroomingPets;
@@ -1688,7 +1684,7 @@ function adminDashboard() {
       if ("completedToday" in payload || "completedToday" in summary) {
         nextPayload.completedToday = payload.completedToday ?? summary.completedToday;
       }
-      if ("groomingWorkload" in payload) nextPayload.groomingWorkload = payload.groomingWorkload;
+      if ("groomingPreferences" in payload) nextPayload.groomingPreferences = payload.groomingPreferences;
 
       if (this.hasValue(payload.todayCount) || this.hasValue(summary.today)) {
         nextPayload.todayCount = this.toNumber(
@@ -1995,56 +1991,7 @@ function adminDashboard() {
       );
     },
 
-    // ── QUEUE ETA ENGINE ─────────────────────────────────────────────────────
-    _computeQueueETAs() {
-      return Object.fromEntries(Object.entries(this.groomingWorkload?.pets || {}).map(([id, pet]) => {
-        const completion = pet.projected_completion ? new Date(pet.projected_completion).getTime() : NaN;
-        return [id, { estDoneMin: completion, estDoneMax: completion, unavailable: !Number.isFinite(completion),
-          queueWait: pet.queue_wait_minutes, start: pet.projected_start, state: pet.state }];
-      }));
-    },
-
-    get petETAs() { return this._computeQueueETAs(); },
-
-    get queueSummary() {
-      const waiting = [...this.inProgressList, ...this.queuedList].flatMap((booking) => this.getWaitingGroomingPets(booking));
-      const estimates = waiting.map((pet) => pet.groomingEstimate).filter(Boolean);
-      const avgWaitLabel = estimates.length && estimates.length === waiting.length
-        ? window.GroomingEstimates.formatRange(estimates.reduce((sum, e) => sum + e.minMinutes, 0) / estimates.length,
-            estimates.reduce((sum, e) => sum + e.maxMinutes, 0) / estimates.length) : "—";
-      const entries = Object.values(this.petETAs);
-      const lastDoneLabel = entries.some((entry) => entry.overdue || entry.unavailable) ? "Awaiting groomer availability"
-        : entries.length ? window.GroomingEstimates.formatTimeWindow(Math.max(...entries.map((entry) => entry.estDoneMin)), Math.max(...entries.map((entry) => entry.estDoneMax))) : null;
-      return { petsWaiting: waiting.length, avgWaitLabel, lastDoneLabel };
-    },
-
-    get showGroomingWorkload() {
-      const summary = this.queueSummary;
-      return summary.avgWaitLabel !== "—" || Boolean(summary.lastDoneLabel || this.groomingWorkloadMessage);
-    },
-
     get isGroomerCapacityFull() { return this.activeGroomingPets >= this.activeGroomers; },
-
-    get groomingWorkloadMessage() {
-      const finish = this.groomingWorkload?.projected_last_completion;
-      const close = this.groomingWorkload?.closing_time;
-      if (finish && close && new Date(finish) > new Date(close)) {
-        return `Projected completion exceeds grooming hours · ${this.workloadClosingLabel}`;
-      }
-      const state = this.groomingWorkload?.state;
-      return state === "Needs staff action" ? "Current grooming workload needs attention"
-        : state === "At risk" ? "Schedule at risk"
-        : this.isGroomerCapacityFull && this.queueSummary.petsWaiting > 0 ? "Groomer capacity reached" : "";
-    },
-
-    get workloadClosingLabel() {
-      const close = this.groomingWorkload?.closing_time;
-      return close ? `Grooming closes at ${window.GroomingEstimates.formatTimeWindow(new Date(close).getTime(), new Date(close).getTime())}` : "";
-    },
-
-    getPetWorkloadState(pet) {
-      return this.groomingWorkload?.pets?.[String(pet.bookingPetId ?? pet.id)]?.state || "";
-    },
 
     get operationalBookings() {
       return ({ queued: this.queuedList, "in-progress": this.inProgressList,
@@ -2137,10 +2084,7 @@ function adminDashboard() {
     },
 
     groomingSelectionLabels(pet) {
-      const factors = new Map(this.estimateFactorOptions.map((option) => [option.value, option.label]));
-      return [...new Set([pet?.haircutRequested ? "Haircut requested" : null, pet?.groomingEstimate?.preferenceLabel,
-        ...(pet?.groomingEstimate?.factors || []).map((factor) => factors.get(factor))]
-        .filter((label) => label && label.trim() && label !== "—"))];
+      return [pet?.haircutRequested ? "Haircut requested" : null, pet?.groomingPreferenceLabel].filter(Boolean);
     },
 
     groomingPetIdentity(pet) {
@@ -2148,54 +2092,18 @@ function adminDashboard() {
         .filter((value) => value && value !== "—").join(" · ");
     },
 
-    getBookingETA(booking) {
-      const map = this.petETAs;
-      const entries = (booking.pets || []).filter((pet) => !this.isPetGroomingFinished(pet) && this.petGroomingState(pet) !== "cancelled").map((pet) => map[String(pet.bookingPetId ?? pet.id ?? "")]).filter(Boolean);
-      if (!entries.length) return null;
-      if (entries.some((entry) => entry.overdue)) return "Taking longer than estimated";
-      if (entries.some((entry) => entry.unavailable)) return "Awaiting groomer availability";
-      return window.GroomingEstimates.formatTimeWindow(Math.max(...entries.map((entry) => entry.estDoneMin)), Math.max(...entries.map((entry) => entry.estDoneMax)));
-    },
-
     getPetElapsed(pet) {
+      if (!pet.groomingStartedAtIso) return "";
       const start = new Date(pet.groomingStartedAtIso).getTime();
       if (!Number.isFinite(start)) return "";
       const minutes = Math.round((Date.now() - start) / 60000);
-      return minutes > 0 ? `${window.GroomingEstimates.formatDuration(minutes)} elapsed` : "";
+      return minutes > 0 ? `${Math.floor(minutes / 60) ? `${Math.floor(minutes / 60)} hr ` : ""}${minutes % 60} min elapsed` : "";
     },
 
-    getPetEstDone(booking, pet) {
-      const entry = this.petETAs[String(pet.bookingPetId ?? pet.id ?? "")];
-      if (!entry) return "";
-      if (entry.overdue) return "Taking longer than estimated";
-      if (entry.unavailable) return "Awaiting groomer availability";
-      return `Est. ready: ${window.GroomingEstimates.formatTimeWindow(entry.estDoneMin, entry.estDoneMax)}`;
-    },
-
-    getPetEstimateLabel(pet) {
-      return pet.groomingEstimate?.formatted || "—";
-    },
-
-    get estimateFactorOptions() { return window.GroomingEstimates.factors(); },
-
-    getEstimatePreferences(pet) {
+    getGroomingPreferences(pet) {
       const booking = this.actionConfirmModal.booking;
-      const packageId = (booking?.services || []).find((service) => String(service.bookingPetId) === String(pet.bookingPetId ?? pet.id) && window.GroomingEstimates.preferences(service.slug).length)?.slug;
-      return window.GroomingEstimates.preferences(packageId);
-    },
-
-    assessmentPreview(pet) {
-      const snapshot = pet.groomingEstimate;
-      const original = this.actionConfirmModal.booking?.pets?.find((item) => String(item.bookingPetId ?? item.id) === String(pet.bookingPetId ?? pet.id));
-      if (snapshot && normalizePaymentSize(pet.size) === normalizePaymentSize(original?.size)
-          && (pet.groomingPreference || null) === snapshot.preference
-          && JSON.stringify(pet.estimateFactors || []) === JSON.stringify(snapshot.factors || [])) return snapshot.formatted;
-      const booking = this.actionConfirmModal.booking;
-      const services = (booking?.services || []).filter((service) => String(service.bookingPetId) === String(pet.bookingPetId ?? pet.id));
-      const packageId = window.GroomingEstimates.packageForServices(services.map((service) => service.slug));
-      return window.GroomingEstimates.calculate({ servicePackage: packageId, groomingPreference: pet.groomingPreference,
-        estimateFactors: pet.estimateFactors, alaCarteServices: services.filter((service) => service.slug !== packageId).map((service) => service.slug) },
-        normalizePaymentSize(pet.size), { allowMissingPreference: true })?.formatted || pet.groomingEstimate?.formatted || "—";
+      const service = (booking?.services || []).find((item) => String(item.bookingPetId) === String(pet.bookingPetId ?? pet.id) && this.groomingPreferences[item.slug]);
+      return Object.entries(this.groomingPreferences[service?.slug] || {}).map(([value, label]) => ({ value, label }));
     },
 
     async setActiveGroomers(n) {
@@ -2217,7 +2125,6 @@ function adminDashboard() {
         this.groomerCapacityBusy = false;
       }
     },
-    // ── END QUEUE ETA ENGINE ─────────────────────────────────────────────────
 
     // Removes a booking from every visible status list using its id.
     removeBookingFromLists(bookingId) {
@@ -3268,7 +3175,7 @@ function adminDashboard() {
       this.paymentModal.error = "";
       this.paymentModal.petBreakdown = [];
       try {
-        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026");
+        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026");
         applyPaymentCatalogue(await loadGroomingCatalogue({includeInactive: true}));
       } catch (error) {
         this.paymentModal.busy = false;

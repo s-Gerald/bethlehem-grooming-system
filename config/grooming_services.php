@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'preferences' => [
+        'regular_dog_grooming' => ['summer_cut' => 'Summer Cut', 'semi_kalbo' => 'Semi-Kalbo', 'kalbo' => 'Kalbo', 'regular_trim' => 'Regular Trim'],
+        'deluxe_dog_grooming' => ['puppy_cut' => 'Puppy Cut', 'custom_hairstyle' => 'Custom Hairstyle'],
+    ],
     // Editable grooming catalogue limits; clinic pricing has separate business rules.
     'price_limits' => [
         'package' => ['minimum' => 1, 'maximum' => 20000],

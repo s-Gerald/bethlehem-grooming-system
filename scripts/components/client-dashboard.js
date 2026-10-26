@@ -867,7 +867,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   async function openVisitSummary(event) {
     const trigger = event.target.closest("[data-visit-summary]");
     if (!trigger) return;
-    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026");
+    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026");
     openGroomingVisitSummary(trigger.dataset.visitSummary, trigger, (booking) => {
       if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
       if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;
@@ -989,7 +989,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       lastTrackerMarkup = markup;
     }
     const announcement = bookings.flatMap((booking) => trackerPets(booking).map((pet) =>
-      `${pet.pet_name}: ${getStatusConfig(getPetGroomingStatus(pet, booking)).label}. ${petEstimateStatus(pet, booking)}`
+      `${pet.pet_name}: ${getStatusConfig(getPetGroomingStatus(pet, booking)).label}.`
     )).join(". ") || "No pets at the clinic right now.";
     if (announcement !== lastGroomingAnnouncement) {
       if (groomingStatusAnnouncement) groomingStatusAnnouncement.textContent = announcement;
@@ -1070,19 +1070,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
     </article>`;
   }
 
-  function petEstimateStatus(pet, booking) {
-    const estimate = pet.grooming_estimate;
-    const status = getPetGroomingStatus(pet, booking);
-    if (!estimate || ["grooming_finished", "for_payment", "released"].includes(status)) return "";
-    const ready = pet.grooming_started_timestamp ? window.GroomingEstimates.readyWindow(estimate, pet.grooming_started_timestamp) : null;
-    return ready ? (ready.overdue ? ready.label : `Estimated ready ${ready.label}`) : `Estimated grooming time ${estimate.formatted}`;
-  }
-
   function buildTrackerPetCard(pet, booking) {
     const status = getTrackerPetStatus(pet, booking);
     const config = getStatusConfig(status);
-    const label = petEstimateStatus(pet, booking)
-      .replace(/^Estimated grooming time /, "Est. grooming: ").replace(/^Estimated ready /, "Est. ready: ");
     const context = status === "checked_in" ? "Waiting to start grooming"
       : status === "in_progress" && pet.grooming_started_at ? `Started at ${pet.grooming_started_at}`
       : status === "grooming_finished" ? "Waiting for the grooming visit to be ready for pickup" : "";
@@ -1090,7 +1080,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
       <h6 class="font-semibold text-portal-text">${escapeDashboardHtml(pet.pet_name || "Your pet")}</h6>
       <p class="mt-1 text-xs font-semibold ${config.textClass}">${escapeDashboardHtml(config.label)}</p>
       ${context ? `<p class="mt-2 text-portal-muted">${escapeDashboardHtml(context)}</p>` : ""}
-      ${label ? `<p class="mt-1 font-semibold text-portal-text">${escapeDashboardHtml(label)}</p>` : ""}
     </div>`;
   }
 
@@ -1167,7 +1156,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
     rescheduleSlotsContainer.innerHTML = '<p class="text-sm text-portal-muted">Loading slots...</p>';
     try {
-      const data = await API.getTimeslots(date, activeBookingId);
+      const data = await API.getTimeslots(date);
       if (requestId !== rescheduleLoadId) return;
 
       renderSlots(data);
@@ -1203,9 +1192,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
       setTimeout(async () => { closeModal(); await loadAppointments(); }, 1800);
     } catch (error) {
       showRescheduleMessage("error", error.message || "Reschedule failed. Please try again.");
-      if (error.code === "grooming_forecast_unavailable") {
+      if (["arrival_window_unavailable", "arrival_window_ended"].includes(error.code) || error.errors?.window_id) {
         selectedWindowId = null;
-        renderSlots(error.data);
+        renderSlots(await API.getTimeslots(rescheduleDate.value));
         enableSubmitIfReady();
       } else submitRescheduleBtn.disabled = false;
       submitRescheduleBtn.textContent = "Confirm Reschedule";
@@ -1281,9 +1270,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
     }
 
     rescheduleSlotsContainer.innerHTML = available.map(w => `
-      <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 ${w.is_workload_unavailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[#315b7e]'} has-[:checked]:border-[#315b7e] has-[:checked]:bg-[#eaf4fb]">
-        <input type="radio" name="rescheduleSlot" value="${w.window_id}" class="accent-[#315b7e]" ${w.is_workload_unavailable ? 'disabled' : ''} />
-        <span class="text-sm text-portal-text">${escapeRescheduleHtml(w.window_label)}${w.is_workload_unavailable ? ' · Unavailable' : ''}</span>
+      <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer hover:border-[#315b7e] has-[:checked]:border-[#315b7e] has-[:checked]:bg-[#eaf4fb]">
+        <input type="radio" name="rescheduleSlot" value="${w.window_id}" class="accent-[#315b7e]" />
+        <span class="text-sm text-portal-text">${escapeRescheduleHtml(w.window_label)}</span>
       </label>`).join("");
     rescheduleSlotsContainer.querySelectorAll('input[name="rescheduleSlot"]').forEach(radio => {
       radio.addEventListener("change", () => {

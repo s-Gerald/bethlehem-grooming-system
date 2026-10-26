@@ -2105,15 +2105,10 @@ var API = (() => {
     }
   }
 
-  async function getTimeslots(date, bookingId = null) {
-    // Public browsing; an owned booking enables authenticated reschedule forecasts.
-    return request("GET", `/timeslots?date=${date}${bookingId ? `&booking_id=${encodeURIComponent(bookingId)}` : ""}`,
-      null, bookingId ? getCustomerToken() : undefined);
+  async function getTimeslots(date) {
+    return request("GET", `/timeslots?date=${encodeURIComponent(date)}`);
   }
 
-  async function forecastGroomingWindows(date, pets) {
-    return request("POST", "/booking/workload-forecast", { date, pets }, getCustomerToken());
-  }
 
   async function getClinicTimeslots(date) {
     // GET /api/clinic/timeslots?date=YYYY-MM-DD (public)
@@ -2864,9 +2859,6 @@ var API = (() => {
     return request("POST", "/admin/walk-in", payload, getAdminToken());
   }
 
-  async function previewWalkInCapacity(payload) {
-    return request("POST", "/admin/walk-in/capacity-preview", payload, getAdminToken());
-  }
 
   async function submitClinicWalkIn(payload) {
     // POST /api/admin/clinic-walk-in  (protected — admin token)
@@ -3156,7 +3148,6 @@ var API = (() => {
     resendPhoneVerification,
     // Timeslots
     getTimeslots,
-    forecastGroomingWindows,
     getClinicTimeslots,
     // Pets
     getUserPets,
@@ -3283,7 +3274,6 @@ var API = (() => {
     getGroomingCatalogue,
     updateGroomingPricing,
     submitWalkIn,
-    previewWalkInCapacity,
     submitClinicWalkIn,
     getClinicRecords,
     getActiveClinicCases,

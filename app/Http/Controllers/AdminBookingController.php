@@ -193,9 +193,8 @@ class AdminBookingController extends Controller
             ]),
             'activeTodayCount' => $this->activeTodayCount(),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
+            'groomingPreferences' => config('grooming_services.preferences'),
             'groomerCapacity' => $this->groomerCapacitySnapshot(),
-            'groomingWorkload' => app(\App\Services\GroomingWorkloadCapacity::class)->snapshot(),
-            'estimateRules' => config('grooming_estimates'),
         ])->header('Cache-Control', 'no-store, private');
     }
 
@@ -387,8 +386,6 @@ class AdminBookingController extends Controller
         $data = request()->validate([
             'pet_sizes' => ['nullable', 'array'],
             'pet_sizes.*.booking_pet_id' => ['required_with:pet_sizes', 'integer'],
-            'pet_sizes.*.estimate_factors' => ['nullable', 'array'],
-            'pet_sizes.*.estimate_factors.*' => ['string', 'in:'.implode(',', array_keys(config('grooming_estimates.factors')))],
             'pet_sizes.*.size' => ['required_with:pet_sizes', 'in:small,medium,large,extra_large'],
             'internal_staff_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
@@ -438,15 +435,8 @@ class AdminBookingController extends Controller
                 $size = $selectedSizes->get($bookingPet->booking_pet_id) ?? $pet->groomingSize();
                 $bookingPet->confirmed_size = $size;
                 $bookingPet->save();
-                $bookingPet->setRelation('booking', $booking);
-                $assessment = collect($data['pet_sizes'] ?? [])->firstWhere('booking_pet_id', $bookingPet->booking_pet_id);
-                $factors = $assessment['estimate_factors'] ?? $bookingPet->grooming_estimate_factors ?? [];
-                app(\App\Services\GroomingTimeEstimate::class)->recalculate($booking, $bookingPet, $factors);
                 $pet->confirmClinicSize($size);
             }
-
-            $workload = app(\App\Services\GroomingWorkloadCapacity::class);
-            $workload->assertCanAdmit($workload->admissionJobs($booking->bookingPets), excludeBookingId: (int) $booking->booking_id);
 
             $queueNumber = ((int) Booking::where('booking_date', $queueDate)
                 ->whereNotNull('queue_number')
@@ -629,11 +619,6 @@ class AdminBookingController extends Controller
 
             $startedAt = now();
             if ($petsToStart->isNotEmpty()) {
-                $booking->loadMissing('bookingServices.service');
-                $petsToStart->loadMissing('pet');
-                foreach ($petsToStart as $petToStart) {
-                    if (! $petToStart->grooming_estimate_min) app(\App\Services\GroomingTimeEstimate::class)->recalculate($booking, $petToStart);
-                }
                 BookingPet::whereIn('booking_pet_id', $petsToStart->pluck('booking_pet_id'))
                     ->update([
                         'grooming_start_time' => $startedAt,
@@ -690,8 +675,6 @@ class AdminBookingController extends Controller
     {
         $assessment = request()->validate([
             'grooming_preference' => ['nullable', 'string', 'max:32'],
-            'estimate_factors' => ['sometimes', 'array'],
-            'estimate_factors.*' => ['string', 'in:'.implode(',', array_keys(config('grooming_estimates.factors')))],
         ]);
         $result = DB::transaction(function () use ($id, $bookingPetId, $assessment) {
             $settings = ClinicSetting::current(lockForUpdate: true);
@@ -730,23 +713,19 @@ class AdminBookingController extends Controller
                 return $this->groomerCapacityError($activePets, $settings->groomers_on_duty);
             }
 
-            if ($booking->booking_type === 'walk_in' || $booking->walkin_id !== null) {
-                if ($bookingPet->grooming_estimate_min <= 0
-                    || $bookingPet->grooming_estimate_max < $bookingPet->grooming_estimate_min) {
-                    // Legacy walk-ins may lack a duration. Preserve their saved assessment.
-                    $estimate = app(\App\Services\GroomingTimeEstimate::class)->estimateForPet($booking, $bookingPet);
-                    if ($estimate) {
-                        $bookingPet->fill([
-                            'grooming_estimate_min' => $estimate['minMinutes'],
-                            'grooming_estimate_max' => $estimate['maxMinutes'],
-                        ])->save();
-                    }
+            if ($booking->booking_type !== 'walk_in' && $booking->walkin_id === null && isset($assessment['grooming_preference'])) {
+                $booking->loadMissing('bookingServices.service');
+                $services = $booking->bookingServices->where('booking_pet_id', $bookingPet->booking_pet_id);
+                $package = $services->first(fn ($item) => $item->service?->kind === 'package')?->service?->slug;
+                $choices = config('grooming_services.preferences.'.$package, []);
+                $preference = $assessment['grooming_preference'];
+                if (! isset($choices[$preference])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['grooming_preference' => 'Select a grooming preference for the selected package.']);
                 }
-            } elseif (! $bookingPet->grooming_estimate_min
-                || ($assessment['estimate_factors'] ?? $bookingPet->grooming_estimate_factors ?? []) !== ($bookingPet->grooming_estimate_factors ?? [])
-                || ($assessment['grooming_preference'] ?? $bookingPet->grooming_preference) !== $bookingPet->grooming_preference) {
-                app(\App\Services\GroomingTimeEstimate::class)->recalculate($booking, $bookingPet,
-                    $assessment['estimate_factors'] ?? null, $assessment['grooming_preference'] ?? null);
+                if ($preference === 'custom_hairstyle' && ! preg_match('/[^\s\p{Z}\x{FEFF}]/u', $bookingPet->special_instructions ?? '')) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['special_instructions' => 'Describe the custom hairstyle before starting grooming.']);
+                }
+                $bookingPet->grooming_preference = $preference;
             }
             $startedAt = now();
             $bookingPet->update([
@@ -1507,7 +1486,8 @@ class AdminBookingController extends Controller
                     'breed' => $pet?->breed ?? '—',
                     'size' => $bp->confirmed_size ?? $pet?->groomingSize() ?? '—',
                     'sizeVerified' => $pet?->hasClinicVerifiedSize() ?? false,
-                    'groomingEstimate' => app(\App\Services\GroomingTimeEstimate::class)->forVisit($bp),
+                    'groomingPreference' => $bp->grooming_preference,
+                    'groomingPreferenceLabel' => $bp->grooming_preference_label,
                     'registeredSize' => $bp->registered_size,
                     'confirmedSize' => $bp->confirmed_size,
                     'furType' => $pet?->fur_type ?? '—',
@@ -1590,7 +1570,6 @@ class AdminBookingController extends Controller
                     'priceMaxAtBooking' => $bs->price_max_at_booking,
                     'paymentPriceRules' => $paymentPriceRules,
                     'price_max_at_booking' => $bs->price_max_at_booking,
-                    'durationMinutes' => (int) ($bs->service?->duration_minutes ?? 60),
                     'paidPrice' => $paidPrice,
                     'paid_price' => $paidPrice,
                     'paidPriceSource' => $paidPriceSource,

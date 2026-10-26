@@ -58,8 +58,6 @@ trait CreatesGroomingVisitFixture
             $t->timestamp('grooming_end_time')->nullable();
             $t->date('pet_queue_date')->nullable();
             $t->integer('pet_queue_number')->nullable();
-            $t->integer('grooming_estimate_min')->default(60);
-            $t->integer('grooming_estimate_max')->default(90);
         });
         Schema::create('services', function (Blueprint $t) {
             $t->increments('service_id');

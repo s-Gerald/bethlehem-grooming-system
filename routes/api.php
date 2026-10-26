@@ -64,8 +64,7 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
     ->middleware(ThrottleAuthenticationResends::class.':3,5');
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
-Route::get('/timeslots', [BookingController::class,   'getTimeslots'])
-    ->middleware(\App\Http\Middleware\EnsureBookingForecastSession::class);
+Route::get('/timeslots', [BookingController::class, 'getTimeslots']);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
 
@@ -119,7 +118,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Booking
     Route::post('/booking/store', [BookingController::class, 'store'])->middleware(\App\Http\Middleware\EnsureCustomerPhoneVerified::class);
-    Route::post('/booking/workload-forecast', [BookingController::class, 'forecastTimeslots']);
     Route::get('/pre-registration/access', [BookingController::class, 'preRegistrationAccess']);
     Route::get('/booking/history', [BookingController::class, 'history']);
     Route::get('/booking/grooming-capacity', [BookingController::class, 'groomingCapacity']);
@@ -214,7 +212,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
             Route::delete('/admin/bookings/{id}/online-payment', [PaymentController::class, 'cancelOnlineCheckout']);
             Route::post('/admin/bookings/{id}/release', [PaymentController::class, 'release']);
 
-            Route::post('/admin/walk-in/capacity-preview', [WalkinController::class, 'previewCapacity']);
             Route::post('/admin/walk-in', [WalkinController::class, 'store']);
         });
     });

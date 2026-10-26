@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026";
+import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 import * as draft from "../scripts/services/booking-draft-service.js";
-import { renderEstimateReview } from "../scripts/components/grooming-estimate-selection.js";
-import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js";
+import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
 import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import * as petGroomers from "../scripts/components/pet-groomer-selection.js?services=20261026";
 
-import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026";
+import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./grooming-catalogue-fixture.json", import.meta.url), "utf8").replace(/^\uFEFF/, "")).data;
 const pet = (id) => ({ id, petName: id, petType: "dog", size: "small", sizeVerified: false, weight: 5 });
@@ -41,7 +40,7 @@ function createRenderer(file) {
     if (!elements.has(id)) elements.set(id, { classList: classList(), addEventListener() {} });
     return elements.get(id);
   } };
-  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, renderEstimateReview, ...serviceSelection, document, sessionStorage: { setItem() {} }, window: {} });
+  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, ...serviceSelection, document, sessionStorage: { setItem() {} }, window: {} });
   const source = fs.readFileSync(new URL(`../scripts/components/${file}.js`, import.meta.url), "utf8")
     .replace(/import[\s\S]*?from\s+"[^"]+";\s*/g, "")
     .replace(/export\s+(?=(?:async\s+)?function)/g, "");
@@ -123,7 +122,7 @@ for (const test of cases) {
     assert.ok(root.innerHTML.includes(presentation.amount));
     assert.equal(root.innerHTML.includes("Estimate Only"), presentation.isEstimate);
     assert.equal((root.innerHTML.match(/Final price is confirmed at the clinic\./g) || []).length, presentation.isEstimate ? 1 : 0);
-    assert.match(root.innerHTML, /Estimated grooming time<\/dt><dd>1 hr 15 min/);
+    assert.doesNotMatch(root.innerHTML, /Estimated grooming time/);
     if (!presentation.isEstimate) assert.doesNotMatch(root.innerHTML, /Estimated Total Price|Estimated price|Estimate Only/);
   }
   console.log(`${test.name}: amounts, service/review labels, both confirmations passed`);

@@ -111,7 +111,6 @@ async function walkInNavigation(browser) {
   const path = require('node:path');
   const { execFileSync } = require('node:child_process');
   const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8'));
-  catalogue.estimateRules = JSON.parse(execFileSync('php', ['-r', 'echo json_encode(require $argv[1]);', path.join(__dirname, '../config/grooming_estimates.php')]));
   for (const [profile, entry, flow] of [
     ['admin', 'dashboard.html', 'grooming'], ['grooming', 'appointments.html', 'grooming'], ['vet', 'clinic.html', 'clinic'],
   ].filter(([profile]) => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) {

@@ -1,4 +1,4 @@
-import { renderEstimateReview } from "./grooming-estimate-selection.js?catalog=services-20261017-2";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
 import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
 import {
   escapeHtml,
@@ -13,19 +13,17 @@ import {
   getGroomingPricePresentation,
   formatPriceOption,
   getPackageById,
-} from "../services/grooming-service.js?v=managed-services-20261026";
-import { buildWalkInPets, renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026";
 
 const state = {
   bookingDraft: null,
   petSelections: [],
   reviewPayload: null,
   onBack: null,
-  capacityFits: false,
 };
 
 const WALK_IN_REVIEW_STORAGE_KEY = "walkInReviewStep";
-let capacityRequest = 0;
 
 /*
   BACKEND TEAMMATE + CLAUDE CODE:
@@ -102,13 +100,6 @@ function getReviewMainMarkup() {
           </p>
         </section>
 
-        <div
-          id="reviewActionNotice"
-          class="mt-6 hidden rounded-2xl border px-4 py-3 text-sm"
-          role="status"
-          aria-live="polite"
-        ></div>
-
         <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             id="walkInReviewBackBtn"
@@ -139,7 +130,6 @@ function refreshElements() {
     totalPriceHeading: document.getElementById("totalPriceHeading"),
     totalPriceText: document.getElementById("totalPriceText"),
     totalPriceSubtext: document.getElementById("totalPriceSubtext"),
-    reviewActionNotice: document.getElementById("reviewActionNotice"),
     confirmBookingBtn: document.getElementById("confirmBookingBtn"),
     backButton: document.getElementById("walkInReviewBackBtn"),
   };
@@ -147,15 +137,10 @@ function refreshElements() {
 
 function bindEvents() {
   elements.confirmBookingBtn?.addEventListener("click", handleConfirmClick);
-  elements.reviewActionNotice?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-retry-capacity]")) checkCapacity();
-  });
   elements.backButton.addEventListener("click", handleBackClick);
 }
 
 function handleBackClick() {
-  capacityRequest += 1;
-  state.capacityFits = false;
   if (typeof state.onBack === "function") {
     state.onBack();
     return;
@@ -165,7 +150,7 @@ function handleBackClick() {
 }
 
 function handleConfirmClick() {
-  if (!state.reviewPayload || !state.capacityFits) {
+  if (!state.reviewPayload) {
     return;
   }
 
@@ -183,68 +168,6 @@ function handleConfirmClick() {
       });
     },
   });
-}
-
-function setCapacityButtonState(fits) {
-  state.capacityFits = fits;
-  elements.confirmBookingBtn.disabled = !fits;
-  elements.confirmBookingBtn.classList.toggle("opacity-50", !fits);
-  elements.confirmBookingBtn.classList.toggle("cursor-not-allowed", !fits);
-}
-
-function formatCapacityTime(value, reference = value) {
-  const date = new Date(value);
-  const time = date.toLocaleTimeString("en-PH", {
-    hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila",
-  });
-  const options = { timeZone: "Asia/Manila" };
-  return date.toLocaleDateString("en-PH", options) === new Date(reference).toLocaleDateString("en-PH", options)
-    ? time : `${time} (${date.toLocaleDateString("en-PH", { ...options, month: "short", day: "numeric" })})`;
-}
-
-async function checkCapacity() {
-  const request = ++capacityRequest;
-  const notice = elements.reviewActionNotice;
-  setCapacityButtonState(false);
-  notice.setAttribute("role", "status");
-  notice.className = "mt-6 rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600";
-  notice.textContent = "Checking grooming capacity…";
-  try {
-    const owner = JSON.parse(sessionStorage.getItem("walkInOwnerStep") || "null");
-    const response = await API.previewWalkInCapacity({
-      owner_record_type: owner?.ownerRecordType || "new",
-      customer_user_id: owner?.customerUserId || null,
-      unregistered_customer_id: owner?.unregisteredCustomerId || null,
-      pets: buildWalkInPets(state.reviewPayload),
-    });
-    if (request !== capacityRequest) return;
-    const capacity = response.capacity;
-    if (typeof capacity?.fits !== "boolean") throw new Error("Unable to check grooming capacity.");
-    if (capacity.fits) {
-      notice.classList.add("hidden");
-      setCapacityButtonState(true);
-      return;
-    }
-    const explanation = state.reviewPayload.items.length === 1
-      ? "This pet cannot be completed within today’s remaining grooming hours based on the current grooming queue."
-      : "These pets cannot be completed within today’s remaining grooming hours based on the current grooming queue.";
-    const times = [
-      capacity.projected_last_completion && `Projected completion: ${formatCapacityTime(capacity.projected_last_completion, capacity.closing_time)}`,
-      capacity.closing_time && `Grooming closes: ${formatCapacityTime(capacity.closing_time)}`,
-    ].filter(Boolean);
-    notice.setAttribute("role", "alert");
-    notice.className = "mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
-    notice.innerHTML = `<p class="font-semibold">Grooming capacity unavailable for today</p>
-      <p class="mt-2">${explanation}</p>
-      ${times.length ? `<p class="mt-2">${escapeHtml(times.join(" · "))}</p>` : ""}`;
-    elements.backButton.textContent = "Review services";
-  } catch (error) {
-    if (request !== capacityRequest) return;
-    notice.setAttribute("role", "alert");
-    notice.className = "mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
-    notice.innerHTML = `${escapeHtml(error.message || "Unable to check grooming capacity.")}
-      <button type="button" data-retry-capacity class="font-semibold underline">Retry</button>`;
-  }
 }
 
 function saveReviewDraft() {
@@ -342,7 +265,7 @@ function renderPetReviewCard(item, index) {
       <div class="mt-6 space-y-4">
         <p class="text-sm text-slate-600">Pet Groomer: ${escapeHtml(petGroomerLabel(item.selection))}</p>
         ${packageCard}
-        ${renderEstimateReview(item.groomingEstimate)}
+        ${renderGroomingPreference(item.selection)}
         ${item.selection.haircutRequested ? '<p class="text-sm font-semibold text-[#2f4b66]">Haircut requested</p>' : ""}
         ${alaCarteCard}
         ${missingSelectionNotice}
@@ -464,8 +387,6 @@ function initReviewState({ pets = [], petSelections = [], onBack = null } = {}) 
   };
   state.petSelections = Array.isArray(petSelections) ? petSelections : [];
   state.onBack = onBack;
-  state.capacityFits = false;
-  capacityRequest += 1;
   state.reviewPayload = state.bookingDraft.pets.length
     ? buildBookingReviewPayload(state.bookingDraft, state.petSelections)
     : null;
@@ -488,13 +409,13 @@ export async function renderWalkInReviewStep(options = {}) {
     return;
   }
 
-  setCapacityButtonState(false);
   renderReviewNotice();
   renderReviewSelections();
   renderTotalPricing();
-  if (state.reviewPayload.items.every((item) => hasRequiredGroomingPreference(item.selection) && !specialInstructionsError(item.pet, item.selection) && item.groomingEstimate)) {
-    checkCapacity();
-  }
+  const invalid = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
+  elements.confirmBookingBtn.disabled = invalid;
+  elements.confirmBookingBtn.classList.toggle("opacity-50", invalid);
+  elements.confirmBookingBtn.classList.toggle("cursor-not-allowed", invalid);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

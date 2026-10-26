@@ -70,7 +70,7 @@ function capacityPhpunitResult(?string $report, string $events, ?int $exitCode):
 {
     return concurrencyPhpunitResult($report, $events, $exitCode,
         'Tests\\Feature\\GroomingAdministrationAuthorizationTest',
-        'test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql');
+        'test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql');
 }
 
 /** Both local concurrency runners must verify the intended PHPUnit case actually executed. */

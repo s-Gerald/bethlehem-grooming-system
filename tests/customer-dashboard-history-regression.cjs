@@ -88,7 +88,6 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
   };
 
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "../scripts/services/grooming-estimate-engine.js"), "utf8"), context);
   vm.runInContext(dashboardComponent, context);
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -355,34 +354,6 @@ async function testExpiredRegistrationsHaveNeutralHistoryLabels() {
     assert.doesNotMatch(context.groomingOutcome(status)[1], /amber|red|rose/);
   }
   assert.equal(context.groomingOutcome('archived')[0], 'Completed');
-}
-
-async function testPerPetGroomingEstimatesAndOverdueTracker() {
-  const now = Date.now();
-  let bookings = [{ booking_id: 501, status: "checked_in", pets: [
-    { pet_name: "Coco", size: "medium", grooming_status: "checked_in", grooming_estimate: { minMinutes: 90, maxMinutes: 105, formatted: "1 hr 30 min–1 hr 45 min", preferenceLabel: "Regular Trim" } },
-    { pet_name: "Bruno", size: "large", grooming_status: "checked_in", grooming_estimate: { minMinutes: 120, maxMinutes: 120, formatted: "2 hrs" } },
-  ] }];
-  const dashboard = await runDashboard(async () => ({ bookings, history: [] }));
-  assert.match(dashboard.element("groomingTracker").innerHTML, /Est\. grooming: 1 hr 30 min–1 hr 45 min/);
-  assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /Regular Trim|Medium/);
-  assert.match(dashboard.element("groomingTracker").innerHTML, /Est\. grooming: 2 hrs/);
-  for (const [size, minutes, formatted] of [['large', 120, '2 hrs'], ['small', 90, '1 hr 30 min']]) {
-    bookings[0].pets[0].size = size;
-    bookings[0].pets[0].grooming_estimate = { ...bookings[0].pets[0].grooming_estimate, minMinutes: minutes, maxMinutes: minutes, formatted };
-    await dashboard.refresh();
-    assert.ok(dashboard.element("groomingTracker").innerHTML.includes(`Est. grooming: ${formatted}`));
-    assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /1 hr 30 min–1 hr 45 min/);
-  }
-  bookings[0].pets[0] = { ...bookings[0].pets[0], grooming_status: "in_progress", grooming_started_at: "1:15 PM", grooming_started_timestamp: new Date(now).toISOString() };
-  await dashboard.refresh();
-  assert.match(dashboard.element("groomingTracker").innerHTML, /Est\. ready:/);
-  assert.match(dashboard.element("groomingTracker").innerHTML, /Started at 1:15 PM/);
-  bookings[0].pets[0].grooming_started_timestamp = new Date(now - 91 * 60000).toISOString();
-  await dashboard.refresh();
-  assert.match(dashboard.element("groomingTracker").innerHTML, /Taking longer than estimated/);
-  assert.match(dashboard.element("groomingStatusAnnouncement").textContent, /Taking longer than estimated/);
-  assert.equal(dashboard.consoleErrors.length, 0);
 }
 
 async function testTrackerOverallStateAndIndividualCards() {
@@ -839,7 +810,6 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   await testTrackerOverallStateAndIndividualCards();
   await testTrackerDisclosureAndPrioritySurviveRefresh();
   await testExpiredRegistrationsHaveNeutralHistoryLabels();
-  await testPerPetGroomingEstimatesAndOverdueTracker();
   await testInitialAndReturningSessionGreetings();
   await testStateHierarchyAndLiveTransitions();
   await testMultiPetProgressAndPickupReadiness();

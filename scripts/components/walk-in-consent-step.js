@@ -288,7 +288,7 @@ function buildConfirmationPayload(response, reviewPayload) {
           haircutRequested: item.selection.haircutRequested === true,
           groomerId: item.selection.groomerId,
           petGroomerName: response.pets?.[index]?.pet_groomer?.first_name,
-          groomingEstimate: response.pets?.[index]?.grooming_estimate || item.groomingEstimate,
+          groomingPreferenceLabel: response.pets?.[index]?.grooming_preference_label,
           alaCarteServices:     alaCarteLines.map((l) => l.serviceName),
           pricing:              item.pricing.total,
           specialInstructions:  item.selection.specialInstructions || "",

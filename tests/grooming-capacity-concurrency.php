@@ -5,10 +5,17 @@ use Symfony\Component\Process\Process;
 use function Tests\Support\assertCapacityDatabase;
 use function Tests\Support\capacityMysqlSettings;
 use function Tests\Support\capacityPhpunitResult;
+use function Tests\Support\concurrencyPhpunitResult;
 
 require dirname(__DIR__).'/vendor/autoload.php';
 require __DIR__.'/Support/CapacityMysqlHarness.php';
 
+$migrationMethod = match ($argv[1] ?? '') {
+    '' => null,
+    '--migration-upgrade' => 'test_upgrade_removes_only_predictions_and_preserves_completed_and_future_visits',
+    '--migration-fresh' => 'test_clean_install_migrates_without_the_retired_engine',
+    default => throw new RuntimeException('Use no option, --migration-upgrade, or --migration-fresh.'),
+};
 $server = null;
 $created = $markerReady = $directoryCreated = false;
 $directory = null;
@@ -39,9 +46,11 @@ try {
     $marker->execute([$token]);
     $markerReady = true;
     echo "Created disposable database: {$database}\n";
-    $process = new Process([PHP_BINARY, 'vendor/phpunit/phpunit/phpunit', '--configuration', 'phpunit.capacity-mysql.xml',
-        '--no-progress', '--filter', '::test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql$',
-        '--log-junit', $directory.'/junit.xml', '--log-events-text', $directory.'/events.log'], dirname(__DIR__), [
+    $arguments = [PHP_BINARY, 'vendor/phpunit/phpunit/phpunit', '--configuration', 'phpunit.capacity-mysql.xml'];
+    if ($migrationMethod) $arguments[] = 'tests/Feature/GroomingEstimateRetirementMigrationTest.php';
+    array_push($arguments, '--no-progress', '--filter', '::'.($migrationMethod ?? 'test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql').'$',
+        '--log-junit', $directory.'/junit.xml', '--log-events-text', $directory.'/events.log');
+    $process = new Process($arguments, dirname(__DIR__), [
         'CAPACITY_TEST_DATABASE' => $database, 'CAPACITY_TEST_RUN_TOKEN' => $token, 'CAPACITY_TEST_RUN_DIR' => $directory,
         'DB_CONNECTION' => 'mysql', 'DB_DATABASE' => $database, 'DB_URL' => '', 'DB_SOCKET' => '',
         'DB_HOST' => $settings['host'], 'DB_PORT' => $settings['port'],
@@ -51,16 +60,19 @@ try {
     $process->setTimeout(90);
     try { $exit = $process->run(fn ($type, $buffer) => print($buffer)); }
     finally { if ($process->isRunning()) $process->stop(1); }
-    $result = capacityPhpunitResult(is_file($directory.'/junit.xml') ? file_get_contents($directory.'/junit.xml') : null,
-        is_file($directory.'/events.log') ? file_get_contents($directory.'/events.log') : '', $exit);
-    if ($result === 'passed') {
+    $report = is_file($directory.'/junit.xml') ? file_get_contents($directory.'/junit.xml') : null;
+    $events = is_file($directory.'/events.log') ? file_get_contents($directory.'/events.log') : '';
+    $result = $migrationMethod
+        ? concurrencyPhpunitResult($report, $events, $exit, 'Tests\\Feature\\GroomingEstimateRetirementMigrationTest', $migrationMethod)
+        : capacityPhpunitResult($report, $events, $exit);
+    if ($result === 'passed' && ! $migrationMethod) {
         if (! is_file($directory.'/verification.json')) throw new RuntimeException('Missing real MySQL execution proof.');
         $proof = json_decode(file_get_contents($directory.'/verification.json'), true, flags: JSON_THROW_ON_ERROR);
         assertCapacityDatabase($proof['database'], $database);
         if ($proof['driver'] !== 'mysql') throw new RuntimeException('Missing real MySQL execution proof.');
         echo 'Verified execution: '.json_encode($proof, JSON_THROW_ON_ERROR).PHP_EOL;
     }
-    echo 'MySQL concurrency result: '.$result.PHP_EOL;
+    echo 'MySQL '.($migrationMethod ? 'migration' : 'concurrency').' result: '.$result.PHP_EOL;
     $status = match ($result) { 'passed' => 0, 'configuration_error' => 2, default => 1 };
 } catch (PDOException $error) {
     fwrite(STDERR, 'Local MySQL unavailable/database operation failed (SQLSTATE '.($error->errorInfo[0] ?? $error->getCode())

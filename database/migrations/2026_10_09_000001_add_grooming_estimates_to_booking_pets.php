@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\Booking;
-use App\Services\GroomingTimeEstimate;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -16,13 +14,7 @@ return new class extends Migration
             $table->unsignedSmallInteger('grooming_estimate_max')->nullable();
             $table->json('grooming_estimate_factors')->nullable();
         });
-        Booking::whereIn('status', ['waiting_to_arrive', 'checked_in', 'in_progress'])
-            ->with(['bookingPets.pet', 'bookingServices.service'])->chunkById(100, function ($bookings) {
-                $engine = app(GroomingTimeEstimate::class);
-                foreach ($bookings as $booking) {
-                    foreach ($booking->bookingPets as $pet) $engine->recalculate($booking, $pet);
-                }
-            }, 'booking_id');
+        // Duration backfill retired; actual visit data is preserved.
     }
 
     public function down(): void

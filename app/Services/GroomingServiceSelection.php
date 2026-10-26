@@ -8,10 +8,16 @@ class GroomingServiceSelection
 {
     private ?\Illuminate\Support\Collection $defaults = null;
 
+    private ?\Illuminate\Support\Collection $catalogServices = null;
+
+    public function services(): \Illuminate\Support\Collection
+    {
+        return $this->catalogServices ??= \App\Models\Service::all();
+    }
+
     public function validate(array $pet, ?string $package, array $alaCarte, string $species, string $field): void
     {
-        $engine = app(GroomingTimeEstimate::class);
-        $services = $engine->services()->keyBy('slug');
+        $services = $this->services()->keyBy('slug');
         $selected = array_merge($package ? [$package] : [], $alaCarte);
         if (! $selected || count($selected) !== count(array_unique($selected))) {
             throw ValidationException::withMessages([$field.'.services' => $selected ? 'Select each service once.' : 'Select at least one service.']);
@@ -25,11 +31,15 @@ class GroomingServiceSelection
                 throw ValidationException::withMessages([$field.'.services' => 'Select available services for this pet.']);
             }
         }
+        $size = $pet['size'] ?? null;
+        if ($package && $size && ! in_array($size, $services->get($package)->pricingSizes(), true)) {
+            throw ValidationException::withMessages([$field.'.size' => 'Select a supported grooming size.']);
+        }
         $included = $package ? ($services->get($package)->included_ala_carte_ids ?? []) : [];
         if (array_intersect($included, array_map(fn ($slug) => $services->get($slug)->service_id, $alaCarte))) {
             throw ValidationException::withMessages([$field.'.services' => 'A service is already included in the package.']);
         }
-        $preferences = config('grooming_estimates.preferences.'.$package, []);
+        $preferences = config('grooming_services.preferences.'.$package, []);
         $preference = $pet['grooming_preference'] ?? null;
         if (($preferences && ! isset($preferences[$preference])) || ($preference && ! isset($preferences[$preference]))) {
             throw ValidationException::withMessages([$field.'.grooming_preference' => 'Select a Haircut Preference.']);

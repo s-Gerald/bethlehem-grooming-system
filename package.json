@@ -13,7 +13,7 @@
         "test:clinic-inventory": "node tests/clinic-inventory-pricing-regression.cjs && node tests/product-weight-tiers-regression.cjs",
         "test:pet-weight-size": "node tests/pet-weight-size-regression.mjs && node --experimental-vm-modules tests/walk-in-pet-step-regression.mjs && node tests/clinic-subrole-workflow-regression.cjs",
         "test:clinic-roles": "node tests/clinic-subrole-workflow-regression.cjs && node tests/admin-clinic-vaccination-reconciliation-regression.cjs",
-        "test:grooming-estimates": "node tests/grooming-estimates-regression.cjs && node tests/customer-dashboard-history-regression.cjs",
+        "test:grooming-preferences": "node tests/grooming-preferences-regression.cjs && node tests/customer-dashboard-history-regression.cjs",
         "test": "npm run build:ocr && node tests/run-regressions.cjs"
     },
     "devDependencies": {

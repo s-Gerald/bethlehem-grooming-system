@@ -257,7 +257,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->requestAs($old, 'GET', '/api/me')->assertOk();
         $new = $this->login($role);
         $this->assertNotSame($old, $new);
-        foreach (['/api/me', '/api/session', '/api/timeslots?booking_id=1'] as $uri) {
+        foreach (['/api/me', '/api/session', '/api/booking/history'] as $uri) {
             $this->requestAs($old, 'GET', $uri)->assertUnauthorized()->assertJsonPath('code', 'session_replaced');
         }
         $this->requestAs($old, 'POST', '/api/pets', [])->assertUnauthorized()->assertJsonPath('code', 'session_replaced');

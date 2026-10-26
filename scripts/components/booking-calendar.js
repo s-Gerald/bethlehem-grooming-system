@@ -1,5 +1,4 @@
 import { formatBookingSchedule } from "../services/booking-format-service.js";
-import { forecastGroomingWindows } from "../services/grooming-workload-forecast.js?pet-weight=pet-weight-size-20261011-v3&flow=grooming-order-20261016";
 
 /**
  * Booking Calendar Component
@@ -40,7 +39,7 @@ const state = {
     storageKey: "bookingSchedule",
     dateField: "date",
     nextPath: "./grooming-pre-registration.html?step=review",
-    fetchTimeslots: (dateKey) => forecastGroomingWindows(dateKey),
+    fetchTimeslots: (dateKey) => API.getTimeslots(dateKey),
     saveSelection: null,
     clearSelection: null,
     onDateSelected: null,
@@ -241,12 +240,12 @@ function updateOperatingHoursText() {
  * For today, a preferred arrival window remains available until its end time.
  */
 function isSlotDisabled(slot) {
-  if (slot.is_closed || slot.is_past || slot.is_workload_unavailable || isDateDisabled(state.selectedDateKey)) return true;
+  if (slot.is_closed || slot.is_past || isDateDisabled(state.selectedDateKey)) return true;
 
   if (isToday(state.selectedDateKey)) {
     const currentMinutes = getCurrentMinutesInManila();
     const slotEndMinutes = timeStringToMinutes(slot.end_time);
-    if (slot.latest_arrival_time ? currentMinutes > slotEndMinutes : currentMinutes >= slotEndMinutes) return true;
+    if (currentMinutes >= slotEndMinutes) return true;
   }
 
   return false;
@@ -438,7 +437,6 @@ function renderTimeSlots() {
     button.type = "button";
     button.innerHTML = `
       <span class="block font-semibold">${slot.window_label}</span>
-      ${slot.is_workload_unavailable ? '<span class="block text-xs mt-0.5 text-slate-600">Unavailable — selected services may run past closing.</span>' : ""}
     `;
 
     button.className = [

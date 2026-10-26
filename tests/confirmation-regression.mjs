@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js";
+import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
 import { clinicReasonConfirmation, initClinicVisitConfirmation } from "../scripts/components/clinic-visit-confirmed.js";
 import {
   confirmationFields, ownerConfirmationFields, formatConfirmationTimestamp,
@@ -18,7 +18,7 @@ assert.match(clinicReasonConfirmation({ common_concerns: concerns, chief_complai
 
 const grooming = groomingPetConfirmation({ petName: "<Mochi>", petType: "dog", breed: "Shih Tzu", size: "small", weight: 5, sizeVerified: true }, {
   servicePackage: "regular_dog_grooming", groomingPreference: "summer_cut",
-  groomingEstimate: { preferenceLabel: "Summer Cut", formatted: "1 hr 15 min" },
+  groomingPreferenceLabel: "Summer Cut",
   alaCarteServices: ["anal_sac_draining"], pricing: { minAmount: 500, maxAmount: 650 },
   specialInstructions: "No <perfume>",
 });
@@ -26,7 +26,7 @@ assert.match(grooming, /&lt;Mochi&gt;/);
 assert.match(grooming, /Small · Clinic verified/);
 assert.match(grooming, /Weight<\/dt><dd>5 kg/);
 assert.match(grooming, /Grooming preference<\/dt><dd>Summer Cut/);
-assert.match(grooming, /Estimated grooming time<\/dt><dd>1 hr 15 min/);
+assert.doesNotMatch(grooming, /Estimated grooming time/);
 assert.match(grooming, /₱500 - ₱650/);
 assert.match(grooming, /No &lt;perfume&gt;/);
 assert.doesNotMatch(grooming, /<button|aria-pressed/);

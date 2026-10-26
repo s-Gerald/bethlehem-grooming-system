@@ -1,5 +1,5 @@
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { renderEstimateReview } from "./grooming-estimate-selection.js?catalog=services-20261017-2";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -12,7 +12,6 @@ import {
 } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
 import { formatBookingSchedule } from "../services/booking-format-service.js";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
-import { forecastGroomingWindows } from "../services/grooming-workload-forecast.js?pet-weight=pet-weight-size-20261011-v3&flow=grooming-order-20261016";
 import {
   hasRequiredGroomingPreference,
   specialInstructionsError,
@@ -23,7 +22,7 @@ import {
   formatPriceOption,
   getPackageById,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 
 /**
  * Booking Review Step Controller
@@ -48,7 +47,6 @@ const elements = {
   totalPriceHeading: document.getElementById("totalPriceHeading"),
   totalPriceText: document.getElementById("totalPriceText"),
   totalPriceSubtext: document.getElementById("totalPriceSubtext"),
-  reviewActionNotice: document.getElementById("reviewActionNotice"),
   confirmBookingBtn: document.getElementById("confirmBookingBtn"),
 };
 
@@ -56,7 +54,6 @@ const state = {
   bookingDraft: null,
   petSelections: [],
   reviewPayload: null,
-  workloadUnavailable: false,
 };
 
 export async function refreshBookingReviewStep() {
@@ -112,40 +109,6 @@ export async function refreshBookingReviewStep() {
   saveReviewDraft();
   elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
   elements.confirmBookingBtn.classList.remove("opacity-50", "cursor-not-allowed");
-  await refreshBookingWorkloadForecast();
-}
-
-export async function refreshBookingWorkloadForecast() {
-  if (!state.reviewPayload) return;
-  const schedule = readSessionJson("bookingSchedule");
-  if (!schedule?.date) return;
-  elements.confirmBookingBtn.disabled = true;
-  try {
-    const forecast = await forecastGroomingWindows(schedule.date);
-    const window = forecast.windows.find((item) => String(item.window_id) === String(schedule.window_id));
-    state.workloadUnavailable = Boolean(!window || window.is_workload_unavailable || window.is_closed || window.is_past);
-    if (!state.workloadUnavailable && window.window_label) {
-      const scheduleText = formatBookingSchedule(schedule.date, window.window_label);
-      sessionStorage.setItem("bookingSchedule", JSON.stringify({ ...schedule,
-        time: window.window_label, scheduleText, start_time: window.start_time, end_time: window.end_time }));
-      state.bookingDraft = getBookingDraft();
-      renderSummary();
-      saveReviewDraft();
-    }
-    elements.reviewActionNotice.classList.remove("hidden");
-    elements.reviewActionNotice.textContent = state.workloadUnavailable
-      ? "This arrival window is unavailable. Choose another arrival window."
-      : "Grooming capacity is a forecast. Staff will confirm admission at check-in. Your arrival window is not a grooming start time.";
-    if (window?.is_workload_unavailable) elements.reviewActionNotice.textContent = "Unavailable — selected services may run past closing. Choose another arrival window.";
-    elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
-    elements.confirmBookingBtn.textContent = state.workloadUnavailable ? "Choose arrival window" : "Next Step";
-  } catch {
-    elements.reviewActionNotice.classList.remove("hidden");
-    elements.reviewActionNotice.textContent = "Unable to refresh grooming capacity. Please retry.";
-    elements.confirmBookingBtn.disabled = false;
-    elements.confirmBookingBtn.textContent = "Retry capacity forecast";
-    state.workloadUnavailable = null;
-  }
 }
 
 export function initBookingReviewStep() {
@@ -257,7 +220,7 @@ function renderPetReviewCard(item, index) {
 
       <div class="mt-6 space-y-4">
         ${packageCard}
-        ${renderEstimateReview(item.groomingEstimate)}
+        ${renderGroomingPreference(item.selection)}
         ${item.selection.haircutRequested ? '<p class="text-sm font-semibold text-[#2f4b66]">Haircut requested</p>' : ""}
         ${alaCarteCard}
         ${missingSelectionNotice}
@@ -403,7 +366,6 @@ function saveReviewDraft() {
       haircutRequested: item.selection.haircutRequested,
       groomerId: item.selection.groomerId,
       petGroomerName: petGroomerLabel(item.selection),
-      groomingEstimate: item.groomingEstimate,
       alaCarteServices: [...item.selection.alaCarteServices],
       addOns: [...item.selection.addOns],
       specialInstructions: item.selection.specialInstructions.trim(),
@@ -432,15 +394,6 @@ async function handleConfirmClick() {
     return;
   }
 
-  await refreshBookingWorkloadForecast();
-  if (state.workloadUnavailable === null) return;
-  if (state.workloadUnavailable) {
-    const schedule = readSessionJson("bookingSchedule");
-    sessionStorage.setItem("bookingSchedule", JSON.stringify({ date: schedule?.date }));
-    sessionStorage.setItem("bookingScheduleArrivalError", "Please choose another available arrival window.");
-    goToGroomingStep("schedule");
-    return;
-  }
   saveReviewDraft();
   goToGroomingStep("consent");
 }

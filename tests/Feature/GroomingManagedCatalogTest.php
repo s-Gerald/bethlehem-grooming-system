@@ -7,7 +7,7 @@ use App\Models\BookingService;
 use App\Models\Service;
 use App\Models\User;
 use App\Services\GroomingServicePriceResolver;
-use App\Services\GroomingTimeEstimate;
+use App\Services\GroomingServiceSelection;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
@@ -28,7 +28,6 @@ class GroomingManagedCatalogTest extends TestCase
             }
             $table->boolean('is_starting_price')->default(false);
             $table->boolean('is_active')->default(true);
-            $table->integer('duration_minutes')->default(30);
             $table->json('starting_price_sizes')->nullable();
             $table->json('range_price_maximums')->nullable();
         });
@@ -91,8 +90,7 @@ class GroomingManagedCatalogTest extends TestCase
         $catalog = collect($this->getJson('/api/grooming/services')->assertOk()->json('data'))->keyBy('id');
         $this->assertSame('Coat and Skin Care', $catalog[$created['id']]['name']);
         $this->assertSame(['Nail Clipping is available separately'], $catalog[$created['id']]['descriptionItems']);
-        $estimate = app(GroomingTimeEstimate::class)->calculate($created['id'], null, 'small');
-        $this->assertGreaterThan(0, $estimate['minMinutes']);
+
     }
 
     public function test_managed_catalog_deactivation_preserves_service_and_historical_prices(): void
@@ -126,14 +124,13 @@ class GroomingManagedCatalogTest extends TestCase
         $this->assertSame($before, $service->fresh()->getAttributes());
     }
 
-    public function test_managed_catalog_new_ala_carte_is_available_for_pricing_and_estimates(): void
+    public function test_managed_catalog_new_ala_carte_is_available_for_pricing_and_selection(): void
     {
         $created = $this->postJson('/api/admin/grooming/services', ['name' => 'Paw Balm Care', 'kind' => 'ala_carte',
             'amount' => '180', 'pricing_type' => 'fixed', 'isActive' => true, 'displayOrder' => 9])->assertCreated()->json('data');
         $this->assertSame(['cat', 'dog'], $created['petTypes']);
         $this->assertSame('180.00', app(GroomingServicePriceResolver::class)->servicePrice(Service::find($created['serviceId']), 'small'));
-        $estimate = app(GroomingTimeEstimate::class)->calculate(null, null, 'small', [$created['id']]);
-        $this->assertGreaterThan(0, $estimate['minMinutes']);
+
     }
 
     public function test_managed_catalog_only_admin_can_manage_services(): void
@@ -147,12 +144,6 @@ class GroomingManagedCatalogTest extends TestCase
         }
     }
 
-    public function test_managed_catalog_preserves_estimates_when_size_is_not_yet_known(): void
-    {
-        $estimate = app(GroomingTimeEstimate::class)->calculate('partial_grooming', null, null);
-        $this->assertSame([45, 105], [$estimate['minMinutes'], $estimate['maxMinutes']]);
-    }
-
     public function test_inactive_services_remain_readable_for_staff_billing_only(): void
     {
         Service::where('slug', 'regular_dog_grooming')->update(['is_active' => false]);
@@ -164,16 +155,16 @@ class GroomingManagedCatalogTest extends TestCase
         }
     }
 
-    public function test_newly_enabled_package_sizes_are_available_to_booking_estimates(): void
+    public function test_newly_enabled_package_sizes_are_available_to_booking_selection(): void
     {
         $service = Service::where('slug', 'cat_full_grooming')->firstOrFail();
         $payload = $this->packagePayload(Service::where('slug', 'ear_cleaning')->value('service_id'));
         $payload['petType'] = 'cat';
         $this->putJson('/api/admin/grooming/services/'.$service->service_id, $payload)->assertOk()
             ->assertJsonCount(4, 'data.priceOptions');
-        $estimate = app(GroomingTimeEstimate::class)->calculate($service->slug, null, 'large');
-        $this->assertGreaterThan(0, $estimate['minMinutes']);
-        $this->assertSame(90, app(GroomingTimeEstimate::class)->calculate($service->slug, null, 'small')['minMinutes']);
+
+        app(GroomingServiceSelection::class)->validate(['size' => 'large'], $service->slug, [], 'cat', 'pet');
+        $this->assertSame('900.00', app(GroomingServicePriceResolver::class)->servicePrice($service->fresh(), 'large'));
     }
 
     public function test_catalog_order_uses_lowest_then_highest_price_then_name_for_every_consumer(): void
@@ -185,7 +176,7 @@ class GroomingManagedCatalogTest extends TestCase
             ['Apple Groom', 400, 700, null, false], ['C Starting', 400, 700, null, true],
         ] as $index => [$name, $medium, $large, $maximum, $starting]) {
             Service::create(['slug' => 'ordered_package_'.$index, 'service_name' => $name, 'kind' => 'package',
-                'pet_type' => 'dog', 'description_items' => ['Bath and coat care'], 'duration_minutes' => 60,
+                'pet_type' => 'dog', 'description_items' => ['Bath and coat care'],
                 'base_price' => $medium, 'price_medium' => $medium, 'price_large' => $large,
                 'starting_price_sizes' => $starting ? ['medium'] : [],
                 'range_price_maximums' => $maximum ? ['medium' => $maximum] : [],
@@ -198,7 +189,7 @@ class GroomingManagedCatalogTest extends TestCase
             Service::create(['slug' => 'ordered_ala_'.$index, 'service_name' => $name, 'kind' => 'ala_carte',
                 'pet_type' => 'all', 'base_price' => $amount, 'price_min' => $maximum || $starting ? $amount : null,
                 'price_max' => $maximum, 'is_starting_price' => $starting, 'starting_price_sizes' => [],
-                'is_active' => true, 'display_order' => $index, 'duration_minutes' => 15]);
+                'is_active' => true, 'display_order' => $index]);
         }
         foreach (['admin', 'staff', 'customer'] as $role) {
             Sanctum::actingAs(new User(['role' => $role]));

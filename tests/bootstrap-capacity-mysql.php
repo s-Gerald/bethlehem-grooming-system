@@ -14,7 +14,9 @@ foreach (['DB_HOST' => $settings['host'], 'DB_PORT' => $settings['port'],
     'DB_USERNAME' => $settings['username'], 'DB_PASSWORD' => $settings['password'],
     'DB_URL' => '', 'DB_SOCKET' => '', 'APP_CONFIG_CACHE' => $cache,
     'APP_ENV' => 'testing', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array',
-    'MAIL_MAILER' => 'array', 'QUEUE_CONNECTION' => 'sync'] as $name => $value) {
+    'MAIL_MAILER' => 'array', 'QUEUE_CONNECTION' => 'sync',
+    'IPROGSMS_API_TOKEN' => '', 'SMS_VERIFICATION_AVAILABLE' => 'false',
+    'SMS_VERIFICATION_ENFORCED' => 'false', 'GROOMING_COMPLETION_SMS_ENABLED' => 'false'] as $name => $value) {
     putenv("{$name}={$value}");
     $_ENV[$name] = $_SERVER[$name] = $value;
 }

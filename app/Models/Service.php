@@ -29,7 +29,6 @@ class Service extends Model
         'starting_price_sizes',
         'range_price_maximums',
         'is_active',
-        'duration_minutes',
         'kind',
         'pet_type',
         'description_items',

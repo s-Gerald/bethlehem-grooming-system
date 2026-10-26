@@ -1,6 +1,6 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026";
+import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
@@ -117,7 +117,7 @@ export function initBookingConsentStep() {
         pets: bookingPets,
         review: { ...reviewData, pets: (reviewData.pets || []).map((pet, index) => ({ ...pet,
           petGroomerName: response.booking.pets?.[index]?.pet_groomer?.first_name || 'Any available groomer',
-          groomingEstimate: response.booking.pets?.[index]?.grooming_estimate || pet.groomingEstimate })) },
+          groomingPreferenceLabel: response.booking.pets?.[index]?.grooming_preference_label })) },
         consent: response.consent,
       }));
 
@@ -126,7 +126,7 @@ export function initBookingConsentStep() {
       consent.setBusy(false);
       submitBookingButton.textContent = "Submit Registration";
 
-      if (["arrival_window_ended", "grooming_forecast_unavailable"].includes(error.code) || error.errors?.window_id) {
+      if (["arrival_window_ended", "arrival_window_unavailable"].includes(error.code) || error.errors?.window_id) {
         // Keep the date visible while invalidating only the selected arrival.
         sessionStorage.setItem("bookingSchedule", JSON.stringify({ date: schedule.date }));
         sessionStorage.setItem("bookingScheduleArrivalError", error.message);

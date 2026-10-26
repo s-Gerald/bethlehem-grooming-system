@@ -119,7 +119,7 @@ assert.match(groomingDetails, /Full grooming/);
 assert.doesNotMatch(groomingDetails, /800|500|Payment Method|Total|Reviewed adjustment|Gastritis|Bath/);
 assert.doesNotMatch(groomingDetails, /bg-portal-active/);
 const preferredSession = structuredClone(booking);
-preferredSession.pets[0].grooming_estimate = { preference: "summer_cut", preferenceLabel: "Summer Cut" };
+preferredSession.pets[0].grooming_preference_label = "Summer Cut";
 preferredSession.payment_summary.pets[0].service_breakdown = [
   { label: "Nail Clipping", service_kind: "ala_carte" },
   { label: "Regular Dog Grooming", service_kind: "package" },
@@ -133,7 +133,7 @@ const siblingDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringif
 assert.doesNotMatch(siblingDetails, /Summer Cut|summer_cut/);
 const preferredCard = vm.runInContext(`buildHistoryCard(${JSON.stringify({ type: "grooming", booking: preferredSession, pet: preferredSession.pets[0] })})`, ui.context);
 assert.doesNotMatch(preferredCard, /Summer Cut|summer_cut/);
-const laterPet = { ...preferredSession.pets[0], grooming_estimate: { preference: "semi_kalbo", preferenceLabel: "Semi-Kalbo" } };
+const laterPet = { ...preferredSession.pets[0], grooming_preference_label: "Semi-Kalbo" };
 const laterDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(preferredSession)}, ${JSON.stringify(laterPet)})`, ui.context);
 assert.match(laterDetails, />Semi-Kalbo<\/span>/);
 assert.doesNotMatch(laterDetails, /Summer Cut|semi_kalbo/);

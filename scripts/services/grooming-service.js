@@ -1,4 +1,3 @@
-import "./grooming-estimate-engine.js?v=20261016";
 import {
   BOOKING_STEP_THREE_KEY,
   normalizePetSize,
@@ -10,8 +9,10 @@ export const ALA_CARTE_SERVICES = [];
 const PACKAGE_MAP = new Map();
 const ALA_CARTE_MAP = new Map();
 let catalogueLoaded = false;
+let groomingPreferences = {};
 
-export function applyGroomingCatalogue(catalogue) {
+export function applyGroomingCatalogue(catalogue, preferences = groomingPreferences) {
+  groomingPreferences = preferences || {};
   if (!Array.isArray(catalogue) || catalogue.some((service) =>
     !service.id || !service.name || !['package', 'ala_carte'].includes(service.kind)
     || !service.priceOptions?.length || service.priceOptions.some((option) =>
@@ -39,8 +40,7 @@ export async function loadGroomingCatalogue({includeInactive = false} = {}) {
   const response = includeInactive
     ? await API.adminRequest('GET', '/grooming/services?include_inactive=1', null, {force: true, cache: 'no-store'})
     : await API.getGroomingCatalogue();
-  globalThis.GroomingEstimates.configure(response.estimateRules);
-  return applyGroomingCatalogue(response.data);
+  return applyGroomingCatalogue(response.data, response.groomingPreferences);
 }
 
 export function selectedPricingSignature(draft, selections) {
@@ -524,7 +524,6 @@ export function buildBookingReviewPayload(bookingDraft, petSelections) {
       pet,
       selection,
       pricing,
-      groomingEstimate: estimatePetGrooming(selection, pet),
     };
   });
 
@@ -565,7 +564,7 @@ export function buildBookingReviewPayload(bookingDraft, petSelections) {
 }
 
 export function getGroomingPreferences(packageId) {
-  return globalThis.GroomingEstimates.preferences(packageId);
+  return Object.entries(groomingPreferences[packageId] || {}).map(([value, label]) => ({ value, label }));
 }
 
 export function hasRequiredGroomingPreference(selection) {
@@ -577,10 +576,6 @@ export function hasCompletedRequiredServiceSelection(pet, selection) {
   if (!pet || !hasRequiredGroomingPreference(selection)) return false;
   if (!getAlaCarteServicesByPetType(pet.petType).length) return Boolean(selection?.servicePackage);
   return calculatePetSelectionPricing(selection, pet).hasSelection;
-}
-
-export function estimatePetGrooming(selection, pet) {
-  return globalThis.GroomingEstimates.calculate(selection, normalizePetSize(pet?.size));
 }
 
 export function requiresSpecialInstructions(selection) {

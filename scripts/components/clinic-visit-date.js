@@ -1,4 +1,4 @@
-import { initBookingCalendar } from "./booking-calendar.js?pet-weight=pet-weight-size-20261011-v3";
+import { initBookingCalendar } from "./booking-calendar.js?pet-weight=pet-weight-size-20261011-v3&grooming=actual-20261026";
 import {
   CLINIC_VISIT_DRAFT_KEY,
   requireCustomerSession,

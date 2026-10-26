@@ -1,6 +1,6 @@
 import { escapeHtml } from "../services/booking-draft-service.js";
 import { formatBookingDate, formatBookingTimeRange } from "../services/booking-format-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 import {
   confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, printConfirmation,
@@ -25,7 +25,7 @@ export function groomingVisitPresentation(booking, statusLabel) {
     const pet = item.pet || {};
     const selected = services.filter((service) => String(service.booking_pet_id) === String(item.booking_pet_id));
     const size = item.confirmed_size || item.registered_size || pet.size;
-    const estimate = item.grooming_estimate;
+    const duration = formatActualGroomingDuration(item.grooming_start_time, item.grooming_end_time);
     return `<section class="grooming-summary-pet">
       ${pets.length > 1 ? `<h3>${escapeHtml(pet.pet_name || "Your pet")}</h3>` : ""}
       ${confirmationSection("Grooming details", confirmationFields([
@@ -33,8 +33,10 @@ export function groomingVisitPresentation(booking, statusLabel) {
         ["A la Carte", serviceNames(selected.filter((service) => service.service?.kind !== "package")) || "None selected"],
         ["Pet Groomer", item.groomer?.first_name || "Any available groomer"],
         ...(item.haircut_requested ? [["Haircut", "Requested"]] : []),
-        ["Grooming Preference", estimate?.preferenceLabel || formatConfirmationLabel(item.grooming_preference) || "Not specified"],
-        ["Estimated Grooming Time", estimate?.formatted || "Not recorded"],
+        ["Grooming Preference", item.grooming_preference_label || formatConfirmationLabel(item.grooming_preference) || "Not specified"],
+        ...(item.grooming_start_time ? [["Started", formatConfirmationTimestamp(item.grooming_start_time)]] : []),
+        ...(item.grooming_end_time ? [["Finished", formatConfirmationTimestamp(item.grooming_end_time)]] : []),
+        ...(duration ? [["Actual Grooming Duration", duration]] : []),
       ]))}
       ${confirmationSection("Pet details", confirmationFields([
         ["Breed", pet.breed || "Not recorded"],
@@ -145,4 +147,13 @@ export async function openGroomingVisitSummary(bookingId, trigger, statusFor) {
   } finally {
     if (currentRequest === requestId) content.setAttribute("aria-busy", "false");
   }
+}
+
+function formatActualGroomingDuration(startedAt, finishedAt) {
+  if (!startedAt || !finishedAt) return "";
+  const milliseconds = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return "";
+  const minutes = Math.floor(milliseconds / 60000);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours} hr${minutes % 60 ? ` ${minutes % 60} min` : ""}` : `${minutes} min`;
 }

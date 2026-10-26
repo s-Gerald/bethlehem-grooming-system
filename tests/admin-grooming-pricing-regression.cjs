@@ -12,7 +12,7 @@ const ui = context.adminDashboard();
 
 async function main() {
 const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, "grooming-catalogue-fixture.json"), "utf8").replace(/^\uFEFF/, "")).data;
-const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026";
+const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 for (const component of ["admin-dashboard", "booking-services-step", "booking-review-step", "booking-consent-step", "booking-confirmed-step", "grooming-service-selection", "grooming-pre-registration", "walk-in-services-step", "walk-in-review-step"]) {
   const componentSource = fs.readFileSync(path.join(__dirname, `../scripts/components/${component}.js`), "utf8");
   assert.ok(componentSource.includes(`"${catalogueModule}"`), `${component} must share the same live catalogue module instance`);
@@ -211,10 +211,10 @@ const beforeSignature = grooming.selectedPricingSignature(draft, selection);
 grooming.applyGroomingCatalogue(catalogue);
 assert.notEqual(grooming.selectedPricingSignature(draft, selection), beforeSignature);
 let loads = 0;
-const estimateRules = JSON.parse(execFileSync("php", ["-r", "echo json_encode(require 'config/grooming_estimates.php');"], {
+const groomingPreferences = JSON.parse(execFileSync("php", ["-r", "echo json_encode((require 'config/grooming_services.php')['preferences']);"], {
   cwd: path.resolve(__dirname, ".."), encoding: "utf8",
 }));
-global.API = { getGroomingCatalogue: async () => { loads++; return { data: updated, estimateRules }; } };
+global.API = { getGroomingCatalogue: async () => { loads++; return { data: updated, groomingPreferences }; } };
 await grooming.loadGroomingCatalogue();
 await grooming.loadGroomingCatalogue();
 assert.equal(loads, 2, "A normal catalogue refresh must fetch current prices again");
@@ -236,7 +236,7 @@ global.sessionStorage = { getItem: () => null, setItem() {} };
 let verifications = 0, capacityReads = 0;
 global.API.waitForSessionVerification = async () => { verifications++; return true; };
 global.API.previewWalkInCapacity = async () => { capacityReads++; return { capacity: { fits: true } }; };
-const { renderWalkInReviewStep } = await import("../scripts/components/walk-in-review-step.js");
+const { renderWalkInReviewStep } = await import("../scripts/components/walk-in-review-step.js?grooming=actual-20261026");
 await renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
 assert.equal(reviewElements.get("totalPriceText").textContent, "₱600");
 assert.ok(reviewElements.get("reviewSelections").innerHTML.includes("₱600"));
@@ -251,7 +251,7 @@ assert.equal(packageRange.isEstimate, true);
 await renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
 assert.ok(reviewElements.get("reviewSelections").innerHTML.includes("₱600–₱680"));
 assert.equal(verifications, 2, "Each protected review waits for session verification");
-assert.equal(capacityReads, 2, "Each complete review checks capacity once");
+assert.equal(capacityReads, 0, "Walk-in reviews do not request a forecast");
 assert.equal(loads, 2, "Rendering review reuses the catalogue from service selection");
 const rangePet = { sizeKey: "small" };
 const packageLine = ui.normalizePaymentLine({ slug: regular.id, priceMinAtBooking: "600", priceMaxAtBooking: "680" }, rangePet, "package-range", { lockFixedPrices: true });

@@ -68,7 +68,7 @@ class CapacityMysqlHarnessTest extends TestCase
 
     public static function outcomes(): array
     {
-        $case = '<testcase class="Tests\Feature\GroomingAdministrationAuthorizationTest" name="test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql" assertions="20">%s</testcase>';
+        $case = '<testcase class="Tests\Feature\GroomingAdministrationAuthorizationTest" name="test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql" assertions="20">%s</testcase>';
         $report = fn ($content) => '<testsuites><testsuite>'.sprintf($case, $content).'</testsuite></testsuites>';
 
         return [
@@ -77,13 +77,13 @@ class CapacityMysqlHarnessTest extends TestCase
             ['<testsuites/>', '', 0, 'configuration_error'],
             [$report(''), '', 0, 'passed'],
             [$report('<skipped/>'), '', 0, 'configuration_error'],
-            [$report('<skipped/>'), 'Test Skipped (Tests\Feature\GroomingAdministrationAuthorizationTest::test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql)', 0, 'skipped'],
-            [$report('<skipped/>'), 'Test Marked Incomplete (Tests\Feature\GroomingAdministrationAuthorizationTest::test_concurrent_grooming_submissions_serialize_the_last_capacity_on_mysql)', 0, 'incomplete'],
+            [$report('<skipped/>'), 'Test Skipped (Tests\Feature\GroomingAdministrationAuthorizationTest::test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql)', 0, 'skipped'],
+            [$report('<skipped/>'), 'Test Marked Incomplete (Tests\Feature\GroomingAdministrationAuthorizationTest::test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql)', 0, 'incomplete'],
             [$report('<failure/>'), '', 1, 'failed'],
             [$report('<error/>'), '', 2, 'configuration_error'],
             [$report(''), '', 1, 'configuration_error'],
             [str_replace('assertions="20"', 'assertions="0"', $report('')), '', 0, 'configuration_error'],
-            [str_replace('serialize_the_last_capacity', 'unrelated', $report('')), '', 0, 'configuration_error'],
+            [str_replace('preserve_registration_integrity', 'unrelated', $report('')), '', 0, 'configuration_error'],
             ['<testsuites>'.$report('').$report('').'</testsuites>', '', 0, 'configuration_error'],
         ];
     }

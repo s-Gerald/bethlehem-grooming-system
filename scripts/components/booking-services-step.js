@@ -1,4 +1,4 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -16,7 +16,7 @@ import {
   selectedPricingSignature,
   createEmptyPetServiceSelection,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 
 const elements = {
   form: document.getElementById("bookingServicesForm"),

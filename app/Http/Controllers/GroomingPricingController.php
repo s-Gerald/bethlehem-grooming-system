@@ -44,7 +44,7 @@ class GroomingPricingController extends Controller
         })->values();
         return response()->json(['data' => $catalogue,
             'priceLimits' => config('grooming_services.price_limits'),
-            'estimateRules' => app(\App\Services\GroomingTimeEstimate::class)->rules($services)])->header('Cache-Control', 'no-store');
+            'groomingPreferences' => config('grooming_services.preferences')])->header('Cache-Control', 'no-store');
     }
 
     public function store(Request $request, GroomingServicePriceResolver $resolver)
@@ -92,7 +92,6 @@ class GroomingPricingController extends Controller
                 'is_active' => $data['isActive'],
             ]);
             // New services use the existing duration field for operational estimates.
-            if ($created) $service->duration_minutes = $package ? 60 : 15;
             $service->save();
         });
         return response()->json(['data' => $this->normalize($service->fresh(), $resolver)], $created ? 201 : 200);

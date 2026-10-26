@@ -27,4 +27,4 @@ foreach (array_keys(config('grooming_services.services')) as $slug) {
     $entry['serviceId'] = count($catalogue) + 1;
     $catalogue[] = $entry;
 }
-echo json_encode(['data' => $catalogue, 'priceLimits' => config('grooming_services.price_limits')], JSON_THROW_ON_ERROR);
+echo json_encode(['data' => $catalogue, 'priceLimits' => config('grooming_services.price_limits'), 'groomingPreferences' => config('grooming_services.preferences')], JSON_THROW_ON_ERROR);

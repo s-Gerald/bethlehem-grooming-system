@@ -8,16 +8,16 @@
 
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
+    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026" />
     <link
       rel="stylesheet"
       href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003"
     />
-    <link rel="stylesheet" href="../../css/grooming-estimates.css?v=checkin-layout-20261009-2">
+    <link rel="stylesheet" href="../../css/grooming-preferences.css?v=checkin-layout-20261009-2&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -218,7 +218,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025"></script>
 
       <!-- Main Content -->
@@ -458,14 +458,6 @@
           </section>
 
           <!-- Operational summary -->
-          <section x-show="(activeTab === 'queued' || activeTab === 'in-progress') && showGroomingWorkload" class="grooming-workload" aria-label="Grooming workload">
-            <div class="grooming-workload-metrics">
-              <template x-if="queueSummary.avgWaitLabel !== '—'"><span>Avg. grooming time <strong x-text="queueSummary.avgWaitLabel"></strong></span></template>
-              <template x-if="queueSummary.lastDoneLabel"><span>Last est. finish <strong x-text="queueSummary.lastDoneLabel"></strong></span></template>
-              <span x-text="activeGroomers + (activeGroomers === 1 ? ' groomer' : ' groomers')"></span>
-            </div>
-            <p x-show="groomingWorkloadMessage" class="grooming-workload-warning" role="status" x-text="groomingWorkloadMessage"></p>
-          </section>
 
           <!-- Flow tabs -->
           <section class="mt-6">
@@ -621,9 +613,6 @@
                       <span x-text="groomingPetCount(booking)"></span>
                       <span x-show="activeTab === 'queued' || activeTab === 'in-progress'" class="rounded-full px-2 py-1 text-xs font-semibold" :class="sedationConsentStatusClass(booking)" x-text="sedationConsentStatusLabel(booking)"></span>
                       <span x-show="groomingBookingTiming(booking)" x-text="groomingBookingTiming(booking)"></span>
-                      <template x-if="(activeTab === 'queued' || activeTab === 'in-progress') && getBookingETA(booking)">
-                        <span x-text="'Est. ready ' + getBookingETA(booking)"></span>
-                      </template>
                       <span x-show="booking.internalStaffNote" class="grooming-note-flag">Staff note</span>
                       <span x-show="booking.pets?.some(pet => pet.medicalConditions)" class="grooming-note-flag">Medical note</span>
                       <span x-show="booking.specialNotes || booking.pets?.some(pet => pet.specialInstructions)" class="grooming-note-flag">Customer note</span>
@@ -702,9 +691,8 @@
                               <p class="admin-queued-pet-basic" x-text="[pet.breed || pet.species, formatPetCardValue(pet.size, '')].filter(Boolean).join(' · ')"></p>
                               <div class="grooming-pet-service-line">
                                 <p class="admin-queued-pet-services" x-text="formatPetCardServiceLabel(pet, booking)"></p>
-                                <span x-show="!isPetGroomingFinished(pet) && petGroomingState(pet) !== 'cancelled' && pet.groomingEstimate?.preferenceLabel" class="grooming-selection-chip grooming-selection-chip--compact" x-text="pet.groomingEstimate?.preferenceLabel"></span>
+                                <span x-show="!isPetGroomingFinished(pet) && petGroomingState(pet) !== 'cancelled' && pet.groomingPreferenceLabel" class="grooming-selection-chip grooming-selection-chip--compact" x-text="pet.groomingPreferenceLabel"></span>
                               </div>
-                              <p x-show="!isPetGroomingFinished(pet) && petGroomingState(pet) !== 'cancelled'" class="admin-queued-pet-timing" x-text="getPetEstDone(booking, pet)"></p>
                               <div x-show="pet.medicalConditions || pet.specialInstructions || isPetGroomingFinished(pet)" class="grooming-pet-flags">
                                 <span x-show="pet.medicalConditions" class="grooming-note-flag">Medical note</span>
                                 <span x-show="pet.specialInstructions" class="grooming-note-flag">Customer note</span>
@@ -1228,12 +1216,6 @@
                             </template>
                           </select>
                         </label>
-                        <fieldset class="grooming-estimate-selection"><legend>Estimate factors <span>(optional)</span></legend>
-                          <div class="grooming-estimate-chips"><template x-for="factor in estimateFactorOptions" :key="factor.value">
-                            <label class="grooming-estimate-chip"><input type="checkbox" :value="factor.value" x-model="pet.estimateFactors" :disabled="actionConfirmModal.busy"><span x-text="factor.label"></span></label>
-                          </template></div>
-                        </fieldset>
-                        <p class="grooming-estimate-time" aria-live="polite"><span>Estimated grooming time</span><strong x-text="assessmentPreview(pet)"></strong></p>
                       </div>
                     </template>
                   </div>
@@ -1242,22 +1224,13 @@
                     <textarea id="checkInInternalStaffNote" x-model="actionConfirmModal.internalStaffNote" :disabled="actionConfirmModal.busy" rows="2" maxlength="5000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Add information for clinic staff"></textarea>
                   </div>
                 </div>
-                <template x-if="actionConfirmModal.action === 'startPetGrooming' && actionConfirmModal.booking?.bookingType === 'Walk-In' && actionConfirmModal.booking?.actionPet">
-                  <p class="mt-3 text-sm text-slate-600">Estimated grooming time: <strong x-text="getPetEstimateLabel(actionConfirmModal.booking.actionPet)"></strong></p>
-                </template>
                 <template x-if="actionConfirmModal.action === 'startPetGrooming' && actionConfirmModal.booking?.bookingType !== 'Walk-In' && actionConfirmModal.booking?.actionPet">
-                    <div class="grooming-estimate-selection text-left" x-data="{ pet: actionConfirmModal.booking.actionPet }">
-                      <fieldset x-show="getEstimatePreferences(pet).length"><legend>Grooming preference</legend>
-                        <div class="grooming-estimate-chips"><template x-for="choice in getEstimatePreferences(pet)" :key="choice.value">
-                          <label class="grooming-estimate-chip"><input type="radio" name="staff_grooming_preference" :value="choice.value" x-model="pet.groomingPreference" :disabled="actionConfirmModal.busy"><span x-text="choice.label"></span></label>
+                    <div class="grooming-preference-selection text-left" x-data="{ pet: actionConfirmModal.booking.actionPet }">
+                      <fieldset x-show="getGroomingPreferences(pet).length"><legend>Grooming preference</legend>
+                        <div class="grooming-preference-chips"><template x-for="choice in getGroomingPreferences(pet)" :key="choice.value">
+                          <label class="grooming-preference-chip"><input type="radio" name="staff_grooming_preference" :value="choice.value" x-model="pet.groomingPreference" :disabled="actionConfirmModal.busy"><span x-text="choice.label"></span></label>
                         </template></div>
                       </fieldset>
-                      <fieldset class="grooming-estimate-selection"><legend>Estimate factors <span>(optional)</span></legend>
-                          <div class="grooming-estimate-chips"><template x-for="factor in estimateFactorOptions" :key="factor.value">
-                            <label class="grooming-estimate-chip"><input type="checkbox" :value="factor.value" x-model="pet.estimateFactors" :disabled="actionConfirmModal.busy"><span x-text="factor.label"></span></label>
-                          </template></div>
-                          <p class="grooming-estimate-time" aria-live="polite">Estimated grooming time <strong x-text="assessmentPreview(pet)"></strong></p>
-                        </fieldset>
                     </div>
                   </template>
                   <div
@@ -1391,15 +1364,12 @@
                         <dl class="grooming-visit-summary">
                           <div><dt>Pet Groomer</dt><dd x-text="pet.petGroomerName || 'Any available groomer'"></dd></div>
                           <div x-show="detailsBooking?.status !== 'incoming' || petGroomingState(pet) === 'cancelled'"><dt>Status</dt><dd x-text="petGroomingStateLabel(pet)"></dd></div>
-                          <div x-show="pet.groomingEstimate"><dt>Grooming estimate</dt><dd x-text="getPetEstimateLabel(pet)"></dd></div>
-                          <div x-show="['At risk', 'Needs staff action'].includes(getPetWorkloadState(pet))"><dt>Workload</dt><dd x-text="getPetWorkloadState(pet)"></dd></div>
                         </dl>
                       </section>
-                      <section x-show="pet.groomingStartedAt || pet.groomingFinishedAt || (!isPetGroomingFinished(pet) && getPetEstDone(detailsBooking, pet))" class="grooming-details-section">
+                      <section x-show="pet.groomingStartedAt || pet.groomingFinishedAt" class="grooming-details-section">
                         <h5>Timing</h5>
                         <dl class="grooming-visit-summary">
                           <div x-show="pet.groomingStartedAt"><dt>Started</dt><dd x-text="pet.groomingStartedAt"></dd></div>
-                          <div x-show="!isPetGroomingFinished(pet) && getPetEstDone(detailsBooking, pet)"><dt>Est. ready</dt><dd x-text="getPetEstDone(detailsBooking, pet).replace(/^Est\. ready: /, '')"></dd></div>
                           <div x-show="isPetGroomingInProgress(pet) && getPetElapsed(pet)"><dt>Elapsed</dt><dd x-text="getPetElapsed(pet).replace(/ elapsed$/, '')"></dd></div>
                           <div x-show="pet.groomingFinishedAt"><dt>Finished</dt><dd x-text="pet.groomingFinishedAt"></dd></div>
                         </dl>
@@ -1591,7 +1561,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026"></script>
   </body>
 </html>

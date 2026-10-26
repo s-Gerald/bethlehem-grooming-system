@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
+    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025" />
+    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -130,7 +130,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025"></script>
+      <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025"></script>
 
       <!-- Main Content -->
@@ -562,7 +562,7 @@
                       </div>
                       <div>
                         <h4 class="font-bold text-[#1f3850]" x-text="`${activeAvailabilityLabel} Hours`"></h4>
-                        <p class="mt-0.5 text-sm text-slate-500" x-text="availabilityService === 'clinic' ? 'Used for clinic visits, walk-ins, and clinic time rules.' : 'Same-day availability adjusts automatically based on grooming duration and current workload.'"></p>
+                        <p class="mt-0.5 text-sm text-slate-500" x-text="availabilityService === 'clinic' ? 'Used for clinic visits, walk-ins, and clinic time rules.' : 'Used for grooming arrival windows and walk-ins.'"></p>
                       </div>
                     </div>
 

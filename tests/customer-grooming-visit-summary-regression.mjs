@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { groomingVisitPresentation, openGroomingVisitSummary } from '../scripts/components/grooming-visit-summary.js';
+import { groomingVisitPresentation, openGroomingVisitSummary } from '../scripts/components/grooming-visit-summary.js?grooming=actual-20261026';
 
 const booking = {
   booking_id: 71, booking_reference: 'BAC-71', status: 'waiting_to_arrive', paid: false,
   booking_date: '2026-10-17', time_window: { window_label: '9:00 AM - 9:30 AM' },
   booking_pets: [{ booking_pet_id: 8, pet: { pet_name: 'Coco <3', breed: 'Shih Tzu', weight: 0 },
     registered_size: 'small', groomer: { first_name: 'Anna' }, special_instructions: 'Sensitive paws',
-    grooming_estimate: { formatted: '1 hr 30 min', preferenceLabel: 'Regular Trim' } }],
+    grooming_preference_label: 'Regular Trim', grooming_start_time:'2026-10-17T09:00:00+08:00', grooming_end_time:'2026-10-17T11:18:00+08:00' }],
   booking_services: [
     { booking_pet_id: 8, service: { kind: 'package', service_name: 'Regular Dog Grooming' }, price_at_booking: '550', price_min_at_booking: '550', price_max_at_booking: '550' },
     { booking_pet_id: 8, service: { kind: 'ala_carte', service_name: 'Medicated Bath' }, price_at_booking: '150', price_min_at_booking: '150', price_max_at_booking: '150' },
@@ -129,3 +129,15 @@ elements.set(trigger.id, replacementTrigger);
 modal.close();
 assert.equal(document.activeElement, replacementTrigger, 'Focus returns to a trigger replaced by dashboard polling');
 console.log('Customer grooming visit summary regression tests passed.');
+
+assert.match(view.html, /Actual Grooming Duration[\s\S]*2 hr 18 min/);
+const missing = structuredClone(booking); delete missing.booking_pets[0].grooming_end_time;
+assert.doesNotMatch(groomingVisitPresentation(missing, 'Grooming in Progress').html, /Actual Grooming Duration/);
+
+const overlapping = structuredClone(booking);
+overlapping.booking_pets.push({booking_pet_id:9,pet:{pet_name:'Luna'},grooming_start_time:'2026-10-17T10:00:00+08:00',grooming_end_time:'2026-10-17T11:00:00+08:00'});
+const actual = groomingVisitPresentation(overlapping, 'Completed').html;
+assert.equal((actual.match(/Actual Grooming Duration/g)||[]).length, 2);
+assert.match(actual, /2 hr 18 min/);
+assert.match(actual, /1 hr/);
+assert.doesNotMatch(actual, /3 hr 18 min/);

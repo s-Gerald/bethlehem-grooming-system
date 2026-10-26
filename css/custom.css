@@ -1579,11 +1579,6 @@ body.customer-detail-modal-open {
 .grooming-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .grooming-tabs button { white-space: nowrap; }
 .grooming-tabs button:focus-visible { outline: 2px solid #315b7e; outline-offset: -2px; }
-.grooming-workload { margin-top: 16px; border: 1px solid #d9e6f1; border-radius: 16px; background: white; padding: 12px 16px; font-size: .875rem; color: #475569; }
-.grooming-workload-metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 0; }
-.grooming-workload-metrics > span:not(:first-of-type)::before { content: '|'; margin: 0 16px; color: #cbd5e1; }
-.grooming-workload-metrics strong { margin-left: 4px; color: #1f3850; font-weight: 600; }
-.grooming-workload-warning { margin-top: 8px; color: #92400e; font-weight: 600; }
 .grooming-booking-card { min-width: 0; border: 1px solid #bfd3e3; border-radius: 20px; background: white; padding: 16px 20px; box-shadow: 0 1px 2px rgb(15 23 42 / 4%); }
 .grooming-booking-main { display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
 .grooming-queue-number { flex-shrink: 0; min-width: 40px; color: var(--grooming-accent); font-size: 26px; font-weight: 800; line-height: 32px; }
@@ -1681,8 +1676,6 @@ body.customer-detail-modal-open {
   .grooming-visit-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grooming-details-body { padding: 16px; }
   .grooming-details-pet summary > .grooming-contact { display: block; margin-left: 0; }
-  .grooming-workload-metrics { gap: 8px 16px; }
-  .grooming-workload-metrics > span::before { display: none; }
 }
 @media (max-width: 374px) {
   .grooming-visit-summary { grid-template-columns: minmax(0, 1fr); }

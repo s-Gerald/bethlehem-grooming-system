@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { renderPackageCard, renderAlaCarteCard, focusSpecialInstructions } from '../scripts/components/grooming-service-selection.js?v=20261026';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026';
+import { renderPackageCard, renderAlaCarteCard, focusSpecialInstructions } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026';
 
 const catalogue = [
   {serviceId: 31, id: 'coat_care', name: 'Coat Care Grooming', kind: 'package', petType: 'dog',
@@ -47,12 +47,8 @@ assert.equal(grooming.getPackageById('coat_care'), null);
 assert.equal(grooming.getAlaCarteServicesByPetType('dog').length, 0);
 console.log('Managed catalog and both grooming card renderers passed.');
 
-const fixture = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8')).data;
-grooming.applyGroomingCatalogue(fixture);
-globalThis.GroomingEstimates.configure({ preferences: {
-  regular_dog_grooming: {summer_cut: 'Summer Cut', semi_kalbo: 'Semi-Kalbo', kalbo: 'Kalbo', regular_trim: 'Regular Trim'},
-  deluxe_dog_grooming: {puppy_cut: 'Puppy Cut', custom_hairstyle: 'Custom Hairstyle'},
-}});
+const fixture = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8'));
+grooming.applyGroomingCatalogue(fixture.data, fixture.groomingPreferences);
 const dog = {id: 'rigby', petName: 'Rigby', petType: 'dog', size: 'small'};
 const cat = {id: 'helio', petName: 'Helio', petType: 'cat', size: 'small'};
 const dogSelection = {...grooming.createEmptyPetServiceSelection(dog), servicePackage: 'deluxe_dog_grooming', specialInstructions: 'Keep these notes'};

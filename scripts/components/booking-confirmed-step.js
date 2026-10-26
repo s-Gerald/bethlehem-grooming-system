@@ -1,6 +1,6 @@
 import { formatBookingDate, formatBookingTimeRange } from "../services/booking-format-service.js";
 import { escapeHtml } from "../services/booking-draft-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
@@ -9,8 +9,7 @@ import {
 
 export function groomingPetConfirmation(pet, review = {}) {
   const price = getGroomingPricePresentation(review.pricing);
-  const estimate = review.groomingEstimate || review.grooming_estimate || pet.grooming_estimate;
-  const preference = estimate?.preferenceLabel || formatConfirmationLabel(
+  const preference = review.groomingPreferenceLabel || pet.grooming_preference_label || formatConfirmationLabel(
     review.groomingPreference || review.grooming_preference || pet.grooming_preference,
   );
   const size = formatConfirmationLabel(pet.size || review.size) || "Not specified";
@@ -36,7 +35,6 @@ export function groomingPetConfirmation(pet, review = {}) {
       ...(preference ? [["Grooming preference", preference]] : []),
       ...(review.haircutRequested || pet.haircut_requested ? [["Haircut", "Requested"]] : []),
       ["A la Carte", alaCarte || "None selected"],
-      ...(estimate?.formatted ? [["Estimated grooming time", estimate.formatted]] : []),
       [price.label, price.amount],
       ["Special instructions", review.specialInstructions?.trim() || "None provided", null, true],
     ])}</div>

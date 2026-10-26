@@ -29,12 +29,10 @@ async function main() {
   }
   global.sessionStorage = storage;
   const draft = await import('../scripts/services/booking-draft-service.js');
-  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006');
+  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006&grooming=actual-20261026');
   const groomingAge = await import('../scripts/services/grooming-age.js');
-  const forecast = await import('../scripts/services/grooming-workload-forecast.js');
-  global.GroomingEstimates.configure({ preferences: { regular_dog_grooming: { regular_trim: 'Regular Trim' } } });
   const catalogue = JSON.parse(read('tests/grooming-catalogue-fixture.json'));
-  grooming.applyGroomingCatalogue(catalogue.data);
+  grooming.applyGroomingCatalogue(catalogue.data, catalogue.groomingPreferences);
 
   // Starting from service selection clears all old grooming data, without touching Clinic or saved pets.
   const groomingKeys = ['bookingSchedule', 'bookingScheduleArrivalError', 'bookingPets', 'bookingStep2',
@@ -72,7 +70,6 @@ async function main() {
   assert.equal(values.has('clientPets'), true);
   await links.get('clinicVisitOption').click();
   assert.equal(destinations.at(-1), './clinic-visit-date.html');
-  assert.equal(forecast.groomingForecastPets(), null);
 
   const pet = { id: '101', petName: 'Mochi', petType: 'dog', size: 'small', weight: '5' };
   const selection = { petId: '101', servicePackage: 'regular_dog_grooming', groomingPreference: 'regular_trim', alaCarteServices: [] };
@@ -83,7 +80,7 @@ async function main() {
   const entered = [];
   const location = { href: 'http://localhost/pages/client/grooming-pre-registration.html', search: '' };
   const context = vm.createContext({
-    console, URL, URLSearchParams, sessionStorage: storage, ...grooming, ...forecast, ...groomingAge,
+    console, URL, URLSearchParams, sessionStorage: storage, ...grooming, ...groomingAge,
     document: {
       body: { classList: { toggle() {} } }, querySelectorAll: () => sections,
       addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready = handler; },

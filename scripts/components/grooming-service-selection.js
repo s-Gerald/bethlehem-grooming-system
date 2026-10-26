@@ -4,14 +4,14 @@ import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
   getPackagesByPetType, getGroomingPreferences, requiresSpecialInstructions, specialInstructionsError,
-} from "../services/grooming-service.js?v=managed-services-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
 
 export function renderHaircutPreference(pet, selection) {
   const choices = pet.petType === "cat" ? [] : getGroomingPreferences(selection.servicePackage);
   if (!choices.length) return "";
-  return `<fieldset class="grooming-estimate-selection">
+  return `<fieldset class="grooming-preference-selection">
     <legend>Haircut Preference <span class="text-red-500">*</span></legend>
-    <div class="grooming-estimate-chips">${choices.map((option) => `<label class="grooming-estimate-chip">
+    <div class="grooming-preference-chips">${choices.map((option) => `<label class="grooming-preference-chip">
       <input type="radio" name="grooming_preference_${escapeHtml(pet.id)}" required
         data-role="grooming-preference" data-pet-id="${escapeHtml(pet.id)}" value="${escapeHtml(option.value)}"
         ${selection.groomingPreference === option.value ? "checked" : ""}>
@@ -329,3 +329,8 @@ function getPetSelectionSummary(selection, petPricing) {
   };
 }
 
+
+export function renderGroomingPreference(selection) {
+  const choice = getGroomingPreferences(selection?.servicePackage).find((item) => item.value === selection?.groomingPreference);
+  return choice ? `<p class="grooming-preference-selection">Grooming preference: <strong>${escapeHtml(choice.label)}</strong></p>` : "";
+}

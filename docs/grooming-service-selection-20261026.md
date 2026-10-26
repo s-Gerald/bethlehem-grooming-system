@@ -1,5 +1,6 @@
 # Grooming service selection — implementation and verification
 
+> This is the earlier service-selection change record. Its estimation architecture and old verification commands are superseded by [grooming estimation removal](grooming-estimation-removal.md).
 Implemented on `gerald-frontend` on 2026-10-26. Changes are local and ready for review; nothing was pushed, deployed, or applied to production.
 
 ## Behavior

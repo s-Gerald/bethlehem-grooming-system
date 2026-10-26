@@ -38,8 +38,6 @@ class CustomerGroomingVisitSummaryTest extends TestCase
             $t->integer('groomer_id')->nullable();
             $t->text('special_instructions')->nullable();
             $t->string('grooming_preference')->nullable();
-            $t->integer('grooming_estimate_min')->nullable();
-            $t->integer('grooming_estimate_max')->nullable();
         });
         Schema::create('services', function (Blueprint $t) {
             $t->increments('service_id');
@@ -68,8 +66,7 @@ class CustomerGroomingVisitSummaryTest extends TestCase
         DB::table('bookings')->insert(['booking_id' => 71, 'user_id' => 7, 'booking_reference' => 'BAC-71', 'internal_staff_note' => 'Private']);
         DB::table('pets')->insert(['pet_id' => 4, 'pet_name' => 'Coco']);
         DB::table('booking_pets')->insert(['booking_pet_id' => 8, 'booking_id' => 71, 'pet_id' => 4,
-            'groomer_id' => 1, 'special_instructions' => 'Sensitive paws', 'grooming_preference' => 'regular_trim',
-            'grooming_estimate_min' => 90, 'grooming_estimate_max' => 105]);
+            'groomer_id' => 1, 'special_instructions' => 'Sensitive paws', 'grooming_preference' => 'regular_trim']);
         DB::table('services')->insert(['service_id' => 2, 'slug' => 'regular_dog_grooming', 'service_name' => 'Regular Dog Grooming']);
         DB::table('booking_services')->insert(['booking_id' => 71, 'booking_pet_id' => 8, 'service_id' => 2,
             'price_at_booking' => 650, 'price_min_at_booking' => 650, 'price_max_at_booking' => 650]);
@@ -92,7 +89,7 @@ class CustomerGroomingVisitSummaryTest extends TestCase
         $this->assertSame('Coco', $booking['booking_pets'][0]['pet']['pet_name']);
         $this->assertSame('Sensitive paws', $booking['booking_pets'][0]['special_instructions']);
         $this->assertSame('Anna', $booking['booking_pets'][0]['groomer']['first_name']);
-        $this->assertSame('1 hr 30 min–1 hr 45 min', $booking['booking_pets'][0]['grooming_estimate']['formatted']);
+        $this->assertSame('Regular Trim', $booking['booking_pets'][0]['grooming_preference_label']);
         $this->assertSame('Regular Dog Grooming', $booking['booking_services'][0]['service']['service_name']);
         $this->assertSame('package', $booking['booking_services'][0]['service']['kind']);
         $this->assertSame('Alex Cruz', $booking['consent']['signer_name']);

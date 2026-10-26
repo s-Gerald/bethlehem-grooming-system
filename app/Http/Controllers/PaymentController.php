@@ -208,10 +208,8 @@ class PaymentController extends Controller
             if ($bookingPet->confirmed_size && $bookingPet->confirmed_size !== $size) {
                 $bookingPet->pet?->confirmClinicSize($size);
             }
-            $sizeChanged = $bookingPet->confirmed_size !== $size;
             $bookingPet->confirmed_size = $size;
             $bookingPet->save();
-            if ($sizeChanged) app(\App\Services\GroomingTimeEstimate::class)->recalculate($booking, $bookingPet);
         }
     }
 

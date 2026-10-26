@@ -206,9 +206,6 @@ class AdminDashboardSummaryTest extends TestCase
             $table->unsignedInteger('pet_id')->nullable();
             $table->string('confirmed_size')->nullable();
             $table->string('grooming_preference')->nullable();
-            $table->unsignedInteger('grooming_estimate_min')->nullable();
-            $table->unsignedInteger('grooming_estimate_max')->nullable();
-            $table->json('grooming_estimate_factors')->nullable();
             $table->date('pet_queue_date')->nullable();
             $table->unsignedInteger('pet_queue_number')->nullable();
             $table->text('special_instructions')->nullable();

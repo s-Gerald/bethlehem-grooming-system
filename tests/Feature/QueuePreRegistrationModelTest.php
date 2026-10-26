@@ -159,18 +159,15 @@ class QueuePreRegistrationModelTest extends TestCase
 
     public function test_clinic_cases_do_not_change_grooming_arrival_windows(): void
     {
-        $engine = app(\App\Services\GroomingWorkloadCapacity::class);
         $settings = ClinicSetting::current();
-        $windows = collect([['window_id' => 1, 'start_time' => '15:00:00', 'end_time' => '16:00:00', 'is_past' => false, 'is_closed' => false]]);
-        $arrivals = [['id' => 'arrival-0', 'minutes' => 60, 'active' => false]];
-        $before = $engine->forecastWindows($windows, now()->toDateString(), $arrivals, $settings)->all();
+        app(AvailabilityTimeWindowService::class)->sync($settings);
+        $before = app(AvailabilityTimeWindowService::class)->preferredWindows($settings, 'grooming', now()->toDateString())->all();
         for ($index = 0; $index < 25; $index++) {
             $this->clinic('checked_in');
             $this->clinic('in_consultation');
         }
-        $after = $engine->forecastWindows($windows, now()->toDateString(), $arrivals, $settings)->all();
+        $after = app(AvailabilityTimeWindowService::class)->preferredWindows($settings, 'grooming', now()->toDateString())->all();
         $this->assertSame($before, $after);
-        $this->assertFalse($after[0]['is_workload_unavailable']);
     }
 
     public function test_grooming_capacity_counts_on_site_pets_until_pickup_and_waiting_stays_combined(): void

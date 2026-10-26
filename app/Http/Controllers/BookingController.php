@@ -41,17 +41,6 @@ class BookingController extends Controller
         $settings = ClinicSetting::current();
         $availability = $settings->serviceAvailability('grooming');
         $windows = $timeWindows->preferredWindows($settings, 'grooming', $date);
-        if ($request->filled('booking_id')) {
-            $user = $request->user();
-            $request->validate(['booking_id' => ['integer']]);
-            $booking = Booking::with(['bookingPets.pet', 'bookingServices.service'])
-                ->where('user_id', $user->user_id)->where('status', 'waiting_to_arrive')
-                ->findOrFail($request->query('booking_id'));
-            $booking->bookingPets->each(fn ($pet) => $pet->setRelation('booking', $booking));
-            $workload = app(\App\Services\GroomingWorkloadCapacity::class);
-            $jobs = array_values(array_filter($workload->admissionJobs($booking->bookingPets), fn ($job) => $job['minutes'] > 0));
-            $windows = $workload->forecastWindows($windows, $date, $jobs, $settings, (int) $booking->booking_id);
-        }
 
         return response()->json([
             'success' => true,
@@ -62,29 +51,6 @@ class BookingController extends Controller
     }
 
     // ── SUBMIT A BOOKING ──────────────────────────────────
-    public function forecastTimeslots(Request $request, AvailabilityTimeWindowService $timeWindows)
-    {
-        $data = $request->validate([
-            'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'pets' => ['required', 'array', 'min:1', 'max:'.self::MAX_PETS_PER_BOOKING],
-            'pets.*.pet_id' => ['nullable', 'integer'],
-            'pets.*.species' => ['nullable', 'string'],
-            'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large'],
-            'pets.*.weight' => ['nullable', new ValidPetWeight],
-            'pets.*.grooming_preference' => ['nullable', 'string', 'max:32'],
-            'pets.*.services.package' => ['nullable', 'string'],
-            'pets.*.services.ala_carte' => ['nullable', 'array'],
-            'pets.*.services.ala_carte.*' => ['string'],
-        ]);
-        $settings = ClinicSetting::current();
-        $workload = app(\App\Services\GroomingWorkloadCapacity::class);
-        $jobs = $workload->selectionJobs($data['pets'], (int) $request->user()->user_id);
-
-        return response()->json(['success' => true, 'availability' => $settings->serviceAvailability('grooming'),
-            'windows' => $workload->forecastWindows($timeWindows->preferredWindows($settings, 'grooming', $data['date']),
-                $data['date'], $jobs, $settings)]);
-    }
-
     public function store(
         Request $request,
         GroomingServicePriceResolver $servicePrices,
@@ -114,7 +80,6 @@ class BookingController extends Controller
             'pets.*.groomer_id' => 'nullable|integer',
             'pets.*.services' => 'nullable|array',
             'pets.*.grooming_preference' => 'nullable|string|max:32',
-            'pets.*.estimate_factors' => 'prohibited',
             'pets.*.services.package' => 'nullable|string',
             'pets.*.services.ala_carte' => 'nullable|array',
             'pets.*.services.ala_carte.*' => 'nullable|string',
@@ -179,7 +144,7 @@ class BookingController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'code' => 'grooming_forecast_unavailable',
+                    'code' => 'arrival_window_unavailable',
                     'message' => 'This arrival window is unavailable. Please choose another time.',
                 ], 422);
             }
@@ -271,18 +236,15 @@ class BookingController extends Controller
                     'special_instructions' => $petData['special_instructions'] ?? null,
                     'haircut_requested' => (bool) ($petData['haircut_requested'] ?? false),
                     'groomer_id' => $petData['groomer_id'],
+                    'grooming_preference' => $petData['grooming_preference'] ?? null,
                 ];
                 if (Schema::hasColumn('booking_pets', 'registered_size')) {
                     $bookingPetAttributes['registered_size'] = $pet->groomingSize();
                 }
-                $engine = app(\App\Services\GroomingTimeEstimate::class);
-                app(\App\Services\GroomingServiceSelection::class)->validate($petData,
+                app(\App\Services\GroomingServiceSelection::class)->validate([...$petData, 'size' => $pet->groomingSize()],
                     $petData['services']['package'] ?? null, $petData['services']['ala_carte'] ?? [],
                     $pet->species, "pets.{$index}");
-                $estimate = $engine->calculate($petData['services']['package'] ?? null, $petData['grooming_preference'] ?? null,
-                    $pet->groomingSize(), $petData['services']['ala_carte'] ?? []);
                 $bookingPet = BookingPet::create($bookingPetAttributes);
-                $engine->snapshot($bookingPet, $estimate);
 
                 // ── Save services for this pet ────────────────
                 $petSize = $pet->groomingSize();
@@ -330,13 +292,8 @@ class BookingController extends Controller
                 }
             }
 
-            $workload = app(\App\Services\GroomingWorkloadCapacity::class);
-            $booking->load('bookingPets.pet', 'bookingPets.groomer');
-            $booking->bookingPets->each(fn ($pet) => $pet->setRelation('booking', $booking));
-            $arrivalJobs = array_values(array_filter($workload->admissionJobs($booking->bookingPets), fn ($job) => $job['minutes'] > 0));
-            $selectedArrival = $workload->assertCanReserve($date, (int) $window->window_id, $arrivalJobs, $settings, (int) $booking->booking_id);
-
-            $booking->update(['arrival_end_time' => $selectedArrival['latest_arrival_time']]);
+            $booking->update(['arrival_end_time' => $window->end_time]);
+            $booking->load('bookingPets.groomer');
             $booking->setRelation('timeWindow', $window);
             $window = $booking->preferredArrivalWindow();
 
@@ -374,7 +331,7 @@ class BookingController extends Controller
                     'pets' => $booking->bookingPets->map(fn ($bp) => ['pet_id' => $bp->pet_id,
                         'haircut_requested' => (bool) $bp->haircut_requested,
                         'groomer_id' => $bp->groomer_id, 'pet_groomer' => $bp->groomer,
-                        'grooming_estimate' => app(\App\Services\GroomingTimeEstimate::class)->forVisit($bp)])->values(),
+                        'grooming_preference' => $bp->grooming_preference, 'grooming_preference_label' => $bp->grooming_preference_label])->values(),
                 ],
             ], 201);
         });
@@ -518,7 +475,7 @@ class BookingController extends Controller
                     'weight' => $bp->pet?->weight,
                     'registered_size' => $bp->registered_size,
                     'confirmed_size' => $bp->confirmed_size,
-                    'grooming_estimate' => app(\App\Services\GroomingTimeEstimate::class)->forVisit($bp),
+                    'grooming_preference' => $bp->grooming_preference, 'grooming_preference_label' => $bp->grooming_preference_label,
                     'grooming_status' => $groomingStatus,
                     'active_in_grooming' => ! $groomingFinished && $bp->grooming_state !== BookingPet::GROOMING_STATE_CANCELLED,
                     'cancellation_reason' => $bp->cancellation_reason,
@@ -684,9 +641,6 @@ class BookingController extends Controller
         }
 
         $booking->setRelation('timeWindow', $booking->preferredArrivalWindow());
-        $booking->bookingPets->each(function ($pet) {
-            $pet->setAttribute('grooming_estimate', app(\App\Services\GroomingTimeEstimate::class)->forVisit($pet));
-        });
         $booking->bookingServices->each(function ($item) {
             if ($item->service) {
                 $item->service->setAttribute('kind', $item->service->kind);
@@ -861,33 +815,23 @@ class BookingController extends Controller
             ) {
                 return response()->json([
                     'success' => false,
-                    'code' => 'grooming_forecast_unavailable',
+                    'code' => 'arrival_window_unavailable',
                     'message' => 'This arrival window is unavailable. Please choose another time.',
                 ], 422);
             }
 
             app(AvailabilityTimeWindowService::class)->assertWindowHasNotEnded($newDate, $newWindow);
 
-            $booking->load(['bookingPets.pet', 'bookingServices.service']);
-            $booking->bookingPets->each(fn ($pet) => $pet->setRelation('booking', $booking));
-            $workload = app(\App\Services\GroomingWorkloadCapacity::class);
-            $selectedArrival = $workload->assertCanReserve($newDate, (int) $newWindow->window_id,
-                array_values(array_filter($workload->admissionJobs($booking->bookingPets), fn ($job) => $job['minutes'] > 0)),
-                $settings, (int) $booking->booking_id);
-
             $previousSchedule = $this->notificationScheduleLabel(
                 (string) $booking->booking_date,
                 $booking->preferredArrivalWindow(),
             );
-            $newWindow = clone $newWindow;
-            $newWindow->end_time = $selectedArrival['end_time'];
-            $newWindow->window_label = $selectedArrival['window_label'];
             $newSchedule = $this->notificationScheduleLabel($newDate, $newWindow);
 
             $booking->update([
                 'booking_date' => $newDate,
                 'window_id' => $request->new_window_id,
-                'arrival_end_time' => $selectedArrival['latest_arrival_time'],
+                'arrival_end_time' => $newWindow->end_time,
                 'reschedule_count' => $booking->reschedule_count + 1,
                 'status' => 'waiting_to_arrive',
             ]);
