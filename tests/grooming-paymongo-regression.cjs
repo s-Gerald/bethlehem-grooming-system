@@ -41,7 +41,12 @@ const context = {
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(`${__dirname}/../scripts/api.js`, 'utf8'), context);
 for (const file of ['cash-payment.js', 'online-payment.js', 'admin-dashboard.js']) {
-  vm.runInContext(fs.readFileSync(`${__dirname}/../scripts/components/${file}`, 'utf8'), context);
+  vm.runInContext(fs.readFileSync(`${__dirname}/../scripts/components/${file}`, 'utf8'), context, {
+    importModuleDynamically: async specifier => {
+      assert.match(specifier, /^\.\.\/services\/grooming-service\.js/, 'Opening payments only imports the existing pricing catalogue');
+      return import(require('node:url').pathToFileURL(`${__dirname}/../scripts/services/grooming-service.js`).href);
+    },
+  });
 }
 
 async function main() {
@@ -60,6 +65,24 @@ async function main() {
       petBreakdown: ui.buildPaymentBreakdown(booking, { lockFixedPrices: true }), products: [],
       paymentMethod: method, amountPaid: '', onlinePayment: null };
   };
+  for (const early of [true, false]) {
+    prepare('cash');
+    ui.paymentModal.isEarlyPayment = early;
+    for (const unsupported of ['qrph', 'GCash', 'Maya', 'Bank Transfer', 'unknown']) {
+      ui.selectPaymentMethod(unsupported);
+      assert.equal(ui.paymentModal.paymentMethod, 'cash');
+    }
+    ui.selectPaymentMethod('online');
+    assert.equal(ui.paymentMethodLabel, 'Online Payment');
+    ui.selectPaymentMethod('qrph');
+    assert.equal(ui.paymentModal.paymentMethod, 'online');
+    ui.paymentModal.paymentMethod = 'qrph';
+    ui.paymentModal.amountPaid = '600';
+    const before = calls.length;
+    assert.equal(ui.canSubmitPayment, false);
+    await ui.submitPayment();
+    assert.equal(calls.length, before, 'Stale manual QR state cannot submit either flow');
+  }
   prepare('cash');
   assert.equal(ui.canSubmitPayment, false, 'Cash still requires tendered money');
   ui.paymentModal.amountPaid = '600';
@@ -93,6 +116,7 @@ async function main() {
   await ui.submitPayment();
   assert.equal(ui.paymentModal.error, 'Online payment is not configured.', 'Show the actual backend payment error');
   assert.equal(ui.paymentModal.busy, false);
+  assert.equal(ui.paymentModal.paymentMethod, 'online', 'An online error never silently switches to Cash');
   assert.equal(ui.canSubmitPayment, true, 'A failed online request can be retried without changing the form');
   ui.paymentModal.petBreakdown[0].lines[0].amount = '';
   assert.equal(ui.canSubmitPayment, false, 'Retrying still requires valid current service prices');
@@ -218,6 +242,7 @@ async function main() {
   prepare('online');
   await ui.submitPayment();
   let resolveStalePoll;
+  const originalStatus = context.API.groomingOnlinePaymentStatus;
   context.API.groomingOnlinePaymentStatus = () => new Promise((resolve) => { resolveStalePoll = resolve; });
   const staleCallback = [...timers.values()][0];
   timers.clear();
@@ -243,12 +268,32 @@ async function main() {
   assert.equal(ui.paymentTotalDue, 500);
   ui.closePaymentModal();
 
+  context.API.groomingOnlinePaymentStatus = originalStatus;
+  status = {success: true, online_payment: null};
+  global.API = {adminRequest: async () => JSON.parse(fs.readFileSync(`${__dirname}/grooming-catalogue-fixture.json`, 'utf8').replace(/^\uFEFF/, ''))};
+  for (const early of [true, false]) {
+    ui.closePaymentModal();
+    const before = calls.length;
+    await ui.openPaymentModal(booking, early);
+    assert.equal(ui.paymentModal.open, true);
+    assert.equal(ui.paymentModal.error, '');
+    assert.equal(ui.paymentModal.isEarlyPayment, early);
+    assert.equal(ui.paymentModal.paymentMethod, 'cash');
+    assert.equal(calls.length, before + 1, 'Opening only checks the existing online checkout status');
+    ui.selectPaymentMethod('online');
+    ui.selectPaymentMethod('cash');
+    assert.equal(calls.length, before + 1, 'Changing methods makes no QR/config/image requests');
+    assert.equal(timers.size, 0, 'No manual QR background resources are initialized');
+  }
+  delete global.API;
+  ui.closePaymentModal();
   const html = fs.readFileSync(`${__dirname}/../pages/admin/appointments.html`, 'utf8');
   const modal = html.slice(html.indexOf('<!-- Payment Modal -->'), html.indexOf('<!-- Grooming product barcode scanner -->'));
   assert.doesNotMatch(modal, /QR Ph|Coming soon|iframe/i);
   assert.match(modal, /Create Online Payment/);
   assert.match(modal, /Confirm ' \+ paymentMethodLabel \+ ' Payment/);
-  assert.match(modal, />QR Payment<\/label>/);
+  const activeMethodValues = [...modal.matchAll(/name="grooming-payment-method" value="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(activeMethodValues, ['cash', 'online']);
   assert.match(modal, /:disabled="paymentModal.busy \|\| !!paymentModal.onlinePayment"/);
   console.log('Grooming Cash and PayMongo UI regression tests passed.');
 }

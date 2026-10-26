@@ -6,10 +6,12 @@ use App\Models\QrPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
+// Legacy manual QR endpoints are preserved; config/qr_payments.php controls access.
 class QrPaymentProofController extends Controller
 {
     public function show(Request $request, int $id)
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         abort_unless($request->user()?->canAccessGrooming(), 403);
         $payment = QrPayment::findOrFail($id);
         abort_unless($payment->payable_type === (new \App\Models\Booking)->getMorphClass(), 403);

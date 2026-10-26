@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, '../scripts/components/admin
 async function main() {
   const context = {API: {getUserRole: () => 'admin', loadAdminData: (key,load,render) => load().then(data=>{render(data);return data;})}, window: {}, setTimeout};
   vm.runInNewContext(source, context);
-  const ui = context.adminSettings();
+  let ui = context.adminSettings();
   ui.$nextTick = (callback) => callback?.();
   for (const service of ['clinic', 'grooming']) {
     ui.selectAvailabilityService(service);
@@ -40,8 +40,26 @@ async function main() {
   await ui.selectSettingsTab('capacity');
   assert.equal(qrReads, 0, 'Unrelated tabs never request QR configuration');
   await ui.selectSettingsTab('qr-payments');
-  await ui.selectSettingsTab('qr-payments');
-  assert.equal(qrReads, 1, 'The QR tab reuses its loaded configuration');
+  assert.equal(ui.activeSettingsTab, 'general', 'Stale QR tab state resolves to an active tab');
+  assert.equal(qrReads, 0, 'Direct legacy navigation never requests configuration');
+  assert.equal(typeof ui.loadQrSettings, 'undefined', 'The active Settings component has no QR initialization');
+  assert.equal(typeof ui.editQrImage, 'undefined');
+  context.URLSearchParams = URLSearchParams;
+  context.document = {addEventListener() {}};
+  context.window.location = {search: '?tab=qr-payments'};
+  const loadAvailability = ui.loadAvailability;
+  ui.loadAvailability = async () => {};
+  ui.activeSettingsTab = 'qr-payments';
+  await ui.init();
+  assert.equal(ui.activeSettingsTab, 'general', 'Stale state and URL cannot open QR Settings');
+  assert.equal(qrReads, 0, 'Opening Settings never initializes legacy resources');
+  ui.loadAvailability = loadAvailability;
+  const active = ui;
+  // Explicit opt-in exercises the preserved dormant editor independently of active Settings.
+  ui = Object.defineProperties({isAdmin: true, $nextTick: active.$nextTick}, Object.getOwnPropertyDescriptors(context.legacyQrSettings()));
+  await ui.loadQrSettings();
+  await ui.loadQrSettings();
+  assert.equal(qrReads, 1, 'The preserved editor reuses its loaded configuration');
   assert.equal(ui.qrSettings.accepted_methods.join(','), 'GCash,Maya,Bank Transfer');
   let focused = '';
   const options = ['GCash', 'Maya', 'Bank Transfer', 'Other'].map(name => ({focus() {focused = name;}}));
@@ -81,7 +99,7 @@ async function main() {
   assert.equal(qrSaves, 1);
   assert.equal(ui.qrSettings.version, 2);
   assert.equal(ui.qrSettings.error, '');
-  const reopened = context.adminSettings();
+  const reopened = Object.defineProperties({isAdmin: true}, Object.getOwnPropertyDescriptors(context.legacyQrSettings()));
   reopened.applyQrSettings({accepted_methods: []});
   assert.equal(reopened.qrSettings.accepted_methods.length, 0, 'Saved empty selection never resets to defaults');
   reopened.applyQrSettings({accepted_methods: ['Maya', 'PayPal']});

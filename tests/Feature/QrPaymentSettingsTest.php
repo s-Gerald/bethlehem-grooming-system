@@ -40,8 +40,47 @@ class QrPaymentSettingsTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_default_guard_blocks_all_legacy_resources_without_queries_or_file_changes(): void
+    {
+        DB::table('qr_payment_settings')->update(['enabled' => true]);
+        Storage::disk('local')->put('payment-proofs/retained.png', 'historical');
+        $this->actor('admin');
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        foreach (['config', 'settings', 'image', '1/proof'] as $resource) {
+            $this->getJson('/api/admin/qr-payments/'.$resource)->assertNotFound();
+        }
+        $this->post('/api/admin/qr-payments/settings', [
+            'enabled' => true, 'version' => 1, 'accepted_methods' => ['GCash'], 'image' => $this->image(),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        foreach ($queries as $query) {
+            $this->assertDoesNotMatchRegularExpression('/qr_payment/i', $query['query']);
+        }
+        $this->assertDatabaseHas('qr_payment_settings', ['id' => 1, 'version' => 1, 'enabled' => true, 'image_path' => null]);
+        $this->assertSame(['payment-proofs/retained.png'], Storage::disk('local')->allFiles());
+    }
+
+    public function test_default_schedule_preserves_proofs_without_registering_legacy_cleanup(): void
+    {
+        Storage::disk('local')->put('payment-proofs/retained.png', 'historical proof');
+        touch(Storage::disk('local')->path('payment-proofs/retained.png'), now()->subDays(3)->timestamp);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $this->artisan('qr-payments:prune-orphans')->expectsOutput('Removed 0 abandoned payment proofs.')->assertExitCode(0);
+        $this->assertSame([], DB::getQueryLog(), 'Disabled cleanup must not inspect legacy records.');
+        DB::disableQueryLog();
+        Storage::disk('local')->assertExists('payment-proofs/retained.png');
+        $events = app(\Illuminate\Console\Scheduling\Schedule::class)->events();
+        foreach ($events as $event) {
+            $this->assertStringNotContainsString('qr-payments:prune-orphans', $event->command ?? '');
+        }
+    }
+
     public function test_settings_require_admin_and_collection_requires_grooming_access(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $this->getJson('/api/admin/qr-payments/settings')->assertUnauthorized();
         $this->actor('staff');
         $this->getJson('/api/admin/qr-payments/settings')->assertForbidden();
@@ -61,6 +100,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_enabled_settings_need_image_identity_and_explicit_official_qr_acknowledgment(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $this->actor();
         $this->postJson('/api/admin/qr-payments/settings', ['enabled' => true, 'version' => 1, 'accepted_methods' => []])
             ->assertUnprocessable()->assertJsonValidationErrors(['image', 'merchant_name', 'accepted_methods']);
@@ -73,6 +113,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_incomplete_and_disabled_configuration_can_be_saved_without_becoming_available(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $this->actor();
         $this->getJson('/api/admin/qr-payments/settings')->assertJsonPath('settings.status', 'not_ready');
         $saved = $this->post('/api/admin/qr-payments/settings', [
@@ -95,6 +136,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_private_image_and_versioned_settings_survive_reloads_replace_and_disable(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $this->actor();
         $payload = ['enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash', 'Maya', 'Bank Transfer'], 'version' => 1, 'official_qr_confirmed' => true];
         $saved = $this->post('/api/admin/qr-payments/settings', $payload + ['image' => $this->image()], ['Accept' => 'application/json'])
@@ -125,6 +167,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_invalid_image_mime_size_and_dimensions_do_not_change_configuration(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $this->actor();
         $payload = ['version' => 1, 'enabled' => true, 'merchant_name' => 'Bethlehem', 'accepted_methods' => ['GCash'], 'official_qr_confirmed' => true];
         foreach ([UploadedFile::fake()->create('receipt.svg', 2, 'image/svg+xml'),
@@ -137,6 +180,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_method_defaults_persistence_and_validation(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         // Exercise all invalid names without exhausting the endpoint's production rate limit.
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->actor();
@@ -156,6 +200,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_method_migration_preserves_historical_financial_and_audit_values_and_can_resume(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $migration = require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php');
         $migration->down();
         DB::table('qr_payment_settings')->update(['version' => 7, 'merchant_name' => 'Existing account', 'provider_name' => 'Old bank']);
@@ -181,6 +226,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_proof_forward_migration_preserves_historical_reference_exceptions(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         DB::table('qr_payments')->insert(['payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
             'external_reference' => null, 'received_amount' => 850, 'transaction_at' => '2026-10-22 09:00:00',
             'verified_at' => '2026-10-22 09:05:00', 'verified_by' => 7, 'verified_by_name' => 'Staff Verifier',
@@ -205,6 +251,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_migration_resumes_partial_mysql_ddl_without_overwriting_settings_or_payments(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         // MySQL commits the settings table before a later CREATE TABLE can fail.
         Schema::drop('qr_payments');
         Schema::table('payments', function (Blueprint $table) {
@@ -229,6 +276,7 @@ class QrPaymentSettingsTest extends TestCase
 
     public function test_unknown_receipt_time_is_nullable_and_recorded_dates_never_automatically_update(): void
     {
+        config(['qr_payments.enabled' => true]); // Isolated coverage of the preserved implementation.
         $values = ['payable_type' => \App\Models\Booking::class, 'payable_id' => 1,
             'external_reference' => 'TIME123456', 'received_amount' => 850,
             'transaction_at' => '2026-10-22 13:14:00', 'verified_at' => '2026-10-23 15:20:30',

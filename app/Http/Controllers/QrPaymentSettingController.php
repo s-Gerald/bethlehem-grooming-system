@@ -8,20 +8,24 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
+// Legacy manual QR endpoints are preserved; config/qr_payments.php controls access.
 class QrPaymentSettingController extends Controller
 {
     public function show()
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration(true)]);
     }
 
     public function configuration()
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         return response()->json(['settings' => QrPaymentSettings::findOrFail(1)->configuration()]);
     }
 
     public function save(Request $request)
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         // Multipart JSON preserves an explicitly empty selection.
         if (is_string($request->input('accepted_methods'))) {
             $request->merge(['accepted_methods' => json_decode($request->input('accepted_methods'), true)]);
@@ -93,6 +97,7 @@ class QrPaymentSettingController extends Controller
 
     public function image(Request $request)
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         $settings = QrPaymentSettings::findOrFail(1);
         abort_unless($request->user()->role === 'admin' || $settings->available(), 404);
         abort_unless($settings->image_path && Storage::disk('local')->exists($settings->image_path), 404);

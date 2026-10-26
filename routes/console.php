@@ -47,7 +47,10 @@ Artisan::command('qr-payments:prune-orphans', function () {
     $this->info('Removed '.app(\App\Services\QrPaymentProofService::class)->pruneOrphans().' abandoned payment proofs.');
 })->purpose('Remove unreferenced payment uploads older than 24 hours; retain recorded proofs');
 
-Schedule::command('qr-payments:prune-orphans')->daily()->withoutOverlapping();
+// Legacy manual QR cleanup is inactive while preserved proofs are retained. PayMongo is separate.
+if (config('qr_payments.enabled', false)) {
+    Schedule::command('qr-payments:prune-orphans')->daily()->withoutOverlapping();
+}
 
 // Record expiration for security review; expiry never releases a recovery hold.
 Schedule::call(fn () => app(\App\Services\StaffEmailRecoveryService::class)->recordExpirations())

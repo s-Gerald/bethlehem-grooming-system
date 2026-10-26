@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=qr-ux-20261023" />
+    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-inline-errors" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019" />
     <link
       rel="stylesheet"
@@ -923,12 +922,9 @@
                   <div>
                     <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Payment Method</p>
                     <div class="flex flex-wrap gap-3">
-                      <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="cash" :checked="paymentModal.paymentMethod === 'cash'" @change="selectPaymentMethod('cash')" />Cash</label>
-                      <label x-show="paymentModal.qr?.settings?.enabled && paymentModal.qr.settings.accepted_methods.length" class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="qrph" :checked="paymentModal.paymentMethod === 'qrph'" @change="selectPaymentMethod(paymentModal.qr.paymentSource || paymentModal.qr.settings.accepted_methods[0])" />QR Payment</label>
-                      <label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-payment-method" value="online" :checked="paymentModal.paymentMethod === 'online'" @change="selectPaymentMethod('online')" />Online Payment</label>
+                      <label class="flex min-w-0 max-w-full cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" class="shrink-0" name="grooming-payment-method" value="cash" :checked="paymentModal.paymentMethod === 'cash'" @change="selectPaymentMethod('cash')" />Cash</label>
+                      <label class="flex min-w-0 max-w-full cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-[#2f4b66]"><input type="radio" class="shrink-0" name="grooming-payment-method" value="online" :checked="paymentModal.paymentMethod === 'online'" @change="selectPaymentMethod('online')" />Online Payment</label>
                     </div>
-                    <p x-show="paymentModal.qr?.loading" role="status" class="mt-2 text-xs text-slate-500">Loading payment options…</p>
-                    <p x-show="paymentModal.paymentMethod === 'cash' && paymentModal.qr?.error" class="mt-2 text-xs text-slate-500" x-text="paymentModal.qr?.error"></p>
                   </div>
                   <div x-show="paymentModal.paymentMethod === 'cash'">
                   <label for="grooming-cash-received" class="mb-1 block text-xs font-semibold text-slate-600">Cash Received</label>
@@ -951,10 +947,12 @@
                     <p class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Change</p>
                     <p class="payment-change-amount text-2xl text-[#2f4b66]" x-text="formatPeso(Math.max(0, paymentChange))"></p>
                   </div>
+                  <!-- LEGACY QR PAYMENT: TEMPORARILY DISABLED; preserved inert form. PayMongo stays active. -->
+                  <template id="legacy-manual-qr-payment">
                   <template x-if="paymentModal.qr && paymentModal.paymentMethod === 'qrph'">
                     <div class="space-y-4" x-effect="paymentModal.qr.setExpectedAmount(paymentTotalDue)" @paste="paymentModal.qr.paste($event)">
                       <fieldset class="min-w-0"><legend class="text-xs font-semibold text-slate-600">Receiving provider</legend><div class="mt-2 flex flex-wrap gap-2">
-                        <template x-for="method in paymentModal.qr.settings.accepted_methods" :key="method"><label class="qr-payment-choice flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-qr-provider" :value="method" :checked="paymentModal.qr.paymentSource === method" @change="selectPaymentMethod(method)" /><span x-text="method"></span></label></template>
+                        <template x-for="method in paymentModal.qr.settings.accepted_methods" :key="method"><label class="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-[#2f4b66]"><input type="radio" name="grooming-qr-provider" :value="method" :checked="paymentModal.qr.paymentSource === method" @change="selectPaymentMethod(method)" /><span x-text="method"></span></label></template>
                       </div></fieldset>
                       <div class="rounded-2xl border border-[#d7e3ef] bg-[#f5f8fb] p-4 text-center">
                         <p class="font-semibold text-[#1f3850]" x-text="paymentModal.qr.settings?.merchant_name"></p>
@@ -1006,6 +1004,7 @@
                         <label class="flex items-start gap-2 rounded-xl border border-[#cfe0ee] bg-[#f5f8fb] p-3 text-sm text-[#2f4b66]"><input type="checkbox" x-model="paymentModal.qr.verified" @change="clearPaymentError()" class="mt-1" /><span>I verified <strong x-text="formatPeso(paymentTotalDue)"></strong> was received in the clinic's official account.</span></label>
                       </fieldset>
                     </div>
+                  </template>
                   </template>
                 </section>
 
@@ -1593,6 +1592,6 @@
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/services/grooming-estimate-engine.js?v=20261016"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026"></script>
   </body>
 </html>

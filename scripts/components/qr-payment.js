@@ -1,3 +1,5 @@
+// LEGACY QR PAYMENT: TEMPORARILY DISABLED. Manual QR/OCR is preserved here.
+// Active workflows must not import this module. PayMongo Online Payment (QR Ph) is separate.
 export function createQrPayment() {
   return {
     settings: null, paymentSource: '', loading: false, error: '', imageUrl: '', imageLoading: false,

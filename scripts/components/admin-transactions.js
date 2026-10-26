@@ -206,6 +206,11 @@ function adminTransactions() {
 
     isProductSale(tx) { return tx?.transactionType === "product_sale"; },
     isClinicPayment(tx) { return tx?.transactionType === "clinic_payment"; },
+    isLegacyQrPayment(tx) {
+      // Historical manual QR invoices stay unsupported even without loaded verification data.
+      return !!tx?.qrPayment || (tx?.paymentMethod === 'qrph' && tx?.paymentMethodLabel !== 'Online Payment'
+        && tx?.paymentProvider !== 'paymongo');
+    },
     transactionName(tx) { return this.isProductSale(tx) ? "Product Sale" : tx.ownerName || "—"; },
     transactionDetails(tx) {
       if (!this.isProductSale(tx)) return this.compactPetNames(tx);
@@ -219,7 +224,7 @@ function adminTransactions() {
       this.clearPaymentProof();
       this.selectedTransaction = tx;
       // Build the invoice once from the transaction being inspected.
-      this.receiptModal = this.isProductSale(tx) || tx.qrPayment ? null : {
+      this.receiptModal = this.isProductSale(tx) || this.isLegacyQrPayment(tx) ? null : {
         isTest: tx.isTest === true,
         bookingReference: tx.reference,
         ownerName: tx.ownerName,
@@ -296,29 +301,6 @@ function adminTransactions() {
       this.proofBusy = false;
     },
 
-    async viewPaymentProof() {
-      const qr = this.selectedTransaction?.qrPayment;
-      if (!qr?.proof || this.proofBusy || this.proofUrl || this.proofPages.length) return;
-      const version = this._proofVersion;
-      const controller = new AbortController(); this._proofController = controller;
-      this.proofBusy = true; this.proofError = '';
-      try {
-        const {blob} = await API.getQrPaymentProof(qr.id);
-        if (version !== this._proofVersion) return;
-        if (qr.proof.mime === 'application/pdf') {
-          const {readPdfReceipt} = await import('../services/payment-receipt-pdf.js');
-          if (version !== this._proofVersion) return;
-          await readPdfReceipt(blob, async canvas => {
-            const page = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            if (!page) throw new Error('Could not render payment proof.');
-            if (version === this._proofVersion) this.proofPages.push(URL.createObjectURL(page));
-            return '';
-          }, controller.signal);
-        } else this.proofUrl = URL.createObjectURL(blob);
-      } catch (error) { if (version === this._proofVersion) { this.clearPaymentProof(); this.proofError = error.message || 'Could not load payment proof.'; } }
-      finally { if (version === this._proofVersion) this.proofBusy = false; }
-    },
-
     formatQrDate(value) {
       return window.PaymentInvoice.formatPaymentDateTime(value);
     },
@@ -351,7 +333,7 @@ function adminTransactions() {
     },
 
     printInvoice() {
-      if (this.selectedTransaction?.qrPayment) return;
+      if (this.isLegacyQrPayment(this.selectedTransaction)) return;
       if (!this.selectedTransaction) return;
       if (this.isProductSale(this.selectedTransaction)) window.ProductSaleInvoice.print();
       else if (this.isClinicPayment(this.selectedTransaction)) window.PaymentInvoice.print("clinicPaymentInvoice");
@@ -416,5 +398,34 @@ function adminTransactions() {
     formatPeso(amount) {
       return "₱" + Number(amount).toFixed(2);
     },
+  };
+}
+
+// Legacy manual QR proof viewer preserved, never exposed by active transaction history.
+function legacyQrProofViewer() {
+  return {
+    async viewPaymentProof() {
+      const qr = this.selectedTransaction?.qrPayment;
+      if (!qr?.proof || this.proofBusy || this.proofUrl || this.proofPages.length) return;
+      const version = this._proofVersion;
+      const controller = new AbortController(); this._proofController = controller;
+      this.proofBusy = true; this.proofError = '';
+      try {
+        const {blob} = await API.getQrPaymentProof(qr.id);
+        if (version !== this._proofVersion) return;
+        if (qr.proof.mime === 'application/pdf') {
+          const {readPdfReceipt} = await import('../services/payment-receipt-pdf.js');
+          if (version !== this._proofVersion) return;
+          await readPdfReceipt(blob, async canvas => {
+            const page = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!page) throw new Error('Could not render payment proof.');
+            if (version === this._proofVersion) this.proofPages.push(URL.createObjectURL(page));
+            return '';
+          }, controller.signal);
+        } else this.proofUrl = URL.createObjectURL(blob);
+      } catch (error) { if (version === this._proofVersion) { this.clearPaymentProof(); this.proofError = error.message || 'Could not load payment proof.'; } }
+      finally { if (version === this._proofVersion) this.proofBusy = false; }
+    },
+
   };
 }

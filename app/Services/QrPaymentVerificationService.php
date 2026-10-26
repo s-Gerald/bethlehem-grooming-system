@@ -33,6 +33,10 @@ class QrPaymentVerificationService
     /** Caller holds the payable lock in the same transaction as settlement. */
     public function verify(Model $payable, array $data, string $total, User $actor): QrPayment
     {
+        // Legacy manual verification stays preserved behind the source-controlled guard.
+        if (! config('qr_payments.enabled', false)) {
+            throw ValidationException::withMessages(['payment_method' => 'The selected payment method is invalid.']);
+        }
         $settings = QrPaymentSettings::whereKey(1)->sharedLock()->first();
         if (! $settings?->available() || $settings->version !== (int) $data['qr_settings_version']) {
             throw ValidationException::withMessages(['qr_settings_version' => 'QR payments are unavailable or the QR has changed. Reopen the payment before collecting funds.']);

@@ -13,6 +13,7 @@ class QrPaymentProofService
     /** Validate and write before acquiring any financial database locks. */
     public function store(?UploadedFile $file): array
     {
+        abort_unless(config('qr_payments.enabled', false), 404);
         if (! $file) return [];
         $mime = $file->getMimeType();
         $extensions = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'application/pdf' => 'pdf'];
@@ -53,6 +54,7 @@ class QrPaymentProofService
     /** Retain recorded proofs indefinitely; prune only abandoned uploads older than 24 hours. */
     public function pruneOrphans(): int
     {
+        if (! config('qr_payments.enabled', false)) return 0;
         $disk = Storage::disk('local');
         $removed = 0;
         foreach (array_chunk($disk->allFiles('payment-proofs'), 200) as $paths) {

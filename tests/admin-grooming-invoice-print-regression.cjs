@@ -149,138 +149,20 @@ console.log("Admin grooming invoice print regression tests passed.");
     assert.equal(submissions.at(-1).flow, early ? 'early' : 'final');
   }
   assert.equal(submissions.length, 2, 'Repeated clicks submit once per payment');
-  const {createQrPayment} = await import('../scripts/components/qr-payment.js');
-  global.API = {getUserRole: () => 'staff'};
-  const methodQr = createQrPayment();
-  methodQr.settings = {enabled: true, version: 2, accepted_methods: ['GCash', 'Maya', 'Bank Transfer']};
-  let qrImageReads = 0;
-  global.API.getQrPaymentImage = async () => {qrImageReads++; return {blob: new Blob(['official QR'])};};
-  ui.paymentModal = {...ui.paymentModal, busy: false, paymentMethod: 'cash', qr: methodQr};
-  ui.selectPaymentMethod('Unconfigured');
-  assert.equal(ui.paymentModal.paymentMethod, 'cash');
-  assert.equal(qrImageReads, 0, 'Unsupported choices never fetch the QR image');
-  ui.selectPaymentMethod('Maya');
-  await Promise.resolve();
-  assert.equal(ui.paymentModal.paymentMethod, 'qrph');
-  assert.equal(ui.paymentMethodLabel, 'Maya');
-  methodQr.verified = true;
-  ui.selectPaymentMethod('GCash');
-  assert.equal(methodQr.verified, false, 'Changing the source requires renewed verification');
-  assert.equal(methodQr.payload().payment_source, 'GCash');
-  assert.equal(qrImageReads, 1, 'All configured methods reuse the same lazily loaded QR image');
-  ui.selectPaymentMethod('cash');
-  assert.equal(ui.paymentMethodLabel, 'Cash');
-  assert.equal(methodQr.paymentSource, '');
-  methodQr.dispose();
   for (const early of [true, false]) {
-    const qr = createQrPayment();
-    const proof = new Blob(['retained receipt'], {type: 'image/png'});
-    Object.assign(qr, {settings: {enabled: true, accepted_methods: ['GCash']}, paymentSource: 'GCash',
-      externalReference: 'BANK123456', amount: '500.00', verified: true, receiptFile: proof, receiptName: 'receipt.png'});
-    const breakdown = ui.buildPaymentBreakdown(booking, {lockFixedPrices: true});
     ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
-      notes: 'Keep this note', petBreakdown: breakdown, products: [], paymentMethod: 'qrph', qr};
-    const modal = ui.paymentModal;
-    const error = new Error('Validation failed');
-    error.errors = {external_reference: ['This payment reference has already been recorded.']};
-    let calls = 0, focused = 0, pageScrolls = 0;
-    const ticks = [];
-    ui.$nextTick = callback => ticks.push(callback);
-    const body = {scrollTop: 700, getBoundingClientRect: () => ({top: 100, bottom: 700})};
-    ui.$refs = {
-      paymentModalBody: body,
-      qrPaymentReferenceField: {getBoundingClientRect: () => ({top: 20, bottom: 110})},
-      qrPaymentReference: {focus(options) { assert.equal(options.preventScroll, true); assert.equal(modal.busy, false); focused++; }},
-    };
-    context.window.scrollTo = () => pageScrolls++;
-    context.API[early ? 'payNow' : 'processPayment'] = async () => {calls++; throw error;};
-    const previousSuccess = ui.receiptModal;
-    await ui.submitPayment();
-    assert.equal(qr.referenceError, error.errors.external_reference[0], 'Backend reference validation maps inline for both flows');
-    assert.equal(modal.error, '', 'The inline error is not repeated in the generic error area');
-    assert.equal(modal.open, true); assert.equal(modal.busy, false);
-    assert.equal(qr.externalReference, 'BANK123456'); assert.equal(qr.receiptFile, proof);
-    assert.equal(qr.receiptName, 'receipt.png'); assert.equal(qr.amount, '500.00');
-    assert.equal(qr.verified, true); assert.equal(modal.notes, 'Keep this note');
-    assert.equal(modal.petBreakdown, breakdown); assert.equal(ui.receiptModal, previousSuccess);
-    assert.equal(focused, 0, 'Wait for the error and enabled input to render before focusing');
-    ticks.splice(0).forEach(callback => callback());
-    assert.equal(focused, 1); assert.equal(body.scrollTop, 608); assert.equal(pageScrolls, 0);
-    // Already-visible fields should not move the internal scrollbar.
-    ui.$refs.qrPaymentReferenceField.getBoundingClientRect = () => ({top: 200, bottom: 290});
-    ui.focusPaymentReference(modal); ticks.splice(0).forEach(callback => callback());
-    assert.equal(body.scrollTop, 608); assert.equal(focused, 2);
-    // The same calculation handles a reference below the viewport, including its error.
-    ui.$refs.qrPaymentReferenceField.getBoundingClientRect = () => ({top: 750, bottom: 840});
-    ui.focusPaymentReference(modal); ticks.splice(0).forEach(callback => callback());
-    assert.equal(body.scrollTop, 1246); assert.equal(pageScrolls, 0); assert.equal(focused, 3);
-    modal.notes = 'Edited note'; ui.clearPaymentError();
-    assert.equal(qr.referenceError, error.errors.external_reference[0], 'Unrelated edits do not clear the reference error');
+      petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [],
+      paymentMethod: 'cash', amountPaid: '600'};
+    for (const method of ['qrph', 'GCash', 'Maya', 'Bank Transfer']) {
+      ui.selectPaymentMethod(method);
+      assert.equal(ui.paymentModal.paymentMethod, 'cash', 'Legacy sources are never selectable');
+    }
+    ui.paymentModal.paymentMethod = 'qrph';
+    const before = submissions.length;
     assert.equal(ui.canSubmitPayment, false);
     await ui.submitPayment();
-    assert.equal(calls, 1, 'An unchanged rejected reference does not send another payment request');
-    assert.equal(modal.error, '');
-    qr.externalReference = 'bank-123456'; qr.reviewField('externalReference'); qr.verified = true;
-    assert.equal(ui.canSubmitPayment, false, 'Formatting changes cannot bypass known duplicate validation');
-    qr.referenceCandidates = [{label: 'GCash', value: 'BANK123456'}, {label: 'Maya', value: 'NEW123456'}];
-    qr.selectReference(qr.referenceCandidates[0]);
-    assert.ok(qr.referenceError, 'Reselecting the same reference does not clear its rejection');
-    qr.selectReference(qr.referenceCandidates[1]);
-    assert.equal(qr.referenceError, ''); assert.equal(qr.verified, false);
-    qr.verified = true;
-    assert.equal(ui.canSubmitPayment, true);
-    // Non-reference errors retain their original messages in the generic area.
-    error.errors = {observed_amount: ['Receipt amount does not match.']};
-    await ui.submitPayment();
-    assert.equal(modal.error, 'Receipt amount does not match.'); assert.equal(qr.referenceError, '');
-    error.errors = {external_reference: ['Invalid reference.'], receipt: ['Receipt could not be read.']};
-    await ui.submitPayment();
-    assert.equal(qr.referenceError, 'Invalid reference.'); assert.equal(modal.error, 'Receipt could not be read.');
-    modal.open = false;
-    ticks.splice(0).forEach(callback => callback());
-    assert.equal(focused, 3, 'Closing a modal cancels deferred reference focus');
-    modal.open = true;
-    qr.externalReference = 'NEXT123456'; qr.reviewField('externalReference'); qr.verified = true;
-    delete error.errors; error.message = 'Unable to reach the server.';
-    await ui.submitPayment();
-    assert.equal(modal.error, 'Unable to reach the server.'); assert.equal(qr.referenceError, '');
-    assert.equal(qr.receiptFile, proof);
-    qr.setReferenceError('Invalid reference.');
-    qr.externalReference = 'MANUAL123456'; qr.reviewField('externalReference');
-    assert.equal(qr.referenceError, '', 'Changing the reference manually clears its own error');
-  }
-  ui.$nextTick = () => {};
-  for (const early of [true, false]) {
-    const qr = createQrPayment();
-    Object.assign(qr, {settings: {enabled: true, version: 2, accepted_methods: ['GCash', 'Maya', 'Bank Transfer']}, paymentSource: early ? 'Maya' : 'Bank Transfer', amount: '',
-      externalReference: 'BANK123456', verified: false});
-    ui.paymentModal = {...ui.paymentModal, open: true, booking, isEarlyPayment: early, busy: false, error: '',
-      petBreakdown: ui.buildPaymentBreakdown(booking, {lockFixedPrices: true}), products: [], amountPaid: '', paymentMethod: 'qrph', qr};
-    assert.equal(ui.canSubmitPayment, false, 'QR requires explicit verification');
-    qr.verified = true;
-    if (early) qr.receiptFile = new Blob(['synthetic proof'], {type: 'image/png'});
-    assert.equal(ui.canSubmitPayment, true, 'Verified QR does not require Cash Received');
-    context.API[early ? 'payNow' : 'processPayment'] = async (id, payload) => {
-      submissions.push({id, payload});
-      return {final_price: 500, amount_paid: 500, change: 0, payment_method: 'qrph', payment_method_label: early ? 'Maya' : 'Bank Transfer',
-        paid_at: '2026-10-23 10:31:00',
-        qr_payment: {external_reference: 'BANK123456', transaction_at: null, verified_by_name: 'Staff Verifier', verified_at: '2026-10-23 10:31:00'}};
-    };
-    await ui.submitPayment();
-    assert.equal(submissions.at(-1).payload.payment_method, 'qrph');
-    assert.equal(submissions.at(-1).payload.amount_paid, 500);
-    assert.equal(submissions.at(-1).payload.qr_verified, true);
-    assert.equal(submissions.at(-1).payload.observed_amount, null);
-    assert.equal(submissions.at(-1).payload.transaction_at, null, 'Early and final manual QR payments need no receipt date');
-    if (early) assert.equal(await submissions.at(-1).payload.receipt.text(), 'synthetic proof');
-    assert.equal(Object.hasOwn(submissions.at(-1).payload, 'verification_source'), false, 'Early and final submissions never send a source choice');
-    assert.equal(submissions.at(-1).payload.payment_source, early ? 'Maya' : 'Bank Transfer');
-    assert.equal(ui.receiptModal.paymentMethod, early ? 'Maya' : 'Bank Transfer');
-    assert.equal(ui.receiptModal.qrPayment.external_reference, 'BANK123456');
-    assert.equal(ui.receiptModal.paidAt, '2026-10-23 10:31:00', 'Success uses the backend recording timestamp');
-    const printCount = printed;
-    ui.printReceipt();
-    assert.equal(printed, printCount, 'QR success cannot print a Cash invoice');
+    assert.equal(submissions.length, before, 'Stale QR state never submits');
+    assert.ok(ui.paymentModal.error);
   }
   const {environment} = require('./admin-data-cache-regression.cjs');
   const apiEnvironment = environment();

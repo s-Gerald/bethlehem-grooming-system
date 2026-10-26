@@ -533,6 +533,8 @@ class GroomingPayMongoTest extends TestCase
                 'services.paymongo.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
             Illuminate\Support\Facades\DB::purge();
             $role = $argv[2]; $competitor = $argv[3]; $contended = false;
+            // Isolated legacy competitor coverage; default-off rejection is tested before settlement elsewhere.
+            config(['qr_payments.enabled' => $competitor === 'qrph']);
             $wait = function ($name) use ($directory) {
                 $deadline = microtime(true) + 5;
                 while (!is_file($directory.'/'.$name) && microtime(true) < $deadline) {clearstatcache(); usleep(1000);}

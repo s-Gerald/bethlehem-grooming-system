@@ -1,3 +1,17 @@
+# Current status: legacy manual QR payments are inactive
+
+As of 2026-10-26, `config/qr_payments.php` sets `enabled` to literal `false` in every environment, including cached production configuration. Database QR settings cannot override it. Cash and PayMongo Online Payment (including its `qrph` provider channel) remain active.
+
+Manual submission validation, legacy controllers, proof storage/cleanup, transaction and booking relationship loading, and the scheduler respect this guard. The frontend exposes only Cash and Online Payment. Original manual QR/OCR modules, inert HTML templates, and dormant editor/proof-viewer factories remain preserved for an intentional future source change; changing the server flag alone does not restore their UI.
+
+Historical financial records and uploaded proofs are retained. History uses the stored method without QR verification/proof requests; historical manual QR records cannot print unsupported invoices. Isolated legacy tests opt in explicitly; the default test environment stays disabled.
+
+For Hostinger redeployment, publish the changed frontend HTML/scripts and the normal build output together with the PHP changes. Rebuild Laravel's configuration and route caches using `php artisan config:cache` and `php artisan route:cache` in the existing deployment process. Updated asset URLs refresh the changed interface. No migration, new environment variable, storage deletion, PayMongo credential/webhook change, or global application-cache flush is required. Do not run proof cleanup while this feature is inactive (the command is also guarded).
+
+The notes below document the preserved legacy implementation and its prior enabled workflow; they are not instructions to reactivate it.
+
+---
+
 # Grooming QR Payment implementation report
 
 Implemented October 23, 2026. QR collection is available in Grooming final payments and Pay Now. Cash remains the default. Clinic and POS collection are unchanged.

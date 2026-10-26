@@ -419,7 +419,7 @@ class BookingController extends Controller
             'cancellation_reason',
         ]);
         if (Schema::hasTable('payments')) {
-            $paymentRelations = Schema::hasTable('qr_payments') ? ['qrPayment'] : [];
+            $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['qrPayment'] : [];
             $relations['payments'] = fn ($query) => $query
                 ->where('payment_status', 'paid')
                 ->with($paymentRelations)

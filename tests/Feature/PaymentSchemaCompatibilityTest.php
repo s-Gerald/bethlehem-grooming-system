@@ -122,7 +122,6 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $this->createHistoricalPaymentSchema();
         foreach (['online', 'qrph', 'gcash', 'card', 'other'] as $method) {
             foreach (['/api/admin/bookings/1/pay', '/api/admin/bookings/1/pay-now'] as $url) {
-                if ($method === 'qrph') continue; // Grooming now validates QR verification separately.
                 $this->postJson($url, ['final_price' => 850, 'amount_paid' => 1000, 'payment_method' => $method])
                     ->assertUnprocessable()->assertJsonValidationErrors('payment_method');
             }
@@ -135,6 +134,35 @@ class PaymentSchemaCompatibilityTest extends TestCase
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->assertDatabaseCount('inventory_transactions', 0);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'paid' => false]);
+        Http::assertNothingSent();
+    }
+
+    public function test_disabled_manual_qr_rejects_both_flows_before_validation_queries_uploads_or_settlement(): void
+    {
+        $this->createHistoricalPaymentSchema();
+        $this->configureQr();
+        config(['qr_payments.enabled' => false]);
+        $before = [];
+        foreach (['bookings', 'booking_services', 'inventory_items', 'payments', 'qr_payments', 'notifications', 'inventory_transactions'] as $table) {
+            $before[$table] = DB::table($table)->get()->toArray();
+        }
+        $files = \Illuminate\Support\Facades\Storage::disk('local')->allFiles();
+        foreach (['pay', 'pay-now'] as $flow) {
+            DB::enableQueryLog();
+            DB::flushQueryLog();
+            $this->post('/api/admin/bookings/1/'.$flow, [
+                'payment_method' => 'qrph', 'final_price' => 1010,
+                'products' => [['item_id' => 10, 'quantity' => 2]],
+                'receipt' => \Illuminate\Http\UploadedFile::fake()->createWithContent('receipt.png', 'invalid image'),
+            ], ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+            $queries = DB::getQueryLog();
+            DB::disableQueryLog();
+            foreach ($queries as $query) {
+                $this->assertDoesNotMatchRegularExpression('/qr_payment|inventory_items|booking_services/i', $query['query']);
+            }
+        }
+        foreach ($before as $table => $rows) $this->assertEquals($rows, DB::table($table)->get()->toArray(), $table);
+        $this->assertSame($files, \Illuminate\Support\Facades\Storage::disk('local')->allFiles());
         Http::assertNothingSent();
     }
 
@@ -210,7 +238,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
             }
             $app = require 'bootstrap/app.php';
             $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-            config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+            config(['qr_payments.enabled' => true, 'database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                 'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                 'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
                 'filesystems.disks.local.root' => $argv[3]]);
@@ -296,6 +324,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
 
     private function configureQr(): void
     {
+        config(['qr_payments.enabled' => true]); // Explicit opt-in for isolated legacy regression coverage.
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();

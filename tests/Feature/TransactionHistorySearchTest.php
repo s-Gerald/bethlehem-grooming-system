@@ -347,6 +347,27 @@ class TransactionHistorySearchTest extends TestCase
             'merchant_name' => 'Bethlehem', 'provider_name' => 'Bank', 'qr_image_hash' => hash('sha256', 'fixture'),
         ]);
         DB::table('payments')->where('payment_id', 1)->update(['payment_method' => 'qrph', 'qr_payment_id' => $qr->id, 'amount_tendered' => 850, 'change_amount' => 0]);
+        $before = $qr->fresh()->getAttributes();
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        foreach ([[], ['search' => 'Alice'], ['search' => 'BANK123456']] as $query) {
+            $result = $this->search($query);
+            if ($query === []) {
+                $this->assertSame(2, $result['total']);
+                $this->assertEquals(1700, $result['collection_total']);
+                $historical = collect($result['transactions'])->firstWhere('paymentMethod', 'qrph');
+                $this->assertSame('QR Payment', $historical['paymentMethodLabel']);
+                $this->assertNull($historical['qrPayment']);
+            }
+        }
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        foreach ($queries as $query) {
+            $this->assertDoesNotMatchRegularExpression('/qr_payments|qr_payment_settings/i', $query['query']);
+            $this->assertStringNotContainsString('qr_payments', json_encode($query['bindings']));
+        }
+        $this->assertSame($before, $qr->fresh()->getAttributes());
+        config(['qr_payments.enabled' => true]); // Preserve opt-in historical verification coverage.
         $all = $this->search([]);
         $this->assertSame(2, $all['total']);
         $this->assertEquals(1700, $all['collection_total']);

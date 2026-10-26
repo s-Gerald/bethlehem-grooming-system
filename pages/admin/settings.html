@@ -5,10 +5,9 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=qr-ux-20261023&profile=20261024" />
+    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
-    <link rel="stylesheet" href="../../css/components/qr-payment.css?v=20261023-methods" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
       #success-toast { z-index: 10002; }
@@ -207,17 +206,15 @@
                     <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                     <span>Security</span>
                   </button>
-                  <button x-show="isAdmin" type="button" @click="selectSettingsTab('qr-payments')"
-                    class="flex min-h-11 shrink-0 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition"
-                    :class="activeSettingsTab === 'qr-payments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'">
-                    QR Payments
-                  </button>
+
                 </div>
               </div>
             </div>
           </section>
 
           <section class="mt-6 space-y-6">
+            <!-- LEGACY QR PAYMENT: TEMPORARILY DISABLED. Inert editor preserved; PayMongo stays active. -->
+            <template id="legacy-qr-settings">
             <form x-cloak x-show="isAdmin && activeSettingsTab === 'qr-payments'" @submit.prevent="saveQrSettings()" x-ref="qrSettingsForm" novalidate
               class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6" aria-labelledby="qr-settings-title" :aria-busy="qrSettings.loading || qrSettings.saving">
               <div class="flex flex-wrap items-center justify-between gap-3">
@@ -309,6 +306,7 @@
               <p x-show="qrSettings.error" x-text="qrSettings.error" class="mt-4 text-sm text-red-600" role="alert"></p>
               <p x-show="qrSettings.success" x-text="qrSettings.success" class="mt-4 text-sm text-emerald-700" role="status"></p>
             </form>
+            </template>
             <form x-cloak x-show="activeSettingsTab === 'general'" class="space-y-6">
               <div x-show="isStaff" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
                 These settings are managed by an administrator.
@@ -1656,6 +1654,6 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/components/admin-settings.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=qr-ux-20261023&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024"></script>
+    <script src="../../scripts/components/admin-settings.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026"></script>
   </body>
 </html>

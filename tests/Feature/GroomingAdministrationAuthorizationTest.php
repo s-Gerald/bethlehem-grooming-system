@@ -1407,12 +1407,11 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         }
 
         $queryCount = 0;
-        $qrCompatibilityQueryCount = 0;
-        DB::listen(function ($query) use (&$queryCount, &$qrCompatibilityQueryCount): void {
+        $qrQueryCount = 0;
+        DB::listen(function ($query) use (&$queryCount, &$qrQueryCount): void {
             $queryCount++;
-            if (str_contains($query->sql, 'select exists')
-                && (str_contains($query->sql, "'qr_payments'") || in_array('qr_payments', $query->bindings, true))) {
-                $qrCompatibilityQueryCount++;
+            if (str_contains($query->sql, 'qr_payments') || in_array('qr_payments', $query->bindings, true)) {
+                $qrQueryCount++;
             }
         });
 
@@ -1427,15 +1426,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 DB::table($table)->insert(array_slice($rows, $previousCount, $bookingCount - $previousCount));
             }
             $previousCount = $bookingCount;
-            $queryCount = $qrCompatibilityQueryCount = 0;
+            $queryCount = $qrQueryCount = 0;
             $currentResponse = $this->getJson('/api/admin/bookings/archived')
                 ->assertOk()->assertJsonPath('total', $bookingCount)->assertJsonCount($bookingCount, 'archived');
 
-            // QR schema compatibility adds one fixed probe to the original budget.
-            $this->assertSame(1, $qrCompatibilityQueryCount, "Expected one QR compatibility query for {$bookingCount} bookings.");
+            // Disabled legacy QR must add neither schema probes nor relationship queries.
+            $this->assertSame(0, $qrQueryCount, "Unexpected legacy QR query for {$bookingCount} bookings.");
             $this->assertLessThanOrEqual(
                 13,
-                $queryCount - $qrCompatibilityQueryCount,
+                $queryCount,
                 "Archive query budget exceeded for {$bookingCount} bookings.",
             );
             $queryCounts[$bookingCount] = $queryCount;

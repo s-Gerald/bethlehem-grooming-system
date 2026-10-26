@@ -66,10 +66,14 @@ assert.equal(printed, 1, 'QR payments cannot print through the shared Cash invoi
 ui.closeDetails();
 const legacyQr = {...tx, paymentMethod: 'qrph', paymentMethodLabel: 'QR Payment', isTest: true};
 ui.openDetails(legacyQr, {focus() {}});
-assert.equal(ui.receiptModal.finalPrice, 2010, 'Historical gateway records retain their existing invoice behavior');
+assert.equal(ui.receiptModal, null, 'Stored manual QR method prevents invoice creation without verification metadata');
 context.window.PaymentInvoice.print = () => printed++;
 ui.printInvoice();
-assert.equal(printed, 2, 'Only the new verified QR record suppresses invoices');
+assert.equal(printed, 1, 'Historical manual QR cannot print without a loaded relationship');
+ui.closeDetails();
+const historicalOnline = {...tx, paymentMethod: 'qrph', paymentMethodLabel: 'Online Payment', paymentProvider: 'paymongo'};
+ui.openDetails(historicalOnline, {focus() {}});
+assert.equal(ui.receiptModal.finalPrice, 2010, 'Historical PayMongo QR Ph still supports invoices');
 ui.closeDetails();
 const noProducts = { ...tx, id: 2, reference: "BAC-20261002-0002", dateKey: "2026-10-02", productAddons: [], finalPrice: 700 };
 const onlineTransaction = {...tx, paymentMethod: 'online', paymentMethodLabel: 'Online Payment',
@@ -199,6 +203,8 @@ assert.ok(!html.split('<!-- Transactions Content -->')[1].includes('data-lucide'
 assert.match(context.window.PaymentInvoice.formatPaymentDateTime('2026-10-22T17:30:00Z'), /Oct 23, 2026.*1:30 AM/);
 assert.match(context.window.PaymentInvoice.formatPaymentDateTime('2026-10-23 09:15:00'), /Oct 23, 2026.*9:15 AM/);
 async function proofChecks() {
+  assert.equal(typeof ui.viewPaymentProof, 'undefined', 'Active history exposes no legacy proof fetch');
+  Object.assign(ui, context.legacyQrProofViewer());
   context.URL = URL;
   let reads = 0;
   context.API = {getQrPaymentProof: async id => { reads++; assert.equal(id, 19); return {blob: new Blob(['receipt'], {type: 'image/png'})}; }};

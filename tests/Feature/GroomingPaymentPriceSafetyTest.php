@@ -630,6 +630,7 @@ class GroomingPaymentPriceSafetyTest extends TestCase
 
     private function configureQr(): void
     {
+        config(['qr_payments.enabled' => true]); // Explicit opt-in for isolated legacy regression coverage.
         (require database_path('migrations/2026_10_23_000001_create_qr_payments.php'))->up();
         (require database_path('migrations/2026_10_23_000002_add_qr_payment_proofs.php'))->up();
         (require database_path('migrations/2026_10_23_000003_configure_qr_payment_methods.php'))->up();

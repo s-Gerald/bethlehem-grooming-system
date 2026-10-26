@@ -422,7 +422,6 @@ function adminDashboard() {
     },
     paymentModal: {
       paymentMethod: 'cash',
-      qr: null,
       open: false,
       booking: null,
       isEarlyPayment: false,
@@ -700,7 +699,6 @@ function adminDashboard() {
       window.removeEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
       this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
-      this.paymentModal.qr?.dispose();
     },
 
     loadDashboardSummary({ force = false } = {}) {
@@ -3253,9 +3251,8 @@ function adminDashboard() {
         this.paymentTotalDue > 0 &&
         !this.hasMissingPaymentPrices() &&
         !this.getInvalidPaymentLine() &&
-        (this.paymentModal.paymentMethod === 'online' || (this.paymentModal.paymentMethod === 'qrph'
-          ? this.paymentModal.qr && !this.paymentModal.qr.validationError(this.paymentTotalDue)
-          : !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue)))
+        (this.paymentModal.paymentMethod === 'online' || (this.paymentModal.paymentMethod === 'cash'
+          && !window.CashPayment.error(this.paymentModal.amountPaid, this.paymentTotalDue)))
       );
     },
 
@@ -3282,7 +3279,6 @@ function adminDashboard() {
       const petBreakdown = this.buildPaymentBreakdown(booking, { lockFixedPrices: true });
       this.paymentModal = {
         paymentMethod: 'cash', onlinePayment: null, verifying: false,
-        qr: null,
         open: true,
         booking,
         isEarlyPayment,
@@ -3308,39 +3304,26 @@ function adminDashboard() {
         modal.error = error.message || 'Could not check active payments. Reopen this payment to retry.';
         return;
       } finally { if (this.paymentModal === modal) modal.busy = false; }
-      if (!modal.open || this.paymentModal !== modal || modal.onlinePayment) return;
-      try {
-        const {createQrPayment} = await import('./qr-payment.js?v=20261023-inline-errors');
-        if (!modal.open || this.paymentModal !== modal || this._destroyed) return;
-        modal.qr = createQrPayment();
-        await modal.qr.load();
-      } catch (error) {
-        if (modal.open && this.paymentModal === modal) modal.error = 'QR settings could not load. Cash remains available.';
-      }
+      // LEGACY QR PAYMENT: TEMPORARILY DISABLED; qr-payment.js preserves manual QR/OCR.
+      // Do not restore initialization without the server guard. PayMongo Online Payment stays active.
     },
 
     get paymentMethodLabel() {
-      return this.paymentModal.paymentMethod === 'online' ? 'Online Payment' : this.paymentModal.paymentMethod === 'qrph' ? this.paymentModal.qr?.paymentSource || 'QR Payment' : 'Cash';
+      return {cash: 'Cash', online: 'Online Payment'}[this.paymentModal.paymentMethod] || '';
     },
     selectPaymentMethod(method) {
       const modal = this.paymentModal;
-      if (modal.busy || modal.onlinePayment) return;
-      if (method === 'online') { modal.qr?.cancelScan?.(); modal.paymentMethod = 'online'; modal.error = ''; return; }
-      const cash = method === 'cash';
-      if (!cash && (!modal.qr?.settings?.enabled || !modal.qr.settings.accepted_methods.includes(method))) return;
-      modal.paymentMethod = cash ? 'cash' : 'qrph';
+      if (modal.busy || modal.onlinePayment || !['cash', 'online'].includes(method)) return;
+      modal.paymentMethod = method;
       modal.error = '';
-      if (modal.qr) { modal.qr.paymentSource = cash ? '' : method; modal.qr.verified = false; }
-      if (!cash) void modal.qr.showImage();
     },
 
     closePaymentModal(force = false) {
       if (this.paymentModal.busy && !force) return;
       this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
-      this.paymentModal.qr?.dispose();
       this.paymentModal = {
-        paymentMethod: 'cash', qr: null, onlinePayment: null, verifying: false,
+        paymentMethod: 'cash', onlinePayment: null, verifying: false,
         open: false, booking: null, isEarlyPayment: false,
         finalPrice: "", petBreakdown: [], products: [], showProductSearch: false,
         productQuery: "", productResults: [], productSearchError: "", scannerActive: false, _scanner: null,
@@ -3843,18 +3826,6 @@ function adminDashboard() {
       this.paymentModal.error = "";
     },
 
-    focusPaymentReference(modal) {
-      this.$nextTick(() => {
-        if (this.paymentModal !== modal || !modal.open || modal.paymentMethod !== 'qrph' || !modal.qr?.referenceError) return;
-        const {paymentModalBody: body, qrPaymentReferenceField: field, qrPaymentReference: input} = this.$refs;
-        if (!body || !field || !input) return;
-        const bounds = body.getBoundingClientRect();
-        const target = field.getBoundingClientRect();
-        if (target.top < bounds.top || target.bottom > bounds.bottom) body.scrollTop += target.top - bounds.top - 12;
-        input.focus({preventScroll: true});
-      });
-    },
-
     formatPeso(amount) {
       return `\u20b1${Number(amount || 0).toFixed(2)}`;
     },
@@ -3956,8 +3927,12 @@ function adminDashboard() {
       const modal = this.paymentModal;
       const { booking, isEarlyPayment, amountPaid, notes } = this.paymentModal;
       const fp = Number(this.paymentTotalDue.toFixed(2));
-      const paymentMethod = modal.paymentMethod || 'cash';
-      const ap = Number(paymentMethod === 'qrph' ? fp : amountPaid);
+      const paymentMethod = modal.paymentMethod;
+      if (!['cash', 'online'].includes(paymentMethod)) {
+        modal.error = 'Select a payment method.';
+        return;
+      }
+      const ap = Number(amountPaid);
 
       if (this.paymentModal.petBreakdown.length === 0) {
         this.paymentModal.error = "No booked services were found for this payment.";
@@ -3979,12 +3954,9 @@ function adminDashboard() {
         this.paymentModal.error = "Please enter service prices before confirming payment.";
         return;
       }
-      const cashError = paymentMethod === 'online' ? '' : paymentMethod === 'qrph'
-        ? modal.qr?.validationError(fp) || (!modal.qr ? 'QR payments are unavailable.' : '')
-        : window.CashPayment.error(amountPaid, fp);
+      const cashError = paymentMethod === 'cash' ? window.CashPayment.error(amountPaid, fp) : '';
       if (cashError) {
-        if (paymentMethod === 'qrph' && modal.qr?.referenceError) this.focusPaymentReference(modal);
-        else this.paymentModal.error = cashError;
+        modal.error = cashError;
         return;
       }
 
@@ -4009,9 +3981,7 @@ function adminDashboard() {
           service_prices:  servicePrices,
           pet_sizes:       petSizes,
           products:        this.paymentModal.products.map((line) => ({ item_id: line.item_id, quantity: line.quantity })),
-          ...(paymentMethod === 'qrph' ? modal.qr.payload() : {}),
         };
-        if (paymentMethod === 'qrph' && modal.qr.receiptFile) payload.receipt = modal.qr.receiptFile;
         if (paymentMethod === 'online') {
           window.OnlinePayment.remember('grooming', {}, booking.id);
           const response = await API.createGroomingOnlinePayment(booking.id, {...payload, flow: isEarlyPayment ? 'early' : 'final'});
@@ -4036,15 +4006,7 @@ function adminDashboard() {
             if (modal.onlinePayment) return;
           } catch { /* Preserve the original failure; the saved identity supports recovery. */ }
         }
-        const {external_reference: referenceErrors, ...otherErrors} = err.errors || {};
-        const referenceError = [referenceErrors].flat().filter(Boolean).join(' ');
-        if (paymentMethod === 'qrph' && referenceError) {
-          modal.qr.setReferenceError(referenceError);
-          modal.error = Object.values(otherErrors).flat().join(' ');
-          this.focusPaymentReference(modal);
-        } else {
-          modal.error = Object.values(err.errors || {}).flat().join(" ") || err.message || "Payment failed. Please try again.";
-        }
+        modal.error = Object.values(err.errors || {}).flat().join(" ") || err.message || "Payment failed. Please try again.";
       } finally {
         if (this.paymentModal === modal) modal.busy = false;
       }

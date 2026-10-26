@@ -103,7 +103,7 @@ class AdminBookingController extends Controller
             $rangeStart = $rangeEnd->copy();
         }
 
-        $paymentRelations = Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
+        $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
 
         // Incoming: dashboard sees only the selected day; appointments can opt in to today + future.
         $incomingQuery = Booking::whereBetween('booking_date', [
@@ -1292,7 +1292,7 @@ class AdminBookingController extends Controller
         $search = $request->query('search', '');
         $date = $request->query('date', '');
 
-        $paymentRelations = Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
+        $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
         $query = Booking::whereIn('status', ['archived', 'cancelled'])
             ->withExists('groomingConsent')
             ->with([

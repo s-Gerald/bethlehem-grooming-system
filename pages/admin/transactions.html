@@ -434,7 +434,8 @@
                         <div x-show="selectedTransaction.qrPayment.verified_at && selectedTransaction.qrPayment.verified_at !== selectedTransaction.paidAt"><dt>Verified at</dt><dd x-text="formatQrDate(selectedTransaction.qrPayment.verified_at)"></dd></div>
                       </dl>
                     </details></template>
-                    <template x-if="selectedTransaction.qrPayment?.proof"><section class="transaction-proof" aria-label="Payment Proof">
+                    <!-- Legacy manual QR proof UI is preserved inert; PayMongo remains separate. -->
+                    <template id="legacy-qr-proof"><section class="transaction-proof" aria-label="Payment Proof">
                       <h4>Payment Proof</h4>
                       <p x-text="selectedTransaction.qrPayment.proof.name"></p>
                       <button type="button" class="transaction-button" :disabled="proofBusy" @click="viewPaymentProof()" x-text="proofBusy ? 'Loading…' : 'View Payment Proof'"></button>
@@ -446,12 +447,12 @@
                     <div x-show="selectedTransaction.notes" class="transaction-notes"><h4>Notes</h4><p x-text="selectedTransaction.notes"></p></div>
                   </section>
                 </div>
-                <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction) && !selectedTransaction.qrPayment"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.template"></div></template>
+                <template x-if="!isProductSale(selectedTransaction) && !isClinicPayment(selectedTransaction) && !isLegacyQrPayment(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.template"></div></template>
                 <template x-if="isClinicPayment(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-html="window.PaymentInvoice.clinicTemplate"></div></template>
                 <template x-if="isProductSale(selectedTransaction)"><div class="receipt-print-source" aria-hidden="true" x-data="{ receipt: selectedTransaction.receipt }" x-html="window.ProductSaleInvoice.template"></div></template>
                 <footer class="transaction-dialog-footer">
                   <button type="button" class="transaction-button transaction-button-secondary" @click="closeDetails()">Close</button>
-                  <button type="button" x-show="!selectedTransaction.qrPayment" class="transaction-button transaction-button-primary" @click="printInvoice()">
+                  <button type="button" x-show="!isLegacyQrPayment(selectedTransaction)" class="transaction-button transaction-button-primary" @click="printInvoice()">
                     <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><path d="M64 80V40h128v40M64 176H40a16 16 0 0 1-16-16v-64a16 16 0 0 1 16-16h176a16 16 0 0 1 16 16v64a16 16 0 0 1-16 16h-24M64 144h128v72H64Z" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><circle cx="188" cy="112" r="12" fill="currentColor"/></svg>
                     Print Invoice
                   </button>
@@ -469,6 +470,6 @@
 
     <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024"></script>
     <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024"></script>
+    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026"></script>
   </body>
 </html>

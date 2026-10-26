@@ -14,23 +14,12 @@ function adminSettings() {
   };
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
-  let qrEditor = null, qrSelection = null, qrDestroyed = false;
 
   return {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     canManageGroomers: false,
     activeSettingsTab: "general",
-    qrMethodOptions: ['GCash', 'Maya', 'Bank Transfer'],
-    qrSettings: {accepted_methods: [], methodsOpen: false, customOpen: false, customName: '', editingMethod: '', enabled: false, version: 1, merchant_name: '', has_image: false,
-      status: 'not_ready', missing_fields: [], fieldErrors: {},
-      loaded: false, loading: false, saving: false, file: null, preview: '', officialConfirmed: false, error: '', success: ''},
-    qrCrop: {open: false, busy: false, ready: false, error: '', detected: false},
-    get qrStatusLabel() { return {not_ready: 'Not Ready', disabled: 'Disabled', enabled: 'Enabled'}[this.qrSettings.status] || 'Not Ready'; },
-    get qrMissingLabel() {
-      const labels = {image: 'QR image', merchant_name: 'account name', accepted_methods: 'payment methods'};
-      return (this.qrSettings.missing_fields || []).map(key => labels[key]).filter(Boolean).join(', ');
-    },
     availabilityService: "clinic",
     availability: clone(defaultAvailability),
     savedAvailability: clone(defaultAvailability),
@@ -207,6 +196,7 @@ function adminSettings() {
     },
 
     async init() {
+      if (!['general', 'availability', 'capacity', 'security'].includes(this.activeSettingsTab)) this.activeSettingsTab = 'general';
       if (API.getStaffIdentity) {
         try {
           const {user} = await API.getStaffIdentity();
@@ -234,10 +224,9 @@ function adminSettings() {
     },
 
     selectSettingsTab(tab) {
-      if (tab === 'qr-payments' && !this.isAdmin) return Promise.resolve();
+      if (!['general', 'availability', 'capacity', 'security'].includes(tab)) tab = 'general';
       const changed = this.activeSettingsTab !== tab;
       this.activeSettingsTab = tab;
-      if (tab === 'qr-payments') return this.loadQrSettings();
       if (tab === "availability") {
         if (!changed && (this.intakeLoaded || this._intakeRequest)) return this._intakeRequest || Promise.resolve();
         return Promise.all([this.loadIntakeStatus(), this.loadBlockedDates()]);
@@ -250,9 +239,6 @@ function adminSettings() {
     },
 
     destroy() {
-      qrDestroyed = true;
-      this.cancelQrCrop();
-      if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
       this.stopSecurityVerificationFeedback();
       window.clearInterval(this._staffEmailResendTimer);
       window.clearInterval(this._staffRecoveryResendTimer);
@@ -261,208 +247,6 @@ function adminSettings() {
       window.removeEventListener?.('focus', this._intakeRefreshListener);
       window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
       document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
-    },
-
-    async loadQrSettings(force = false) {
-      const state = this.qrSettings;
-      if (!this.isAdmin || state.loading || state.saving || this.qrCrop.open || (state.loaded && !force)) return;
-      state.loading = true;
-      state.error = '';
-      state.success = '';
-      try {
-        const {settings} = await API.getQrPaymentSettings();
-        if (qrDestroyed) return;
-        this.applyQrSettings(settings);
-        await this.refreshQrPreview(settings);
-      } catch (error) { state.error = error.message || 'Could not load QR settings.'; }
-      finally { state.loading = false; }
-    },
-
-    get qrCustomMethods() {
-      return this.qrSettings.accepted_methods.filter(method => !this.qrMethodOptions.includes(method));
-    },
-    get qrMethodCount() {
-      const count = this.qrSettings.accepted_methods.length;
-      return `${count} method${count === 1 ? '' : 's'} selected`;
-    },
-    qrMethodChecked(method) {
-      return method === 'Other' ? this.qrSettings.customOpen || this.qrCustomMethods.length > 0
-        : this.qrSettings.accepted_methods.includes(method);
-    },
-    toggleQrMethod(method) {
-      const state = this.qrSettings;
-      delete state.fieldErrors.accepted_methods;
-      if (method === 'Other') {
-        if (this.qrMethodChecked('Other')) {
-          state.accepted_methods = state.accepted_methods.filter(value => this.qrMethodOptions.includes(value));
-          this.cancelQrCustomMethod();
-        } else {
-          state.customOpen = true;
-          this.$nextTick(() => this.$refs?.qrCustomName?.focus());
-        }
-      } else if (this.qrMethodOptions.includes(method)) {
-        if (state.accepted_methods.includes(method)) this.removeQrMethod(method);
-        else state.accepted_methods.push(method);
-      }
-    },
-    removeQrMethod(method, returnFocus = false) {
-      this.qrSettings.accepted_methods = this.qrSettings.accepted_methods.filter(value => value !== method);
-      if (this.qrSettings.editingMethod === method) this.cancelQrCustomMethod();
-      if (returnFocus) this.$nextTick(() => this.$refs?.qrMethodsTrigger?.focus());
-    },
-    editQrCustomMethod(method) {
-      Object.assign(this.qrSettings, {customOpen: true, customName: method, editingMethod: method});
-      this.$nextTick(() => this.$refs?.qrCustomName?.focus());
-    },
-    cancelQrCustomMethod() {
-      Object.assign(this.qrSettings, {customOpen: false, customName: '', editingMethod: ''});
-      delete this.qrSettings.fieldErrors.custom_method;
-    },
-    commitQrCustomMethod() {
-      const state = this.qrSettings, name = state.customName.trim(), key = name.toLowerCase();
-      const duplicate = [...this.qrMethodOptions, ...state.accepted_methods.filter(method => method !== state.editingMethod)]
-        .some(method => method.toLowerCase() === key);
-      let error = '';
-      if (!name || ['cash', 'qrph', 'other', 'qr payment'].includes(key)) error = 'Enter a custom payment method name.';
-      else if (name.length > 100) error = 'Use 100 characters or fewer.';
-      else if (duplicate) error = 'This payment method already exists.';
-      else if (!state.editingMethod && state.accepted_methods.length >= 20) error = 'Use up to 20 payment methods.';
-      if (error) { state.fieldErrors.custom_method = error; return false; }
-      const index = state.accepted_methods.indexOf(state.editingMethod);
-      if (index >= 0) state.accepted_methods.splice(index, 1, name);
-      else state.accepted_methods.push(name);
-      this.cancelQrCustomMethod();
-      delete state.fieldErrors.accepted_methods;
-      return true;
-    },
-    closeQrMethods(returnFocus = false) {
-      this.qrSettings.methodsOpen = false;
-      if (returnFocus) this.$refs?.qrMethodsTrigger?.focus();
-    },
-    async focusQrMethod(event, edge = 0) {
-      this.qrSettings.methodsOpen = true;
-      await this.$nextTick();
-      const options = [...this.$refs.qrMethodsPanel.querySelectorAll('input[type="checkbox"]')];
-      const index = options.indexOf(event.target);
-      const next = edge === -1 ? 0 : edge === 1 ? options.length - 1
-        : (index + (event.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
-      options[next]?.focus();
-    },
-    applyQrSettings(settings) {
-      Object.assign(this.qrSettings, settings, {merchant_name: settings.merchant_name || '',
-        accepted_methods: [...(settings.accepted_methods ?? this.qrMethodOptions)],
-        methodsOpen: false, customOpen: false, customName: '', editingMethod: '',
-        file: null, officialConfirmed: false, loaded: true, fieldErrors: {}});
-    },
-
-    async refreshQrPreview(settings) {
-      const blob = settings.has_image ? (await API.getQrPaymentImage(settings.version)).blob : null;
-      if (qrDestroyed) return;
-      if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
-      this.qrSettings.preview = blob ? URL.createObjectURL(blob) : '';
-    },
-
-    chooseQrImage(event) {
-      const file = event.target.files?.[0];
-      event.target.value = '';
-      return this.editQrImage(file);
-    },
-    dropQrImage(event) {
-      event.preventDefault();
-      return this.editQrImage(event.dataTransfer?.files?.[0]);
-    },
-    async editQrImage(file) {
-      const state = this.qrSettings;
-      if (!file || !this.isAdmin || !state.loaded || state.saving || state.loading) return;
-      state.error = '';
-      state.success = '';
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) {
-        state.error = 'Select a PNG, JPEG or WebP image up to 3 MB.';
-        return;
-      }
-      this.cancelQrCrop();
-      const selection = new AbortController(); qrSelection = selection;
-      Object.assign(this.qrCrop, {open: true, busy: true, ready: false, error: '', detected: false});
-      try {
-        await this.$nextTick();
-        const {openQrImageEditor} = await import('../services/qr-image-editor.js?v=20261023-ux');
-        if (selection.signal.aborted) return;
-        const editor = await openQrImageEditor(file, this.$refs.qrCropImage, this.$refs.qrCropPreview, selection.signal);
-        if (selection.signal.aborted) { editor.dispose(); return; }
-        qrEditor = editor;
-        this.qrCrop.detected = editor.detected;
-        this.qrCrop.ready = true;
-        this.$refs.qrCropControls?.focus();
-      } catch (error) { if (!selection.signal.aborted) this.qrCrop.error = error.message || 'Could not open this image.'; }
-      finally { if (qrSelection === selection) this.qrCrop.busy = false; }
-    },
-    cancelQrCrop() {
-      qrSelection?.abort(); qrSelection = null;
-      qrEditor?.dispose(); qrEditor = null;
-      Object.assign(this.qrCrop, {open: false, busy: false, ready: false, error: ''});
-    },
-    zoomQrCrop(delta) { qrEditor?.zoom(delta); },
-    moveQrCrop(x, y) { qrEditor?.move(x, y); },
-    resetQrCrop() { qrEditor?.reset(); },
-    async applyQrCrop(original = false) {
-      if (!qrEditor || this.qrCrop.busy) return;
-      const editor = qrEditor;
-      this.qrCrop.busy = true; this.qrCrop.error = '';
-      try {
-        const file = await editor.approve(original);
-        if (editor !== qrEditor) return;
-        this.acceptQrImage(file);
-        this.cancelQrCrop();
-        this.$refs.qrImageBrowse?.focus();
-      } catch (error) { if (editor === qrEditor) this.qrCrop.error = error.message || 'Could not apply this crop.'; }
-      finally { if (editor === qrEditor) this.qrCrop.busy = false; }
-    },
-    acceptQrImage(file) {
-      const state = this.qrSettings;
-      if (state.preview) URL.revokeObjectURL(state.preview);
-      state.preview = URL.createObjectURL(file);
-      state.file = file;
-      state.officialConfirmed = false;
-      delete state.fieldErrors.image;
-    },
-
-    async saveQrSettings() {
-      const state = this.qrSettings;
-      if (!this.isAdmin || !state.loaded || state.saving || state.loading || this.qrCrop.open) return;
-      if (state.customOpen && !this.commitQrCustomMethod()) {
-        state.error = 'Check the highlighted field.';
-        this.$nextTick(() => this.$refs?.qrCustomName?.focus());
-        return;
-      }
-      state.saving = true;
-      state.error = '';
-      state.success = '';
-      state.fieldErrors = {};
-      const payload = new FormData();
-      payload.append('enabled', state.enabled ? '1' : '0');
-      payload.append('version', String(state.version));
-      payload.append('merchant_name', state.merchant_name);
-      payload.append('accepted_methods', JSON.stringify(state.accepted_methods));
-      if (state.file) {
-        payload.append('image', state.file);
-        payload.append('official_qr_confirmed', state.officialConfirmed ? '1' : '0');
-      }
-      try {
-        const {settings, message} = await API.saveQrPaymentSettings(payload);
-        if (qrDestroyed) return;
-        this.applyQrSettings(settings);
-        if (this.$refs?.qrImageInput) this.$refs.qrImageInput.value = '';
-        state.success = message || ({enabled: 'QR Payments enabled', disabled: 'Saved. QR Payments is disabled.'}[settings.status] || 'Saved. QR configuration is not ready.');
-        try { await this.refreshQrPreview(settings); }
-        catch { if (state.preview) URL.revokeObjectURL(state.preview); state.preview = ''; state.error = 'Saved, but the image preview could not load. Reload to retry.'; }
-      } catch (error) {
-        state.fieldErrors = Object.fromEntries(Object.entries(error.errors || {}).map(([key, value]) => [key, Array.isArray(value) ? value.join(' ') : value]));
-        const methodErrors = Object.entries(state.fieldErrors).filter(([key]) => key.startsWith('accepted_methods.')).map(([, message]) => message);
-        if (methodErrors.length) state.fieldErrors.accepted_methods = methodErrors.join(' ');
-        state.error = Object.keys(state.fieldErrors).length ? 'Check the highlighted fields.' : error.message || 'Could not save QR settings.';
-        this.$nextTick(() => this.$refs?.qrSettingsForm?.querySelector('[aria-invalid="true"]')?.focus());
-      }
-      finally { state.saving = false; }
     },
 
     refreshIntakeStatus() {
@@ -1958,5 +1742,230 @@ function adminSettings() {
         verification.resending = false;
       }
     },
+  };
+}
+
+// LEGACY QR PAYMENT: TEMPORARILY DISABLED. Preserved editor; never composed into active Settings.
+// Reactivation requires an intentional source/config change. PayMongo Online Payment is separate.
+function legacyQrSettings() {
+  let qrEditor = null, qrSelection = null, qrDestroyed = false;
+  return {
+    qrMethodOptions: ['GCash', 'Maya', 'Bank Transfer'],
+    qrSettings: {accepted_methods: [], methodsOpen: false, customOpen: false, customName: '', editingMethod: '', enabled: false, version: 1, merchant_name: '', has_image: false,
+      status: 'not_ready', missing_fields: [], fieldErrors: {},
+      loaded: false, loading: false, saving: false, file: null, preview: '', officialConfirmed: false, error: '', success: ''},
+    qrCrop: {open: false, busy: false, ready: false, error: '', detected: false},
+    get qrStatusLabel() { return {not_ready: 'Not Ready', disabled: 'Disabled', enabled: 'Enabled'}[this.qrSettings.status] || 'Not Ready'; },
+    get qrMissingLabel() {
+      const labels = {image: 'QR image', merchant_name: 'account name', accepted_methods: 'payment methods'};
+      return (this.qrSettings.missing_fields || []).map(key => labels[key]).filter(Boolean).join(', ');
+    },
+    destroy() {
+      qrDestroyed = true;
+      this.cancelQrCrop();
+      if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
+    },
+    async loadQrSettings(force = false) {
+      const state = this.qrSettings;
+      if (!this.isAdmin || state.loading || state.saving || this.qrCrop.open || (state.loaded && !force)) return;
+      state.loading = true;
+      state.error = '';
+      state.success = '';
+      try {
+        const {settings} = await API.getQrPaymentSettings();
+        if (qrDestroyed) return;
+        this.applyQrSettings(settings);
+        await this.refreshQrPreview(settings);
+      } catch (error) { state.error = error.message || 'Could not load QR settings.'; }
+      finally { state.loading = false; }
+    },
+
+    get qrCustomMethods() {
+      return this.qrSettings.accepted_methods.filter(method => !this.qrMethodOptions.includes(method));
+    },
+    get qrMethodCount() {
+      const count = this.qrSettings.accepted_methods.length;
+      return `${count} method${count === 1 ? '' : 's'} selected`;
+    },
+    qrMethodChecked(method) {
+      return method === 'Other' ? this.qrSettings.customOpen || this.qrCustomMethods.length > 0
+        : this.qrSettings.accepted_methods.includes(method);
+    },
+    toggleQrMethod(method) {
+      const state = this.qrSettings;
+      delete state.fieldErrors.accepted_methods;
+      if (method === 'Other') {
+        if (this.qrMethodChecked('Other')) {
+          state.accepted_methods = state.accepted_methods.filter(value => this.qrMethodOptions.includes(value));
+          this.cancelQrCustomMethod();
+        } else {
+          state.customOpen = true;
+          this.$nextTick(() => this.$refs?.qrCustomName?.focus());
+        }
+      } else if (this.qrMethodOptions.includes(method)) {
+        if (state.accepted_methods.includes(method)) this.removeQrMethod(method);
+        else state.accepted_methods.push(method);
+      }
+    },
+    removeQrMethod(method, returnFocus = false) {
+      this.qrSettings.accepted_methods = this.qrSettings.accepted_methods.filter(value => value !== method);
+      if (this.qrSettings.editingMethod === method) this.cancelQrCustomMethod();
+      if (returnFocus) this.$nextTick(() => this.$refs?.qrMethodsTrigger?.focus());
+    },
+    editQrCustomMethod(method) {
+      Object.assign(this.qrSettings, {customOpen: true, customName: method, editingMethod: method});
+      this.$nextTick(() => this.$refs?.qrCustomName?.focus());
+    },
+    cancelQrCustomMethod() {
+      Object.assign(this.qrSettings, {customOpen: false, customName: '', editingMethod: ''});
+      delete this.qrSettings.fieldErrors.custom_method;
+    },
+    commitQrCustomMethod() {
+      const state = this.qrSettings, name = state.customName.trim(), key = name.toLowerCase();
+      const duplicate = [...this.qrMethodOptions, ...state.accepted_methods.filter(method => method !== state.editingMethod)]
+        .some(method => method.toLowerCase() === key);
+      let error = '';
+      if (!name || ['cash', 'qrph', 'other', 'qr payment'].includes(key)) error = 'Enter a custom payment method name.';
+      else if (name.length > 100) error = 'Use 100 characters or fewer.';
+      else if (duplicate) error = 'This payment method already exists.';
+      else if (!state.editingMethod && state.accepted_methods.length >= 20) error = 'Use up to 20 payment methods.';
+      if (error) { state.fieldErrors.custom_method = error; return false; }
+      const index = state.accepted_methods.indexOf(state.editingMethod);
+      if (index >= 0) state.accepted_methods.splice(index, 1, name);
+      else state.accepted_methods.push(name);
+      this.cancelQrCustomMethod();
+      delete state.fieldErrors.accepted_methods;
+      return true;
+    },
+    closeQrMethods(returnFocus = false) {
+      this.qrSettings.methodsOpen = false;
+      if (returnFocus) this.$refs?.qrMethodsTrigger?.focus();
+    },
+    async focusQrMethod(event, edge = 0) {
+      this.qrSettings.methodsOpen = true;
+      await this.$nextTick();
+      const options = [...this.$refs.qrMethodsPanel.querySelectorAll('input[type="checkbox"]')];
+      const index = options.indexOf(event.target);
+      const next = edge === -1 ? 0 : edge === 1 ? options.length - 1
+        : (index + (event.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+      options[next]?.focus();
+    },
+    applyQrSettings(settings) {
+      Object.assign(this.qrSettings, settings, {merchant_name: settings.merchant_name || '',
+        accepted_methods: [...(settings.accepted_methods ?? this.qrMethodOptions)],
+        methodsOpen: false, customOpen: false, customName: '', editingMethod: '',
+        file: null, officialConfirmed: false, loaded: true, fieldErrors: {}});
+    },
+
+    async refreshQrPreview(settings) {
+      const blob = settings.has_image ? (await API.getQrPaymentImage(settings.version)).blob : null;
+      if (qrDestroyed) return;
+      if (this.qrSettings.preview) URL.revokeObjectURL(this.qrSettings.preview);
+      this.qrSettings.preview = blob ? URL.createObjectURL(blob) : '';
+    },
+
+    chooseQrImage(event) {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      return this.editQrImage(file);
+    },
+    dropQrImage(event) {
+      event.preventDefault();
+      return this.editQrImage(event.dataTransfer?.files?.[0]);
+    },
+    async editQrImage(file) {
+      const state = this.qrSettings;
+      if (!file || !this.isAdmin || !state.loaded || state.saving || state.loading) return;
+      state.error = '';
+      state.success = '';
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) {
+        state.error = 'Select a PNG, JPEG or WebP image up to 3 MB.';
+        return;
+      }
+      this.cancelQrCrop();
+      const selection = new AbortController(); qrSelection = selection;
+      Object.assign(this.qrCrop, {open: true, busy: true, ready: false, error: '', detected: false});
+      try {
+        await this.$nextTick();
+        const {openQrImageEditor} = await import('../services/qr-image-editor.js?v=20261023-ux');
+        if (selection.signal.aborted) return;
+        const editor = await openQrImageEditor(file, this.$refs.qrCropImage, this.$refs.qrCropPreview, selection.signal);
+        if (selection.signal.aborted) { editor.dispose(); return; }
+        qrEditor = editor;
+        this.qrCrop.detected = editor.detected;
+        this.qrCrop.ready = true;
+        this.$refs.qrCropControls?.focus();
+      } catch (error) { if (!selection.signal.aborted) this.qrCrop.error = error.message || 'Could not open this image.'; }
+      finally { if (qrSelection === selection) this.qrCrop.busy = false; }
+    },
+    cancelQrCrop() {
+      qrSelection?.abort(); qrSelection = null;
+      qrEditor?.dispose(); qrEditor = null;
+      Object.assign(this.qrCrop, {open: false, busy: false, ready: false, error: ''});
+    },
+    zoomQrCrop(delta) { qrEditor?.zoom(delta); },
+    moveQrCrop(x, y) { qrEditor?.move(x, y); },
+    resetQrCrop() { qrEditor?.reset(); },
+    async applyQrCrop(original = false) {
+      if (!qrEditor || this.qrCrop.busy) return;
+      const editor = qrEditor;
+      this.qrCrop.busy = true; this.qrCrop.error = '';
+      try {
+        const file = await editor.approve(original);
+        if (editor !== qrEditor) return;
+        this.acceptQrImage(file);
+        this.cancelQrCrop();
+        this.$refs.qrImageBrowse?.focus();
+      } catch (error) { if (editor === qrEditor) this.qrCrop.error = error.message || 'Could not apply this crop.'; }
+      finally { if (editor === qrEditor) this.qrCrop.busy = false; }
+    },
+    acceptQrImage(file) {
+      const state = this.qrSettings;
+      if (state.preview) URL.revokeObjectURL(state.preview);
+      state.preview = URL.createObjectURL(file);
+      state.file = file;
+      state.officialConfirmed = false;
+      delete state.fieldErrors.image;
+    },
+
+    async saveQrSettings() {
+      const state = this.qrSettings;
+      if (!this.isAdmin || !state.loaded || state.saving || state.loading || this.qrCrop.open) return;
+      if (state.customOpen && !this.commitQrCustomMethod()) {
+        state.error = 'Check the highlighted field.';
+        this.$nextTick(() => this.$refs?.qrCustomName?.focus());
+        return;
+      }
+      state.saving = true;
+      state.error = '';
+      state.success = '';
+      state.fieldErrors = {};
+      const payload = new FormData();
+      payload.append('enabled', state.enabled ? '1' : '0');
+      payload.append('version', String(state.version));
+      payload.append('merchant_name', state.merchant_name);
+      payload.append('accepted_methods', JSON.stringify(state.accepted_methods));
+      if (state.file) {
+        payload.append('image', state.file);
+        payload.append('official_qr_confirmed', state.officialConfirmed ? '1' : '0');
+      }
+      try {
+        const {settings, message} = await API.saveQrPaymentSettings(payload);
+        if (qrDestroyed) return;
+        this.applyQrSettings(settings);
+        if (this.$refs?.qrImageInput) this.$refs.qrImageInput.value = '';
+        state.success = message || ({enabled: 'QR Payments enabled', disabled: 'Saved. QR Payments is disabled.'}[settings.status] || 'Saved. QR configuration is not ready.');
+        try { await this.refreshQrPreview(settings); }
+        catch { if (state.preview) URL.revokeObjectURL(state.preview); state.preview = ''; state.error = 'Saved, but the image preview could not load. Reload to retry.'; }
+      } catch (error) {
+        state.fieldErrors = Object.fromEntries(Object.entries(error.errors || {}).map(([key, value]) => [key, Array.isArray(value) ? value.join(' ') : value]));
+        const methodErrors = Object.entries(state.fieldErrors).filter(([key]) => key.startsWith('accepted_methods.')).map(([, message]) => message);
+        if (methodErrors.length) state.fieldErrors.accepted_methods = methodErrors.join(' ');
+        state.error = Object.keys(state.fieldErrors).length ? 'Check the highlighted fields.' : error.message || 'Could not save QR settings.';
+        this.$nextTick(() => this.$refs?.qrSettingsForm?.querySelector('[aria-invalid="true"]')?.focus());
+      }
+      finally { state.saving = false; }
+    },
+
   };
 }

@@ -29,10 +29,15 @@ class PaymentController extends Controller
 {
     private function validatePayload(Request $request, bool $online = false): array
     {
+        // Manual QR/OCR is intentionally dormant; PayMongo's online QR Ph is unaffected.
+        $legacyQrEnabled = config('qr_payments.enabled', false);
+        if (! $online && ! $legacyQrEnabled) {
+            $request->validate(['payment_method' => 'nullable|in:cash']);
+        }
         $data = $request->validate([
             'final_price' => $online ? 'exclude' : 'required|numeric|decimal:0,2|min:0',
             'amount_paid' => $online ? 'exclude' : 'nullable|numeric|decimal:0,2|min:0',
-            'payment_method' => $online ? 'nullable|in:online' : 'nullable|in:cash,qrph',
+            'payment_method' => $online ? 'nullable|in:online' : ($legacyQrEnabled ? 'nullable|in:cash,qrph' : 'nullable|in:cash'),
             'notes' => 'nullable|string|max:500',
             'service_prices' => 'nullable|array',
             'service_prices.*.booking_service_id' => 'required_with:service_prices|integer',
@@ -43,7 +48,7 @@ class PaymentController extends Controller
             'products' => 'nullable|array',
             'products.*.item_id' => 'required|integer|distinct|exists:inventory_items,item_id',
             'products.*.quantity' => 'required|integer|min:1|max:99999999',
-        ] + QrPaymentVerificationService::rules(), [], [
+        ] + (! $online && $legacyQrEnabled ? QrPaymentVerificationService::rules() : []), [], [
             'external_reference' => 'Payment Reference No.', 'transaction_at' => 'receipt transaction time',
         ]);
 
@@ -572,7 +577,8 @@ class PaymentController extends Controller
 
     public function index(Request $request)
     {
-        $hasQrPayments = Schema::hasTable('qr_payments');
+        // Preserve opt-in legacy history without QR table checks/queries in ordinary listings.
+        $hasQrPayments = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments');
         $search = trim((string) $request->query('search', ''));
         $period = (string) $request->query('period', 'day');
         $date = (string) $request->query('date', '');
@@ -989,6 +995,9 @@ class PaymentController extends Controller
 
     private function withPaymentProof(Request $request, array $data, \Closure $settle): array
     {
+        if (($data['payment_method'] ?? 'cash') !== 'qrph') {
+            return DB::transaction(fn () => $settle($data));
+        }
         $proofs = app(\App\Services\QrPaymentProofService::class);
         $proof = ($data['payment_method'] ?? 'cash') === 'qrph' ? $proofs->store($request->file('receipt')) : [];
         $committed = false;
