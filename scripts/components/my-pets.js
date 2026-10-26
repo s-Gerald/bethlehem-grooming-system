@@ -1,7 +1,7 @@
 import { normalizePetSize } from "../services/booking-draft-service.js";
-import { createBreedCombobox } from "./breed-combobox.js";
-import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js";
-import { createBreedCoatCombobox } from "./breed-coat-combobox.js";
+import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
+import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
+import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import {
   formatSavedWeight,
@@ -128,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleButton: document.getElementById("petBreedDropdownButton"),
     petTypeInput: petSpecies,
     getPetType: () => petSpecies.value,
+    errorElement: document.getElementById("petBreedError"),
   });
 
   const breedCoatCombobox = createBreedCoatCombobox({
@@ -137,6 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
     input: petFurType,
     listbox: document.getElementById("petFurTypeOptions"),
     toggleButton: document.getElementById("petFurTypeDropdownButton"),
+    errorElement: document.getElementById("petFurTypeError"),
   });
 
   const sizeCombobox = createFixedOptionCombobox({
@@ -713,7 +715,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (weightMessage) {
         showWeightValidationInField(petWeight, weightMessage);
       }
-      showFormError(validationMessage);
+      if (validationMessage === breedCoatCombobox.getValidationMessage()) {
+        petFurType.focus();
+      } else if (validationMessage === breedCombobox.getValidationMessage()) {
+        petBreed.focus();
+      } else {
+        showFormError(validationMessage);
+      }
       return;
     }
 
@@ -751,6 +759,11 @@ document.addEventListener("DOMContentLoaded", () => {
       invalidatePetCollections();
       await loadPets();
     } catch (err) {
+      if (err.errors?.fur_type?.[0]) {
+        breedCoatCombobox.showValidation(err.errors.fur_type[0]);
+        petFurType.focus();
+        return;
+      }
       if (err.errors?.weight?.[0]) showWeightValidationInField(petWeight, err.errors.weight[0]);
       showFormError(err.errors
         ? Object.values(err.errors).flat()[0]

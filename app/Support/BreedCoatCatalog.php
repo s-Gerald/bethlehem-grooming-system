@@ -8,6 +8,14 @@ final class BreedCoatCatalog
 {
     private static ?array $catalogue = null;
 
+    public static function requiresCoat(?string $breed, ?string $species): bool
+    {
+        $normalized = strtolower(preg_replace('/\s+/', ' ', trim((string) $breed)));
+
+        return ! in_array($normalized, ['mixed breed / aspin', 'mixed breed / puspin', 'unknown breed'], true)
+            && self::optionsFor($breed, $species) !== [];
+    }
+
     public static function all(): array
     {
         if (self::$catalogue !== null) {
@@ -32,7 +40,7 @@ final class BreedCoatCatalog
 
     public static function optionsFor(?string $breed, ?string $species): array
     {
-        $breed = trim((string) $breed);
+        $breed = preg_replace('/\s+/', ' ', trim((string) $breed));
 
         if ($breed === '') {
             return [];
@@ -45,25 +53,17 @@ final class BreedCoatCatalog
             'cat' => 'Cat',
             default => null,
         };
-        $isGenericBreed = strcasecmp($breed, 'Mixed Breed / Aspin') === 0
-            || strcasecmp($breed, 'Mixed Breed / Puspin') === 0
-            || strcasecmp($breed, 'Unknown Breed') === 0;
-
         if ($speciesKey === 'Cat' && strcasecmp($breed, 'Mixed Breed / Aspin') === 0) {
             $breed = 'Mixed Breed / Puspin';
         }
 
-        if ($isGenericBreed && $speciesKey === null) {
+        if ($speciesKey === null) {
             return [];
         }
 
-        $typesToSearch = $speciesKey ? [$speciesKey] : array_keys($catalogue);
-
-        foreach ($typesToSearch as $type) {
-            foreach ($catalogue[$type] ?? [] as $catalogueBreed => $options) {
-                if (strcasecmp($catalogueBreed, $breed) === 0) {
-                    return array_values($options);
-                }
+        foreach ($catalogue[$speciesKey] ?? [] as $catalogueBreed => $options) {
+            if (strcasecmp($catalogueBreed, $breed) === 0) {
+                return array_values($options);
             }
         }
 

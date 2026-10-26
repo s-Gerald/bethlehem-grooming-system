@@ -1,7 +1,8 @@
 import {
   breedCoatCatalogueReady,
   getCoatOptions,
-} from "./breed-coat-catalogue.js";
+  requiresCoat,
+} from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
 
 export function createBreedCoatCombobox({
   root,
@@ -21,6 +22,9 @@ export function createBreedCoatCombobox({
   let previousBreed = breedInput.value;
   let previousPetType = petTypeInput.value;
   let recalculateOnCatalogueLoad = false;
+  let catalogueLoaded = false;
+  const requirementIndicator = input.labels?.[0]?.querySelector("[data-fur-requirement]");
+  if (errorElement?.id) input.setAttribute("aria-describedby", errorElement.id);
 
   function getOptions() {
     return getCoatOptions(breedInput.value, petTypeInput.value);
@@ -30,7 +34,7 @@ export function createBreedCoatCombobox({
     const selectedCoat = input.value;
 
     if (!selectedCoat) {
-      return "";
+      return requiresCoat(breedInput.value, petTypeInput.value) ? "Select a fur type." : "";
     }
 
     if (!getOptions().includes(selectedCoat)) {
@@ -121,13 +125,21 @@ export function createBreedCoatCombobox({
     const breed = breedInput.value.trim();
     const options = getOptions();
     const speciesChanged = petTypeInput.value !== previousPetType;
+    const isRequired = requiresCoat(breed, petTypeInput.value);
+    input.required = isRequired;
+    input.setAttribute("aria-required", String(isRequired));
+    if (requirementIndicator) {
+      requirementIndicator.textContent = isRequired ? "*" : "(optional)";
+      requirementIndicator.classList.toggle("text-red-500", isRequired);
+      requirementIndicator.classList.toggle("text-slate-400", !isRequired);
+    }
 
     previousBreed = breedInput.value;
     previousPetType = petTypeInput.value;
     recalculateOnCatalogueLoad = !preserveValue && autoSelect;
-    if (!preserveValue) {
+    if (!preserveValue || catalogueLoaded) {
       input.value = !speciesChanged && options.includes(previousValue) ? previousValue
-        : autoSelect && options.length === 1 ? options[0] : "";
+        : (autoSelect || preserveValue) && options.length === 1 ? options[0] : "";
     }
     input.placeholder = !breed
       ? "Select breed first"
@@ -239,10 +251,10 @@ export function createBreedCoatCombobox({
   petTypeInput.addEventListener("input", handleDependencyChange);
   petTypeInput.addEventListener("change", handleDependencyChange);
   input.form?.addEventListener("reset", () => window.setTimeout(reset));
-  breedCoatCatalogueReady.then(() => update({
-    preserveValue: !recalculateOnCatalogueLoad,
-    autoSelect: recalculateOnCatalogueLoad,
-  }));
+  breedCoatCatalogueReady.then((catalogue) => {
+    catalogueLoaded = Object.keys(catalogue).length > 0;
+    update({ preserveValue: !recalculateOnCatalogueLoad, autoSelect: recalculateOnCatalogueLoad });
+  });
 
   update({ preserveValue: true, autoSelect: false });
 

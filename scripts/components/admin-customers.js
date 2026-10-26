@@ -2,9 +2,9 @@ let adminCustomerPetFieldModulesReady;
 function loadAdminCustomerPetFields() {
   return adminCustomerPetFieldModulesReady ??= Promise.all([
   import("../services/booking-draft-service.js"),
-  import("./breed-combobox.js"),
-  import("./breed-coat-catalogue.js"),
-  import("./breed-coat-combobox.js"),
+  import("./breed-combobox.js?pet-fields=20261026-v1"),
+  import("./breed-coat-catalogue.js?pet-fields=20261026-v1"),
+  import("./breed-coat-combobox.js?pet-fields=20261026-v1"),
   import("./fixed-option-combobox.js"),
   import("./pet-weight-size.js?v=pet-weight-size-20261011-v3"),
 ]).then(([
@@ -495,7 +495,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018');
+            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261026-v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -665,7 +665,13 @@ function adminCustomers() {
         if (weightMessage) {
           tools.showWeightValidationInField(elements.weight, weightMessage);
         }
-        this.petModal.saveError = validationMessage;
+        if (validationMessage === controls.furType.getValidationMessage()) {
+          elements.furType.focus();
+        } else if (validationMessage === controls.breed.getValidationMessage()) {
+          elements.breed.focus();
+        } else {
+          this.petModal.saveError = validationMessage;
+        }
         return;
       }
 
@@ -719,6 +725,11 @@ function adminCustomers() {
         }
 
       } catch (err) {
+        if (err.errors?.fur_type?.[0]) {
+          adminCustomerPetFields.controls.furType.showValidation(err.errors.fur_type[0]);
+          adminCustomerPetFields.elements.furType.focus();
+          return;
+        }
         if (err.errors?.weight?.[0]) {
           const { tools, elements } = adminCustomerPetFields;
           tools.showWeightValidationInField(elements.weight, err.errors.weight[0]);

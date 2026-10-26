@@ -60,7 +60,7 @@ class StoreWalkinRequest extends FormRequest
             'pets.*.pet_id' => ['nullable', 'integer', 'exists:pets,pet_id'],
             'pets.*.species' => ['required', 'string', 'max:100'],
             'pets.*.breed' => ['nullable', 'string', 'max:100'],
-            'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
+            'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.weight' => ['nullable', new ValidPetWeight],
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.medical_conditions' => ['nullable', 'string', 'max:1000'],

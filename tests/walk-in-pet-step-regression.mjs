@@ -58,6 +58,7 @@ function makeElement(initialClasses = []) {
       },
     },
     addEventListener(name, callback) { this.events[name] = callback; },
+    focus() { this.focused = true; },
     setAttribute(name, value) { attributes.set(name, value); },
     getAttribute(name) { return attributes.get(name); },
     appendChild(child) { this.children.push(child); },
@@ -247,6 +248,7 @@ for (const appointmentType of ["grooming", "clinic"]) {
     assert.equal(flow.ui("weightError").textContent, "Enter weight using no more than 2 decimal places.");
     await flow.handlers.handleAddPetSubmit({ preventDefault() {} });
     assert.equal(flow.ui("weight").value, weight);
+    assert.equal(flow.ui("weight").focused, true, "Submission focuses the first invalid field");
     assert.equal(flow.ui("selectedPetCards").children.length, 0);
     flow.ui("weight").value = "4.10";
     flow.handlers.syncWeightAndSize();

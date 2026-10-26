@@ -298,8 +298,8 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
         $this->assertStringNotContainsString('font-bold uppercase', $petForm);
 
         foreach ([
-            'import("./breed-combobox.js")',
-            'import("./breed-coat-combobox.js")',
+            'import("./breed-combobox.js?',
+            'import("./breed-coat-combobox.js?',
             'import("./fixed-option-combobox.js")',
             'import("./pet-weight-size.js?',
             'tools.createBreedCombobox({',

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pet Information</title>
     <link rel="stylesheet" href="../../css/output.css" />
-    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001" />
+    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1" />
 
   </head>
 
@@ -157,6 +157,7 @@
                     placeholder="e.g. Buddy"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active"
                     required
+                    aria-required="true"
                   />
                 </div>
                 <div>
@@ -182,6 +183,7 @@
                         autocomplete="off"
                         readonly
                         required
+                        aria-required="true"
                       />
                       <button
                         id="petTypeDropdownButton"
@@ -203,7 +205,7 @@
                   </div>
                 </div>
                 <div>
-                  <label for="gender" class="block text-sm font-medium text-portal-text mb-1">Gender</label>
+                  <label for="gender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span></label>
                   <div id="genderCombobox" class="relative">
                     <div class="relative">
                       <input id="gender" name="gender" type="text" placeholder="Select gender"
@@ -222,7 +224,7 @@
                   </div>
                 </div>
                 <div>
-                  <label for="birthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate</label>
+                  <label for="birthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate <span class="text-slate-400 font-normal">(optional)</span></label>
                   <input id="birthdate" name="birthdate" type="date"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active" />
                 </div>
@@ -231,7 +233,7 @@
                     for="breed"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Breed
+                    Breed <span data-breed-requirement class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <div id="breedCombobox" class="relative">
                     <div class="relative">
@@ -270,10 +272,10 @@
                       aria-label="Breed options"
                     ></div>
                   </div>
-                  <p id="breedError" class="mt-2 hidden text-sm text-red-600"></p>
+                  <p id="breedError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                 </div>
                 <div>
-                  <label for="color" class="block text-sm font-medium text-portal-text mb-1">Color</label>
+                  <label for="color" class="block text-sm font-medium text-portal-text mb-1">Color <span class="text-slate-400 font-normal">(optional)</span></label>
                   <input id="color" name="color" type="text" placeholder="e.g. White"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active" />
                 </div>
@@ -282,7 +284,7 @@
                     for="weight"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Weight
+                    Weight <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <div class="relative">
                     <input
@@ -303,7 +305,7 @@
                     for="furType"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Fur Type
+                    Fur Type <span data-fur-requirement class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <div id="furTypeCombobox" class="relative">
                     <div class="relative">
@@ -341,14 +343,14 @@
                       aria-label="Fur type options"
                     ></div>
                   </div>
-                  <p id="furTypeError" class="mt-2 hidden text-sm text-red-600"></p>
+                  <p id="furTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                 </div>
                 <div>
                   <label
                     for="size"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Size
+                    Size <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
 
                   <div id="sizeCombobox" class="relative">
@@ -394,7 +396,7 @@
                     for="medicalNotes"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Medical Conditions / Special Needs
+                    Medical Conditions / Special Needs <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <textarea
                     id="medicalNotes"
@@ -482,7 +484,7 @@
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025"></script>
     <script
       type="module"
-      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025"
+      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025&pet-fields=20261026-v1"
     ></script>
   </body>
 </html>

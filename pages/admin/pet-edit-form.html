@@ -6,10 +6,10 @@
                       Pet name <span class="text-red-500">*</span>
                     </label>
                     <input id="adminPetName" type="text" x-model="petModal.form.pet_name" required placeholder="e.g. Buddy"
-                      class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
+                      class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]" aria-required="true">
                   </div>
                   <div>
-                    <label for="adminPetSpecies" class="mb-1 block text-sm font-medium text-slate-700">Species</label>
+                    <label for="adminPetSpecies" class="mb-1 block text-sm font-medium text-slate-700">Species <span class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetSpeciesCombobox" class="relative">
                       <div class="relative">
                         <input id="adminPetSpecies" name="species" type="text" placeholder="Select species"
@@ -31,7 +31,7 @@
 
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label for="adminPetGender" class="mb-1 block text-sm font-medium text-slate-700">Gender</label>
+                    <label for="adminPetGender" class="mb-1 block text-sm font-medium text-slate-700">Gender <span class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetGenderCombobox" class="relative">
                       <div class="relative">
                         <input id="adminPetGender" name="gender" type="text" placeholder="Select gender"
@@ -50,7 +50,7 @@
                     </div>
                   </div>
                   <div>
-                    <label for="adminPetBirthdate" class="mb-1 block text-sm font-medium text-slate-700">Birthdate</label>
+                    <label for="adminPetBirthdate" class="mb-1 block text-sm font-medium text-slate-700">Birthdate <span class="text-slate-400 font-normal">(optional)</span></label>
                     <input id="adminPetBirthdate" type="date" x-model="petModal.form.birthdate"
                       class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
                   </div>
@@ -58,7 +58,7 @@
 
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label for="adminPetBreed" class="mb-1 block text-sm font-medium text-slate-700">Breed</label>
+                    <label for="adminPetBreed" class="mb-1 block text-sm font-medium text-slate-700">Breed <span data-breed-requirement class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetBreedCombobox" class="relative">
                       <div class="relative">
                         <input id="adminPetBreed" name="breed" type="text" maxlength="100" placeholder="Select breed"
@@ -75,10 +75,10 @@
                         class="absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
                         role="listbox" aria-label="Breed options"></div>
                     </div>
-                    <p id="adminPetBreedError" class="mt-2 hidden text-sm text-red-600"></p>
+                    <p id="adminPetBreedError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                   </div>
                   <div>
-                    <label for="adminPetColor" class="mb-1 block text-sm font-medium text-slate-700">Color</label>
+                    <label for="adminPetColor" class="mb-1 block text-sm font-medium text-slate-700">Color <span class="text-slate-400 font-normal">(optional)</span></label>
                     <input id="adminPetColor" type="text" x-model="petModal.form.color" placeholder="e.g. White"
                       class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
                   </div>
@@ -86,7 +86,7 @@
 
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label for="adminPetSize" class="mb-1 block text-sm font-medium text-slate-700">Size</label>
+                    <label for="adminPetSize" class="mb-1 block text-sm font-medium text-slate-700">Size <span class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetSizeCombobox" class="relative">
                       <div class="relative">
                         <input id="adminPetSize" name="size" type="text" placeholder="Select species first"
@@ -105,7 +105,7 @@
                     </div>
                   </div>
                   <div>
-                    <label for="adminPetFurType" class="mb-1 block text-sm font-medium text-slate-700">Fur type</label>
+                    <label for="adminPetFurType" class="mb-1 block text-sm font-medium text-slate-700">Fur type <span data-fur-requirement class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetFurTypeCombobox" class="relative">
                       <div class="relative">
                         <input id="adminPetFurType" name="fur_type" type="text" placeholder="Select breed first"
@@ -122,12 +122,12 @@
                         class="absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
                         role="listbox" aria-label="Fur type options"></div>
                     </div>
-                    <p id="adminPetFurTypeError" class="mt-2 hidden text-sm text-red-600"></p>
+                    <p id="adminPetFurTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                   </div>
                 </div>
 
                 <div>
-                  <label for="adminPetWeight" class="mb-1 block text-sm font-medium text-slate-700">Weight</label>
+                  <label for="adminPetWeight" class="mb-1 block text-sm font-medium text-slate-700">Weight <span class="text-slate-400 font-normal">(optional)</span></label>
                   <div class="relative">
                     <input id="adminPetWeight" name="weight" type="text" inputmode="decimal" placeholder="e.g. 4.25"
                     aria-invalid="false" aria-describedby="adminPetWeightError"
@@ -142,10 +142,10 @@
                     <div class="flex items-center gap-3">
                       <input id="edit-neutered" type="checkbox" x-model="petModal.form.is_neutered"
                         class="h-4 w-4 cursor-pointer accent-[#315b7e]">
-                      <label for="edit-neutered" class="cursor-pointer text-sm font-medium text-slate-700">Neutered / spayed</label>
+                      <label for="edit-neutered" class="cursor-pointer text-sm font-medium text-slate-700">Neutered / spayed <span class="text-slate-400 font-normal">(optional)</span></label>
                     </div>
                     <div x-show="petModal.form.is_neutered" class="mt-3">
-                      <label for="adminPetNeuteredDate" class="mb-1 block text-sm font-medium text-slate-700">Neutered date</label>
+                      <label for="adminPetNeuteredDate" class="mb-1 block text-sm font-medium text-slate-700">Neutered date <span class="text-slate-400 font-normal">(optional)</span></label>
                       <input id="adminPetNeuteredDate" type="date" x-model="petModal.form.neutered_date"
                         class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
                     </div>
@@ -154,10 +154,10 @@
                     <div class="flex items-center gap-3">
                       <input id="edit-deceased" type="checkbox" x-model="petModal.form.is_deceased"
                         class="h-4 w-4 cursor-pointer accent-[#315b7e]">
-                      <label for="edit-deceased" class="cursor-pointer text-sm font-medium text-slate-700">Deceased</label>
+                      <label for="edit-deceased" class="cursor-pointer text-sm font-medium text-slate-700">Deceased <span class="text-slate-400 font-normal">(optional)</span></label>
                     </div>
                     <div x-show="petModal.form.is_deceased" class="mt-3">
-                      <label for="adminPetDeceasedDate" class="mb-1 block text-sm font-medium text-slate-700">Deceased date</label>
+                      <label for="adminPetDeceasedDate" class="mb-1 block text-sm font-medium text-slate-700">Deceased date <span class="text-slate-400 font-normal">(optional)</span></label>
                       <input id="adminPetDeceasedDate" type="date" x-model="petModal.form.deceased_date"
                         class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
                     </div>
@@ -165,7 +165,7 @@
                 </div>
 
                 <div>
-                  <label for="adminPetMedical" class="mb-1 block text-sm font-medium text-slate-700">Medical conditions / special needs</label>
+                  <label for="adminPetMedical" class="mb-1 block text-sm font-medium text-slate-700">Medical conditions / special needs <span class="text-slate-400 font-normal">(optional)</span></label>
                   <textarea id="adminPetMedical" x-model="petModal.form.medical_conditions" rows="3"
                     class="w-full resize-none rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
                     placeholder="e.g. allergic to certain shampoos, has heart condition..."></textarea>

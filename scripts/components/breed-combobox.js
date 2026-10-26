@@ -6,7 +6,7 @@ import {
   getMatchingBreeds,
   hasLetter,
   isMixedBreed,
-} from "./breed-coat-catalogue.js";
+} from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
 
 export function createBreedCombobox({
   root,
@@ -26,6 +26,11 @@ export function createBreedCombobox({
   let isDisabled = input.disabled || toggleButton.disabled;
   let shouldShowValidation = false;
   let previousPetType = getPetType();
+  let activeIndex = -1;
+  listbox.classList.add("breed-suggestion-list");
+  input.setAttribute("aria-haspopup", "listbox");
+  const requirementIndicator = input.labels?.[0]?.querySelector("[data-breed-requirement]");
+  if (errorElement?.id) input.setAttribute("aria-describedby", errorElement.id);
 
   function getValidationMessage() {
     if (isCustomEntry && !hasLetter(input.value.trim())) {
@@ -67,7 +72,17 @@ export function createBreedCombobox({
     }
   }
 
+  function updateRequirement() {
+    input.setAttribute("aria-required", String(isCustomEntry));
+    if (requirementIndicator) {
+      requirementIndicator.textContent = isCustomEntry ? "*" : "(optional)";
+      requirementIndicator.classList.toggle("text-red-500", isCustomEntry);
+      requirementIndicator.classList.toggle("text-slate-400", !isCustomEntry);
+    }
+  }
+
   function notifyValueChange() {
+    updateRequirement();
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
@@ -77,21 +92,19 @@ export function createBreedCombobox({
     button.className =
       "breed-combobox-option block w-full px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-[#edf5fc] focus:bg-[#edf5fc] focus:outline-none";
     button.setAttribute("role", "option");
+    button.tabIndex = -1;
+    button.id = `${listbox.id || input.id || "breed"}-option-${listbox.children.length}`;
+    button.setAttribute("aria-selected", String(input.value === value));
     button.dataset.breedValue = value;
+    button.title = label;
     button.textContent = label;
     return button;
   }
 
-  function addSectionLabel(text) {
-    const label = document.createElement("p");
-    label.className =
-      "px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400";
-    label.textContent = text;
-    listbox.appendChild(label);
-  }
-
   function renderOptions() {
     listbox.innerHTML = "";
+    activeIndex = -1;
+    input.removeAttribute("aria-activedescendant");
 
     if (!isCustomEntry) {
       listbox.appendChild(buildOption(getMixedBreed(getPetType())));
@@ -102,21 +115,15 @@ export function createBreedCombobox({
 
     const query = input.value.trim();
 
-    if (hasLetter(query)) {
-      const matches = getMatchingBreeds(query, getPetType(), 4);
-      addSectionLabel("Breed suggestions");
-
-      if (matches.length > 0) {
-        matches.forEach((breed) => listbox.appendChild(buildOption(breed)));
-      } else {
-        const emptyState = document.createElement("p");
-        emptyState.className = "px-4 py-2.5 text-sm text-slate-400";
-        emptyState.textContent = "No matching breeds";
-        listbox.appendChild(emptyState);
-      }
+    const matches = getMatchingBreeds(query, getPetType());
+    matches.forEach((breed) => listbox.appendChild(buildOption(breed)));
+    if (hasLetter(query) && matches.length === 0) {
+      const emptyState = document.createElement("p");
+      emptyState.className = "px-4 py-2.5 text-sm text-slate-400";
+      emptyState.textContent = "No matching breeds";
+      listbox.appendChild(emptyState);
     }
 
-    addSectionLabel("Other options");
     listbox.appendChild(buildOption(getMixedBreed(getPetType())));
     listbox.appendChild(buildOption(UNKNOWN_BREED));
   }
@@ -129,6 +136,10 @@ export function createBreedCombobox({
 
     if (isOpen) {
       renderOptions();
+      listbox.scrollTop = 0;
+    } else {
+      activeIndex = -1;
+      input.removeAttribute("aria-activedescendant");
     }
   }
 
@@ -165,6 +176,7 @@ export function createBreedCombobox({
     input.value = value || "";
     isCustomEntry = Boolean(input.value && !isMixedBreed(input.value) && input.value !== UNKNOWN_BREED);
     input.readOnly = !isCustomEntry;
+    updateRequirement();
     setDisabled(!previousPetType);
     clearValidation();
     setOpen(false);
@@ -197,13 +209,19 @@ export function createBreedCombobox({
       return;
     }
 
-    const activeIndex = options.indexOf(document.activeElement);
     const nextIndex = activeIndex < 0
       ? (offset > 0 ? 0 : options.length - 1)
       : (activeIndex + offset + options.length) % options.length;
 
-    options[nextIndex].focus();
+    activeIndex = nextIndex;
+    options.forEach((option, index) => option.setAttribute("aria-selected", String(index === activeIndex)));
+    input.setAttribute("aria-activedescendant", options[nextIndex].id);
+    options[nextIndex].scrollIntoView({ block: "nearest" });
   }
+
+  listbox.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("[data-breed-value]")) event.preventDefault();
+  });
 
   root.addEventListener("click", (event) => {
     if (isDisabled) return;
@@ -228,16 +246,22 @@ export function createBreedCombobox({
   });
 
   input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && isOpen && activeIndex >= 0) {
+      event.preventDefault();
+      const option = listbox.querySelectorAll(".breed-combobox-option")[activeIndex];
+      if (option) selectValue(option.dataset.breedValue);
+      return;
+    }
     if (input.readOnly && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
-      setOpen(true);
+      if (!isOpen) setOpen(true);
       focusOption(1);
       return;
     }
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setOpen(true);
+      if (!isOpen) setOpen(true);
       focusOption(event.key === "ArrowDown" ? 1 : -1);
       return;
     }
@@ -269,6 +293,9 @@ export function createBreedCombobox({
     if (!root.contains(event.target)) {
       setOpen(false);
     }
+  });
+  root.addEventListener("focusout", (event) => {
+    if (!root.contains(event.relatedTarget)) setOpen(false);
   });
 
   input.form?.addEventListener("reset", () => window.setTimeout(reset));

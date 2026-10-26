@@ -19,8 +19,8 @@ import {
   requireCustomerSession,
   updateClinicVisitDraft,
 } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3";
-import { createBreedCombobox } from "./breed-combobox.js";
-import { createBreedCoatCombobox } from "./breed-coat-combobox.js";
+import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
+import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { canSelectAllSavedPets, showPetSelectionSection } from "./pet-selection-tabs.js";
 import { goToGroomingStep, isGroomingSinglePage } from "./grooming-flow-navigation.js";
@@ -697,7 +697,15 @@ async function handleAddPetSubmit(event) {
     if (weightMessage) {
       showWeightValidationInField(elements.weight, weightMessage);
     }
-    showStepError(validationMessage);
+    if (validationMessage === breedCoatCombobox.getValidationMessage()) {
+      clearStepError();
+      elements.furType.focus();
+    } else if (validationMessage === breedCombobox.getValidationMessage()) {
+      clearStepError();
+      elements.breed.focus();
+    } else {
+      showStepError(validationMessage);
+    }
     return;
   }
 
@@ -734,6 +742,12 @@ async function handleAddPetSubmit(event) {
     renderSelectedPets();
     clearStepError();
   } catch (error) {
+    if (error.errors?.fur_type?.[0]) {
+      clearStepError();
+      breedCoatCombobox.showValidation(error.errors.fur_type[0]);
+      elements.furType.focus();
+      return;
+    }
     if (error.errors?.weight?.[0]) showWeightValidationInField(elements.weight, error.errors.weight[0]);
     showStepError(error.message);
   } finally {

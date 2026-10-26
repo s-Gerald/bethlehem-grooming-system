@@ -299,6 +299,7 @@ class AdminUnregisteredCustomerTest extends TestCase
             'pet_name' => 'mochi',
             'species' => 'Cat',
             'breed' => 'Persian',
+            'fur_type' => 'Long Dense Coat',
             'weight' => 4,
             'size' => 'small',
         ])->assertCreated()

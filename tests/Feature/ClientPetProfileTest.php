@@ -11,6 +11,40 @@ use Tests\TestCase;
 
 class ClientPetProfileTest extends TestCase
 {
+    public function test_customer_admin_and_staff_create_and_edit_enforce_conditional_fur(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->increments('user_id');
+            $table->string('role');
+        });
+        DB::table('users')->insert(['user_id' => 10, 'role' => 'customer']);
+        try {
+            foreach (['customer', 'admin', 'staff'] as $role) {
+                $this->authenticateUser($role === 'customer' ? 10 : 20, $role);
+                $createUrl = $role === 'customer' ? '/api/pets' : '/api/admin/customer-pets/registered/10';
+                foreach ([['Dog', ' golden   retriever ', 'Wavy Coat'], ['Cat', 'Bengal', 'Longhair Coat'], ['Dog', 'Beagle', 'Smooth Short Coat']] as $index => [$species, $breed, $coat]) {
+                    $payload = ['pet_name' => "$role named $index", 'species' => $species, 'breed' => $breed];
+                    foreach ([[], ['fur_type' => null], ['fur_type' => 'Unsupported'], ['pet_id' => 999]] as $invalid) {
+                        $this->postJson($createUrl, [...$payload, ...$invalid])->assertUnprocessable()->assertJsonValidationErrors('fur_type');
+                    }
+                    $id = $this->postJson($createUrl, [...$payload, 'fur_type' => $coat])->assertCreated()->json('pet.pet_id');
+                    $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
+                    $this->putJson($editUrl, $payload)->assertUnprocessable()->assertJsonPath('errors.fur_type.0', 'Select a fur type.');
+                    $this->assertDatabaseHas('pets', ['pet_id' => $id, 'fur_type' => $coat]);
+                    $this->putJson($editUrl, [...$payload, 'fur_type' => $coat])->assertOk()->assertJsonPath('pet.fur_type', $coat);
+                    $this->putJson($editUrl, [...$payload, 'breed' => 'My custom breed', 'fur_type' => null])
+                        ->assertOk()->assertJsonPath('pet.fur_type', null);
+                }
+                foreach (['My custom breed', 'Mixed Breed / Aspin', 'Unknown Breed'] as $index => $breed) {
+                    $this->postJson($createUrl, ['pet_name' => "$role optional $index", 'species' => 'Dog', 'breed' => $breed])
+                        ->assertCreated()->assertJsonPath('pet.fur_type', null);
+                }
+            }
+        } finally {
+            Schema::drop('users');
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

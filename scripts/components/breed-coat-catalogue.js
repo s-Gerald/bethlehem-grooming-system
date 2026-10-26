@@ -4,6 +4,10 @@ export const UNKNOWN_BREED = "Unknown Breed";
 export const OTHER_BREED = "Other \u2014 please specify";
 
 const SPECIAL_BREEDS = new Set([MIXED_BREED, MIXED_BREED_CAT, UNKNOWN_BREED]);
+const POPULAR_BREEDS = {
+  Dog: ["Shih Tzu", "Pomeranian", "Golden Retriever", "Labrador Retriever", "Siberian Husky", "American Bully", "Poodle", "Chihuahua"],
+  Cat: ["Persian", "Siamese", "British Shorthair", "Maine Coon", "Ragdoll", "Bengal", "Domestic Shorthair", "Scottish Fold"],
+};
 const catalogueUrl = new URL("../data/breed-coat-options.json", import.meta.url);
 
 export let BREED_COAT_OPTIONS = {};
@@ -34,7 +38,7 @@ export const breedCoatCatalogueReady = fetch(catalogueUrl)
   });
 
 function normalize(value) {
-  return String(value || "").trim().toLocaleLowerCase();
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function findMatchingKey(record, value) {
@@ -57,8 +61,14 @@ export function isMixedBreed(value) {
   );
 }
 
-export function getMatchingBreeds(query, petType, limit = 4) {
+export function getMatchingBreeds(query, petType) {
   const normalizedQuery = normalize(query);
+
+  if (!normalizedQuery) {
+    return (POPULAR_BREEDS[petType] || [])
+      .map((breed) => findMatchingKey(BREED_COAT_OPTIONS[petType], breed))
+      .filter(Boolean);
+  }
 
   if (!hasLetter(normalizedQuery)) {
     return [];
@@ -78,8 +88,7 @@ export function getMatchingBreeds(query, petType, limit = 4) {
       }
 
       return first.localeCompare(second);
-    })
-    .slice(0, limit);
+    });
 }
 
 export function getCoatOptions(breed, petType) {
@@ -92,5 +101,10 @@ export function getCoatOptions(breed, petType) {
     ? MIXED_BREED_CAT
     : breed;
   const matchingBreed = findMatchingKey(breeds, effectiveBreed);
-  return [...(breeds[matchingBreed] || breeds[UNKNOWN_BREED] || [])];
+  return [...(breeds[matchingBreed] || [])];
+}
+
+export function requiresCoat(breed, petType) {
+  return ![...SPECIAL_BREEDS].some((value) => normalize(value) === normalize(breed))
+    && getCoatOptions(breed, petType).length > 0;
 }

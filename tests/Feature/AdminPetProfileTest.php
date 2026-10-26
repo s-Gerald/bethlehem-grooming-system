@@ -11,6 +11,19 @@ use Tests\TestCase;
 
 class AdminPetProfileTest extends TestCase
 {
+    public function test_staff_can_view_legacy_named_breed_without_fur(): void
+    {
+        Schema::table('pets', function (Blueprint $table) {
+            $table->string('breed')->nullable();
+            $table->string('fur_type')->nullable();
+        });
+        $this->insertPet(101, 'Legacy pet');
+        DB::table('pets')->where('pet_id', 101)->update(['breed' => 'Golden Retriever']);
+        $this->authenticate(20, 'staff');
+        $this->getJson('/api/admin/pets/101/profile')->assertOk();
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'breed' => 'Golden Retriever', 'fur_type' => null]);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

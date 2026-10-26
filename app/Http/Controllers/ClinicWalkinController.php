@@ -13,6 +13,7 @@ use App\Models\TimeWindow;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Models\Walkin;
+use App\Rules\ValidBreedCoat;
 use App\Services\AvailabilityTimeWindowService;
 use App\Services\ClinicAppointmentSequence;
 use App\Services\CustomerPreRegistrationAccessService;
@@ -403,7 +404,7 @@ class ClinicWalkinController extends Controller
             'neutered_date' => ($data['is_neutered'] ?? false)
                 ? ($data['neutered_date'] ?? null)
                 : null,
-            'fur_type' => $data['fur_type'] ?? null,
+            'fur_type' => ValidBreedCoat::validatedCoat($data),
             'weight' => $data['weight'] ?? null,
             'size' => $data['size'] ?? null,
             'clinic_verified_fields' => ! empty($data['size']) ? ['size'] : null,
@@ -424,7 +425,7 @@ class ClinicWalkinController extends Controller
             'neutered_date' => array_key_exists('neutered_date', $data)
                 ? $data['neutered_date']
                 : $pet->neutered_date,
-            'fur_type' => $data['fur_type'] ?? $pet->fur_type,
+            'fur_type' => ValidBreedCoat::validatedCoat($data, $pet),
             'weight' => $data['weight'] ?? $pet->weight,
             'color' => $data['color'] ?? $pet->color,
             'medical_conditions' => $data['medical_conditions'] ?? $pet->medical_conditions,

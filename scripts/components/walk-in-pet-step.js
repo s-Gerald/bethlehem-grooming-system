@@ -1,7 +1,7 @@
 import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025";
 import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025";
-import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924";
-import { createBreedCoatCombobox } from "./breed-coat-combobox.js";
+import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924&pet-fields=20261026-v1";
+import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { showPetSelectionSection } from "./pet-selection-tabs.js?v=walk-in-owner-mode-20260924";
 import { formatPetSizeLabel } from "../services/booking-draft-service.js";
@@ -508,6 +508,9 @@ function handleAddPetSubmit(event) {
       showWeightValidationInField(elements.weight, errors.weight);
     }
     renderValidationErrors(formValues, { showAll: true });
+    const firstInvalid = ["petType", "petName", "breed", "furType", "weight", "size"].find((field) => errors[field]);
+    if (firstInvalid) elements[firstInvalid].focus();
+    if (firstInvalid === "furType" && Object.keys(errors).length === 1) clearStepError();
     return;
   }
 
@@ -649,6 +652,7 @@ function bindEvents() {
   elements.weight.addEventListener("input", handlePetInputs);
   elements.weight.addEventListener("change", handlePetInputs);
   elements.furType.addEventListener("input", handlePetInputs);
+  elements.furType.addEventListener("change", handlePetInputs);
   elements.size.addEventListener("change", handlePetInputs);
 }
 

@@ -105,7 +105,7 @@ class BookingController extends Controller
             'pets.*.breed' => 'nullable|string|max:100',
             'pets.*.birthdate' => 'nullable|date',
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
-            'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
+            'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.weight' => ['nullable', new ValidPetWeight],
             'pets.*.color' => 'nullable|string|max:50',
             'pets.*.medical_conditions' => 'nullable|string',
@@ -232,13 +232,14 @@ class BookingController extends Controller
             ]));
 
             // ── Save pets ─────────────────────────────────────
-            foreach ($request->pets as $petData) {
+            foreach ($request->pets as $index => $petData) {
                 $pet = $savedPets->get($petData['pet_id'] ?? null);
+                $coat = ValidBreedCoat::validatedCoat($petData, $pet, "pets.{$index}.fur_type");
 
                 if ($pet) {
                     $pet->update([
                         'breed' => $petData['breed'] ?? $pet->breed,
-                        'fur_type' => $petData['fur_type'] ?? $pet->fur_type,
+                        'fur_type' => $coat,
                         'weight' => $petData['weight'] ?? $pet->weight,
                         'size' => PetWeightSize::sizeFor($pet->species, $petData['weight'] ?? $pet->weight)
                             ?? $petData['size'] ?? $pet->size,
@@ -257,7 +258,7 @@ class BookingController extends Controller
                         'color' => $petData['color'] ?? null,
                         'size' => PetWeightSize::sizeFor($petData['species'] ?? 'Dog', $petData['weight'] ?? null)
                             ?? $petData['size'] ?? null,
-                        'fur_type' => $petData['fur_type'] ?? null,
+                        'fur_type' => $coat,
                         'medical_conditions' => $petData['medical_conditions'] ?? null,
                     ]);
                 }

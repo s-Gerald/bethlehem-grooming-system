@@ -1,6 +1,30 @@
 /* ----- Custom CSS Notes ----- */
 /* Use this file for custom animations, custom scrollbar styles, and one-off styles that Tailwind cannot easily cover. */
 
+/* Four complete breed rows; native scroll containment also preserves touch scrolling. */
+.breed-suggestion-list {
+  max-height: 162px;
+  padding-block: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(49 91 126 / 30%) transparent;
+}
+.breed-suggestion-list .breed-combobox-option {
+  height: 40px;
+  padding-block: 0;
+  line-height: 40px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breed-suggestion-list .breed-combobox-option[aria-selected="true"] {
+  background-color: #edf5fc;
+}
+.breed-suggestion-list::-webkit-scrollbar { width: 6px; }
+.breed-suggestion-list::-webkit-scrollbar-thumb { background: rgb(49 91 126 / 30%); border-radius: 6px; }
+
 [x-cloak] {
   display: none !important;
 }
