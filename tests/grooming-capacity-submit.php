@@ -13,6 +13,7 @@ $app = require dirname(__DIR__).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 \Tests\Support\assertCapacityConnection(DB::connection());
 Carbon::setTestNow('2026-10-16 13:00:00');
+$action = $argv[4] ?? 'grooming-submit';
 $user = User::findOrFail((int) $argv[1]);
 $request = Request::create('/api/booking/store', 'POST', json_decode($argv[2], true, flags: JSON_THROW_ON_ERROR));
 $request->setUserResolver(fn () => $user);
@@ -54,7 +55,19 @@ DB::listen(function ($query) use (&$timing, $role, $directory, $connectionId) {
 });
 $started = microtime(true);
 try {
-    $response = $app->call([app(BookingController::class), 'store'], ['request' => $request]);
+    if ($action === 'grooming-submit') {
+        $response = $app->call([app(BookingController::class), 'store'], ['request' => $request]);
+    } elseif ($action === 'clinic-submit') {
+        $form = \App\Http\Requests\StoreClinicPreRegistrationRequest::createFrom($request);
+        $form->setContainer($app)->setRedirector($app['redirect']);
+        $form->validateResolved();
+        $response = $app->call([app(\App\Http\Controllers\ClinicWalkinController::class), 'preRegister'], ['request' => $form]);
+    } elseif (in_array($action, ['grooming-check-in', 'clinic-check-in'], true)) {
+        $app->instance('request', $request);
+        $response = $action === 'grooming-check-in'
+            ? app(\App\Http\Controllers\AdminBookingController::class)->checkIn((int) $request->input('id'))
+            : $app->call([app(\App\Http\Controllers\AdminClinicController::class), 'checkIn'], ['id' => (int) $request->input('id')]);
+    } else throw new RuntimeException('Unsupported isolated test operation.');
 } catch (ValidationException $exception) {
     $response = $exception->response ?? response()->json(['errors' => $exception->errors()], 422);
 }

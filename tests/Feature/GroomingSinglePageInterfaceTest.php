@@ -11,7 +11,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
     {
         $page = file_get_contents(base_path('pages/client/grooming-pre-registration.html'));
 
-        foreach (['schedule', 'pets', 'services', 'review', 'consent', 'confirmed'] as $step) {
+        foreach (['pets', 'services', 'review', 'consent', 'confirmed'] as $step) {
             $this->assertStringContainsString('data-grooming-step="'.$step.'"', $page);
         }
 
@@ -39,7 +39,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
 
     public function test_clinic_visit_keeps_its_separate_pet_step(): void
     {
-        $clinicDate = file_get_contents(base_path('scripts/components/clinic-visit-date.js'));
+        $clinicDate = file_get_contents(base_path('pages/client/pre-register.html'));
         $petStep = file_get_contents(base_path('scripts/components/booking-pet-step.js'));
 
         $this->assertStringContainsString('./booking-pet-details.html?flow=clinic', $clinicDate);
@@ -50,7 +50,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
     {
         $page = file_get_contents(base_path('pages/client/grooming-pre-registration.html'));
 
-        foreach (['schedule', 'pets', 'services', 'review', 'consent'] as $step) {
+        foreach (['pets', 'services', 'review', 'consent'] as $step) {
             $section = explode('data-grooming-step="'.$step.'"', $page, 2)[1];
             $section = explode('data-grooming-step="', $section, 2)[0];
             preg_match('/<a\b[^>]*>.*?<\/a>/s', $section, $matches);
@@ -62,7 +62,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
         }
 
         $this->assertStringContainsString('id="backBtn"', $page);
-        foreach (['pets', 'services', 'schedule', 'review'] as $previousStep) {
+        foreach (['pets', 'services', 'review'] as $previousStep) {
             $this->assertStringContainsString('data-grooming-target="'.$previousStep.'"', $page);
         }
     }
@@ -109,9 +109,9 @@ JS], base_path());
         $html = $rendered['html'];
 
         foreach ([
-            'Grooming Pre-registration Received', 'BAC-20261016-0001', 'Waiting to Arrive',
+            'Registration Received', 'BAC-20261016-0001', 'Waiting to Arrive',
             'Owner Information', 'Maria Santos', 'Coco', 'Partial Grooming',
-            'Planned Arrival', 'Visit date', 'Arrival window', 'Submitted at',
+            'Registration Details', 'Valid service day', 'Queue number', 'Submitted at',
             'Grooming Consent', 'Keep the face tidy',
         ] as $detail) {
             $this->assertStringContainsString($detail, $html);
@@ -119,9 +119,9 @@ JS], base_path());
         $this->assertStringContainsString('<article class="confirmation-document" aria-label="Confirmation details">', $html);
         $this->assertMatchesRegularExpression('/<a[^>]+href="\.\/dashboard\.html">Return to Dashboard<\/a>/', $html);
         $this->assertMatchesRegularExpression('/<button[^>]+id="printConfirmationButton"[^>]*>Print Confirmation<\/button>/', $html);
-        $this->assertStringNotContainsString('<dt>Queue number</dt>', $html);
+        $this->assertStringContainsString('<dt>Queue number</dt><dd>Not assigned</dd>', $html);
         $this->assertTrue($rendered['focused']);
         $this->assertSame(1, $rendered['printed']);
-        $this->assertSame('Grooming Pre-registration Received', $rendered['title']);
+        $this->assertSame('Registration Received', $rendered['title']);
     }
 }

@@ -73,20 +73,19 @@ class GroomingReviewAndConsentInterfaceTest extends TestCase
             $this->assertStringNotContainsString('petReviewText', $source);
         }
 
-        $this->assertStringContainsString('Planned Drop-off', $customerPage);
+        $this->assertStringContainsString('Registration Summary', $customerPage);
         $this->assertStringContainsString('Schedule Summary', $walkInPage);
         $this->assertStringContainsString('Schedule Summary', $walkInReview);
     }
 
     public function test_time_and_consent_helpers_are_removed_and_step_five_heading_is_unique(): void
     {
-        $calendar = file_get_contents(base_path('scripts/components/booking-calendar.js'));
         $customerPage = file_get_contents(base_path('pages/client/grooming-pre-registration.html'));
         $customerConsent = explode('data-grooming-step="confirmed"', explode('data-grooming-step="consent"', $customerPage, 2)[1], 2)[0];
         $walkInConsent = file_get_contents(base_path('pages/admin/walk-in-consent.html'));
         $walkInConsentStep = file_get_contents(base_path('scripts/components/walk-in-consent-step.js'));
 
-        $this->assertStringNotContainsString('Time passed', $calendar);
+        $this->assertStringNotContainsString('data-grooming-step="schedule"', $customerPage);
 
         foreach ([$customerConsent, $walkInConsent, $walkInConsentStep] as $consent) {
             $this->assertStringContainsString(

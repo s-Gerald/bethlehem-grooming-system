@@ -67,7 +67,8 @@ class DailyPetQueue
                     ?: $left->booking_pet_id <=> $right->booking_pet_id;
             });
 
-        $nextNumber = ((int) BookingPet::where('pet_queue_date', $queueDate)
+        $nextNumber = ((int) BookingPet::where('pet_queue_date', '>=', $queueDate)
+            ->where('pet_queue_date', '<', \Carbon\Carbon::parse($queueDate)->addDay()->toDateString())
             ->whereNotNull('pet_queue_number')
             ->max('pet_queue_number')) + 1;
 

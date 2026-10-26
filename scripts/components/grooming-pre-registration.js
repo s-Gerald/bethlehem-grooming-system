@@ -1,15 +1,14 @@
-import { initBookingCalendar, refreshBookingCalendar } from "./booking-calendar.js?v=grooming-actual-20261026&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&grooming=actual-20261026";
-import { initBookingPetStep, refreshBookingPetStep } from "./booking-pet-step.js?v=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&age=20261016&pet-fields=20261026-v1";
-import { initBookingServicesStep, refreshBookingServicesStep } from "./booking-services-step.js?v=grooming-pricing-20261006&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026";
-import { initBookingReviewStep, refreshBookingReviewStep } from "./booking-review-step.js?v=grooming-actual-20261026&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026";
-import { initBookingConsentStep } from "./booking-consent-step.js?v=grooming-actual-20261026&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026";
-import { initBookingConfirmedStep } from "./booking-confirmed-step.js?copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026";
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=phone-20261022";
-import { hasCompletedRequiredServiceSelection, loadGroomingCatalogue } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
-import { loadPetGroomers, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026";
+import { initBookingPetStep, refreshBookingPetStep } from "./booking-pet-step.js?v=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&age=20261016&pet-fields=20261026-v1&registration=fcfs-20261027-v1";
+import { initBookingServicesStep, refreshBookingServicesStep } from "./booking-services-step.js?v=grooming-pricing-20261006&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { initBookingReviewStep, refreshBookingReviewStep } from "./booking-review-step.js?v=grooming-actual-20261026&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { initBookingConsentStep } from "./booking-consent-step.js?v=grooming-actual-20261026&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { initBookingConfirmedStep } from "./booking-confirmed-step.js?copy=grooming-terminology-20261016&groomers=named-20261016&consent=20261016&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=fcfs-20261027-v1";
+import { hasCompletedRequiredServiceSelection, loadGroomingCatalogue } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { loadPetGroomers, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
 
-const steps = ["pets", "services", "schedule", "review", "consent", "confirmed"];
+const steps = ["pets", "services", "review", "consent", "confirmed"];
 const initialized = new Set();
 let currentStep = null;
 
@@ -22,7 +21,6 @@ function stored(key) {
 }
 
 function availableStep(requested) {
-  const schedule = stored("bookingSchedule");
   const pets = stored("bookingPets");
   const services = stored("bookingStep3");
   const review = stored("bookingStep4Review");
@@ -32,7 +30,6 @@ function availableStep(requested) {
     !hasCompletedRequiredServiceSelection(pet, services?.petSelections?.find((selection) => String(selection.petId) === String(pet.id)))
     || !hasPetGroomerSelection(services?.petSelections?.find((selection) => String(selection.petId) === String(pet.id)))
   )) return "services";
-  if (requested === "schedule" || !schedule?.date || !schedule?.window_id) return "schedule";
   if (requested === "review" || !review?.pets?.length) return "review";
   return requested === "consent" ? "consent" : "pets";
 }
@@ -45,10 +42,7 @@ function stepUrl(step) {
 }
 
 async function enterStep(step) {
-  if (step === "schedule") {
-    if (initialized.has(step)) await refreshBookingCalendar();
-    else await initBookingCalendar({ onNext: () => navigate("review") });
-  } else if (step === "pets") {
+  if (step === "pets") {
     if (initialized.has(step)) await refreshBookingPetStep();
     else await initBookingPetStep();
   } else if (step === "services") {
@@ -66,6 +60,7 @@ async function enterStep(step) {
 }
 
 async function navigate(requested, historyAction = "push") {
+  if (requested === "schedule") requested = "review";
   if (!steps.includes(requested)) requested = "pets";
   if (currentStep === "confirmed" && requested !== "confirmed") requested = "confirmed";
   const step = availableStep(requested);
@@ -80,8 +75,8 @@ async function navigate(requested, historyAction = "push") {
     section.classList.toggle("hidden", !visible);
   }
   currentStep = step;
-  document.body.classList.toggle("bg-[#f6fafd]", step === "schedule" || step === "pets");
-  document.body.classList.toggle("bg-slate-50", step !== "schedule" && step !== "pets");
+  document.body.classList.toggle("bg-[#f6fafd]", step === "pets");
+  document.body.classList.toggle("bg-slate-50", step !== "pets");
 
   if (historyAction === "push") window.history.pushState({ step }, "", stepUrl(step));
   if (historyAction === "replace") window.history.replaceState({ step }, "", stepUrl(step));
@@ -91,6 +86,8 @@ async function navigate(requested, historyAction = "push") {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  sessionStorage.removeItem("bookingSchedule");
+  sessionStorage.removeItem("bookingScheduleArrivalError");
   let requested = new URLSearchParams(window.location.search).get("step") || "pets";
   if (requested !== "confirmed" || !stored("bookingConfirmation")) {
     const blocked = await initBookingFormAccessGuard({ dashboardPath: "./dashboard.html" });
@@ -112,12 +109,4 @@ document.addEventListener("DOMContentLoaded", async () => {
     navigate(new URLSearchParams(window.location.search).get("step") || "pets", "replace");
   });
   await navigate(requested, "replace");
-  let refreshingSchedule = false;
-  window.setInterval(async () => {
-    if (document.hidden || refreshingSchedule) return;
-    refreshingSchedule = true;
-    try {
-      if (currentStep === "schedule") await refreshBookingCalendar();
-    } finally { refreshingSchedule = false; }
-  }, 30000);
 });

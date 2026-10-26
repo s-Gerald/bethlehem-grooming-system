@@ -1,11 +1,11 @@
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
-import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   escapeHtml,
   formatPetSizeLabel,
   formatPetTypeLabel,
   normalizePetSize,
-} from "../services/booking-draft-service.js";
+} from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import {
   hasRequiredGroomingPreference,
   specialInstructionsError,
@@ -13,7 +13,7 @@ import {
   getGroomingPricePresentation,
   formatPriceOption,
   getPackageById,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026";
 
 const state = {

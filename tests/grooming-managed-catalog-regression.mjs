@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { renderPackageCard, renderAlaCarteCard, focusSpecialInstructions } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1';
 
 const catalogue = [
   {serviceId: 31, id: 'coat_care', name: 'Coat Care Grooming', kind: 'package', petType: 'dog',

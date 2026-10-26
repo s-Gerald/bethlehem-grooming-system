@@ -6,7 +6,9 @@ export const CLINIC_VISIT_CONFIRMATION_KEY = "clinicVisitConfirmation";
 export function readClinicVisitDraft() {
   try {
     const value = sessionStorage.getItem(CLINIC_VISIT_DRAFT_KEY);
-    return value ? JSON.parse(value) : {};
+    const draft = value ? JSON.parse(value) : {};
+    for (const key of ["appointmentDate", "windowId", "windowLabel", "startTime", "endTime", "scheduleText"]) delete draft[key];
+    return draft;
   } catch (error) {
     console.error("Failed to read the clinic visit draft:", error);
     return {};
@@ -27,17 +29,6 @@ export function clearClinicVisitDraft() {
   sessionStorage.removeItem(CLINIC_VISIT_DRAFT_KEY);
   sessionStorage.removeItem(CLINIC_VISIT_PETS_KEY);
   sessionStorage.removeItem(CLINIC_VISIT_CONFIRMATION_KEY);
-}
-
-export function clearClinicVisitArrival(appointmentDate) {
-  return updateClinicVisitDraft({
-    ...(appointmentDate === undefined ? {} : { appointmentDate }),
-    windowId: null,
-    windowLabel: "",
-    startTime: "",
-    endTime: "",
-    scheduleText: "",
-  });
 }
 
 export const CLINIC_CONCERNS = [

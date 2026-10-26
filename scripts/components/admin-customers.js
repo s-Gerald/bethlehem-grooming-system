@@ -1,7 +1,7 @@
 let adminCustomerPetFieldModulesReady;
 function loadAdminCustomerPetFields() {
   return adminCustomerPetFieldModulesReady ??= Promise.all([
-  import("../services/booking-draft-service.js"),
+  import("../services/booking-draft-service.js?registration=fcfs-20261027-v1"),
   import("./breed-combobox.js?pet-fields=20261026-v1"),
   import("./breed-coat-catalogue.js?pet-fields=20261026-v1"),
   import("./breed-coat-combobox.js?pet-fields=20261026-v1"),

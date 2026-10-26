@@ -5,11 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreClinicPreRegistrationRequest;
 use App\Http\Requests\StoreClinicWalkinRequest;
 use App\Models\ClinicAppointment;
-use App\Models\ClinicClosure;
 use App\Models\ClinicSetting;
 use App\Models\Notification;
 use App\Models\Pet;
-use App\Models\TimeWindow;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Models\Walkin;
@@ -20,7 +18,6 @@ use App\Services\CustomerPreRegistrationAccessService;
 use App\Support\ClinicConcerns;
 use App\Support\PetWeightSize;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ClinicWalkinController extends Controller
@@ -56,7 +53,7 @@ class ClinicWalkinController extends Controller
         ClinicAppointmentSequence $clinicSequence,
         CustomerPreRegistrationAccessService $preRegistrationAccess,
     ) {
-        return DB::transaction(function () use (
+        return app(\App\Services\DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use (
             $request,
             $clinicSequence,
             $preRegistrationAccess,
@@ -76,49 +73,7 @@ class ClinicWalkinController extends Controller
                 ], 409);
             }
 
-            $appointmentDate = $data['appointment_date'];
-            $settings = ClinicSetting::current();
-
-            $closure = ClinicClosure::query()
-                ->where('is_active', true)
-                ->whereDate('start_date', '<=', $appointmentDate)
-                ->whereDate('end_date', '>=', $appointmentDate)
-                ->where(function ($query) use ($appointmentDate) {
-                    $query->where('type', 'blocked_date')
-                        ->orWhere(function ($stopToday) use ($appointmentDate) {
-                            $stopToday
-                                ->where('type', 'stop_today')
-                                ->whereDate('start_date', now()->toDateString())
-                                ->whereDate('start_date', $appointmentDate);
-                        });
-                })
-                ->first();
-
-            if ($closure) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $closure->reason ?: 'The clinic is not accepting visits on the selected date.',
-                ], 422);
-            }
-
-            $window = TimeWindow::query()
-                ->whereKey($data['window_id'])
-                ->where('is_active', true)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if (! $settings->isWindowWithinOperatingHours(
-                'clinic',
-                $window->start_time,
-                $window->end_time,
-            )) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'The selected clinic visit time is not available under the current operating hours.',
-                ], 422);
-            }
-
-            app(AvailabilityTimeWindowService::class)->assertWindowHasNotEnded($appointmentDate, $window);
+            $appointmentDate = app(\App\Services\RegistrationServiceDay::class)->resolve('clinic');
 
             $pet = Pet::whereKey($data['pet_id'])
                 ->where('user_id', $user->user_id)
@@ -149,7 +104,7 @@ class ClinicWalkinController extends Controller
                 'status' => 'waiting_to_arrive',
                 'queue_number' => null,
                 'appointment_date' => $appointmentDate,
-                'window_id' => $window->window_id,
+                'window_id' => null,
                 'user_id' => $user->user_id,
                 'walkin_id' => null,
                 'pet_id' => $pet->pet_id,
@@ -175,12 +130,10 @@ class ClinicWalkinController extends Controller
                     'appointment_reference' => $appointment->appointment_reference,
                     'appointment_type' => $appointment->appointment_type,
                     'appointment_date' => $appointment->appointment_date->toDateString(),
-                    'time_window' => [
-                        'window_id' => $window->window_id,
-                        'window_label' => $window->displayLabel(),
-                        'start_time' => $window->start_time,
-                        'end_time' => $window->end_time,
-                    ],
+                    'time_window' => null,
+                    'queue_number' => null,
+                    'created_at' => $appointment->created_at->toIso8601String(),
+                    'checked_in_at' => null,
                     'status' => $appointment->status,
                     'chief_complaint' => $appointment->chief_complaint,
                     'common_concerns' => $appointment->common_concerns,

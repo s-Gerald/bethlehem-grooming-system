@@ -36,7 +36,7 @@ class AdminClinicController extends Controller
 
         $incoming = ClinicAppointment::with($with)
             ->expected()
-            ->orderBy('created_at')
+            ->orderBy('created_at')->orderBy('id')
             ->get()
             ->map(fn ($a) => $this->formatAppointment($a));
 
@@ -137,7 +137,7 @@ class AdminClinicController extends Controller
         $with = $this->appointmentRelations(true);
         $arrivals = ClinicAppointment::with($with)
             ->expected()
-            ->orderBy('created_at')
+            ->orderBy('created_at')->orderBy('id')
             ->get()
             ->map(fn (ClinicAppointment $arrival) => $this->formatAppointment($arrival, true))
             ->values();
@@ -146,7 +146,7 @@ class AdminClinicController extends Controller
             ->operational()
             ->when($this->hasConfinements, fn ($query) => $query
                 ->whereDoesntHave('confinement', fn ($episode) => $episode->whereNull('discharged_at')))
-            ->orderBy('created_at')
+            ->orderBy('created_at')->orderBy('id')
             ->get()
             ->map(fn (ClinicAppointment $case) => $this->formatAppointment($case, true))
             ->values();
@@ -353,6 +353,8 @@ class AdminClinicController extends Controller
     {
         $appt = app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($id, $clinicSequence) {
             $appointment = ClinicAppointment::whereKey($id)->lockForUpdate()->firstOrFail();
+
+            if ($appointment->checked_in_at && $appointment->queue_number) return $appointment;
 
             if ($appointment->status !== 'waiting_to_arrive') {
                 return null;

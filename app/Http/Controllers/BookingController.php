@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\BookingService;
-use App\Models\ClinicClosure;
 use App\Models\ClinicSetting;
 use App\Models\Notification;
 use App\Models\Pet;
@@ -29,8 +28,6 @@ use Illuminate\Validation\ValidationException;
 class BookingController extends Controller
 {
     private const MAX_PETS_PER_BOOKING = 10;
-
-    private const MAX_PRE_REGISTRATION_DAYS_AHEAD = 2;
 
     // ── GET AVAILABLE TIME WINDOWS ────────────────────────
     public function getTimeslots(
@@ -56,11 +53,7 @@ class BookingController extends Controller
         GroomingServicePriceResolver $servicePrices,
         CustomerPreRegistrationAccessService $preRegistrationAccess,
     ) {
-        $today = now()->toDateString();
-
         $validated = $request->validate([
-            'booking_date' => 'required|date|after_or_equal:'.$today,
-            'window_id' => 'required|exists:time_windows,window_id',
             'number_of_pets' => 'required|integer|min:1|max:'.self::MAX_PETS_PER_BOOKING,
             'special_notes' => 'nullable|string',
             ...\App\Services\GroomingConsentCapture::rules(),
@@ -91,7 +84,7 @@ class BookingController extends Controller
         );
         $request->merge(['pets' => $validated['pets']]);
 
-        return app(\App\Services\DailyPetQueue::class)->runForDate($request->booking_date, function () use (
+        return app(\App\Services\DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use (
             $request,
             $servicePrices,
             $preRegistrationAccess,
@@ -111,7 +104,7 @@ class BookingController extends Controller
                 ], 409);
             }
 
-            $date = $request->booking_date;
+            $date = app(\App\Services\RegistrationServiceDay::class)->resolve('grooming');
             $savedPets = Pet::where('user_id', $user->user_id)
                 ->whereIn('pet_id', array_column($request->pets, 'pet_id'))
                 ->get()->keyBy('pet_id');
@@ -125,33 +118,9 @@ class BookingController extends Controller
                 }
             }
             $sedationConsent = $request->boolean('sedation_consent');
-            $settings = ClinicSetting::current();
             $request->merge(['pets' => app(\App\Services\PetGroomerSelection::class)->validate($request->pets, false)]);
 
             // ── Load selected time window ───────────────────────
-            $window = TimeWindow::query()
-                ->whereKey($request->window_id)
-                ->where('is_active', 1)
-                ->first();
-
-            if (
-                ! $window
-                || ! $settings->isWindowWithinOperatingHours(
-                    'grooming',
-                    $window->start_time,
-                    $window->end_time,
-                )
-            ) {
-                return response()->json([
-                    'success' => false,
-                    'code' => 'arrival_window_unavailable',
-                    'message' => 'This arrival window is unavailable. Please choose another time.',
-                ], 422);
-            }
-
-            app(AvailabilityTimeWindowService::class)->assertPreferredArrival($settings, 'grooming', $date, $window);
-
-            // ── Check duplicate booking ───────────────────────
             $duplicate = Booking::where('user_id', $user->user_id)
                 ->where('booking_date', $date)
                 ->whereNotIn('status', ['cancelled', 'archived', 'no_show', 'expired'])
@@ -171,17 +140,17 @@ class BookingController extends Controller
             // ── Generate booking reference ────────────────────
             $dateStr = Carbon::parse($date)->format('Ymd');
             $prefix = 'BAC-'.$dateStr.'-';
-            $maxRef = Booking::where('booking_reference', 'like', $prefix.'%')->max('booking_reference');
-            $lastCount = $maxRef ? ((int) substr($maxRef, -4)) + 1 : 1;
+            $maxRef = Booking::where('booking_reference', 'like', $prefix.'%')->orderByDesc('booking_id')->value('booking_reference');
+            $lastCount = $maxRef ? ((int) substr($maxRef, strlen($prefix))) + 1 : 1;
             $reference = $prefix.str_pad($lastCount, 4, '0', STR_PAD_LEFT);
 
             $hasServiceSnapshots = Schema::hasColumn('booking_services', 'service_name_snapshot');
 
             // ── Create the booking ────────────────────────────
-            $booking = Booking::create([
+            $booking = new Booking([
                 'booking_reference' => $reference,
                 'user_id' => $user->user_id,
-                'window_id' => $request->window_id,
+                'window_id' => null,
                 'booking_date' => $date,
                 'number_of_pets' => $request->number_of_pets,
                 'booking_type' => 'online',
@@ -192,6 +161,9 @@ class BookingController extends Controller
                 'sedation_consent_recorded_at' => $sedationConsent ? now() : null,
                 'total_amount' => 0,
             ]);
+
+            $booking->created_at = now('Asia/Manila');
+            $booking->save();
 
             $signedConsent = \App\Services\GroomingConsentCapture::capture($booking, $request->only([
                 'sedation_consent', 'signer_name', 'signature_strokes',
@@ -292,13 +264,9 @@ class BookingController extends Controller
                 }
             }
 
-            $booking->update(['arrival_end_time' => $window->end_time]);
             $booking->load('bookingPets.groomer');
-            $booking->setRelation('timeWindow', $window);
-            $window = $booking->preferredArrivalWindow();
 
-            // ── Create notification for admin ─────────────────
-            $schedule = $this->notificationScheduleLabel($date, $window);
+            $schedule = $this->notificationScheduleLabel($date, null);
 
             Notification::create([
                 'type' => 'booked',
@@ -324,7 +292,8 @@ class BookingController extends Controller
                     'booking_id' => $booking->booking_id,
                     'booking_reference' => $booking->booking_reference,
                     'booking_date' => $booking->booking_date,
-                    'window' => $window->window_label,
+                    'window' => null,
+                    'queue_number' => null,
                     'created_at' => $createdAt,
                     'status' => $booking->status,
                     'number_of_pets' => $booking->number_of_pets,
@@ -465,6 +434,8 @@ class BookingController extends Controller
                 return [
                     'pet_id' => $bp->pet_id,
                     'booking_pet_id' => $bp->booking_pet_id,
+                    'pet_queue_number' => $bp->pet_queue_number,
+                    'pet_queue_date' => $bp->pet_queue_date?->toDateString(),
                     'groomer_id' => $bp->groomer_id,
                     'pet_groomer' => $bp->groomer,
                     'haircut_requested' => (bool) $bp->haircut_requested,
@@ -534,6 +505,7 @@ class BookingController extends Controller
                     && ($b->arrival_end_time
                         ? Carbon::parse($b->booking_date.' '.$b->arrival_end_time)->lt(now())
                         : Carbon::parse($b->booking_date.' '.$b->timeWindow->end_time)->lte(now())),
+                'queue_number' => $b->queue_number,
                 'created_at' => $b->created_at
                     ? Carbon::parse($b->created_at, config('app.timezone'))->toIso8601String()
                     : null,
@@ -579,6 +551,17 @@ class BookingController extends Controller
             'bookings' => $active->map($format)->values(),
             'history' => $history->map($format)->values(),
             'history_total' => $historyTotal,
+            'clinic_visits' => Schema::hasTable('clinic_appointments') ? \App\Models\ClinicAppointment::query()
+                ->where('user_id', $userId)->whereIn('status', ['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment'])
+                ->with('pet:pet_id,pet_name,species,breed')->orderBy('created_at')->orderBy('id')
+                ->get()->map(fn ($visit) => [
+                    'id' => $visit->id, 'reference' => $visit->appointment_reference,
+                    'status' => $visit->status, 'service_day' => $visit->appointment_date?->toDateString(),
+                    'queue_number' => $visit->queue_number,
+                    'created_at' => $visit->created_at?->toIso8601String(),
+                    'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
+                    'pet_name' => $visit->pet?->pet_name,
+                ])->values() : [],
         ]);
     }
 
@@ -722,139 +705,11 @@ class BookingController extends Controller
     // ── RESCHEDULE A BOOKING ──────────────────────────────
     public function reschedule(Request $request)
     {
-        $today = now()->toDateString();
-        $lastAvailableDate = now()
-            ->addDays(self::MAX_PRE_REGISTRATION_DAYS_AHEAD)
-            ->toDateString();
-
-        $request->validate([
-            'booking_id' => 'required|exists:bookings,booking_id',
-            'new_date' => 'required|date_format:Y-m-d|after_or_equal:'.$today
-                .'|before_or_equal:'.$lastAvailableDate,
-            'new_window_id' => 'required|exists:time_windows,window_id',
-        ], [
-            'new_date.before_or_equal' => 'Grooming can be pre-registered up to three days in advance.',
-        ]);
-
-        $user = $request->user();
-        app(\App\Services\PreRegistrationExpiry::class)->expire((int) $user->user_id);
-        return app(\App\Services\DailyPetQueue::class)->runForDate($request->new_date, function () use ($request, $user) {
-            $booking = Booking::where('booking_id', $request->booking_id)
-                ->where('user_id', $user->user_id)
-                ->lockForUpdate()->first();
-
-            if (! $booking) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Visit not found.',
-                ], 404);
-            }
-
-            if ($booking->status !== 'waiting_to_arrive' || $booking->hasSuccessfulPayment()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only an unused pre-registration can change its planned arrival.',
-                ], 422);
-            }
-
-            if ($booking->reschedule_count >= 2) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You have reached the maximum number of reschedules (2) for this visit.',
-                ], 422);
-            }
-
-            // Validate the new preferred arrival against real availability
-            $newDate = $request->new_date;
-            $settings = ClinicSetting::current();
-            $newWindow = TimeWindow::query()
-                ->whereKey($request->new_window_id)
-                ->where('is_active', true)
-                ->first();
-
-            if (
-                $booking->booking_date === $newDate
-                && (int) $booking->window_id === (int) $request->new_window_id
-            ) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Choose a different date or time slot from the current schedule.',
-                ], 422);
-            }
-
-            $closure = ClinicClosure::query()
-                ->where('is_active', true)
-                ->whereDate('start_date', '<=', $newDate)
-                ->whereDate('end_date', '>=', $newDate)
-                ->where(function ($query) use ($newDate) {
-                    $query->where('type', 'blocked_date')
-                        ->orWhere(function ($stopToday) use ($newDate) {
-                            $stopToday
-                                ->where('type', 'stop_today')
-                                ->whereDate('start_date', now()->toDateString())
-                                ->whereDate('start_date', $newDate);
-                        });
-                })
-                ->first();
-
-            if ($closure) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $closure->reason
-                        ?: 'The clinic is not accepting grooming pre-registrations on the selected date.',
-                ], 422);
-            }
-
-            if (
-                ! $newWindow
-                || ! $settings->isWindowWithinOperatingHours(
-                    'grooming',
-                    $newWindow->start_time,
-                    $newWindow->end_time,
-                )
-            ) {
-                return response()->json([
-                    'success' => false,
-                    'code' => 'arrival_window_unavailable',
-                    'message' => 'This arrival window is unavailable. Please choose another time.',
-                ], 422);
-            }
-
-            app(AvailabilityTimeWindowService::class)->assertWindowHasNotEnded($newDate, $newWindow);
-
-            $previousSchedule = $this->notificationScheduleLabel(
-                (string) $booking->booking_date,
-                $booking->preferredArrivalWindow(),
-            );
-            $newSchedule = $this->notificationScheduleLabel($newDate, $newWindow);
-
-            $booking->update([
-                'booking_date' => $newDate,
-                'window_id' => $request->new_window_id,
-                'arrival_end_time' => $newWindow->end_time,
-                'reschedule_count' => $booking->reschedule_count + 1,
-                'status' => 'waiting_to_arrive',
-            ]);
-
-            Notification::create([
-                'type' => 'rescheduled',
-                'booking_id' => $booking->booking_id,
-                'message' => "Pre-registration {$booking->booking_reference} was rescheduled by {$user->first_name} {$user->last_name} from {$previousSchedule} to {$newSchedule}.",
-                'is_read' => 0,
-                'created_at' => now(),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Visit rescheduled successfully.',
-                'booking' => [
-                    'booking_reference' => $booking->booking_reference,
-                    'booking_date' => $booking->booking_date,
-                    'window' => $newWindow->displayLabel(),
-                    'reschedule_count' => $booking->reschedule_count,
-                ],
-            ]);
-        });
+        return response()->json([
+            'success' => false,
+            'code' => 'arrival_selection_retired',
+            'message' => 'Arrival selection is no longer available. Cancel an unused registration before registering again.',
+        ], 410);
     }
 
     private function notificationScheduleLabel(string $date, ?TimeWindow $window): string

@@ -12,7 +12,7 @@ const ui = context.adminDashboard();
 
 async function main() {
 const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, "grooming-catalogue-fixture.json"), "utf8").replace(/^\uFEFF/, "")).data;
-const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 for (const component of ["admin-dashboard", "booking-services-step", "booking-review-step", "booking-consent-step", "booking-confirmed-step", "grooming-service-selection", "grooming-pre-registration", "walk-in-services-step", "walk-in-review-step"]) {
   const componentSource = fs.readFileSync(path.join(__dirname, `../scripts/components/${component}.js`), "utf8");
   assert.ok(componentSource.includes(`"${catalogueModule}"`), `${component} must share the same live catalogue module instance`);

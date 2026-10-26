@@ -1,15 +1,14 @@
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js";
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_CONFIRMATION_KEY,
   CLINIC_VISIT_DRAFT_KEY,
   CLINIC_VISIT_PETS_KEY,
-  formatClinicVisitDate,
   formatClinicVisitReason,
   readClinicVisitDraft,
   requireCustomerSession,
   validateClinicVisitReason,
-  clearClinicVisitArrival,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
 
 const elements = {
   details: document.getElementById("clinicVisitSummaryDetails"),
@@ -29,8 +28,6 @@ async function submitClinicVisit(draft) {
 
   try {
     const response = await API.submitClinicPreRegistration({
-      appointment_date: draft.appointmentDate,
-      window_id: Number(draft.windowId),
       pet_id: Number(draft.pet.id),
       chief_complaint: draft.chiefComplaint,
       common_concerns: draft.commonConcerns,
@@ -44,12 +41,6 @@ async function submitClinicVisit(draft) {
     sessionStorage.removeItem(CLINIC_VISIT_PETS_KEY);
     window.location.href = "./clinic-visit-confirmed.html";
   } catch (error) {
-    if (error.code === "arrival_window_ended") {
-      clearClinicVisitArrival();
-      sessionStorage.setItem(`${CLINIC_VISIT_DRAFT_KEY}ArrivalError`, error.message);
-      window.location.href = "./clinic-visit-date.html";
-      return;
-    }
     showError(error.message || "The clinic visit could not be submitted. Please try again.");
     elements.submit.disabled = false;
     elements.submit.textContent = "Submit Pre-registration";
@@ -63,13 +54,8 @@ function init() {
 
   const draft = readClinicVisitDraft();
 
-  if (
-    !draft.appointmentDate ||
-    !draft.windowId ||
-    !draft.windowLabel ||
-    !draft.pet?.id
-  ) {
-    window.location.replace("./clinic-visit-date.html");
+  if (!draft.pet?.id) {
+    window.location.replace("./booking-pet-details.html?flow=clinic");
     return;
   }
 
@@ -80,11 +66,10 @@ function init() {
 
   elements.details.innerHTML = getClinicVisitSummaryMarkup({
     visitType: "Clinic Visit Pre-registration",
-    dateLabel: formatClinicVisitDate(draft.appointmentDate),
-    timeLabel: draft.windowLabel,
     pet: draft.pet,
     reason: formatClinicVisitReason(draft.commonConcerns, draft.chiefComplaint),
   });
+  void renderRegistrationQueueInformation(document.getElementById("clinicQueueInformation"), "clinic");
   elements.submit.addEventListener("click", () => submitClinicVisit(draft));
 }
 

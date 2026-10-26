@@ -22,7 +22,7 @@ class ClinicAppointmentSequence
         $prefix = 'CL-'.$date->format('Ymd').'-';
         $lastReference = ClinicAppointment::query()
             ->where('appointment_reference', 'like', $prefix.'%')
-            ->orderByDesc('appointment_reference')
+            ->orderByDesc('id')
             ->value('appointment_reference');
         $nextReferenceNumber = $lastReference
             ? ((int) substr($lastReference, strlen($prefix))) + 1

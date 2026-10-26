@@ -7,8 +7,8 @@
     <title>Client Dashboard | Bethlehem Animal Clinic</title>
 
     <!-- Tailwind output -->
-    <link rel="stylesheet" href="../../css/output.css?v=20261005-dashboard-loading-v1&notif=20260915-client-notifications" />
-    <link rel="stylesheet" href="../../css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026" />
+    <link rel="stylesheet" href="../../css/output.css?v=20261005-dashboard-loading-v1&notif=20260915-client-notifications&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" />
+    <link rel="stylesheet" href="../../css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration=fcfs-20261027-v1" />
     <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261017" />
     <link rel="stylesheet" href="../../css/components/grooming-visit-summary.css?v=20261017" />
 
@@ -277,36 +277,6 @@
           </div>
         </section>
 
-        <!-- Reschedule Modal -->
-        <div id="rescheduleModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4">
-          <div class="reschedule-modal-card w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <div class="flex items-center justify-between mb-5">
-              <h4 class="text-lg font-bold text-portal-text">Reschedule Site Arrival</h4>
-              <button type="button" id="closeRescheduleModal" aria-label="Close reschedule dialog" class="text-portal-muted hover:text-slate-600">
-                <svg class="ph-icon w-5 h-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
-              </button>
-            </div>
-            <p id="rescheduleBookingRef" class="mb-4 text-sm text-portal-muted"></p>
-            <label class="block text-sm font-medium text-portal-text mb-1">New Date</label>
-            <input type="date" id="rescheduleDate"
-              class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]" />
-            <p class="mt-1 mb-4 text-xs text-portal-muted">Choose from today through the next two days.</p>
-            <div class="reschedule-slots-region mb-5">
-              <div class="mb-2 flex items-center justify-between gap-3">
-                <label class="block text-sm font-medium text-portal-text">Available Time Slots</label>
-              </div>
-              <div id="rescheduleSlotsContainer" class="reschedule-slots-scroll space-y-2 pr-1">
-                <p class="text-sm text-portal-muted">Select a date to see available slots.</p>
-              </div>
-            </div>
-            <div id="rescheduleMessage" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
-            <button type="button" id="submitRescheduleBtn" disabled
-              class="w-full rounded-xl bg-slate-300 px-4 py-3 text-sm font-semibold text-white cursor-not-allowed transition">
-              Confirm Reschedule
-            </button>
-          </div>
-        </div>
-
         <!-- Cancel Confirmation Modal -->
         <div id="cancelModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4">
           <div class="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
@@ -376,6 +346,6 @@
     <script src="../../scripts/api.js?grooming-summary=20261017&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications" defer></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp"></script>
-    <script src="../../scripts/components/client-dashboard.js?v=phone-20261022&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026" defer></script>
+    <script src="../../scripts/components/client-dashboard.js?v=phone-20261022&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" defer></script>
   </body>
 </html>

@@ -406,34 +406,6 @@ body.customer-detail-modal-open {
   transition: margin-left 0.24s ease;
 }
 
-.reschedule-modal-card {
-  max-height: calc(100vh - 2rem);
-  max-height: calc(100dvh - 2rem);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.reschedule-modal-card > :not(.reschedule-slots-region) {
-  flex: 0 0 auto;
-}
-
-.reschedule-slots-region {
-  min-height: 0;
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-}
-
-.reschedule-slots-scroll {
-  min-height: 4.5rem;
-  max-height: min(16rem, 40vh);
-  flex: 1 1 auto;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 .client-sidebar-toggle,
 .client-sidebar-close,
 .client-sidebar-backdrop {

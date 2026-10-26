@@ -1,24 +1,23 @@
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
 import {
   MAX_PETS_PER_BOOKING as GROOMING_MAX_PETS,
   getSavedPets,
   getBookingPets as getStoredBookingPets,
   saveBookingPets as saveStoredBookingPets,
-  getBookingSchedule as getGroomingSchedule,
   createPetObject,
   addPetToSavedPets,
   addPetToBooking as addStoredPet,
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
 } from "../services/pet-service.js?v=pet-weight-size-20261011-v3";
-import { formatBookingSchedule } from "../services/booking-format-service.js";
-import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
+import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
   normalizeApiPet,
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -42,7 +41,7 @@ import {
  * Booking Pet Step Controller
  *
  * Purpose:
- * Handles pet information (Grooming Step 1, Clinic Step 2):
+ * Handles pet information (Grooming Step 1, Clinic Step 1):
  * - choose existing pet
  * - add new pet
  * - display selected pets
@@ -74,19 +73,6 @@ function saveBookingPets(pets) {
   return saveStoredBookingPets(pets, SELECTED_PETS_STORAGE_KEY);
 }
 
-function getBookingSchedule() {
-  if (IS_CLINIC_VISIT) {
-    const draft = readClinicVisitDraft();
-    return {
-      date: draft.appointmentDate || "",
-      time: draft.windowLabel || "",
-      window_id: draft.windowId || null,
-    };
-  }
-
-  return getGroomingSchedule();
-}
-
 function addPetToBooking(pet) {
   if (!IS_CLINIC_VISIT && !isEligibleForGrooming(pet)) {
     throw new Error(GROOMING_MINIMUM_AGE_MESSAGE);
@@ -102,7 +88,6 @@ function removePetFromBooking(petId) {
 }
 
 const elements = {
-  bookingScheduleSummary: document.getElementById("bookingScheduleSummary"),
   backLink: document.getElementById("petStepBackLink"),
   backLabel: document.getElementById("petStepBackLabel"),
   pageTitle: document.getElementById("petStepPageTitle"),
@@ -209,25 +194,6 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function renderScheduleSummary() {
-  if (!elements.bookingScheduleSummary) {
-    return;
-  }
-
-  const schedule = getBookingSchedule();
-
-  if (!schedule || !schedule.date || !schedule.time) {
-    elements.bookingScheduleSummary.textContent =
-      "No selected schedule found. Please go back to Step 1 and choose a valid pre-registration time.";
-    return;
-  }
-
-  elements.bookingScheduleSummary.textContent = formatBookingSchedule(
-    schedule.date,
-    schedule.time,
-  );
-}
-
 function showStepError(message) {
   elements.petStepError.textContent = message;
   elements.petStepError.className = message === GROOMING_MINIMUM_AGE_MESSAGE
@@ -242,20 +208,13 @@ function clearStepError() {
 }
 
 function buildStepTwoDraft() {
-  const schedule = getBookingSchedule();
   const bookingPets = getBookingPets();
   const firstPet = bookingPets[0] || null;
   const petTypes = [
     ...new Set(bookingPets.map((pet) => pet.petType).filter(Boolean)),
   ];
 
-  const bookingDate = schedule?.date || "";
-  const bookingTime = schedule?.time || "";
-
   return {
-    bookingDate,
-    bookingTime,
-    bookingScheduleText: formatBookingSchedule(bookingDate, bookingTime),
     pets: bookingPets,
     petIds: bookingPets.map((pet) => pet.id).filter(Boolean),
     petTypes,
@@ -762,12 +721,11 @@ function handleBack() {
     return;
   }
   window.location.href = IS_CLINIC_VISIT
-    ? "./clinic-visit-date.html"
+    ? "./pre-register.html"
     : "./grooming-pre-registration.html";
 }
 
 function handleNext() {
-  const bookingSchedule = getBookingSchedule();
   const bookingPets = getBookingPets();
 
   if (!IS_CLINIC_VISIT && bookingPets.some((pet) => !isEligibleForGrooming(pet))) {
@@ -779,21 +737,6 @@ function handleNext() {
   const weightMessage = bookingPets.map(getPetWeightSubmissionValidationMessage).find(Boolean);
   if (weightMessage) {
     showStepError(weightMessage);
-    return;
-  }
-
-  if (
-    (IS_CLINIC_VISIT || !isGroomingSinglePage()) && (
-      !bookingSchedule?.date ||
-      !bookingSchedule?.time ||
-      (IS_CLINIC_VISIT && !bookingSchedule?.window_id)
-    )
-  ) {
-    showStepError(
-      IS_CLINIC_VISIT
-        ? "Please go back to Step 1 and select a valid clinic visit date and time before continuing."
-        : "Please go back to Step 1 and select a valid date and time before continuing.",
-    );
     return;
   }
 
@@ -869,7 +812,6 @@ function bindEvents() {
 }
 
 async function initStepState() {
-  renderScheduleSummary();
   initializeWeightField(elements.weight);
   syncWeightAndSize();
 
@@ -920,6 +862,7 @@ function configurePageForFlow() {
 }
 
 export async function initBookingPetStep() {
+  if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ dashboardPath: "./dashboard.html" })) return;
   if (IS_CLINIC_VISIT && !requireCustomerSession("./sign-in.html")) {
     return;
   }
@@ -930,7 +873,6 @@ export async function initBookingPetStep() {
 }
 
 export async function refreshBookingPetStep() {
-  renderScheduleSummary();
   savedPetsLoading = true;
   renderSelectedPets();
   renderExistingPets();

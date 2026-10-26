@@ -1,11 +1,11 @@
-import { formatBookingDate, formatBookingTimeRange } from "../services/booking-format-service.js";
-import { escapeHtml } from "../services/booking-draft-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+import { formatBookingDate } from "../services/booking-format-service.js";
+import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
   readConfirmationData, renderConfirmation,
-} from "./confirmation-presentation.js";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1";
 
 export function groomingPetConfirmation(pet, review = {}) {
   const price = getGroomingPricePresentation(review.pricing);
@@ -19,8 +19,8 @@ export function groomingPetConfirmation(pet, review = {}) {
   const services = Array.isArray(review.selectedServiceNames)
     ? review.selectedServiceNames.map(formatConfirmationLabel).join(", ")
     : formatConfirmationLabel(review.servicePackage);
-  const alaCarte = Array.isArray(review.alaCarteServices)
-    ? review.alaCarteServices.map(formatConfirmationLabel).join(", ") : "";
+  const alaCarte = Array.isArray(review.alaCarteServiceNames || review.alaCarteServices)
+    ? (review.alaCarteServiceNames || review.alaCarteServices).map(formatConfirmationLabel).join(", ") : "";
   return `<section class="confirmation-pet">
     <h3>${escapeHtml(pet.petName || review.petName || "Unnamed Pet")}</h3>
     ${confirmationFields([
@@ -49,7 +49,7 @@ export async function initBookingConfirmedStep() {
   const root = document.getElementById("confirmationRoot");
   if (!root) return;
   if (!confirmation) {
-    root.innerHTML = '<h1 tabindex="-1">Confirmation unavailable</h1><p role="status">Schedule data not found. Please complete the scheduling process from the beginning.</p>';
+    root.innerHTML = '<h1 tabindex="-1">Confirmation unavailable</h1><p role="status">Registration data not found. Please start a new registration.</p>';
     root.querySelector("h1").focus();
     return;
   }
@@ -68,7 +68,7 @@ export async function initBookingConfirmedStep() {
     ...(bookingConsentStep.signer_name ? [["Signed by", bookingConsentStep.signer_name]] : []),
     ...(bookingConsentStep.signed_at ? [["Signed at", new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(bookingConsentStep.signed_at))]] : []),
   ] : [];
-  const currentStatus = formatConfirmationLabel(confirmation.status) || "Not available";
+  const currentStatus = confirmation.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(confirmation.status) || "Not available";
   const totalPrice = getGroomingPricePresentation(confirmation.review?.totalPricing);
   const sections = [
     confirmationSection("Owner Information", ownerConfirmationFields(confirmation.owner)),
@@ -78,24 +78,25 @@ export async function initBookingConfirmedStep() {
         ${totalPrice.isEstimate ? `<span class="confirmation-badge">Estimate Only</span>
         <p class="confirmation-estimate-note">${escapeHtml(totalPrice.disclaimer)}</p>` : ""}
       </div>`),
-    confirmationSection(isWalkInConfirmation ? "Check-in Details" : "Planned Arrival", confirmationFields(
+    confirmationSection(isWalkInConfirmation ? "Check-in Details" : "Registration Details", confirmationFields(
       isWalkInConfirmation ? [
         ["Queue number", confirmation.queue_number ?? "Not assigned"],
         ["Checked in at", formatConfirmationTimestamp(confirmation.checked_in_at || confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
         ["Current status", currentStatus],
       ] : [
-        ["Visit date", formatBookingDate(confirmation.booking_date) || "Not available"],
-        ["Arrival window", formatBookingTimeRange(confirmation.booking_time) || "Not available"],
+        ["Valid service day", formatBookingDate(confirmation.booking_date) || "Not available"],
+        ["Queue number", confirmation.queue_number ?? "Not assigned"],
+        ["Status", currentStatus],
         ["Submitted at", formatConfirmationTimestamp(confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
       ],
     )),
     consentFields.length ? confirmationSection("Grooming Consent", confirmationFields(consentFields)) : "",
-    !isWalkInConfirmation ? confirmationSection("What Happens Next", "<p>Present your reference number to staff on arrival. Your arrival window does not guarantee an immediate service start.</p>") : "",
+    !isWalkInConfirmation ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
   ].join("");
 
   renderConfirmation(root, {
-    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Grooming Pre-registration Received",
-    message: isWalkInConfirmation ? "The pet has been added to today’s grooming queue." : "Your request was received. Your pet joins the grooming queue after staff check-in.",
+    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Registration Received",
+    message: isWalkInConfirmation ? "The pet has been added to today’s grooming queue." : "",
     printTitle: isWalkInConfirmation ? "GROOMING WALK-IN CHECK-IN CONFIRMATION" : "GROOMING PRE-REGISTRATION CONFIRMATION",
     reference: confirmation.booking_reference,
     status: isWalkInConfirmation ? currentStatus : "Waiting to Arrive",

@@ -157,6 +157,50 @@ class QueuePreRegistrationModelTest extends TestCase
         ]);
     }
 
+    public function test_registration_day_uses_hours_breaks_and_closures_without_a_window(): void
+    {
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        foreach (['clinic', 'grooming'] as $service) {
+            foreach (['07:00:00', '10:00:00', '12:30:00', '16:59:00'] as $time) {
+                Carbon::setTestNow("2026-10-09 {$time}");
+                $this->assertSame('2026-10-09', $days->resolve($service));
+            }
+            Carbon::setTestNow('2026-10-09 17:00:00');
+            $this->assertSame('2026-10-10', $days->resolve($service));
+        }
+        DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'start_date' => '2026-10-10', 'end_date' => '2026-10-15']);
+        $this->assertSame('2026-10-16', $days->resolve('clinic'));
+        Carbon::setTestNow('2026-10-09 12:30:00');
+        $this->assertFalse($days->acceptingCheckIns('grooming'));
+        Carbon::setTestNow('2026-10-09 13:00:00');
+        $this->assertTrue($days->acceptingCheckIns('grooming'));
+        DB::table('clinic_closures')->insert(['type' => 'stop_today', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09']);
+        $this->assertSame('2026-10-16', $days->resolve('grooming'));
+        $this->assertFalse($days->acceptingCheckIns('clinic'));
+    }
+
+    public function test_review_queue_count_is_service_specific_and_excludes_nonwaiting_pets(): void
+    {
+        $this->grooming('checked_in', 2);
+        $this->grooming('in_progress', 1);
+        $this->grooming('in_progress', 3, 'in_progress');
+        $this->grooming('checked_in', 1, 'cancelled');
+        $this->grooming('checked_in', 1, 'finished');
+        foreach (['waiting_to_arrive', 'completed', 'cancelled', 'expired'] as $status) {
+            $this->grooming($status, 4);
+            $this->clinic($status);
+        }
+        $this->clinic('checked_in');
+        $this->clinic('in_consultation');
+        $this->getJson('/api/pre-registration/queue-info?service=grooming')->assertOk()
+            ->assertJsonPath('waiting_count', 3)->assertJsonPath('service_day', '2026-10-09')
+            ->assertJsonMissingPath('pets')->assertHeader('Cache-Control', 'no-store, private');
+        $this->getJson('/api/pre-registration/queue-info?service=clinic')->assertOk()->assertJsonPath('waiting_count', 1);
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $this->getJson('/api/pre-registration/queue-info?service=clinic')->assertOk()
+            ->assertJsonPath('waiting_count', null)->assertJsonPath('service_day', '2026-10-10');
+    }
+
     public function test_clinic_cases_do_not_change_grooming_arrival_windows(): void
     {
         $settings = ClinicSetting::current();
@@ -711,5 +755,26 @@ class QueuePreRegistrationModelTest extends TestCase
         Carbon::setTestNow('2026-10-10 07:00:00');
         $this->artisan('reminders:send')->assertSuccessful();
         $this->assertDatabaseCount('customer_notifications', 4);
+    }
+
+    public function test_both_services_remind_the_valid_day_without_fabricating_an_arrival_time(): void
+    {
+        (require database_path('migrations/2026_10_09_120000_add_expired_pre_registration_status.php'))->up();
+        Carbon::setTestNow('2026-10-09 08:00:00');
+        DB::table('users')->insert(['user_id' => 22, 'first_name' => 'Test']);
+        DB::table('pets')->insert(['pet_id' => 1, 'user_id' => 22, 'pet_name' => 'Bella']);
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $booking)->update(['user_id' => 22, 'booking_date' => '2026-10-10']);
+        DB::table('booking_pets')->where('booking_id', $booking)->update(['pet_id' => 1]);
+        $clinic = $this->clinic('waiting_to_arrive');
+        DB::table('clinic_appointments')->where('id', $clinic)->update(['user_id' => 22, 'pet_id' => 1, 'appointment_date' => '2026-10-10']);
+        $this->artisan('reminders:send')->assertSuccessful();
+        $this->artisan('reminders:send')->assertSuccessful();
+        $this->assertDatabaseCount('customer_notifications', 2);
+        foreach (DB::table('customer_notifications')->pluck('message') as $message) {
+            $this->assertStringContainsString('valid tomorrow', $message);
+            $this->assertStringNotContainsString('around', $message);
+            $this->assertStringNotContainsString('AM', $message);
+        }
     }
 }

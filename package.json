@@ -9,7 +9,7 @@
         "watch:css": "npm run build:css -- --watch",
         "dev": "vite",
         "test:signup-verification": "node tests/customer-signup-verification-regression.cjs",
-        "test:preferred-arrival": "node tests/preferred-arrival-window-regression.cjs && node tests/preferred-arrival-calendar-regression.cjs && node tests/grooming-flow-regression.cjs",
+        "test:preferred-arrival": "node tests/preferred-arrival-window-regression.cjs && node tests/grooming-flow-regression.cjs",
         "test:clinic-inventory": "node tests/clinic-inventory-pricing-regression.cjs && node tests/product-weight-tiers-regression.cjs",
         "test:pet-weight-size": "node tests/pet-weight-size-regression.mjs && node --experimental-vm-modules tests/walk-in-pet-step-regression.mjs && node tests/clinic-subrole-workflow-regression.cjs",
         "test:clinic-roles": "node tests/clinic-subrole-workflow-regression.cjs && node tests/admin-clinic-vaccination-reconciliation-regression.cjs",

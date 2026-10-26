@@ -151,6 +151,10 @@ class AdminDashboardSummaryTest extends TestCase
 
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
 
+        Schema::create('clinic_closures', function (Blueprint $table) {
+            $table->id(); $table->string('type'); $table->date('start_date'); $table->date('end_date');
+            $table->boolean('is_active')->default(true);
+        });
         Schema::create('clinic_settings', function (Blueprint $table) {
             $table->id();
             $table->unsignedTinyInteger('groomers_on_duty')->default(2);
@@ -292,6 +296,7 @@ class AdminDashboardSummaryTest extends TestCase
         Schema::dropIfExists('pets');
         Schema::dropIfExists('bookings');
         Schema::dropIfExists('users');
+        Schema::dropIfExists('clinic_closures');
         Schema::dropIfExists('clinic_settings');
         Schema::dropIfExists('time_windows');
 
@@ -517,7 +522,7 @@ class AdminDashboardSummaryTest extends TestCase
 
             $this->assertSame($expected, $formatted['petType']);
             $this->assertSame(
-                range(1, count($species)),
+                array_fill(0, count($species), null),
                 collect($formatted['pets'])->pluck('petQueueNumber')->all(),
             );
         }

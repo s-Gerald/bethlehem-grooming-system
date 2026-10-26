@@ -2022,6 +2022,14 @@ function adminDashboard() {
       return pets.length > 1 ? `${this.groomingPetCount(booking)} · ${name} + ${pets.length - 1} more` : name;
     },
 
+    registrationTimestamp(value) {
+      if (!value) return "Not recorded";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat("en-PH", {
+        timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      }).format(date);
+    },
+
     groomingBookingTiming(booking) {
       const status = this.normalizeStatus(booking?.status);
       if (status === "queued") return booking.dropOffTime ? `Dropped off ${booking.dropOffTime}` : "";
@@ -2648,8 +2656,8 @@ function adminDashboard() {
     },
 
     formatPetQueueNumber(pet, petIndex = 0) {
-      const queueNumber = Number(pet?.petQueueNumber ?? petIndex + 1);
-      return `#P${Number.isFinite(queueNumber) && queueNumber > 0 ? queueNumber : petIndex + 1}`;
+      const queueNumber = Number(pet?.petQueueNumber);
+      return Number.isFinite(queueNumber) && queueNumber > 0 ? `#P${queueNumber}` : "Not assigned";
     },
 
     formatPetCardServiceLabel(pet, booking) {
@@ -3175,7 +3183,7 @@ function adminDashboard() {
       this.paymentModal.error = "";
       this.paymentModal.petBreakdown = [];
       try {
-        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026");
+        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1");
         applyPaymentCatalogue(await loadGroomingCatalogue({includeInactive: true}));
       } catch (error) {
         this.paymentModal.busy = false;

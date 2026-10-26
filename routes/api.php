@@ -67,6 +67,7 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
 Route::get('/timeslots', [BookingController::class, 'getTimeslots']);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);
+Route::get('/pre-registration/queue-info', \App\Http\Controllers\RegistrationQueueController::class)->middleware('throttle:60,1');
 
 // ── PROTECTED ROUTES (token required) ────────────────
 Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(function () {

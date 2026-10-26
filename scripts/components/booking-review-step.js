@@ -1,6 +1,7 @@
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
-import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
   escapeHtml,
@@ -9,8 +10,7 @@ import {
   getBookingDraft,
   normalizePetSize,
   readSessionJson,
-} from "../services/booking-draft-service.js?flow=grooming-order-20261016";
-import { formatBookingSchedule } from "../services/booking-format-service.js";
+} from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import {
   hasRequiredGroomingPreference,
@@ -22,7 +22,7 @@ import {
   formatPriceOption,
   getPackageById,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 
 /**
  * Booking Review Step Controller
@@ -41,7 +41,6 @@ const REVIEW_STORAGE_KEY = "bookingStep4Review";
 const LEGACY_REVIEW_STORAGE_KEY = "bookingReview";
 
 const elements = {
-  scheduleReviewText: document.getElementById("scheduleReviewText"),
   reviewNotice: document.getElementById("reviewNotice"),
   reviewSelections: document.getElementById("reviewSelections"),
   totalPriceHeading: document.getElementById("totalPriceHeading"),
@@ -98,7 +97,7 @@ export async function refreshBookingReviewStep() {
     state.petSelections,
   );
 
-  renderSummary();
+  void renderRegistrationQueueInformation(document.getElementById("groomingQueueInformation"), "grooming");
   renderReviewNotice();
   if (previousSignature && previousSignature !== latestSignature) {
     elements.reviewNotice.classList.remove("hidden");
@@ -137,16 +136,6 @@ function renderEmptyState(message) {
   elements.confirmBookingBtn.classList.add("opacity-50", "cursor-not-allowed");
 }
 
-function renderSummary() {
-  elements.scheduleReviewText.textContent =
-    state.bookingDraft.bookingScheduleText ||
-    formatBookingSchedule(
-      state.bookingDraft.bookingDate,
-      state.bookingDraft.bookingTime,
-    ) ||
-    "No schedule selected yet.";
-}
-
 function renderReviewNotice() {
   if (!state.reviewPayload) {
     return;
@@ -183,20 +172,20 @@ function renderPetReviewCard(item, index) {
     !selectedPackage && item.pricing.lineItems.length === 0
       ? `
         <div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          No service is attached to this pet yet. Please go back to Step 3 and finish the selection.
+          No service is attached to this pet yet. Return to Grooming Services to finish the selection.
         </div>
       `
       : "";
 
   return `
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="flex items-start justify-between gap-4">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Pet ${
             index + 1
           }</p>
           <div class="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h3 class="text-2xl font-bold text-[#2f4b66]">${escapeHtml(
+            <h3 class="break-words text-2xl font-bold text-[#2f4b66]">${escapeHtml(
               item.pet.petName || "Unnamed Pet",
             )}</h3>
             <p class="text-base font-semibold text-slate-600">${escapeHtml(
@@ -205,11 +194,11 @@ function renderPetReviewCard(item, index) {
           </div>
         </div>
 
-        <div class="flex shrink-0 flex-col items-end gap-2">
+        <div class="flex shrink-0 flex-col items-start gap-2 sm:items-end">
           <span class="rounded-full bg-[#edf5fc] px-3 py-1 text-xs font-semibold text-[#315b7e]">
             ${escapeHtml(formatPetSizeLabel(item.pet.size))} · ${item.pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}
           </span>
-          ${item.pricing.hasSelection ? `<span class="text-xs font-semibold text-slate-500">${escapeHtml(price.label)}</span>` : ""}
+          ${item.pricing.hasSelection ? `<span class="text-xs font-semibold text-slate-500">${price.isEstimate ? "Estimated pet subtotal" : "Pet subtotal"}</span>` : ""}
           <span class="text-lg font-semibold text-[#2f4b66]">${escapeHtml(
             item.pricing.hasSelection ? price.amount : "No price available",
           )}</span>
@@ -347,12 +336,6 @@ function renderTotalPricing() {
 
 function saveReviewDraft() {
   const reviewDraft = {
-    bookingDate: state.reviewPayload?.bookingDate || "",
-    bookingTime: state.reviewPayload?.bookingTime || "",
-    bookingScheduleText: formatBookingSchedule(
-      state.reviewPayload?.bookingDate,
-      state.reviewPayload?.bookingTime,
-    ),
     pets: state.reviewPayload?.items.map((item) => ({
       petId: item.pet.id,
       petName: item.pet.petName,
@@ -362,6 +345,8 @@ function saveReviewDraft() {
       sizeVerified: item.pet.sizeVerified,
       weight: item.pet.weight,
       servicePackage: item.selection.servicePackage,
+      selectedServiceNames: item.pricing.lineItems.filter((line) => line.kind === "package").map((line) => line.serviceName),
+      alaCarteServiceNames: item.pricing.lineItems.filter((line) => line.kind === "ala_carte").map((line) => line.serviceName),
       groomingPreference: item.selection.groomingPreference,
       haircutRequested: item.selection.haircutRequested,
       groomerId: item.selection.groomerId,

@@ -106,17 +106,14 @@ class AdminBookingController extends Controller
         $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
 
         // Incoming: dashboard sees only the selected day; appointments can opt in to today + future.
-        $incomingQuery = Booking::whereBetween('booking_date', [
-            $rangeStart->toDateString(),
-            $rangeEnd->toDateString(),
-        ])
+        $incomingQuery = Booking::where('booking_date', '>=', $rangeStart->toDateString())
+            ->when(! $includeFuture, fn ($query) => $query->where('booking_date', $rangeStart->toDateString()))
             ->where('status', 'waiting_to_arrive');
         $incoming = $incomingQuery
             ->withExists('groomingConsent')
             ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
-            ->orderByRaw('CASE WHEN booking_date = ? THEN 0 ELSE 1 END', [$rangeStart->toDateString()])
-            ->orderBy('booking_date', 'asc')
+            ->orderBy('created_at')->orderBy('booking_id')
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
 
@@ -399,6 +396,10 @@ class AdminBookingController extends Controller
 
             if (! $booking) {
                 return ['error' => ['message' => 'Visit not found.', 'status' => 404]];
+            }
+
+            if ($booking->status !== 'waiting_to_arrive' && $booking->dropped_off_at && $booking->queue_number) {
+                return ['queue_number' => $booking->queue_number];
             }
 
             if ($booking->status !== 'waiting_to_arrive') {
@@ -1412,6 +1413,8 @@ class AdminBookingController extends Controller
             'serviceLabel' => $serviceLabel,
             'appointmentDate' => $booking->booking_date,
             'appointmentTime' => $window?->window_label ?? '—',
+            'registeredAt' => $booking->created_at ? Carbon::parse($booking->created_at)->toIso8601String() : null,
+            'checkedInAt' => $booking->dropped_off_at ? Carbon::parse($booking->dropped_off_at)->toIso8601String() : null,
             'dropOffTime' => $booking->dropped_off_at
                 ? Carbon::parse($booking->dropped_off_at)->format('g:i A')
                 : null,
@@ -1497,7 +1500,7 @@ class AdminBookingController extends Controller
                     'haircutRequested' => (bool) $bp->haircut_requested,
                     'groomerId' => $bp->groomer_id,
                     'petGroomerName' => $bp->groomer?->first_name,
-                    'petQueueNumber' => $bp->pet_queue_number ?? $petIndex + 1,
+                    'petQueueNumber' => $bp->pet_queue_number,
                     'groomingStartedAt' => $bp->grooming_start_time
                         ? Carbon::parse($bp->grooming_start_time)->format('g:i A')
                         : null,

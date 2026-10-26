@@ -94,31 +94,13 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
   return { element, consoleErrors, refresh: context.window._refreshAppointments };
 }
 
-function testRescheduleArrivalExpiryInManila() {
+function testPhilippineDateRollover() {
   let now = '2026-10-09T15:59:59Z';
-  const context = vm.createContext({
-    Date: class extends Date {
-      constructor(...args) { super(...(args.length ? args : [now])); }
-    },
-    Intl, window: {},
-  });
-  vm.runInContext(
-    source.slice(source.indexOf('  function getRescheduleTodayKey()'), source.indexOf('  function addDaysToDateKey('))
-    + source.slice(source.indexOf('  function isRescheduleSlotPast('), source.indexOf('  function isCurrentRescheduleSelection(')),
-    context,
-  );
-  assert.equal(context.getRescheduleTodayKey(), '2026-10-09');
-  assert.equal(context.isRescheduleSlotPast({ end_time: '23:59:59' }, '2026-10-09'), true);
-  assert.equal(context.isRescheduleSlotPast({ end_time: '23:59:59', latest_arrival_time: '23:59:59' }, '2026-10-09'), false);
+  const context = vm.createContext({ Date: class extends Date { constructor(...args) { super(...(args.length ? args : [now])); } }, Intl });
+  vm.runInContext(source.slice(source.indexOf('  function getPhilippineTodayKey()'), source.indexOf('  function renderMyPetsSummary(')), context);
+  assert.equal(context.getPhilippineTodayKey(), '2026-10-09');
   now = '2026-10-09T16:00:00Z';
-  assert.equal(context.getRescheduleTodayKey(), '2026-10-10');
-  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00' }, '2026-10-10'), true);
-  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:01' }, '2026-10-10'), false);
-  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00', latest_arrival_time: '00:00:00' }, '2026-10-10'), false);
-  now = '2026-10-09T16:00:01Z';
-  assert.equal(context.isRescheduleSlotPast({ end_time: '00:00:00', latest_arrival_time: '00:00:00' }, '2026-10-10'), true);
-  assert.equal(context.isRescheduleSlotPast({ is_past: true }, '2026-10-11'), true);
-  assert.equal(context.isRescheduleSlotPast({ end_time: '08:00:00' }, '2026-10-11'), false);
+  assert.equal(context.getPhilippineTodayKey(), '2026-10-10');
 }
 
 async function testCompletedHistoryDoesNotBreakEmptySchedule() {
@@ -219,7 +201,7 @@ async function testStateHierarchyAndLiveTransitions() {
   assert.equal(hidden("trackerSection"), false);
   assert.equal(hidden("upcomingSection"), false);
   assert.match(dashboard.element("groomingTracker").innerHTML, /No grooming in progress/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /reschedule-10/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /cancel-10/);
 
   bookings.push({ booking_id: 11, status: "in_progress", pets: [{ pet_name: "Bruno", grooming_status: "in_progress" }] });
   await dashboard.refresh();
@@ -443,14 +425,14 @@ async function testTrackerDisclosureAndPrioritySurviveRefresh() {
 async function testVisitSummaryFollowsVisitState() {
   let booking = { booking_id: 701, status: "waiting_to_arrive", pets: [{ pet_name: "Coco" }] };
   const dashboard = await runDashboard(async () => ({ bookings: [booking], history: [] }));
-  assert.match(dashboard.element("appointmentsList").innerHTML, /View drop-off summary/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /View registration summary/);
   assert.match(dashboard.element("appointmentsList").innerHTML, /Waiting to arrive/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /Reschedule[\s\S]*Cancel/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /Cancel/);
   assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View visit details/);
   for (const status of ["checked_in", "in_progress", "for_payment", "released"]) {
     booking.status = status;
     await dashboard.refresh();
-    assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco|View drop-off summary/);
+    assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco|View registration summary/);
     assert.match(dashboard.element("groomingTracker").innerHTML, /View visit details/);
   }
   booking.show_grooming_tracker = false;
@@ -803,9 +785,28 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   }
 }
 
+async function testClinicRegistrationUsesServerStatusAndCheckInNumber() {
+  let visit = { id: 17, reference: "CL-20261026-017", pet_name: "Clinic patient", status: "waiting_to_arrive", service_day: "2026-10-26", queue_number: null, created_at: "2026-10-26T09:00:00+08:00" };
+  const dashboard = await runDashboard(async () => ({ bookings: [], history: [], clinic_visits: [visit] }));
+  let card = dashboard.element("appointmentsList").innerHTML;
+  assert.match(card, /Clinic patient/);
+  assert.match(card, /Queue number: Not assigned/);
+  assert.match(card, /CL-20261026-017/);
+  assert.match(card, /Valid service day/);
+  visit = { ...visit, status: "checked_in", queue_number: 11, checked_in_at: "2026-10-26T09:30:00+08:00" };
+  await dashboard.refresh();
+  card = dashboard.element("appointmentsList").innerHTML;
+  assert.match(card, /Queue number: 11/);
+  assert.match(card, /Checked in:/);
+  assert.match(card, /Checked In/);
+  assert.doesNotMatch(card, /Queue number: CL-/);
+}
+
+
 (async () => {
+  await testClinicRegistrationUsesServerStatusAndCheckInNumber();
   await testPhoneVerificationUsesServerProofAndPreservesAccess();
-  testRescheduleArrivalExpiryInManila();
+  testPhilippineDateRollover();
   await testVisitSummaryFollowsVisitState();
   await testTrackerOverallStateAndIndividualCards();
   await testTrackerDisclosureAndPrioritySurviveRefresh();

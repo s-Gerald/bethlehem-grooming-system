@@ -15,21 +15,7 @@ class StoreClinicPreRegistrationRequest extends FormRequest
 
     public function rules(): array
     {
-        $today = now()->toDateString();
-        $lastAvailableDate = now()->addDays(2)->toDateString();
-
         return [
-            'appointment_date' => [
-                'required',
-                'date_format:Y-m-d',
-                'after_or_equal:'.$today,
-                'before_or_equal:'.$lastAvailableDate,
-            ],
-            'window_id' => [
-                'required',
-                'integer',
-                Rule::exists('time_windows', 'window_id')->where('is_active', true),
-            ],
             'pet_id' => [
                 'required',
                 'integer',
@@ -48,9 +34,6 @@ class StoreClinicPreRegistrationRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'appointment_date.before_or_equal' => 'Clinic visits can be pre-registered up to three days in advance.',
-            'window_id.required' => 'Select an available clinic visit time before continuing.',
-            'window_id.exists' => 'Select an available clinic visit time before continuing.',
             'pet_id.exists' => 'Select one of your active pets before continuing.',
             'common_concerns.required' => 'Select at least one common concern.',
             'common_concerns.min' => 'Select at least one common concern.',

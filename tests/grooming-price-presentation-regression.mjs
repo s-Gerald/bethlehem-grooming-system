@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import * as draft from "../scripts/services/booking-draft-service.js";
 import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
 import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
@@ -46,7 +46,7 @@ function createRenderer(file) {
     .replace(/export\s+(?=(?:async\s+)?function)/g, "");
   vm.runInContext(source, context);
   context.refreshElements?.();
-  return { context, elements };
+  return { context, elements, file };
 }
 
 const reviews = ["booking-review-step", "walk-in-review-step"].map(createRenderer);
@@ -77,7 +77,7 @@ for (const test of cases) {
   assert.equal(Boolean(presentation.disclaimer), test.expected[2]);
   if (test.petTotals) assert.deepEqual(payload.items.map(({ pricing: { total: t } }) => [t.minAmount, t.maxAmount, t.isEstimate]), test.petTotals);
 
-  for (const { context, elements } of reviews) {
+  for (const { context, elements, file } of reviews) {
     context.payload = payload;
     vm.runInContext("state.reviewPayload = payload; renderReviewNotice(); renderTotalPricing();", context);
     assert.equal(elements.get("totalPriceHeading").textContent, presentation.label);
@@ -87,7 +87,9 @@ for (const test of cases) {
     for (const [index, item] of payload.items.entries()) {
       const html = context.renderPetReviewCard(item, index);
       if (test.empty) assert.match(html, /No price available/);
-      else assert.ok(html.includes(grooming.getGroomingPricePresentation(item.pricing.total).label));
+      else assert.ok(html.includes(file === "booking-review-step"
+        ? (item.pricing.total.isEstimate ? "Estimated pet subtotal" : "Pet subtotal")
+        : grooming.getGroomingPricePresentation(item.pricing.total).label));
     }
   }
 

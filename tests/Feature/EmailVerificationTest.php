@@ -1945,7 +1945,8 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertOk();
         $this->assertSame($created, $pending->fresh()->created_at->timestamp);
         $this->travel(15)->seconds();
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        // The worker shares this process with PHPUnit, whose full-suite budget is 512 MB.
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--memory' => 512])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->travel(31)->seconds();
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertOk()->assertJsonPath('email_delivery_token', null);

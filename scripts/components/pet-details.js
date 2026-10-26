@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const statusDetails = (status) => {
     const statuses = {
-      waiting_to_arrive: ["Scheduled", "bg-blue-50 text-blue-700"],
+      waiting_to_arrive: ["Waiting to Arrive", "bg-blue-50 text-blue-700"],
       checked_in: ["Checked In", "bg-amber-50 text-amber-700"],
       in_progress: ["Being Groomed", "bg-violet-50 text-violet-700"],
       grooming_finished: ["Grooming Finished", "bg-emerald-50 text-emerald-700"],

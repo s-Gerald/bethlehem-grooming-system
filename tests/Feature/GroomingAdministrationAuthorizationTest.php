@@ -482,8 +482,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ]);
 
         $response = $this->submitSignedGrooming('/api/booking/store', [
-            'booking_date' => now()->toDateString(),
-            'window_id' => 1,
             'number_of_pets' => 1,
             'sedation_consent' => $accepted,
             'pets' => [[
@@ -2724,7 +2722,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     }
 
     #[DataProvider('groomingArrivalWindowCases')]
-    public function test_grooming_arrival_window_availability_and_submission(string $time, string $date, ?string $restriction, bool $accepted): void
+    public function test_grooming_legacy_availability_and_automatic_registration_day(string $time, string $date, ?string $restriction, bool $accepted): void
     {
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
         Carbon::setTestNow("2026-10-09 {$time}");
@@ -2748,20 +2746,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'booking_date' => $date, 'window_id' => 1, 'number_of_pets' => 1,
             'pets' => [['pet_name' => 'Mochi', 'species' => 'cat', 'services' => ['package' => 'cat_full_grooming']]],
         ]);
-        if ($accepted) {
-            $response->assertCreated()->assertJsonPath('booking.status', 'waiting_to_arrive');
-            $this->assertDatabaseHas('bookings', ['window_id' => 1, 'queue_number' => null, 'dropped_off_at' => null]);
-        } else {
-            $response->assertUnprocessable();
-            $this->assertDatabaseCount('bookings', 0);
-            if ($restriction === null) {
-                $response->assertJsonPath('code', 'arrival_window_ended')
-                    ->assertJsonPath('message', 'That arrival window just ended. Please choose the next available time.')
-                    ->assertJsonValidationErrors('window_id');
-            } else {
-                $this->assertNotSame('arrival_window_ended', $response->json('code'));
-            }
-        }
+        $expectedDay = in_array($restriction, ['blocked_date', 'stop_today'], true) || $time >= '22:00:00'
+            ? '2026-10-10' : '2026-10-09';
+        $response->assertCreated()->assertJsonPath('booking.status', 'waiting_to_arrive')
+            ->assertJsonPath('booking.booking_date', $expectedDay);
+        $this->assertDatabaseHas('bookings', ['window_id' => null, 'queue_number' => null,
+            'dropped_off_at' => null]);
     }
 
     public static function groomingArrivalWindowCases(): array
@@ -2779,13 +2769,13 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ];
     }
 
-    public function test_near_closing_registration_uses_full_window_without_duration_prediction(): void
+    public function test_near_closing_registration_has_no_arrival_window(): void
     {
         $payload = $this->prepareRegistrationDay();
         Carbon::setTestNow('2026-10-16 15:59:00');
         Sanctum::actingAs(User::findOrFail(101), ['*']);
         $response = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
-        $this->assertDatabaseHas('bookings', ['booking_id' => $response->json('booking.booking_id'), 'arrival_end_time' => '16:00:00']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $response->json('booking.booking_id'), 'arrival_end_time' => null]);
         $this->getJson('/api/timeslots?date=2026-10-16')->assertOk()
             ->assertJsonPath('windows.1.end_time', '16:00:00')->assertJsonPath('windows.1.is_past', false);
     }
@@ -2818,19 +2808,16 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => 2, 'grooming_state' => 'not_started', 'grooming_start_time' => null]);
     }
 
-    public function test_reschedule_replaces_legacy_arrival_snapshot_with_full_configured_window(): void
+    public function test_retired_reschedule_preserves_historical_arrival_snapshots(): void
     {
         $payload = $this->prepareRegistrationDay();
         Sanctum::actingAs(User::findOrFail(101), ['*']);
         $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
-        DB::table('bookings')->where('booking_id', $id)->update(['arrival_end_time' => '15:10:00']);
+        DB::table('bookings')->where('booking_id', $id)->update(['window_id' => 2, 'arrival_end_time' => '15:10:00']);
         $this->assertSame('15:10:00', \App\Models\Booking::findOrFail($id)->preferredArrivalWindow()->end_time);
         $this->postJson('/api/booking/reschedule', ['booking_id' => $id, 'new_date' => '2026-10-17', 'new_window_id' => 2])
-            ->assertOk()->assertJsonPath('booking.window', '3:00 PM - 4:00 PM');
-        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'booking_date' => '2026-10-17', 'arrival_end_time' => '16:00:00']);
-        $notice = DB::table('notifications')->where('type', 'rescheduled')->value('message');
-        $this->assertStringContainsString('3:00 PM - 3:10 PM', $notice);
-        $this->assertStringContainsString('3:00 PM - 4:00 PM', $notice);
+            ->assertStatus(410)->assertJsonPath('code', 'arrival_selection_retired');
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'booking_date' => '2026-10-16', 'arrival_end_time' => '15:10:00']);
     }
 
     public function test_start_preserves_independent_haircut_preference_validation(): void
@@ -2884,15 +2871,48 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'pets' => [['pet_name' => 'Coco', 'species' => 'dog', 'size' => 'large', 'services' => ['package' => 'partial_grooming']]]];
     }
 
-    public function test_submission_returns_to_scheduling_when_operating_hours_change(): void
+    public function test_online_order_does_not_control_check_in_order_and_multi_pet_retries_are_safe(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        DB::table('services')->insert(['slug' => 'nail_clipping', 'service_name' => 'Nail Clipping', 'base_price' => 100]);
+        unset($payload['booking_date'], $payload['window_id']);
+        Carbon::setTestNow('2026-10-16 09:00:00');
+        Sanctum::actingAs(User::findOrFail(101));
+        $a = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        Carbon::setTestNow('2026-10-16 09:10:00');
+        Sanctum::actingAs(User::findOrFail(102));
+        $payload['pets'][] = ['pet_name' => 'Bella', 'species' => 'cat', 'size' => 'small', 'weight' => 4, 'services' => ['ala_carte' => ['nail_clipping']]];
+        $payload['number_of_pets'] = 2;
+        $b = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $this->assertSame(2, DB::table('bookings')->distinct()->count('booking_reference'));
+        $this->assertSame(0, DB::table('bookings')->whereNotNull('queue_number')->count());
+        $this->assertSame(0, DB::table('booking_pets')->whereNotNull('pet_queue_number')->count());
+        $registered = DB::table('bookings')->where('booking_id', $a)->value('created_at');
+        DB::table('bookings')->insert(['booking_reference' => 'PREVIOUS-10', 'booking_date' => '2026-10-16', 'queue_number' => 10, 'status' => 'archived']);
+        DB::table('booking_pets')->insert(['booking_id' => DB::table('bookings')->max('booking_id'), 'pet_queue_number' => 10, 'pet_queue_date' => '2026-10-16', 'grooming_state' => 'finished']);
+        $this->authenticateAs('staff');
+        Carbon::setTestNow('2026-10-16 09:30:00');
+        $this->postJson("/api/admin/bookings/{$b}/check-in")->assertOk()->assertJsonPath('queue_number', 11);
+        $checkedIn = DB::table('bookings')->where('booking_id', $b)->value('dropped_off_at');
+        Carbon::setTestNow('2026-10-16 09:45:00');
+        $this->postJson("/api/admin/bookings/{$a}/check-in")->assertOk()->assertJsonPath('queue_number', 12);
+        $this->postJson("/api/admin/bookings/{$b}/check-in")->assertOk()->assertJsonPath('queue_number', 11);
+        $this->assertSame($checkedIn, DB::table('bookings')->where('booking_id', $b)->value('dropped_off_at'));
+        $this->assertSame($registered, DB::table('bookings')->where('booking_id', $a)->value('created_at'));
+        $this->assertSame([11, 12], DB::table('booking_pets')->where('booking_id', $b)->orderBy('pet_queue_number')->pluck('pet_queue_number')->all());
+        $this->assertSame(13, DB::table('booking_pets')->where('booking_id', $a)->value('pet_queue_number'));
+        $this->assertSame(3, DB::table('booking_pets')->whereIn('booking_id', [$a, $b])->count());
+    }
+
+    public function test_submission_uses_current_hours_when_legacy_window_is_no_longer_available(): void
     {
         $payload = $this->prepareRegistrationDay();
         Sanctum::actingAs(User::findOrFail(101), ['*']);
         DB::table('clinic_settings')->update(['grooming_close_time' => '15:00:00']);
-        $this->submitSignedGrooming('/api/booking/store', $payload)->assertUnprocessable()
-            ->assertJsonPath('code', 'arrival_window_unavailable');
-        $this->assertDatabaseCount('bookings', 0);
-        $this->assertDatabaseCount('pets', 0);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()
+            ->assertJsonPath('booking.booking_date', '2026-10-16')->assertJsonPath('booking.window', null);
+        $this->assertDatabaseCount('bookings', 1);
+        $this->assertDatabaseCount('pets', 1);
     }
 
     public function test_date_expiry_notifies_once_through_the_customer_dashboard_notifications(): void
@@ -3231,63 +3251,88 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->markTestSkipped('Run tests/grooming-capacity-concurrency.php with its isolated MySQL database.');
         }
         $payload = array_replace($this->groomingConsentFixture(), $this->prepareRegistrationDay());
+        unset($payload['booking_date'], $payload['window_id']);
+        Schema::table('clinic_appointments', function (Blueprint $table) {
+            $table->string('appointment_type')->nullable(); $table->string('case_type')->nullable();
+            $table->date('appointment_date')->nullable(); $table->unsignedInteger('window_id')->nullable();
+            $table->unsignedInteger('queue_number')->nullable(); $table->dateTime('checked_in_at')->nullable();
+            $table->json('common_concerns')->nullable(); $table->timestamps();
+        });
+        foreach (['clinic_vitals', 'clinic_records'] as $table) {
+            Schema::create($table, function (Blueprint $columns) { $columns->id(); $columns->unsignedBigInteger('clinic_appointment_id'); });
+        }
         $directory = \Tests\Support\capacityRunDirectory();
-        $signal = $directory.'/first-lock.json';
-        $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
-            'APP_ENV' => 'testing', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'MAIL_MAILER' => 'array'];
-        $worker = base_path('tests/grooming-capacity-submit.php');
-        $first = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '101', json_encode($payload), 'first'], base_path(), $environment);
-        $second = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, '102', json_encode($payload), 'second'], base_path(), $environment);
-        $first->setTimeout(25);
-        $second->setTimeout(25);
-        try {
-            $first->start();
-            $deadline = microtime(true) + 10;
-            while (! file_exists($signal) && $first->isRunning() && microtime(true) < $deadline) usleep(10000);
-            $this->assertFileExists($signal, 'First worker never acquired its lock: '.$first->getOutput().$first->getErrorOutput());
-            $second->start();
-            $first->wait();
-            $second->wait();
-            $this->assertSame(0, $first->getExitCode(), $first->getErrorOutput());
-            $this->assertSame(0, $second->getExitCode(), $second->getErrorOutput());
-            $this->assertJson($first->getOutput(), 'First worker must emit JSON only: '.$first->getOutput());
-            $this->assertJson($second->getOutput(), 'Second worker must emit JSON only: '.$second->getOutput());
-            $a = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-            $b = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-            foreach ([$a, $b] as $result) {
-                $this->assertSame('mysql', $result['driver']);
-                $this->assertSame(DB::connection()->getDatabaseName(), $result['database']);
+        $run = function (array $owners, array $payloads, string $action) use ($directory): array {
+            $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
+                'APP_ENV' => 'testing', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'MAIL_MAILER' => 'array'];
+            $worker = base_path('tests/grooming-capacity-submit.php');
+            $processes = [];
+            foreach (['first', 'second'] as $index => $role) {
+                $processes[] = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, (string) $owners[$index], json_encode($payloads[$index]), $role, $action], base_path(), $environment);
+                $processes[$index]->setTimeout(25);
             }
-            $this->assertLessThan($a['finished_at'], $b['started_at'], 'Both submissions must overlap.');
-            $this->assertArrayHasKey('contention_observed_at', $a['lock'], 'MySQL must observe the competing GET_LOCK query while the first worker holds the lock.');
-            $this->assertLessThanOrEqual($a['lock']['contention_observed_at'], $b['lock']['attempted_at']);
-            $this->assertGreaterThanOrEqual($a['lock']['contention_observed_at'], $b['lock']['acquired_at']);
-            $this->assertGreaterThanOrEqual($a['lock']['release_started_at'], $b['lock']['acquired_at']);
-            $this->assertSame(201, $a['status']);
-            $this->assertSame(201, $b['status']);
+            try {
+                $processes[0]->start();
+                $deadline = microtime(true) + 10;
+                while (! is_file($directory.'/first-lock.json') && $processes[0]->isRunning() && microtime(true) < $deadline) { clearstatcache(); usleep(10000); }
+                $this->assertFileExists($directory.'/first-lock.json', $processes[0]->getErrorOutput());
+                $processes[1]->start();
+                foreach ($processes as $process) {
+                    $process->wait();
+                    $this->assertSame(0, $process->getExitCode(), $process->getOutput().$process->getErrorOutput());
+                    $this->assertJson($process->getOutput());
+                }
+                [$a, $b] = array_map(fn ($process) => json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR), $processes);
+                foreach ([$a, $b] as $result) {
+                    $this->assertSame('mysql', $result['driver']);
+                    $this->assertSame(DB::connection()->getDatabaseName(), $result['database']);
+                }
+                $this->assertLessThan($a['finished_at'], $b['started_at'], 'Operations must overlap.');
+                $this->assertArrayHasKey('contention_observed_at', $a['lock'], 'The first connection must observe the other waiting for GET_LOCK.');
+                $this->assertGreaterThanOrEqual($a['lock']['release_started_at'], $b['lock']['acquired_at']);
+                return [$a, $b];
+            } finally {
+                foreach ($processes as $process) $process->stop(1);
+                foreach (['first-lock.json', 'second-attempt.json'] as $file) if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
+            }
+        };
+        try {
+            [$a, $b] = $run([101, 102], [$payload, $payload], 'grooming-submit');
+            $this->assertSame([201, 201], [$a['status'], $b['status']]);
             $this->assertSame(2, DB::table('bookings')->distinct()->count('booking_reference'));
-            $this->assertDatabaseHas('bookings', ['arrival_end_time' => '16:00:00']);
-            $this->assertDatabaseCount('bookings', 2);
-            $this->assertDatabaseCount('pets', 2);
-            $this->assertDatabaseCount('booking_pets', 2);
-            $this->assertDatabaseCount('notifications', 2);
-            $bookingId = DB::table('bookings')->value('booking_id');
-            $this->assertDatabaseHas('booking_pets', ['booking_id' => $bookingId, 'pet_id' => DB::table('pets')->value('pet_id')]);
-            $this->assertDatabaseHas('notifications', ['booking_id' => $bookingId, 'type' => 'booked']);
             $this->assertSame(0, DB::table('bookings')->whereNotNull('queue_number')->count());
             $this->assertSame(0, DB::table('booking_pets')->whereNotNull('pet_queue_number')->count());
-            $this->assertSame(0, app(\App\Services\OperationalCapacity::class)->snapshot()['used']);
+            $this->assertDatabaseHas('bookings', ['window_id' => null, 'arrival_end_time' => null]);
+            $this->assertDatabaseCount('notifications', 2);
+            $ids = [$b['body']['booking']['booking_id'], $a['body']['booking']['booking_id']];
+            [$first, $second] = $run([102, 101], [['id' => $ids[0]], ['id' => $ids[1]]], 'grooming-check-in');
+            $this->assertSame([200, 200], [$first['status'], $second['status']]);
+            $this->assertSame([1, 2], [$first['body']['queue_number'], $second['body']['queue_number']]);
+            $this->assertSame(2, DB::table('booking_pets')->distinct()->count('pet_queue_number'));
+            $before = DB::table('bookings')->where('booking_id', $ids[0])->first();
+            $this->assertSame(1, app(AdminBookingController::class)->checkIn($ids[0])->getData(true)['queue_number']);
+            $this->assertEquals($before, DB::table('bookings')->where('booking_id', $ids[0])->first());
+            DB::table('users')->insert([['user_id' => 103, 'role' => 'customer'], ['user_id' => 104, 'role' => 'customer']]);
+            DB::table('pets')->insert([['pet_id' => 103, 'user_id' => 103, 'pet_name' => 'Clinic A', 'species' => 'cat'], ['pet_id' => 104, 'user_id' => 104, 'pet_name' => 'Clinic B', 'species' => 'cat']]);
+            [$a, $b] = $run([103, 104], [['pet_id' => 103, 'common_concerns' => ['Vomiting']], ['pet_id' => 104, 'common_concerns' => ['Routine check-up']]], 'clinic-submit');
+            $this->assertSame([201, 201], [$a['status'], $b['status']]);
+            $this->assertSame(2, DB::table('clinic_appointments')->distinct()->count('appointment_reference'));
+            $this->assertSame(0, DB::table('clinic_appointments')->whereNotNull('queue_number')->count());
+            $ids = [$b['body']['appointment']['appointment_id'], $a['body']['appointment']['appointment_id']];
+            [$first, $second] = $run([104, 103], [['id' => $ids[0]], ['id' => $ids[1]]], 'clinic-check-in');
+            $this->assertSame([200, 200], [$first['status'], $second['status']]);
+            $this->assertSame([1, 2], [$first['body']['appointment']['queue_number'], $second['body']['appointment']['queue_number']]);
+            $before = DB::table('clinic_appointments')->where('id', $ids[0])->first();
+            app(\App\Http\Controllers\AdminClinicController::class)->checkIn($ids[0], app(\App\Services\ClinicAppointmentSequence::class));
+            $this->assertEquals($before, DB::table('clinic_appointments')->where('id', $ids[0])->first());
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
-                'statuses' => [$a['status'], $b['status']], 'overlap_observed' => true,
-                'bookings' => 2, 'pets' => 2, 'booking_pets' => 2, 'notifications' => 2,
-                'premature_queue_numbers' => 0,
+                'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,
+                'grooming_check_in_numbers' => [1, 2], 'clinic_check_in_numbers' => [1, 2],
+                'premature_queue_numbers' => 0, 'retries_preserved_records' => true,
             ], JSON_THROW_ON_ERROR));
         } finally {
-            $first->stop(1);
-            $second->stop(1);
-            if (file_exists($signal)) unlink($signal);
-            if (file_exists($directory.'/second-attempt.json')) unlink($directory.'/second-attempt.json');
+            Schema::dropIfExists('clinic_vitals'); Schema::dropIfExists('clinic_records');
         }
     }
 

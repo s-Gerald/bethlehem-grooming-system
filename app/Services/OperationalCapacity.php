@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\BookingPet;
 use App\Models\ClinicAppointment;
-use App\Models\ClinicClosure;
-use App\Models\ClinicSetting;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -71,14 +69,7 @@ class OperationalCapacity
     /** Called inside DailyPetQueue's shared intake transaction, before any intake writes. */
     public function assertCanAccept(string $service, int $pets): void
     {
-        $settings = ClinicSetting::current();
-        $closed = Schema::hasTable('clinic_closures') && ClinicClosure::query()
-            ->where('is_active', true)
-            ->whereDate('start_date', '<=', now()->toDateString())
-            ->whereDate('end_date', '>=', now()->toDateString())
-            ->whereIn('type', ['stop_today', 'blocked_date'])->exists();
-
-        if ($closed || ! $settings->isWithinOperatingHours($service, now())) {
+        if (! app(RegistrationServiceDay::class)->acceptingCheckIns($service)) {
             throw ValidationException::withMessages([
                 'check_in' => 'Bethlehem is not accepting physical check-ins for this service right now.',
             ]);

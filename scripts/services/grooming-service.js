@@ -2,7 +2,7 @@ import {
   BOOKING_STEP_THREE_KEY,
   normalizePetSize,
   normalizePetType,
-} from "./booking-draft-service.js?flow=grooming-order-20261016";
+} from "./booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 
 export const GROOMING_PACKAGES = [];
 export const ALA_CARTE_SERVICES = [];

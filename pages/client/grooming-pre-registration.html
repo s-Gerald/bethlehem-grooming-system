@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grooming Pre-Registration</title>
-    <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026" />
+    <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261010" />
@@ -34,11 +34,11 @@
           <div
             class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500"
           >
-            <span>Step 1 of 5</span>
-            <span>20% Complete</span>
+            <span>Step 1 of 4</span>
+            <span>25% Complete</span>
           </div>
           <div class="h-2 w-full rounded-full bg-slate-200">
-            <div class="h-2 w-1/5 rounded-full bg-[#315b7e]"></div>
+            <div class="h-2 w-1/4 rounded-full bg-[#315b7e]"></div>
           </div>
         </div>
       </section>
@@ -493,11 +493,11 @@
           <div
             class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500"
           >
-            <span>Step 2 of 5</span>
-            <span>40% Complete</span>
+            <span>Step 2 of 4</span>
+            <span>50% Complete</span>
           </div>
           <div class="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div class="h-full w-2/5 rounded-full bg-[#315b7e]"></div>
+            <div class="h-full w-1/2 rounded-full bg-[#315b7e]"></div>
           </div>
         </div>
       </section>
@@ -512,8 +512,6 @@
         <div id="serviceNotice" role="alert" hidden></div>
 
         <form id="bookingServicesForm" class="space-y-8" novalidate>
-          <input type="hidden" name="booking_date" id="bookingDate" />
-          <input type="hidden" name="booking_time" id="bookingTime" />
           <input type="hidden" name="pet_id" id="petId" />
           <input type="hidden" name="pet_type" id="servicePetType" />
           <section>
@@ -527,148 +525,6 @@
       </section>
     </main>
     </div>
-    <div data-grooming-step="schedule" class="hidden" hidden>
-<main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
-      <!-- Page Header -->
-      <section class="mb-6">
-        <a
-          href="./dashboard.html"
-          class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
-        >
-          &larr; Back to Home
-        </a>
-
-        <div class="mt-4">
-          <h1 class="text-3xl font-bold text-[#2f4b66]">
-            Choose Your Arrival Window
-          </h1>
-        </div>
-
-        <!-- Progress -->
-        <div class="mt-6">
-          <div
-            class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500"
-          >
-            <span>Step 3 of 5</span>
-            <span>60% Complete</span>
-          </div>
-          <div class="h-2 w-full rounded-full bg-slate-200">
-            <div class="h-2 w-3/5 rounded-full bg-[#315b7e]"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Main Card -->
-      <section class="rounded-3xl bg-white p-5 shadow-lg md:p-6">
-        <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <!-- LEFT: Calendar -->
-          <div class="rounded-3xl bg-[#eaf3fb] p-5">
-            <div class="mb-5 flex items-center justify-between">
-              <button
-                id="prevMonthBtn"
-                type="button"
-                class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg font-semibold text-slate-600 shadow-sm transition hover:bg-slate-100"
-                aria-label="Previous month"
-              >
-                &lt;
-              </button>
-
-              <h2 id="monthLabel" class="text-lg font-bold text-[#2f4b66]">
-                Month Year
-              </h2>
-
-              <button
-                id="nextMonthBtn"
-                type="button"
-                class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-lg font-semibold text-slate-600 shadow-sm transition hover:bg-slate-100"
-                aria-label="Next month"
-              >
-                &gt;
-              </button>
-            </div>
-
-            <!-- Weekdays -->
-            <div
-              class="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500"
-            >
-              <div>Su</div>
-              <div>Mo</div>
-              <div>Tu</div>
-              <div>We</div>
-              <div>Th</div>
-              <div>Fr</div>
-              <div>Sa</div>
-            </div>
-
-            <!-- Clinic closure notice (shown by JS when clinic is stopped today) -->
-            <div
-              id="clinicNotice"
-              class="hidden mb-4 rounded-xl border border-[#fcd34d] bg-[#fffbeb] px-4 py-3 text-sm font-medium text-[#92400e]"
-            ></div>
-
-            <!-- Calendar grid -->
-            <div id="calendarGrid" class="grid grid-cols-7 gap-2"></div>
-
-            <!-- Legend / Notes -->
-            <div
-              class="mt-5 rounded-2xl bg-white/80 p-4 text-xs text-slate-500"
-            >
-              <p class="font-semibold text-slate-600">Pre-registration Guidelines:</p>
-              <ul class="mt-2 space-y-1">
-                <li id="operatingHoursText">• Loading pet grooming hours...</li>
-                <li>• Past dates and ended arrival windows are unavailable</li>
-                <li>• 12:00 PM to 1:00 PM is reserved as a break</li>
-                <li>• Pre-registration is limited to the next 3 days only</li>
-                <li class="flex items-center gap-1.5">
-                  <span class="inline-block h-3 w-3 shrink-0 rounded bg-[#fef9c3]"></span>
-                  <span>Amber dates are clinic closures or scheduled breaks</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- RIGHT: Time Slots + Summary -->
-          <div class="rounded-3xl bg-[#d7ebfb] p-5">
-            <div>
-              <h3 class="text-lg font-bold text-[#2f4b66]">
-                When do you expect to arrive?
-              </h3>
-              <p class="mt-2 text-sm text-slate-500">Choose your arrival window. Your queue position will be assigned when you check in.</p>
-            </div>
-            <p id="arrivalWindowNotice" role="alert" class="mt-4 hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></p>
-
-            <div
-              id="timeSlots"
-              class="mt-5 grid max-h-80 grid-cols-2 gap-3 overflow-y-auto overscroll-contain pr-1"
-            ></div>
-
-            <div class="mt-6 rounded-2xl bg-white p-4 shadow-sm">
-              <p
-                class="text-xs font-semibold tracking-wide text-slate-400"
-              >
-                Planned Drop-off
-              </p>
-              <p id="selectedScheduleText" class="mt-2 text-sm text-slate-600">
-                Please select a date and time.
-              </p>
-            </div>
-
-            <div class="mt-6 flex items-center justify-between gap-3">
-              <a href="./grooming-pre-registration.html?step=services" data-grooming-target="services" class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white">Back</a>
-              <button
-                id="nextStepBtn"
-                type="button"
-                disabled
-                class="rounded-2xl bg-[#315b7e] px-6 py-3 text-sm font-semibold text-white opacity-50 cursor-not-allowed transition"
-              >
-                Next Step
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-    </div>
     <div data-grooming-step="review" class="hidden" hidden>
 <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <a
@@ -679,14 +535,14 @@
       </a>
 
       <section class="mt-4">
-        <h1 class="text-3xl font-bold text-[#2f4b66]">Review Your Planned Drop-off</h1>
+        <h1 class="text-3xl font-bold text-[#2f4b66]">Review Online Registration</h1>
         <div class="mt-6">
           <div class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>Step 4 of 5</span>
-            <span>80% Complete</span>
+            <span>Step 3 of 4</span>
+            <span>75% Complete</span>
           </div>
           <div class="h-2 w-full rounded-full bg-slate-200">
-            <div class="h-2 w-4/5 rounded-full bg-[#315b7e]"></div>
+            <div class="h-2 w-3/4 rounded-full bg-[#315b7e]"></div>
           </div>
         </div>
       </section>
@@ -695,20 +551,7 @@
         class="mt-6 rounded-[28px] border border-slate-200 bg-[#d9e8f4] p-5 shadow-sm md:p-8"
       >
         <div class="mb-6">
-          <h2 class="text-2xl font-bold text-[#2f4b66]">Planned Drop-off Review</h2>
-        </div>
-
-        <div class="mb-6">
-          <div class="rounded-2xl border border-slate-200 bg-white p-4">
-            <p
-              class="text-xs font-semibold uppercase tracking-wide text-slate-400"
-            >
-              Planned Drop-off
-            </p>
-            <p id="scheduleReviewText" class="mt-2 text-sm font-semibold text-slate-700">
-              No schedule selected yet.
-            </p>
-          </div>
+          <h2 class="text-2xl font-bold text-[#2f4b66]">Registration Summary</h2>
         </div>
 
         <div
@@ -740,11 +583,13 @@
           </p>
         </section>
 
+        <section id="groomingQueueInformation" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5" aria-live="polite"></section>
+
         <div
           class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <a
-            href="./grooming-pre-registration.html?step=schedule" data-grooming-target="schedule"
+            href="./grooming-pre-registration.html?step=services" data-grooming-target="services"
             class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white"
           >
             Back
@@ -780,8 +625,8 @@
           <div
             class="mb-2 flex items-center justify-between text-xs font-medium text-slate-500"
           >
-            <span>Step 5 of 5</span>
-            <span>Final step</span>
+            <span>Step 4 of 4</span>
+            <span>100% Complete</span>
           </div>
           <div class="h-2 w-full overflow-hidden rounded-full bg-slate-200">
             <div class="h-full w-full rounded-full bg-[#315b7e]"></div>
@@ -822,62 +667,11 @@
         </form>
       </section>
     </main>
-    <!-- Duplicate Booking Modal -->
-    <div
-      id="duplicateBookingModal"
-      class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 px-4"
-    >
-      <div class="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
-        <!-- Default state -->
-        <div id="duplicateModalBody">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-              <span class="text-lg">⚠️</span>
-            </div>
-            <h3 class="text-lg font-bold text-[#2f4b66]">Existing Visit Found</h3>
-          </div>
-          <p class="text-sm text-slate-600">
-            You already have a visit on this date
-            (<span id="duplicateBookingRef" class="font-semibold text-[#2f4b66]"></span>).
-          </p>
-          <p class="mt-2 text-sm text-slate-600">
-            Would you like to reschedule it to the new date and time you selected?
-          </p>
-          <p id="duplicateModalError" class="mt-3 hidden rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></p>
-          <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <button
-              id="duplicateNoBtnModal"
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-2.5 text-sm font-medium text-[#315b7e] transition hover:bg-slate-50"
-            >
-              No, Go to Dashboard
-            </button>
-            <button
-              id="duplicateYesBtnModal"
-              type="button"
-              class="inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#274a67]"
-            >
-              Yes, Reschedule
-            </button>
-          </div>
-        </div>
-
-        <!-- Success state -->
-        <div id="duplicateModalSuccess" class="hidden text-center">
-          <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-            <span class="text-2xl">✓</span>
-          </div>
-          <h3 class="text-lg font-bold text-[#2f4b66]">Rescheduled Successfully!</h3>
-          <p id="duplicateSuccessText" class="mt-2 text-sm text-slate-600"></p>
-          <p class="mt-3 text-xs text-slate-400">Redirecting you to your dashboard...</p>
-        </div>
-      </div>
-    </div>
     </div>
     <div data-grooming-step="confirmed" class="hidden" hidden>
     <main id="confirmationRoot" class="confirmation-page"></main>
     </div>
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026"></script>
-    <script type="module" src="../../scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261026-v1&services=20261026&grooming=actual-20261026"></script>
+    <script type="module" src="../../scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261026-v1&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1"></script>
   </body>
 </html>

@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 async function main() {
-  const grooming = await import('../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026');
+  const grooming = await import('../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1');
   const component = await import('../scripts/components/grooming-service-selection.js?v=20261026');
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8'));
   grooming.applyGroomingCatalogue(fixture.data, fixture.groomingPreferences);

@@ -1,4 +1,4 @@
-import { normalizePetSize } from "../services/booking-draft-service.js";
+import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
 import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";

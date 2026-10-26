@@ -1,12 +1,11 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026";
-import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
   formatPetTypeLabel,
   getBookingDraft,
   readSessionJson,
-} from "../services/booking-draft-service.js?flow=grooming-order-20261016";
-import { formatBookingSchedule } from "../services/booking-format-service.js";
+} from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import {
   buildStepThreeDraftPayload,
@@ -16,15 +15,12 @@ import {
   selectedPricingSignature,
   createEmptyPetServiceSelection,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 
 const elements = {
   form: document.getElementById("bookingServicesForm"),
-  scheduleSummaryText: document.getElementById("scheduleSummaryText"),
   petSummaryText: document.getElementById("petSummaryText"),
   serviceNotice: document.getElementById("serviceNotice"),
-  bookingDateInput: document.getElementById("bookingDate"),
-  bookingTimeInput: document.getElementById("bookingTime"),
   petIdInput: document.getElementById("petId"),
   petTypeInput: document.getElementById("servicePetType"),
   petServiceSelections: document.getElementById("petServiceSelections"),
@@ -91,20 +87,11 @@ function bindEvents() {
 }
 
 function populateHiddenInputs(data) {
-  elements.bookingDateInput.value = data?.bookingDate || "";
-  elements.bookingTimeInput.value = data?.bookingTime || "";
   elements.petIdInput.value = data?.petIds?.join(",") || data?.petId || "";
   elements.petTypeInput.value = data?.petTypes?.join(",") || data?.petType || "";
 }
 
 function populateSummary(data) {
-  if (elements.scheduleSummaryText && (data?.bookingDate || data?.bookingTime)) {
-    elements.scheduleSummaryText.textContent =
-      data.bookingScheduleText ||
-      formatBookingSchedule(data.bookingDate, data.bookingTime) ||
-      "No schedule selected yet.";
-  }
-
   const selectedPets = Array.isArray(data?.pets) ? data.pets : [];
 
   if (!elements.petSummaryText) {
@@ -292,7 +279,7 @@ function handleSubmit(event) {
   }
 
   saveCurrentStepDraft();
-  goToGroomingStep("schedule");
+  goToGroomingStep("review");
 }
 
 function saveCurrentStepDraft() {

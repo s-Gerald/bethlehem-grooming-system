@@ -107,7 +107,7 @@ const emptyPet = {
   special_instructions: " \n ", medical_conditions: " \n ",
 };
 ui.printPetCard({ ownerName: "Taylor", internalStaffNote: " \n " }, emptyPet, 2);
-assert.ok(appended.innerHTML.includes("#P3"));
+assert.ok(appended.innerHTML.includes("Not assigned"));
 assert.ok(appended.innerHTML.includes("Cat · Medium"), "Species replaces missing breed");
 for (const heading of ["Selected services", "Customer Note", "Staff Note", "Medical Alert"]) {
   assert.ok(!appended.innerHTML.includes(heading), `${heading} is hidden when empty`);

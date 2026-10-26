@@ -1,10 +1,5 @@
 const ACCESS_MESSAGE_KEY = "bethlehem.preRegistrationAccessMessage";
 
-function isRescheduleFlow() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("reschedule") === "1";
-}
-
 export async function getPreRegistrationAccess() {
   return API.getPreRegistrationAccess();
 }
@@ -28,10 +23,6 @@ export function setPreRegistrationLinkAccess(link, allowed, message = "") {
 
 export async function enforceBookingFormAccessGuard(options = {}) {
   const dashboardPath = options.dashboardPath || "./dashboard.html";
-
-  if (isRescheduleFlow()) {
-    return false;
-  }
 
   // Entry decisions require a server check even when a recent header result exists.
   const access = await API.getPreRegistrationAccess({ force: true });

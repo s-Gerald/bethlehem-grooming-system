@@ -1,23 +1,4 @@
-/**
- * Booking Draft Service
- *
- * Purpose:
- * Centralizes the temporary browser-storage contract shared by the pet,
- * services, arrival, and review steps. Storage keys retain their legacy names.
- *
- * Backend developer guide:
- * Replace these sessionStorage helpers with a real booking-draft source, or map
- * your API response to the same field names so the existing UI can keep working
- * during integration.
- *
- * Draft fields expected by the booking flow:
- * - bookingDate / bookingTime
- * - bookingScheduleText for display-only summaries
- * - pets[] with id, petName, petType, breed, size, furType, weight, medicalNotes
- * - derived petIds / petTypes values used by later steps
- */
-import { formatBookingSchedule } from "./booking-format-service.js";
-
+/** Shared pet and service drafts; legacy storage keys remain compatible. */
 export const BOOKING_STEP_TWO_KEY = "bookingStep2";
 export const BOOKING_STEP_THREE_KEY = "bookingStep3";
 
@@ -107,8 +88,8 @@ function normalizePetRecord(pet, index) {
 }
 
 export function normalizeBookingDraft(data) {
-  const bookingDate = data?.bookingDate || data?.date || "";
-  const bookingTime = data?.bookingTime || data?.time || "";
+  const bookingDate = "";
+  const bookingTime = "";
   const petsFromDraft = Array.isArray(data?.pets) ? data.pets.filter(Boolean) : [];
   const legacyPet =
     data?.petId || data?.petName || data?.petType || data?.petBreed
@@ -137,10 +118,7 @@ export function normalizeBookingDraft(data) {
   return {
     bookingDate,
     bookingTime,
-    bookingScheduleText:
-      data?.bookingScheduleText ||
-      data?.scheduleText ||
-      formatBookingSchedule(bookingDate, bookingTime),
+    bookingScheduleText: "",
     pets,
     petIds: pets.map((pet) => pet.id).filter(Boolean),
     petTypes,
@@ -152,31 +130,8 @@ export function normalizeBookingDraft(data) {
 }
 
 export function getBookingDraft() {
-  const savedStepTwoDraft = readSessionJson(BOOKING_STEP_TWO_KEY);
-
-  if (savedStepTwoDraft) {
-    const schedule = readSessionJson("bookingSchedule");
-    return normalizeBookingDraft({
-      ...savedStepTwoDraft,
-      bookingDate: schedule?.date || "",
-      bookingTime: schedule?.time || "",
-      bookingScheduleText: schedule?.scheduleText || formatBookingSchedule(schedule?.date, schedule?.time),
-    });
-  }
-
-  const legacySchedule = readSessionJson("bookingSchedule");
-  const legacyPets = readSessionJson("bookingPets");
-
-  if (!legacySchedule && !Array.isArray(legacyPets)) {
-    return null;
-  }
-
-  const normalizedDraft = normalizeBookingDraft({
-    bookingDate: legacySchedule?.date || "",
-    bookingTime: legacySchedule?.time || "",
-    pets: Array.isArray(legacyPets) ? legacyPets : [],
-  });
-
-  sessionStorage.setItem(BOOKING_STEP_TWO_KEY, JSON.stringify(normalizedDraft));
-  return normalizedDraft;
+  const saved = readSessionJson(BOOKING_STEP_TWO_KEY);
+  const pets = readSessionJson("bookingPets");
+  if (!saved && !Array.isArray(pets)) return null;
+  return normalizeBookingDraft({ ...saved, pets: Array.isArray(pets) ? pets : saved?.pets });
 }

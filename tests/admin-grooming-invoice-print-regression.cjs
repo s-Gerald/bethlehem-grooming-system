@@ -120,7 +120,7 @@ assert.ok(!printingClasses.has("payment-invoice-printing"));
 console.log("Admin grooming invoice print regression tests passed.");
 
 (async () => {
-  const {applyGroomingCatalogue} = await import('../scripts/services/grooming-service.js?grooming=actual-20261026');
+  const {applyGroomingCatalogue} = await import('../scripts/services/grooming-service.js?grooming=actual-20261026&registration=fcfs-20261027-v1');
   context.applyPaymentCatalogue(applyGroomingCatalogue(JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8').replace(/^\uFEFF/, '')).data));
   ui.$nextTick = () => {};
   ui.loadAdminBookings = async () => {};

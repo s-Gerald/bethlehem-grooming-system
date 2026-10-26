@@ -29,7 +29,7 @@ async function main() {
   }
   global.sessionStorage = storage;
   const draft = await import('../scripts/services/booking-draft-service.js');
-  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006&grooming=actual-20261026');
+  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006&grooming=actual-20261026&registration=fcfs-20261027-v1');
   const groomingAge = await import('../scripts/services/grooming-age.js');
   const catalogue = JSON.parse(read('tests/grooming-catalogue-fixture.json'));
   grooming.applyGroomingCatalogue(catalogue.data, catalogue.groomingPreferences);
@@ -49,7 +49,7 @@ async function main() {
     document: { querySelectorAll: () => [], getElementById(id) {
       if (!links.has(id)) {
         const attributes = new Map(), listeners = [];
-        links.set(id, { href: id === 'groomingOption' ? './grooming-pre-registration.html' : './clinic-visit-date.html',
+        links.set(id, { href: id === 'groomingOption' ? './grooming-pre-registration.html' : './booking-pet-details.html?flow=clinic',
           classList: { toggle() {} },
           addEventListener(event, handler) { if (event === 'click') listeners.push(handler); },
           setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key),
@@ -69,11 +69,11 @@ async function main() {
   assert.equal(values.has('clinicVisitDraft'), true);
   assert.equal(values.has('clientPets'), true);
   await links.get('clinicVisitOption').click();
-  assert.equal(destinations.at(-1), './clinic-visit-date.html');
+  assert.equal(destinations.at(-1), './booking-pet-details.html?flow=clinic');
 
   const pet = { id: '101', petName: 'Mochi', petType: 'dog', size: 'small', weight: '5' };
   const selection = { petId: '101', servicePackage: 'regular_dog_grooming', groomingPreference: 'regular_trim', alaCarteServices: [] };
-  const sections = ['pets', 'services', 'schedule', 'review', 'consent', 'confirmed'].map((step) => ({
+  const sections = ['pets', 'services', 'review', 'consent', 'confirmed'].map((step) => ({
     dataset: { groomingStep: step }, classList: { toggle() {} },
   }));
   let ready, popstate, calendarNext;
@@ -120,15 +120,11 @@ async function main() {
   assert.equal(context.availableStep('schedule'), 'services', 'Unavailable Pet Groomer blocks later steps');
   context.hasPetGroomerSelection = () => true;
   await context.navigate('schedule');
-  assert.equal(entered.at(-1), 'schedule');
-  await context.navigate('review');
-  assert.equal(entered.at(-1), 'schedule', 'Review requires an arrival window');
-  const schedule = { date: '2026-10-17', time: '1:00 PM - 2:00 PM', window_id: 3 };
-  save('bookingSchedule', schedule);
-  await calendarNext();
   assert.equal(entered.at(-1), 'review');
-  assert.equal(draft.getBookingDraft().bookingDate, schedule.date, 'Review uses the newly chosen arrival date');
-  assert.equal(draft.getBookingDraft().bookingTime, schedule.time);
+  await context.navigate('review');
+  assert.equal(entered.at(-1), 'review', 'Services proceed directly to review without an arrival');
+  assert.equal(draft.getBookingDraft().bookingDate, '', 'Old draft arrival dates are discarded');
+  assert.equal(draft.getBookingDraft().bookingTime, '');
   save('bookingStep4Review', { pets: [pet] });
   await context.navigate('consent');
   assert.equal(entered.at(-1), 'consent');
@@ -148,7 +144,7 @@ async function main() {
   vm.runInContext(script('scripts/components/grooming-pre-registration.js'), reloaded);
   await ready();
   assert.equal(catalogueLoads, 1);
-  assert.equal(entered.at(-1), 'schedule');
+  assert.equal(entered.at(-1), 'review');
   assert.deepEqual([...values.entries()], activeDraft, 'Reloading preserves the current draft');
 
   // Clinic initialization sets Home navigation without changing either grooming entry point.
@@ -162,7 +158,7 @@ async function main() {
     };
     const initialization = vm.createContext({
       IS_CLINIC_VISIT: clinic, elements, document: { title: 'Pet Information' },
-      requireCustomerSession: () => true, bindEvents() {}, initStepState: async () => {},
+      initBookingFormAccessGuard: async () => false, requireCustomerSession: () => true, bindEvents() {}, initStepState: async () => {},
     });
     vm.runInContext(petInitialization, initialization);
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -196,16 +192,16 @@ async function main() {
   assert.equal(petContext.window.location.href, './pre-register.html');
   petContext.IS_CLINIC_VISIT = true;
   petContext.handleBack();
-  assert.equal(petContext.window.location.href, './clinic-visit-date.html', 'Clinic in-form Back still returns to arrival selection');
+  assert.equal(petContext.window.location.href, './pre-register.html', 'Clinic Back returns to service choice');
 
   const page = read('pages/client/grooming-pre-registration.html');
   assert.deepEqual([...page.matchAll(/data-grooming-step="([^"]+)"/g)].map((match) => match[1]), sections.map((section) => section.dataset.groomingStep));
-  for (let index = 0; index < 5; index++) {
+  for (let index = 0; index < 4; index++) {
     const section = page.split(`data-grooming-step="${sections[index].dataset.groomingStep}"`)[1].split('data-grooming-step="')[0];
-    assert.ok(section.includes(`Step ${index + 1} of 5`));
-    assert.ok(section.includes(index === 4 ? 'Final step' : `${(index + 1) * 20}% Complete`));
+    assert.ok(section.includes(`Step ${index + 1} of 4`));
+    assert.ok(section.includes(`${(index + 1) * 25}% Complete`));
   }
-  assert.match(read('scripts/components/booking-services-step.js'), /saveCurrentStepDraft\(\);\s+goToGroomingStep\("schedule"\)/);
-  console.log('Grooming flow: step order, complete-selection guards, new-draft reset, current arrival, Clinic Home initialization, and Back preservation passed.');
+  assert.match(read('scripts/components/booking-services-step.js'), /saveCurrentStepDraft\(\);\s+goToGroomingStep\("review"\)/);
+  console.log('Grooming flow: step order, complete-selection guards, new-draft reset, no-picker draft recovery, Clinic Home initialization, and Back preservation passed.');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

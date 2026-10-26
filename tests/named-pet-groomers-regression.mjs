@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import * as selector from '../scripts/components/pet-groomer-selection.js?services=20261026';
-import * as grooming from '../scripts/services/grooming-service.js?grooming=actual-20261026';
+import * as selector from '../scripts/components/pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1';
+import * as grooming from '../scripts/services/grooming-service.js?grooming=actual-20261026&registration=fcfs-20261027-v1';
 
 const people = [{ id: 11, first_name: 'Anna' }, { id: 24, first_name: 'Miguel' }];
 const pets = [{ id: 'coco', petName: 'Coco', petType: 'dog', size: 'Small' },

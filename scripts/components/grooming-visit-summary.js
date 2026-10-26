@@ -1,10 +1,10 @@
-import { escapeHtml } from "../services/booking-draft-service.js";
-import { formatBookingDate, formatBookingTimeRange } from "../services/booking-format-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
+import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import { formatBookingDate } from "../services/booking-format-service.js";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import {
   confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, printConfirmation,
-} from "./confirmation-presentation.js?v=20261017";
+} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {
@@ -14,12 +14,14 @@ export function groomingVisitPresentation(booking, statusLabel) {
   const serviceNames = (items) => items.map((item) => item.service?.service_name).filter(Boolean).join(", ");
   const names = pets.map((item) => item.pet?.pet_name || "Your pet").join(", ");
   const packages = serviceNames(services.filter((item) => item.service?.kind === "package"));
-  const arrival = [formatBookingDate(booking.booking_date), formatBookingTimeRange(booking.time_window?.window_label)].filter(Boolean).join(" · ");
   const header = `<header class="grooming-summary-overview">
     <h3>${escapeHtml(names || "Your pet")}</h3>
     <span class="grooming-summary-status">${escapeHtml(statusLabel)}</span>
     <p>${escapeHtml(packages || serviceNames(services) || "Grooming")}</p>
-    ${confirmationFields([["Arrival", arrival || "Not recorded"], ["Booking reference", booking.booking_reference || "Not recorded"]])}
+    ${confirmationFields([["Valid service day", formatBookingDate(booking.booking_date) || "Not recorded"],
+      ["Registered", formatConfirmationTimestamp(booking.created_at) || "Not recorded"],
+      ["Queue number", booking.queue_number ?? "Not assigned"],
+      ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []), ["Booking reference", booking.booking_reference || "Not recorded"]])}
   </header>`;
   const details = pets.map((item) => {
     const pet = item.pet || {};
@@ -42,6 +44,7 @@ export function groomingVisitPresentation(booking, statusLabel) {
         ["Breed", pet.breed || "Not recorded"],
         ["Size", formatConfirmationLabel(size) || "Not recorded"],
         ["Weight", pet.weight != null && pet.weight !== "" ? `${pet.weight} kg` : "Not recorded"],
+        ["Pet queue number", item.pet_queue_number ?? "Not assigned"],
         ["Special instructions", item.special_instructions?.trim() || "None provided", null, true],
       ]))}
     </section>`;
@@ -75,7 +78,10 @@ export function groomingVisitPresentation(booking, statusLabel) {
     print: confirmationDocument({
       printTitle: "GROOMING VISIT SUMMARY", reference: booking.booking_reference,
       status: statusLabel, message: "", sections: confirmationSection("Visit", confirmationFields([
-        ["Pet name", names], ["Arrival", arrival || "Not recorded"],
+        ["Pet name", names], ["Valid service day", formatBookingDate(booking.booking_date) || "Not recorded"],
+      ["Registered", formatConfirmationTimestamp(booking.created_at) || "Not recorded"],
+      ["Queue number", booking.queue_number ?? "Not assigned"],
+      ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []),
       ])) + details + consentSection + priceSection + nextSection,
     }),
   };

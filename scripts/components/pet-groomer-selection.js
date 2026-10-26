@@ -1,4 +1,4 @@
-import { escapeHtml } from "../services/booking-draft-service.js";
+import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 
 let available = [];
 

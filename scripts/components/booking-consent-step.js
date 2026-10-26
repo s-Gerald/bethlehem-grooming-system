@@ -1,7 +1,7 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026";
-import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
+import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
 
@@ -24,18 +24,11 @@ export function initBookingConsentStep() {
     const consentPayload = consent.payload();
 
     // ── Build and submit the booking payload to the backend ──
-    const schedule = getStoredData("bookingSchedule");
     const bookingPets = getStoredData("bookingPets") || [];
     const reviewData = getStoredData("bookingStep4Review") || getStoredData("bookingReview") || {};
 
     if (bookingPets.some((pet) => !isEligibleForGrooming(pet))) {
       goToGroomingStep("pets");
-      return;
-    }
-
-    if (!schedule?.window_id) {
-      sessionStorage.setItem("bookingScheduleArrivalError", "Please choose an available arrival window.");
-      goToGroomingStep("schedule");
       return;
     }
 
@@ -83,7 +76,6 @@ export function initBookingConsentStep() {
     consent.setBusy(true);
     submitBookingButton.disabled = true;
     submitBookingButton.textContent = "Submitting...";
-    const submittedAt = new Date().toISOString();
 
     try {
       await loadGroomingCatalogue();
@@ -96,8 +88,6 @@ export function initBookingConsentStep() {
         return;
       }
       const response = await API.storeBooking({
-        booking_date: schedule.date,
-        window_id: schedule.window_id,
         number_of_pets: bookingPets.length,
         special_notes: null,
         ...consentPayload,
@@ -109,9 +99,8 @@ export function initBookingConsentStep() {
         booking_id: response.booking.booking_id,
         booking_reference: response.booking.booking_reference,
         booking_date: response.booking.booking_date,
-        booking_time: response.booking.window,
         submitted_at:
-          response.booking.created_at || response.booking.submitted_at || submittedAt,
+          response.booking.created_at,
         status: response.booking.status,
         number_of_pets: response.booking.number_of_pets,
         pets: bookingPets,
@@ -126,14 +115,6 @@ export function initBookingConsentStep() {
       consent.setBusy(false);
       submitBookingButton.textContent = "Submit Registration";
 
-      if (["arrival_window_ended", "arrival_window_unavailable"].includes(error.code) || error.errors?.window_id) {
-        // Keep the date visible while invalidating only the selected arrival.
-        sessionStorage.setItem("bookingSchedule", JSON.stringify({ date: schedule.date }));
-        sessionStorage.setItem("bookingScheduleArrivalError", error.message);
-        goToGroomingStep("schedule");
-        return;
-      }
-
       if (Object.keys(error.errors || {}).some((key) => key.endsWith('.groomer_id'))) {
         goToGroomingStep("services");
         return;
@@ -142,12 +123,7 @@ export function initBookingConsentStep() {
         goToGroomingStep("pets");
         return;
       }
-      const existingBookingId = error.errors?.existing_booking_id;
-      if (existingBookingId) {
-        openDuplicateModal(existingBookingId, error.errors.existing_booking_ref, schedule);
-      } else {
-        showSubmitError(error.message || "Pre-registration submission failed. Please try again.");
-      }
+      showSubmitError(error.message || "Pre-registration submission failed. Please try again.");
     }
   });
 
@@ -181,68 +157,6 @@ export function initBookingConsentStep() {
     consentStatusMessage.className =
       "mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
     consentStatusMessage.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  // ── Duplicate booking modal ───────────────────────────────────────────────
-  function openDuplicateModal(existingBookingId, existingBookingRef, schedule) {
-    const modal       = document.getElementById("duplicateBookingModal");
-    const refSpan     = document.getElementById("duplicateBookingRef");
-    const yesBtn      = document.getElementById("duplicateYesBtnModal");
-    const noBtn       = document.getElementById("duplicateNoBtnModal");
-    const errorMsg    = document.getElementById("duplicateModalError");
-    const modalBody   = document.getElementById("duplicateModalBody");
-    const successDiv  = document.getElementById("duplicateModalSuccess");
-    const successText = document.getElementById("duplicateSuccessText");
-
-    refSpan.textContent = existingBookingRef || "existing visit";
-    errorMsg.textContent = "";
-    errorMsg.classList.add("hidden");
-    modalBody.classList.remove("hidden");
-    successDiv.classList.add("hidden");
-
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
-
-    noBtn.onclick = () => {
-      window.location.href = "./dashboard.html";
-    };
-
-    yesBtn.onclick = async () => {
-      yesBtn.disabled = true;
-      yesBtn.textContent = "Rescheduling...";
-      errorMsg.classList.add("hidden");
-
-      try {
-        const data = await API.rescheduleBooking(existingBookingId, schedule.date, schedule.window_id);
-
-        // Show success state
-        modalBody.classList.add("hidden");
-        successDiv.classList.remove("hidden");
-        successText.textContent =
-          `Visit ${data.booking.booking_reference} has been moved to ${formatScheduleLabel(data.booking.booking_date, data.booking.window)}.`;
-
-        setTimeout(() => {
-          window.location.href = "./dashboard.html";
-        }, 2000);
-      } catch (rescheduleError) {
-        errorMsg.textContent = rescheduleError.message || "Reschedule failed. Please try again.";
-        errorMsg.classList.remove("hidden");
-        yesBtn.disabled = false;
-        yesBtn.textContent = "Yes, Reschedule";
-      }
-    };
-  }
-
-  function formatScheduleLabel(date, windowLabel) {
-    if (!date) return windowLabel || "the new schedule";
-    try {
-      const formatted = new Intl.DateTimeFormat("en-PH", {
-        year: "numeric", month: "long", day: "numeric",
-      }).format(new Date(date + "T00:00:00"));
-      return windowLabel ? `${formatted} at ${windowLabel}` : formatted;
-    } catch {
-      return windowLabel || date;
-    }
   }
 
 }

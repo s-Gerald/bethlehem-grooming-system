@@ -557,6 +557,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const groomingStatusAnnouncement = document.getElementById("groomingStatusAnnouncement");
   let dashboardPets = [];
   let dashboardBookings = [];
+  let dashboardClinicVisits = [];
   let lastGroomingAnnouncement = "";
   let lastAppointmentsMarkup = "";
   let lastTrackerMarkup = "";
@@ -565,13 +566,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const expandedTrackerVisits = new Set();
   let lastPetsMarkup = "";
   let lastHistoryMarkup = "";
-  const rescheduleModal          = document.getElementById("rescheduleModal");
-  const closeRescheduleModal     = document.getElementById("closeRescheduleModal");
-  const rescheduleBookingRef     = document.getElementById("rescheduleBookingRef");
-  const rescheduleDate           = document.getElementById("rescheduleDate");
-  const rescheduleSlotsContainer = document.getElementById("rescheduleSlotsContainer");
-  const rescheduleMessage        = document.getElementById("rescheduleMessage");
-  const submitRescheduleBtn      = document.getElementById("submitRescheduleBtn");
   const cancelModal              = document.getElementById("cancelModal");
   const closeCancelModalBtn      = document.getElementById("closeCancelModal");
   const cancelBookingRefEl       = document.getElementById("cancelBookingRef");
@@ -579,26 +573,16 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const keepBookingBtn           = document.getElementById("keepBookingBtn");
   const cancelMessageEl          = document.getElementById("cancelMessage");
 
-  let activeBookingId     = null;
-  let activeRescheduleBooking = null;
-  let selectedWindowId    = null;
   let cancelTargetBooking = null;
-  let rescheduleLoadId    = 0;
   let dashboardPetsLoadState = "idle";
   let appointmentsLoading = false;
   let appointmentsLoaded = false;
   let groomingCapacityLoading = false;
   let groomingCapacityLoaded = false;
-  let rescheduleClinicStatus = {
-    stoppedToday: false,
-    blockedDates: [],
-  };
-
   const UPCOMING_APPOINTMENT_STATUSES = new Set(["waiting_to_arrive", "waiting"]);
-  const RESCHEDULE_MAX_DAYS_AHEAD = 2;
 
   document.addEventListener("DOMContentLoaded", () => {
-    setRescheduleDateRange(getRescheduleTodayKey());
+
     void loadAppointments();
     if (API.readCustomerCache("/pets?archived=0")) void loadDashboardPets();
 
@@ -606,7 +590,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       await loadDashboardPets();
       scheduleDashboardDataIdle(async () => {
         await loadGroomingCapacity();
-        setRescheduleDateRange(getRescheduleTodayKey());
+
       });
     });
   });
@@ -651,13 +635,14 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const active = Array.isArray(data?.bookings) ? data.bookings : [];
     const history = Array.isArray(data?.history) ? data.history : [];
     const scheduled = active.filter(isUpcomingAppointment);
+    dashboardClinicVisits = Array.isArray(data?.clinic_visits) ? data.clinic_visits : [];
     const atClinic = active.filter(b =>
       ["checked_in", "in_progress", "for_payment", "released"].includes(b?.status)
     ).filter(b => b.show_grooming_tracker !== false);
 
     dashboardBookings = active;
     const visibleGrooming = atClinic.filter((booking) => trackerPets(booking).length);
-    setDashboardHierarchy(visibleGrooming.length > 0, scheduled.length > 0);
+    setDashboardHierarchy(visibleGrooming.length > 0, scheduled.length > 0 || dashboardClinicVisits.length > 0);
     if (dashboardPetsLoadState === "loaded") renderMyPetsPreview();
 
     renderDashboardPanel(appointmentsList, "schedule", () => {
@@ -718,32 +703,13 @@ function scheduleCustomerDashboardAfterPaint(task) {
     }
   }
 
-  function getRescheduleTodayKey() {
+  function getPhilippineTodayKey() {
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Manila",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
-  }
-
-  function addDaysToDateKey(dateKey, days) {
-    const [year, month, day] = String(dateKey).split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + days);
-
-    return [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0"),
-    ].join("-");
-  }
-
-  function setRescheduleDateRange(todayKey) {
-    if (!rescheduleDate || !todayKey) return;
-
-    rescheduleDate.min = todayKey;
-    rescheduleDate.max = addDaysToDateKey(todayKey, RESCHEDULE_MAX_DAYS_AHEAD);
   }
 
   function renderMyPetsSummary(pets) {
@@ -761,8 +727,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const birth = String(birthdate).slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return "";
     const [year, month, day] = birth.split("-").map(Number);
-    const [todayYear, todayMonth, todayDay] = getRescheduleTodayKey().split("-").map(Number);
-    if (birth > getRescheduleTodayKey()) return "";
+    const [todayYear, todayMonth, todayDay] = getPhilippineTodayKey().split("-").map(Number);
+    if (birth > getPhilippineTodayKey()) return "";
     const years = todayYear - year - (todayMonth < month || (todayMonth === month && todayDay < day) ? 1 : 0);
     return years > 0 ? `${years} year${years === 1 ? "" : "s"}` : "Under 1 year";
   }
@@ -807,9 +773,10 @@ function scheduleCustomerDashboardAfterPaint(task) {
   function renderAppointments(bookings) {
     const preview = [...bookings].sort((a, b) =>
       String(a.booking_date || "").localeCompare(String(b.booking_date || "")) ||
-      scheduleStartMinutes(a) - scheduleStartMinutes(b)
+      String(a.created_at || "").localeCompare(String(b.created_at || "")) || Number(a.booking_id) - Number(b.booking_id)
     ).slice(0, 3);
-    const markup = preview.length ? preview.map(buildBookingCard).join("") : `
+    const visitMarkup = preview.map(buildBookingCard).join("") + dashboardClinicVisits.map(buildClinicRegistrationCard).join("");
+    const markup = visitMarkup || `
       <div class="w-full rounded-[14px] border border-portal-border bg-portal-record px-5 py-6 text-center">
         <p class="text-sm font-semibold text-portal-text">No upcoming grooming scheduled</p>
         <p class="mt-2 text-sm leading-relaxed text-portal-muted">Your next grooming visit will appear here once scheduled.</p>
@@ -820,15 +787,29 @@ function scheduleCustomerDashboardAfterPaint(task) {
     lastAppointmentsMarkup = markup;
     preview.forEach((booking) => {
       const currentBooking = () => dashboardBookings.find((record) => record.booking_id === booking.booking_id) || booking;
-      document.getElementById(`reschedule-${booking.booking_id}`)?.addEventListener("click", () => openRescheduleModal(currentBooking()));
       document.getElementById(`cancel-${booking.booking_id}`)?.addEventListener("click", () => handleCancel(currentBooking()));
     });
   }
 
-  function scheduleStartMinutes(booking) {
-    const match = String(booking.time_window?.window_label || "").match(/^(\d{1,2}):(\d{2})\s*([AP]M)/i);
-    if (!match) return 24 * 60;
-    return (Number(match[1]) % 12 + (match[3].toUpperCase() === "PM" ? 12 : 0)) * 60 + Number(match[2]);
+  function registrationTimestamp(value) {
+    if (!value) return "Not recorded";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    }).format(date);
+  }
+
+  function buildClinicRegistrationCard(visit) {
+    const status = { waiting_to_arrive: "Waiting to Arrive", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" }[visit.status] || visit.status;
+    return `<article class="rounded-[14px] bg-portal-surface-soft p-4 mb-3 [overflow-wrap:anywhere]">
+      <p class="font-semibold text-portal-text">${escapeDashboardHtml(visit.pet_name || "Your pet")} &middot; Clinic</p>
+      <p class="mt-1 text-sm text-portal-muted">Registration reference: ${escapeDashboardHtml(visit.reference)}</p>
+      <p class="mt-1 text-sm text-portal-muted">Valid service day: ${formatDate(visit.service_day)}</p>
+      <p class="mt-1 text-sm text-portal-muted">Registered: ${escapeDashboardHtml(registrationTimestamp(visit.created_at))}</p>
+      <p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(visit.queue_number ?? "Not assigned")}</p>
+      ${visit.checked_in_at ? `<p class="mt-1 text-sm text-portal-muted">Checked in: ${escapeDashboardHtml(registrationTimestamp(visit.checked_in_at))}</p>` : ""}
+      <span class="mt-2 inline-flex rounded-full bg-portal-active px-2.5 py-1 text-xs font-semibold text-portal-primary">${escapeDashboardHtml(status)}</span>
+    </article>`;
   }
 
   function serviceLabel(booking) {
@@ -839,7 +820,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function buildBookingCard(booking) {
     const status = getStatusConfig(booking.status);
-    if (booking.status === "waiting_to_arrive" && booking.arrival_time_passed) status.label = "Arrival time passed";
     const actionable = booking.status === "waiting_to_arrive" && !booking.paid;
     const names = getPetNamesLabel(booking);
     return `<article class="flex flex-wrap items-center gap-4 rounded-[14px] bg-portal-surface-soft p-4 [overflow-wrap:anywhere] mb-3 last:mb-0">
@@ -847,12 +827,15 @@ function scheduleCustomerDashboardAfterPaint(task) {
       <div class="min-w-0 flex-1">
         <p class="text-base font-semibold text-portal-text">${escapeDashboardHtml(names)}</p>
         <p class="mt-1 text-sm text-portal-text">${escapeDashboardHtml(serviceLabel(booking))}</p>
-        <p class="mt-1 text-sm text-portal-muted">${formatDate(booking.booking_date)} · ${escapeDashboardHtml(booking.time_window?.window_label || "Time to be confirmed")}</p>
+        <p class="mt-1 text-sm text-portal-muted">Valid service day: ${formatDate(booking.booking_date)}</p>
+        <p class="mt-1 text-sm text-portal-muted">Registration reference: ${escapeDashboardHtml(booking.booking_reference || "Unavailable")}</p>
+        <p class="mt-1 text-sm text-portal-muted">Registered: ${escapeDashboardHtml(registrationTimestamp(booking.created_at))}</p>
+        <p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(booking.queue_number ?? "Not assigned")}</p>
         <span class="mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.classes}">${escapeDashboardHtml(status.label)}</span>
-        <div>${visitSummaryAction(booking, "View drop-off summary")}</div>
+        <div>${visitSummaryAction(booking, "View registration summary")}</div>
       </div>
       ${actionable ? `<div class="flex flex-wrap gap-2 max-[639px]:basis-full">
-        <button type="button" id="reschedule-${escapeDashboardHtml(booking.booking_id)}" class="portal-button-secondary min-h-10 whitespace-nowrap px-3 py-2 text-xs" aria-label="Reschedule ${escapeDashboardHtml(names)}">Reschedule</button>
+
         <button type="button" id="cancel-${escapeDashboardHtml(booking.booking_id)}" class="min-h-10 whitespace-nowrap rounded-2xl border border-portal-border px-3 py-2 text-xs font-semibold text-portal-danger transition-colors hover:bg-portal-danger-soft" aria-label="Cancel ${escapeDashboardHtml(names)}">Cancel</button>
       </div>` : ""}
     </article>`;
@@ -867,7 +850,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   async function openVisitSummary(event) {
     const trigger = event.target.closest("[data-visit-summary]");
     if (!trigger) return;
-    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026");
+    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1");
     openGroomingVisitSummary(trigger.dataset.visitSummary, trigger, (booking) => {
       if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
       if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;
@@ -1006,6 +989,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
     return `<div class="flex flex-col items-end gap-1.5 text-xs text-portal-muted">
       ${booking.paid ? `<span class="rounded-full bg-portal-success-soft px-2.5 py-1 font-semibold text-portal-success">${prePaid ? "Pre-Paid" : "Paid"}</span>` : ""}
       <span class="[overflow-wrap:anywhere]">Ref. ${escapeDashboardHtml(booking.booking_reference || "")}</span>
+      <span>Queue number: ${escapeDashboardHtml(booking.queue_number ?? "Not assigned")}</span>
+      ${booking.dropped_off_timestamp ? `<span>Checked in: ${escapeDashboardHtml(registrationTimestamp(booking.dropped_off_timestamp))}</span>` : ""}
     </div>`;
   }
 
@@ -1078,6 +1063,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       : status === "grooming_finished" ? "Waiting for the grooming visit to be ready for pickup" : "";
     return `<div data-tracker-pet class="min-w-0 rounded-xl border border-portal-border bg-portal-record p-3 text-sm [overflow-wrap:anywhere]">
       <h6 class="font-semibold text-portal-text">${escapeDashboardHtml(pet.pet_name || "Your pet")}</h6>
+      <p class="mt-1 text-xs text-portal-muted">Pet queue number: ${escapeDashboardHtml(pet.pet_queue_number ?? "Not assigned")}</p>
       <p class="mt-1 text-xs font-semibold ${config.textClass}">${escapeDashboardHtml(config.label)}</p>
       ${context ? `<p class="mt-2 text-portal-muted">${escapeDashboardHtml(context)}</p>` : ""}
     </div>`;
@@ -1137,234 +1123,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   // ── Reschedule modal ───────────────────────────────────────────────────────
-
-  rescheduleDate.addEventListener("change", async function () {
-    const requestId = ++rescheduleLoadId;
-    selectedWindowId = null;
-    hideRescheduleMessage();
-    enableSubmitIfReady();
-    const date = this.value;
-    if (!date) return;
-
-    const dateError = getRescheduleDateError(date);
-    this.setCustomValidity(dateError || "");
-    if (dateError) {
-      rescheduleSlotsContainer.innerHTML = '<p class="text-sm text-portal-muted">Choose another date to see available slots.</p>';
-      showRescheduleMessage("error", dateError);
-      return;
-    }
-
-    rescheduleSlotsContainer.innerHTML = '<p class="text-sm text-portal-muted">Loading slots...</p>';
-    try {
-      const data = await API.getTimeslots(date);
-      if (requestId !== rescheduleLoadId) return;
-
-      renderSlots(data);
-    } catch (error) {
-      if (requestId !== rescheduleLoadId) return;
-      rescheduleSlotsContainer.innerHTML = '<p class="text-sm text-portal-danger">Failed to load slots. Try again.</p>';
-    }
-  });
-
-  submitRescheduleBtn.addEventListener("click", async () => {
-    if (!activeBookingId || !selectedWindowId || !rescheduleDate.value) return;
-
-    const dateError = getRescheduleDateError(rescheduleDate.value);
-    if (dateError || isCurrentRescheduleSelection(rescheduleDate.value, selectedWindowId)) {
-      showRescheduleMessage(
-        "error",
-        dateError || "Choose a different date or time slot from the current schedule.",
-      );
-      enableSubmitIfReady();
-      return;
-    }
-
-    submitRescheduleBtn.disabled = true;
-    submitRescheduleBtn.textContent = "Rescheduling...";
-    try {
-      const data = await API.rescheduleBooking(activeBookingId, rescheduleDate.value, selectedWindowId);
-      showRescheduleMessage(
-        "success",
-        `Visit rescheduled to ${formatDate(data.booking.booking_date)} at ${data.booking.window}.`,
-      );
-      submitRescheduleBtn.textContent = "Confirm Reschedule";
-      submitRescheduleBtn.disabled = true;
-      setTimeout(async () => { closeModal(); await loadAppointments(); }, 1800);
-    } catch (error) {
-      showRescheduleMessage("error", error.message || "Reschedule failed. Please try again.");
-      if (["arrival_window_unavailable", "arrival_window_ended"].includes(error.code) || error.errors?.window_id) {
-        selectedWindowId = null;
-        renderSlots(await API.getTimeslots(rescheduleDate.value));
-        enableSubmitIfReady();
-      } else submitRescheduleBtn.disabled = false;
-      submitRescheduleBtn.textContent = "Confirm Reschedule";
-    }
-  });
-
-  closeRescheduleModal.addEventListener("click", closeModal);
-  rescheduleModal.addEventListener("click", (e) => { if (e.target === rescheduleModal) closeModal(); });
-
-  async function openRescheduleModal(booking) {
-    const requestId = ++rescheduleLoadId;
-    activeBookingId  = booking.booking_id;
-    activeRescheduleBooking = booking;
-    selectedWindowId = null;
-    rescheduleBookingRef.textContent =
-      `Rescheduling: ${booking.booking_reference} (${booking.reschedule_count ?? 0} of 2 uses)`;
-    rescheduleDate.value = "";
-    rescheduleDate.setCustomValidity("");
-    rescheduleDate.disabled = true;
-    rescheduleSlotsContainer.innerHTML = '<p class="text-sm text-portal-muted">Select a date to see available slots.</p>';
-    hideRescheduleMessage();
-    enableSubmitIfReady();
-    rescheduleModal.classList.remove("hidden");
-    rescheduleModal.classList.add("flex");
-
-    try {
-      const data = await API.getClinicStatus();
-      if (requestId !== rescheduleLoadId || activeBookingId !== booking.booking_id) return;
-
-      setRescheduleDateRange(getRescheduleTodayKey());
-      rescheduleClinicStatus = {
-        stoppedToday: Boolean(data.stopped_today),
-        blockedDates: Array.isArray(data.blocked_dates) ? data.blocked_dates : [],
-      };
-      rescheduleDate.disabled = false;
-    } catch {
-      if (requestId !== rescheduleLoadId || activeBookingId !== booking.booking_id) return;
-
-      showRescheduleMessage("error", "Could not load the current scheduling rules. Close this window and try again.");
-    }
-  }
-
-  function closeModal() {
-    rescheduleLoadId += 1;
-    rescheduleModal.classList.add("hidden");
-    rescheduleModal.classList.remove("flex");
-    activeBookingId  = null;
-    activeRescheduleBooking = null;
-    selectedWindowId = null;
-    rescheduleDate.disabled = false;
-    rescheduleDate.setCustomValidity("");
-    submitRescheduleBtn.textContent = "Confirm Reschedule";
-  }
-
-  function renderSlots(data) {
-    const windows = Array.isArray(data.windows) ? data.windows : [];
-    const selectedDate = rescheduleDate.value;
-    const bookingDate = String(activeRescheduleBooking?.booking_date || "");
-    const sameDate = selectedDate === bookingDate;
-    const available = windows.filter((window) =>
-      !window.is_closed
-      && !isRescheduleSlotPast(window, selectedDate)
-      && !isCurrentRescheduleSelection(selectedDate, window.window_id, window.window_label)
-    );
-
-    if (!available.length) {
-      rescheduleSlotsContainer.innerHTML = `<p class="text-sm text-portal-muted">${
-        sameDate
-          ? "No other available time slots on this date."
-          : "No available time slots on this date."
-      }</p>`;
-      return;
-    }
-
-    rescheduleSlotsContainer.innerHTML = available.map(w => `
-      <label class="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer hover:border-[#315b7e] has-[:checked]:border-[#315b7e] has-[:checked]:bg-[#eaf4fb]">
-        <input type="radio" name="rescheduleSlot" value="${w.window_id}" class="accent-[#315b7e]" />
-        <span class="text-sm text-portal-text">${escapeRescheduleHtml(w.window_label)}</span>
-      </label>`).join("");
-    rescheduleSlotsContainer.querySelectorAll('input[name="rescheduleSlot"]').forEach(radio => {
-      radio.addEventListener("change", () => {
-        selectedWindowId = parseInt(radio.value, 10);
-        enableSubmitIfReady();
-      });
-    });
-  }
-
-  function enableSubmitIfReady() {
-    const ready = !!rescheduleDate.value
-      && !!selectedWindowId
-      && !getRescheduleDateError(rescheduleDate.value)
-      && !isCurrentRescheduleSelection(rescheduleDate.value, selectedWindowId);
-    submitRescheduleBtn.disabled = !ready;
-    submitRescheduleBtn.className = ready
-      ? "w-full rounded-xl bg-portal-primary px-4 py-3 text-sm font-semibold text-white hover:bg-portal-primary-hover transition"
-      : "w-full rounded-xl bg-slate-300 px-4 py-3 text-sm font-semibold text-white cursor-not-allowed transition";
-  }
-
-  function showRescheduleMessage(type, text) {
-    const styles = { success: "border-green-200 bg-portal-success-soft text-portal-success", error: "border-red-200 bg-portal-danger-soft text-portal-danger" };
-    rescheduleMessage.className = `mb-4 rounded-xl border px-4 py-3 text-sm ${styles[type]}`;
-    rescheduleMessage.textContent = text;
-    rescheduleMessage.classList.remove("hidden");
-  }
-
-  function hideRescheduleMessage() {
-    rescheduleMessage.classList.add("hidden");
-    rescheduleMessage.textContent = "";
-  }
-
-  function getRescheduleDateError(dateKey) {
-    if (!dateKey) return "";
-
-    const today = rescheduleDate.min || getRescheduleTodayKey();
-    const lastAvailableDate = rescheduleDate.max
-      || addDaysToDateKey(today, RESCHEDULE_MAX_DAYS_AHEAD);
-
-    if (dateKey < today) {
-      return "Past dates are not available for rescheduling.";
-    }
-
-    if (dateKey > lastAvailableDate) {
-      return "Grooming can be pre-registered up to three days in advance.";
-    }
-
-    if (rescheduleClinicStatus.stoppedToday && dateKey === today) {
-      return "The clinic is not accepting grooming pre-registrations today.";
-    }
-
-    const closure = rescheduleClinicStatus.blockedDates.find((block) =>
-      dateKey >= block.start_date && dateKey <= block.end_date
-    );
-    if (closure) {
-      return closure.reason || "The clinic is not accepting grooming pre-registrations on this date.";
-    }
-
-    return "";
-  }
-
-  function isRescheduleSlotPast(windowData, dateKey) {
-    if (windowData.is_past) return true;
-    if (dateKey !== getRescheduleTodayKey()) return false;
-
-    const currentTime = new Date();
-    const end = new Date(`${dateKey}T${windowData.end_time}+08:00`);
-    return windowData.latest_arrival_time ? currentTime > end : currentTime >= end;
-  }
-
-  function isCurrentRescheduleSelection(dateKey, windowId, windowLabel = null) {
-    if (!activeRescheduleBooking || dateKey !== String(activeRescheduleBooking.booking_date || "")) {
-      return false;
-    }
-
-    const currentWindowId = activeRescheduleBooking.time_window?.window_id;
-    if (currentWindowId !== null && currentWindowId !== undefined) {
-      return Number(currentWindowId) === Number(windowId);
-    }
-
-    return Boolean(windowLabel)
-      && String(activeRescheduleBooking.time_window?.window_label || "") === String(windowLabel);
-  }
-  function escapeRescheduleHtml(value) {
-    return String(value || "").replace(/[&<>"']/g, (character) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;",
-    })[character]);
-  }
 
   function handleCancel(booking) {
     openCancelModal(booking);

@@ -1,12 +1,12 @@
 import {
   clearClinicVisitDraft,
   requireCustomerSession,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
 import {
   getPreRegistrationAccess,
   setPreRegistrationLinkAccess,
-} from "../services/booking-form-access-guard.js?v=phone-20261022";
-import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016";
+} from "../services/booking-form-access-guard.js?v=phone-20261022&registration=fcfs-20261027-v1";
+import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=phone-20261026-otp";
 
 if (requireCustomerSession("./sign-in.html")) {
