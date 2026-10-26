@@ -282,7 +282,7 @@ async function testPreviewsAndNearestSchedule() {
 async function testQueueStates() {
   for (const [used, label] of [[1, "Open"], [16, "Nearly Full"], [20, "Full"]]) {
     const { element } = await runDashboard(async () => ({ bookings: [], history: [] }), {
-      capacity: { capacity: { max: 20, used, remaining: 20 - used }, queue: { active: 1 } },
+      capacity: { capacity: { max: 20, used, remaining: 20 - used, percent: used * 5, is_full: used >= 20 }, queue: { active: 1 } },
     });
     assert.equal(element("groomingCapacityBadge").textContent, label);
     assert.equal(element("groomingQueueLoading").classList.contains("hidden"), true);

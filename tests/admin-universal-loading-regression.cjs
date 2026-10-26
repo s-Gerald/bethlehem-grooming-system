@@ -88,24 +88,23 @@ async function notificationReadiness() {
   await changed;
 }
 async function availabilityReadiness() {
-  const { ui, context } = component('admin-settings.js', 'adminSettings', {
-    getAvailabilitySettings: async () => ({ availability: {}, groomers_on_duty: 0, pet_groomers: [] }),
-  });
+  const response = {availability: {}, capacity: {used: 0, max: 12, remaining: 12, percent: 0, is_full: false}, stopped_today: {clinic: false, grooming: false}, groomers_on_duty: 0, pet_groomers: [], blocked_dates: []};
+  const {ui, context} = component('admin-availability.js', 'adminAvailability', {getAvailabilitySettings: async () => response});
+  ui.identityReady = true;
   assert.equal(ui.availabilityLoaded, false);
   await ui.loadAvailability(); assert.equal(ui.availabilityLoaded, true);
-  context.API.getAvailabilitySettings = async () => { throw new Error('offline'); };
+  context.API.getAvailabilitySettings = async () => {throw new Error('offline');};
   await ui.loadAvailability(); assert.equal(ui.availabilityLoaded, true);
-  assert.equal(ui.groomersOnDuty, 0, 'Confirmed zero remains data after a failed refresh');
+  assert.equal(ui.groomersOnDuty, 0, 'Confirmed zero remains data after failed refresh');
 }
 async function blockedDatesReadiness() {
-  const { ui, context } = component('admin-settings.js', 'adminSettings', {
-    getBlockedDates: async () => ({ blocked_dates: [{ id: 1 }] }),
-  }, { window: { location: { pathname: '/pages/admin/settings.html' } } });
-  assert.equal(ui.blockedDatesLoaded, false);
-  await ui.loadBlockedDates(); assert.equal(ui.blockedDatesLoaded, true);
-  context.API.getBlockedDates = async () => { throw new Error('offline'); };
-  await ui.loadBlockedDates(); assert.equal(ui.blockedDates.length, 1);
-  assert.ok(ui.blockedDatesError);
+  const response = {availability: {}, capacity: {used: 0, max: 12}, stopped_today: {clinic: false, grooming: false}, groomers_on_duty: 0, blocked_dates: [{id: 1}]};
+  const {ui, context} = component('admin-availability.js', 'adminAvailability', {getAvailabilitySettings: async () => response});
+  ui.identityReady = true;
+  await ui.loadAvailability(); assert.equal(ui.blockedDates.length, 1);
+  context.API.getAvailabilitySettings = async () => {throw new Error('offline');};
+  await ui.loadAvailability(); assert.equal(ui.blockedDates.length, 1);
+  assert.ok(ui.availabilityError);
 }
 async function clinicServiceQueries() {
   const response = { data: [], total: 0, current_page: 1, last_page: 1, categories: [] };

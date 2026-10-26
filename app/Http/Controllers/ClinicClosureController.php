@@ -10,102 +10,56 @@ use App\Models\Booking;
 
 class ClinicClosureController extends Controller
 {
-    // ── ADMIN GUARD ───────────────────────────────────────
-    private function requireAdmin(Request $request)
-    {
-        if ($request->user()?->role !== 'admin') {
-            abort(response()->json([
-                'success' => false,
-                'message' => 'Unauthorized. Admin access required.',
-            ], 403));
-        }
-    }
-
-    // ── GET CLINIC STATUS ─────────────────────────────────
-    // Returns today's stop_today status + all upcoming blocked dates
-    // PUBLIC — used by the customer booking form
+    // Public scheduling information; privileged staff data is served separately.
     public function status()
     {
-        $today = Carbon::today()->toDateString();
-        $settings = ClinicSetting::current();
-
-        $stoppedToday = ClinicClosure::where('type', 'stop_today')
-            ->whereDate('start_date', $today)
-            ->where('is_active', 1)
-            ->exists();
-
-        $blockedDates = ClinicClosure::where('type', 'blocked_date')
-            ->where('is_active', 1)
-            ->where('end_date', '>=', $today)
-            ->orderBy('start_date')
-            ->get()
-            ->map(fn($c) => [
-                'id'         => $c->id,
-                'start_date' => $c->start_date->toDateString(),
-                'end_date'   => $c->end_date->toDateString(),
-                'reason'     => $c->reason,
-            ]);
-
         return response()->json([
-            'success'       => true,
-            'stopped_today' => $stoppedToday,
-            'blocked_dates' => $blockedDates,
-            'availability'  => $settings->availabilityPayload(),
-        ]);
+            'success' => true,
+            'stopped_today' => ClinicClosure::stoppedToday(),
+            'blocked_dates' => ClinicClosure::blockedDates(upcomingOnly: true),
+            'availability' => ClinicSetting::current()->availabilityPayload(),
+        ])->header('Cache-Control', 'no-store, private');
     }
 
-    // ── STOP RECEIVING TODAY ──────────────────────────────
-    // POST /api/admin/clinic/stop-today
     public function stopToday(Request $request)
     {
-        $this->requireAdmin($request);
-
-        $today = Carbon::today()->toDateString();
-
-        return app(\App\Services\DailyPetQueue::class)->runForDate($today, function () use ($request, $today) {
-            // Already stopped
-            if (ClinicClosure::where('type', 'stop_today')->whereDate('start_date', $today)->where('is_active', 1)->exists()) {
-                return response()->json(['success' => false, 'message' => 'Already stopped for today.'], 422);
-            }
-
-            ClinicClosure::create([
-                'type'       => 'stop_today',
-                'start_date' => $today,
-                'end_date'   => $today,
-                'is_active'  => 1,
-                'created_by' => $request->user()->user_id,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Bethlehem has stopped receiving Clinic and Grooming customers for today.',
-            ]);
-        });
+        return $this->changeIntake($request, true);
     }
 
-    // ── REOPEN TODAY ──────────────────────────────────────
-    // POST /api/admin/clinic/reopen-today
     public function reopenToday(Request $request)
     {
-        $this->requireAdmin($request);
+        return $this->changeIntake($request, false);
+    }
 
-        $today = Carbon::today()->toDateString();
-
-        return app(\App\Services\DailyPetQueue::class)->runForDate($today, function () use ($request, $today) {
-            $closure = ClinicClosure::where('type', 'stop_today')
-                ->whereDate('start_date', $today)
-                ->where('is_active', 1)
-                ->first();
-
-            if (!$closure) {
-                return response()->json(['success' => false, 'message' => 'Clinic is not stopped today.'], 422);
+    private function changeIntake(Request $request, bool $stop)
+    {
+        $service = $request->validate(['service' => ['required', \Illuminate\Validation\Rule::in(['clinic', 'grooming'])]])['service'];
+        $today = now('Asia/Manila')->toDateString();
+        return app(\App\Services\DailyPetQueue::class)->runForDate($today, function () use ($request, $today, $service, $stop) {
+            $active = ClinicClosure::where('type', 'stop_today')->forService($service)
+                ->whereDate('start_date', $today)->where('is_active', true)->lockForUpdate()->get();
+            if ($stop && $active->isEmpty()) {
+                ClinicClosure::create([
+                    'type' => 'stop_today', 'service' => $service, 'start_date' => $today,
+                    'end_date' => $today, 'is_active' => true, 'created_by' => $request->user()->user_id,
+                ]);
+            } elseif (! $stop) {
+                $other = $service === 'clinic' ? 'grooming' : 'clinic';
+                foreach ($active as $closure) {
+                    // Preserve the legacy record and original attribution for the remaining stop.
+                    if ($closure->service === null && ! ClinicClosure::where('type', 'stop_today')
+                        ->where('service', $other)->whereDate('start_date', $today)->where('is_active', true)->exists()) {
+                        $remaining = $closure->replicate();
+                        $remaining->service = $other;
+                        $remaining->save();
+                    }
+                    $closure->update(['is_active' => false]);
+                }
             }
-
-            $closure->update(['is_active' => 0]);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Bethlehem is receiving Clinic and Grooming customers again today.',
+                'message' => ucfirst($service).($stop ? ' intake stopped for today.' : ' intake reopened.'),
+                'stopped_today' => ClinicClosure::stoppedToday(),
             ]);
         });
     }
@@ -114,17 +68,7 @@ class ClinicClosureController extends Controller
     // GET /api/admin/clinic/blocked-dates
     public function blockedDates()
     {
-        $dates = ClinicClosure::where('type', 'blocked_date')
-            ->where('is_active', 1)
-            ->orderBy('start_date')
-            ->get()
-            ->map(fn($c) => [
-                'id'         => $c->id,
-                'start_date' => $c->start_date->toDateString(),
-                'end_date'   => $c->end_date->toDateString(),
-                'reason'     => $c->reason,
-                'created_at' => $c->created_at,
-            ]);
+        $dates = ClinicClosure::blockedDates();
 
         return response()->json(['success' => true, 'blocked_dates' => $dates]);
     }
@@ -133,8 +77,6 @@ class ClinicClosureController extends Controller
     // POST /api/admin/clinic/blocked-dates
     public function addBlockedDate(Request $request)
     {
-        $this->requireAdmin($request);
-
         $today = now()->toDateString();
 
         $request->validate([
@@ -174,8 +116,6 @@ class ClinicClosureController extends Controller
     // DELETE /api/admin/clinic/blocked-dates/{id}
     public function removeBlockedDate(Request $request, $id)
     {
-        $this->requireAdmin($request);
-
         $closure = ClinicClosure::where('id', $id)->where('type', 'blocked_date')->first();
 
         if (!$closure) {

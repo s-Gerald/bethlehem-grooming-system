@@ -7,7 +7,7 @@ const read = name => fs.readFileSync(path.join(__dirname, '..', 'scripts/compone
 async function clinicalDefaults() {
   const requests = [];
   const identity = {user: {role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian',
-    staff_permissions: {clinic_workspace: true}}};
+    staff_permissions: {clinic_workspace: true, availability_view: true, availability_manage: false}}};
   const context = {
     URLSearchParams, Date, Intl, setTimeout, clearTimeout,
     window: {location: {search: '?pos=2', hash: ''}, history: {state: null}, addEventListener() {}, removeEventListener() {}},
@@ -46,15 +46,16 @@ async function clinicalDefaults() {
   vm.runInContext(read('admin-settings.js'), context);
   context.document = {addEventListener() {}, removeEventListener() {}};
   const settings = context.adminSettings();
-  settings.loadAvailability = async () => {};
   await settings.init();
   assert.equal(settings.isAdmin, false, 'Settings relies on validated identity');
-  assert.equal(settings.canManageGroomers, false);
-  assert.equal(settings.availabilityService, 'clinic');
-  settings.editPetGroomer({id: 1, first_name: 'Staff'});
-  assert.equal(settings.petGroomerEditor, null);
-  await settings.savePetGroomer({first_name: 'Changed'}, 1);
-  assert.equal(settings.groomersOnDutySaving, false);
+  vm.runInContext(read('admin-availability.js'), context);
+  context.API.getAvailabilitySettings = async () => ({availability: {}, capacity: {used: 0, max: 15}, stopped_today: {clinic: false, grooming: false}});
+  const availability = context.adminAvailability(); await availability.init();
+  assert.equal(availability.canManage, false);
+  availability.editPetGroomer({id: 1, first_name: 'Staff'});
+  assert.equal(availability.petGroomerEditor, null);
+  await availability.savePetGroomer({first_name: 'Changed'}, 1);
+  assert.equal(availability.groomersOnDutySaving, false);
 }
 
 async function readOnlyInventory() {

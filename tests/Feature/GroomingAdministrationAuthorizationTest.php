@@ -115,6 +115,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('clinic_settings', function (Blueprint $table) {
+            $table->unsignedSmallInteger('grooming_cage_capacity')->default(20);
             $table->id();
             $table->unsignedTinyInteger('groomers_on_duty')->default(2);
             $table->time('clinic_open_time')->default('08:00:00');
@@ -131,6 +132,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ]);
 
         Schema::create('clinic_closures', function (Blueprint $table) {
+            $table->string('service', 16)->nullable();
             $table->id();
             $table->string('type');
             $table->date('start_date');
@@ -2533,6 +2535,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             if (str_starts_with($uri, 'api/admin/dashboard/')) {
                 $this->assertContains('staff:dashboard', $route->gatherMiddleware());
                 $this->assertNotContains('grooming', $route->gatherMiddleware());
+            } elseif (($uri === 'api/admin/clinic/settings/groomers-on-duty' || str_starts_with($uri, 'api/admin/pet-groomers'))) {
+                $this->assertContains('staff:availability_manage', $route->gatherMiddleware());
             } elseif (! str_starts_with($uri, 'api/admin/notifications') && $uri !== 'api/admin/transactions') {
                 $this->assertContains('grooming', $route->gatherMiddleware());
             } else {
@@ -3262,13 +3266,13 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             Schema::create($table, function (Blueprint $columns) { $columns->id(); $columns->unsignedBigInteger('clinic_appointment_id'); });
         }
         $directory = \Tests\Support\capacityRunDirectory();
-        $run = function (array $owners, array $payloads, string $action) use ($directory): array {
+        $run = function (array $owners, array $payloads, string|array $action) use ($directory): array {
             $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
                 'APP_ENV' => 'testing', 'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'MAIL_MAILER' => 'array'];
             $worker = base_path('tests/grooming-capacity-submit.php');
             $processes = [];
             foreach (['first', 'second'] as $index => $role) {
-                $processes[] = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, (string) $owners[$index], json_encode($payloads[$index]), $role, $action], base_path(), $environment);
+                $processes[] = new \Symfony\Component\Process\Process([PHP_BINARY, $worker, (string) $owners[$index], json_encode($payloads[$index]), $role, is_array($action) ? $action[$index] : $action], base_path(), $environment);
                 $processes[$index]->setTimeout(25);
             }
             try {
@@ -3325,6 +3329,37 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $before = DB::table('clinic_appointments')->where('id', $ids[0])->first();
             app(\App\Http\Controllers\AdminClinicController::class)->checkIn($ids[0], app(\App\Services\ClinicAppointmentSequence::class));
             $this->assertEquals($before, DB::table('clinic_appointments')->where('id', $ids[0])->first());
+            // Dynamic cage limit: real overlapping physical admissions must not exceed it.
+            $template = (array) DB::table('bookings')->where('status', 'checked_in')->first();
+            $pet = (array) DB::table('booking_pets')->where('booking_id', $template['booking_id'])->first();
+            unset($template['booking_id'], $pet['booking_pet_id']);
+            $pending = [];
+            foreach (['capacity-a', 'capacity-b'] as $reference) {
+                $id = DB::table('bookings')->insertGetId(array_replace($template, [
+                    'booking_reference' => $reference, 'status' => 'waiting_to_arrive', 'queue_number' => null, 'dropped_off_at' => null,
+                ]), 'booking_id');
+                DB::table('booking_pets')->insert(array_replace($pet, ['booking_id' => $id, 'pet_queue_number' => null, 'pet_queue_date' => null]));
+                $pending[] = $id;
+            }
+            \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 3]);
+            [$a, $b] = $run([101, 102], [['id' => $pending[0]], ['id' => $pending[1]]], 'grooming-check-in');
+            $this->assertSame([200, 422], [$a['status'], $b['status']]);
+            $this->assertSame(3, app(\App\Services\OperationalCapacity::class)->snapshot()['used']);
+            // A concurrent limit reduction must see the just-admitted pet.
+            DB::table('bookings')->where('booking_id', $pending[0])->update(['status' => 'waiting_to_arrive']);
+            \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 4]);
+            [$a, $b] = $run([101, 102], [['id' => $pending[0]], ['maximum' => 2]], ['grooming-check-in', 'capacity-update']);
+            $this->assertSame([200, 422], [$a['status'], $b['status']]);
+            $this->assertSame(4, \App\Models\ClinicSetting::current()->grooming_cage_capacity);
+            // Reversing acquisition order makes admission observe the reduced maximum.
+            DB::table('bookings')->where('booking_id', $pending[0])->update(['status' => 'waiting_to_arrive']);
+            [$a, $b] = $run([101, 102], [['maximum' => 2], ['id' => $pending[1]]], ['capacity-update', 'grooming-check-in']);
+            $this->assertSame([200, 422], [$a['status'], $b['status']]);
+            $this->assertSame(2, app(\App\Services\OperationalCapacity::class)->snapshot()['used']);
+            [$a, $b] = $run([101, 102], [['service' => 'clinic'], ['service' => 'clinic']], 'intake-stop');
+            $this->assertSame([200, 200], [$a['status'], $b['status']]);
+            $this->assertSame(1, DB::table('clinic_closures')->where('is_active', true)->where('service', 'clinic')->count());
+            $this->assertSame(['clinic' => true, 'grooming' => false], \App\Models\ClinicClosure::stoppedToday());
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
                 'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,

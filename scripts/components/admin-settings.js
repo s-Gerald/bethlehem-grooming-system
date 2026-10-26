@@ -2,59 +2,10 @@ function adminSettings() {
   const currentRole = typeof API !== "undefined" && typeof API.getUserRole === "function"
     ? API.getUserRole()
     : "admin";
-  const defaultAvailability = {
-    clinic: {
-      open_time: "08:00",
-      close_time: "17:00",
-    },
-    grooming: {
-      open_time: "08:00",
-      close_time: "17:00",
-    },
-  };
-
-  const clone = (value) => JSON.parse(JSON.stringify(value));
-
   return {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
-    canManageGroomers: false,
     activeSettingsTab: "general",
-    availabilityService: "clinic",
-    availability: clone(defaultAvailability),
-    savedAvailability: clone(defaultAvailability),
-    availabilityLoading: true,
-    availabilityLoaded: false,
-    availabilitySaving: false,
-    availabilityError: "",
-    availabilitySuccess: "",
-    intakeStopped: false,
-    intakeLoaded: false,
-    intakeLoading: false,
-    intakeError: "",
-    intakeSuccess: "",
-    _intakeRequest: null,
-    _intakeRefreshListener: null,
-    intakeModal: { open: false, action: "", busy: false, error: "" },
-    blockedDates: [],
-    blockedDatesLoading: false,
-    blockedDatesLoaded: false,
-    blockedDatesError: "",
-    _blockedDatesRequest: 0,
-    blockForm: {
-      startDate: "",
-      endDate: "",
-      reason: "",
-      busy: false,
-      error: "",
-      warning: "",
-    },
-
-    groomersOnDuty: 0,
-    petGroomers: [],
-    petGroomerEditor: null,
-    groomersOnDutySaving: false,
-    groomersOnDutyError: "",
     adminAccount: {
       email: "Admin email",
       username: "",
@@ -167,14 +118,6 @@ function adminSettings() {
       error: "",
     },
 
-    get activeAvailability() {
-      return this.availability[this.availabilityService];
-    },
-
-    get activeAvailabilityLabel() {
-      return this.availabilityService === "clinic" ? "Clinic" : "Grooming";
-    },
-
     get activeStaffCount() {
       return this.staffAccounts.filter((staff) => staff.state === "active").length;
     },
@@ -196,41 +139,25 @@ function adminSettings() {
     },
 
     async init() {
-      if (!['general', 'availability', 'capacity', 'security'].includes(this.activeSettingsTab)) this.activeSettingsTab = 'general';
+      const legacyTab = new URLSearchParams(window.location.search).get('tab') || window.location.hash?.slice(1);
+      if (['availability', 'capacity'].includes(legacyTab)) {
+        window.location.replace(new URL('availability.html' + (legacyTab === 'capacity' ? '?service=grooming' : ''), window.location.href));
+        return;
+      }
+      if (!['general', 'security'].includes(this.activeSettingsTab)) this.activeSettingsTab = 'general';
       if (API.getStaffIdentity) {
         try {
           const {user} = await API.getStaffIdentity();
           this.isAdmin = user.role === 'admin';
-          this.canManageGroomers = this.isAdmin || !!user.staff_permissions?.grooming;
-        } catch (error) {
-          this.availabilityError = error.message || 'Could not verify settings access.';
-          return;
-        }
-      } else this.canManageGroomers = this.isAdmin;
-      this._intakeRefreshListener = () => { void this.refreshIntakeStatus(); };
-      window.addEventListener?.('focus', this._intakeRefreshListener);
-      window.addEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
-      document.addEventListener?.('visibilitychange', this._intakeRefreshListener);
-      // settings.html?tab=security opens staff accounts (vaccination form's "Add veterinarian").
-      if (this.isAdmin && new URLSearchParams(window.location.search).get("tab") === "security") {
-        this.activeSettingsTab = "security";
+          this.isStaff = user.role === 'staff';
+        } catch (error) { this.staffError = error.message || 'Could not verify settings access.'; return; }
       }
-
-      await Promise.all([
-        this.loadAvailability(),
-        this.activeSettingsTab === "security" ? this.selectSettingsTab("security") : Promise.resolve(),
-      ]);
-
+      if (legacyTab === 'security') await this.selectSettingsTab('security');
     },
 
     selectSettingsTab(tab) {
-      if (!['general', 'availability', 'capacity', 'security'].includes(tab)) tab = 'general';
-      const changed = this.activeSettingsTab !== tab;
+      if (!['general', 'security'].includes(tab)) tab = 'general';
       this.activeSettingsTab = tab;
-      if (tab === "availability") {
-        if (!changed && (this.intakeLoaded || this._intakeRequest)) return this._intakeRequest || Promise.resolve();
-        return Promise.all([this.loadIntakeStatus(), this.loadBlockedDates()]);
-      }
       if (tab !== "security" || this.staffLoaded) return Promise.resolve();
       if (this._securityRequest) return this._securityRequest;
       this._securityRequest = (this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount())
@@ -244,178 +171,6 @@ function adminSettings() {
       window.clearInterval(this._staffRecoveryResendTimer);
       window.clearTimeout(this._staffRecoveryExpiryTimer);
       ++this._ownAccountRevision;
-      window.removeEventListener?.('focus', this._intakeRefreshListener);
-      window.removeEventListener?.('admin-session:unlocked', this._intakeRefreshListener);
-      document.removeEventListener?.('visibilitychange', this._intakeRefreshListener);
-    },
-
-    refreshIntakeStatus() {
-      if (this.activeSettingsTab !== "availability" || document.visibilityState === 'hidden'
-        || API.isSessionLocked?.() || this.intakeModal.busy || this.intakeModal.open) return Promise.resolve();
-      return this.loadIntakeStatus();
-    },
-
-    loadIntakeStatus() {
-      if (this._intakeRequest) return this._intakeRequest;
-      this.intakeLoading = true;
-      this.intakeError = "";
-      this._intakeRequest = API.getClinicStatus({ force: true }).then(data => {
-        this.intakeStopped = Boolean(data.stopped_today);
-        this.intakeLoaded = true;
-        return true;
-      }).catch(error => {
-        this.intakeError = error.message || "Could not load today's intake status.";
-        return false;
-      }).finally(() => {
-        this.intakeLoading = false;
-        this._intakeRequest = null;
-      });
-      return this._intakeRequest;
-    },
-
-    async openIntakeConfirmation() {
-      if (!this.isAdmin || this.intakeLoading || this.intakeModal.busy || this.intakeModal.open) return;
-      this.intakeSuccess = "";
-      if (!await this.loadIntakeStatus() || this.activeSettingsTab !== "availability") return;
-      this.intakeModal = { open: true, action: this.intakeStopped ? "reopen" : "stop", busy: false, error: "" };
-      this.$nextTick?.(() => this.$refs?.intakeCancel?.focus());
-    },
-
-    closeIntakeConfirmation() {
-      if (this.intakeModal.busy) return;
-      this.intakeModal.open = false;
-      this.$nextTick?.(() => this.$refs?.intakeAction?.focus());
-    },
-
-    async executeIntakeAction() {
-      if (!this.isAdmin || !this.intakeModal.open || this.intakeModal.busy
-        || !["stop", "reopen"].includes(this.intakeModal.action)) return;
-      const stopping = this.intakeModal.action === "stop";
-      this.intakeModal.busy = true;
-      this.intakeModal.error = "";
-      try {
-        if (stopping) await API.adminStopToday();
-        else await API.adminReopenToday();
-        this.intakeStopped = stopping;
-        this.intakeSuccess = stopping ? "Intake stopped for today." : "Intake reopened.";
-        await this.loadIntakeStatus();
-        this.intakeModal.open = false;
-        window.showSuccessToast?.(this.intakeSuccess);
-        this.$nextTick?.(() => this.$refs?.intakeAction?.focus());
-      } catch (error) {
-        this.intakeModal.error = error.message || "Could not change intake. Please try again.";
-      } finally {
-        this.intakeModal.busy = false;
-      }
-    },
-
-    clearBlockedDateForm() {
-      this.blockForm = {
-        startDate: "",
-        endDate: "",
-        reason: "",
-        busy: false,
-        error: "",
-        warning: "",
-      };
-    },
-
-    async loadBlockedDates() {
-      const request = ++this._blockedDatesRequest;
-      this.blockedDatesLoading = true;
-      this.blockedDatesError = "";
-      try {
-        const data = await API.getBlockedDates();
-        if (request !== this._blockedDatesRequest) return;
-        this.blockedDates = data.blocked_dates || [];
-        this.blockedDatesLoaded = true;
-      } catch {
-        if (request === this._blockedDatesRequest) this.blockedDatesError = "Could not load blocked dates.";
-      } finally {
-        if (request === this._blockedDatesRequest) this.blockedDatesLoading = false;
-      }
-    },
-
-    async submitBlockedDate() {
-      if (!this.isAdmin) return;
-
-      this.blockForm.error = "";
-      this.blockForm.warning = "";
-
-      if (!this.blockForm.startDate || !this.blockForm.endDate) {
-        this.blockForm.error = "Please select both a start and end date.";
-        return;
-      }
-      if (this.blockForm.endDate < this.blockForm.startDate) {
-        this.blockForm.error = "End date cannot be before start date.";
-        return;
-      }
-
-      this.blockForm.busy = true;
-      try {
-        const res = await API.addBlockedDate({
-          start_date: this.blockForm.startDate,
-          end_date:   this.blockForm.endDate,
-          reason:     this.blockForm.reason || null,
-        });
-        if (res.conflict_warning) {
-          this.blockForm.warning = res.conflict_warning;
-        }
-        this.blockForm.startDate = "";
-        this.blockForm.endDate   = "";
-        this.blockForm.reason    = "";
-        await this.loadBlockedDates();
-      } catch (err) {
-        this.blockForm.error = err.message || "Failed to block dates. Please try again.";
-      } finally {
-        this.blockForm.busy = false;
-      }
-    },
-
-    async removeBlockedDate(id) {
-      if (!this.isAdmin) return;
-
-      try {
-        await API.removeBlockedDate(id);
-        this.blockedDates = this.blockedDates.filter(b => b.id !== id);
-      } catch (err) {
-        alert(err.message || "Failed to remove blocked date.");
-      }
-    },
-
-    normalizeAvailability(payload) {
-      const normalized = clone(defaultAvailability);
-
-      for (const service of ["clinic", "grooming"]) {
-        const settings = payload?.[service];
-        if (!settings) continue;
-
-        normalized[service] = {
-          open_time: settings.open_time || normalized[service].open_time,
-          close_time: settings.close_time || normalized[service].close_time,
-        };
-      }
-
-      return normalized;
-    },
-
-    async loadAvailability() {
-      this.availabilityLoading = true;
-      this.availabilityError = "";
-
-      try {
-        const response = await API.getAvailabilitySettings();
-        this.availability = this.normalizeAvailability(response.availability);
-        this.savedAvailability = clone(this.availability);
-        this.groomersOnDuty = Number(response.groomers_on_duty) || 0;
-        this.petGroomers = response.pet_groomers || [];
-        this.availabilityLoaded = true;
-      } catch (error) {
-        this.availabilityError =
-          error.message || "Could not load availability settings.";
-      } finally {
-        this.availabilityLoading = false;
-      }
     },
 
     accountRoleLabel(account) {
@@ -720,31 +475,6 @@ function adminSettings() {
       }
     },
 
-    editPetGroomer(person = null) {
-      if (!this.canManageGroomers) return;
-      this.petGroomerEditor = { id: person?.id ?? null, first_name: person?.first_name || "" };
-      this.groomersOnDutyError = "";
-      this.$nextTick(() => document.getElementById("petGroomerFirstName")?.focus());
-    },
-
-    async savePetGroomer(data, id = null, toggle = null) {
-      if (!this.canManageGroomers) return;
-      if (this.groomersOnDutySaving) return;
-      this.groomersOnDutySaving = true;
-      this.groomersOnDutyError = "";
-      try {
-        const response = await API.adminSavePetGroomer(data, id);
-        this.petGroomers = response.pet_groomers;
-        this.groomersOnDuty = response.groomers_on_duty;
-        if (!toggle) this.petGroomerEditor = null;
-      } catch (error) {
-        this.groomersOnDutyError = error.message || "Could not save Pet Groomer.";
-        if (toggle) toggle.checked = this.petGroomers.find((person) => person.id === id)?.on_duty || false;
-      } finally {
-        this.groomersOnDutySaving = false;
-      }
-    },
-
     loadSecurityAccounts() {
       const epoch = API.getAdminDataRevision?.();
       if (this._staffAccountsRequest && this._staffAccountsEpoch === epoch) return this._staffAccountsRequest;
@@ -794,56 +524,6 @@ function adminSettings() {
         statusLabel: state === "pending" ? "Pending setup" : state === "active" ? "Active" : "Deactivated",
         statusClass: state === "pending" ? "bg-amber-50 text-amber-700" : state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
       };
-    },
-
-    selectAvailabilityService(service) {
-      if (!["clinic", "grooming"].includes(service)) return;
-
-      this.availabilityService = service;
-      this.availabilityError = "";
-      this.availabilitySuccess = "";
-    },
-
-    resetAvailability() {
-      this.availability[this.availabilityService] = clone(
-        this.savedAvailability[this.availabilityService],
-      );
-      this.availabilityError = "";
-      this.availabilitySuccess = "";
-    },
-
-    async saveAvailability() {
-      const settings = this.activeAvailability;
-      this.availabilityError = "";
-      this.availabilitySuccess = "";
-
-      if (
-        !settings.open_time ||
-        !settings.close_time
-      ) {
-        this.availabilityError = "Complete all availability time fields.";
-        return;
-      }
-
-      this.availabilitySaving = true;
-
-      try {
-        const response = await API.adminUpdateAvailability({
-          service: this.availabilityService,
-          open_time: settings.open_time,
-          close_time: settings.close_time,
-        });
-
-        this.availability = this.normalizeAvailability(response.availability);
-        this.savedAvailability = clone(this.availability);
-        this.availabilitySuccess =
-          response.message || `${this.activeAvailabilityLabel} availability updated.`;
-      } catch (error) {
-        this.availabilityError =
-          error.message || "Could not save availability settings.";
-      } finally {
-        this.availabilitySaving = false;
-      }
     },
 
     passwordValidationError(password, confirmation, required = true) {

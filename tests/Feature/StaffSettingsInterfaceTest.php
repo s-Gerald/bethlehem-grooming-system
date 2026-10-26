@@ -13,14 +13,8 @@ class StaffSettingsInterfaceTest extends TestCase
         foreach ([
             '>SYSTEM SETTINGS</p>',
             '>General</span>',
-            '>Availability</span>',
-            '>Capacity</span>',
             '>Security</span>',
             'These settings are managed by an administrator.',
-            'x-show="canManageGroomers"',
-            '>Groomers on Duty</h3>',
-            'Add Pet Groomer',
-            'person.on_duty',
             'x-show="isStaff"',
             'x-show="isAdmin"',
         ] as $expected) {
@@ -54,9 +48,19 @@ class StaffSettingsInterfaceTest extends TestCase
         $settings = file_get_contents(base_path('pages/admin/settings.html'));
         $appointments = file_get_contents(base_path('pages/admin/appointments.html'));
 
-        $this->assertStringContainsString('>Groomers on Duty</h3>', $settings);
+        $availability = file_get_contents(base_path('resources/views/admin/availability.html'));
+        $this->assertStringContainsString('>Groomers on Duty</h3>', $availability);
+        $this->assertStringNotContainsString("activeSettingsTab === 'availability'", $settings);
+        $this->assertStringNotContainsString("activeSettingsTab === 'capacity'", $settings);
+        $this->assertStringNotContainsString('Advance Pre-register Window', $availability);
+        $this->assertStringContainsString('person.on_duty', $availability);
         $this->assertStringNotContainsString('>Groomers on duty</span>', $appointments);
         $this->assertStringContainsString('Queued (', $appointments);
+    }
+
+    public function test_availability_page_redirect_preserves_the_legacy_capacity_destination(): void
+    {
+        $this->get('/pages/admin/availability.html?service=grooming')->assertRedirect('api/admin/availability/page?service=grooming');
     }
 
     public function test_staff_can_reach_settings_from_the_shared_admin_shell(): void

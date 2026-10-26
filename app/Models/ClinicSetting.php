@@ -13,6 +13,10 @@ class ClinicSetting extends Model
 
     public const SINGLETON_ID = 1;
 
+    public const DEFAULT_CAGE_CAPACITY = 20;
+
+    public const MAX_CAGE_CAPACITY = 500;
+
     public const MIN_GROOMERS_ON_DUTY = 0;
 
     public const MAX_GROOMERS_ON_DUTY = 5;
@@ -30,10 +34,12 @@ class ClinicSetting extends Model
         'clinic_close_time',
         'grooming_open_time',
         'grooming_close_time',
+        'grooming_cage_capacity',
     ];
 
     protected $casts = [
         'groomers_on_duty' => 'integer',
+        'grooming_cage_capacity' => 'integer',
     ];
 
     public static function current(bool $lockForUpdate = false): self

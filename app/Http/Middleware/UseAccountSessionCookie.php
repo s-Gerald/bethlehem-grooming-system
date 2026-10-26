@@ -17,7 +17,7 @@ class UseAccountSessionCookie
         $bearer = $request->bearerToken();
         $cookie = $request->cookie(self::NAME);
         // The protected HTML page uses normal same-origin navigation, without a JS bearer header.
-        if ($request->is('api/admin/activity-log/page') && ! $bearer && is_string($cookie)) {
+        if ($request->is('api/admin/activity-log/page', 'api/admin/availability/page') && ! $bearer && is_string($cookie)) {
             $request->headers->set('Authorization', 'Bearer '.$cookie);
         }
         $cookieRequest = is_string($bearer) && preg_match('/^(\d+)\|cookie$/D', $bearer, $match);

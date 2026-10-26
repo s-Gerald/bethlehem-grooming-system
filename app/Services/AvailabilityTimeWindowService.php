@@ -93,9 +93,9 @@ class AvailabilityTimeWindowService
         return substr($startTime, 0, 8).'-'.substr($endTime, 0, 8);
     }
 
-    public function isClosed(string $date): bool
+    public function isClosed(string $date, string $service): bool
     {
-        return ClinicClosure::query()->where('is_active', true)
+        return ClinicClosure::query()->forService($service)->where('is_active', true)
             ->whereDate('start_date', '<=', $date)
             ->whereDate('end_date', '>=', $date)
             ->whereIn('type', ['blocked_date', 'stop_today'])->exists();
@@ -103,7 +103,7 @@ class AvailabilityTimeWindowService
 
     public function preferredWindows(ClinicSetting $settings, string $service, string $date): Collection
     {
-        $closed = $this->isClosed($date);
+        $closed = $this->isClosed($date, $service);
 
         return $this->availableWindows($settings, $service)->map(fn (TimeWindow $window) => [
             'window_id' => $window->window_id,
@@ -117,7 +117,7 @@ class AvailabilityTimeWindowService
 
     public function assertPreferredArrival(ClinicSetting $settings, string $service, string $date, TimeWindow $window): void
     {
-        if ($this->isClosed($date)
+        if ($this->isClosed($date, $service)
             || ! $window->is_active
             || ! $settings->isWindowWithinOperatingHours($service, $window->start_time, $window->end_time)) {
             throw ValidationException::withMessages([

@@ -21,7 +21,7 @@ class RegistrationServiceDay
         if ($now->format('H:i') >= $hours['close_time']) $day->addDay();
 
         // One query; jump over closures instead of querying every closed day.
-        $closures = ClinicClosure::query()->where('is_active', true)
+        $closures = ClinicClosure::query()->forService($service)->where('is_active', true)
             ->whereDate('end_date', '>=', $day->toDateString())
             ->whereIn('type', ['blocked_date', 'stop_today'])->orderBy('start_date')->get();
         foreach ($closures as $closure) {
@@ -39,6 +39,6 @@ class RegistrationServiceDay
         $now = Carbon::now('Asia/Manila');
         return ClinicSetting::current()->isWithinOperatingHours($service, $now)
             && ! ($now->format('H:i') >= '12:00' && $now->format('H:i') < '13:00')
-            && ! app(AvailabilityTimeWindowService::class)->isClosed($now->toDateString());
+            && ! app(AvailabilityTimeWindowService::class)->isClosed($now->toDateString(), $service);
     }
 }

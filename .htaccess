@@ -1,8 +1,8 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    RewriteRule ^pages/admin/activity-log\.html$ public/index.php [L]
-    RewriteRule ^resources/views/admin/activity-log\.html$ - [F,L]
+    RewriteRule ^pages/admin/(activity-log|availability)\.html$ public/index.php [L]
+    RewriteRule ^resources/views/admin/(activity-log|availability)\.html$ - [F,L]
 
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f

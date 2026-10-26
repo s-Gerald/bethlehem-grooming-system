@@ -158,6 +158,7 @@ var API = (() => {
     if (/^\/admin\/dashboard\/(summary|activity)$/.test(path)) return { group: "dashboard", fresh: 15000, retain: 120000 };
     if (path === "/admin/grooming/activity") return { group: "grooming", fresh: 15000, retain: 60000 };
     if (path === "/admin/notifications") return { group: "notifications", fresh: params.get('mode') === 'count' ? 30000 : 10000, retain: 60000 };
+    if (path === "/admin/clinic/settings/availability") return { group: "availability", fresh: 0, retain: 0, persist: false };
     if (path === "/clinic/status") return { group: "clinic-status", fresh: 15000, retain: 30000 };
     if (path === "/admin/customers") return params.get("search")
       ? { group: "customers", fresh: 5000, retain: 15000, persist: false }
@@ -257,7 +258,7 @@ var API = (() => {
       }
     }
     else if (path === "/admin/walk-in") groups = ["grooming", "dashboard", "notifications", "customers", "clinic-records"];
-    else if (/^\/admin\/clinic\/(stop-today|reopen-today)$/.test(path)) groups = ["clinic-status"];
+    else if (/^\/admin\/clinic\/(stop-today|reopen-today)$/.test(path)) groups = ["clinic-status", "availability", "dashboard", "grooming"];
     else if (/^\/admin\/(customers|customer-pets)(?:\/|$)/.test(path)) groups = ["customers", "clinic-records", "clinic-active"];
     else if (/^\/admin\/pets\//.test(path)) {
       groups = /\/vaccinations(?:\/|$)/.test(path) ? ["clinic-active"]
@@ -268,10 +269,13 @@ var API = (() => {
       if (/\/(check-in|cancel|finish|finish-consultation|pay)$/.test(path) || path === "/admin/clinic-walk-in") groups.push("notifications");
       if (/\/confinement(?:\/|$)/.test(path)) groups.push("clinic-confined");
       if (path === "/admin/clinic-walk-in" || path === "/admin/clinic-cases") groups.push("customers", "clinic-records");
-    } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) {
-      groups = ["grooming", "dashboard"];
+    } else if (/^\/(?:settings\/availability|admin\/clinic\/settings\/(?:availability|capacity|groomers-on-duty)|admin\/pet-groomers|admin\/grooming\/services)/.test(path)) {
+      groups = ["grooming", "dashboard", "availability", "clinic-status"];
       if (path.startsWith('/admin/grooming/services')) groups.push('services-grooming');
     }
+    if (/^\/admin\/clinic\/blocked-dates(?:\/|$)/.test(path)) groups.push('availability', 'clinic-status', 'dashboard', 'grooming');
+    if (groups.includes('grooming')) groups.push('availability');
+    if (groups.includes('availability')) invalidateCustomerCache('capacity');
     if (/^\/admin\/bookings\/[^/]+\/(pay|pay-now|online-payment)$/.test(path)) groups.push('inventory');
     invalidateAdminCache(groups);
   }
@@ -756,7 +760,8 @@ var API = (() => {
 
   function isAdminPage() {
     return window.location.pathname.replace(/\\/g, "/").includes("/pages/admin/")
-      || window.location.pathname.endsWith("/api/admin/activity-log/page");
+      || window.location.pathname.endsWith("/api/admin/activity-log/page")
+      || window.location.pathname.endsWith("/api/admin/availability/page");
   }
 
   function isSignInPage() {
@@ -1456,7 +1461,10 @@ var API = (() => {
       if (event.key === ADMIN_DATA_CHANGED_KEY && event.newValue) {
         try {
           const change = JSON.parse(event.newValue);
-          if (change.owner === activitySessionId(getAuthSession()) && Array.isArray(change.groups)) invalidateAdminCache(change.groups, false);
+          if (Array.isArray(change.groups)) {
+            if (change.owner === activitySessionId(getAuthSession())) invalidateAdminCache(change.groups, false);
+            if (change.groups.includes('availability')) invalidateCustomerCache('capacity');
+          }
         } catch { /* Ignore malformed cross-tab signals. */ }
       }
 
@@ -2480,13 +2488,13 @@ var API = (() => {
     return request("GET", "/clinic/status", null, null, { force });
   }
 
-  async function adminStopToday(reason = null) {
+  async function adminStopToday(service) {
     // POST /api/admin/clinic/stop-today  (protected — admin token)
-    return request("POST", "/admin/clinic/stop-today", { reason }, getAdminToken());
+    return request("POST", "/admin/clinic/stop-today", { service }, getAdminToken());
   }
 
-  async function adminReopenToday() {
-    return request("POST", "/admin/clinic/reopen-today", null, getAdminToken());
+  async function adminReopenToday(service) {
+    return request("POST", "/admin/clinic/reopen-today", { service }, getAdminToken());
   }
 
   async function adminUpdateGroomersOnDuty(groomersOnDuty) {
@@ -2506,13 +2514,18 @@ var API = (() => {
     return request(id === null ? "POST" : "PATCH", `/admin/pet-groomers${id === null ? "" : `/${id}`}`, data, getAdminToken());
   }
 
-  async function getAvailabilitySettings() {
+  async function getAvailabilitySettings(options = {}) {
     return request(
       "GET",
       "/admin/clinic/settings/availability",
       null,
       getAdminToken(),
+      options,
     );
+  }
+
+  async function adminUpdateCapacity(payload) {
+    return request('PATCH', '/admin/clinic/settings/capacity', payload, getAdminToken());
   }
 
   async function adminUpdateAvailability(payload) {
@@ -3221,6 +3234,7 @@ var API = (() => {
     adminSavePetGroomer,
     getAvailabilitySettings,
     adminUpdateAvailability,
+    adminUpdateCapacity,
     getAdminSecurityAccounts,
     getSettingsSecurityAccount,
     validateStaffProfile,

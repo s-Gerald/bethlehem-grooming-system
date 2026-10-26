@@ -152,6 +152,7 @@ class AdminDashboardSummaryTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
 
         Schema::create('clinic_closures', function (Blueprint $table) {
+            $table->string('service', 16)->nullable();
             $table->id(); $table->string('type'); $table->date('start_date'); $table->date('end_date');
             $table->boolean('is_active')->default(true);
         });

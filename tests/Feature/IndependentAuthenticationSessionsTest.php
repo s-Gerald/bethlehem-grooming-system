@@ -264,6 +264,23 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->requestAs($new, 'GET', '/api/me')->assertOk();
     }
 
+    public function test_availability_html_navigation_authenticates_the_http_only_cookie(): void
+    {
+        $token = $this->login('admin');
+        $this->app['auth']->forgetGuards();
+        $this->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$token])->withCredentials();
+        $this->get('/api/admin/availability/page', ['Accept' => 'text/html'])->assertOk()->assertHeader('Content-Type', 'text/html; charset=UTF-8');
+        $customer = $this->login('customer');
+        $this->app['auth']->forgetGuards();
+        $this->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$customer]);
+        $this->get('/api/admin/availability/page', ['Accept' => 'text/html'])->assertForbidden();
+    }
+
+    public function test_guest_html_availability_navigation_returns_unauthorized_without_a_login_route(): void
+    {
+        $this->get('/api/admin/availability/page', ['Accept' => 'text/html'])->assertUnauthorized();
+    }
+
     public function test_cookie_transport_requires_both_cookie_and_bound_identifier_and_rejects_csrf(): void
     {
         $publicId = $this->login('customer');

@@ -4,14 +4,13 @@ namespace App\Services;
 
 use App\Models\BookingPet;
 use App\Models\ClinicAppointment;
+use App\Models\ClinicSetting;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class OperationalCapacity
 {
-    public const MAX_PETS = 20;
-
     public function onSiteGroomingPets(): Builder
     {
         // Released means paid and ready for pickup. Physical pickup archives the booking.
@@ -41,17 +40,18 @@ class OperationalCapacity
                 ->whereIn('status', ['checked_in', 'in_progress']));
     }
 
-    public function snapshot(): array
+    public function snapshot(?ClinicSetting $settings = null): array
     {
         $used = Schema::hasTable('booking_pets') ? $this->onSiteGroomingPets()->count() : 0;
+        $maximum = ($settings ?? ClinicSetting::current())->grooming_cage_capacity ?? ClinicSetting::DEFAULT_CAGE_CAPACITY;
 
         return [
             'current' => $used,
             'used' => $used,
-            'max' => self::MAX_PETS,
-            'remaining' => max(0, self::MAX_PETS - $used),
-            'percent' => min(100, round($used / self::MAX_PETS * 100)),
-            'is_full' => $used >= self::MAX_PETS,
+            'max' => $maximum,
+            'remaining' => max(0, $maximum - $used),
+            'percent' => min(100, round($used / $maximum * 100)),
+            'is_full' => $used >= $maximum,
         ];
     }
 
@@ -75,7 +75,8 @@ class OperationalCapacity
             ]);
         }
 
-        if ($service === 'grooming' && $this->snapshot()['used'] + $pets > self::MAX_PETS) {
+        $capacity = $service === 'grooming' ? $this->snapshot() : null;
+        if ($capacity && $capacity['used'] + $pets > $capacity['max']) {
             throw ValidationException::withMessages([
                 'check_in' => 'Grooming capacity is full or cannot accommodate all these pets. Please wait until space is available.',
             ]);

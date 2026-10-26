@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Protected HTML routes use the same sign-in destination as the frontend.
+        // API authentication errors still render the JSON 401 response below.
+        $middleware->redirectGuestsTo('/pages/client/sign-in.html');
         // Validate grooming price input as entered, including malformed whitespace.
         $middleware->trimStrings(except: [
             fn ($request) => $request->is('api/admin/grooming/services/*/pricing'),

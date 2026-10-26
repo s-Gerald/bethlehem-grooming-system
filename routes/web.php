@@ -18,6 +18,9 @@ $staticFileMiddleware = [
 ];
 
 // Keep the page outside the public static tree; its HTML is admin-authorized too.
+Route::get('/pages/admin/availability.html', fn (\Illuminate\Http\Request $request) => redirect('api/admin/availability/page'.($request->getQueryString() ? '?'.$request->getQueryString() : '')))
+    ->withoutMiddleware($staticFileMiddleware);
+
 Route::get('/pages/admin/activity-log.html', fn () => redirect('api/admin/activity-log/page'))
     ->withoutMiddleware($staticFileMiddleware);
 

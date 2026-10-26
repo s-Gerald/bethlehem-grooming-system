@@ -371,7 +371,9 @@ function adminDashboard() {
     _dashboardAccessRevision: 0,
     waitingNow: 0,
     currentCapacity: 0,
-    maxCapacity: 20,
+    maxCapacity: 0,
+    remainingCapacity: 0,
+    utilizationPercent: 0,
     recentActivity: [],
     detailsModalOpen: false,
     detailsBooking: null,
@@ -1609,6 +1611,9 @@ function adminDashboard() {
         this.currentCapacity = nextPayload.currentCapacity;
       }
 
+      if ("remainingCapacity" in nextPayload) this.remainingCapacity = nextPayload.remainingCapacity;
+      if ("utilizationPercent" in nextPayload) this.utilizationPercent = nextPayload.utilizationPercent;
+
       if ("maxCapacity" in nextPayload) {
         this.maxCapacity = nextPayload.maxCapacity;
       }
@@ -1737,6 +1742,9 @@ function adminDashboard() {
           this.currentCapacity,
         );
       }
+
+      if (this.hasValue(payload.remainingCapacity) || this.hasValue(capacity.remaining)) nextPayload.remainingCapacity = this.toNumber(payload.remainingCapacity ?? capacity.remaining, 0);
+      if (this.hasValue(payload.utilizationPercent) || this.hasValue(capacity.percent)) nextPayload.utilizationPercent = this.toNumber(payload.utilizationPercent ?? capacity.percent, 0);
 
       if (this.hasValue(payload.maxCapacity) || this.hasValue(capacity.max)) {
         nextPayload.maxCapacity = this.toNumber(
@@ -2368,6 +2376,8 @@ function adminDashboard() {
         waitingNow: this.waitingNow,
         currentCapacity: this.currentCapacity,
         maxCapacity: this.maxCapacity,
+        remainingCapacity: this.remainingCapacity,
+        utilizationPercent: this.utilizationPercent,
         activeGroomers: this.activeGroomers,
         activeGroomingPets: this.activeGroomingPets,
         recentActivity: [...this.recentActivity],
@@ -2922,13 +2932,11 @@ function adminDashboard() {
     },
 
     get availableCapacity() {
-      return Math.max(0, this.maxCapacity - this.currentCapacity);
+      return this.remainingCapacity;
     },
 
     get capacityPercent() {
-      return this.maxCapacity > 0
-        ? Math.min(100, Math.max(0, this.currentCapacity / this.maxCapacity * 100))
-        : 0;
+      return this.utilizationPercent;
     },
 
     todayQueuePreview() {

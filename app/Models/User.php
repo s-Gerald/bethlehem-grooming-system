@@ -193,6 +193,8 @@ class User extends Authenticatable
         $inventory = $admin || $this->role === 'staff';
         return [
             'dashboard' => $this->canAccessGrooming() || $this->isVeterinarian(),
+            'availability_view' => $admin || $this->isReceptionist() || $this->isVeterinarian(),
+            'availability_manage' => $admin || $this->isReceptionist(),
             'grooming' => $this->canAccessGrooming(),
             'grooming_services_view' => $this->canAccessGrooming(),
             'services_manage' => $admin,

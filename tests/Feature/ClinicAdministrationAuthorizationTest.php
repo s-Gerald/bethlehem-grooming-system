@@ -173,6 +173,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('clinic_closures', function (Blueprint $table) {
+            $table->string('service', 16)->nullable();
             $table->id();
             $table->string('type');
             $table->date('start_date');
@@ -184,6 +185,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('clinic_settings', function (Blueprint $table) {
+            $table->unsignedSmallInteger('grooming_cage_capacity')->default(20);
             $table->id();
             $table->unsignedTinyInteger('groomers_on_duty')->default(2);
             $table->time('clinic_open_time')->default('08:00:00');
@@ -314,6 +316,18 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public static function unauthenticatedClinicRoutes(): array
     {
         return [
+            'availability page' => ['GET', '/api/admin/availability/page'],
+            'availability settings' => ['GET', '/api/admin/clinic/settings/availability'],
+            'capacity edit' => ['PATCH', '/api/admin/clinic/settings/capacity', ['maximum' => 10]],
+            'stop intake' => ['POST', '/api/admin/clinic/stop-today', ['service' => 'clinic']],
+            'reopen intake' => ['POST', '/api/admin/clinic/reopen-today', ['service' => 'grooming']],
+            'hours edit' => ['PATCH', '/api/admin/clinic/settings/availability', ['service' => 'clinic']],
+            'blocked date list' => ['GET', '/api/admin/clinic/blocked-dates'],
+            'blocked date add' => ['POST', '/api/admin/clinic/blocked-dates'],
+            'blocked date remove' => ['DELETE', '/api/admin/clinic/blocked-dates/1'],
+            'groomer add' => ['POST', '/api/admin/pet-groomers'],
+            'groomer edit' => ['PATCH', '/api/admin/pet-groomers/1'],
+
             'current clinic case' => ['GET', '/api/admin/pets/1/clinic-case'],
             'appointment listing' => ['GET', '/api/admin/clinic-appointments'],
             'clinic archive listing' => ['GET', '/api/admin/clinic-appointments/archived'],
@@ -342,6 +356,18 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public static function customerForbiddenClinicRoutes(): array
     {
         return [
+            'availability page' => ['GET', '/api/admin/availability/page'],
+            'availability settings' => ['GET', '/api/admin/clinic/settings/availability'],
+            'capacity edit' => ['PATCH', '/api/admin/clinic/settings/capacity', ['maximum' => 10]],
+            'stop intake' => ['POST', '/api/admin/clinic/stop-today', ['service' => 'clinic']],
+            'reopen intake' => ['POST', '/api/admin/clinic/reopen-today', ['service' => 'grooming']],
+            'hours edit' => ['PATCH', '/api/admin/clinic/settings/availability', ['service' => 'clinic']],
+            'blocked date list' => ['GET', '/api/admin/clinic/blocked-dates'],
+            'blocked date add' => ['POST', '/api/admin/clinic/blocked-dates'],
+            'blocked date remove' => ['DELETE', '/api/admin/clinic/blocked-dates/1'],
+            'groomer add' => ['POST', '/api/admin/pet-groomers'],
+            'groomer edit' => ['PATCH', '/api/admin/pet-groomers/1'],
+
             'current clinic case' => ['GET', '/api/admin/pets/1/clinic-case'],
             'view appointments and detailed records' => ['GET', '/api/admin/clinic-appointments'],
             'view archived clinic records' => ['GET', '/api/admin/clinic-appointments/archived'],
@@ -2046,13 +2072,13 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseCount('clinic_appointments', 3);
     }
 
-    public function test_staff_can_view_but_cannot_modify_administrator_managed_availability(): void
+    public function test_veterinarian_can_view_but_cannot_modify_availability(): void
     {
         $this->authenticateAs('staff');
 
         $this->getJson('/api/clinic/status')
             ->assertOk()
-            ->assertJsonPath('stopped_today', false);
+            ->assertJsonPath('stopped_today.clinic', false)->assertJsonPath('stopped_today.grooming', false);
 
         foreach (['stop-today', 'reopen-today'] as $action) {
             $this->postJson('/api/admin/clinic/'.$action)
@@ -2090,6 +2116,52 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertExactJson(self::FORBIDDEN_RESPONSE);
     }
 
+    public function test_availability_role_permissions_and_cross_service_mutations(): void
+    {
+        foreach (['admin', 'grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $role) {
+            $this->authenticateAs($role === 'admin' ? 'admin' : 'staff', subrole: $role, staffType: $role === 'grooming_receptionist' ? 'grooming' : 'clinic');
+            $this->get('/api/admin/availability/page')->assertOk();
+            $this->getJson('/api/admin/clinic/settings/availability')->assertOk()->assertJsonPath('capacity.max', 20);
+            $mutations = [
+                ['POST', '/api/admin/clinic/stop-today', ['service' => 'clinic']],
+                ['POST', '/api/admin/clinic/stop-today', ['service' => 'grooming']],
+                ['POST', '/api/admin/clinic/reopen-today', ['service' => 'clinic']],
+                ['POST', '/api/admin/clinic/reopen-today', ['service' => 'grooming']],
+                ['PATCH', '/api/admin/clinic/settings/availability', ['service' => 'clinic', 'open_time' => '08:00', 'close_time' => '17:00']],
+                ['PATCH', '/api/admin/clinic/settings/availability', ['service' => 'grooming', 'open_time' => '08:00', 'close_time' => '17:00']],
+                ['PATCH', '/api/admin/clinic/settings/capacity', ['maximum' => 20]],
+                ['POST', '/api/admin/pet-groomers', ['first_name' => 'Test']],
+                ['PATCH', '/api/admin/pet-groomers/1', ['first_name' => 'Renamed']],
+                ['POST', '/api/admin/clinic/blocked-dates', ['start_date' => now()->addDay()->toDateString(), 'end_date' => now()->addDay()->toDateString()]],
+            ];
+            foreach ($mutations as [$method, $uri, $data]) {
+                $response = $this->json($method, $uri, $data);
+                if ($role === 'veterinarian') $response->assertForbidden();
+                else $response->assertSuccessful();
+            }
+            $id = DB::table('clinic_closures')->where('type', 'blocked_date')->value('id') ?? 1;
+            $response = $this->deleteJson('/api/admin/clinic/blocked-dates/'.$id);
+            if ($role === 'veterinarian') $response->assertForbidden();
+            else $response->assertOk();
+            DB::table('clinic_closures')->delete();
+        }
+        $this->authenticateAs('customer');
+        $this->get('/api/admin/availability/page')->assertForbidden();
+        $this->getJson('/api/admin/clinic/settings/availability')->assertForbidden();
+        $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => 10])->assertForbidden();
+    }
+
+    public function test_cage_limit_validation_and_persistence(): void
+    {
+        $this->authenticateAs('admin');
+        foreach ([0, -1, 1.5, true, false, '1.0', '1e2', 'abc', 501, null] as $invalid) {
+            $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => $invalid])->assertUnprocessable()->assertJsonValidationErrors('maximum');
+        }
+        $this->patchJson('/api/admin/clinic/settings/capacity', ['maximum' => 12])->assertOk()->assertJsonPath('capacity.max', 12);
+        $this->getJson('/api/admin/clinic/settings/availability')->assertOk()->assertJsonPath('capacity.max', 12)->assertJsonPath('capacity.remaining', 12);
+        $this->getJson('/api/booking/grooming-capacity')->assertOk()->assertJsonPath('capacity.max', 12);
+    }
+
     public function test_public_clinic_status_includes_configured_service_availability(): void
     {
         DB::table('clinic_settings')->insert([
@@ -2124,6 +2196,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true);
+
+        $this->getJson('/api/admin/clinic/settings/availability')->assertOk()->assertJsonPath('blocked_dates.0.start_date', $startDate)->assertJsonPath('blocked_dates.0.end_date', $endDate);
+        $this->getJson('/api/clinic/status')->assertOk()->assertJsonPath('blocked_dates.0.start_date', $startDate);
 
         $blockedDateId = DB::table('clinic_closures')->value('id');
 
@@ -2728,14 +2803,15 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['POST', 'api/admin/clinic-appointments/{id}/attachments', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-appointments/{id}/attachments/{attachmentId}/download', 'role:admin,staff'],
             ['DELETE', 'api/admin/clinic-appointments/{id}/attachments/{attachmentId}', 'role:admin,staff'],
-            ['POST', 'api/admin/clinic/stop-today', 'role:admin'],
-            ['POST', 'api/admin/clinic/reopen-today', 'role:admin'],
+            ['POST', 'api/admin/clinic/stop-today', 'staff:availability_manage'],
+            ['POST', 'api/admin/clinic/reopen-today', 'staff:availability_manage'],
             ['GET', 'api/admin/clinic/blocked-dates', 'role:admin,staff'],
-            ['POST', 'api/admin/clinic/blocked-dates', 'role:admin'],
-            ['DELETE', 'api/admin/clinic/blocked-dates/{id}', 'role:admin'],
+            ['POST', 'api/admin/clinic/blocked-dates', 'staff:availability_manage'],
+            ['DELETE', 'api/admin/clinic/blocked-dates/{id}', 'staff:availability_manage'],
             ['GET', 'api/admin/clinic/settings/availability', 'role:admin,staff'],
-            ['PATCH', 'api/admin/clinic/settings/availability', 'role:admin'],
+            ['PATCH', 'api/admin/clinic/settings/availability', 'staff:availability_manage'],
             ['PATCH', 'api/admin/clinic/settings/groomers-on-duty', 'role:admin,staff'],
+            ['PATCH', 'api/admin/clinic/settings/capacity', 'staff:availability_manage'],
         ];
 
         $routes = collect(Route::getRoutes()->getRoutes());

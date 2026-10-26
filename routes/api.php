@@ -158,11 +158,18 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::patch('/admin/notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::patch('/admin/notifications/{id}/read', [NotificationController::class, 'markRead']);
 
-        Route::get('/admin/clinic/settings/availability', [ClinicSettingController::class, 'availability']);
-        Route::get('/admin/clinic/blocked-dates', [ClinicClosureController::class, 'blockedDates']);
-        Route::patch('/admin/clinic/settings/groomers-on-duty', [ClinicSettingController::class, 'updateGroomersOnDuty'])->middleware('grooming');
-        Route::post('/admin/pet-groomers', [\App\Http\Controllers\PetGroomerController::class, 'store'])->middleware('grooming');
-        Route::patch('/admin/pet-groomers/{id}', [\App\Http\Controllers\PetGroomerController::class, 'update'])->middleware('grooming');
+        Route::get('/admin/availability/page', [ClinicSettingController::class, 'page'])->middleware('staff:availability_view');
+        Route::patch('/admin/clinic/settings/capacity', [ClinicSettingController::class, 'updateCapacity'])->middleware('staff:availability_manage');
+        Route::post('/admin/clinic/stop-today', [ClinicClosureController::class, 'stopToday'])->middleware('staff:availability_manage');
+        Route::post('/admin/clinic/reopen-today', [ClinicClosureController::class, 'reopenToday'])->middleware('staff:availability_manage');
+        Route::post('/admin/clinic/blocked-dates', [ClinicClosureController::class, 'addBlockedDate'])->middleware('staff:availability_manage');
+        Route::delete('/admin/clinic/blocked-dates/{id}', [ClinicClosureController::class, 'removeBlockedDate'])->middleware('staff:availability_manage');
+        Route::patch('/admin/clinic/settings/availability', [ClinicSettingController::class, 'updateAvailability'])->middleware('staff:availability_manage');
+        Route::get('/admin/clinic/settings/availability', [ClinicSettingController::class, 'availability'])->middleware('staff:availability_view');
+        Route::get('/admin/clinic/blocked-dates', [ClinicClosureController::class, 'blockedDates'])->middleware('staff:availability_view');
+        Route::patch('/admin/clinic/settings/groomers-on-duty', [ClinicSettingController::class, 'updateGroomersOnDuty'])->middleware('staff:availability_manage');
+        Route::post('/admin/pet-groomers', [\App\Http\Controllers\PetGroomerController::class, 'store'])->middleware('staff:availability_manage');
+        Route::patch('/admin/pet-groomers/{id}', [\App\Http\Controllers\PetGroomerController::class, 'update'])->middleware('staff:availability_manage');
         Route::get('/settings/security/account', [AdminSecurityController::class, 'ownAccount']);
         Route::post('/settings/security/email-change', [\App\Http\Controllers\StaffEmailChangeController::class, 'start'])
             ->middleware(['role:staff', 'throttle:3,10,staff-email-start'])->name('staff.email-change.start');
@@ -352,10 +359,5 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::post('/admin/security/credential-changes/{change}/resend', [AdminSecurityController::class, 'resend'])
             ->middleware(ThrottleAuthenticationResends::class.':3,10');
 
-        Route::post('/admin/clinic/stop-today', [ClinicClosureController::class, 'stopToday']);
-        Route::post('/admin/clinic/reopen-today', [ClinicClosureController::class, 'reopenToday']);
-        Route::post('/admin/clinic/blocked-dates', [ClinicClosureController::class, 'addBlockedDate']);
-        Route::delete('/admin/clinic/blocked-dates/{id}', [ClinicClosureController::class, 'removeBlockedDate']);
-        Route::patch('/admin/clinic/settings/availability', [ClinicSettingController::class, 'updateAvailability']);
     });
 });

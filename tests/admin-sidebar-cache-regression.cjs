@@ -80,7 +80,7 @@ async function independentRendering() {
   await e.c.API.getStaffIdentity();
   const c = e.page(), sidebar = c.adminSidebar();
   let statusCalls = 0;
-  c.API.getClinicStatus = async () => { statusCalls++; return { stopped_today: false }; };
+  c.API.getClinicStatus = async () => { statusCalls++; return { stopped_today: {clinic: false, grooming: false} }; };
   sidebar.$nextTick = fn => fn();
   const pending = sidebar.init();
   assert.equal(sidebar.sidebarReady, true, 'Cached navigation is available immediately');
@@ -293,8 +293,29 @@ async function activityLogNavigationUsesVerifiedAdminIdentity() {
   }
 }
 
+async function availabilityNavigationForAuthorizedRoles() {
+  for (const subrole of [null, 'grooming_receptionist', 'clinic_receptionist', 'veterinarian']) {
+    const e = environment(), admin = subrole === null;
+    if (admin) e.c.API.setUserRole('admin');
+    e.respond(() => identity({role: admin ? 'admin' : 'staff', staff_subrole: subrole, staff_permissions: {availability_view: true, availability_manage: subrole !== 'veterinarian'}}));
+    await e.c.API.getStaffIdentity();
+    const links = [];
+    const settings = {href: 'http://127.0.0.1:8000/pages/admin/settings.html', cloneNode: () => ({attrs: new Map(), style: {}, setAttribute(name,value) {this.attrs.set(name,value);}, getAttribute(name) {return this.attrs.get(name);}}), before: link => links.push(link)};
+    const aside = {querySelector: () => null, closest: () => null, setAttribute() {}, removeAttribute() {}, querySelectorAll: selector => selector === '[x-show]' ? links : []};
+    e.c.document.currentScript = {src: 'http://127.0.0.1:8000/scripts/components/admin-sidebar.js'};
+    e.c.document.querySelector = selector => selector.includes('settings.html') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
+    e.c.installAdminActivityNavigation(); e.c.installAdminAvailabilityNavigation(); e.c.renderCachedAdminSidebar();
+    assert.equal(links[0].href.endsWith('activity-log.html'), true);
+    assert.equal(links[1].href.endsWith('availability.html'), true);
+    assert.equal(links[1].style.display, '', 'Every authorized role can see Availability');
+    assert.equal(links[1].attrs.get('@click'), 'sidebarOpen = false', 'Mobile sidebar closes through the shared action');
+    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/availability.html'), 'availability');
+    assert.equal(e.c.getAdminSidebarActivePage('/api/admin/availability/page'), 'availability');
+  }
+}
+
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

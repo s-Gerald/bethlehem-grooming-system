@@ -119,6 +119,7 @@ class QueuePreRegistrationModelTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->integer('max_slots')->default(4);
         });
+        (require database_path('migrations/2026_10_27_000001_add_service_intake_and_grooming_capacity.php'))->up();
     }
 
     protected function tearDown(): void
@@ -706,28 +707,76 @@ class QueuePreRegistrationModelTest extends TestCase
         }
     }
 
-    public function test_stop_today_blocks_intake_without_changing_unused_registrations_and_reopen_restores_intake(): void
+    public function test_intake_stops_and_reopens_one_service_without_changing_registrations(): void
     {
         $this->grooming('waiting_to_arrive', 1);
         $this->clinic('waiting_to_arrive');
-        $request = \Illuminate\Http\Request::create('/api/admin/clinic/stop-today', 'POST');
+        $controller = app(\App\Http\Controllers\ClinicClosureController::class);
+        $request = \Illuminate\Http\Request::create('/', 'POST', ['service' => 'clinic']);
         $request->setUserResolver(fn () => new \App\Models\User(['role' => 'admin']));
-        $closures = app(\App\Http\Controllers\ClinicClosureController::class);
-        $this->assertSame(200, $closures->stopToday($request)->status());
+        $controller->stopToday($request);
+        $controller->stopToday($request);
+        $this->assertDatabaseCount('clinic_closures', 1);
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        $this->assertFalse($days->acceptingCheckIns('clinic'));
+        $this->assertTrue($days->acceptingCheckIns('grooming'));
+        $this->assertSame('2026-10-10', $days->resolve('clinic'));
+        $this->assertSame('2026-10-09', $days->resolve('grooming'));
+        $request->merge(['service' => 'grooming']);
+        $controller->stopToday($request);
+        $controller->reopenToday($request);
+        $this->assertTrue($days->acceptingCheckIns('grooming'));
+        $this->assertFalse($days->acceptingCheckIns('clinic'));
         $this->assertDatabaseHas('bookings', ['status' => 'waiting_to_arrive']);
         $this->assertDatabaseHas('clinic_appointments', ['status' => 'waiting_to_arrive']);
-        foreach (['clinic', 'grooming'] as $service) {
-            try {
-                app(DailyPetQueue::class)->runForDate(now()->toDateString(), fn () => app(OperationalCapacity::class)->assertCanAccept($service, 1));
-                $this->fail('Stopped intake must reject both services.');
-            } catch (ValidationException $exception) {
-                $this->assertArrayHasKey('check_in', $exception->errors());
-            }
-        }
-        $this->assertSame(200, $closures->reopenToday($request)->status());
-        app(DailyPetQueue::class)->runForDate(now()->toDateString(), fn () => app(OperationalCapacity::class)->assertCanAccept('clinic', 1));
-        Carbon::setTestNow('2026-10-10 00:00:00');
-        $this->assertSame(2, app(PreRegistrationExpiry::class)->expire());
+        $status = $controller->status()->getData(true);
+        $this->assertSame(['clinic' => true, 'grooming' => false], $status['stopped_today']);
+        Carbon::setTestNow('2026-10-10 10:00:00');
+        $this->assertTrue($days->acceptingCheckIns('clinic'));
+    }
+
+    public function test_reopening_legacy_global_stop_preserves_other_service_and_history(): void
+    {
+        $legacy = \App\Models\ClinicClosure::create(['type' => 'stop_today', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09', 'is_active' => true, 'created_by' => 7]);
+        $request = \Illuminate\Http\Request::create('/', 'POST', ['service' => 'clinic']);
+        $request->setUserResolver(fn () => new \App\Models\User(['role' => 'admin']));
+        app(\App\Http\Controllers\ClinicClosureController::class)->reopenToday($request);
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        $this->assertTrue($days->acceptingCheckIns('clinic'));
+        $this->assertFalse($days->acceptingCheckIns('grooming'));
+        $this->assertFalse($legacy->fresh()->is_active);
+        $this->assertDatabaseHas('clinic_closures', ['service' => 'grooming', 'created_by' => 7, 'is_active' => true]);
+        \App\Models\ClinicClosure::create(['type' => 'blocked_date', 'start_date' => '2026-10-09', 'end_date' => '2026-10-11', 'is_active' => true]);
+        $this->assertFalse($days->acceptingCheckIns('clinic'));
+    }
+
+    public function test_configured_capacity_persists_and_counts_only_physical_grooming_pets(): void
+    {
+        $capacity = app(OperationalCapacity::class);
+        $this->assertSame(20, $capacity->snapshot()['max']);
+        $this->grooming('waiting_to_arrive', 8);
+        $this->clinic('checked_in');
+        $this->assertSame(0, $capacity->snapshot()['used']);
+        $onSite = $this->grooming('checked_in', 5);
+        $this->assertSame(5, $capacity->snapshot()['used']);
+        DB::table('bookings')->where('booking_id', $onSite)->update(['status' => 'released']);
+        DB::table('booking_pets')->where('booking_id', $onSite)->update(['grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        $this->assertSame(5, $capacity->snapshot()['used']);
+        $request = \Illuminate\Http\Request::create('/', 'PATCH', ['maximum' => 15]);
+        app(\App\Http\Controllers\ClinicSettingController::class)->updateCapacity($request);
+        $this->assertSame(15, ClinicSetting::current()->grooming_cage_capacity);
+        $this->assertSame(10, $capacity->snapshot()['remaining']);
+        DB::table('bookings')->where('booking_id', $onSite)->update(['status' => 'archived']);
+        $this->assertSame(0, $capacity->snapshot()['used']);
+        $this->grooming('checked_in', 15);
+        try {
+            app(DailyPetQueue::class)->runForDate('2026-10-09', fn () => $capacity->assertCanAccept('grooming', 1));
+            $this->fail('Configured capacity must prevent admission.');
+        } catch (ValidationException $error) { $this->assertArrayHasKey('check_in', $error->errors()); }
+        app(DailyPetQueue::class)->runForDate('2026-10-09', fn () => $capacity->assertCanAccept('clinic', 1));
+        $request->merge(['maximum' => 14]);
+        $this->expectException(ValidationException::class);
+        app(\App\Http\Controllers\ClinicSettingController::class)->updateCapacity($request);
     }
 
     public function test_both_services_send_deduplicated_preferred_arrival_reminders(): void

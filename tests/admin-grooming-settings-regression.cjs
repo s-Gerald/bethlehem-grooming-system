@@ -11,19 +11,21 @@ async function main() {
   vm.runInNewContext(source, context);
   let ui = context.adminSettings();
   ui.$nextTick = (callback) => callback?.();
+  vm.runInNewContext(fs.readFileSync('scripts/components/admin-availability.js', 'utf8'), context);
+  const availability = context.adminAvailability(); availability.canManage = true;
   for (const service of ['clinic', 'grooming']) {
-    ui.selectAvailabilityService(service);
-    assert.equal(Object.hasOwn(ui.activeAvailability, 'pre_registration_cutoff_time'), false);
+    availability.selectAvailabilityService(service);
+    assert.equal(Object.hasOwn(availability.activeAvailability, 'pre_registration_cutoff_time'), false);
     let savedHours;
     context.API.adminUpdateAvailability = async (payload) => {
       savedHours = JSON.parse(JSON.stringify(payload));
       return { availability: { clinic: { open_time: '08:00', close_time: '17:00' },
         grooming: { open_time: '09:00', close_time: '18:00' } } };
     };
-    await ui.saveAvailability();
+    await availability.saveAvailability();
     assert.deepEqual(Object.keys(savedHours).sort(), ['close_time', 'open_time', 'service']);
     assert.equal(savedHours.service, service);
-    assert.equal(ui.availabilityError, '');
+    assert.equal(availability.availabilityError, '');
   }
   assert.equal(typeof ui.loadGroomingPrices, 'undefined', 'Grooming prices are managed in Services');
   context.URL = URL;
@@ -37,7 +39,7 @@ async function main() {
     return {settings: {enabled: false, version: 2, has_image: false, merchant_name: 'Bethlehem', accepted_methods: ['GCash', 'Bank Transfer', 'PayPal']}};
   };
   await ui.selectSettingsTab('general');
-  await ui.selectSettingsTab('capacity');
+  await ui.selectSettingsTab('general');
   assert.equal(qrReads, 0, 'Unrelated tabs never request QR configuration');
   await ui.selectSettingsTab('qr-payments');
   assert.equal(ui.activeSettingsTab, 'general', 'Stale QR tab state resolves to an active tab');
@@ -47,13 +49,10 @@ async function main() {
   context.URLSearchParams = URLSearchParams;
   context.document = {addEventListener() {}};
   context.window.location = {search: '?tab=qr-payments'};
-  const loadAvailability = ui.loadAvailability;
-  ui.loadAvailability = async () => {};
   ui.activeSettingsTab = 'qr-payments';
   await ui.init();
   assert.equal(ui.activeSettingsTab, 'general', 'Stale state and URL cannot open QR Settings');
   assert.equal(qrReads, 0, 'Opening Settings never initializes legacy resources');
-  ui.loadAvailability = loadAvailability;
   const active = ui;
   // Explicit opt-in exercises the preserved dormant editor independently of active Settings.
   ui = Object.defineProperties({isAdmin: true, $nextTick: active.$nextTick}, Object.getOwnPropertyDescriptors(context.legacyQrSettings()));

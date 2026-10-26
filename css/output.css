@@ -1702,6 +1702,10 @@ video {
   flex-shrink: 0;
 }
 
+.basis-full {
+  flex-basis: 100%;
+}
+
 .table-fixed {
   table-layout: fixed;
 }
@@ -4637,6 +4641,10 @@ video {
 
   .sm\:flex-none {
     flex: none;
+  }
+
+  .sm\:basis-auto {
+    flex-basis: auto;
   }
 
   .sm\:grid-cols-2 {

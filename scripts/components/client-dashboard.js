@@ -869,14 +869,14 @@ function scheduleCustomerDashboardAfterPaint(task) {
     groomingQueueDetailsEl?.classList.add("flex");
     const capacity = data?.capacity || {};
     const queue = data?.queue || {};
-    const max = toNumber(capacity.max) || 20;
+    const max = toNumber(capacity.max);
     const used = toNumber(capacity.used);
-    const remaining = Math.max(0, toNumber(capacity.remaining ?? (max - used)));
-    const percent = Math.max(0, Math.min(100, toNumber(capacity.percent ?? ((used / max) * 100))));
+    const remaining = toNumber(capacity.remaining);
+    const percent = toNumber(capacity.percent);
     const queued = toNumber(queue.queued);
     const inProgress = toNumber(queue.in_progress);
     const active = toNumber(queue.active ?? (queued + inProgress));
-    const isFull = Boolean(capacity.is_full) || used >= max;
+    const isFull = Boolean(capacity.is_full);
     const isBusy = !isFull && percent >= 80;
 
     if (!data) {

@@ -10,6 +10,7 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
     return "inventory";
   }
 
+  if (normalizedPath.endsWith('/api/admin/availability/page')) return 'availability';
   if (normalizedPath.endsWith('/api/admin/activity-log/page')) return 'activity-log';
   const pageName = normalizedPath.split("/").filter(Boolean).pop() || "";
   if (pageName === 'notifications.html') {
@@ -26,6 +27,7 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
     "transactions.html": "transactions",
     "reports.html": "reports",
     "settings.html": "settings",
+    "availability.html": "availability",
     "activity-log.html": "activity-log",
   };
 
@@ -106,15 +108,29 @@ function installAdminActivityNavigation() {
   settings.before(link);
 }
 
+function installAdminAvailabilityNavigation() {
+  const settings = document.querySelector('.admin-sidebar-menu a[href$="settings.html"]');
+  if (!settings) return;
+  const link = settings.cloneNode(false);
+  link.href = new URL('availability.html', settings.href).href;
+  link.setAttribute('x-show', 'canViewAvailability');
+  link.setAttribute('data-admin-permission', '');
+  link.style.display = 'none';
+  link.setAttribute('@click', 'sidebarOpen = false');
+  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock"></use></svg><span>Availability</span>`;
+  settings.before(link);
+}
+
 function getAdminSidebarIdentityState(user) {
   if (!user) return {
-    sidebarReady: false, isAdmin: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
+    sidebarReady: false, isAdmin: false, canViewAvailability: false, clinicPermissions: {}, canAccessGrooming: false, clinicOnly: false, canViewServices: false,
     staffDisplayName: '', staffInitials: '', staffRoleLabel: '',
   };
   const first = String(user.first_name || '').trim(), last = String(user.last_name || '').trim();
   return {
     sidebarReady: true,
     isAdmin: user.role === 'admin',
+    canViewAvailability: user.role === 'admin' || user.staff_permissions?.availability_view === true,
     clinicOnly: user.staff_permissions?.clinic_workspace === true,
     canViewServices: user.role === 'admin' || (!!user.clinic_permissions?.services_view && !user.staff_permissions?.clinic_workspace),
     clinicPermissions: user.clinic_permissions || {},
@@ -138,6 +154,7 @@ function renderCachedAdminSidebar() {
     'isAdmin || clinicPermissions.access': state.isAdmin || !!state.clinicPermissions.access,
     'isAdmin || canAccessGrooming': state.canAccessGrooming,
     canViewServices: state.canViewServices,
+    canViewAvailability: state.canViewAvailability,
     '!clinicOnly': state.sidebarReady && !state.clinicOnly,
   };
   aside.querySelectorAll('[x-show]').forEach(el => {
@@ -188,6 +205,7 @@ if (typeof document !== "undefined" && document.querySelector) {
   installAdminInventoryNavigation();
   installAdminServicesNavigation();
   installAdminActivityNavigation();
+  installAdminAvailabilityNavigation();
   document.querySelectorAll('.admin-sidebar-menu nav a').forEach(link => {
     link.setAttribute('@click', 'sidebarOpen = false');
     if (link.closest('.admin-inventory-submenu')) return;

@@ -311,7 +311,7 @@ async function testTabReturnKeepsUnlockedWorkflow(role) {
       "Visibility and focus share one pending verification");
     assert.equal(browser.root.attributes["data-session-gate"], undefined, "Pending resume verification keeps the page visible");
     assert.equal(card.hidden, true, "A mounted password card stays hidden during verification");
-    await browser.API.adminStopToday();
+    await browser.API.getClinicStatus();
     fixture.releaseStatus();
     await browser.settle();
   }
