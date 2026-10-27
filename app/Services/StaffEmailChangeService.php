@@ -39,7 +39,7 @@ class StaffEmailChangeService
             if (! Hash::check($password, $user->password_hash)) {
                 throw ValidationException::withMessages(['current_password' => 'The current password is incorrect.']);
             }
-            if ($email === AccountEmail::normalize($user->email)) {
+            if (strcasecmp($email, $user->email) === 0) {
                 throw ValidationException::withMessages(['email' => 'Enter a different email address.']);
             }
             AccountEmail::assertAvailable($email, $user, true);
@@ -99,7 +99,7 @@ class StaffEmailChangeService
                 return ['status' => 'completed', 'completed' => true];
             });
         } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages(['email' => 'That email address is already in use.']);
+            throw ValidationException::withMessages(['email' => 'This email is already in use.']);
         }
     }
 

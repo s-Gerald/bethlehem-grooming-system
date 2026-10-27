@@ -1060,6 +1060,25 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
     }
 
+    public function test_new_walkin_contact_cannot_claim_registered_ownership_or_send_otp(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->authenticateAs('staff');
+        DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Registered', 'last_name' => 'Owner',
+            'email' => 'owner@gmail.com', 'phone' => '09171111111', 'role' => 'customer', 'is_active' => true]);
+        $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Different', 'lname' => 'Owner',
+            'phone' => '09171234567', 'email' => 'owner@gmail.com', 'pet_name' => 'New Pet', 'species' => 'dog', 'terms_agreed' => true];
+        $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertDatabaseCount('walkins', 0);
+        $this->assertDatabaseCount('pets', 0);
+        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'email' => '123@123.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'email' => 'visitor@gmail.com'])
+            ->assertCreated()->assertJsonPath('returning_customer', false);
+        $this->assertDatabaseHas('walkins', ['email' => 'visitor@gmail.com', 'user_id' => null]);
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
+    }
+
     public function test_staff_can_create_a_clinic_walk_in(): void
     {
         $this->authenticateAs('staff');

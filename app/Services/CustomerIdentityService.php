@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\AccountEmail;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use Illuminate\Support\Collection;
@@ -16,7 +17,7 @@ class CustomerIdentityService
                 $query->where('phone', $phone);
 
                 if ($email) {
-                    $query->orWhere('email', $email);
+                    $query->orWhereRaw(AccountEmail::lookupColumn().' = ?', [$email]);
                 }
             })
             ->first();
@@ -34,7 +35,7 @@ class CustomerIdentityService
                 $query->where('phone', $phone);
 
                 if ($email) {
-                    $query->orWhere('email', $email);
+                    $query->orWhereRaw(AccountEmail::lookupColumn().' = ?', [$email]);
                 }
             })
             ->first();

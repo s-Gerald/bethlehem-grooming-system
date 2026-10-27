@@ -32,6 +32,7 @@ class PendingStaffAccountService
         $normalizedFirstName = User::normalizeName($firstName);
         $normalizedLastName = User::normalizeName($lastName);
         $normalizedEmail = AccountEmail::normalize($email);
+        Validator::make(['email' => $normalizedEmail], ['email' => AccountEmail::rules()])->validate();
         $this->assertEmailIsAvailable($normalizedEmail);
         EmailVerificationController::assertMailCanBeDelivered();
 
@@ -46,7 +47,7 @@ class PendingStaffAccountService
             $tokenHash,
         ): User {
             PendingStaffAccount::query()
-                ->whereRaw('LOWER(email) = ?', [$normalizedEmail])
+                ->whereRaw('LOWER(email) = ?', [Str::lower($normalizedEmail)])
                 ->delete();
 
             $staff = User::query()->create([
@@ -132,7 +133,7 @@ class PendingStaffAccountService
                 if ($target->is_active || ! $target->requiresPasswordSetup()) {
                     throw ValidationException::withMessages(['account' => 'This account no longer requires initial setup.']);
                 }
-                if ($email === AccountEmail::normalize($target->email)) {
+                if (strcasecmp($email, $target->email) === 0) {
                     throw ValidationException::withMessages(['email' => 'Enter a different email address.']);
                 }
                 $this->assertEmailIsAvailable($email, $target);
@@ -147,7 +148,7 @@ class PendingStaffAccountService
                 return $target->load('passwordResetRequest');
             }, 3);
         } catch (UniqueConstraintViolationException) {
-            throw ValidationException::withMessages(['email' => 'That email address is already in use.']);
+            throw ValidationException::withMessages(['email' => 'This email is already in use.']);
         }
     }
 

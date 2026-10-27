@@ -244,7 +244,7 @@ class WalkinController extends Controller
                 : 'An unregistered customer';
 
             throw ValidationException::withMessages([
-                $field => $customerType.' already uses this '.($field === 'phone' ? 'phone number.' : 'email address.'),
+                $field => $field === 'email' ? 'This email is already in use.' : $customerType.' already uses this phone number.',
             ]);
         }
 

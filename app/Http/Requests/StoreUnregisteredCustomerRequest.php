@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\AccountEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreUnregisteredCustomerRequest extends FormRequest
@@ -13,7 +14,7 @@ class StoreUnregisteredCustomerRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $email = strtolower(trim((string) $this->input('email', '')));
+        $email = AccountEmail::normalize((string) $this->input('email', ''));
         $middleName = strtoupper(rtrim($this->normalizeText($this->input('middle_name')), '.'));
         $phone = $this->normalizePhone($this->input('phone'));
 
@@ -33,7 +34,7 @@ class StoreUnregisteredCustomerRequest extends FormRequest
             'last_name' => ['required', 'string', 'max:100'],
             'middle_name' => ['nullable', 'string', 'max:5'],
             'phone' => ['required', 'string', 'max:20', 'regex:/^09\d{9}$/'],
-            'email' => ['nullable', 'email', 'max:150'],
+            'email' => AccountEmail::rules(required: false, maxLength: $this->is('api/admin/walk-in/customers/validate-new-owner') ? 255 : 150),
             'confirm_similar_name' => ['sometimes', 'boolean'],
         ];
     }

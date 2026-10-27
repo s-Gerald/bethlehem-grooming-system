@@ -158,6 +158,7 @@ global.API = {
 };
 
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/email-delivery.js'), 'utf8'));
+vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/account-email.js'), 'utf8'));
 vm.runInThisContext(componentSource, {
   filename: "scripts/components/admin-settings.js",
 });
@@ -245,10 +246,10 @@ vm.runInThisContext(componentSource, {
   API.resendSecurityCredentialChangeCode = () => new Promise(resolve => { finishResend = resolve; });
   const oldResend = settings.resendSecurityCredentialChangeCode();
   settings.closeSecurityVerification();
-  settings.openSecurityVerification({ change_id: 15, resend_after: 0, confirmation_email: 'n***@example.test' });
-  finishResend({ confirmation_email: 'o***@example.test', resend_after: 90 });
+  settings.openSecurityVerification({ change_id: 15, resend_after: 0, confirmation_email: 'n***@gmail.com' });
+  finishResend({ confirmation_email: 'o***@gmail.com', resend_after: 90 });
   await oldResend;
-  assert.equal(settings.securityVerification.email, 'n***@example.test', 'A stale resend must not update another challenge');
+  assert.equal(settings.securityVerification.email, 'n***@gmail.com', 'A stale resend must not update another challenge');
   assert.equal(settings.securityVerification.resendRemaining, 0);
   API.resendSecurityCredentialChangeCode = originalResend;
   settings.closeSecurityVerification();
@@ -273,9 +274,9 @@ vm.runInThisContext(componentSource, {
   settings.addStaffModal.lastName = "Smith";
   settings.addStaffModal.email = "invalid@-example..com";
   await settings.requestNewStaffAccount();
-  assert.match(settings.addStaffModal.error, /valid email address/);
+  assert.match(settings.addStaffModal.emailError, /valid email address/);
   assert.equal(calls.some((call) => call[0] === "add-staff"), false);
-  settings.addStaffModal.email = "clinic.staff@example.test";
+  settings.addStaffModal.email = "clinic.staff@gmail.com";
   await settings.requestNewStaffAccount();
   assert.equal(settings.addStaffModal.step, "success");
   assert.equal("createdUsername" in settings.addStaffModal, false);
@@ -287,7 +288,7 @@ vm.runInThisContext(componentSource, {
       staff_subrole: "veterinarian",
       first_name: "John",
       last_name: "Smith",
-      email: "clinic.staff@example.test",
+      email: "clinic.staff@gmail.com",
     },
   ]);
 
@@ -495,7 +496,7 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.canSubmitStaffEmailCorrection, false);
   await settings.submitStaffEmailCorrection();
   assert.match(settings.staffEmailCorrection.errors.email, /different/);
-  settings.staffEmailCorrection.email = "corrected@example.test";
+  settings.staffEmailCorrection.email = "corrected@gmail.com";
   settings.staffEmailCorrection.password = "";
   await settings.submitStaffEmailCorrection();
   assert.match(settings.staffEmailCorrection.errors.current_password, /password/);
@@ -507,19 +508,19 @@ vm.runInThisContext(componentSource, {
   assert.equal(focusedFields.at(-1), "staffChangeEmail");
 
   settings.openStaffEmailCorrection();
-  settings.staffEmailCorrection.email = "corrected@example.test";
+  settings.staffEmailCorrection.email = "corrected@gmail.com";
   settings.staffEmailCorrection.password = "wrong";
   API.correctStaffSetupEmail = async () => { throw { errors: { current_password: ["The admin password is incorrect."] } }; };
   await settings.submitStaffEmailCorrection();
   assert.match(settings.staffEmailCorrection.errors.current_password, /incorrect/);
   assert.equal(settings.staffEmailCorrection.password, "");
-  assert.equal(settings.staffEmailCorrection.email, "corrected@example.test");
+  assert.equal(settings.staffEmailCorrection.email, "corrected@gmail.com");
   assert.equal(settings.staffDetailsModal.view, "email");
   settings.staffEmailCorrection.password = "CurrentAdmin!234";
   API.correctStaffSetupEmail = async () => { throw { message: "The setup email could not be queued. Please try again." }; };
   await settings.submitStaffEmailCorrection();
   assert.match(settings.staffEmailCorrection.error, /could not be queued/);
-  assert.equal(settings.staffEmailCorrection.email, "corrected@example.test");
+  assert.equal(settings.staffEmailCorrection.email, "corrected@gmail.com");
   assert.equal(emailStaff.email, "clinic.staff.test@gmail.com");
 
   const realAccounts = API.getAdminSecurityAccounts;
@@ -545,25 +546,25 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.staffDetailsModal.view, "email");
   assert.equal(settings.staffDetailsModal.busy, true);
   assert.equal(calls.filter(call => call[0] === "staff-email").length, 1);
-  assert.deepEqual(calls.at(-1), ["staff-email", emailStaff.id, "corrected@example.test", "CurrentAdmin!234"]);
+  assert.deepEqual(calls.at(-1), ["staff-email", emailStaff.id, "corrected@gmail.com", "CurrentAdmin!234"]);
   const toastCount = toasts.length;
-  finishEmail({ message: "Setup email queued for corrected@example.test.", staff: {
+  finishEmail({ message: "Setup email queued for corrected@gmail.com.", staff: {
     user_id: emailStaff.id, first_name: "Pending", last_name: "Staff", username: null,
-    email: "corrected@example.test", staff_type: "clinic", staff_subrole: "veterinarian",
+    email: "corrected@gmail.com", staff_type: "clinic", staff_subrole: "veterinarian",
     is_active: false, is_archived: false, password_setup_required: true, setup_link_expired: false,
   } });
   await sendingEmail;
   assert.equal(settings.staffDetailsModal.view, "details");
   assert.equal(settings.staffDetailsModal.open, true);
-  assert.equal(settings.staffDetailsModal.staff.email, "corrected@example.test");
-  assert.equal(settings.staffAccounts[1].email, "corrected@example.test");
+  assert.equal(settings.staffDetailsModal.staff.email, "corrected@gmail.com");
+  assert.equal(settings.staffAccounts[1].email, "corrected@gmail.com");
   assert.equal(settings.staffAccounts[1].statusLabel, "Pending setup");
   assert.equal(settings.staffEmailCorrection.password, "");
   assert.equal(toasts.length, toastCount + 1);
-  assert.equal(toasts.at(-1), "Setup email queued for corrected@example.test.");
+  assert.equal(toasts.at(-1), "Setup email queued for corrected@gmail.com.");
   finishList(await realAccounts());
   await staleList;
-  assert.equal(settings.staffAccounts[1].email, "corrected@example.test");
+  assert.equal(settings.staffAccounts[1].email, "corrected@gmail.com");
   assert.equal(settings.staffLoading, false);
   API.getAdminSecurityAccounts = realAccounts;
 
@@ -586,7 +587,7 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.addStaffModal.staffSubrole, "grooming_receptionist");
   settings.addStaffModal.firstName = "New";
   settings.addStaffModal.lastName = "Receptionist";
-  settings.addStaffModal.email = "new.grooming@example.test";
+  settings.addStaffModal.email = "new.grooming@gmail.com";
   await settings.requestNewStaffAccount();
   assert.equal(calls.filter((call) => call[0] === "add-staff").at(-1)[1].staff_subrole, "grooming_receptionist");
   assert.equal(settings.accountRoleLabel({ staff_type: "grooming", staff_subrole: "grooming_receptionist" }), "Grooming Receptionist");
@@ -596,7 +597,7 @@ vm.runInThisContext(componentSource, {
 
   API.getUserRole = () => 'staff';
   const savedAccount = { user_id: 7, first_name: 'Grooming', last_name: 'Staff', username: 'groomingstaff',
-    role: 'staff', staff_type: 'grooming', staff_subrole: 'grooming_receptionist', email: 'staff@example.test', is_active: true, is_archived: false };
+    role: 'staff', staff_type: 'grooming', staff_subrole: 'grooming_receptionist', email: 'staff@gmail.com', is_active: true, is_archived: false };
   API.getSettingsSecurityAccount = async () => ({ account: savedAccount });
   const profileCalls = [];
   API.validateStaffProfile = async payload => { profileCalls.push(['validate', payload]); return { success: true }; };
@@ -691,19 +692,19 @@ vm.runInThisContext(componentSource, {
   settings.isStaff = true;
   settings.isAdmin = false;
   settings.staffLoaded = true;
-  settings.applyStaffAccount({ first_name: 'Existing', last_name: 'Staff', username: 'existing', role: 'staff', email: 'old@example.test', is_active: true });
+  settings.applyStaffAccount({ first_name: 'Existing', last_name: 'Staff', username: 'existing', role: 'staff', email: 'old@gmail.com', is_active: true });
   settings.openOwnEmailChange();
   assert.equal(settings.staffEmailChange.open, true);
   assert.equal(settings.staffEmailChange.newEmail, '');
   assert.equal(focusedFields.at(-1), 'ownNewEmail');
   assert.equal(settings.canContinueOwnEmailChange, false);
-  settings.staffEmailChange.newEmail = ' OLD@example.test ';
+  settings.staffEmailChange.newEmail = ' OLD@gmail.com ';
   settings.staffEmailChange.password = 'CurrentStaff!234';
   await settings.startOwnEmailChange();
   assert.match(settings.staffEmailChange.errors.email, /different/);
-  settings.staffEmailChange.newEmail = 'new@example.test';
+  settings.staffEmailChange.newEmail = 'new@gmail.com';
   settings.staffEmailChange.errors = {};
-  const currentPending = { id: 'request-1', stage: 'current', current_email: 'old@example.test', new_email: 'new@example.test', resend_after: 60 };
+  const currentPending = { id: 'request-1', stage: 'current', current_email: 'old@gmail.com', new_email: 'new@gmail.com', resend_after: 60 };
   let finishOwnStart;
   API.requestStaffEmailChange = () => new Promise(resolve => { finishOwnStart = resolve; });
   const ownStart = settings.startOwnEmailChange();
@@ -713,7 +714,7 @@ vm.runInThisContext(componentSource, {
   finishOwnStart({ pending_email_change: currentPending });
   await ownStart;
   assert.equal(settings.staffEmailChange.password, '');
-  assert.equal(settings.staffAccount.email, 'old@example.test');
+  assert.equal(settings.staffAccount.email, 'old@gmail.com');
   assert.equal(settings.staffEmailChange.stage, 'current');
   settings.pasteSecurityCode({ clipboardData: { getData: () => '123 456' } }, settings.staffEmailChange, 'ownEmailCodeDigit');
   assert.equal(settings.staffEmailChange.digits.join(''), '123456');
@@ -729,7 +730,7 @@ vm.runInThisContext(componentSource, {
   settings.closeOwnEmailChange();
   assert.equal(settings.pendingStaffEmailChange.stage, 'new', 'Closing preserves the resumable request');
   assert.equal(focusedFields.at(-1), 'ownEmailResume');
-  API.getSettingsSecurityAccount = async () => ({ account: { email: 'old@example.test', role: 'staff', is_active: true }, pending_email_change: { ...currentPending, stage: 'new' } });
+  API.getSettingsSecurityAccount = async () => ({ account: { email: 'old@gmail.com', role: 'staff', is_active: true }, pending_email_change: { ...currentPending, stage: 'new' } });
   await settings.resumeOwnEmailChange();
   assert.equal(settings.staffEmailChange.stage, 'new');
   settings.staffEmailChange.resendRemaining = 0;
@@ -746,14 +747,14 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.staffEmailChange.stage, 'success');
   assert.equal(settings.staffEmailChange.open, true);
   assert.equal(settings.staffAccount.email, '');
-  finishOldAccount({ account: { email: 'old@example.test', is_active: true } });
+  finishOldAccount({ account: { email: 'old@gmail.com', is_active: true } });
   await oldAccountRead;
   assert.equal(settings.staffAccount.email, '', 'Stale responses cannot restore signed-out identity');
   settings.closeOwnEmailChange();
   assert.equal(settings.staffEmailChange.open, true, 'Success stays visible until sign-in action');
 
   settings.isStaff = false; settings.isAdmin = true;
-  const recoveryStaff = { user_id: 42, first_name: 'Active', last_name: 'Staff', email: 'old@example.test',
+  const recoveryStaff = { user_id: 42, first_name: 'Active', last_name: 'Staff', email: 'old@gmail.com',
     staff_type: 'clinic', staff_subrole: 'veterinarian', is_active: true, is_archived: false };
   settings.staffAccounts = [settings.staffAccountFields(recoveryStaff)];
   settings.openStaffDetails(settings.staffAccounts[0]);
@@ -763,7 +764,7 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.staffDetailsModal.view, 'recovery');
   assert.equal(focusedFields.at(-1), 'recoveryNewEmail');
   assert.equal(settings.canStartStaffRecovery, false);
-  settings.staffRecovery.email = 'new@example.test';
+  settings.staffRecovery.email = 'new@gmail.com';
   settings.staffRecovery.reason = 'inaccessible';
   settings.staffRecovery.password = 'AdminPassword!234';
   assert.equal(settings.canStartStaffRecovery, false, 'Identity verification is required');
@@ -779,17 +780,17 @@ vm.runInThisContext(componentSource, {
   assert.equal(recoveriesStarted, 1);
   settings.closeStaffDetails();
   assert.equal(settings.staffDetailsModal.open, true);
-  finishRecoveryStart({ recovery: { id: 'recovery-1', status: 'authorizing', confirmation_email: 'a***@example.test', resend_after: 60 } });
+  finishRecoveryStart({ recovery: { id: 'recovery-1', status: 'authorizing', confirmation_email: 'a***@gmail.com', resend_after: 60 } });
   await recoveryStart;
   assert.equal(settings.staffDetailsModal.view, 'recovery-code');
   assert.equal(settings.staffRecovery.password, '');
-  assert.equal(settings.staffAccounts[0].email, 'old@example.test');
+  assert.equal(settings.staffAccounts[0].email, 'old@gmail.com');
   settings.staffRecovery.resendRemaining = 0;
   let finishRecoveryCodeResend;
   API.resendStaffRecoveryCode = () => new Promise(resolve => { finishRecoveryCodeResend = resolve; });
   const resendingRecoveryCode = settings.resendStaffRecoveryCode();
   assert.equal(focusedFields.at(-1), 'staffDetailsDialog', 'Resending keeps focus inside the busy modal');
-  finishRecoveryCodeResend({ recovery: { id: 'recovery-1', status: 'authorizing', confirmation_email: 'a***@example.test', resend_after: 60 } });
+  finishRecoveryCodeResend({ recovery: { id: 'recovery-1', status: 'authorizing', confirmation_email: 'a***@gmail.com', resend_after: 60 } });
   await resendingRecoveryCode;
   settings.pasteSecurityCode({ clipboardData: { getData: () => '123 456' } }, settings.staffRecovery, 'recoveryCodeDigit');
   assert.equal(settings.staffRecovery.digits.join(''), '123456');
@@ -802,7 +803,7 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.staffRecovery.digits[0], '');
   assert.equal(focusedFields.at(-1), 'recoveryCodeDigit0');
   settings.pasteSecurityCode({ clipboardData: { getData: () => '123456' } }, settings.staffRecovery, 'recoveryCodeDigit');
-  const pendingRecovery = { id: 'recovery-1', status: 'pending', new_email: 'new@example.test', expires_at: new Date(Date.now() + 1800000).toISOString(), resend_after: 60 };
+  const pendingRecovery = { id: 'recovery-1', status: 'pending', new_email: 'new@gmail.com', expires_at: new Date(Date.now() + 1800000).toISOString(), resend_after: 60 };
   API.confirmStaffEmailRecovery = async () => ({ staff: { ...recoveryStaff, email_recovery: pendingRecovery }, recovery: pendingRecovery });
   await settings.confirmStaffRecovery();
   assert.equal(settings.staffDetailsModal.view, 'details');

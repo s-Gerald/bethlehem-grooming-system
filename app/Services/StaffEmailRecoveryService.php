@@ -37,7 +37,7 @@ class StaffEmailRecoveryService
             if (! in_array($data['reason'], ['inaccessible', 'compromised'], true)) {
                 throw ValidationException::withMessages(['reason' => 'Select a recovery reason.']);
             }
-            if ($email === AccountEmail::normalize($target->email)) {
+            if (strcasecmp($email, $target->email) === 0) {
                 throw ValidationException::withMessages(['email' => 'Enter a different email address.']);
             }
             AccountEmail::assertAvailable($email, $target, true);

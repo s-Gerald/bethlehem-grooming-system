@@ -39,6 +39,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   } catch { /* storage unavailable; signup remains usable */ }
 
+  const originalEmail = editingToken || recoveryToken ? emailInput.value : "";
+  const emailField = AccountEmail.bind(emailInput, {
+    isUnchanged: () => Boolean(originalEmail) && emailInput.value.trim().toLowerCase() === originalEmail.trim().toLowerCase(),
+  });
+
   recoveryContinue.addEventListener("click", () => {
     if (!busy && recoveryToken) document.getElementById("firstName").focus();
   });
@@ -96,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const firstName      = document.getElementById("firstName").value.trim();
     const lastName       = document.getElementById("lastName").value.trim();
     const username       = usernameInput ? usernameInput.value.trim() : "";
-    const email          = emailInput.value.trim();
+    const email          = AccountEmail.normalize(emailInput.value);
     const phone          = phoneInput.value.trim();
     const password       = passwordInput.value;
     const confirmPassword = confirmPasswordInput.value;
@@ -104,11 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
     clearMessage();
     for (const id of ["firstName", "lastName", "email", "username", "phone", "password"]) document.getElementById(id).setAttribute("aria-invalid", "false");
 
-    if (!email) {
-      showMessage("Email address is required.");
-      emailInput.focus();
-      return;
-    }
+    if (!emailField.validate()) { emailInput.focus(); return; }
 
     if (phone && !/^09\d{9}$/.test(phone)) {
       showMessage("Phone number must start with 09 and be exactly 11 digits (e.g. 09XXXXXXXXX).");
@@ -116,9 +117,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (!emailInput.checkValidity()) {
-      emailInput.reportValidity();
-      emailInput.focus();
+    if (!signupForm.checkValidity()) {
+      signupForm.reportValidity();
       return;
     }
 
@@ -185,6 +185,11 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       if (error.errors) {
         const [field, firstError] = Object.entries(error.errors)[0];
+        if (field === "email") {
+          if (emailField.setError(Array.isArray(firstError) ? firstError[0] : firstError, email)) emailInput.focus();
+          setBusyState(false);
+          return;
+        }
         showMessage(Array.isArray(firstError) ? firstError[0] : firstError);
         const id = { first_name: "firstName", last_name: "lastName", password: "password", email: "email", username: "username", phone: "phone" }[field];
         if (id) {

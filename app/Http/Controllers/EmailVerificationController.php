@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AccountEmail;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use App\Services\RegistrationEmailCodeService;
@@ -41,7 +42,7 @@ class EmailVerificationController extends Controller
                 // A legacy user takes precedence over any inconsistent pending row.
                 // Never apply the pending password to an existing account.
                 if ($codeMode) {
-                    $existingUser = User::query()->where('email', $data['email'])->lockForUpdate()->first();
+                    $existingUser = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->lockForUpdate()->first();
                     if ($existingUser) {
                         if (! CustomerRegistrationService::recoverableUser($existingUser)) return self::invalidCode();
                         if ($error = self::validateCode($existingUser, $code)) return $error;
@@ -51,7 +52,7 @@ class EmailVerificationController extends Controller
                 $pendingRegistration = PendingCustomerRegistration::query()
                     ->where(function ($query) use ($plainToken, $tokenHash, $codeMode, $data) {
                         if ($codeMode) {
-                            $query->where('email', $data['email']);
+                            $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']]);
                         } else {
                             $query->where('email_verification_token', $tokenHash)
                                 ->orWhere('email_verification_token', $plainToken);
@@ -146,10 +147,10 @@ class EmailVerificationController extends Controller
         $data = $request->validate(['email' => 'required|email']);
 
         // Existing users always win collisions, including verified/disabled users.
-        $user = User::query()->where('email', $data['email'])->first();
+        $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
         $registrant = $user
             ? (CustomerRegistrationService::recoverableUser($user) ? $user : null)
-            : PendingCustomerRegistration::query()->unexpired()->where('email', $data['email'])->first();
+            : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
 
         $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
             && is_string($request->input('registration_token'))

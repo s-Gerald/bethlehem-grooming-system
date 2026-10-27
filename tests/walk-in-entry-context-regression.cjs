@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
-const ownerSource = read("scripts/components/walk-in-owner-step.js");
+const ownerSource = read("scripts/utils/account-email.js") + "\n" + read("scripts/components/walk-in-owner-step.js");
 const ownerPage = read("pages/admin/walk-in-booking.html");
 const clinicSource = read("scripts/components/admin-clinic.js");
 const clinicPage = read("pages/admin/clinic.html");
@@ -19,6 +19,7 @@ function element() {
   return {
     value: "", textContent: "", innerHTML: "", disabled: false,
     events: {}, addEventListener(name, callback) { this.events[name] = callback; }, focus() {},
+    append() {}, insertAdjacentElement() {},
     setAttribute(key, value) { attributes.set(key, value); },
     getAttribute(key) { return attributes.get(key); },
     classList: {
@@ -46,7 +47,7 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
   const context = vm.createContext({
     URLSearchParams, window,
     document: {
-      getElementById: get,
+      getElementById: get, createElement: element,
       addEventListener(event, callback) { if (event === "DOMContentLoaded") ready = callback; },
     },
     API: { waitForSessionVerification: () => verification, validateWalkInNewOwner: async () => ({}) },
@@ -145,6 +146,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
 
     const values = { firstName: "Test", lastName: "Owner", middleInitial: "", phone: "09171234567", email: "" };
     flow.context.values = values;
+    for (const [id, value] of Object.entries({ ownerFirstName: values.firstName, ownerLastName: values.lastName, ownerPhoneNumber: values.phone })) flow.get(id).value = value;
     flow.context.API.validateWalkInNewOwner = async () => { throw { code: "similar_customer_name", data: { similarCustomers: [{ fullName: "Test Owner" }] } }; };
     await vm.runInContext("validateNewOwnerAndContinue(values)", flow.context);
     assert.equal(flow.window.location.href, "", "Similar names require acknowledgement");
@@ -203,7 +205,8 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.match(read("routes/api.php"), /post\('\/admin\/clinic-walk-in',[^\n]+middleware\('clinic:intake'\)/);
 
   // Exercise the unchanged dedicated Customers creation path with an API stub.
-  const customerContext = vm.createContext({});
+  const customerContext = vm.createContext({ window: {}, document: { getElementById: () => null } });
+  vm.runInContext(read("scripts/utils/account-email.js"), customerContext);
   const customerSource = read("scripts/components/admin-customers.js");
   vm.runInContext(customerSource.slice(customerSource.indexOf("function adminCustomers()")), customerContext);
   const customers = customerContext.adminCustomers();

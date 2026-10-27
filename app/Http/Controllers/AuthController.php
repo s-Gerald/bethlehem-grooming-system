@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
+use App\Support\AccountEmail;
 use App\Services\LoginEmailChallengeService;
 use App\Services\CustomerRegistrationService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -24,25 +25,26 @@ class AuthController extends Controller
 
         $phone = $request->input('phone');
         $request->merge([
-            'email' => Str::lower(trim((string) $request->input('email'))),
+            'email' => AccountEmail::normalize((string) $request->input('email')),
             'username' => filled($request->input('username'))
                 ? trim((string) $request->input('username'))
                 : null,
             'phone' => is_string($phone) && trim($phone) === '' ? null : $phone,
         ]);
 
-        $request->validate(['email' => 'required|email|max:150']);
+        $request->validate(['email' => $request->isMethod('put')
+            ? ['required', 'email', 'max:150'] : AccountEmail::rules()]);
 
         try {
             $result = DB::transaction(function () use ($request) {
                 $identifiers = function ($query) use ($request) {
-                    $query->where('email', $request->input('email'));
+                    $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$request->input('email')]);
                     if ($request->filled('phone')) $query->orWhere('phone', $request->input('phone'));
                     if ($request->filled('username')) $query->orWhere('username', $request->input('username'));
                 };
                 $pendingMatches = PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->get(['id', 'email']);
                 $userMatches = User::query()->where($identifiers)->lockForUpdate()->get(['user_id', 'email']);
-                $sameEmail = fn ($registrant) => Str::lower($registrant->email) === $request->input('email');
+                $sameEmail = fn ($registrant) => strcasecmp($registrant->email, $request->input('email')) === 0;
                 // An email alone cannot disclose recovery eligibility or change stored details.
                 if (! $request->isMethod('put')
                     && ($userMatches->contains($sameEmail) || $pendingMatches->contains($sameEmail))) {
@@ -64,11 +66,11 @@ class AuthController extends Controller
                         || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {
                         abort(422, 'This registration review has expired. Verify your email again.');
                     }
-                    if ($request->input('email') !== $registrant->email) {
+                    if (strcasecmp($request->input('email'), $registrant->email) !== 0) {
                         abort(422, 'Use the email address you verified.');
                     }
                     $pendingRegistration = $legacy
-                        ? PendingCustomerRegistration::query()->where('email', $legacy->email)->lockForUpdate()->first()
+                        ? PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$legacy->email])->lockForUpdate()->first()
                         : $registrant;
                     $data = $this->registrationData($request, $pendingRegistration, $legacy);
                     unset($data['password']);
@@ -149,7 +151,11 @@ class AuthController extends Controller
 
     private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null): array
     {
-        return $request->validate([
+        $existing = $legacy ?? $pendingRegistration;
+        if ($existing && strcasecmp($existing->email, $request->input('email')) === 0) {
+            $request->merge(['email' => $existing->email]);
+        }
+        $data = $request->validate([
             'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
             'last_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
             'username' => [
@@ -167,14 +173,13 @@ class AuthController extends Controller
                 Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey()),
             ],
             'email' => [
-                'required',
-                'email',
-                'max:150',
-                Rule::unique('users', 'email')->ignore($legacy?->getKey(), 'user_id'),
-                Rule::unique('pending_customer_registrations', 'email')->ignore($pendingRegistration?->getKey()),
+                ...(($existing && strcasecmp($existing->email, $request->input('email')) === 0)
+                    ? ['required', 'email', 'max:150'] : AccountEmail::rules()),
             ],
             'password' => 'required|string|min:8|max:100|confirmed',
         ]);
+        AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
+        return $data;
     }
 
     // ── UNIFIED SIGN-IN ───────────────────────────────────
@@ -221,10 +226,11 @@ class AuthController extends Controller
             $field === 'phone' && str_starts_with($identifier, '+63') => '0'.substr($identifier, 3),
             default => $identifier,
         };
-        $user = User::where($field, $lookupIdentifier)->first();
+        $lookupColumn = $field === 'email' ? AccountEmail::lookupColumn() : $field;
+        $user = User::whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
         $pendingRegistration = $user
             ? null
-            : PendingCustomerRegistration::query()->unexpired()->where($field, $lookupIdentifier)->first();
+            : PendingCustomerRegistration::query()->unexpired()->whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
 
         if ($user?->requiresPasswordSetup()) {
             RateLimiter::clear($throttleKey);

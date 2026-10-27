@@ -193,6 +193,7 @@ function adminCustomers() {
           email:       "",
         },
       };
+      AccountEmail.showError(document.getElementById('addCustomerEmail'), '');
       this.setCustomerDetailScrollLock(true);
     },
 
@@ -220,11 +221,14 @@ function adminCustomers() {
       if (!String(form.first_name || "").trim()) errors.first_name = ["First name is required."];
       if (!String(form.last_name || "").trim()) errors.last_name = ["Last name is required."];
       if (!/^09\d{9}$/.test(phone)) errors.phone = ["Phone number must be 11 digits and start with 09."];
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        errors.email = ["Enter a valid email address or leave it blank."];
+      const emailError = AccountEmail.validate(email, { required: false });
+      if (emailError) {
+        errors.email = [emailError];
+        AccountEmail.showError(document.getElementById('addCustomerEmail'), emailError);
       }
 
       this.addCustomerModal.errors = errors;
+      if (Object.keys(errors).length) this.$nextTick(() => document.getElementById({ first_name: 'addCustomerFirstName', last_name: 'addCustomerLastName', phone: 'addCustomerPhone', email: 'addCustomerEmail' }[Object.keys(errors)[0]])?.focus());
       return Object.keys(errors).length === 0;
     },
 
@@ -237,7 +241,7 @@ function adminCustomers() {
         last_name: String(form.last_name || "").trim(),
         middle_name: String(form.middle_name || "").trim().replace(/\.+$/, "").toUpperCase() || null,
         phone: this.normalizeCustomerPhone(form.phone),
-        email: String(form.email || "").trim() || null,
+        email: AccountEmail.normalize(form.email) || null,
         confirm_similar_name: Boolean(confirmSimilarName),
       };
 
@@ -263,7 +267,10 @@ function adminCustomers() {
           this.addCustomerModal.error = "";
           return;
         }
-        this.addCustomerModal.errors = err.errors || {};
+        const errors = { ...(err.errors || {}) };
+        if (AccountEmail.normalize(form.email) !== (payload.email || '')) delete errors.email;
+        this.addCustomerModal.errors = errors;
+        if (Object.keys(errors).length) this.$nextTick(() => document.getElementById({ first_name: 'addCustomerFirstName', last_name: 'addCustomerLastName', phone: 'addCustomerPhone', email: 'addCustomerEmail' }[Object.keys(errors)[0]])?.focus());
         this.addCustomerModal.error = err.errors
           ? ""
           : (err.message || "Failed to add customer. Please try again.");

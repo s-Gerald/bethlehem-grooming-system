@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AccountEmail;
+
 use App\Http\Requests\StoreClinicPreRegistrationRequest;
 use App\Http\Requests\StoreClinicWalkinRequest;
 use App\Models\ClinicAppointment;
@@ -276,10 +278,8 @@ class ClinicWalkinController extends Controller
                     'unregistered_customer_id' => ['The selected unregistered customer is no longer available.'],
                 ]);
             }
-        } elseif (! empty($data['email'])) {
-            // Preserve the existing clinic walk-in behavior for manually entered
-            // owners whose email already belongs to a registered customer.
-            $user = User::registeredCustomer()->where('email', $data['email'])->first();
+        } elseif (! empty($data['email']) && User::registeredCustomer()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->exists()) {
+            throw ValidationException::withMessages(['email' => 'This email is already in use. Select the existing customer.']);
         }
 
         $owner = $user

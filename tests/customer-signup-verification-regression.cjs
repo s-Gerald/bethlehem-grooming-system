@@ -10,15 +10,15 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const timeouts = new Map();
   const calls = [];
   const storage = new Map([
-    ['pendingVerificationEmail', 'customer@example.test'],
+    ['pendingVerificationEmail', 'customer@gmail.com'],
     ['pendingVerificationPhone', '09171234542'],
     ['pendingRegistrationEditToken', 'private-edit-credential'],
     ['pendingVerificationResendUntil', String(now + (deliveryFailed ? 0 : 45000))],
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
-  if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone }));
+  if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone }));
   if (reviewing) {
-    storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@example.test', phone }));
+    storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@gmail.com', phone }));
     if (!missingGrant) storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
   }
   let nextId = 0;
@@ -26,6 +26,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const elements = new Map();
   const document = {
     activeElement: null,
+    createElement: () => element(`generated-${++nextId}`),
     addEventListener(name, callback) { if (name === 'DOMContentLoaded') ready = callback; },
     getElementById: element,
   };
@@ -40,11 +41,15 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
           contains(name) { return classes.has(name); },
           toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
         },
+        getAttribute(name) { return this.attributes[name] || ''; },
+        append(...children) { this.children = children; },
+        insertAdjacentElement(_where, el) { this.adjacent = el; },
+        dispatchEvent(event) { handlers[event.type]?.call(this, event); },
         setAttribute(name, value) { this.attributes[name] = value; },
         addEventListener(name, handler) { handlers[name] = handler; },
         setSelectionRange(start, end) { this.selection = [start, end]; },
         focus() { document.activeElement = this; handlers.focus?.(); },
-        checkValidity() { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
+        checkValidity() { return id === 'signupForm' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
         reportValidity() {},
         setCustomValidity(message) { this.validationMessage = message; },
         querySelector() { return null; },
@@ -70,7 +75,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     async verifyEmail(email, code) { calls.push(['verify', email, code]); return { token: 'session', user: { role: 'customer' } }; },
   };
   const context = vm.createContext({
-    window, document, API, URLSearchParams,
+    window, document, API, URLSearchParams, Event,
     Date: { now: () => now },
     sessionStorage: {
       getItem(key) { if (noStorage) throw Error('blocked'); return storage.get(key) ?? null; },
@@ -79,9 +84,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     },
   });
   if (signup) {
-    for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@example.test', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
+    for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
-  for (const source of signup ? ['scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', 'scripts/auth/client/signup-verification.js']) {
+  for (const source of signup ? ['scripts/utils/account-email.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   ready();
@@ -127,13 +132,41 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       await signup.dispatch('signupForm', 'submit');
       assert.equal(signup.calls[0]?.[0], editing ? 'update' : 'register');
       assert.equal(signup.calls[0][1].phone, phone || null);
-      assert.equal(signup.calls[0][1].email, 'customer@example.test');
+      assert.equal(signup.calls[0][1].email, 'customer@gmail.com');
       if (editing) assert.equal(signup.calls[0][2], 'private-edit-credential');
       assert.equal(signup.storage.get('pendingRegistrationEditToken'), 'rotated-edit-token');
       assert.deepEqual(signup.calls.at(-1), ['redirect', './verify-email.html']);
       assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
     }
   }
+  const invalidEmail = page({ signup: true });
+  invalidEmail.element('email').value = '123@123.com';
+  await invalidEmail.dispatch('signupForm', 'submit');
+  assert.equal(invalidEmail.calls.length, 0, 'Unsupported providers cannot start signup or OTP');
+  assert.equal(invalidEmail.element('email').attributes['aria-invalid'], 'true');
+  assert.ok(invalidEmail.element('emailError').textContent);
+  invalidEmail.element('email').value = 'ab@gmail.com';
+  invalidEmail.dispatch('email', 'input');
+  assert.equal(invalidEmail.element('emailError').textContent, '');
+  assert.equal(invalidEmail.element('email').attributes['aria-invalid'], 'false');
+  invalidEmail.dispatch('email', 'blur');
+  assert.equal(invalidEmail.element('emailError').textContent, 'Use at least 3 characters before @.');
+  invalidEmail.element('email').value = 'abc@gmail.com';
+  invalidEmail.dispatch('email', 'input');
+  await invalidEmail.dispatch('signupForm', 'submit');
+  assert.equal(invalidEmail.calls[0][0], 'register');
+
+  const staleEmail = page({ signup: true });
+  let rejectStale;
+  staleEmail.API.register = () => new Promise((_resolve, reject) => { rejectStale = reject; });
+  const staleSubmission = staleEmail.dispatch('signupForm', 'submit');
+  staleEmail.element('email').value = 'corrected@gmail.com';
+  staleEmail.dispatch('email', 'input');
+  rejectStale({ errors: { email: ['This email is already in use.'] } });
+  await staleSubmission;
+  assert.equal(staleEmail.element('emailError').textContent, '');
+  assert.equal(staleEmail.element('email').attributes['aria-invalid'], 'false');
+
   const invalidPhone = page({ signup: true, phone: '08123456789' });
   await invalidPhone.dispatch('signupForm', 'submit');
   assert.equal(invalidPhone.calls.length, 0);
@@ -173,7 +206,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
   const ownership = page();
   ownership.API.verifyEmail = async () => ({ requires_registration_review: true, registration_recovery_token: 'ownership-grant',
-    details: { first_name: 'Saved', last_name: 'Customer', email: 'customer@example.test', phone: null, username: null } });
+    details: { first_name: 'Saved', last_name: 'Customer', email: 'customer@gmail.com', phone: null, username: null } });
   ownership.type('123456');
   await ownership.dispatch('signupCodeForm', 'submit');
   assert.deepEqual(ownership.calls, [['redirect', './signup.html?review=1']]);
@@ -191,10 +224,10 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   failSignup({ status: 422, errors: { email: ['Enter a valid email address.'] } });
   await pendingSignup;
   assert.equal(interrupted.element('signupSubmit').disabled, false);
-  assert.equal(interrupted.element('email').value, 'customer@example.test');
+  assert.equal(interrupted.element('email').value, 'customer@gmail.com');
   assert.equal(interrupted.element('password').value, 'strong-password');
   assert.equal(interrupted.element('email').attributes['aria-invalid'], 'true');
-  assert.equal(interrupted.element('signupMessage').textContent, 'Enter a valid email address.');
+  assert.equal(interrupted.element('emailError').textContent, 'Enter a valid email address.');
 
   const expiredCode = page();
   expiredCode.API.verifyEmail = async () => { throw { status: 422, expired: true }; };
@@ -206,7 +239,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const p = page();
   assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
   assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code for');
-  assert.equal(p.element('verifyCodeEmail').textContent, 'c***@example.test');
+  assert.equal(p.element('verifyCodeEmail').textContent, 'c***@gmail.com');
   assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   assert.equal(p.element('signupCodeSubmit').disabled, true);
   p.type('12a34b567');
@@ -244,11 +277,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   await p.dispatch('signupResend', 'click');
   assert.equal(p.element('signupCodeMessage').attributes.role, 'status', 'A successful resend is a status confirmation, not an error alert');
-  assert.deepEqual(p.calls, [['send', 'customer@example.test']]);
+  assert.deepEqual(p.calls, [['send', 'customer@gmail.com']]);
   assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
   p.type('654321');
   await p.dispatch('signupCodeForm', 'submit');
-  assert.deepEqual(p.calls.at(-1), ['verify', 'customer@example.test', '654321']);
+  assert.deepEqual(p.calls.at(-1), ['verify', 'customer@gmail.com', '654321']);
   assert.equal(p.storage.size, 0);
   assert.equal(p.element('stateSuccess').classList.contains('hidden'), false);
   p.advance(1500);
@@ -262,7 +295,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const transportAccepted = page({ deliveryStatus: 'sent' });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(transportAccepted.element('signupCodeMessage').textContent, '');
-  assert.equal(transportAccepted.element('verifyCodeEmail').textContent, 'c***@example.test');
+  assert.equal(transportAccepted.element('verifyCodeEmail').textContent, 'c***@gmail.com');
   assert.deepEqual(transportAccepted.calls, [], 'Delivery receipt alone cannot authenticate');
 
   const throttled = page({ deliveryFailed: true });
@@ -286,9 +319,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
   const recovery = page({ noStorage: true });
   assert.equal(recovery.element('verificationEmailRecovery').classList.contains('hidden'), false);
-  recovery.element('verificationEmail').value = 'restore@example.test';
+  recovery.element('verificationEmail').value = 'restore@gmail.com';
   await recovery.dispatch('signupResend', 'click');
-  assert.deepEqual(recovery.calls, [['send', 'restore@example.test']]);
+  assert.deepEqual(recovery.calls, [['send', 'restore@gmail.com']]);
 
   const recoveredDelivery = page({ deliveryFailed: true, deliveryStatus: 'sent' });
   recoveredDelivery.API.resendVerification = async () => ({ resend_after: 45, email_delivery_token: 'new-private-receipt' });

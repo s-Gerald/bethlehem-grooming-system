@@ -3848,6 +3848,14 @@ video {
   overflow-wrap: anywhere;
 }
 
+/* Existing email field error treatment, including Alpine/backend errors. */
+
+[data-email-entry][aria-invalid="true"],
+[data-email-entry][aria-invalid="true"]:focus {
+  border-color: #fca5a5;
+  --tw-ring-color: #fee2e2;
+}
+
 .placeholder\:text-portal-muted::-moz-placeholder {
   color: var(--portal-muted);
 }

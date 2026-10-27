@@ -111,7 +111,7 @@ class AdminCredentialChangeTest extends TestCase
     public function test_security_accounts_lists_the_current_staff_record_even_without_a_username(): void
     {
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', '09170001001', 'Admin');
-        $staff = $this->createUser('staff', 'staff-placeholder@example.test', '09170001002');
+        $staff = $this->createUser('staff', 'staff-placeholder@gmail.com', '09170001002');
         Sanctum::actingAs($admin);
 
         $this->getJson('/api/admin/security/accounts')
@@ -120,7 +120,7 @@ class AdminCredentialChangeTest extends TestCase
             ->assertJsonPath('admin.email', 'bethlehem.admin.test@gmail.com')
             ->assertJsonPath('staff.0.user_id', $staff->user_id)
             ->assertJsonPath('staff.0.username', null)
-            ->assertJsonPath('staff.0.email', 'staff-placeholder@example.test');
+            ->assertJsonPath('staff.0.email', 'staff-placeholder@gmail.com');
     }
 
     public function test_admin_username_change_requires_current_password_and_a_purpose_specific_security_code(): void
@@ -193,7 +193,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         Notification::fake();
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', '09170001004', 'Admin');
-        $staff = $this->createUser('staff', 'staff-placeholder@example.test', '09170001005');
+        $staff = $this->createUser('staff', 'staff-placeholder@gmail.com', '09170001005');
         Sanctum::actingAs($admin);
 
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/credential-change", [
@@ -279,7 +279,7 @@ class AdminCredentialChangeTest extends TestCase
 
     public function test_staff_cannot_access_admin_security_management(): void
     {
-        $staff = $this->createUser('staff', 'staff@example.test', '09170001007');
+        $staff = $this->createUser('staff', 'staff@gmail.com', '09170001007');
         Sanctum::actingAs($staff);
 
         $this->getJson('/api/admin/security/accounts')->assertForbidden();
@@ -288,7 +288,7 @@ class AdminCredentialChangeTest extends TestCase
     public function test_staff_can_only_change_their_own_password_after_email_code_verification(): void
     {
         Notification::fake();
-        $staff = $this->createUser('staff', 'staff@example.test', '09170001009', 'clinicstaff');
+        $staff = $this->createUser('staff', 'staff@gmail.com', '09170001009', 'clinicstaff');
         $staff->update([
             'staff_type' => 'clinic',
             'staff_subrole' => 'veterinarian',
@@ -358,7 +358,7 @@ class AdminCredentialChangeTest extends TestCase
         (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
         config()->set('mail.default', 'array');
-        $admin = $this->createUser('admin', 'admin@example.test', '09170001999', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         $service = app(\App\Services\PrivilegedCredentialChangeService::class);
         $payload = $service->request($admin, $admin, 'ChangedAdmin', null);
         $this->assertIsString($payload['email_delivery_token'] ?? null);
@@ -387,7 +387,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
-        $admin = $this->createUser('admin', 'admin@example.test', '09170001999', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         $service = app(\App\Services\PrivilegedCredentialChangeService::class);
         $service->request($admin, $admin, 'ChangedAdmin', null);
         $change = PrivilegedCredentialChange::query()->sole();
@@ -407,7 +407,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
-        $admin = $this->createUser('admin', 'admin@example.test', '09170001999', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         app(\App\Services\PrivilegedCredentialChangeService::class)->request($admin, $admin, 'ChangedAdmin', null);
         PrivilegedCredentialChange::query()->update(['failed_attempts' => 5]);
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
@@ -419,7 +419,7 @@ class AdminCredentialChangeTest extends TestCase
         (require database_path('migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config()->set('queue.default', 'database');
         config()->set('mail.authentication.delivery', 'immediate');
-        $admin = $this->createUser('admin', 'admin@example.test', '09170001999', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         Sanctum::actingAs($admin);
         $response = $this->postJson('/api/admin/security/account/credential-change', [
             'current_password' => 'CurrentAdmin!234', 'username' => 'ChangedAdmin',
@@ -489,7 +489,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         Notification::fake();
         foreach (['grooming_receptionist', 'clinic_receptionist', 'veterinarian'] as $index => $subrole) {
-            $staff = $this->createUser('staff', "profile{$index}@example.test", "0917111100{$index}", "ProfileStaff{$index}");
+            $staff = $this->createUser('staff', "profile{$index}@gmail.com", "0917111100{$index}", "ProfileStaff{$index}");
             $staff->update(['staff_type' => $index === 0 ? 'grooming' : 'clinic', 'staff_subrole' => $subrole]);
             $token = $staff->createToken('staff_token');
             $before = $staff->fresh()->getAttributes();
@@ -518,7 +518,7 @@ class AdminCredentialChangeTest extends TestCase
     public function test_staff_username_preflight_does_not_save_and_confirmation_is_atomic(): void
     {
         Notification::fake();
-        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
         Sanctum::actingAs($staff);
         $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'New.Staff'];
         $this->postJson('/api/settings/security/profile/validate', $profile)->assertOk();
@@ -538,7 +538,7 @@ class AdminCredentialChangeTest extends TestCase
 
     public function test_staff_profile_case_only_username_changes_need_password_but_unchanged_profile_is_a_noop(): void
     {
-        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
         Sanctum::actingAs($staff);
         $profile = ['first_name' => 'Staff', 'last_name' => 'Bethlehem', 'username' => 'ProfileStaff'];
         $this->patchJson('/api/settings/security/profile', $profile)->assertOk();
@@ -550,17 +550,17 @@ class AdminCredentialChangeTest extends TestCase
 
     public function test_staff_profile_rejects_case_insensitive_existing_and_pending_usernames_and_rechecks_on_save(): void
     {
-        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+        $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
         Sanctum::actingAs($staff);
         $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'ClaimedName'];
         $this->postJson('/api/settings/security/profile/validate', $profile)->assertOk();
-        $this->createUser('customer', 'claimed@example.test', '09171111011', 'claimedname');
+        $this->createUser('customer', 'claimed@gmail.com', '09171111011', 'claimedname');
         $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
             ->assertUnprocessable()->assertJsonValidationErrors('username');
         $this->assertSame('Staff', $staff->fresh()->first_name);
         \App\Models\PendingCustomerRegistration::create([
             'first_name' => 'Pending', 'last_name' => 'Customer', 'username' => 'Pending.Name',
-            'email' => 'pending@example.test', 'phone' => '09171111012', 'password_hash' => Hash::make('Customer!234'),
+            'email' => 'pending@gmail.com', 'phone' => '09171111012', 'password_hash' => Hash::make('Customer!234'),
         ]);
         $profile['username'] = 'PENDING.NAME';
         $this->postJson('/api/settings/security/profile/validate', $profile)->assertUnprocessable()->assertJsonValidationErrors('username');
@@ -574,9 +574,9 @@ class AdminCredentialChangeTest extends TestCase
             $table->string('email');
         });
         try {
-            $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
+            $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
             Sanctum::actingAs($staff);
-            \Illuminate\Support\Facades\DB::table('pending_staff_accounts')->insert(['username' => 'ReservedStaff', 'email' => 'invited@example.test']);
+            \Illuminate\Support\Facades\DB::table('pending_staff_accounts')->insert(['username' => 'ReservedStaff', 'email' => 'invited@gmail.com']);
             $profile = ['first_name' => 'Updated', 'last_name' => 'Person', 'username' => 'reservedstaff'];
             $this->postJson('/api/settings/security/profile/validate', $profile)->assertUnprocessable()->assertJsonValidationErrors('username');
             $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
@@ -589,8 +589,8 @@ class AdminCredentialChangeTest extends TestCase
 
     public function test_staff_profile_username_race_returns_field_error_and_rolls_back_names(): void
     {
-        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
-        $other = $this->createUser('staff', 'other@example.test', '09171111011', 'OtherStaff');
+        $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
+        $other = $this->createUser('staff', 'other@gmail.com', '09171111011', 'OtherStaff');
         Sanctum::actingAs($staff);
         $raced = false;
         $event = 'eloquent.updating: '.User::class;
@@ -617,8 +617,8 @@ class AdminCredentialChangeTest extends TestCase
     public function test_staff_profile_rejects_invalid_and_protected_fields_including_target_ids(): void
     {
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
-        $staff = $this->createUser('staff', 'profile@example.test', '09171111010', 'ProfileStaff');
-        $other = $this->createUser('staff', 'other@example.test', '09171111011', 'OtherStaff');
+        $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
+        $other = $this->createUser('staff', 'other@gmail.com', '09171111011', 'OtherStaff');
         Sanctum::actingAs($staff);
         $profile = ['first_name' => 'Changed', 'last_name' => 'Person', 'username' => 'ProfileStaff'];
         foreach (['user_id', 'id', 'target_user_id', 'email', 'role', 'staff_type', 'staff_subrole', 'permissions', 'is_active', 'is_archived', 'password', 'password_hash', 'account_status', 'unexpected'] as $field) {
@@ -641,7 +641,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         $this->patchJson('/api/settings/security/profile', [])->assertUnauthorized();
         foreach (['admin', 'customer'] as $index => $role) {
-            Sanctum::actingAs($this->createUser($role, "role{$index}@example.test", "0917111102{$index}", "RoleUser{$index}"));
+            Sanctum::actingAs($this->createUser($role, "role{$index}@gmail.com", "0917111102{$index}", "RoleUser{$index}"));
             $this->patchJson('/api/settings/security/profile', [])->assertForbidden();
             $this->postJson('/api/settings/security/profile/validate', [])->assertForbidden();
         }
@@ -651,29 +651,29 @@ class AdminCredentialChangeTest extends TestCase
     public function test_active_staff_verify_both_addresses_before_email_and_sessions_change(string $type, string $subrole): void
     {
         Notification::fake();
-        $staff = $this->createUser('staff', 'current@example.test', '09171111099', 'ExistingStaff');
+        $staff = $this->createUser('staff', 'current@gmail.com', '09171111099', 'ExistingStaff');
         $staff->update(['staff_type' => $type, 'staff_subrole' => $subrole]);
         if ($subrole === 'grooming_receptionist') $staff->update(['email_verified_at' => null]);
         $original = $staff->refresh()->getAttributes();
         $token = $staff->createToken('staff')->plainTextToken;
         $staff->createToken('superseded')->accessToken->forceFill(['replaced_at' => now()])->save();
-        $unrelated = $this->createUser('staff', 'unrelated@example.test', '09171111998', 'UnrelatedStaff');
+        $unrelated = $this->createUser('staff', 'unrelated@gmail.com', '09171111998', 'UnrelatedStaff');
         $unrelatedToken = $unrelated->createToken('other')->accessToken;
         $staff->tokens()->update(['last_interaction_at' => now()]);
         $this->withToken($token);
         $this->app['auth']->forgetGuards();
         $started = $this->postJson('/api/settings/security/email-change', [
-            'email' => ' NEW@example.test ', 'current_password' => 'CurrentAdmin!234',
+            'email' => ' new@GMAIL.COM ', 'current_password' => 'CurrentAdmin!234',
         ])->assertAccepted()->assertJsonPath('pending_email_change.stage', 'current');
         $id = $started->json('pending_email_change.id');
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change.id', $id)
             ->assertJsonMissingPath('pending_email_change.code_hash')->assertJsonMissingPath('pending_email_change.account_fingerprint')
             ->assertJsonMissingPath('pending_email_change.session_token_id');
         $currentCode = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last()->code;
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $currentCode])
             ->assertOk()->assertJsonPath('pending_email_change.stage', 'new');
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $newNotification = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\VerifyStaffEmailChangeNotification::class)->last();
         $newCode = $newNotification->code;
         $this->assertNotSame($currentCode, $newCode);
@@ -681,7 +681,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $newCode])
             ->assertOk()->assertJsonPath('completed', true)->assertJsonMissingPath('token');
         $staff->refresh();
-        $this->assertSame('new@example.test', $staff->email);
+        $this->assertSame('new@gmail.com', $staff->email);
         foreach (['user_id', 'first_name', 'last_name', 'username', 'password_hash', 'role', 'staff_type', 'staff_subrole', 'is_active'] as $field) {
             $this->assertSame($original[$field], $staff->getAttributes()[$field]);
         }
@@ -701,28 +701,28 @@ class AdminCredentialChangeTest extends TestCase
     public function test_self_service_email_validation_ownership_and_role_restrictions(): void
     {
         [$staff, $token] = $this->emailStaffFixture();
-        $this->createUser('customer', 'USED@example.test', '09171111100', 'Other');
+        $this->createUser('customer', 'USED@gmail.com', '09171111100', 'Other');
         $service = app(\App\Services\StaffEmailChangeService::class);
-        foreach (['current@example.test', 'used@example.test', 'bad@-example..com', str_repeat('x', 151).'@example.test'] as $email) {
+        foreach (['current@gmail.com', 'used@gmail.com', 'bad@-example..com', str_repeat('x', 151).'@gmail.com'] as $email) {
             try { $service->start($staff, $email, 'CurrentAdmin!234'); $this->fail('Invalid email must be rejected.'); }
             catch (\Illuminate\Validation\ValidationException $e) { $this->assertArrayHasKey('email', $e->errors()); }
         }
-        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'incorrect'])
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@gmail.com', 'current_password' => 'incorrect'])
             ->assertUnprocessable()->assertJsonValidationErrors('current_password');
-        $pending = $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertAccepted()->json('pending_email_change');
-        $other = $this->createUser('staff', 'other@example.test', '09171111101', 'OtherStaff');
+        $pending = $this->postJson('/api/settings/security/email-change', ['email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertAccepted()->json('pending_email_change');
+        $other = $this->createUser('staff', 'other@gmail.com', '09171111101', 'OtherStaff');
         $this->useEmailToken($other->createToken('staff')->plainTextToken);
         $this->postJson('/api/settings/security/email-change/'.$pending['id'].'/confirm', ['stage' => 'current', 'code' => '123456'])->assertNotFound();
         $this->deleteJson('/api/settings/security/email-change/'.$pending['id'])->assertNotFound();
         foreach (['admin', 'customer'] as $index => $role) {
-            $user = $this->createUser($role, $role.'@example.test', '0917111111'.$index);
+            $user = $this->createUser($role, $role.'@gmail.com', '0917111111'.$index);
             $this->useEmailToken($user->createToken('account')->plainTextToken);
-            $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertForbidden();
+            $this->postJson('/api/settings/security/email-change', ['email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertForbidden();
         }
         $this->useEmailToken($token);
-        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234', 'user_id' => $other->getKey()])
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234', 'user_id' => $other->getKey()])
             ->assertUnprocessable()->assertJsonValidationErrors('user_id');
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
     }
 
     public function test_email_resend_cancel_expiry_and_replacement_preserve_security_budgets(): void
@@ -740,14 +740,14 @@ class AdminCredentialChangeTest extends TestCase
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertUnprocessable();
         $this->travel(61)->seconds();
-        $replacement = $this->startEmailChange('replacement@example.test');
+        $replacement = $this->startEmailChange('replacement@gmail.com');
         $this->assertNotSame($id, $replacement['id']);
         $this->assertSame(4, $replacement['attempts_remaining']);
         $this->assertSame($pending['expires_at'], $replacement['expires_at']);
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $old])->assertNotFound();
         $this->travel(21)->minutes();
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
     }
 
     public function test_email_codes_expire_and_lock_after_five_incorrect_attempts(): void
@@ -765,8 +765,8 @@ class AdminCredentialChangeTest extends TestCase
         }
         $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
         $this->travel(61)->seconds();
-        $this->postJson('/api/settings/security/email-change', ['email' => 'replacement@example.test', 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable()->assertJsonPath('status', 'locked');
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->postJson('/api/settings/security/email-change', ['email' => 'replacement@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable()->assertJsonPath('status', 'locked');
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('emailAuthorityChanges')]
@@ -782,13 +782,13 @@ class AdminCredentialChangeTest extends TestCase
         $this->app['auth']->forgetGuards();
         $response = $this->postJson('/api/settings/security/email-change/'.$pending['id'].'/confirm', ['stage' => 'current', 'code' => $this->latestEmailCode()]);
         $this->assertContains($response->status(), [401, 403, 422]);
-        $this->assertNotSame('new@example.test', $staff->fresh()->email);
+        $this->assertNotSame('new@gmail.com', $staff->fresh()->email);
     }
 
     public static function emailAuthorityChanges(): array
     {
         return [['is_active', false], ['is_archived', true], ['role', 'admin'], ['staff_subrole', 'clinic_receptionist'],
-            ['email', 'changed@example.test'], ['password_hash', 'changed-password'],
+            ['email', 'changed@gmail.com'], ['password_hash', 'changed-password'],
             ['password_hash', User::passwordSetupPlaceholder()], ['session', null]];
     }
 
@@ -805,7 +805,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $code])
             ->assertUnprocessable()->assertJsonPath('status', 'invalid');
         $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('pending_email_change', null);
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
@@ -817,7 +817,7 @@ class AdminCredentialChangeTest extends TestCase
         Notification::shouldReceive('send')->once()->andThrow(new \RuntimeException('private mail failure'));
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $code])->assertStatus(503)->assertDontSee('private mail failure');
         $this->assertSame($before, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
     }
 
     public function test_email_final_claim_conflict_preserves_account_and_sessions(): void
@@ -825,9 +825,9 @@ class AdminCredentialChangeTest extends TestCase
         [$staff] = $this->emailStaffFixture();
         $pending = $this->startEmailChange(); $id = $pending['id'];
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
-        $this->createUser('staff', 'new@example.test', '09171111200', 'Claimant');
+        $this->createUser('staff', 'new@gmail.com', '09171111200', 'Claimant');
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertUnprocessable()->assertJsonValidationErrors('email');
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->assertDatabaseCount('personal_access_tokens', 1);
     }
 
@@ -838,7 +838,7 @@ class AdminCredentialChangeTest extends TestCase
         config(['queue.default' => 'database', 'mail.default' => 'array']);
         Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
         \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_initial_email_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
-        $this->postJson('/api/settings/security/email-change', ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234'])->assertStatus(503);
+        $this->postJson('/api/settings/security/email-change', ['email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertStatus(503);
         $this->assertDatabaseCount('staff_email_changes', 0);
         $this->assertDatabaseCount('jobs', 0);
         \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_initial_email_job');
@@ -855,7 +855,7 @@ class AdminCredentialChangeTest extends TestCase
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages, 'Cancelled and superseded codes must not be delivered.');
         $mail = $messages[0]->getOriginalMessage();
-        $this->assertSame('current@example.test', $mail->getTo()[0]->getAddress());
+        $this->assertSame('current@gmail.com', $mail->getTo()[0]->getAddress());
         preg_match('/\b[0-9]{6}\b/', $mail->getTextBody(), $digits);
         $currentState = \App\Models\StaffEmailChange::findOrFail($id)->getAttributes();
         \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_transition_email_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
@@ -867,7 +867,7 @@ class AdminCredentialChangeTest extends TestCase
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(2, $messages);
         $mail = $messages[1]->getOriginalMessage();
-        $this->assertSame('new@example.test', $mail->getTo()[0]->getAddress());
+        $this->assertSame('new@gmail.com', $mail->getTo()[0]->getAddress());
         preg_match('/\b[0-9]{6}\b/', $mail->getTextBody(), $digits);
         $before = \App\Models\StaffEmailChange::findOrFail($id)->getAttributes();
         $this->travel(61)->seconds();
@@ -875,7 +875,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson("/api/settings/security/email-change/{$id}/resend", ['stage' => 'new'])->assertStatus(503);
         $this->assertSame($before, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $digits[0]])->assertOk()->assertJsonPath('completed', true);
-        $this->assertSame('new@example.test', $staff->fresh()->email);
+        $this->assertSame('new@gmail.com', $staff->fresh()->email);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -883,20 +883,20 @@ class AdminCredentialChangeTest extends TestCase
     {
         [$staff] = $this->emailStaffFixture();
         $pending = $this->startEmailChange(); $id = $pending['id'];
-        $this->postJson('/api/sign-in', ['identifier' => 'new@example.test', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $this->latestEmailCode()])->assertOk();
         $this->app['auth']->forgetGuards();
-        $this->postJson('/api/sign-in', ['identifier' => 'current@example.test', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
-        $this->postJson('/api/sign-in', ['identifier' => 'new@example.test', 'password' => 'CurrentAdmin!234'])->assertAccepted();
+        $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class,
-            fn ($notification, $channels, $recipient) => $recipient->email === 'new@example.test');
+            fn ($notification, $channels, $recipient) => $recipient->email === 'new@gmail.com');
         $service = app(\App\Services\PasswordResetService::class);
-        $service->sendCode('current@example.test');
+        $service->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
-        $service->sendCode('new@example.test');
+        $service->sendCode('new@gmail.com');
         Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class,
-            fn ($notification, $channels, $recipient) => $recipient->email === 'new@example.test');
+            fn ($notification, $channels, $recipient) => $recipient->email === 'new@gmail.com');
     }
 
     public function test_email_change_migration_is_reversible_without_mutating_user_data(): void
@@ -927,7 +927,7 @@ class AdminCredentialChangeTest extends TestCase
         try {
             $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'new', 'code' => $code])->assertOk()->assertJsonPath('completed', true);
             $this->assertSame(2, $attempts);
-            $this->assertSame('new@example.test', $staff->fresh()->email);
+            $this->assertSame('new@gmail.com', $staff->fresh()->email);
             Notification::assertSentOnDemandTimes(\App\Notifications\StaffEmailChangedNotification::class, 1);
         } finally { \Illuminate\Support\Facades\Event::forget($event); }
     }
@@ -952,7 +952,7 @@ class AdminCredentialChangeTest extends TestCase
         $secondUser = $staff;
         $secondId = $id; $secondCode = $code;
         if ($twoOp === 'claim') {
-            $secondUser = $this->createUser('staff', 'other@example.test', '09171111999', 'ClaimingStaff');
+            $secondUser = $this->createUser('staff', 'other@gmail.com', '09171111999', 'ClaimingStaff');
             $secondUser->update(['staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
             $this->useEmailToken($secondUser->createToken('staff')->plainTextToken);
             $secondId = $this->startEmailChange()['id'];
@@ -967,7 +967,7 @@ class AdminCredentialChangeTest extends TestCase
         if ($twoOp === 'claim') {
             $statuses = [$race['one'], $race['two']]; sort($statuses);
             $this->assertSame(['completed', 'email_unavailable'], $statuses);
-            $email = $race['one'] === 'completed' ? 'new@example.test' : 'current@example.test';
+            $email = $race['one'] === 'completed' ? 'new@gmail.com' : 'current@gmail.com';
         } else {
             $this->assertSame($oneStatus, $race['one']); $this->assertSame($twoStatus, $race['two']);
         }
@@ -1045,7 +1045,7 @@ class AdminCredentialChangeTest extends TestCase
                 $service = app(App\Services\StaffEmailChangeService::class);
                 try {
                     $result = match ($operation) {
-                        'recover-start' => app(App\Services\StaffEmailRecoveryService::class)->start($user, (int) $lockUserId, ['email' => $position.'@example.test', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record']),
+                        'recover-start' => app(App\Services\StaffEmailRecoveryService::class)->start($user, (int) $lockUserId, ['email' => $position.'@gmail.com', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record']),
                         'recover-approve' => app(App\Services\StaffEmailRecoveryService::class)->confirm($user, (int) $lockUserId, $changeId, $code),
                         'recover-final' => app(App\Services\StaffEmailRecoveryService::class)->complete($code, 'CurrentAdmin!234'),
                         'recover-resend' => app(App\Services\StaffEmailRecoveryService::class)->resendLink($user, (int) $lockUserId, $changeId, 'CurrentAdmin!234'),
@@ -1053,7 +1053,7 @@ class AdminCredentialChangeTest extends TestCase
                             $target = App\Models\User::whereKey($lockUserId)->lockForUpdate()->firstOrFail();
                             $target->update(['staff_subrole' => 'clinic_receptionist']); return ['status' => 'role'];
                         }),
-                        'start' => $service->start($user, $position.'@example.test', 'CurrentAdmin!234'),
+                        'start' => $service->start($user, $position.'@gmail.com', 'CurrentAdmin!234'),
                         'current' => $service->confirm($user, $changeId, 'current', $code),
                         'final', 'claim' => $service->confirm($user, $changeId, 'new', $code),
                         'resend' => $service->resend($user, $changeId, 'new'),
@@ -1080,7 +1080,7 @@ class AdminCredentialChangeTest extends TestCase
             return ['one' => $one['status'], 'two' => $two['status'],
                 'email' => $connection->query('SELECT email FROM users WHERE user_id = '.(int) $lockUserId)->fetchColumn(),
                 'hold' => (bool) $connection->query('SELECT email_recovery_id FROM users WHERE user_id = '.(int) $lockUserId)->fetchColumn(),
-                'claims' => (int) $connection->query("SELECT COUNT(*) FROM users WHERE email='new@example.test'")->fetchColumn(),
+                'claims' => (int) $connection->query("SELECT COUNT(*) FROM users WHERE email='new@gmail.com'")->fetchColumn(),
                 'active_recoveries' => (int) $connection->query('SELECT COUNT(*) FROM staff_email_recoveries WHERE active_user_id = '.(int) $lockUserId)->fetchColumn()];
         } finally {
             $first?->stop(); $second?->stop(); $connection = null;
@@ -1118,7 +1118,7 @@ class AdminCredentialChangeTest extends TestCase
             'verified_token_hash' => hash('sha256', $grant), 'expires_at' => now()->addMinutes(15), 'last_sent_at' => now()]);
         $claimArguments = [];
         if ($twoOp === 'claim') {
-            $claimant = $this->createUser('staff', 'claimant@example.test', '09172222999', 'ClaimingStaff');
+            $claimant = $this->createUser('staff', 'claimant@gmail.com', '09172222999', 'ClaimingStaff');
             $claimant->update(['staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
             $this->useEmailToken($claimant->createToken('staff')->plainTextToken);
             $claimId = $this->startEmailChange()['id'];
@@ -1136,7 +1136,7 @@ class AdminCredentialChangeTest extends TestCase
         if ($twoOp === 'claim') {
             $statuses = [$race['one'], $race['two']]; sort($statuses);
             $this->assertSame(['completed', 'email_unavailable'], $statuses);
-            $email = $race['one'] === 'completed' ? 'new@example.test' : 'current@example.test';
+            $email = $race['one'] === 'completed' ? 'new@gmail.com' : 'current@gmail.com';
             $hold = $race['one'] !== 'completed';
         } else {
             $this->assertSame($oneStatus, $race['one']);
@@ -1151,32 +1151,32 @@ class AdminCredentialChangeTest extends TestCase
     public static function overlappingRecoveries(): array
     {
         return [
-            ['recover-start', 'recover-start', 'authorizing', 'cooldown', 'current@example.test', false],
-            ['recover-approve', 'recover-approve', 'pending', 'invalid', 'current@example.test', true],
-            ['recover-final', 'recover-final', 'completed', 'invalid', 'new@example.test', false],
-            ['recover-resend', 'recover-final', 'pending', 'invalid', 'current@example.test', true],
-            ['recover-final', 'recover-resend', 'completed', 'invalid', 'new@example.test', false],
-            ['recover-final', 'claim', 'completed', 'email_unavailable', 'new@example.test', false],
-            ['role', 'recover-final', 'role', 'invalid', 'current@example.test', true],
-            ['recover-final', 'role', 'completed', 'role', 'new@example.test', false],
-            ['recover-approve', 'reset', 'pending', 'invalid', 'current@example.test', true],
-            ['reset', 'recover-approve', 'reset', 'invalid', 'current@example.test', false],
-            ['recover-approve', 'final', 'pending', 'http403', 'current@example.test', true],
-            ['final', 'recover-approve', 'completed', 'invalid', 'new@example.test', false],
+            ['recover-start', 'recover-start', 'authorizing', 'cooldown', 'current@gmail.com', false],
+            ['recover-approve', 'recover-approve', 'pending', 'invalid', 'current@gmail.com', true],
+            ['recover-final', 'recover-final', 'completed', 'invalid', 'new@gmail.com', false],
+            ['recover-resend', 'recover-final', 'pending', 'invalid', 'current@gmail.com', true],
+            ['recover-final', 'recover-resend', 'completed', 'invalid', 'new@gmail.com', false],
+            ['recover-final', 'claim', 'completed', 'email_unavailable', 'new@gmail.com', false],
+            ['role', 'recover-final', 'role', 'invalid', 'current@gmail.com', true],
+            ['recover-final', 'role', 'completed', 'role', 'new@gmail.com', false],
+            ['recover-approve', 'reset', 'pending', 'invalid', 'current@gmail.com', true],
+            ['reset', 'recover-approve', 'reset', 'invalid', 'current@gmail.com', false],
+            ['recover-approve', 'final', 'pending', 'http403', 'current@gmail.com', true],
+            ['final', 'recover-approve', 'completed', 'invalid', 'new@gmail.com', false],
         ];
     }
 
     public static function overlappingEmailChanges(): array
     {
         return [
-            ['start', 'start', 'pending', 'cooldown', 'current@example.test'],
-            ['current', 'current', 'pending', 'stale_stage', 'current@example.test'],
-            ['final', 'final', 'completed', 'http401', 'new@example.test'],
-            ['resend', 'final', 'pending', 'invalid_code', 'current@example.test'],
-            ['final', 'resend', 'completed', 'http401', 'new@example.test'],
-            ['final', 'reset', 'completed', 'invalid', 'new@example.test'],
-            ['reset', 'final', 'reset', 'http401', 'current@example.test'],
-            ['final', 'claim', 'completed', 'email_unavailable', 'new@example.test'],
+            ['start', 'start', 'pending', 'cooldown', 'current@gmail.com'],
+            ['current', 'current', 'pending', 'stale_stage', 'current@gmail.com'],
+            ['final', 'final', 'completed', 'http401', 'new@gmail.com'],
+            ['resend', 'final', 'pending', 'invalid_code', 'current@gmail.com'],
+            ['final', 'resend', 'completed', 'http401', 'new@gmail.com'],
+            ['final', 'reset', 'completed', 'invalid', 'new@gmail.com'],
+            ['reset', 'final', 'reset', 'http401', 'current@gmail.com'],
+            ['final', 'claim', 'completed', 'email_unavailable', 'new@gmail.com'],
         ];
     }
 
@@ -1188,39 +1188,39 @@ class AdminCredentialChangeTest extends TestCase
         unset($identity['email'], $identity['email_verified_at'], $identity['email_recovery_id']);
         $staffToken = $staff->createToken('staff')->plainTextToken;
         $request = $this->startRecovery($staff);
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
         $code = $this->latestRecoveryCode();
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}/confirm", ['code' => $code])
             ->assertOk()->assertJsonPath('recovery.status', 'pending');
         $this->assertTrue($staff->fresh()->hasEmailRecoveryHold());
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->assertSame(0, $staff->tokens()->count());
         $this->assertSame(1, $admin->tokens()->count(), 'Recovery must preserve the unrelated administrator session.');
         $link = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, \App\Notifications\StaffEmailRecoveryLinkNotification::class)->last();
         $this->assertNotNull($link);
         $plain = substr($link->recoveryUrl, strpos($link->recoveryUrl, '#') + 1);
         $this->assertStringNotContainsString($plain, json_encode($request));
-        $this->postJson('/api/staff/email-recovery/verify', ['token' => $plain])->assertOk()->assertJsonPath('email', 'new@example.test');
+        $this->postJson('/api/staff/email-recovery/verify', ['token' => $plain])->assertOk()->assertJsonPath('email', 'new@gmail.com');
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $plain, 'current_password' => 'wrong'])->assertUnprocessable();
         $this->postJson('/api/staff/email-recovery/complete', ['token' => str_repeat('a', 64), 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable();
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $plain, 'current_password' => 'CurrentAdmin!234'])
             ->assertOk()->assertJsonPath('status', 'completed')->assertJsonMissingPath('token');
         $this->assertSame($identity, $staff->fresh()->only(array_keys($identity)));
-        $this->assertSame('new@example.test', $staff->fresh()->email);
+        $this->assertSame('new@gmail.com', $staff->fresh()->email);
         $this->assertNotNull($staff->fresh()->email_verified_at);
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
         $this->assertSame(0, $staff->tokens()->count());
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $plain, 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable();
         $this->assertDatabaseHas('staff_email_recovery_events', ['recovery_id' => $request['id'], 'event' => 'completed', 'actor_user_id' => $staff->user_id]);
         $this->assertDatabaseHas('staff_email_recovery_events', ['recovery_id' => $request['id'], 'event' => 'authorized', 'actor_user_id' => $admin->user_id]);
-        $this->postJson('/api/sign-in', ['identifier' => 'current@example.test', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
-        $this->postJson('/api/sign-in', ['identifier' => 'new@example.test', 'password' => 'CurrentAdmin!234'])->assertAccepted();
-        Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@example.test');
-        app(\App\Services\PasswordResetService::class)->sendCode('current@example.test');
+        $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
+        Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
+        app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
-        app(\App\Services\PasswordResetService::class)->sendCode('new@example.test');
-        Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@example.test');
+        app(\App\Services\PasswordResetService::class)->sendCode('new@gmail.com');
+        Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
     }
 
     public function test_recovery_hold_blocks_old_mailbox_challenges_sessions_resets_and_self_service(): void
@@ -1231,21 +1231,21 @@ class AdminCredentialChangeTest extends TestCase
         $staleChallenge = \App\Models\LoginEmailChallenge::where('user_id', $staff->getKey())->firstOrFail()->replicate();
         $loginCode = Notification::sent($staff, \App\Notifications\ConfirmLoginNotification::class)->last()->code;
         $this->useEmailToken($staffToken);
-        $change = $this->startEmailChange('self@example.test');
+        $change = $this->startEmailChange('self@gmail.com');
         $this->useEmailToken($adminToken);
         [$recovery, $plain] = $this->authorizeRecovery($staff);
         $this->assertDatabaseCount('staff_email_changes', 0);
         $this->assertDatabaseCount('login_email_challenges', 0);
-        $this->postJson('/api/sign-in', ['identifier' => 'current@example.test', 'password' => 'CurrentAdmin!234'])->assertForbidden();
+        $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertForbidden();
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertUnprocessable();
         $staleChallenge->save();
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertForbidden();
-        app(\App\Services\PasswordResetService::class)->sendCode('current@example.test');
+        app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         try { app(\App\Services\AccountSessionService::class)->issue($staff); $this->fail('Hold allowed session issuance.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403, $error->getStatusCode()); }
         $this->useEmailToken($staffToken);
-        $this->postJson('/api/settings/security/email-change', ['email' => 'other@example.test', 'current_password' => 'CurrentAdmin!234'])->assertUnauthorized();
+        $this->postJson('/api/settings/security/email-change', ['email' => 'other@gmail.com', 'current_password' => 'CurrentAdmin!234'])->assertUnauthorized();
         $injected = $staff->createToken('stale-session')->plainTextToken;
         $this->useEmailToken($injected);
         $this->getJson('/api/settings/security/account')->assertForbidden()->assertJsonPath('code', 'account_disabled');
@@ -1274,7 +1274,7 @@ class AdminCredentialChangeTest extends TestCase
     {
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         [$admin, $staff, $adminToken] = $this->recoveryFixture();
-        $base = ['email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record'];
+        $base = ['email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record'];
         $url = "/api/admin/security/staff/{$staff->user_id}/email-recovery";
         foreach ([['current_password' => 'wrong'], ['identity_verified' => false], ['identity_method' => 'trivia'], ['email' => 'invalid'], ['email' => $admin->email], ['email' => $staff->email], ['reason' => 'other'], ['role' => 'admin']] as $invalid) {
             $this->postJson($url, array_merge($base, $invalid))->assertUnprocessable();
@@ -1289,7 +1289,7 @@ class AdminCredentialChangeTest extends TestCase
         $staff->update(['is_active' => true, 'password_hash' => Hash::make('CurrentAdmin!234')]);
         $this->useEmailToken($staff->createToken('staff')->plainTextToken);
         $this->postJson($url, $base)->assertForbidden();
-        $customer = $this->createUser('customer', 'customer@example.test', '09172222003');
+        $customer = $this->createUser('customer', 'customer@gmail.com', '09172222003');
         $this->useEmailToken($customer->createToken('customer')->plainTextToken);
         $this->postJson($url, $base)->assertForbidden();
         $this->getJson($url.'/history')->assertForbidden();
@@ -1302,8 +1302,8 @@ class AdminCredentialChangeTest extends TestCase
         $code = $this->latestRecoveryCode();
         $url = "/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}";
         $this->postJson($url.'/confirm', ['code' => $code === '999999' ? '888888' : '999999'])->assertUnprocessable()->assertJsonPath('status', 'invalid_code');
-        $this->postJson($url.'/confirm', ['code' => $code, 'email' => 'forged@example.test'])->assertUnprocessable();
-        $other = $this->createUser('staff', 'other@example.test', '09172222004');
+        $this->postJson($url.'/confirm', ['code' => $code, 'email' => 'forged@gmail.com'])->assertUnprocessable();
+        $other = $this->createUser('staff', 'other@gmail.com', '09172222004');
         $this->postJson("/api/admin/security/staff/{$other->user_id}/email-recovery/{$request['id']}/confirm", ['code' => $code])->assertNotFound();
         $this->useEmailToken($admin->createToken('another')->plainTextToken);
         $this->postJson($url.'/confirm', ['code' => $code])->assertUnprocessable();
@@ -1353,7 +1353,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->travel(61)->seconds();
         $this->postJson($url.'/code')->assertUnprocessable()->assertJsonPath('status', 'locked');
         $this->postJson($url.'/cancel', ['current_password' => 'CurrentAdmin!234', 'old_email_safe' => false])->assertOk();
-        $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery", ['email' => 'different@example.test', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record'])
+        $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery", ['email' => 'different@gmail.com', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record'])
             ->assertUnprocessable()->assertJsonPath('status', 'locked');
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
     }
@@ -1366,7 +1366,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'CurrentAdmin!234'])->assertOk();
         app(\App\Services\LoginEmailChallengeService::class)->send($stale, false);
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class,
-            fn ($notice, $channels, $recipient) => $recipient->email === 'new@example.test');
+            fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
     }
 
     public function test_recovery_admin_expiration_and_snapshot_changes_prevent_authorization(): void
@@ -1422,10 +1422,10 @@ class AdminCredentialChangeTest extends TestCase
             'password' => $staff->update(['password_hash' => Hash::make('ChangedStaff!234')]),
             'admin' => $admin->update(['is_active' => false]),
             'admin_password' => $admin->update(['password_hash' => Hash::make('ChangedAdmin!234')]),
-            'claim' => $this->createUser('customer', 'new@example.test', '09172222005'),
+            'claim' => $this->createUser('customer', 'new@gmail.com', '09172222005'),
         };
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'CurrentAdmin!234'])->assertUnprocessable();
-        $this->assertSame('current@example.test', $staff->fresh()->email);
+        $this->assertSame('current@gmail.com', $staff->fresh()->email);
         $this->assertTrue($staff->fresh()->hasEmailRecoveryHold());
     }
 
@@ -1445,7 +1445,7 @@ class AdminCredentialChangeTest extends TestCase
             : "CREATE TRIGGER reject_recovery_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END";
         \Illuminate\Support\Facades\DB::statement($trigger);
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery", [
-            'email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible',
+            'email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234', 'reason' => 'inaccessible',
             'identity_verified' => true, 'identity_method' => 'in_person_employment_record',
         ])->assertStatus(503);
         $this->assertDatabaseCount('staff_email_recoveries', 0);
@@ -1455,7 +1455,7 @@ class AdminCredentialChangeTest extends TestCase
         $request = $this->startRecovery($staff);
         $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
-        $this->assertSame('admin@example.test', $messages[0]->getOriginalMessage()->getTo()[0]->getAddress());
+        $this->assertSame('admin@gmail.com', $messages[0]->getOriginalMessage()->getTo()[0]->getAddress());
         preg_match('/\b[0-9]{6}\b/', $messages[0]->getOriginalMessage()->getTextBody(), $digits);
         $url = "/api/admin/security/staff/{$staff->user_id}/email-recovery/{$request['id']}";
         \Illuminate\Support\Facades\DB::statement($trigger);
@@ -1475,13 +1475,13 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson($url.'/resend', ['current_password' => 'CurrentAdmin!234'])->assertOk();
         $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
-        $newMailbox = collect($messages)->filter(fn ($mail) => $mail->getOriginalMessage()->getTo()[0]->getAddress() === 'new@example.test');
+        $newMailbox = collect($messages)->filter(fn ($mail) => $mail->getOriginalMessage()->getTo()[0]->getAddress() === 'new@gmail.com');
         $this->assertCount(1, $newMailbox, 'Superseded recovery links must not be delivered.');
-        $this->assertCount(1, collect($messages)->filter(fn ($mail) => $mail->getOriginalMessage()->getTo()[0]->getAddress() === 'current@example.test'), 'Security notices must use the configured authentication queue.');
+        $this->assertCount(1, collect($messages)->filter(fn ($mail) => $mail->getOriginalMessage()->getTo()[0]->getAddress() === 'current@gmail.com'), 'Security notices must use the configured authentication queue.');
         foreach ($messages as $mail) {
-            if ($mail->getOriginalMessage()->getTo()[0]->getAddress() === 'current@example.test') {
+            if ($mail->getOriginalMessage()->getTo()[0]->getAddress() === 'current@gmail.com') {
                 $body = $mail->getOriginalMessage()->getTextBody();
-                $this->assertStringNotContainsString('new@example.test', $body);
+                $this->assertStringNotContainsString('new@gmail.com', $body);
                 $this->assertStringNotContainsString('confirm-email-recovery', $body);
             }
         }
@@ -1505,7 +1505,7 @@ class AdminCredentialChangeTest extends TestCase
         [$request, $token] = $this->authorizeRecovery($staff);
         Notification::shouldReceive('send')->once()->andThrow(new \RuntimeException('private notice failure'));
         $this->postJson('/api/staff/email-recovery/complete', ['token' => $token, 'current_password' => 'CurrentAdmin!234'])->assertOk()->assertDontSee('private notice failure');
-        $this->assertSame('new@example.test', $staff->fresh()->email);
+        $this->assertSame('new@gmail.com', $staff->fresh()->email);
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
         $this->assertDatabaseHas('staff_email_recoveries', ['id' => $request['id'], 'status' => 'completed', 'token_hash' => null]);
     }
@@ -1525,8 +1525,8 @@ class AdminCredentialChangeTest extends TestCase
     private function recoveryFixture(string $type = 'clinic', string $subrole = 'veterinarian'): array
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', '09172222001', 'Admin');
-        $staff = $this->createUser('staff', 'current@example.test', '09172222002', 'Staff');
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09172222001', 'Admin');
+        $staff = $this->createUser('staff', 'current@gmail.com', '09172222002', 'Staff');
         $staff->update(['staff_type' => $type, 'staff_subrole' => $subrole]);
         $token = $admin->createToken('admin')->plainTextToken;
         $this->useEmailToken($token);
@@ -1536,7 +1536,7 @@ class AdminCredentialChangeTest extends TestCase
     private function startRecovery(User $staff, array $override = []): array
     {
         return $this->postJson("/api/admin/security/staff/{$staff->user_id}/email-recovery", array_merge([
-            'email' => 'new@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'new@gmail.com', 'current_password' => 'CurrentAdmin!234',
             'reason' => 'inaccessible', 'identity_verified' => true, 'identity_method' => 'in_person_employment_record',
         ], $override))->assertAccepted()->json('recovery');
     }
@@ -1549,7 +1549,7 @@ class AdminCredentialChangeTest extends TestCase
     private function emailStaffFixture(): array
     {
         Notification::fake();
-        $staff = $this->createUser('staff', 'current@example.test', '09171111099', 'ExistingStaff');
+        $staff = $this->createUser('staff', 'current@gmail.com', '09171111099', 'ExistingStaff');
         $staff->update(['staff_type' => 'clinic', 'staff_subrole' => 'veterinarian']);
         $token = $staff->createToken('staff')->plainTextToken;
         $this->useEmailToken($token);
@@ -1563,7 +1563,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->app['auth']->forgetGuards();
     }
 
-    private function startEmailChange(string $email = 'new@example.test'): array
+    private function startEmailChange(string $email = 'new@gmail.com'): array
     {
         return $this->postJson('/api/settings/security/email-change', ['email' => $email, 'current_password' => 'CurrentAdmin!234'])
             ->assertAccepted()->json('pending_email_change');

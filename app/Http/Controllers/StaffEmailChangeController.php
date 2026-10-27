@@ -17,8 +17,7 @@ class StaffEmailChangeController extends Controller
         $this->only($request, ['email', 'current_password']);
         if (is_string($request->input('email'))) $request->merge(['email' => AccountEmail::normalize($request->input('email'))]);
         $data = $request->validate(['email' => AccountEmail::rules(), 'current_password' => ['required', 'string']], [
-            'email.required' => 'Enter your new email address.', 'email.email' => 'Enter a valid email address.',
-            'email.regex' => 'Enter a valid email address.', 'current_password.required' => 'Enter your current password.',
+            'current_password.required' => 'Enter your current password.',
         ]);
         return $this->respond(fn () => $service->start($request->user(), $data['email'], $data['current_password']), 202);
     }

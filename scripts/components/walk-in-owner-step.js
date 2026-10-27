@@ -80,16 +80,6 @@ function isValidPhoneNumber(value) {
   return digits.length === 11 && digits.startsWith("09");
 }
 
-function isValidEmail(value) {
-  const email = normalizeText(value);
-
-  if (!email) {
-    return true;
-  }
-
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 function getAppointmentType() {
   return appointmentType;
 }
@@ -109,7 +99,7 @@ function getFormValues() {
     lastName: normalizeText(elements.lastName.value),
     middleInitial: normalizeMiddleInitial(elements.middleInitial.value),
     phone: normalizePhoneNumber(elements.phone.value),
-    email: normalizeText(elements.email.value),
+    email: AccountEmail.normalize(elements.email.value),
   };
 }
 
@@ -269,9 +259,9 @@ function validateOwner(values) {
     errors.phone = "Phone number must be 11 digits and start with 09.";
   }
 
-  if (values.email && !isValidEmail(values.email)) {
-    errors.email = "Enter a valid email address or leave it blank.";
-  }
+  const unchangedEmail = selectedCustomer && values.email === AccountEmail.normalize(selectedCustomer.email);
+  const emailError = unchangedEmail ? '' : AccountEmail.validate(values.email, { required: false, maxLength: 255 });
+  if (emailError) errors.email = emailError;
 
   return errors;
 }
@@ -301,6 +291,10 @@ function setFieldError(fieldName, message) {
     return;
   }
 
+  if (fieldName === 'email') {
+    elements.email.setAttribute('aria-invalid', String(Boolean(message)));
+    AccountEmail.showError(elements.email, message);
+  }
   if (message) {
     errorElement.textContent = message;
     errorElement.className = "mt-2 text-sm text-red-600";
@@ -318,15 +312,12 @@ function renderValidationErrors(values, { showAll = false } = {}) {
   requestedFields.forEach((fieldName) => {
     const hasValue = Boolean(values[fieldName] || "");
     const shouldShow = showAll || hasSubmittedOnce || hasValue;
-    setFieldError(fieldName, shouldShow ? errors[fieldName] || "" : "");
+    if (fieldName !== 'email' || showAll) setFieldError(fieldName, shouldShow ? errors[fieldName] || "" : "");
   });
 
   const firstError = requestedFields.map((fieldName) => errors[fieldName]).find(Boolean);
 
-  if (showAll || (hasSubmittedOnce && firstError)) {
-    showMessage(firstError || "Please complete the highlighted fields.", "error");
-    return;
-  }
+  if (showAll && firstError) elements[requestedFields.find(name => errors[name])]?.focus();
 
   hideMessage();
 }
@@ -386,7 +377,10 @@ function handleInput(event) {
     elements.phone.value = normalizePhoneNumber(elements.phone.value);
   }
 
-  renderValidationErrors(values, { showAll: false });
+  if (event.target === elements.email) {
+    setFieldError('email', '');
+    hideMessage();
+  } else renderValidationErrors(values, { showAll: false });
   syncNextButtonState();
 }
 
@@ -419,9 +413,11 @@ async function validateNewOwnerAndContinue(values, confirmSimilarName = false) {
       email: values.email || null,
       confirm_similar_name: Boolean(confirmSimilarName),
     });
+    if (JSON.stringify(getFormValues()) !== JSON.stringify(values)) return;
     hideSimilarOwnerWarning();
     continueToPetStep(values, confirmSimilarName);
   } catch (error) {
+    if (JSON.stringify(getFormValues()) !== JSON.stringify(values)) return;
     if (error.code === "similar_customer_name") {
       showSimilarOwnerWarning(values, error.data?.similarCustomers || []);
       return;
@@ -437,12 +433,9 @@ async function validateNewOwnerAndContinue(values, confirmSimilarName = false) {
       const fieldName = fieldMap[field];
       if (fieldName) setFieldError(fieldName, messages?.[0] || "Check this field.");
     });
-    showMessage(
-      error.errors
-        ? "Please review the highlighted owner information."
-        : (error.message || "Owner information could not be checked. Please try again."),
-      "error",
-    );
+    const first = Object.keys(error.errors || {}).find(field => fieldMap[field]);
+    if (first) elements[fieldMap[first]]?.focus();
+    else showMessage(error.message || 'Owner information could not be checked. Please try again.', 'error');
   } finally {
     setOwnerValidationInProgress(false);
   }
@@ -474,6 +467,9 @@ async function handleSubmit(event) {
 
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
+  AccountEmail.bind(elements.email, { required: false, maxLength: 255, errorId: 'ownerEmailAddressError',
+    isUnchanged: () => selectedCustomer && AccountEmail.normalize(elements.email.value) === AccountEmail.normalize(selectedCustomer.email),
+  });
 
   [
     elements.firstName,

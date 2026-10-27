@@ -154,7 +154,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'staff_subrole' => 'veterinarian',
             'first_name' => 'jOhN',
             'last_name' => 'sMiTh',
-            'email' => 'NEW.CLINIC.STAFF@example.test',
+            'email' => 'new.clinic.staff@GMAIL.COM',
         ]);
         $response
             ->assertCreated()
@@ -166,7 +166,7 @@ class AdminStaffAccountManagementTest extends TestCase
             ->assertJsonMissingPath('token')
             ->assertJsonMissingPath('password');
 
-        $staff = User::query()->where('email', 'new.clinic.staff@example.test')->sole();
+        $staff = User::query()->where('email', 'new.clinic.staff@gmail.com')->sole();
         $this->assertSame('John', $staff->first_name);
         $this->assertSame('Smith', $staff->last_name);
         $this->assertSame('staff', $staff->role);
@@ -239,7 +239,7 @@ class AdminStaffAccountManagementTest extends TestCase
     {
         Notification::fake();
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', 'Admin');
-        $this->createUser('staff', 'existing.staff@example.test');
+        $this->createUser('staff', 'existing.staff@gmail.com');
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/admin/security/staff-accounts', [
@@ -248,7 +248,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Grooming',
             'last_name' => 'Staff',
             'username' => 'anothergroomer',
-            'email' => 'EXISTING.STAFF@example.test',
+            'email' => 'EXISTING.STAFF@gmail.com',
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('email');
@@ -277,7 +277,7 @@ class AdminStaffAccountManagementTest extends TestCase
     {
         Notification::fake();
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', 'Admin');
-        $this->createUser('staff', 'existing.staff@example.test', 'ClinicStaff');
+        $this->createUser('staff', 'existing.staff@gmail.com', 'ClinicStaff');
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/admin/security/staff-accounts', [
@@ -286,12 +286,12 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Clinic',
             'last_name' => 'Staff',
             'username' => 'clinicstaff',
-            'email' => 'different.staff@example.test',
+            'email' => 'different.staff@gmail.com',
         ])
             ->assertCreated()
             ->assertJsonPath('staff.username', null);
 
-        $staff = User::query()->where('email', 'different.staff@example.test')->sole();
+        $staff = User::query()->where('email', 'different.staff@gmail.com')->sole();
         $this->assertNull($staff->username);
         $this->assertDatabaseCount('users', 3);
         $this->assertDatabaseCount('pending_staff_accounts', 0);
@@ -309,10 +309,10 @@ class AdminStaffAccountManagementTest extends TestCase
             'staff_subrole' => 'grooming_receptionist',
             'first_name' => 'jUaN',
             'last_name' => 'dElA  cRuZ',
-            'email' => 'generated.staff@example.test',
+            'email' => 'generated.staff@gmail.com',
         ])->assertCreated();
 
-        $staff = User::query()->where('email', 'generated.staff@example.test')->sole();
+        $staff = User::query()->where('email', 'generated.staff@gmail.com')->sole();
         $this->assertSame('Juan', $staff->first_name);
         $this->assertSame('Dela Cruz', $staff->last_name);
         $this->assertSame('grooming_receptionist', $staff->staff_subrole);
@@ -335,8 +335,8 @@ class AdminStaffAccountManagementTest extends TestCase
     {
         Notification::fake();
         $admin = $this->createUser('admin', 'bethlehem.admin.test@gmail.com', 'Admin');
-        $this->createUser('staff', 'existing.staff@example.test', 'juandelacruz');
-        $this->createUser('staff', 'second.staff@example.test', 'JUANDELACRUZ2');
+        $this->createUser('staff', 'existing.staff@gmail.com', 'juandelacruz');
+        $this->createUser('staff', 'second.staff@gmail.com', 'JUANDELACRUZ2');
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/admin/security/staff-accounts', [
@@ -344,12 +344,12 @@ class AdminStaffAccountManagementTest extends TestCase
             'staff_subrole' => 'veterinarian',
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
-            'email' => 'different.staff@example.test',
+            'email' => 'different.staff@gmail.com',
         ])
             ->assertCreated()
             ->assertJsonPath('staff.username', null);
 
-        $staff = User::query()->where('email', 'different.staff@example.test')->sole();
+        $staff = User::query()->where('email', 'different.staff@gmail.com')->sole();
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $this->staffSetupLinkSentTo($staff),
             'password' => 'CreatedPassword!234',
@@ -368,7 +368,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $basePayload = [
             'first_name' => 'Jane',
             'last_name' => 'Doe',
-            'email' => 'subrole.staff@example.test',
+            'email' => 'subrole.staff@gmail.com',
         ];
 
         $this->postJson('/api/admin/security/staff-accounts', $basePayload + [
@@ -392,7 +392,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_duplicate_chosen_username_keeps_setup_pending_and_the_same_token_can_be_reused(): void
     {
         [$staff, $token] = $this->inviteStaff();
-        $this->createUser('staff', 'existing@example.test', 'Chosen.Staff');
+        $this->createUser('staff', 'existing@gmail.com', 'Chosen.Staff');
         $placeholder = $staff->password_hash;
 
         $this->postJson('/api/staff/password-setup/complete', [
@@ -455,8 +455,8 @@ class AdminStaffAccountManagementTest extends TestCase
         $firstName = str_repeat('a', 60);
         $base = ucfirst(str_repeat('a', 50));
         [$staff, $token] = $this->inviteStaff($firstName, 'Smith');
-        $this->createUser('staff', 'existing@example.test', $base);
-        $this->createUser('staff', 'second@example.test', substr($base, 0, 49).'2');
+        $this->createUser('staff', 'existing@gmail.com', $base);
+        $this->createUser('staff', 'second@gmail.com', substr($base, 0, 49).'2');
 
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $token,
@@ -496,7 +496,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'username' => 'JUANDELACRUZ',
-            'email' => 'pending.customer@example.test',
+            'email' => 'pending.customer@gmail.com',
             'phone' => '09170003001',
             'password_hash' => Hash::make('CreatedPassword!234'),
             'created_at' => now(),
@@ -533,7 +533,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_username_claimed_between_validation_and_save_is_handled(?string $username): void
     {
         [$staff, $token] = $this->inviteStaff();
-        $other = $this->createUser('staff', 'other@example.test', 'OtherStaff');
+        $other = $this->createUser('staff', 'other@gmail.com', 'OtherStaff');
         $raced = false;
         $updatingEvent = 'eloquent.updating: '.User::class;
         Event::listen($updatingEvent, function (User $saving) use ($staff, $other, &$raced): void {
@@ -608,7 +608,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_active_staff_cannot_complete_setup_even_with_a_remaining_request(): void
     {
-        $staff = $this->createUser('staff', 'active@example.test', 'ActiveStaff');
+        $staff = $this->createUser('staff', 'active@gmail.com', 'ActiveStaff');
         $token = str_repeat('a', 64);
         PasswordResetRequest::query()->create([
             'user_id' => $staff->getKey(),
@@ -645,13 +645,13 @@ class AdminStaffAccountManagementTest extends TestCase
             ->makePartial()->shouldReceive('index')->andReturn(response()->json(['success' => true]))->getMock());
         $this->instance(AdminClinicController::class, Mockery::mock(AdminClinicController::class)
             ->makePartial()->shouldReceive('activeCases')->andReturn(response()->json(['success' => true]))->getMock());
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         $adminToken = $admin->createToken('admin_token')->plainTextToken;
         $this->withToken($adminToken)->getJson('/api/admin/bookings')->assertOk();
         app('auth')->forgetGuards();
         $this->withToken($adminToken)->getJson('/api/admin/clinic-cases')->assertOk();
         app('auth')->forgetGuards();
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', $from === 'grooming_receptionist' ? 'grooming' : 'clinic');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', $from === 'grooming_receptionist' ? 'grooming' : 'clinic');
         $staff->update(['staff_subrole' => $from]);
         $staffToken = $staff->createToken('admin_token')->plainTextToken;
         $staff->createToken('another_device');
@@ -726,16 +726,16 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_invalid_role_combinations_are_rejected_by_creation_service_and_models(string $type, ?string $subrole): void
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'grooming');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'grooming');
         Sanctum::actingAs($admin);
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => $type, 'staff_subrole' => $subrole,
-            'first_name' => 'New', 'last_name' => 'Staff', 'email' => 'new@example.test',
+            'first_name' => 'New', 'last_name' => 'Staff', 'email' => 'new@gmail.com',
         ])->assertUnprocessable()->assertJsonValidationErrors('staff_subrole');
 
         foreach ([
-            fn () => app(PendingStaffAccountService::class)->request($admin, $type, $subrole, 'New', 'Staff', 'new@example.test'),
+            fn () => app(PendingStaffAccountService::class)->request($admin, $type, $subrole, 'New', 'Staff', 'new@gmail.com'),
             fn () => $staff->fresh()->update(['staff_type' => $type, 'staff_subrole' => $subrole]),
             fn () => PendingStaffAccount::query()->create(['staff_type' => $type, 'staff_subrole' => $subrole]),
         ] as $write) {
@@ -754,7 +754,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_staff_role_fields_cannot_be_cleared_after_assignment(): void
     {
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'grooming');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'grooming');
         try {
             $staff->update(['staff_type' => null, 'staff_subrole' => null]);
             $this->fail('Assigned staff role fields were cleared.');
@@ -767,8 +767,8 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_role_changes_require_the_authenticated_admin_current_password(): void
     {
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'grooming');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'grooming');
         $staff->createToken('admin_token');
         Sanctum::actingAs($admin);
         $admin->update(['password_hash' => Hash::make('UpdatedAdmin!234')]);
@@ -794,16 +794,16 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_only_admins_can_change_non_archived_staff_roles(): void
     {
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'grooming');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'grooming');
         $payload = ['staff_role' => 'veterinarian', 'current_password' => 'CurrentAdmin!234'];
         $url = "/api/admin/security/staff/{$staff->user_id}/role";
         $this->patchJson($url, $payload)->assertUnauthorized();
         Sanctum::actingAs($staff);
         $this->patchJson($url, $payload)->assertForbidden();
-        $customer = $this->createUser('customer', 'customer@example.test');
+        $customer = $this->createUser('customer', 'customer@gmail.com');
         Sanctum::actingAs($customer);
         $this->patchJson($url, $payload)->assertForbidden();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
         foreach ([$admin, $customer] as $target) {
             $this->patchJson("/api/admin/security/staff/{$target->user_id}/role", $payload)->assertNotFound();
@@ -825,7 +825,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->assertNull($pending->fresh()->username);
         $this->assertNull($pending->fresh()->email_verified_at);
 
-        $inactive = $this->createUser('staff', 'inactive@example.test', 'Inactive', 'grooming');
+        $inactive = $this->createUser('staff', 'inactive@gmail.com', 'Inactive', 'grooming');
         $inactive->update(['is_active' => false]);
         $this->patchJson("/api/admin/security/staff/{$inactive->user_id}/role", [
             'staff_role' => 'veterinarian',
@@ -835,9 +835,9 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_saving_an_unchanged_role_does_not_revoke_sessions(): void
     {
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'grooming');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'grooming');
         $staff->createToken('admin_token');
-        Sanctum::actingAs($this->createUser('admin', 'admin@example.test', 'Admin'));
+        Sanctum::actingAs($this->createUser('admin', 'admin@gmail.com', 'Admin'));
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/role", [
             'staff_role' => 'grooming_receptionist',
             'current_password' => 'CurrentAdmin!234',
@@ -848,15 +848,15 @@ class AdminStaffAccountManagementTest extends TestCase
     private function inviteStaff(string $firstName = 'Juan', string $lastName = 'Dela Cruz'): array
     {
         Notification::fake();
-        Sanctum::actingAs($this->createUser('admin', 'admin@example.test', 'Admin'));
+        Sanctum::actingAs($this->createUser('admin', 'admin@gmail.com', 'Admin'));
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => 'grooming',
             'staff_subrole' => 'grooming_receptionist',
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'email' => 'invited.staff@example.test',
+            'email' => 'invited.staff@gmail.com',
         ])->assertCreated()->assertJsonPath('staff.username', null);
-        $staff = User::query()->where('email', 'invited.staff@example.test')->sole();
+        $staff = User::query()->where('email', 'invited.staff@gmail.com')->sole();
 
         return [$staff, $this->staffSetupLinkSentTo($staff)];
     }
@@ -931,8 +931,8 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_status_changes_require_the_signed_in_admin_current_password(): void
     {
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
-        $staff = $this->createUser('staff', 'staff@example.test', 'Staff', 'clinic');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
+        $staff = $this->createUser('staff', 'staff@gmail.com', 'Staff', 'clinic');
         $staff->createToken('staff_token');
         Sanctum::actingAs($admin);
         $url = "/api/admin/security/staff/{$staff->user_id}/status";
@@ -967,16 +967,16 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_cancel_setup_requires_admin_password_and_preserves_link_on_rejection(): void
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => 'grooming',
             'staff_subrole' => 'grooming_receptionist',
             'first_name' => 'Pending',
             'last_name' => 'Staff',
-            'email' => 'pending@example.test',
+            'email' => 'pending@gmail.com',
         ])->assertCreated();
-        $staff = User::query()->where('email', 'pending@example.test')->firstOrFail();
+        $staff = User::query()->where('email', 'pending@gmail.com')->firstOrFail();
         $url = "/api/admin/security/staff/{$staff->user_id}/setup";
         $reset = PasswordResetRequest::query()->where('user_id', $staff->user_id)->firstOrFail();
 
@@ -994,7 +994,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_staff_cannot_create_or_change_the_status_of_staff_accounts(): void
     {
-        $staff = $this->createUser('staff', 'staff@example.test');
+        $staff = $this->createUser('staff', 'staff@gmail.com');
         Sanctum::actingAs($staff);
 
         $this->postJson('/api/admin/security/staff-accounts', [
@@ -1002,7 +1002,7 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Another',
             'last_name' => 'Staff',
             'username' => 'anotherstaff',
-            'email' => 'another.staff@example.test',
+            'email' => 'another.staff@gmail.com',
         ])->assertForbidden();
 
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/status", [
@@ -1013,7 +1013,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_pending_setup_can_be_resent_and_only_the_newest_link_works(): void
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/admin/security/staff-accounts', [
@@ -1022,10 +1022,10 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Pending',
             'last_name' => 'Staff',
             'username' => 'pendingstaff',
-            'email' => 'pending.staff@example.org',
+            'email' => 'pending.staff@outlook.com',
         ])->assertCreated();
 
-        $staff = User::query()->where('email', 'pending.staff@example.org')->sole();
+        $staff = User::query()->where('email', 'pending.staff@outlook.com')->sole();
         $firstToken = $this->staffSetupLinkSentTo($staff);
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/status", ['active' => true])
             ->assertUnprocessable();
@@ -1054,7 +1054,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_cancelled_setup_releases_identity_and_invalidates_link(): void
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
         $payload = [
             'staff_type' => 'grooming',
@@ -1062,17 +1062,17 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Wrong',
             'last_name' => 'Email',
             'username' => 'wrongstaff',
-            'email' => 'wrong.staff@example.ph',
+            'email' => 'wrong.staff@yahoo.com.ph',
         ];
         $this->postJson('/api/admin/security/staff-accounts', $payload)->assertCreated();
-        $staff = User::query()->where('email', 'wrong.staff@example.ph')->sole();
+        $staff = User::query()->where('email', 'wrong.staff@yahoo.com.ph')->sole();
         $token = $this->staffSetupLinkSentTo($staff);
 
         $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", [
             'current_password' => 'CurrentAdmin!234',
         ])
             ->assertOk();
-        $this->assertDatabaseMissing('users', ['email' => 'wrong.staff@example.ph']);
+        $this->assertDatabaseMissing('users', ['email' => 'wrong.staff@yahoo.com.ph']);
         $this->assertDatabaseCount('password_reset_requests', 0);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $token])
             ->assertUnprocessable();
@@ -1082,8 +1082,8 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_completed_staff_cannot_be_cancelled_or_resent(): void
     {
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
-        $staff = $this->createUser('staff', 'active.staff@example.org', 'activestaff');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
+        $staff = $this->createUser('staff', 'active.staff@outlook.com', 'activestaff');
         Sanctum::actingAs($admin);
 
         $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", [
@@ -1098,7 +1098,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_expired_setup_link_keeps_staff_pending_until_setup_completes(): void
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => 'grooming',
@@ -1106,9 +1106,9 @@ class AdminStaffAccountManagementTest extends TestCase
             'first_name' => 'Expired',
             'last_name' => 'Invite',
             'username' => 'expiredstaff',
-            'email' => 'expired.staff@example.net',
+            'email' => 'expired.staff@icloud.com',
         ])->assertCreated();
-        $staff = User::query()->where('email', 'expired.staff@example.net')->sole();
+        $staff = User::query()->where('email', 'expired.staff@icloud.com')->sole();
         $token = $this->staffSetupLinkSentTo($staff);
 
         $this->travel(25)->hours();
@@ -1134,7 +1134,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_invalid_staff_email_is_rejected_before_invitation(): void
     {
         Notification::fake();
-        Sanctum::actingAs($this->createUser('admin', 'admin@example.test', 'Admin'));
+        Sanctum::actingAs($this->createUser('admin', 'admin@gmail.com', 'Admin'));
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => 'grooming',
             'staff_subrole' => 'grooming_receptionist',
@@ -1151,14 +1151,14 @@ class AdminStaffAccountManagementTest extends TestCase
         [$admin, $staff, $oldToken] = $this->pendingEmailFixture($type, $subrole);
         $original = $staff->getAttributes();
         $admin->createToken('admin');
-        $other = $this->createUser('staff', 'other@example.test', 'Other', 'grooming');
+        $other = $this->createUser('staff', 'other@gmail.com', 'Other', 'grooming');
         $other->createToken('staff');
 
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => '  CORRECTED@example.test  ', 'current_password' => 'CurrentAdmin!234',
+            'email' => '  corrected@GMAIL.COM  ', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk()
             ->assertJsonPath('staff.user_id', $staff->user_id)
-            ->assertJsonPath('staff.email', 'corrected@example.test')
+            ->assertJsonPath('staff.email', 'corrected@gmail.com')
             ->assertJsonPath('staff.password_setup_required', true)
             ->assertJsonPath('staff.is_active', false)
             ->assertJsonMissingPath('token');
@@ -1173,7 +1173,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $newToken = $fragment['token'];
         $this->assertNotSame($oldToken, $newToken);
         Notification::assertSentTo($staff, SetUpStaffPasswordNotification::class,
-            fn ($sent, $channels, $recipient) => $sent === $notification && $recipient->email === 'corrected@example.test');
+            fn ($sent, $channels, $recipient) => $sent === $notification && $recipient->email === 'corrected@gmail.com');
         $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $oldToken, 'username' => 'CorrectedStaff',
@@ -1196,14 +1196,14 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_pending_email_correction_rejects_bad_email_password_and_unrelated_fields(): void
     {
         [, $staff, $token] = $this->pendingEmailFixture();
-        $this->createUser('staff', 'USED@example.test', 'Used', 'clinic');
+        $this->createUser('staff', 'USED@gmail.com', 'Used', 'clinic');
         DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Pending', 'last_name' => 'Customer', 'email' => 'reserved@example.test',
+            'first_name' => 'Pending', 'last_name' => 'Customer', 'email' => 'reserved@gmail.com',
             'phone' => '09170009999', 'password_hash' => 'unused',
             'email_verification_expires_at' => now()->addMinutes(15),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        foreach (['invalid@-example..com', 'invalid', str_repeat('a', 150).'@example.test', ' USED@example.test ', 'reserved@example.test', ' WRONG@example.test '] as $email) {
+        foreach (['invalid@-example..com', 'invalid', str_repeat('a', 150).'@gmail.com', ' USED@gmail.com ', 'reserved@gmail.com', ' WRONG@gmail.com '] as $email) {
             $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
                 'email' => $email, 'current_password' => 'CurrentAdmin!234',
             ])->assertUnprocessable()->assertJsonValidationErrors('email');
@@ -1211,13 +1211,13 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->travel(11)->minutes();
         foreach ([null, '', 'incorrect', 'CurrentStaff!234'] as $password) {
             $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-                'email' => 'corrected@example.test', 'current_password' => $password,
+                'email' => 'corrected@gmail.com', 'current_password' => $password,
             ])->assertUnprocessable()->assertJsonValidationErrors('current_password');
         }
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234', 'is_active' => true,
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234', 'is_active' => true,
         ])->assertUnprocessable()->assertJsonValidationErrors('is_active');
-        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
         $this->assertDatabaseHas('password_reset_requests', ['token_hash' => hash('sha256', $token)]);
         Notification::assertSentTimes(SetUpStaffPasswordNotification::class, 1);
     }
@@ -1226,7 +1226,7 @@ class AdminStaffAccountManagementTest extends TestCase
     {
         [$admin, $staff] = $this->pendingEmailFixture();
         $url = "/api/admin/security/staff/{$staff->user_id}/setup-email";
-        $payload = ['email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234'];
+        $payload = ['email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234'];
         $staff->is_archived = true;
         $staff->save();
         $this->patchJson($url, $payload)->assertNotFound();
@@ -1245,7 +1245,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $admin->is_active = false;
         $admin->save();
         $this->patchJson($url, $payload)->assertForbidden();
-        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
     }
 
     public function test_pending_email_correction_rolls_back_when_mail_cannot_be_queued(): void
@@ -1254,9 +1254,9 @@ class AdminStaffAccountManagementTest extends TestCase
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         Notification::shouldReceive('send')->once()->andThrow(new \RuntimeException('private SMTP failure'));
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertStatus(503)->assertDontSee('private SMTP failure');
-        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
         $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertOk();
     }
@@ -1265,7 +1265,7 @@ class AdminStaffAccountManagementTest extends TestCase
     {
         [, $staff, $oldToken] = $this->pendingEmailFixture();
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk();
         $corrected = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
         parse_str((string) parse_url($corrected->setupUrl, PHP_URL_FRAGMENT), $fragment);
@@ -1275,7 +1275,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $latest = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
         parse_str((string) parse_url($latest->setupUrl, PHP_URL_FRAGMENT), $fragment);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertOk();
-        $this->assertSame('corrected@example.test', $staff->fresh()->email);
+        $this->assertSame('corrected@gmail.com', $staff->fresh()->email);
         $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", ['current_password' => 'CurrentAdmin!234'])->assertOk();
         $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertUnprocessable();
     }
@@ -1288,15 +1288,15 @@ class AdminStaffAccountManagementTest extends TestCase
             'password' => 'CreatedPassword!234', 'password_confirmation' => 'CreatedPassword!234',
         ])->assertOk();
         try {
-            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@example.test', 'CurrentAdmin!234');
+            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@gmail.com', 'CurrentAdmin!234');
             $this->fail('A completed account must be rechecked at mutation time.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('account', $exception->errors());
         }
-        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
         User::query()->whereKey($admin->getKey())->update(['password_hash' => Hash::make('UpdatedAdmin!234')]);
         try {
-            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@example.test', 'CurrentAdmin!234');
+            app(PendingStaffAccountService::class)->correctEmail($admin, $staff, 'corrected@gmail.com', 'CurrentAdmin!234');
             $this->fail('The current admin password must be read again.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('current_password', $exception->errors());
@@ -1308,12 +1308,12 @@ class AdminStaffAccountManagementTest extends TestCase
         [, $staff, $oldToken] = $this->pendingEmailFixture();
         PasswordResetRequest::query()->where('user_id', $staff->user_id)->update(['expires_at' => now()->subMinute()]);
         DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Expired', 'last_name' => 'Customer', 'email' => 'corrected@example.test',
+            'first_name' => 'Expired', 'last_name' => 'Customer', 'email' => 'corrected@gmail.com',
             'phone' => '09170009999', 'password_hash' => 'unused',
             'created_at' => now()->subDays(7), 'updated_at' => now()->subDays(7),
         ]);
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk()->assertJsonPath('staff.setup_link_expired', false);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
         $this->assertTrue(PasswordResetRequest::query()->sole()->expires_at->between(now()->addHours(23), now()->addHours(25)));
@@ -1324,7 +1324,7 @@ class AdminStaffAccountManagementTest extends TestCase
         [$admin, $staff] = $this->pendingEmailFixture();
         $this->deleteJson("/api/admin/security/staff/{$staff->user_id}/setup", ['current_password' => 'CurrentAdmin!234'])->assertOk();
         $request = \Illuminate\Http\Request::create('/api/admin/security/staff/'.$staff->user_id.'/setup-email', 'PATCH', [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ]);
         $request->setUserResolver(fn () => $admin);
         $this->expectException(\Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class);
@@ -1334,7 +1334,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_email_claimed_between_validation_and_save_is_a_field_error_and_preserves_the_link(): void
     {
         [, $staff, $token] = $this->pendingEmailFixture();
-        $other = $this->createUser('staff', 'other@example.test', 'Other', 'clinic');
+        $other = $this->createUser('staff', 'other@gmail.com', 'Other', 'clinic');
         $event = 'eloquent.updating: '.User::class;
         Event::listen($event, function (User $saving) use ($staff, $other): void {
             if ($saving->getKey() === $staff->getKey() && $saving->isDirty('email')) {
@@ -1343,9 +1343,9 @@ class AdminStaffAccountManagementTest extends TestCase
         });
         try {
             $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-                'email' => 'claimed@example.test', 'current_password' => 'CurrentAdmin!234',
+                'email' => 'claimed@gmail.com', 'current_password' => 'CurrentAdmin!234',
             ])->assertUnprocessable()->assertJsonValidationErrors('email');
-            $this->assertSame('wrong@example.test', $staff->fresh()->email);
+            $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
             $this->assertDatabaseHas('password_reset_requests', ['token_hash' => hash('sha256', $token)]);
             Notification::assertSentTimes(SetUpStaffPasswordNotification::class, 1);
         } finally {
@@ -1360,10 +1360,10 @@ class AdminStaffAccountManagementTest extends TestCase
         config(['queue.default' => 'database', 'mail.default' => 'array']);
         Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'first@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'first@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk();
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'latest@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'latest@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk();
         $this->assertDatabaseCount('jobs', 2);
         $payload = json_decode(DB::table('jobs')->value('payload'), true);
@@ -1372,7 +1372,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
         $email = $messages[0]->getOriginalMessage();
-        $this->assertSame('latest@example.test', $email->getTo()[0]->getAddress());
+        $this->assertSame('latest@gmail.com', $email->getTo()[0]->getAddress());
         $this->assertDatabaseCount('jobs', 0);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertUnprocessable();
     }
@@ -1386,10 +1386,10 @@ class AdminStaffAccountManagementTest extends TestCase
         DB::statement("CREATE TRIGGER reject_setup_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
-            'email' => 'corrected@example.test', 'current_password' => 'CurrentAdmin!234',
+            'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertStatus(503);
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/setup-email")->assertStatus(503);
-        $this->assertSame('wrong@example.test', $staff->fresh()->email);
+        $this->assertSame('wrong@gmail.com', $staff->fresh()->email);
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
         $this->assertDatabaseCount('jobs', 0);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $token])->assertOk();
@@ -1451,7 +1451,7 @@ class AdminStaffAccountManagementTest extends TestCase
                 try {
                     $status = match ($operation) {
                         'correct' => app(App\Services\PendingStaffAccountService::class)->correctEmail(
-                            $admin, $staff, $position.'@example.test', 'CurrentAdmin!234') ? 'corrected' : 'invalid',
+                            $admin, $staff, $position.'@gmail.com', 'CurrentAdmin!234') ? 'corrected' : 'invalid',
                         'resend' => app(App\Services\PasswordResetService::class)->resendStaffSetupLink($staff)['status'],
                         'complete' => app(App\Services\PasswordResetService::class)->completeStaffSetup(
                             $oldToken, 'CreatedPassword!234', 'CompletedStaff')['status'],
@@ -1507,24 +1507,24 @@ class AdminStaffAccountManagementTest extends TestCase
     public static function overlappingSetupOperations(): array
     {
         return [
-            ['correct', 'correct', 'corrected', 'corrected', 'second@example.test', false],
-            ['correct', 'resend', 'corrected', 'sent', 'first@example.test', false],
-            ['resend', 'correct', 'sent', 'corrected', 'second@example.test', false],
-            ['correct', 'complete', 'corrected', 'invalid', 'first@example.test', false],
-            ['complete', 'correct', 'completed', 'rejected', 'wrong@example.test', true],
+            ['correct', 'correct', 'corrected', 'corrected', 'second@gmail.com', false],
+            ['correct', 'resend', 'corrected', 'sent', 'first@gmail.com', false],
+            ['resend', 'correct', 'sent', 'corrected', 'second@gmail.com', false],
+            ['correct', 'complete', 'corrected', 'invalid', 'first@gmail.com', false],
+            ['complete', 'correct', 'completed', 'rejected', 'wrong@gmail.com', true],
         ];
     }
 
     private function pendingEmailFixture(string $type = 'clinic', string $subrole = 'veterinarian'): array
     {
         Notification::fake();
-        $admin = $this->createUser('admin', 'admin@example.test', 'Admin');
+        $admin = $this->createUser('admin', 'admin@gmail.com', 'Admin');
         Sanctum::actingAs($admin);
         $this->postJson('/api/admin/security/staff-accounts', [
             'staff_type' => $type, 'staff_subrole' => $subrole,
-            'first_name' => 'Pending', 'last_name' => 'Staff', 'email' => 'wrong@example.test',
+            'first_name' => 'Pending', 'last_name' => 'Staff', 'email' => 'wrong@gmail.com',
         ])->assertCreated();
-        $staff = User::query()->where('email', 'wrong@example.test')->sole();
+        $staff = User::query()->where('email', 'wrong@gmail.com')->sole();
         return [$admin, $staff, $this->staffSetupLinkSentTo($staff)];
     }
 
@@ -1573,6 +1573,18 @@ class AdminStaffAccountManagementTest extends TestCase
         );
 
         return $plainToken;
+    }
+
+    public function test_new_staff_rejects_unsupported_email_without_mail(): void
+    {
+        Notification::fake();
+        $admin = $this->createUser('admin', 'admin@legacy.example', 'Admin');
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/admin/security/staff-accounts', ['staff_type' => 'grooming',
+            'staff_subrole' => 'grooming_receptionist', 'first_name' => 'New', 'last_name' => 'Staff', 'email' => '123@123.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertDatabaseCount('users', 1);
+        Notification::assertNothingSent();
     }
 
     private function createUser(

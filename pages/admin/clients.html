@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css" />
+    <link rel="stylesheet" href="../../css/output.css?email-entry=20261028" />
     <link rel="stylesheet" href="../../css/custom.css?v=customer-actions-20260927&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
@@ -624,15 +624,16 @@
                     <input
                       id="addCustomerEmail"
                       x-model="addCustomerModal.form.email"
+                      x-init="AccountEmail.bind($el, { required: false, errorId: 'addCustomerEmailError', onError: message => { if (message) addCustomerModal.errors.email = [message]; else delete addCustomerModal.errors.email; } })"
+                      :aria-invalid="Boolean(addCustomerModal.errors.email)" aria-describedby="addCustomerEmailError"
                       @input="clearAddCustomerFieldError('email')"
                       type="email"
                       autocomplete="email"
-                      maxlength="150"
-                      placeholder="customer@example.com"
+                      placeholder="customer@gmail.com"
                       :class="addCustomerModal.errors.email ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : 'border-slate-300 focus:border-[#315b7e] focus:ring-[#315b7e]/20'"
                       class="w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:ring-2"
                     />
-                    <p x-show="addCustomerModal.errors.email" class="mt-2 text-sm text-red-600" x-text="addCustomerModal.errors.email?.[0]"></p>
+                    <p id="addCustomerEmailError" role="alert" x-show="addCustomerModal.errors.email" class="mt-2 text-sm text-red-600" x-text="addCustomerModal.errors.email?.[0]"></p>
                   </div>
                 </div>
 
@@ -1328,7 +1329,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1"></script>
+    <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

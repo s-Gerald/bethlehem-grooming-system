@@ -1,0 +1,26 @@
+{
+  "domains": [
+    "gmail.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "msn.com",
+    "yahoo.com",
+    "yahoo.com.ph",
+    "ymail.com",
+    "icloud.com",
+    "me.com",
+    "mac.com"
+  ],
+  "exception_domains": [],
+  "typos": {
+    "gmial.com": "gmail.com",
+    "gamil.com": "gmail.com",
+    "outlok.com": "outlook.com",
+    "hotmial.com": "hotmail.com",
+    "yaho.com": "yahoo.com"
+  },
+  "min_local": 3,
+  "max_local": 64,
+  "max_length": 150
+}

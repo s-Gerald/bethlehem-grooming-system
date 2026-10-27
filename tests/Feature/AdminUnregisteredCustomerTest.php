@@ -67,7 +67,7 @@ class AdminUnregisteredCustomerTest extends TestCase
                 'user_id' => 1,
                 'first_name' => 'Admin',
                 'last_name' => 'User',
-                'email' => 'admin@example.test',
+                'email' => 'admin@gmail.com',
                 'phone' => null,
                 'role' => 'admin',
             ],
@@ -75,7 +75,7 @@ class AdminUnregisteredCustomerTest extends TestCase
                 'user_id' => 2,
                 'first_name' => 'Staff',
                 'last_name' => 'User',
-                'email' => 'staff@example.test',
+                'email' => 'staff@gmail.com',
                 'phone' => null,
                 'role' => 'staff',
             ],
@@ -83,7 +83,7 @@ class AdminUnregisteredCustomerTest extends TestCase
                 'user_id' => 3,
                 'first_name' => 'Registered',
                 'last_name' => 'Customer',
-                'email' => 'registered@example.test',
+                'email' => 'registered@gmail.com',
                 'phone' => '09170000003',
                 'role' => 'customer',
             ],
@@ -108,21 +108,21 @@ class AdminUnregisteredCustomerTest extends TestCase
             'last_name' => ' Santos ',
             'middle_name' => 'a.',
             'phone' => '+63 917 123 4567',
-            'email' => 'MARIA@example.test',
+            'email' => 'maria@GMAIL.COM',
         ])
             ->assertCreated()
             ->assertJsonPath('customer.recordType', 'unregistered')
             ->assertJsonPath('customer.status', 'unregistered')
             ->assertJsonPath('customer.fullName', 'Maria A. Santos')
             ->assertJsonPath('customer.phone', '09171234567')
-            ->assertJsonPath('customer.email', 'maria@example.test');
+            ->assertJsonPath('customer.email', 'maria@gmail.com');
 
         $this->assertDatabaseHas('unregistered_customers', [
             'first_name' => 'Maria',
             'last_name' => 'Santos',
             'middle_name' => 'A',
             'phone' => '09171234567',
-            'email' => 'maria@example.test',
+            'email' => 'maria@gmail.com',
             'created_by_user_id' => 1,
         ]);
 
@@ -153,7 +153,7 @@ class AdminUnregisteredCustomerTest extends TestCase
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'phone' => '09175555555',
-            'email' => 'juan@example.test',
+            'email' => 'juan@gmail.com',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -327,7 +327,7 @@ class AdminUnregisteredCustomerTest extends TestCase
             'user_id' => 10,
             'first_name' => 'Walkin',
             'last_name' => 'Active',
-            'email' => 'active-walkin@example.test',
+            'email' => 'active-walkin@gmail.com',
             'phone' => '09170000010',
             'role' => 'customer',
             'is_active' => true,
@@ -388,4 +388,18 @@ class AdminUnregisteredCustomerTest extends TestCase
             ->assertOk()->assertJsonPath('customers.0.phone', null)
             ->assertJsonPath('customers.0.pets.0.petName', 'Buddy');
     }
+    public function test_contact_entry_rejects_unsupported_domains_without_sending_otp(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        Sanctum::actingAs(User::query()->findOrFail(1), ['*']);
+        $payload = ['first_name' => 'Email', 'last_name' => 'Entry', 'phone' => '09171234567', 'email' => '123@123.com'];
+        foreach (['/api/admin/customers/unregistered', '/api/admin/walk-in/customers/validate-new-owner'] as $url) {
+            $this->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('email');
+        }
+        $this->assertDatabaseCount('unregistered_customers', 0);
+        $this->postJson('/api/admin/customers/unregistered', [...$payload, 'email' => 'abc+clinic@YAHOO.COM.PH'])
+            ->assertCreated()->assertJsonPath('customer.email', 'abc+clinic@yahoo.com.ph');
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
+    }
+
 }

@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Sign Up | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?registration-ui=20261027-v3&availability=20261027" />
+    <link rel="stylesheet" href="../../css/output.css?registration-ui=20261027-v3&availability=20261027&email-entry=20261028" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
   </head>
   <body
@@ -58,7 +58,7 @@
               </p>
             </div>
 
-            <form id="signupForm" class="space-y-5">
+            <form id="signupForm" novalidate class="space-y-5">
               <!-- First Name + Last Name -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -111,9 +111,10 @@
                     name="email"
                     placeholder="Enter your email"
                     class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
-                    aria-describedby="emailHelp"
+                    aria-describedby="emailError" autocomplete="email" autocapitalize="none" spellcheck="false"
                     required
                   />
+                  <p id="emailError" class="mt-2 hidden text-sm text-red-600" aria-live="polite"></p>
                 </div>
               </div>
 
@@ -280,6 +281,7 @@
     </div>
 
     <script src="../../scripts/api.js?v=registration-recovery-20261022&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027" defer></script>
-    <script src="../../scripts/auth/client/signup.js?v=registration-eligibility-20261022b" defer></script>
+    <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="../../scripts/auth/client/signup.js?v=registration-eligibility-20261022b&email-entry=20261028" defer></script>
   </body>
 </html>

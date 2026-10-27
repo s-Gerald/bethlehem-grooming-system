@@ -70,7 +70,7 @@ class StaffEmailRecoveryController extends Controller
     private function respond(callable $operation, ?int $targetId = null, int $successStatus = 200)
     {
         try { $result = $operation(); }
-        catch (UniqueConstraintViolationException) { throw ValidationException::withMessages(['email' => 'That email address is already in use.']); }
+        catch (UniqueConstraintViolationException) { throw ValidationException::withMessages(['email' => 'This email is already in use.']); }
         catch (ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException | HttpExceptionInterface $exception) { throw $exception; }
         catch (Throwable $exception) {
             // Never report request credentials or queue payloads.

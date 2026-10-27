@@ -78,6 +78,7 @@ function adminSettings() {
       email: "",
       submitting: false,
       error: "",
+      emailError: "",
     },
     staffStatusModal: {
       open: false,
@@ -211,15 +212,16 @@ function adminSettings() {
     },
 
     emailReplacementError(value, currentEmail) {
-      const email = value.trim().toLowerCase();
-      if (email.length > 150 || !/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email)) return 'Enter a valid email address.';
-      return email === currentEmail?.trim().toLowerCase() ? 'Enter a different email address.' : '';
+      const email = AccountEmail.normalize(value);
+      const error = AccountEmail.validate(email);
+      if (error) return error;
+      return email.toLowerCase() === currentEmail?.trim().toLowerCase() ? 'Enter a different email address.' : '';
     },
 
     ownEmailValidation() {
       const form = this.staffEmailChange, errors = {};
       const emailError = this.emailReplacementError(form.newEmail, this.staffAccount.email);
-      if (emailError) errors.email = form.newEmail.trim() ? emailError : 'Enter your new email address.';
+      if (emailError) errors.email = emailError;
       if (!form.password) errors.current_password = 'Enter your current password.';
       return errors;
     },
@@ -245,6 +247,7 @@ function adminSettings() {
       this._ownEmailOpener = document.activeElement;
       Object.assign(this.staffEmailChange, { open: true, stage: 'form', newEmail: '', password: '', showPassword: false,
         digits: ['', '', '', '', '', ''], errors: {}, error: '' });
+      AccountEmail.showError(document.getElementById('ownNewEmail'), '');
       this.$nextTick(() => document.getElementById('ownNewEmail')?.focus());
     },
 
@@ -300,13 +303,18 @@ function adminSettings() {
       if (form.busy || form.stage !== 'form' || !form.open || !this.staffAccount.canChangeEmail) return;
       form.errors = this.ownEmailValidation();
       form.error = '';
-      if (Object.keys(form.errors).length) return;
+      if (Object.keys(form.errors).length) {
+        if (form.errors.email) AccountEmail.showError(document.getElementById('ownNewEmail'), form.errors.email);
+        this.$nextTick(() => document.getElementById(form.errors.email ? 'ownNewEmail' : 'ownEmailPassword')?.focus());
+        return;
+      }
+      const submittedEmail = AccountEmail.normalize(form.newEmail);
       form.busy = true;
       this.focusOwnEmailDialog();
       try {
-        const response = await API.requestStaffEmailChange({ email: form.newEmail.trim().toLowerCase(), current_password: form.password });
+        const response = await API.requestStaffEmailChange({ email: AccountEmail.normalize(form.newEmail), current_password: form.password });
         this.applyOwnEmailPending(response.pending_email_change);
-      } catch (error) { this.ownEmailError(error); }
+      } catch (error) { if (AccountEmail.normalize(form.newEmail) === submittedEmail) this.ownEmailError(error); }
       finally { form.password = ''; form.showPassword = false; form.busy = false; }
     },
 
@@ -653,12 +661,14 @@ function adminSettings() {
         email: "",
         submitting: false,
         error: "",
+        emailError: "",
       };
     },
 
     openAddStaffAccount() {
       this.staffNotice = "";
       this.addStaffModal = this.emptyAddStaffModal(true);
+      AccountEmail.showError(document.getElementById('newStaffEmail'), '');
 
     },
 
@@ -734,13 +744,11 @@ function adminSettings() {
         return;
       }
 
-      const email = this.addStaffModal.email.trim().toLowerCase();
-      if (!email) {
-        this.addStaffModal.error = "Enter the staff email address.";
-        return;
-      }
-      if (!/^[^\s@]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email)) {
-        this.addStaffModal.error = "Enter a valid email address, such as name@example.com.";
+      const email = AccountEmail.normalize(this.addStaffModal.email);
+      this.addStaffModal.emailError = AccountEmail.validate(email);
+      if (this.addStaffModal.emailError) {
+        AccountEmail.showError(document.getElementById('newStaffEmail'), this.addStaffModal.emailError);
+        this.$nextTick(() => document.getElementById('newStaffEmail')?.focus());
         return;
       }
 
@@ -757,7 +765,12 @@ function adminSettings() {
         await this.loadSecurityAccounts();
 
       } catch (error) {
-        this.addStaffModal.error = this.firstApiError(error);
+        if (error.errors?.email) {
+          if (AccountEmail.normalize(this.addStaffModal.email) === email) {
+            this.addStaffModal.emailError = [].concat(error.errors.email)[0];
+            this.$nextTick(() => document.getElementById('newStaffEmail')?.focus());
+          }
+        } else this.addStaffModal.error = this.firstApiError(error);
       } finally {
         this.addStaffModal.submitting = false;
       }
@@ -880,6 +893,7 @@ function adminSettings() {
       this._staffDetailsScrollTop = document.getElementById('staffDetailsBody')?.scrollTop || 0;
       this.cancelStaffRoleChange();
       this.resetStaffRecovery();
+      AccountEmail.showError(document.getElementById('recoveryNewEmail'), '');
       const recovery = this.staffDetailsModal.staff.emailRecovery;
       this.staffDetailsModal.view = recovery ? 'recovery-manage' : 'recovery';
       if (recovery) this.startSecurityResendCountdown(recovery.resend_after || 0, this.staffRecovery, '_staffRecoveryResendTimer');
@@ -928,21 +942,23 @@ function adminSettings() {
       if (modal.busy || modal.view !== 'recovery' || !this.canAssistStaffEmail) return;
       form.errors = this.recoveryValidation(); form.error = '';
       if (Object.keys(form.errors).length) {
+        if (form.errors.email) AccountEmail.showError(document.getElementById('recoveryNewEmail'), form.errors.email);
         const first = Object.keys(form.errors)[0];
         this.$nextTick(() => document.getElementById(({ email: 'recoveryNewEmail', reason: 'recoveryReason',
           identity_verified: 'recoveryIdentity', current_password: 'recoveryAdminPassword' })[first])?.focus());
         return;
       }
+      const submittedEmail = AccountEmail.normalize(form.email);
       modal.busy = true;
       this.$nextTick(() => document.getElementById('staffDetailsDialog')?.focus());
       try {
-        const result = await API.startStaffEmailRecovery(modal.staff.id, { email: form.email.trim().toLowerCase(), reason: form.reason,
+        const result = await API.startStaffEmailRecovery(modal.staff.id, { email: AccountEmail.normalize(form.email), reason: form.reason,
           identity_verified: form.identityVerified, identity_method: 'in_person_employment_record', current_password: form.password });
         form.challenge = result.recovery;
         modal.view = 'recovery-code';
         this.startSecurityResendCountdown(result.recovery.resend_after || 0, form, '_staffRecoveryResendTimer');
         this.$nextTick(() => document.getElementById('recoveryCodeDigit0')?.focus());
-      } catch (error) { this.recoveryError(error); }
+      } catch (error) { if (AccountEmail.normalize(form.email) === submittedEmail) this.recoveryError(error); }
       finally { form.password = ''; form.showPassword = false; modal.busy = false; }
     },
 
@@ -1043,6 +1059,7 @@ function adminSettings() {
       this.cancelStaffRoleChange();
       this.staffEmailCorrection = { email: "", password: "", showPassword: false, errors: {}, error: "" };
       this.staffDetailsModal.view = "email";
+      AccountEmail.showError(document.getElementById("staffNewEmail"), "");
       this.$nextTick(() => document.getElementById("staffNewEmail")?.focus());
     },
 
@@ -1075,12 +1092,14 @@ function adminSettings() {
       form.errors = this.staffEmailValidation();
       form.error = "";
       if (Object.keys(form.errors).length) {
+        if (form.errors.email) AccountEmail.showError(document.getElementById('staffNewEmail'), form.errors.email);
         this.$nextTick(() => document.getElementById(form.errors.email ? "staffNewEmail" : "staffEmailAdminPassword")?.focus());
         return;
       }
+      const submittedEmail = AccountEmail.normalize(form.email);
       modal.busy = true;
       try {
-        const response = await API.correctStaffSetupEmail(modal.staff.id, form.email.trim().toLowerCase(), form.password);
+        const response = await API.correctStaffSetupEmail(modal.staff.id, AccountEmail.normalize(form.email), form.password);
         // Reject account-list reads that began before this mutation completed.
         ++this._securityRevision;
         this._staffAccountsRequest = null;
@@ -1096,9 +1115,9 @@ function adminSettings() {
       } catch (error) {
         form.errors = {};
         for (const field of ["email", "current_password"]) {
-          if (error.errors?.[field]) form.errors[field] = [].concat(error.errors[field])[0];
+          if (error.errors?.[field] && (field !== 'email' || AccountEmail.normalize(form.email) === submittedEmail)) form.errors[field] = [].concat(error.errors[field])[0];
         }
-        if (!Object.keys(form.errors).length) form.error = error.errors?.account?.[0]
+        if (!Object.keys(form.errors).length && !(error.errors?.email && AccountEmail.normalize(form.email) !== submittedEmail)) form.error = error.errors?.account?.[0]
           || "The setup email could not be queued. Please try again.";
         form.password = "";
         form.showPassword = false;

@@ -111,11 +111,11 @@ class EmailVerificationTest extends TestCase
             ->assertJsonMissingPath('token');
 
         $this->assertDatabaseMissing('users', [
-            'email' => 'new.customer@example.test',
+            'email' => 'new.customer@gmail.com',
         ]);
         $pendingRegistration = PendingCustomerRegistration::where(
             'email',
-            'new.customer@example.test',
+            'new.customer@gmail.com',
         )->firstOrFail();
 
         $plainToken = $this->verificationCodeSentTo($pendingRegistration);
@@ -140,12 +140,12 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/verify', ['registration_token' => $registration->json('registration_token'), 'email' => $pendingRegistration->email, 'code' => $plainToken])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('user.email', 'new.customer@example.test')
+            ->assertJsonPath('user.email', 'new.customer@gmail.com')
             ->assertJsonPath('user.role', 'customer')
             ->assertJsonStructure(['token']);
 
         $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $user = User::where('email', 'new.customer@example.test')->firstOrFail();
+        $user = User::where('email', 'new.customer@gmail.com')->firstOrFail();
         $this->assertNotNull($user->email_verified_at);
         $this->assertTrue(Hash::check('strong-password', $user->password_hash));
         $this->assertDatabaseCount('personal_access_tokens', 1);
@@ -187,11 +187,11 @@ class EmailVerificationTest extends TestCase
             ->assertJsonPath('requires_verification', true);
 
         $this->assertDatabaseMissing('users', [
-            'email' => 'new.customer@example.test',
+            'email' => 'new.customer@gmail.com',
         ]);
         $pendingRegistration = PendingCustomerRegistration::where(
             'email',
-            'new.customer@example.test',
+            'new.customer@gmail.com',
         )->firstOrFail();
         $this->assertNull($pendingRegistration->email_verification_token);
         $this->assertNull($pendingRegistration->email_verification_expires_at);
@@ -280,12 +280,12 @@ class EmailVerificationTest extends TestCase
             'last_name' => 'Customer',
             'username' => 'pendingcustomer',
             'phone' => '09120000000',
-            'email' => 'pending@example.test',
+            'email' => 'pending@gmail.com',
             'password_hash' => Hash::make('strong-password'),
         ]);
 
         $this->postJson('/api/sign-in', [
-            'identifier' => 'pending@example.test',
+            'identifier' => 'pending@gmail.com',
             'password' => 'strong-password',
         ])
             ->assertForbidden()
@@ -301,7 +301,7 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
 
         $user = User::factory()->create([
-            'email' => 'login-confirmation@example.test',
+            'email' => 'login-confirmation@gmail.com',
             'password_hash' => Hash::make('strong-password'),
         ]);
 
@@ -715,7 +715,7 @@ class EmailVerificationTest extends TestCase
     {
         Notification::fake();
         $user = User::factory()->create([
-            'email' => 'sessions@example.test',
+            'email' => 'sessions@gmail.com',
             'password_hash' => Hash::make('strong-password'),
             'role' => 'staff',
         ]);
@@ -833,7 +833,7 @@ class EmailVerificationTest extends TestCase
         $this->assertTrue(Hash::check($plainToken, $user->fresh()->email_verification_code_hash));
 
         Notification::fake();
-        $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
+        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
             ->assertOk()
             ->assertJsonPath(
                 'message',
@@ -850,7 +850,7 @@ class EmailVerificationTest extends TestCase
             'last_name' => 'Customer',
             'username' => 'pendingresend',
             'phone' => '09120000001',
-            'email' => 'pending-resend@example.test',
+            'email' => 'pending-resend@gmail.com',
             'password_hash' => Hash::make('strong-password'),
         ]);
 
@@ -891,12 +891,12 @@ class EmailVerificationTest extends TestCase
     public function test_resend_endpoint_is_rate_limited(): void
     {
         for ($attempt = 1; $attempt <= 3; $attempt++) {
-            $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
+            $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
                 ->assertOk();
             $this->travel(46)->seconds();
         }
 
-        $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
+        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
             ->assertTooManyRequests();
     }
 
@@ -919,7 +919,7 @@ class EmailVerificationTest extends TestCase
         $payload = $this->registrationPayload();
         unset($payload['phone']);
         $payload = [...$payload, ...$phoneInput];
-        $payload['email'] = 'new.customer@example.test';
+        $payload['email'] = 'new.customer@gmail.com';
         $registration = $this->postJson('/api/register', $payload)->assertCreated()
             ->assertJsonPath('requires_verification', true)->assertJsonMissingPath('token');
         $pending = PendingCustomerRegistration::where('email', $payload['email'])->firstOrFail();
@@ -984,7 +984,7 @@ class EmailVerificationTest extends TestCase
         $user = User::factory()->create(['phone' => '09170000001']);
         $pending = PendingCustomerRegistration::create([
             'first_name' => 'Pending', 'last_name' => 'Customer', 'phone' => '09170000002',
-            'email' => 'pending@example.test', 'password_hash' => Hash::make('password'),
+            'email' => 'pending@gmail.com', 'password_hash' => Hash::make('password'),
         ]);
         $migration = require base_path('database/migrations/2026_10_21_000001_make_customer_phone_nullable.php');
         $migration->up();
@@ -996,14 +996,14 @@ class EmailVerificationTest extends TestCase
             foreach (['one', 'two'] as $suffix) {
                 DB::table($name)->insert([
                     'first_name' => 'Optional', 'last_name' => 'Customer', 'phone' => null,
-                    'email' => "$name-$suffix@example.test", 'password_hash' => 'unchanged-hash',
+                    'email' => "$name-$suffix@gmail.com", 'password_hash' => 'unchanged-hash',
                 ]);
             }
             try {
                 DB::table($name)->insert([
                     'first_name' => 'Duplicate', 'last_name' => 'Customer',
                     'phone' => $name === 'users' ? '09170000001' : '09170000002',
-                    'email' => "$name-duplicate@example.test", 'password_hash' => 'unchanged-hash',
+                    'email' => "$name-duplicate@gmail.com", 'password_hash' => 'unchanged-hash',
                 ]);
                 $this->fail('Non-null phone uniqueness must remain enforced.');
             } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
@@ -1032,7 +1032,7 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         foreach (['first', 'second'] as $name) {
             $this->postJson('/api/register', [
-                ...$this->registrationPayload(), 'email' => "$name@example.test", 'phone' => null, 'username' => null,
+                ...$this->registrationPayload(), 'email' => "$name@gmail.com", 'phone' => null, 'username' => null,
             ])->assertCreated();
         }
         $this->assertDatabaseCount('pending_customer_registrations', 2);
@@ -1155,13 +1155,13 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()
             ->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('registration_token');
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@example.test'])
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@gmail.com'])
             ->assertUnprocessable()->assertJsonValidationErrors(['phone', 'username']);
         PendingCustomerRegistration::query()->delete();
-        User::factory()->create(['email' => 'new.customer@example.test', 'phone' => '09123456789', 'username' => 'newcustomer']);
+        User::factory()->create(['email' => 'new.customer@gmail.com', 'phone' => '09123456789', 'username' => 'newcustomer']);
         $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()
             ->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('registration_token');
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@example.test'])
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'different@gmail.com'])
             ->assertUnprocessable()->assertJsonValidationErrors(['phone', 'username']);
     }
 
@@ -1224,7 +1224,7 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::firstOrFail();
         $oldCode = $this->verificationCodeSentTo($pending);
         $payload = $this->registrationPayload();
-        $payload['email'] = 'corrected@example.test';
+        $payload['email'] = 'corrected@gmail.com';
         $payload['phone'] = '09178889999';
         $payload['registration_token'] = str_repeat('0', 64);
         $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
@@ -1237,9 +1237,9 @@ class EmailVerificationTest extends TestCase
         $pending->refresh();
         $newCode = $this->verificationCodeSentTo($pending);
         $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['email' => 'new.customer@example.test', 'code' => $oldCode])->assertUnprocessable();
+        $this->postJson('/api/email/verify', ['email' => 'new.customer@gmail.com', 'code' => $oldCode])->assertUnprocessable();
         $this->postJson('/api/email/verify', ['registration_token' => $edited->json('registration_token'), 'email' => $pending->email, 'code' => $newCode])->assertOk();
-        $this->assertDatabaseHas('users', ['email' => 'corrected@example.test', 'phone' => '09178889999', 'phone_verified_at' => null]);
+        $this->assertDatabaseHas('users', ['email' => 'corrected@gmail.com', 'phone' => '09178889999', 'phone_verified_at' => null]);
     }
 
     public function test_no_sms_endpoint_or_phone_payload_can_complete_registration(): void
@@ -1305,7 +1305,7 @@ class EmailVerificationTest extends TestCase
             'first_name' => 'Pending',
             'last_name' => 'Customer',
             'phone' => '09123456789',
-            'email' => 'pending@example.test',
+            'email' => 'pending@gmail.com',
             'password_hash' => Hash::make('strong-password'),
             'email_verification_code_hash' => Hash::make('123456'),
             'email_verification_attempts' => 2,
@@ -1439,12 +1439,12 @@ class EmailVerificationTest extends TestCase
             $this->assertGreaterThanOrEqual(0, $timing['elapsed_ms']);
             $this->assertStringNotContainsString($matches[0], json_encode($timing));
             $this->assertStringNotContainsString($receipt, json_encode($timing));
-            $this->assertStringNotContainsString('new.customer@example.test', json_encode($timing));
+            $this->assertStringNotContainsString('new.customer@gmail.com', json_encode($timing));
         }
         $this->assertGreaterThanOrEqual(0, $timings[2]['transport_ms']);
         $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
             ->assertOk()->assertJsonPath('status', 'sent');
-        $this->postJson('/api/email/verify', ['registration_token' => $response->json('registration_token'), 'email' => 'new.customer@example.test', 'code' => $matches[0]])
+        $this->postJson('/api/email/verify', ['registration_token' => $response->json('registration_token'), 'email' => 'new.customer@gmail.com', 'code' => $matches[0]])
             ->assertOk()->assertJsonStructure(['token']);
     }
 
@@ -1501,7 +1501,7 @@ class EmailVerificationTest extends TestCase
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
         $this->app->instance('env', 'production');
         config()->set('app.frontend_url', 'https://clinic.example.test');
-        config()->set('mail.from.address', 'clinic@example.test');
+        config()->set('mail.from.address', 'clinic@gmail.com');
         config()->set('mail.default', 'failover');
         $this->postJson('/api/sign-in', [
             'identifier' => $user->email, 'password' => 'strong-password',
@@ -1514,13 +1514,13 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $this->travel(46)->seconds();
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@example.test'])
+        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com'])
             ->assertOk()->assertJsonPath('email_delivery_token', null);
-        $this->postJson('/api/email/resend', ['email' => 'missing@example.test'])
+        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
             ->assertOk()->assertJsonPath('email_delivery_token', null);
         $this->travel(46)->seconds();
         $resend = $this->postJson('/api/email/resend', [
-            'email' => 'new.customer@example.test', 'registration_token' => $response->json('registration_token'),
+            'email' => 'new.customer@gmail.com', 'registration_token' => $response->json('registration_token'),
         ])->assertOk();
         $this->assertIsString($resend->json('email_delivery_token'));
         $this->postJson('/api/email/delivery-status', ['delivery_token' => str_repeat('x', 64)])
@@ -1548,7 +1548,7 @@ class EmailVerificationTest extends TestCase
         $this->useDatabaseMailQueue();
         $response = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $this->travel(46)->seconds();
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@example.test'])->assertOk();
+        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com'])->assertOk();
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->postJson('/api/email/delivery-status', ['delivery_token' => $response->json('email_delivery_token')])
@@ -1776,7 +1776,7 @@ class EmailVerificationTest extends TestCase
 
         foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true], ['role' => 'staff']] as $attributes) {
             $this->travel(61)->seconds();
-            $user = User::factory()->create(['email' => 'new.customer@example.test', ...$attributes]);
+            $user = User::factory()->create(['email' => 'new.customer@gmail.com', ...$attributes]);
             $before = $user->fresh()->getAttributes();
             Notification::fake();
             $this->postJson('/api/register', $payload)->assertAccepted()->assertExactJson($publicResponse);
@@ -1794,8 +1794,8 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
         $pending = PendingCustomerRegistration::query()->sole();
         $pending->forceFill(['created_at' => now()->subHours(48)])->save();
-        $publicResponse = $this->postJson('/api/email/resend', ['email' => 'unknown@example.test'])->assertOk()->json();
-        foreach ([$pending->email, 'unknown@example.test'] as $email) {
+        $publicResponse = $this->postJson('/api/email/resend', ['email' => 'unknown@gmail.com'])->assertOk()->json();
+        foreach ([$pending->email, 'unknown@gmail.com'] as $email) {
             $this->travel(601)->seconds();
             Notification::fake();
             $this->postJson('/api/email/resend', ['email' => $email])->assertOk()->assertExactJson($publicResponse);
@@ -1803,7 +1803,7 @@ class EmailVerificationTest extends TestCase
         }
         foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true]] as $index => $attributes) {
             $this->travel(601)->seconds();
-            $user = User::factory()->create(['email' => "recovery{$index}@example.test", ...$attributes]);
+            $user = User::factory()->create(['email' => "recovery{$index}@gmail.com", ...$attributes]);
             $this->postJson('/api/email/resend', ['email' => $user->email])->assertOk()->assertExactJson($publicResponse);
         }
     }
@@ -1841,7 +1841,7 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => $code])->assertUnprocessable();
         $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $grant];
-        $this->putJson('/api/register/pending', [...$payload, 'email' => 'other@example.test'])->assertUnprocessable();
+        $this->putJson('/api/register/pending', [...$payload, 'email' => 'other@gmail.com'])->assertUnprocessable();
         $this->putJson('/api/register/pending', [...$payload, 'registration_recovery_token' => str_repeat('x', 64)])->assertUnprocessable();
         $this->putJson('/api/register/pending', $payload)->assertOk()->assertJsonStructure(['token', 'user']);
         $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
@@ -1882,7 +1882,7 @@ class EmailVerificationTest extends TestCase
     {
         Notification::fake();
         $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
-        $legacy = User::factory()->unverified()->create(['email' => 'new.customer@example.test']);
+        $legacy = User::factory()->unverified()->create(['email' => 'new.customer@gmail.com']);
         $id = $legacy->getKey();
         foreach (['pets', 'bookings'] as $table) {
             Schema::create($table, function (Blueprint $schema) {
@@ -2197,6 +2197,65 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
+    public function test_unsupported_email_is_rejected_before_pending_registration_or_otp(): void
+    {
+        Notification::fake();
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => '123@123.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'Use Gmail, Outlook, Hotmail, Live, Yahoo, or iCloud.');
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('users', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_mixed_case_plus_alias_keeps_its_identity_through_verification_and_sign_in(): void
+    {
+        Notification::fake();
+        $response = $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => '  Gerald+Clinic@GMAIL.COM '])
+            ->assertCreated()->assertJsonPath('email', 'Gerald+Clinic@gmail.com');
+        $pending = PendingCustomerRegistration::query()->sole();
+        $this->assertSame('Gerald+Clinic@gmail.com', $pending->email);
+        $this->postJson('/api/email/verify', ['email' => 'gerald+clinic@gmail.com',
+            'registration_token' => $response->json('registration_token'), 'code' => $this->verificationCodeSentTo($pending)])
+            ->assertOk()->assertJsonPath('user.email', 'Gerald+Clinic@gmail.com');
+        $this->postJson('/api/sign-in', ['identifier' => 'GERALD+CLINIC@gmail.com', 'password' => 'strong-password'])
+            ->assertStatus(202)->assertJsonPath('requires_login_confirmation', true);
+    }
+
+    public function test_unchanged_legacy_email_can_correct_registration_details_but_new_email_must_pass_policy(): void
+    {
+        Notification::fake();
+        $created = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $pending = PendingCustomerRegistration::query()->sole();
+        $pending->update(['email' => 'ab@legacy.example']);
+        $this->travel(46)->seconds();
+        $payload = [...$this->registrationPayload(), 'email' => 'ab@legacy.example', 'first_name' => 'Corrected',
+            'registration_token' => $created->json('registration_token')];
+        $edited = $this->putJson('/api/register/pending', $payload)->assertCreated();
+        $this->assertSame('ab@legacy.example', $pending->fresh()->email);
+        $this->putJson('/api/register/pending', [...$payload, 'email' => 'new@unsupported.example',
+            'registration_token' => $edited->json('registration_token')])->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertSame('ab@legacy.example', $pending->fresh()->email);
+    }
+
+    public function test_changed_registration_email_cannot_duplicate_an_account_by_local_part_case(): void
+    {
+        Notification::fake();
+        User::factory()->create(['email' => 'Registered@gmail.com']);
+        $created = $this->postJson('/api/register', $this->registrationPayload())->assertCreated();
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'email' => 'registered@GMAIL.COM',
+            'registration_token' => $created->json('registration_token')])->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertSame('new.customer@gmail.com', PendingCustomerRegistration::query()->sole()->email);
+    }
+
+    public function test_legacy_email_still_enters_the_existing_sign_in_challenge(): void
+    {
+        Notification::fake();
+        User::factory()->create(['email' => 'ab@legacy.example', 'password_hash' => Hash::make('strong-password')]);
+        $this->postJson('/api/sign-in', ['identifier' => 'ab@legacy.example', 'password' => 'strong-password'])
+            ->assertAccepted()->assertJsonPath('requires_login_confirmation', true);
+    }
+
     private function registrationPayload(): array
     {
         return [
@@ -2204,7 +2263,7 @@ class EmailVerificationTest extends TestCase
             'last_name' => 'Customer',
             'username' => 'newcustomer',
             'phone' => '09123456789',
-            'email' => 'NEW.CUSTOMER@example.test',
+            'email' => 'new.customer@GMAIL.COM',
             'password' => 'strong-password',
             'password_confirmation' => 'strong-password',
         ];

@@ -206,7 +206,7 @@ class PhoneVerificationTest extends TestCase
     {
         \Illuminate\Support\Facades\Notification::fake();
         DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
-            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@example.test']);
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@gmail.com']);
         $this->fakeSend();
         foreach ([null, 'incorrect'] as $password) {
             $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => $password])
@@ -280,7 +280,7 @@ class PhoneVerificationTest extends TestCase
     public function test_email_queue_failure_does_not_undo_successful_replacement(): void
     {
         DB::table('users')->update(['phone' => '09991234567', 'phone_verified_at' => now(),
-            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@example.test']);
+            'password_hash' => \Illuminate\Support\Facades\Hash::make('Current-password-123'), 'email' => 'owner@gmail.com']);
         $this->fakeSend();
         $id = $this->postJson('/api/phone-verification/send', ['phone' => '09171234567', 'current_password' => 'Current-password-123'])
             ->assertOk()->json('challenge_id');

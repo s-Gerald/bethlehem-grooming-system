@@ -6,6 +6,7 @@ use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
+use App\Support\AccountEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreWalkinRequest extends FormRequest
@@ -21,7 +22,7 @@ class StoreWalkinRequest extends FormRequest
             return;
         }
 
-        $email = strtolower(trim((string) $this->input('email', '')));
+        $email = AccountEmail::normalize((string) $this->input('email', ''));
         $phone = preg_replace('/\D+/', '', trim((string) $this->input('phone', ''))) ?? '';
 
         if (preg_match('/^63\d{10}$/', $phone)) {
@@ -46,7 +47,9 @@ class StoreWalkinRequest extends FormRequest
             'fname' => ['required', 'string', 'max:100'],
             'lname' => ['required', 'string', 'max:100'],
             'mname' => ['nullable', 'string', 'max:100'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'email' => ($this->input('owner_record_type') ?? 'new') === 'new'
+                ? AccountEmail::rules(required: false, maxLength: 255)
+                : ['nullable', 'string', 'max:255'],
             'phone' => ($this->input('owner_record_type') ?? 'new') === 'new'
                 ? ['required', 'string', 'max:20', 'regex:/^09\d{9}$/']
                 : ['required', 'string', 'max:20', 'regex:/^[0-9+\-\s()]+$/'],

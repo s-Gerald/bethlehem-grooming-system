@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\AccountEmail;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -45,7 +46,7 @@ class CustomerRegistrationService
             if ($registrant->retentionExpired()) $this->unavailable();
             $values = $details ?? $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash']);
             $conflict = User::query()->where(function ($query) use ($values) {
-                $query->where('email', $values['email']);
+                $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$values['email']]);
                 if ($values['phone'] ?? null) $query->orWhere('phone', $values['phone']);
                 if ($values['username'] ?? null) $query->orWhere('username', $values['username']);
             })->lockForUpdate()->exists();
@@ -68,7 +69,7 @@ class CustomerRegistrationService
             ]);
             // Preserve the existing user ID, pets, bookings, tier, and history.
             $user->tokens()->delete();
-            PendingCustomerRegistration::query()->where('email', $user->email)->delete();
+            PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$user->email])->delete();
         }
 
         return response()->json([

@@ -337,10 +337,6 @@ class AdminSecurityController extends Controller
             'email' => PendingStaffAccountService::emailRules(),
             'current_password' => ['required', 'string'],
         ], [
-            'email.required' => 'Enter a valid email address.',
-            'email.email' => 'Enter a valid email address.',
-            'email.regex' => 'Enter a valid email address.',
-            'email.max' => 'Use an email address of 150 characters or fewer.',
             'current_password.required' => 'Enter your admin password.',
         ]);
 
