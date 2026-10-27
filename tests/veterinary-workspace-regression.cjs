@@ -9,8 +9,9 @@ async function clinicalDefaults() {
   const identity = {user: {role: 'staff', staff_type: 'clinic', staff_subrole: 'veterinarian',
     staff_permissions: {clinic_workspace: true, availability_view: true, availability_manage: false}}};
   const context = {
-    URLSearchParams, Date, Intl, setTimeout, clearTimeout,
-    window: {location: {search: '?pos=2', hash: ''}, history: {state: null}, addEventListener() {}, removeEventListener() {}},
+    URL, URLSearchParams, Date, Intl, setTimeout, clearTimeout,
+    window: {location: new URL('https://example.test/pages/admin/archive.html?pos=2'), history: {state: null}, addEventListener() {}, removeEventListener() {}},
+    document: {currentScript: null, addEventListener() {}, removeEventListener() {}},
     API: {isClinicWorkspace: () => true, getCachedStaffIdentity: () => identity,
       getStaffIdentity: async () => identity,
       getArchivedClinicAppointments: async () => {requests.push('clinic-history'); return {archived: []};},
@@ -44,7 +45,6 @@ async function clinicalDefaults() {
   assert.equal(transactions.transactionType, 'clinic_payment');
   assert.ok(requests.filter(x => x !== 'clinic-history').every(x => x === 'clinic_payment'));
   vm.runInContext(read('admin-settings.js'), context);
-  context.document = {addEventListener() {}, removeEventListener() {}};
   const settings = context.adminSettings();
   await settings.init();
   assert.equal(settings.isAdmin, false, 'Settings relies on validated identity');

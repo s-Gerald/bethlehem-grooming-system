@@ -18,13 +18,13 @@ function focusTarget(id) {
   return focusTargets.get(id);
 }
 const sandbox = {
-  document: { activeElement: focusTarget('payment-trigger'), body: { style: { overflow: 'auto' } },
+  document: { currentScript: null, activeElement: focusTarget('payment-trigger'), body: { style: { overflow: 'auto' } },
     addEventListener(name, callback) { if (name === 'alpine:init') alpineInit = callback; }, getElementById: focusTarget },
-  window: { addEventListener() {}, dispatchEvent(event) { events.push(event); }, location: { pathname: '/pages/admin/clinic.html', search: '' } },
+  window: { addEventListener() {}, dispatchEvent(event) { events.push(event); }, location: new URL('https://example.test/pages/admin/clinic.html') },
   Alpine: { store(name, value) { stores[name] = value; } },
   CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
   API: { getUserRole: () => role },
-  crypto: webcrypto, URLSearchParams, setTimeout, clearTimeout,
+  crypto: webcrypto, URL, URLSearchParams, setTimeout, clearTimeout,
 };
 vm.createContext(sandbox);
 for (const file of ['clinic-feedback.js', 'cash-payment.js', 'admin-clinic.js', 'admin-clinic-case-workspace.js', 'admin-vaccinations.js', 'admin-sidebar.js']) {
