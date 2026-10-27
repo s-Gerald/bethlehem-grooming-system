@@ -20,11 +20,13 @@ use Tests\TestCase;
 class GroomingCancellationTest extends TestCase
 {
     use \Tests\Support\CreatesGroomingVisitFixture;
+    use \Tests\Support\CreatesRegistrationAvailability;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->createGroomingVisitFixture();
+        $this->createRegistrationAvailability();
     }
 
     private function request(string $reason = 'Customer decided not to proceed.'): Request

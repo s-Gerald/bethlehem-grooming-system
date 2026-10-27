@@ -16,6 +16,7 @@ class StoreClinicPreRegistrationRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'service_day' => ['nullable', 'date_format:Y-m-d'],
             'pet_id' => [
                 'required',
                 'integer',

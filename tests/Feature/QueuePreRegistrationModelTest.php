@@ -54,6 +54,8 @@ class QueuePreRegistrationModelTest extends TestCase
             $table->string('booking_reference')->nullable();
             $table->string('status')->default('waiting_to_arrive');
             $table->date('booking_date');
+            $table->dateTime('registration_closes_at')->nullable();
+            $table->dateTime('registration_no_show_exempt_at')->nullable();
             $table->dateTime('dropped_off_at')->nullable();
             $table->integer('queue_number')->nullable();
             $table->integer('number_of_pets')->default(1);
@@ -74,6 +76,8 @@ class QueuePreRegistrationModelTest extends TestCase
             $table->string('appointment_reference')->nullable();
             $table->string('status')->default('waiting_to_arrive');
             $table->date('appointment_date');
+            $table->dateTime('registration_closes_at')->nullable();
+            $table->dateTime('registration_no_show_exempt_at')->nullable();
             $table->dateTime('checked_in_at')->nullable();
             $table->integer('queue_number')->nullable();
             $table->unsignedInteger('window_id')->nullable();
@@ -162,7 +166,7 @@ class QueuePreRegistrationModelTest extends TestCase
     {
         $days = app(\App\Services\RegistrationServiceDay::class);
         foreach (['clinic', 'grooming'] as $service) {
-            foreach (['07:00:00', '10:00:00', '12:30:00', '16:59:00'] as $time) {
+            foreach (['06:00:00', '07:00:00', '08:00:00', '10:00:00', '12:30:00', '16:59:00'] as $time) {
                 Carbon::setTestNow("2026-10-09 {$time}");
                 $this->assertSame('2026-10-09', $days->resolve($service));
             }
@@ -170,14 +174,138 @@ class QueuePreRegistrationModelTest extends TestCase
             $this->assertSame('2026-10-10', $days->resolve($service));
         }
         DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'start_date' => '2026-10-10', 'end_date' => '2026-10-15']);
-        $this->assertSame('2026-10-16', $days->resolve('clinic'));
+        $this->assertFalse($days->availability('clinic')['registration_available']);
         Carbon::setTestNow('2026-10-09 12:30:00');
         $this->assertFalse($days->acceptingCheckIns('grooming'));
         Carbon::setTestNow('2026-10-09 13:00:00');
         $this->assertTrue($days->acceptingCheckIns('grooming'));
         DB::table('clinic_closures')->insert(['type' => 'stop_today', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09']);
-        $this->assertSame('2026-10-16', $days->resolve('grooming'));
+        $this->expectException(ValidationException::class);
+        $days->resolve('grooming');
         $this->assertFalse($days->acceptingCheckIns('clinic'));
+    }
+
+    public function test_registration_never_skips_beyond_tomorrow_and_services_are_independent(): void
+    {
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'service' => 'grooming', 'start_date' => '2026-10-09', 'end_date' => '2026-10-12']);
+        $this->assertFalse($days->availability('grooming')['registration_available']);
+        $this->assertSame('2026-10-09', $days->resolve('clinic'));
+        $this->getJson('/api/pre-registration/queue-info?service=grooming')->assertOk()
+            ->assertJsonPath('registration_available', false)->assertJsonPath('service_day', null);
+        Carbon::setTestNow('2026-10-10 00:00:00');
+        $this->assertSame('2026-10-10', $days->resolve('clinic'));
+    }
+
+    public function test_reviewed_day_must_match_the_current_service_day(): void
+    {
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        try {
+            $days->assertReviewedDay('grooming', '2026-10-09');
+            $this->fail('A changed day must require another review.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(409, $exception->response->getStatusCode());
+            $this->assertSame('service_day_changed', $exception->response->getData(true)['code']);
+        }
+        $this->assertSame('2026-10-10', $days->assertReviewedDay('grooming', '2026-10-10'));
+    }
+
+    public function test_no_show_uses_service_hours_and_saved_deadline_without_penalizing_closures(): void
+    {
+        $grooming = $this->grooming('waiting_to_arrive', 1);
+        $clinic = $this->clinic('waiting_to_arrive');
+        DB::table('bookings')->where('booking_id', $grooming)->update(['registration_closes_at' => '2026-10-09 17:00:00']);
+        ClinicSetting::current()->update(['grooming_close_time' => '15:00:00', 'clinic_close_time' => '18:00:00']);
+        Carbon::setTestNow('2026-10-09 15:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('bookings', ['booking_id' => $grooming, 'status' => 'waiting_to_arrive']);
+        DB::table('clinic_closures')->insert(['type' => 'stop_today', 'service' => 'clinic', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09']);
+        Carbon::setTestNow('2026-10-10 00:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'waiting_to_arrive']);
+    }
+
+    public function test_no_show_never_uses_opening_time_or_a_future_visit_day(): void
+    {
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $booking)->update(['booking_date' => '2026-10-10', 'registration_closes_at' => '2026-10-10 17:00:00']);
+        foreach (['2026-10-09 19:00:00', '2026-10-10 07:00:00', '2026-10-10 08:00:00', '2026-10-10 16:59:59'] as $time) {
+            Carbon::setTestNow($time);
+            $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        }
+        Carbon::setTestNow('2026-10-10 17:00:00');
+        $this->assertSame(1, app(PreRegistrationExpiry::class)->expire());
+    }
+
+    public function test_service_day_uses_manila_even_when_the_clock_is_in_utc(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-09 09:00:00', 'UTC'));
+        $this->assertSame('2026-10-10', app(\App\Services\RegistrationServiceDay::class)->resolve('grooming'));
+    }
+
+    public function test_reviewed_day_is_required_and_rechecked_after_a_new_closure(): void
+    {
+        $days = app(\App\Services\RegistrationServiceDay::class);
+        foreach ([null, '2026-10-12'] as $reviewed) {
+            try { $days->assertReviewedDay('clinic', $reviewed); $this->fail('An unreviewed or advance day must not be accepted.'); }
+            catch (ValidationException $exception) { $this->assertSame('service_day_changed', $exception->response->getData(true)['code']); }
+        }
+        DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'service' => 'clinic', 'start_date' => '2026-10-09', 'end_date' => '2026-10-10']);
+        try { $days->assertReviewedDay('clinic', '2026-10-09'); $this->fail('New closures must be checked on submission.'); }
+        catch (ValidationException $exception) { $this->assertSame('service_unavailable', $exception->response->getData(true)['code']); }
+        $this->assertSame('2026-10-09', $days->resolve('grooming'));
+    }
+
+    public function test_reopened_intake_does_not_retroactively_penalize_interrupted_registrations(): void
+    {
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        DB::table('clinic_closures')->insert(['type' => 'stop_today', 'service' => 'grooming', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09', 'is_active' => false, 'updated_at' => '2026-10-09 15:00:00']);
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('bookings', ['booking_id' => $booking, 'status' => 'waiting_to_arrive']);
+        $this->assertSame('2026-10-10', app(\App\Services\RegistrationServiceDay::class)->resolve('grooming'));
+    }
+
+    public function test_extended_hours_extend_the_saved_no_show_deadline(): void
+    {
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $booking)->update(['registration_closes_at' => '2026-10-09 17:00:00']);
+        ClinicSetting::current()->update(['grooming_close_time' => '18:00:00']);
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        Carbon::setTestNow('2026-10-09 18:00:00');
+        $this->assertSame(1, app(PreRegistrationExpiry::class)->expire());
+    }
+
+    public function test_shortened_hours_remain_exempt_even_after_the_hours_are_restored(): void
+    {
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        DB::table('bookings')->where('booking_id', $booking)->update(['registration_closes_at' => '2026-10-09 17:00:00']);
+        $controller = app(\App\Http\Controllers\ClinicSettingController::class);
+        foreach (['15:00', '17:00'] as $close) {
+            $controller->updateAvailability(\Illuminate\Http\Request::create('/', 'PATCH', ['service' => 'grooming', 'open_time' => '08:00', 'close_time' => $close]), app(AvailabilityTimeWindowService::class));
+        }
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('bookings', ['booking_id' => $booking, 'status' => 'waiting_to_arrive']);
+        $this->assertNotNull(DB::table('bookings')->where('booking_id', $booking)->value('registration_no_show_exempt_at'));
+    }
+
+    public function test_deadline_migration_preserves_historical_statuses_and_data(): void
+    {
+        $booking = $this->grooming('expired', 1);
+        $clinic = $this->clinic('no_show');
+        foreach (['bookings', 'clinic_appointments'] as $table) Schema::table($table, fn (Blueprint $blueprint) => $blueprint->dropColumn(['registration_closes_at', 'registration_no_show_exempt_at']));
+        $migration = require database_path('migrations/2026_10_27_000002_add_registration_closing_deadlines.php');
+        $migration->up();
+        $this->assertDatabaseHas('bookings', ['booking_id' => $booking, 'status' => 'expired', 'registration_closes_at' => null]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'no_show', 'registration_closes_at' => null]);
+        $this->assertDatabaseCount('booking_pets', 1);
+        $migration->down();
+        $this->assertDatabaseHas('bookings', ['booking_id' => $booking, 'status' => 'expired']);
     }
 
     public function test_review_queue_count_is_service_specific_and_excludes_nonwaiting_pets(): void
@@ -307,7 +435,7 @@ class QueuePreRegistrationModelTest extends TestCase
         $this->assertDatabaseCount('booking_pets', 4);
     }
 
-    public function test_expiry_ignores_preferred_time_and_releases_ongoing_access_after_midnight(): void
+    public function test_no_show_at_closing_releases_access_and_notifies_once(): void
     {
         DB::table('users')->insert(['user_id' => 22, 'first_name' => 'Gerald', 'last_name' => 'Senining']);
         DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'user_id' => 22]);
@@ -316,14 +444,14 @@ class QueuePreRegistrationModelTest extends TestCase
         DB::table('bookings')->where('booking_id', $grooming)->update(['user_id' => 22]);
         DB::table('booking_pets')->where('booking_id', $grooming)->update(['pet_id' => 1]);
         DB::table('clinic_appointments')->where('id', $clinic)->update(['user_id' => 22, 'pet_id' => 1]);
-        Carbon::setTestNow('2026-10-09 23:59:59');
+        Carbon::setTestNow('2026-10-09 16:59:59');
         $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseCount('notifications', 0);
         $this->assertFalse(app(CustomerPreRegistrationAccessService::class)->forUser(22)['allowed']);
-        Carbon::setTestNow('2026-10-10 00:00:00');
+        Carbon::setTestNow('2026-10-09 17:00:00');
         $this->assertTrue(app(CustomerPreRegistrationAccessService::class)->forUser(22)['allowed']);
-        $this->assertDatabaseHas('bookings', ['booking_id' => $grooming, 'status' => 'expired']);
-        $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'expired']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $grooming, 'status' => 'no_show']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'no_show']);
         $this->assertDatabaseHas('notifications', ['type' => 'no_show', 'booking_id' => $grooming, 'is_read' => false]);
         $this->assertDatabaseHas('notifications', ['type' => 'clinic_no_show', 'clinic_appointment_id' => $clinic, 'is_read' => false]);
         $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
@@ -386,7 +514,30 @@ class QueuePreRegistrationModelTest extends TestCase
         }
     }
 
-    public function test_overlapping_expiry_calls_create_one_event_per_registration_on_sqlite(): void
+    public function test_a_deadlock_retry_does_not_advance_past_rolled_back_registrations(): void
+    {
+        $booking = $this->grooming('waiting_to_arrive', 1);
+        Carbon::setTestNow('2026-10-09 17:00:00');
+        $failed = false;
+        $this->app['events']->listen(\Illuminate\Database\Events\QueryExecuted::class, function ($query) use (&$failed) {
+            if (! $failed && str_contains($query->sql, 'insert into "notifications"')) {
+                $failed = true;
+                throw new \Illuminate\Database\DeadlockException('Deadlock found when trying to get lock');
+            }
+        });
+        $this->assertSame(1, app(PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('bookings', ['booking_id' => $booking, 'status' => 'no_show']);
+        $this->assertDatabaseCount('notifications', 1);
+        $this->assertSame(0, app(PreRegistrationExpiry::class)->expire());
+    }
+
+    public static function expiryRaceActions(): array
+    {
+        return ['overlapping expiry' => ['expire'], 'check-in wins before closing' => ['check_in']];
+    }
+
+    #[DataProvider('expiryRaceActions')]
+    public function test_overlapping_expiry_and_check_in_preserve_one_terminal_outcome_on_sqlite(string $firstAction): void
     {
         $directory = sys_get_temp_dir().'/bethlehem-expiry-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
@@ -462,7 +613,8 @@ class QueuePreRegistrationModelTest extends TestCase
                 if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
                     throw new RuntimeException('SQLite opened a file other than this run\'s disposable database.');
                 }
-                Carbon\Carbon::setTestNow('2026-10-10 00:00:00');
+                $action = $argv[4];
+                Carbon\Carbon::setTestNow($action === 'check_in' ? '2026-10-09 16:59:59' : '2026-10-09 17:00:00');
                 $role = $argv[2];
                 $timing = [];
                 $wait = function ($file) {
@@ -500,7 +652,18 @@ class QueuePreRegistrationModelTest extends TestCase
                     });
                 $app['events']->listen(Illuminate\Database\Events\TransactionCommitting::class,
                     function () use (&$timing) { $timing['release_started_at'] ??= microtime(true); });
-                $expired = app(App\Services\PreRegistrationExpiry::class)->expire();
+                if ($action === 'check_in') {
+                    app(App\Services\DailyPetQueue::class)->runForDate('2026-10-09', function () {
+                        foreach ([[App\Models\Booking::class, 'dropped_off_at', 'grooming'], [App\Models\ClinicAppointment::class, 'checked_in_at', 'clinic']] as [$model, $timestamp, $service]) {
+                            $row = $model::query()->where('user_id', 22)->where('status', 'waiting_to_arrive')->lockForUpdate()->firstOrFail();
+                            app(App\Services\OperationalCapacity::class)->assertCanAccept($service, 1);
+                            $row->update(['status' => 'checked_in', $timestamp => now(), 'queue_number' => 1]);
+                        }
+                    });
+                    $expired = 0;
+                } else {
+                    $expired = app(App\Services\PreRegistrationExpiry::class)->expire();
+                }
                 $repeated = app(App\Services\PreRegistrationExpiry::class)->expire();
                 echo json_encode(['pid' => getmypid(), 'php' => PHP_VERSION, 'driver' => $connection->getDriverName(),
                     'database' => $connection->getDatabaseName(),
@@ -509,8 +672,8 @@ class QueuePreRegistrationModelTest extends TestCase
             $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
                 'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
                 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
-            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $token], base_path(), $environment);
-            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $token], base_path(), $environment);
+            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $token, $firstAction], base_path(), $environment);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $token, 'expire'], base_path(), $environment);
             $first->setTimeout(15);
             $second->setTimeout(15);
             $first->start();
@@ -531,21 +694,23 @@ class QueuePreRegistrationModelTest extends TestCase
             $this->assertLessThan($results[1]['timing']['attempted_at'], $results[0]['timing']['acquired_at']);
             $this->assertLessThan($results[0]['timing']['release_started_at'], $results[1]['timing']['attempted_at']);
             $this->assertGreaterThanOrEqual($results[0]['timing']['release_started_at'], $results[1]['timing']['acquired_at']);
-            $this->assertSame(2, array_sum(array_column($results, 'expired')));
+            $this->assertSame($firstAction === 'expire' ? 2 : 0, array_sum(array_column($results, 'expired')));
             $connection = new \PDO('sqlite:'.$database);
             $events = $connection->query('SELECT * FROM notifications ORDER BY notification_id')->fetchAll(\PDO::FETCH_ASSOC);
-            $this->assertCount(2, $events);
-            $this->assertSame(['no_show', 'clinic_no_show'], array_column($events, 'type'));
-            $this->assertSame($grooming, (int) $events[0]['booking_id']);
-            $this->assertSame($clinic, (int) $events[1]['clinic_appointment_id']);
+            $this->assertCount($firstAction === 'expire' ? 2 : 0, $events);
+            if ($firstAction === 'expire') {
+                $this->assertSame(['no_show', 'clinic_no_show'], array_column($events, 'type'));
+                $this->assertSame($grooming, (int) $events[0]['booking_id']);
+                $this->assertSame($clinic, (int) $events[1]['clinic_appointment_id']);
+            }
             foreach ($events as $event) {
                 foreach (['Gerald Senining', 'Mochi', 'Oct 9', 'No check-in recorded', $event['type'] === 'no_show' ? 'Grooming' : 'Clinic'] as $term) {
                     $this->assertStringContainsString($term, $event['message']);
                 }
             }
-            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM customer_notifications')->fetchColumn());
-            $this->assertSame('expired', $connection->query('SELECT status FROM bookings WHERE booking_id='.$grooming)->fetchColumn());
-            $this->assertSame('expired', $connection->query('SELECT status FROM clinic_appointments WHERE id='.$clinic)->fetchColumn());
+            $this->assertSame($firstAction === 'expire' ? 1 : 0, (int) $connection->query('SELECT COUNT(*) FROM customer_notifications')->fetchColumn());
+            $this->assertSame($firstAction === 'expire' ? 'no_show' : 'checked_in', $connection->query('SELECT status FROM bookings WHERE booking_id='.$grooming)->fetchColumn());
+            $this->assertSame($firstAction === 'expire' ? 'no_show' : 'checked_in', $connection->query('SELECT status FROM clinic_appointments WHERE id='.$clinic)->fetchColumn());
             $this->assertEquals($beforeBookings, $connection->query('SELECT * FROM bookings WHERE booking_id != '.$grooming.' ORDER BY booking_id')->fetchAll(\PDO::FETCH_OBJ));
             $this->assertEquals($beforeClinic, $connection->query('SELECT * FROM clinic_appointments WHERE id != '.$clinic.' ORDER BY id')->fetchAll(\PDO::FETCH_OBJ));
         } finally {

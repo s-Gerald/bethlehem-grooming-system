@@ -109,6 +109,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->string('status')->default('checked_in');
             $table->unsignedSmallInteger('queue_number')->nullable();
             $table->date('appointment_date');
+            $table->dateTime('registration_closes_at')->nullable();
             $table->unsignedInteger('window_id')->nullable();
             $table->unsignedInteger('user_id')->nullable();
             $table->unsignedBigInteger('walkin_id')->nullable();
@@ -221,6 +222,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->unsignedInteger('window_id')->nullable();
             $table->time('arrival_end_time')->nullable();
             $table->date('booking_date');
+            $table->dateTime('registration_closes_at')->nullable();
             $table->unsignedTinyInteger('number_of_pets')->default(1);
             $table->string('status');
             $table->boolean('paid')->default(false);
@@ -1302,6 +1304,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
         $id = $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'], 'chief_complaint' => 'Annual exam',
             'appointment_date' => now()->toDateString(), 'window_id' => 1, 'pet_id' => 101,
         ])->assertCreated()->json('appointment.appointment_id');
@@ -1334,7 +1337,20 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/pets/101/clinic-case')->assertOk()->assertJsonPath('case', null)->assertJsonPath('arrival', null);
     }
 
-    public function test_cancelled_and_expired_arrivals_leave_expected_while_future_registrations_still_block_intake(): void
+    public function test_clinic_submission_requires_review_after_closing_without_creating_a_visit(): void
+    {
+        Carbon::setTestNow('2026-10-19 17:00:00');
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
+            'service_day' => '2026-10-19', 'pet_id' => 101, 'common_concerns' => ['Routine check-up'],
+        ])->assertStatus(409)->assertJsonPath('code', 'service_day_changed')
+            ->assertJsonPath('availability.service_day', '2026-10-20');
+        $this->assertDatabaseCount('clinic_appointments', 0);
+    }
+
+    public function test_cancelled_and_no_show_arrivals_leave_expected_while_future_registrations_still_block_intake(): void
     {
         $this->authenticateAs('staff');
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
@@ -1347,7 +1363,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'cases')
             ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 2);
-        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'expired']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'no_show']);
         $this->postJson('/api/admin/clinic-appointments/2/cancel')->assertOk();
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(0, 'cases')->assertJsonCount(0, 'arrivals');
         $this->postJson('/api/admin/clinic-cases', ['pet_id' => 101, 'case_type' => 'consultation'])
@@ -1460,9 +1476,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         return array_map(fn ($status) => [$status], \App\Models\ClinicAppointment::TERMINAL_STATUSES);
     }
 
-    public function test_clinic_case_lifecycle_midnight_expires_only_unused_pre_registrations(): void
+    public function test_clinic_case_lifecycle_closing_marks_only_unused_registrations_no_show(): void
     {
-        Carbon::setTestNow('2026-10-16 23:59:59');
+        Carbon::setTestNow('2026-10-16 16:59:59');
         $this->authenticateAs('staff');
         DB::table('pets')->insert(['pet_id' => 80, 'user_id' => 1, 'pet_name' => 'Gummy', 'species' => 'Dog']);
         foreach (['checked_in', 'in_consultation', 'for_payment', 'waiting_to_arrive', 'waiting_to_arrive'] as $index => $status) {
@@ -1473,12 +1489,15 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(3, 'cases')
             ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 4);
 
+        Carbon::setTestNow('2026-10-16 17:00:00');
+        $this->assertSame(1, app(\App\Services\PreRegistrationExpiry::class)->expire());
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 4, 'status' => 'no_show']);
         Carbon::setTestNow('2026-10-17 00:00:01');
         $this->getJson('/api/admin/pets/80/clinic-case')->assertOk()->assertJsonPath('case', null);
         $response = $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(3, 'cases')
             ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 5);
         $this->assertEqualsCanonicalizing([1, 2, 3], array_column($response->json('cases'), 'id'));
-        $this->assertDatabaseHas('clinic_appointments', ['id' => 4, 'status' => 'expired']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 4, 'status' => 'no_show']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 5, 'status' => 'waiting_to_arrive']);
         Carbon::setTestNow('2026-10-17 10:00:00');
         $this->postJson('/api/admin/clinic-cases', ['pet_id' => 80, 'case_type' => 'consultation'])->assertCreated();
@@ -1747,6 +1766,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
 
         $response = $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up', 'Vomiting'],
             'pet_id' => 101,
             'chief_complaint' => 'Routine wellness consultation',
@@ -1802,6 +1822,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'is_archived' => false,
         ]);
         $payload = [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'appointment_date' => now()->addDay()->toDateString(),
             'window_id' => 1,
             'pet_id' => 101,
@@ -1841,6 +1862,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
 
         $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => now()->addDay()->toDateString(),
             'window_id' => 1,
@@ -1906,6 +1928,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
 
         $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => now()->addDay()->toDateString(),
             'window_id' => 1,
@@ -1940,6 +1963,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
 
         $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->addDay()->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => $appointmentDate,
             'window_id' => 1,
@@ -1999,6 +2023,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('windows.0.is_closed', false);
 
         $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => $appointmentDate,
             'window_id' => 1,
@@ -2377,6 +2402,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('windows.0.is_past', $date === '2026-10-09' && $time >= '20:00:00')
             ->assertJsonPath('windows.0.is_closed', in_array($restriction, ['blocked_date', 'stop_today'], true));
         $response = $this->postJson('/api/clinic/pre-register', [
+            'service_day' => in_array($restriction, ['blocked_date', 'stop_today'], true) || $time >= '22:00:00' ? '2026-10-10' : '2026-10-09',
             'appointment_date' => $date, 'window_id' => 1, 'pet_id' => 101, 'common_concerns' => ['Routine check-up'],
         ]);
         $expectedDay = in_array($restriction, ['blocked_date', 'stop_today'], true) || $time >= '22:00:00'
@@ -2418,6 +2444,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'start_time' => '15:00:00', 'end_time' => '16:00:00', 'window_label' => '3:00 PM - 4:00 PM',
         ]);
         $this->postJson('/api/clinic/pre-register', [
+            'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => '2026-07-23',
             'window_id' => 1,

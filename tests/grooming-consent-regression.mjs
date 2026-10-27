@@ -191,7 +191,8 @@ for (const walkIn of [false, true]) {
       submitWalkIn: async payload => { submissions++; submitted = payload; return { booking_id: 1, consent: { signer_name: payload.signer_name } }; },
     };
     const doc = { ...document, addEventListener: (name, handler) => { ready = handler; } };
-    const context = vm.createContext({ document: doc, API: api, sessionStorage, console, Date,
+    const context = vm.createContext({
+      readReviewedServiceDay: () => '2026-10-16', registrationDayNotice: () => false, document: doc, API: api, sessionStorage, console, Date,
       window: { location: { href: '' } },
       initGroomingConsent, getPetWeightSubmission: () => ({ weight: 4 }), getPetWeightSubmissionValidationMessage: () => '',
       loadGroomingCatalogue: async () => {}, getBookingDraft: () => ({}), normalizeStepThreeDraft: () => [],

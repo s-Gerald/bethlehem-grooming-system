@@ -54,6 +54,7 @@ class BookingController extends Controller
         CustomerPreRegistrationAccessService $preRegistrationAccess,
     ) {
         $validated = $request->validate([
+            'service_day' => 'nullable|date_format:Y-m-d',
             'number_of_pets' => 'required|integer|min:1|max:'.self::MAX_PETS_PER_BOOKING,
             'special_notes' => 'nullable|string',
             ...\App\Services\GroomingConsentCapture::rules(),
@@ -104,7 +105,8 @@ class BookingController extends Controller
                 ], 409);
             }
 
-            $date = app(\App\Services\RegistrationServiceDay::class)->resolve('grooming');
+            $days = app(\App\Services\RegistrationServiceDay::class);
+            $date = $days->assertReviewedDay('grooming', $request->input('service_day'));
             $savedPets = Pet::where('user_id', $user->user_id)
                 ->whereIn('pet_id', array_column($request->pets, 'pet_id'))
                 ->get()->keyBy('pet_id');
@@ -120,7 +122,6 @@ class BookingController extends Controller
             $sedationConsent = $request->boolean('sedation_consent');
             $request->merge(['pets' => app(\App\Services\PetGroomerSelection::class)->validate($request->pets, false)]);
 
-            // ── Load selected time window ───────────────────────
             $duplicate = Booking::where('user_id', $user->user_id)
                 ->where('booking_date', $date)
                 ->whereNotIn('status', ['cancelled', 'archived', 'no_show', 'expired'])
@@ -152,6 +153,7 @@ class BookingController extends Controller
                 'user_id' => $user->user_id,
                 'window_id' => null,
                 'booking_date' => $date,
+                'registration_closes_at' => $days->closingDeadline('grooming', $date),
                 'number_of_pets' => $request->number_of_pets,
                 'booking_type' => 'online',
                 'status' => 'waiting_to_arrive',

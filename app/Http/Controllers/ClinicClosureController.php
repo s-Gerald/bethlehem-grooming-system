@@ -77,7 +77,7 @@ class ClinicClosureController extends Controller
     // POST /api/admin/clinic/blocked-dates
     public function addBlockedDate(Request $request)
     {
-        $today = now()->toDateString();
+        $today = now('Asia/Manila')->toDateString();
 
         $request->validate([
             'start_date' => 'required|date|after_or_equal:' . $today,
@@ -88,42 +88,46 @@ class ClinicClosureController extends Controller
         $start = Carbon::parse($request->start_date);
         $end   = Carbon::parse($request->end_date);
 
-        // Check for existing bookings in this range
-        $conflictCount = Booking::whereBetween('booking_date', [$start->toDateString(), $end->toDateString()])
-            ->whereNotIn('status', ['cancelled', 'no_show', 'expired', 'archived'])
-            ->count();
+        return app(\App\Services\DailyPetQueue::class)->runForDate($today, function () use ($request, $start, $end) {
+            // Check for existing bookings in this range
+            $conflictCount = Booking::whereBetween('booking_date', [$start->toDateString(), $end->toDateString()])
+                ->whereNotIn('status', ['cancelled', 'no_show', 'expired', 'archived'])
+                ->count();
 
-        ClinicClosure::create([
-            'type'       => 'blocked_date',
-            'start_date' => $start->toDateString(),
-            'end_date'   => $end->toDateString(),
-            'reason'     => $request->reason,
-            'is_active'  => 1,
-            'created_by' => $request->user()->user_id,
-        ]);
+            ClinicClosure::create([
+                'type'       => 'blocked_date',
+                'start_date' => $start->toDateString(),
+                'end_date'   => $end->toDateString(),
+                'reason'     => $request->reason,
+                'is_active'  => 1,
+                'created_by' => $request->user()->user_id,
+            ]);
 
-        return response()->json([
-            'success'        => true,
-            'message'        => 'Date(s) blocked successfully.',
-            'conflict_count' => $conflictCount,
-            'conflict_warning' => $conflictCount > 0
-                ? "{$conflictCount} existing booking(s) found in this date range. Please contact those customers to cancel or reschedule."
-                : null,
-        ], 201);
+            return response()->json([
+                'success'        => true,
+                'message'        => 'Date(s) blocked successfully.',
+                'conflict_count' => $conflictCount,
+                'conflict_warning' => $conflictCount > 0
+                    ? "{$conflictCount} existing booking(s) found in this date range. Please contact those customers to cancel or reschedule."
+                    : null,
+            ], 201);
+        });
     }
 
     // ── REMOVE BLOCKED DATE ───────────────────────────────
     // DELETE /api/admin/clinic/blocked-dates/{id}
     public function removeBlockedDate(Request $request, $id)
     {
-        $closure = ClinicClosure::where('id', $id)->where('type', 'blocked_date')->first();
+        return app(\App\Services\DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use ($id) {
+            $closure = ClinicClosure::where('id', $id)->where('type', 'blocked_date')->first();
 
-        if (!$closure) {
-            return response()->json(['success' => false, 'message' => 'Blocked date not found.'], 404);
-        }
+            if (!$closure) {
+                return response()->json(['success' => false, 'message' => 'Blocked date not found.'], 404);
+            }
 
-        $closure->update(['is_active' => 0]);
+            $closure->update(['is_active' => 0]);
 
-        return response()->json(['success' => true, 'message' => 'Blocked date removed.']);
+            return response()->json(['success' => true, 'message' => 'Blocked date removed.']);
+        });
     }
 }

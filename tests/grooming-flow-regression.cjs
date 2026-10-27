@@ -34,42 +34,15 @@ async function main() {
   const catalogue = JSON.parse(read('tests/grooming-catalogue-fixture.json'));
   grooming.applyGroomingCatalogue(catalogue.data, catalogue.groomingPreferences);
 
-  // Starting from service selection clears all old grooming data, without touching Clinic or saved pets.
+  // Explicit draft cleanup remains scoped. Tab switching preserves drafts (selector regression).
   const groomingKeys = ['bookingSchedule', 'bookingScheduleArrivalError', 'bookingPets', 'bookingStep2',
     'bookingStep3', 'bookingStep4Review', 'bookingReview', 'bookingConsentStep', 'bookingConfirmation',
     'groomingSelectedPricing', 'groomingReviewedPricing'];
   for (const key of [...groomingKeys, 'clinicVisitDraft', 'clientPets']) save(key, { stale: true });
-  const links = new Map();
-  const destinations = [];
-  const choiceContext = vm.createContext({
-    requireCustomerSession: () => true, clearGroomingDraft: draft.clearGroomingDraft,
-    clearClinicVisitDraft: () => storage.removeItem('clinicVisitDraft'), console,
-    API: { getPreRegistrationAccess: async () => ({ allowed: true }) },
-    window: { location: { assign: url => destinations.push(url) } },
-    document: { querySelectorAll: () => [], getElementById(id) {
-      if (!links.has(id)) {
-        const attributes = new Map(), listeners = [];
-        links.set(id, { href: id === 'groomingOption' ? './grooming-pre-registration.html' : './booking-pet-details.html?flow=clinic',
-          classList: { toggle() {} },
-          addEventListener(event, handler) { if (event === 'click') listeners.push(handler); },
-          setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key),
-          getAttribute: key => attributes.get(key),
-          async click() { for (const callback of listeners) await callback({ preventDefault() {} }); },
-        });
-      }
-      return links.get(id);
-    } },
-  });
-  vm.runInContext(script('scripts/services/booking-form-access-guard.js'), choiceContext);
-  vm.runInContext(script('scripts/components/customer-pre-registration-button.js'), choiceContext);
-  await vm.runInContext(`(async () => {${script('scripts/components/pre-registration-options.js')} })()`, choiceContext);
-  await links.get('groomingOption').click();
-  assert.equal(destinations.at(-1), './grooming-pre-registration.html');
+  draft.clearGroomingDraft();
   for (const key of groomingKeys) assert.equal(values.has(key), false, `Clear stale ${key}`);
   assert.equal(values.has('clinicVisitDraft'), true);
   assert.equal(values.has('clientPets'), true);
-  await links.get('clinicVisitOption').click();
-  assert.equal(destinations.at(-1), './booking-pet-details.html?flow=clinic');
 
   const pet = { id: '101', petName: 'Mochi', petType: 'dog', size: 'small', weight: '5' };
   const selection = { petId: '101', servicePackage: 'regular_dog_grooming', groomingPreference: 'regular_trim', alaCarteServices: [] };

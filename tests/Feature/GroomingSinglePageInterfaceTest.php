@@ -39,10 +39,9 @@ class GroomingSinglePageInterfaceTest extends TestCase
 
     public function test_clinic_visit_keeps_its_separate_pet_step(): void
     {
-        $clinicDate = file_get_contents(base_path('pages/client/pre-register.html'));
         $petStep = file_get_contents(base_path('scripts/components/booking-pet-step.js'));
 
-        $this->assertStringContainsString('./booking-pet-details.html?flow=clinic', $clinicDate);
+        // The dynamic selector's Clinic destination is exercised by online-registration-selector-regression.mjs.
         $this->assertStringContainsString('IS_CLINIC_VISIT', $petStep);
     }
 

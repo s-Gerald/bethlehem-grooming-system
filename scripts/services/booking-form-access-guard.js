@@ -32,7 +32,7 @@ export async function enforceBookingFormAccessGuard(options = {}) {
   }
 
   try {
-    sessionStorage.setItem(ACCESS_MESSAGE_KEY, access.message || (phoneRequired ? "Use Pre-register to verify your phone number." : ""));
+    sessionStorage.setItem(ACCESS_MESSAGE_KEY, access.message || (phoneRequired ? "Open Online Registration to verify your phone number." : ""));
   } catch (error) {
     console.error("Failed to save the pre-registration access message:", error);
   }

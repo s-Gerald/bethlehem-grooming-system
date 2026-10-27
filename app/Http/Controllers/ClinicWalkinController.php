@@ -26,8 +26,8 @@ class ClinicWalkinController extends Controller
         Request $request,
         AvailabilityTimeWindowService $timeWindows,
     ) {
-        $today = now()->toDateString();
-        $lastAvailableDate = now()->addDays(2)->toDateString();
+        $today = now('Asia/Manila')->toDateString();
+        $lastAvailableDate = now('Asia/Manila')->addDay()->toDateString();
         $data = $request->validate([
             'date' => [
                 'required',
@@ -73,7 +73,8 @@ class ClinicWalkinController extends Controller
                 ], 409);
             }
 
-            $appointmentDate = app(\App\Services\RegistrationServiceDay::class)->resolve('clinic');
+            $days = app(\App\Services\RegistrationServiceDay::class);
+            $appointmentDate = $days->assertReviewedDay('clinic', $data['service_day'] ?? null);
 
             $pet = Pet::whereKey($data['pet_id'])
                 ->where('user_id', $user->user_id)
@@ -104,6 +105,7 @@ class ClinicWalkinController extends Controller
                 'status' => 'waiting_to_arrive',
                 'queue_number' => null,
                 'appointment_date' => $appointmentDate,
+                'registration_closes_at' => $days->closingDeadline('clinic', $appointmentDate),
                 'window_id' => null,
                 'user_id' => $user->user_id,
                 'walkin_id' => null,

@@ -10,6 +10,7 @@ use App\Services\AvailabilityTimeWindowService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -79,6 +80,20 @@ class ClinicSettingController extends Controller
         $service = $data['service'];
         $settings = DB::transaction(function () use ($data, $service, $timeWindows) {
             $settings = ClinicSetting::current(lockForUpdate: true);
+            $previous = $settings->serviceAvailability($service);
+            if ($data['open_time'] > $previous['open_time'] || $data['close_time'] < $previous['close_time']) {
+                $table = $service === 'grooming' ? 'bookings' : 'clinic_appointments';
+                $date = $service === 'grooming' ? 'booking_date' : 'appointment_date';
+                $checkIn = $service === 'grooming' ? 'dropped_off_at' : 'checked_in_at';
+                // Retain the interruption even if staff later restores the original hours.
+                if (Schema::hasColumn($table, 'registration_no_show_exempt_at')) {
+                    $now = now('Asia/Manila');
+                    DB::table($table)->where('status', 'waiting_to_arrive')->whereNull($checkIn)
+                        ->whereNull('registration_no_show_exempt_at')
+                        ->whereBetween($date, [$now->toDateString(), $now->copy()->addDay()->toDateString()])
+                        ->update(['registration_no_show_exempt_at' => $now]);
+                }
+            }
             $settings->update([
                 "{$service}_open_time" => $data['open_time'],
                 "{$service}_close_time" => $data['close_time'],

@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import { loadRegistrationAvailability, readReviewedServiceDay, rememberReviewedServiceDay, registrationDayNotice } from '../scripts/services/registration-service-day.js';
+
+const storage = new Map();
+globalThis.sessionStorage = { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) };
+globalThis.API = { getBaseUrl: () => 'https://clinic.example/api' };
+let requests = 0, finish;
+globalThis.fetch = () => { requests++; return new Promise(resolve => { finish = resolve; }); };
+const a = loadRegistrationAvailability('clinic'), b = loadRegistrationAvailability('clinic');
+finish({ ok: true, json: async () => ({ service_day: '2026-10-28', registration_available: true }) });
+await Promise.all([a, b]);
+assert.equal(requests, 1, 'Concurrent consumers share the request');
+rememberReviewedServiceDay('clinic', '2026-10-28');
+rememberReviewedServiceDay('grooming', '2026-10-27');
+assert.equal(readReviewedServiceDay('clinic'), '2026-10-28');
+assert.equal(readReviewedServiceDay('grooming'), '2026-10-27');
+assert.equal(registrationDayNotice({ code: 'service_day_changed', message: 'Review tomorrow.' }, 'clinic'), true);
+assert.equal(readReviewedServiceDay('clinic'), null, 'A stale reviewed day cannot be resubmitted');
+assert.equal(readReviewedServiceDay('grooming'), '2026-10-27');
+assert.equal(registrationDayNotice({ code: 'network_error' }, 'clinic'), false);
+globalThis.fetch = async () => { requests++; throw Error('offline'); };
+await assert.rejects(loadRegistrationAvailability('clinic'), /offline/);
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ service_day: null, registration_available: false }) });
+assert.equal((await loadRegistrationAvailability('clinic')).registration_available, false, 'Failure does not poison later retry');
+console.log('Shared service-day requests, reviewed dates, rollover invalidation and retry passed.');

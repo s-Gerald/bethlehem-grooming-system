@@ -65,7 +65,8 @@ class ActivityObserver
                     'for_payment' => $clinic ? 'consultation_completed' : null,
                     'cancelled' => $model->getRawOriginal('status') === 'waiting_to_arrive' || $model->getRawOriginal('status') === 'pending'
                         ? 'pre_registration_cancelled' : 'queue_status_changed',
-                    'expired', 'no_show' => 'pre_registration_expired',
+                    'expired' => 'pre_registration_expired',
+                    'no_show' => 'pre_registration_no_show',
                     'pending', 'waiting_to_arrive' => 'check_in_reversed',
                     default => null,
                 };
@@ -76,7 +77,7 @@ class ActivityObserver
                 $action = 'consultation_completed';
             }
             $operational = in_array($action, ['checked_in', 'walk_in_registered', 'pre_registration_submitted', 'pre_registration_updated',
-                'pre_registration_cancelled', 'pre_registration_expired', 'check_in_reversed', 'queue_status_changed',
+                'pre_registration_cancelled', 'pre_registration_expired', 'pre_registration_no_show', 'check_in_reversed', 'queue_status_changed',
                 'consultation_started', 'consultation_completed', 'grooming_corrected'], true);
             // The settlement's recorded actor is authoritative, including null for automatic payments.
             if ($clinic && $model->wasChanged('paid') && $model->paid) {

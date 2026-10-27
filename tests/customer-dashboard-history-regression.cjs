@@ -331,9 +331,10 @@ async function testExpiredRegistrationsHaveNeutralHistoryLabels() {
   vm.runInContext(helpers, context);
   for (const status of ['expired', 'no_show']) {
     const booking = { status, number_of_pets: 1, pets: [] };
-    assert.equal(context.groomingOutcome(status)[0], 'Expired');
-    assert.match(context.buildHistoryCard({ type: "grooming", booking, pet: null }), />Expired<\/span>/);
-    assert.match(context.buildHistoryModalContent(booking, null), />Expired<\/span>/);
+    const label = status === 'no_show' ? 'No Show' : 'Expired';
+    assert.equal(context.groomingOutcome(status)[0], label);
+    assert.ok(context.buildHistoryCard({ type: "grooming", booking, pet: null }).includes(`>${label}</span>`));
+    assert.ok(context.buildHistoryModalContent(booking, null).includes(`>${label}</span>`));
     assert.doesNotMatch(context.groomingOutcome(status)[1], /amber|red|rose/);
   }
   assert.equal(context.groomingOutcome('archived')[0], 'Completed');

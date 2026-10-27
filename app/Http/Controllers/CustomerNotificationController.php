@@ -52,8 +52,11 @@ class CustomerNotificationController extends Controller
                 return [
                     'id' => $n->id,
                     'type' => $n->type,
-                    'title' => $n->type === CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED
-                        ? 'Grooming online registration expired' : null,
+                    'title' => match ($n->type) {
+                        CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Online Registration expired',
+                        CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Online Registration — No Show',
+                        default => null,
+                    },
                     'message' => $this->formatNotificationMessage($n->message),
                     'display_message' => $this->formatCustomerNotificationMessage($n, $petNames),
                     'pet_names' => $petNames,

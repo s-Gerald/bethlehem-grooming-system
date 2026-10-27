@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class ClientPetProfileTest extends TestCase
 {
+    use \Tests\Support\CreatesRegistrationAvailability;
     public function test_customer_admin_and_staff_create_and_edit_enforce_conditional_fur(): void
     {
         Schema::create('users', function (Blueprint $table) {
@@ -48,6 +49,7 @@ class ClientPetProfileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->createRegistrationAvailability();
 
         Schema::create('pets', function (Blueprint $table) {
             $table->increments('pet_id');
@@ -95,6 +97,7 @@ class ClientPetProfileTest extends TestCase
             $table->unsignedInteger('user_id');
             $table->unsignedInteger('window_id')->nullable();
             $table->date('booking_date');
+            $table->integer('queue_number')->nullable();
             $table->unsignedTinyInteger('number_of_pets')->default(1);
             $table->string('status');
             $table->boolean('paid')->default(false);
@@ -112,6 +115,7 @@ class ClientPetProfileTest extends TestCase
             $table->unsignedInteger('booking_id');
             $table->unsignedInteger('pet_id');
             $table->dateTime('grooming_start_time')->nullable();
+            $table->string('grooming_state')->default('not_started');
             $table->dateTime('grooming_end_time')->nullable();
         });
 

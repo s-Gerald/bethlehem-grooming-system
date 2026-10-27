@@ -1,4 +1,4 @@
-import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3";
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
@@ -97,7 +97,7 @@ export async function refreshBookingReviewStep() {
     state.petSelections,
   );
 
-  void renderRegistrationQueueInformation(document.getElementById("groomingQueueInformation"), "grooming");
+  const availability = await renderRegistrationQueueInformation(document.getElementById("groomingQueueInformation"), "grooming");
   renderReviewNotice();
   if (previousSignature && previousSignature !== latestSignature) {
     elements.reviewNotice.classList.remove("hidden");
@@ -106,7 +106,7 @@ export async function refreshBookingReviewStep() {
   renderReviewSelections();
   renderTotalPricing();
   saveReviewDraft();
-  elements.confirmBookingBtn.disabled = state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
+  elements.confirmBookingBtn.disabled = !availability?.registration_available || state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
   elements.confirmBookingBtn.classList.remove("opacity-50", "cursor-not-allowed");
 }
 

@@ -1113,7 +1113,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       for_payment:       { label: "Ready for Pickup",   classes: "bg-portal-success-soft text-portal-success" },
       released:          { label: "Ready for Pickup",   classes: "bg-portal-success-soft text-portal-success" },
       cancelled:         { label: "Cancelled",          classes: "bg-portal-danger-soft text-portal-danger" },
-      no_show:           { label: "Expired",            classes: "bg-slate-100 text-portal-muted" },
+      no_show:           { label: "No Show",            classes: "bg-slate-100 text-portal-muted" },
       expired:           { label: "Expired",            classes: "bg-slate-100 text-portal-muted" },
       archived:          { label: "Completed",          classes: "bg-portal-success-soft text-portal-success" },
     };

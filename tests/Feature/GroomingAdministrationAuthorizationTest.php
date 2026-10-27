@@ -176,6 +176,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->unsignedInteger('window_id')->nullable();
             $table->time('arrival_end_time')->nullable();
             $table->date('booking_date');
+            $table->dateTime('registration_closes_at')->nullable();
             $table->unsignedTinyInteger('number_of_pets')->default(1);
             $table->string('booking_type')->default('online');
             $table->string('status');
@@ -2747,6 +2748,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('windows.0.is_past', $date === '2026-10-09' && $time >= '20:00:00')
             ->assertJsonPath('windows.0.is_closed', in_array($restriction, ['blocked_date', 'stop_today'], true));
         $response = $this->submitSignedGrooming('/api/booking/store', [
+            'service_day' => in_array($restriction, ['blocked_date', 'stop_today'], true) || $time >= '22:00:00' ? '2026-10-10' : '2026-10-09',
             'booking_date' => $date, 'window_id' => 1, 'number_of_pets' => 1,
             'pets' => [['pet_name' => 'Mochi', 'species' => 'cat', 'services' => ['package' => 'cat_full_grooming']]],
         ]);
@@ -2908,6 +2910,18 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertSame(3, DB::table('booking_pets')->whereIn('booking_id', [$a, $b])->count());
     }
 
+    public function test_customer_must_review_a_rolled_service_day_before_any_grooming_writes(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101), ['*']);
+        Carbon::setTestNow('2026-10-16 17:00:00');
+        $this->submitSignedGrooming('/api/booking/store', [...$payload, 'service_day' => '2026-10-16'])
+            ->assertStatus(409)->assertJsonPath('code', 'service_day_changed')
+            ->assertJsonPath('availability.service_day', '2026-10-17');
+        $this->assertDatabaseCount('bookings', 0);
+        $this->assertDatabaseCount('pets', 0);
+    }
+
     public function test_submission_uses_current_hours_when_legacy_window_is_no_longer_available(): void
     {
         $payload = $this->prepareRegistrationDay();
@@ -2919,21 +2933,21 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseCount('pets', 1);
     }
 
-    public function test_date_expiry_notifies_once_through_the_customer_dashboard_notifications(): void
+    public function test_closing_no_show_notifies_once_through_the_customer_dashboard_notifications(): void
     {
         $payload = $this->prepareRegistrationDay();
         Sanctum::actingAs(User::findOrFail(101), ['*']);
         $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
-        Carbon::setTestNow('2026-10-16 23:59:59');
+        Carbon::setTestNow('2026-10-16 16:59:59');
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
-        Carbon::setTestNow('2026-10-17 00:00:00');
+        Carbon::setTestNow('2026-10-16 17:00:00');
         $this->getJson('/api/customer/notifications')->assertOk()->assertJsonPath('unread_count', 1)
-            ->assertJsonPath('notifications.0.title', 'Grooming online registration expired')
-            ->assertJsonPath('notifications.0.display_message', 'Your grooming online registration for Oct 16 was cancelled because the scheduled date passed without check-in.');
+            ->assertJsonPath('notifications.0.title', 'Grooming Online Registration — No Show')
+            ->assertJsonPath('notifications.0.display_message', 'Your Grooming Online Registration for Oct 16 was marked No Show because no check-in was recorded before closing.');
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseCount('customer_notifications', 1);
         $this->assertSame(1, DB::table('notifications')->where('type', 'no_show')->where('booking_id', $id)->count());
-        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'expired', 'queue_number' => null]);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'no_show', 'queue_number' => null]);
         $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('allowed', true);
     }
 
@@ -3042,7 +3056,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         }
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
-        return [...$this->groomingConsentFixture(), 'booking_date' => now()->toDateString(), 'window_id' => 1,
+        return [...$this->groomingConsentFixture(), 'service_day' => now('Asia/Manila')->toDateString(), 'booking_date' => now()->toDateString(), 'window_id' => 1,
             'number_of_pets' => 1, 'pets' => [[...$pet, 'services' => ['package' => 'partial_grooming']]]];
     }
 

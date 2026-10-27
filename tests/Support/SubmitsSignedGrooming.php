@@ -17,6 +17,9 @@ trait SubmitsSignedGrooming
 
     private function submitSignedGrooming(string $uri, array $payload = [])
     {
+        if ($uri === '/api/booking/store' && ! array_key_exists('service_day', $payload)) {
+            $payload['service_day'] = now('Asia/Manila')->toDateString();
+        }
         return $this->postJson($uri, array_replace($this->groomingConsentFixture(), $payload));
     }
 }

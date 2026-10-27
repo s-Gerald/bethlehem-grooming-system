@@ -29,6 +29,7 @@ class ClinicAppointment extends Model
         'status',
         'queue_number',
         'appointment_date',
+        'registration_closes_at',
         'window_id',
         'user_id',
         'walkin_id',

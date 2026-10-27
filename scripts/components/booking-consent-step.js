@@ -4,6 +4,7 @@ import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraf
 import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
+import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 
 export function initBookingConsentStep() {
   const form = document.getElementById("bookingConsentForm");
@@ -22,6 +23,8 @@ export function initBookingConsentStep() {
     }
 
     const consentPayload = consent.payload();
+    const serviceDay = readReviewedServiceDay("grooming");
+    if (!serviceDay) { goToGroomingStep("review"); return; }
 
     // ── Build and submit the booking payload to the backend ──
     const bookingPets = getStoredData("bookingPets") || [];
@@ -88,6 +91,7 @@ export function initBookingConsentStep() {
         return;
       }
       const response = await API.storeBooking({
+        service_day: serviceDay,
         number_of_pets: bookingPets.length,
         special_notes: null,
         ...consentPayload,
@@ -114,6 +118,11 @@ export function initBookingConsentStep() {
     } catch (error) {
       consent.setBusy(false);
       submitBookingButton.textContent = "Submit Registration";
+
+      if (registrationDayNotice(error, "grooming")) {
+        goToGroomingStep("review");
+        return;
+      }
 
       if (Object.keys(error.errors || {}).some((key) => key.endsWith('.groomer_id'))) {
         goToGroomingStep("services");

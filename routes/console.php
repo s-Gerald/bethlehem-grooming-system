@@ -10,8 +10,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Preferred arrival times never expire a registration during its selected day.
-Schedule::command('pre-registrations:expire')->everyFiveMinutes()->withoutOverlapping();
+// Eligibility uses the assigned visit day's closing time, independently of page visits.
+Schedule::command('pre-registrations:expire')->everyMinute()->timezone('Asia/Manila')->withoutOverlapping();
 
 Schedule::call(fn () => app(\App\Services\GroomingCompletionSmsService::class)->dispatchPending())
     ->name('grooming-completion-sms:dispatch')->everyMinute()->withoutOverlapping();

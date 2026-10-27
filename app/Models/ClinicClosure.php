@@ -28,8 +28,7 @@ class ClinicClosure extends Model
 
     public function scopeForService(\Illuminate\Database\Eloquent\Builder $query, string $service): \Illuminate\Database\Eloquent\Builder
     {
-        return $query->where(fn ($scope) => $scope->where('type', 'blocked_date')
-            ->orWhereNull('service')->orWhere('service', $service));
+        return $query->where(fn ($scope) => $scope->whereNull('service')->orWhere('service', $service));
     }
 
     public static function stoppedToday(): array

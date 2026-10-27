@@ -975,7 +975,7 @@ function adminCustomers() {
         released: "Released",
         archived: "Completed",
         cancelled: "Cancelled",
-        no_show: "Expired",
+        no_show: "No Show",
         expired: "Expired",
       })[status] || this.formatLabel(status);
     },

@@ -8,6 +8,7 @@ class CustomerNotification extends Model
 {
     public const TYPE_BOOKING_CANCELLED = 'booking_cancelled';
     public const TYPE_GROOMING_PRE_REGISTRATION_EXPIRED = 'grooming_pre_registration_expired';
+    public const TYPE_GROOMING_NO_SHOW = 'grooming_no_show';
 
     public const TYPE_PET_INFORMATION_UPDATED = 'pet_information_updated';
 

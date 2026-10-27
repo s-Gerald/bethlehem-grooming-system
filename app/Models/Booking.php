@@ -23,6 +23,7 @@ class Booking extends Model
         'window_id',
         'arrival_end_time',
         'booking_date',
+        'registration_closes_at',
         'number_of_pets',
         'booking_type',
         'status',

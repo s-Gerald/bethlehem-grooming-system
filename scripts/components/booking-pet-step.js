@@ -1,4 +1,4 @@
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3";
 import {
   MAX_PETS_PER_BOOKING as GROOMING_MAX_PETS,
   getSavedPets,

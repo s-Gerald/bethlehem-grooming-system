@@ -990,7 +990,8 @@ class AdminClinicController extends Controller
             'for_payment' => 'For Payment',
             'completed' => 'Completed',
             'cancelled' => 'Cancelled',
-            'no_show', 'expired' => 'Expired',
+            'no_show' => 'No Show',
+            'expired' => 'Expired',
             default => 'Data is currently unavailable',
         };
     }

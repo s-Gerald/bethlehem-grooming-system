@@ -80,7 +80,7 @@ class CustomerPreRegistrationAccessService
                 'reference' => $reference,
                 'status' => $status,
             ],
-            'message' => "You already have an ongoing {$label} registration. Please complete or cancel it before starting another Grooming or Clinic online registration.",
+            'message' => 'You already have an ongoing registration.',
         ];
     }
 }

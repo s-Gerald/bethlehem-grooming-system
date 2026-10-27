@@ -13,6 +13,7 @@ use Tests\TestCase;
 
 class ActivityLogTest extends TestCase
 {
+    use \Tests\Support\CreatesRegistrationAvailability;
     protected function setUp(): void
     {
         parent::setUp();
@@ -224,10 +225,12 @@ class ActivityLogTest extends TestCase
 
     public function test_automatic_expiry_is_batched_and_attributed_to_system_once(): void
     {
+        $this->createRegistrationAvailability();
         $this->actor();
         Schema::create('bookings', function (Blueprint $t) {
             $t->increments('booking_id'); $t->string('booking_reference'); $t->string('status');
             $t->date('booking_date'); $t->dateTime('dropped_off_at')->nullable(); $t->integer('user_id')->nullable();
+            $t->integer('queue_number')->nullable();
         });
         for ($i = 1; $i <= 12; $i++) DB::table('bookings')->insert(['booking_reference' => 'EX-'.$i,
             'status' => 'waiting_to_arrive', 'booking_date' => now()->subDay()->toDateString()]);
@@ -237,7 +240,7 @@ class ActivityLogTest extends TestCase
         $this->assertCount(1, $inserts, 'Expiry should insert its bounded batch in one query.');
         DB::disableQueryLog();
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
-        $events = ActivityLog::where('action', 'pre_registration_expired')->get();
+        $events = ActivityLog::where('action', 'pre_registration_no_show')->get();
         $this->assertCount(12, $events);
         $this->assertSame(['System'], $events->pluck('actor_display')->unique()->values()->all());
         $this->assertTrue($events->every(fn ($event) => $event->actor_id === null));

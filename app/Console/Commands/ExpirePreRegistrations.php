@@ -8,10 +8,10 @@ use Illuminate\Console\Command;
 class ExpirePreRegistrations extends Command
 {
     protected $signature = 'pre-registrations:expire';
-    protected $description = 'Expire unused Clinic and Grooming pre-registrations after their selected date ends.';
+    protected $description = 'Mark unarrived Online Registrations No Show at their service closing deadline.';
 
     public function handle(PreRegistrationExpiry $expiry): void
     {
-        $this->info('Expired '.$expiry->expire().' unused pre-registration(s).');
+        $this->info('Marked '.$expiry->expire().' Online Registration(s) No Show.');
     }
 }

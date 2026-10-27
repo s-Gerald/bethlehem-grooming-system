@@ -11,7 +11,7 @@ class ActivityRecorder
     private ?bool $available = null;
 
     public const OPERATIONAL_ACTIONS = ['pre_registration_submitted', 'pre_registration_updated',
-        'pre_registration_cancelled', 'pre_registration_expired', 'walk_in_registered', 'checked_in',
+        'pre_registration_cancelled', 'pre_registration_expired', 'pre_registration_no_show', 'walk_in_registered', 'checked_in',
         'check_in_reversed', 'queue_status_changed', 'grooming_started', 'grooming_completed', 'grooming_corrected',
         'consultation_started', 'consultation_completed'];
 
@@ -22,6 +22,7 @@ class ActivityRecorder
         'pet_archived' => 'Pet archived', 'pet_restored' => 'Pet restored',
         'pre_registration_submitted' => 'Online Registration submitted', 'pre_registration_updated' => 'Online Registration updated',
         'pre_registration_cancelled' => 'Online Registration cancelled', 'pre_registration_expired' => 'Online Registration expired',
+        'pre_registration_no_show' => 'Online Registration marked No Show',
         'walk_in_registered' => 'Walk-in registered', 'checked_in' => 'Checked in', 'check_in_reversed' => 'Check-in reversed',
         'queue_status_changed' => 'Queue status changed', 'grooming_started' => 'Grooming started',
         'grooming_completed' => 'Grooming completed', 'grooming_corrected' => 'Grooming status corrected',
@@ -75,10 +76,10 @@ class ActivityRecorder
         if (! $this->available() || $registrations->isEmpty()) return;
         $rows = [];
         foreach ($registrations as $registration) {
-            $row = $this->attributes('pre_registration_expired', $area,
+            $row = $this->attributes('pre_registration_no_show', $area,
                 $area === 'grooming' ? 'grooming_visit' : 'clinic_visit', (string) $registration->getKey(),
                 $registration->booking_reference ?? $registration->appointment_reference ?? 'Online Registration',
-                [], true, null, 'expired:'.$registration->getTable().':'.$registration->getKey(), $registration->pet_id, 'success');
+                ['status' => ['before' => 'waiting_to_arrive', 'after' => 'no_show']], true, null, 'no_show:'.$registration->getTable().':'.$registration->getKey(), $registration->pet_id, 'success');
             $row['changes'] = json_encode($row['changes'], JSON_THROW_ON_ERROR);
             $rows[] = $row;
         }
