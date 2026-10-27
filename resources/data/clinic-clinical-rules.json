@@ -1,0 +1,31 @@
+{
+  "vitals": {
+    "temperature_c": {"min": 25, "max": 45, "precision": 1, "storageMax": 999.9},
+    "heart_rate_bpm": {"min": 1, "max": 400, "precision": 0, "storageMax": 65535},
+    "respiratory_rate_bpm": {"min": 1, "max": 200, "precision": 0, "storageMax": 65535}
+  },
+  "normalRanges": {
+    "dog": {"temperature_c": [37.5, 39.2], "heart_rate_bpm": [60, 160], "respiratory_rate_bpm": [10, 30]},
+    "cat": {"temperature_c": [38.1, 39.2], "heart_rate_bpm": [120, 240], "respiratory_rate_bpm": [24, 42]}
+  },
+  "doseUnits": [
+    {"value": "mL", "label": "mL"},
+    {"value": "mg", "label": "mg"},
+    {"value": "mcg", "label": "mcg"},
+    {"value": "g", "label": "g"},
+    {"value": "international units", "label": "International units"},
+    {"value": "tablet", "label": "Tablet(s)"},
+    {"value": "capsule", "label": "Capsule(s)", "whole": true},
+    {"value": "drop", "label": "Drop(s)", "whole": true},
+    {"value": "puff", "label": "Puff(s)", "whole": true},
+    {"value": "dose", "label": "Dose(s)", "whole": true},
+    {"value": "other", "label": "Other — specify"}
+  ],
+  "dosePrecision": 3,
+  "doseMax": 99999.999,
+  "doseUnitMaxLength": 30,
+  "sources": [
+    "https://www.merckvetmanual.com/multimedia/table/normal-rectal-temperature-ranges",
+    "https://books.lib.uoguelph.ca/vetm3430/chapter/vital-parameters/"
+  ]
+}

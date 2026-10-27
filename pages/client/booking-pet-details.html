@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pet Information</title>
     <link rel="stylesheet" href="../../css/output.css?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&availability=20261027" />
-    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026" />
+    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
 
   </head>
 
@@ -276,8 +276,10 @@
                 </div>
                 <div>
                   <label for="color" class="block text-sm font-medium text-portal-text mb-1">Color <span class="text-slate-400 font-normal">(optional)</span></label>
-                  <input id="color" name="color" type="text" placeholder="e.g. White"
+                  <input maxlength="50" id="color" name="color" type="text" placeholder="Type or select a color"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active" />
+                  <div id="colorOptions" class="color-suggestion-list hidden" role="listbox" aria-label="Color suggestions" popover="manual"></div>
+                  <p id="colorError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                 </div>
                 <div>
                   <label
@@ -396,15 +398,14 @@
                     for="medicalNotes"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
-                    Medical Conditions / Special Needs <span class="text-slate-400 font-normal">(optional)</span>
+                    Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <textarea
                     id="medicalNotes"
                     name="medicalNotes"
-                    rows="3"
-                    placeholder="e.g. allergic to certain shampoos, has heart condition..."
-                    class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active resize-none"
-                  ></textarea>
+                    rows="3" maxlength="1000"
+                    placeholder="e.g. sensitive to shampoo, needs gentle handling"
+                    class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active resize-none"></textarea>
                 </div>
               </div>
 
@@ -484,7 +485,7 @@
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027"></script>
     <script
       type="module"
-      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3"
+      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1"
     ></script>
   </body>
 </html>

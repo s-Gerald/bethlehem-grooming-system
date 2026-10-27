@@ -17,10 +17,12 @@ class ClinicVital extends Model
         'heart_rate_bpm',
         'respiratory_rate_bpm',
         'body_condition_score',
+        'verification_history',
     ];
 
     protected $casts = [
         'weight_kg'     => 'decimal:2',
         'temperature_c' => 'decimal:1',
+        'verification_history' => 'array',
     ];
 }

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Walk-in - Pet Information</title>
     <link rel="stylesheet" href="../../css/output.css?consent=20261017&services=20261026&availability=20261027" />
-    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026" />
+    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
 
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
@@ -216,6 +216,14 @@
                 </div>
 
                 <div>
+                  <label for="color" class="mb-2 block text-sm font-medium text-slate-700">Color <span class="text-slate-400 font-normal">(optional)</span></label>
+                  <input id="color" name="color" type="text" placeholder="Type or select a color" maxlength="50"
+                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20" />
+                  <div id="colorOptions" class="color-suggestion-list hidden" role="listbox" aria-label="Color suggestions" popover="manual"></div>
+                  <p id="colorError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
+                </div>
+
+                <div>
                   <label
                     for="furType"
                     class="mb-2 block text-sm font-medium text-slate-700"
@@ -335,15 +343,14 @@
                     for="medicalNotes"
                     class="mb-2 block text-sm font-medium text-slate-700"
                   >
-                    Medical Conditions / Special Needs <span class="text-slate-400 font-normal">(optional)</span>
+                    Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
                   <textarea
                     id="medicalNotes"
                     name="medicalNotes"
-                    rows="4"
-                    placeholder="Describe allergies, medical conditions, or special care instructions..."
-                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"
-                  ></textarea>
+                    rows="3" maxlength="1000"
+                    placeholder="e.g. sensitive to shampoo, needs gentle handling"
+                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"></textarea>
                 </div>
               </div>
 
@@ -408,7 +415,7 @@
     <script src="../../scripts/api.js?v=session-inactivity-20260828&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261010&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027"></script>
     <script
       type="module"
-      src="../../scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&pet-fields=20261026-v1&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1"
+      src="../../scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&pet-fields=20261026-v1&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1"
     ></script>
   </body>
 </html>

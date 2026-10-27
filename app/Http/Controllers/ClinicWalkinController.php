@@ -12,6 +12,7 @@ use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Models\Walkin;
 use App\Rules\ValidBreedCoat;
+use App\Rules\ValidPetColor;
 use App\Services\AvailabilityTimeWindowService;
 use App\Services\ClinicAppointmentSequence;
 use App\Services\CustomerPreRegistrationAccessService;
@@ -363,7 +364,7 @@ class ClinicWalkinController extends Controller
             'weight' => $data['weight'] ?? null,
             'size' => $data['size'] ?? null,
             'clinic_verified_fields' => ! empty($data['size']) ? ['size'] : null,
-            'color' => $data['color'] ?? null,
+            'color' => ValidPetColor::validatedColor($data),
             'medical_conditions' => $data['medical_conditions'] ?? null,
             'is_archived' => false,
         ]);
@@ -371,6 +372,7 @@ class ClinicWalkinController extends Controller
 
     private function updateWalkInPetDetails(Pet $pet, array $data): Pet
     {
+        $data['color'] ??= $pet->color;
         $data = PetWeightSize::withComputedSize([...$data, 'species' => $pet->species, 'weight' => $data['weight'] ?? $pet->weight]);
         $pet->update([
             'breed' => $data['breed'] ?? $pet->breed,
@@ -382,7 +384,7 @@ class ClinicWalkinController extends Controller
                 : $pet->neutered_date,
             'fur_type' => ValidBreedCoat::validatedCoat($data, $pet),
             'weight' => $data['weight'] ?? $pet->weight,
-            'color' => $data['color'] ?? $pet->color,
+            'color' => ValidPetColor::validatedColor($data, $pet),
             'medical_conditions' => $data['medical_conditions'] ?? $pet->medical_conditions,
         ]);
 

@@ -1,6 +1,30 @@
+// BEGIN GENERATED CLINIC CLINICAL RULES
+// Source: resources/data/clinic-clinical-rules.json; run npm run build:clinical.
+const CLINIC_CLINICAL_RULES = {"vitals":{"temperature_c":{"min":25,"max":45,"precision":1,"storageMax":999.9},"heart_rate_bpm":{"min":1,"max":400,"precision":0,"storageMax":65535},"respiratory_rate_bpm":{"min":1,"max":200,"precision":0,"storageMax":65535}},"normalRanges":{"dog":{"temperature_c":[37.5,39.2],"heart_rate_bpm":[60,160],"respiratory_rate_bpm":[10,30]},"cat":{"temperature_c":[38.1,39.2],"heart_rate_bpm":[120,240],"respiratory_rate_bpm":[24,42]}},"doseUnits":[{"value":"mL","label":"mL"},{"value":"mg","label":"mg"},{"value":"mcg","label":"mcg"},{"value":"g","label":"g"},{"value":"international units","label":"International units"},{"value":"tablet","label":"Tablet(s)"},{"value":"capsule","label":"Capsule(s)","whole":true},{"value":"drop","label":"Drop(s)","whole":true},{"value":"puff","label":"Puff(s)","whole":true},{"value":"dose","label":"Dose(s)","whole":true},{"value":"other","label":"Other — specify"}],"dosePrecision":3,"doseMax":99999.999,"doseUnitMaxLength":30,"sources":["https://www.merckvetmanual.com/multimedia/table/normal-rectal-temperature-ranges","https://books.lib.uoguelph.ca/vetm3430/chapter/vital-parameters/"]};
+// END GENERATED CLINIC CLINICAL RULES
 let clinicPetWeightToolsReady;
 function loadClinicPetWeightTools() {
   return clinicPetWeightToolsReady ??= import("./pet-weight-size.js?v=pet-weight-size-20261011-v3");
+}
+
+function clinicValidNumber(value, precision, min, max) {
+  if (!['string', 'number'].includes(typeof value)) return false;
+  const text = String(value).trim();
+  const pattern = precision === 0 ? /^\d+$/ : new RegExp(`^(?:\\d+(?:\\.\\d{1,${precision}})?|\\.\\d{1,${precision}})$`);
+  return pattern.test(text) && Number.isFinite(Number(text)) && Number(text) >= min && Number(text) <= max;
+}
+
+function clinicDoseErrors(amount, unit, required = false) {
+  const errors = {}, catalog = CLINIC_CLINICAL_RULES;
+  const hasAmount = amount != null && String(amount).trim() !== '', hasUnit = Boolean(unit);
+  if ((required || hasUnit) && !hasAmount) errors.dose_amount = 'Dose amount required.';
+  if ((required || hasAmount) && !hasUnit) errors.dose_unit = 'Dose unit required.';
+  if (hasAmount && !clinicValidNumber(amount, catalog.dosePrecision, 0.001, catalog.doseMax)) {
+    errors.dose_amount = 'Enter 0.001–99,999.999, up to 3 decimals.';
+  }
+  if (hasAmount && catalog.doseUnits.find(item => item.value === unit)?.whole
+      && Number.isFinite(Number(amount)) && !Number.isInteger(Number(amount))) errors.dose_amount = 'Use a whole-number count for this unit.';
+  return errors;
 }
 
 function formatClinicFileSize(bytes) {
@@ -66,6 +90,7 @@ function adminClinicModal() {
     open:       false,
     saving:     false,
     modalError: "",
+    treatmentValidationError: false,
     workspaceSaving: false,
     weightTools: null,
     title:      "Medical Record",
@@ -74,6 +99,8 @@ function adminClinicModal() {
     activeSection: "medical",
     chargesOpen: false,
     formErrors: {},
+    vitalExceptions: {},
+    completionAttempted: false,
     veterinarians: [], optionsLoading: false, optionsError: "",
     vetDropdownOpen: false,
     vetSearch: "",
@@ -111,6 +138,11 @@ function adminClinicModal() {
       });
       window.addEventListener('clinic-review-payment', (event) => {
         if (this.open && event.detail.id === this.apptId) this.closeModal();
+      });
+      window.addEventListener('clinic-treatment-validation', (event) => {
+        if (event.detail.id !== this.apptId || !this.treatmentValidationError) return;
+        this.modalError = event.detail.hasErrors ? 'Check the highlighted fields.' : '';
+        if (!event.detail.hasErrors) this.treatmentValidationError = false;
       });
     },
 
@@ -198,6 +230,59 @@ function adminClinicModal() {
       return Object.entries(this.formErrors).find(([key]) => key === field || key.startsWith(field + "."));
     },
     hasFieldError(field) { return Boolean(this.errorForField(field)); },
+    vitalEntryValid(field, value, exceptional = false) {
+      const rule = CLINIC_CLINICAL_RULES.vitals[field];
+      return clinicValidNumber(value, rule.precision, exceptional ? 0 : rule.min, exceptional ? rule.storageMax : rule.max);
+    },
+    hasSavedVitalVerification(field) {
+      const saved = this.currentAppt?.vitals;
+      if (saved?.[field] == null || Number(saved[field]) !== Number(this.form[field])) return false;
+      const verification = [...(saved.verification_history || [])].reverse().find(entry => entry.field === field);
+      return verification && Number(verification.value) === Number(this.form[field]);
+    },
+    vitalNeedsVerification(field) {
+      const value = this.form[field];
+      return String(value ?? '').trim() !== '' && !this.vitalEntryValid(field, value) && this.vitalEntryValid(field, value, true);
+    },
+    startVitalVerification(field) {
+      if (!this.canEditClinical || !this.isVeterinarian || !this.vitalNeedsVerification(field)) return;
+      this.vitalExceptions[field] = {value: String(this.form[field]).trim(), reason: ''};
+    },
+    vitalFieldMessage(field) {
+      const value = String(this.form[field] ?? '').trim();
+      if (!value) return this.completionAttempted && field !== 'body_condition_score' ? 'Required' : '';
+      if (field === 'weight_kg') return this.weightTools?.getWeightValueValidationMessage(value) || '';
+      if (field === 'body_condition_score') return clinicValidNumber(value, 0, 1, 9) ? '' : 'Select a score from 1 to 9.';
+      if (this.vitalEntryValid(field, value)) return '';
+      const verification = this.vitalExceptions[field];
+      if (this.vitalEntryValid(field, value, true) && (this.hasSavedVitalVerification(field)
+        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && verification.reason.length <= 200))) return '';
+      if (verification?.value === value) return 'Enter a clinical reason (5–200 characters).';
+      return field === 'temperature_c' ? 'Use 25–45 °C, up to 1 decimal.'
+        : `Use a whole number from 1 to ${CLINIC_CLINICAL_RULES.vitals[field].max}.`;
+    },
+    validateVitalField(field, interaction = 'blur') {
+      if (this.vitalExceptions[field] && (this.vitalExceptions[field].value !== String(this.form[field]).trim()
+        || this.vitalEntryValid(field, this.form[field]))) delete this.vitalExceptions[field];
+      const message = this.vitalFieldMessage(field);
+      if (interaction === 'input') {
+        if (!this.hasFieldError(field) || message) return;
+        delete this.formErrors[field];
+      } else if (message) this.formErrors[field] = [message];
+      else delete this.formErrors[field];
+      this.refreshValidationSummary();
+    },
+    refreshValidationSummary() {
+      const messages = Object.values(this.formErrors);
+      this.modalError = !messages.length ? '' : messages.every(items => this.isMissingFieldError(items[0]))
+        ? 'Complete the required fields marked *.' : 'Check the highlighted fields.';
+    },
+    vitalWarning(field) {
+      const species = String(this.currentAppt?.pet?.species ?? '').trim().toLowerCase();
+      const range = CLINIC_CLINICAL_RULES.normalRanges[species]?.[field];
+      if (!range || !this.vitalEntryValid(field, this.form[field], true)) return '';
+      return Number(this.form[field]) < range[0] || Number(this.form[field]) > range[1] ? 'Unusual reading. Please confirm.' : '';
+    },
     isMissingFieldError(message) {
       return /\bis required\b|^required$/i.test(message);
     },
@@ -215,9 +300,9 @@ function adminClinicModal() {
       if (name === "weight_kg") return this.weightTools?.getWeightValueValidationMessage(this.form.weight_kg) || "Enter a valid weight.";
       return {
         primary_veterinarian_id: "Select an available veterinarian.",
-        temperature_c: "Enter a temperature from 0 to 999.9 °C, using at most one decimal place.",
-        heart_rate_bpm: "Enter a whole number from 0 to 65,535.",
-        respiratory_rate_bpm: "Enter a whole number from 0 to 65,535.",
+        temperature_c: this.vitalFieldMessage('temperature_c') || 'Invalid temperature.',
+        heart_rate_bpm: this.vitalFieldMessage('heart_rate_bpm') || 'Invalid value.',
+        respiratory_rate_bpm: this.vitalFieldMessage('respiratory_rate_bpm') || 'Invalid value.',
         body_condition_score: "Select a score from 1 to 9.",
         follow_up_date: "Choose a follow-up date within the allowed range.",
         medicine: "Enter a medicine name.", strength_concentration: "Enter a valid strength or concentration.",
@@ -228,7 +313,10 @@ function adminClinicModal() {
     },
     showValidationErrors(errors) {
       this.activeSection = 'medical';
-      this.formErrors = errors;
+      this.treatmentValidationError = false;
+      this.formErrors = Object.fromEntries(Object.entries(errors).map(([field, messages]) => [
+        field.startsWith('vital_exceptions.') ? field.split('.')[1] : field, messages,
+      ]));
       const missingOnly = Object.values(errors).every(messages => this.isMissingFieldError(messages[0]));
       this.modalError = missingOnly ? "Complete the required fields marked *." : "Check the highlighted fields.";
       this.focusInvalidField();
@@ -299,6 +387,7 @@ function adminClinicModal() {
       this.chargesOpen = false;
       this.modalError = "";
       this.title      = `Patient Record — ${appt.ownerName}${appt.pet?.name ? " / " + appt.pet.name : ""}`;
+      this.treatmentValidationError = false;
       const r = appt.record  || {};
       const v = appt.vitals  || {};
       this.attachments = (r.attachments || []).map((attachment) => ({ ...attachment }));
@@ -307,6 +396,8 @@ function adminClinicModal() {
       this.attachmentError = "";
       this.formErrors = {};
       this.recordedByName = r.recorded_by_name || "—";
+      this.vitalExceptions = {};
+      this.completionAttempted = false;
       this.form = {
         chief_complaint: this.isPreRegistered ? (appt.chief_complaint ?? "") : (r.chief_complaint || appt.chief_complaint || ""),
         relevant_history: r.relevant_history || "",
@@ -442,9 +533,10 @@ function adminClinicModal() {
         this.formErrors = {};
         this.modalError = "";
         this.weightTools = await loadClinicPetWeightTools();
-        const weightError = this.weightTools.getWeightValueValidationMessage(this.form.weight_kg);
-        if (weightError) {
-          this.showValidationErrors({ weight_kg: [weightError] });
+        this.completionAttempted = finishCase;
+        for (const field of ['weight_kg', ...Object.keys(CLINIC_CLINICAL_RULES.vitals), 'body_condition_score']) this.validateVitalField(field, 'save');
+        if (Object.keys(this.formErrors).length) {
+          this.showValidationErrors({...this.formErrors});
           return;
         }
         if (finishCase) {
@@ -464,7 +556,7 @@ function adminClinicModal() {
         }
         if (finishCase) {
           const confirmed = await this.$store.clinicFeedback.confirm({title: 'Send case to payment?',
-            message: 'This will finalize the current visit and move the case to For Payment.',
+            message: 'Confirm administered doses against the prescription and product concentration. This will finalize the visit and move it to For Payment.',
             cancelLabel: 'Cancel', confirmLabel: 'Send to Payment'});
           if (!confirmed) return;
         }
@@ -484,9 +576,10 @@ function adminClinicModal() {
           follow_up_date:       this.form.follow_up_date        || null,
           follow_up_notes:      this.form.follow_up_notes       || null,
           weight_kg:            String(this.form.weight_kg ?? "").trim() || null,
-          temperature_c:        numberOrNull(this.form.temperature_c),
-          heart_rate_bpm:       numberOrNull(this.form.heart_rate_bpm),
-          respiratory_rate_bpm: numberOrNull(this.form.respiratory_rate_bpm),
+          temperature_c:        String(this.form.temperature_c ?? '').trim() || null,
+          heart_rate_bpm:       String(this.form.heart_rate_bpm ?? '').trim() || null,
+          respiratory_rate_bpm: String(this.form.respiratory_rate_bpm ?? '').trim() || null,
+          ...(this.isVeterinarian && Object.keys(this.vitalExceptions).length ? {vital_exceptions: this.vitalExceptions} : {}),
           body_condition_score: numberOrNull(this.form.body_condition_score),
           finish_case:          finishCase,
         };
@@ -501,7 +594,8 @@ function adminClinicModal() {
           this.syncTreatmentAppointment();
           const message = Object.values(e.errors).flat().join(' ');
           this.modalError = message;
-          window.dispatchEvent(new CustomEvent('clinic-treatment-focus', {detail: {id: this.apptId, message}}));
+          this.treatmentValidationError = true;
+          window.dispatchEvent(new CustomEvent('clinic-treatment-focus', {detail: {id: this.apptId, message, errors: e.errors}}));
         } else if (e.errors) this.showValidationErrors(e.errors);
         else this.modalError = e.message || "Unable to save the record. Try again.";
       } finally {
@@ -1567,7 +1661,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3';
+    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

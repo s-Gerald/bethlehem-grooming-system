@@ -6,6 +6,7 @@ function loadAdminCustomerPetFields() {
   import("./breed-coat-catalogue.js?pet-fields=20261026-v1"),
   import("./breed-coat-combobox.js?pet-fields=20261026-v1"),
   import("./fixed-option-combobox.js"),
+  import("./color-combobox.js?pet-care=20261027-v1"),
   import("./pet-weight-size.js?v=pet-weight-size-20261011-v3"),
 ]).then(([
   bookingDraft,
@@ -13,6 +14,7 @@ function loadAdminCustomerPetFields() {
   breedCoatCatalogue,
   breedCoatCombobox,
   fixedOptionCombobox,
+  colorCombobox,
   petWeightSize,
 ]) => ({
   ...bookingDraft,
@@ -20,6 +22,7 @@ function loadAdminCustomerPetFields() {
   ...breedCoatCatalogue,
   ...breedCoatCombobox,
   ...fixedOptionCombobox,
+  ...colorCombobox,
   ...petWeightSize,
 })).catch(error => { adminCustomerPetFieldModulesReady = null; throw error; });
 }
@@ -450,6 +453,7 @@ function adminCustomers() {
       const { tools, elements, controls } = adminCustomerPetFields;
       controls.species.reset();
       controls.gender.reset();
+      controls.color.reset();
       controls.breed.reset();
       controls.furType.reset();
       controls.size.reset();
@@ -495,7 +499,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261026-v1');
+            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261026-v1&pet-care=20261027-v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -514,8 +518,14 @@ function adminCustomers() {
           size: document.getElementById("adminPetSize"),
           furType: document.getElementById("adminPetFurType"),
           weight: document.getElementById("adminPetWeight"),
+          color: document.getElementById("adminPetColor"),
         };
         const controls = {
+          color: tools.createColorCombobox({
+            input: elements.color,
+            listbox: document.getElementById("adminPetColorOptions"),
+            errorElement: document.getElementById("adminPetColorError"),
+          }),
           species: tools.createFixedOptionCombobox({
             root: document.getElementById("adminPetSpeciesCombobox"),
             input: elements.species,
@@ -577,6 +587,9 @@ function adminCustomers() {
           this.syncPetWeightAndSize({ clearManualSize: true });
           this.validatePetWeightOnCommit();
         });
+        elements.color.addEventListener("change", () => {
+          this.petModal.form.color = elements.color.value;
+        });
         elements.gender.addEventListener("change", () => {
           this.petModal.form.gender = controls.gender.getValue();
         });
@@ -626,6 +639,7 @@ function adminCustomers() {
       controls.species.setValue(species);
       controls.gender.setValue(String(p.gender || "").toLowerCase());
       controls.breed.setValue(p.breed || "");
+      controls.color.setValue(p.color, { preserveLegacy: true });
       elements.furType.value = p.furType || "";
       controls.furType.update({ preserveValue: true, autoSelect: false });
       tools.initializeWeightField(elements.weight);
@@ -641,6 +655,7 @@ function adminCustomers() {
     },
 
     cancelEditPet() {
+      adminCustomerPetFields?.controls.color.close();
       if (this.petModal.creating) {
         this.petModal.open = false;
         this.petModal.editing = false;
@@ -658,6 +673,7 @@ function adminCustomers() {
       const validationMessage = this.validatePetEditPayload(payload);
       if (validationMessage) {
         const { tools, elements, controls } = adminCustomerPetFields;
+        controls.color.showValidation();
         controls.breed.showValidation();
         controls.furType.showValidation();
         const weightMessage = tools.getWeightFieldValidationMessage(elements.weight)
@@ -665,7 +681,9 @@ function adminCustomers() {
         if (weightMessage) {
           tools.showWeightValidationInField(elements.weight, weightMessage);
         }
-        if (validationMessage === controls.furType.getValidationMessage()) {
+        if (validationMessage === controls.color.getValidationMessage()) {
+          elements.color.focus();
+        } else if (validationMessage === controls.furType.getValidationMessage()) {
           elements.furType.focus();
         } else if (validationMessage === controls.breed.getValidationMessage()) {
           elements.breed.focus();
@@ -725,6 +743,11 @@ function adminCustomers() {
         }
 
       } catch (err) {
+        if (err.errors?.color?.[0]) {
+          adminCustomerPetFields.controls.color.showValidation(err.errors.color[0]);
+          adminCustomerPetFields.elements.color.focus();
+          return;
+        }
         if (err.errors?.fur_type?.[0]) {
           adminCustomerPetFields.controls.furType.showValidation(err.errors.fur_type[0]);
           adminCustomerPetFields.elements.furType.focus();
@@ -761,7 +784,7 @@ function adminCustomers() {
         size: tools.normalizePetSize(controls.size.getValue()) || null,
         fur_type: elements.furType.value || null,
         weight: tools.getEnteredWeight(elements.weight) || null,
-        color: String(form.color || "").trim() || null,
+        color: controls.color.getValue() || null,
         medical_conditions: String(form.medical_conditions || "").trim() || null,
       };
     },
@@ -769,6 +792,10 @@ function adminCustomers() {
     validatePetEditPayload(payload) {
       const { tools, elements, controls } = adminCustomerPetFields;
       if (!payload.pet_name) return "Pet name is required.";
+
+      const colorMessage = controls.color.getValidationMessage();
+      if (colorMessage) return colorMessage;
+      if ((payload.medical_conditions || "").length > 1000) return "Care notes must be 1,000 characters or fewer.";
 
       const breedValidationMessage = controls.breed.getValidationMessage();
       if (breedValidationMessage) return breedValidationMessage;

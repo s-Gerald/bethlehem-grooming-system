@@ -5,10 +5,10 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Clinic Cases | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?v=clinic-merge-20261007&clinic-products=20261010&treatments=20261012&medical-record=20261012&clinic-services=20261014-provided&case-flow=20261014-payment-filters&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261014-case-details-v3&clinic-payment=20261015-v2&clinic-navigation=20261020&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027" />
+    <link rel="stylesheet" href="../../css/output.css?clinical-validation=20261027-v1&v=clinic-merge-20261007&clinic-products=20261010&treatments=20261012&medical-record=20261012&clinic-services=20261014-provided&case-flow=20261014-payment-filters&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261014-case-details-v3&clinic-payment=20261015-v2&clinic-navigation=20261020&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&registration-ui=20261027-v3" />
-    <link rel="stylesheet" href="../../css/components/print-information.css?v=clinic-invoice-20261015" />
+    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="../../css/components/print-information.css?v=clinic-invoice-20261015&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/components/toast.css?v=semantic-toast-20261015" />
     <style>
       :is([x-data="adminClinicCasesSection()"], [aria-labelledby="patient-record-title"]) :is(button, input, select, textarea, [tabindex="0"]):focus-visible {
@@ -508,11 +508,10 @@
                   </dl>
                 </section>
 
-                <section aria-labelledby="profile-conditions-title" class="rounded-2xl border px-4 py-3"
-                  :class="patientConditions ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'">
-                  <h3 id="profile-conditions-title" class="mb-1 text-sm font-bold" :class="patientConditions ? 'text-amber-800' : 'text-[#2f4b66]'">Medical Conditions</h3>
-                  <p class="whitespace-pre-wrap break-words text-sm leading-relaxed" :class="patientConditions ? 'text-amber-900' : 'text-slate-500'"
-                    x-text="patientConditions || 'No medical conditions recorded.'"></p>
+                <section aria-labelledby="profile-conditions-title" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <h3 id="profile-conditions-title" class="mb-1 text-sm font-bold text-[#2f4b66]">Allergies &amp; Special Care Notes</h3>
+                  <p class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600"
+                    x-text="patientConditions || 'No allergies or special care notes recorded.'"></p>
                 </section>
 
                 <section aria-label="Patient history" class="min-w-0 border-t border-slate-200 pt-5">
@@ -648,15 +647,15 @@
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
                 <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
                   <p class="text-xs text-slate-400">Temp</p>
-                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.temperature_c ? detail.medical.vitals.temperature_c + ' °C' : '—'"></p>
+                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.temperature_c != null ? detail.medical.vitals.temperature_c + ' °C' : '—'"></p>
                 </div>
                 <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
                   <p class="text-xs text-slate-400">HR</p>
-                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.heart_rate_bpm ? detail.medical.vitals.heart_rate_bpm + ' bpm' : '—'"></p>
+                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.heart_rate_bpm != null ? detail.medical.vitals.heart_rate_bpm + ' bpm' : '—'"></p>
                 </div>
                 <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
                   <p class="text-xs text-slate-400">RR</p>
-                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.respiratory_rate_bpm ? detail.medical.vitals.respiratory_rate_bpm + ' bpm' : '—'"></p>
+                  <p class="mt-0.5 font-semibold text-slate-700" x-text="detail.medical.vitals?.respiratory_rate_bpm != null ? detail.medical.vitals.respiratory_rate_bpm + ' breaths/min' : '—'"></p>
                 </div>
                 <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
                   <p class="text-xs text-slate-400">Weight</p>
@@ -1007,7 +1006,7 @@
                 <div>
                   <label for="clinicWeight" class="mb-1 block text-xs font-medium text-slate-600">Weight<span x-show="canEditClinical" class="text-red-600" aria-hidden="true"> *</span></label>
                   <div class="relative">
-                    <input id="clinicWeight" x-ref="medicalWeight" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="text" inputmode="decimal" x-model="form.weight_kg" placeholder="e.g. 24.0" aria-describedby="clinicWeightError" :aria-invalid="hasFieldError('weight_kg')" aria-errormessage="medical-validation-summary" :class="hasFieldError('weight_kg') ? 'border-red-400' : 'border-slate-300'" class="w-full rounded-xl border px-3 py-2 pr-10 text-sm outline-none focus:border-[#315b7e]" />
+                    <input id="clinicWeight" x-ref="medicalWeight" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="text" inputmode="decimal" x-model="form.weight_kg" @input="form.weight_kg = $event.target.value; validateVitalField('weight_kg', 'input')" @blur="validateVitalField('weight_kg', 'blur')" placeholder="e.g. 24.0" aria-describedby="clinicWeightError" :aria-invalid="hasFieldError('weight_kg')" aria-errormessage="medical-validation-summary" :class="hasFieldError('weight_kg') ? 'border-red-400' : 'border-slate-300'" class="w-full rounded-xl border px-3 py-2 pr-10 text-sm outline-none focus:border-[#315b7e]" />
                     <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
                       kg
                     </span>
@@ -1016,22 +1015,58 @@
                 </div>
                 <div>
                   <label for="medical-temperature_c" class="mb-1 block text-xs font-medium text-slate-600">Temperature (°C)<span x-show="canEditClinical" class="text-red-600" aria-hidden="true"> *</span></label>
-                  <input id="medical-temperature_c" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="number" min="0" max="999.9" step="0.1" x-model="form.temperature_c" placeholder="e.g. 38.5" :aria-invalid="hasFieldError('temperature_c')" aria-errormessage="medical-validation-summary" aria-describedby="medical-temperature_cError" :class="hasFieldError('temperature_c') ? 'border-red-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
+                  <input id="medical-temperature_c" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="text" inputmode="decimal" x-model="form.temperature_c" @input="form.temperature_c = $event.target.value; validateVitalField('temperature_c', 'input')" @blur="validateVitalField('temperature_c', 'blur')" placeholder="e.g. 38.5" :aria-invalid="hasFieldError('temperature_c')" aria-errormessage="medical-validation-summary" aria-describedby="medical-temperature_cError medical-temperature_cWarning" :class="hasFieldError('temperature_c') ? 'border-red-400' : vitalWarning('temperature_c') ? 'border-amber-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
                   <p id="medical-temperature_cError" role="alert" x-show="fieldError('temperature_c')" x-text="fieldError('temperature_c')" class="mt-1 text-xs text-red-600"></p>
+                  <p id="medical-temperature_cWarning" x-show="!hasFieldError('temperature_c') && vitalWarning('temperature_c')" x-text="vitalWarning('temperature_c')" class="mt-1 text-xs text-amber-700"></p>
+                  <template x-if="canEditClinical && isVeterinarian && vitalNeedsVerification('temperature_c') && !hasSavedVitalVerification('temperature_c')">
+                    <div class="mt-1">
+                      <button x-show="!vitalExceptions.temperature_c" type="button" @click="startVitalVerification('temperature_c')" class="text-xs font-medium text-[#315b7e] underline">Verify exceptional reading</button>
+                      <template x-if="vitalExceptions.temperature_c">
+                        <div>
+                          <label for="verify-temperature_c" class="block text-xs font-medium text-slate-600">Clinical reason for verified reading</label>
+                          <input id="verify-temperature_c" type="text" maxlength="200" x-model="vitalExceptions.temperature_c.reason" @input="vitalExceptions.temperature_c.reason = $event.target.value; validateVitalField('temperature_c', 'input')" @blur="validateVitalField('temperature_c', 'blur')" :disabled="saving" :aria-invalid="hasFieldError('temperature_c')" aria-describedby="medical-temperature_cError" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-[#315b7e]" />
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                 </div>
                 <div>
                   <label for="medical-heart_rate_bpm" class="mb-1 block text-xs font-medium text-slate-600">Heart Rate (bpm)<span x-show="canEditClinical" class="text-red-600" aria-hidden="true"> *</span></label>
-                  <input id="medical-heart_rate_bpm" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="number" min="0" max="65535" step="1" x-model="form.heart_rate_bpm" placeholder="e.g. 80" :aria-invalid="hasFieldError('heart_rate_bpm')" aria-errormessage="medical-validation-summary" aria-describedby="medical-heart_rate_bpmError" :class="hasFieldError('heart_rate_bpm') ? 'border-red-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
+                  <input id="medical-heart_rate_bpm" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="text" inputmode="numeric" x-model="form.heart_rate_bpm" @input="form.heart_rate_bpm = $event.target.value; validateVitalField('heart_rate_bpm', 'input')" @blur="validateVitalField('heart_rate_bpm', 'blur')" placeholder="e.g. 80" :aria-invalid="hasFieldError('heart_rate_bpm')" aria-errormessage="medical-validation-summary" aria-describedby="medical-heart_rate_bpmError medical-heart_rate_bpmWarning" :class="hasFieldError('heart_rate_bpm') ? 'border-red-400' : vitalWarning('heart_rate_bpm') ? 'border-amber-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
                   <p id="medical-heart_rate_bpmError" role="alert" x-show="fieldError('heart_rate_bpm')" x-text="fieldError('heart_rate_bpm')" class="mt-1 text-xs text-red-600"></p>
+                  <p id="medical-heart_rate_bpmWarning" x-show="!hasFieldError('heart_rate_bpm') && vitalWarning('heart_rate_bpm')" x-text="vitalWarning('heart_rate_bpm')" class="mt-1 text-xs text-amber-700"></p>
+                  <template x-if="canEditClinical && isVeterinarian && vitalNeedsVerification('heart_rate_bpm') && !hasSavedVitalVerification('heart_rate_bpm')">
+                    <div class="mt-1">
+                      <button x-show="!vitalExceptions.heart_rate_bpm" type="button" @click="startVitalVerification('heart_rate_bpm')" class="text-xs font-medium text-[#315b7e] underline">Verify exceptional reading</button>
+                      <template x-if="vitalExceptions.heart_rate_bpm">
+                        <div>
+                          <label for="verify-heart_rate_bpm" class="block text-xs font-medium text-slate-600">Clinical reason for verified reading</label>
+                          <input id="verify-heart_rate_bpm" type="text" maxlength="200" x-model="vitalExceptions.heart_rate_bpm.reason" @input="vitalExceptions.heart_rate_bpm.reason = $event.target.value; validateVitalField('heart_rate_bpm', 'input')" @blur="validateVitalField('heart_rate_bpm', 'blur')" :disabled="saving" :aria-invalid="hasFieldError('heart_rate_bpm')" aria-describedby="medical-heart_rate_bpmError" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-[#315b7e]" />
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                 </div>
                 <div>
-                  <label for="medical-respiratory_rate_bpm" class="mb-1 block text-xs font-medium text-slate-600">Respiratory Rate (bpm)<span x-show="canEditClinical" class="text-red-600" aria-hidden="true"> *</span></label>
-                  <input id="medical-respiratory_rate_bpm" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="number" min="0" max="65535" step="1" x-model="form.respiratory_rate_bpm" placeholder="e.g. 20" :aria-invalid="hasFieldError('respiratory_rate_bpm')" aria-errormessage="medical-validation-summary" aria-describedby="medical-respiratory_rate_bpmError" :class="hasFieldError('respiratory_rate_bpm') ? 'border-red-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
+                  <label for="medical-respiratory_rate_bpm" class="mb-1 block text-xs font-medium text-slate-600">Respiratory Rate (breaths/min)<span x-show="canEditClinical" class="text-red-600" aria-hidden="true"> *</span></label>
+                  <input id="medical-respiratory_rate_bpm" :aria-required="canEditClinical" :disabled="!canEditClinical || saving" type="text" inputmode="numeric" x-model="form.respiratory_rate_bpm" @input="form.respiratory_rate_bpm = $event.target.value; validateVitalField('respiratory_rate_bpm', 'input')" @blur="validateVitalField('respiratory_rate_bpm', 'blur')" placeholder="e.g. 20" :aria-invalid="hasFieldError('respiratory_rate_bpm')" aria-errormessage="medical-validation-summary" aria-describedby="medical-respiratory_rate_bpmError medical-respiratory_rate_bpmWarning" :class="hasFieldError('respiratory_rate_bpm') ? 'border-red-400' : vitalWarning('respiratory_rate_bpm') ? 'border-amber-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50" />
                   <p id="medical-respiratory_rate_bpmError" role="alert" x-show="fieldError('respiratory_rate_bpm')" x-text="fieldError('respiratory_rate_bpm')" class="mt-1 text-xs text-red-600"></p>
+                  <p id="medical-respiratory_rate_bpmWarning" x-show="!hasFieldError('respiratory_rate_bpm') && vitalWarning('respiratory_rate_bpm')" x-text="vitalWarning('respiratory_rate_bpm')" class="mt-1 text-xs text-amber-700"></p>
+                  <template x-if="canEditClinical && isVeterinarian && vitalNeedsVerification('respiratory_rate_bpm') && !hasSavedVitalVerification('respiratory_rate_bpm')">
+                    <div class="mt-1">
+                      <button x-show="!vitalExceptions.respiratory_rate_bpm" type="button" @click="startVitalVerification('respiratory_rate_bpm')" class="text-xs font-medium text-[#315b7e] underline">Verify exceptional reading</button>
+                      <template x-if="vitalExceptions.respiratory_rate_bpm">
+                        <div>
+                          <label for="verify-respiratory_rate_bpm" class="block text-xs font-medium text-slate-600">Clinical reason for verified reading</label>
+                          <input id="verify-respiratory_rate_bpm" type="text" maxlength="200" x-model="vitalExceptions.respiratory_rate_bpm.reason" @input="vitalExceptions.respiratory_rate_bpm.reason = $event.target.value; validateVitalField('respiratory_rate_bpm', 'input')" @blur="validateVitalField('respiratory_rate_bpm', 'blur')" :disabled="saving" :aria-invalid="hasFieldError('respiratory_rate_bpm')" aria-describedby="medical-respiratory_rate_bpmError" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs outline-none focus:border-[#315b7e]" />
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                 </div>
                 <div>
                   <label for="medical-bcs" class="mb-1 block text-xs font-medium text-slate-600">Body Condition Score (1–9)</label>
-                  <select id="medical-bcs" :disabled="!canEditClinical || saving" x-model="form.body_condition_score" :aria-invalid="hasFieldError('body_condition_score')" aria-errormessage="medical-validation-summary" aria-describedby="medical-bcsError" :class="hasFieldError('body_condition_score') ? 'border-red-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50 bg-white">
+                  <select id="medical-bcs" :disabled="!canEditClinical || saving" x-model="form.body_condition_score" @input="form.body_condition_score = $event.target.value; validateVitalField('body_condition_score', 'input')" @blur="validateVitalField('body_condition_score', 'blur')" :aria-invalid="hasFieldError('body_condition_score')" aria-errormessage="medical-validation-summary" aria-describedby="medical-bcsError" :class="hasFieldError('body_condition_score') ? 'border-red-400' : 'border-slate-300'" class="w-full min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#315b7e] disabled:bg-slate-50 bg-white">
                     <option value="">
                       Select score
                     </option>
@@ -1043,6 +1078,14 @@
                   <p id="medical-bcsError" role="alert" x-show="fieldError('body_condition_score')" x-text="fieldError('body_condition_score')" class="mt-1 text-xs text-red-600"></p>
                 </div>
               </div>
+              <details x-show="currentAppt?.vitals?.verification_history?.length" class="text-xs text-slate-600">
+                <summary class="cursor-pointer font-medium text-[#315b7e]">Verified readings</summary>
+                <ul class="mt-2 space-y-2">
+                  <template x-for="(entry, index) in (currentAppt?.vitals?.verification_history || [])" :key="index">
+                    <li><span class="font-semibold" x-text="({temperature_c: 'Temperature (°C)', heart_rate_bpm: 'Heart rate (bpm)', respiratory_rate_bpm: 'Respiratory rate (breaths/min)'})[entry.field] + ': ' + entry.value"></span><span x-text="' — ' + entry.reason"></span><span class="block text-slate-500" x-text="entry.verified_by_name + ' · ' + new Date(entry.verified_at).toLocaleString('en-PH')"></span></li>
+                  </template>
+                </ul>
+              </details>
             </section>
             <section class="space-y-3">
               <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">History</h3>
@@ -1519,13 +1562,22 @@
                       <div class="grid grid-cols-2 gap-3">
                         <div>
                           <label for="vaccination-dose-amount" class="mb-1 block text-xs font-semibold text-slate-600">Dose Amount</label>
-                          <input id="vaccination-dose-amount" type="number" min="0.001" max="99999.999" step="0.001" placeholder="e.g. 1" x-model="form.dose_amount" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :class="fieldError('dose_amount') ? 'border-red-400' : 'border-slate-300'" :aria-invalid="Boolean(formErrors.dose_amount)">
-                          <p x-show="fieldError('dose_amount')" class="mt-1 text-xs font-medium text-red-600" x-text="fieldError('dose_amount')"></p>
+                          <input id="vaccination-dose-amount" type="text" inputmode="decimal" placeholder="e.g. 1" x-model="form.dose_amount" @input="form.dose_amount = $event.target.value; validateDoseFields('input')" @blur="validateDoseFields('blur')" aria-describedby="vaccination-dose-amount-error" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :class="formErrors.dose_amount ? 'border-red-400' : 'border-slate-300'" :aria-invalid="Boolean(formErrors.dose_amount)">
+                          <p id="vaccination-dose-amount-error" role="alert" x-show="fieldError('dose_amount')" class="mt-1 text-xs font-medium text-red-600" x-text="fieldError('dose_amount')"></p>
                         </div>
                         <div>
                           <label for="vaccination-dose-unit" class="mb-1 block text-xs font-semibold text-slate-600">Dose Unit</label>
-                          <input id="vaccination-dose-unit" type="text" maxlength="30" placeholder="e.g. mL" x-model="form.dose_unit" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :class="fieldError('dose_unit') ? 'border-red-400' : 'border-slate-300'" :aria-invalid="Boolean(formErrors.dose_unit)">
-                          <p x-show="fieldError('dose_unit')" class="mt-1 text-xs font-medium text-red-600" x-text="fieldError('dose_unit')"></p>
+                          <select id="vaccination-dose-unit" x-model="form.dose_unit" @change="form.dose_unit = $event.target.value; if (legacyDoseUnit === 'other') legacyDoseUnit = ''; validateDoseFields('input')" @blur="validateDoseFields('blur')" aria-describedby="vaccination-dose-unit-error" class="w-full rounded-xl border bg-white px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" :class="formErrors.dose_unit ? 'border-red-400' : 'border-slate-300'" :aria-invalid="Boolean(formErrors.dose_unit)">
+                            <option value="">Select unit</option>
+                            <template x-for="unit in doseUnits" :key="unit.value"><option :value="unit.value" x-text="unit.value === 'other' && legacyDoseUnit === 'other' ? 'other (saved)' : unit.label"></option></template>
+                            <template x-if="legacyDoseUnit && !doseUnits.some(unit => unit.value === legacyDoseUnit)"><option :value="legacyDoseUnit" x-text="legacyDoseUnit"></option></template>
+                          </select>
+                          <p id="vaccination-dose-unit-error" role="alert" x-show="fieldError('dose_unit')" class="mt-1 text-xs font-medium text-red-600" x-text="fieldError('dose_unit')"></p>
+                          <div x-show="form.dose_unit === 'other' && legacyDoseUnit !== 'other'" class="mt-2">
+                            <label for="vaccination-dose-unit-other" class="mb-1 block text-xs font-semibold text-slate-600">Specify Dose Unit</label>
+                            <input id="vaccination-dose-unit-other" type="text" maxlength="30" x-model="form.dose_unit_other" @input="form.dose_unit_other = $event.target.value; validateDoseFields('input')" @blur="validateDoseFields('blur')" :aria-required="form.dose_unit === 'other' && legacyDoseUnit !== 'other'" :aria-invalid="Boolean(formErrors.dose_unit_other)" aria-describedby="vaccination-dose-unit-other-error" :class="formErrors.dose_unit_other ? 'border-red-400' : 'border-slate-300'" class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#315b7e]" />
+                            <p id="vaccination-dose-unit-other-error" role="alert" x-show="fieldError('dose_unit_other')" x-text="fieldError('dose_unit_other')" class="mt-1 text-xs text-red-600"></p>
+                          </div>
                         </div>
                       </div>
                       <div>
@@ -1702,10 +1754,10 @@
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3"></script>
+    <script src="../../scripts/components/admin-clinic.js?clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
-    <script src="../../scripts/components/admin-vaccinations.js?v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019"></script>
+    <script src="../../scripts/components/admin-vaccinations.js?clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019"></script>
     <script src="../../scripts/components/inventory-money-input.js?v=20261013-clinic-services"></script>
     <script src="../../scripts/components/admin-clinic-shell.js?services=20261017&v=20261015-imaging-v2&case-flow=20261013-v5&unified-cases=20261014&loading-ui=universal-20261018"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>

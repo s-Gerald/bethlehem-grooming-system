@@ -638,6 +638,44 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         return json_decode(file_get_contents(__DIR__.'/../Fixtures/weight-rules.json'), true)['pets'];
     }
 
+    public function test_color_and_care_notes_are_validated_in_booking_and_grooming_walkin(): void
+    {
+        foreach ([false, true] as $walkin) {
+            $this->authenticateAs($walkin ? 'staff' : 'customer');
+            foreach ([['color', 'Brown123'], ['color', '123'], ['color', '---'], ['color', str_repeat('x', 51)], ['medical_conditions', str_repeat('x', 1001)]] as [$field, $value]) {
+                $pet = ['pet_name' => 'Invalid color', 'species' => 'Dog', $field => $value];
+                $this->submitSignedGrooming($walkin ? '/api/admin/walk-in' : '/api/booking/store', $walkin
+                    ? ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567', 'pets' => [[...$pet, 'services' => [['service_slug' => 'partial_grooming']]]]]
+                    : ['number_of_pets' => 1, 'pets' => [$pet]])
+                    ->assertUnprocessable()->assertJsonValidationErrors('pets.0.'.$field);
+            }
+        }
+        $this->assertDatabaseCount('pets', 0);
+    }
+
+    public function test_custom_color_and_notes_persist_through_grooming_registration(): void
+    {
+        DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->authenticateAs('customer');
+        DB::table('pets')->insert(['pet_id' => 777, 'user_id' => 3, 'pet_name' => 'Legacy coat', 'species' => 'Cat', 'color' => 'Brown123']);
+        $this->submitSignedGrooming('/api/booking/store', ['number_of_pets' => 1, 'pets' => [[
+            'pet_id' => 777, 'pet_name' => 'Legacy coat', 'species' => 'Cat', 'color' => 'Brown456',
+            'services' => ['ala_carte' => ['nail_clipping']],
+        ]]])->assertUnprocessable()->assertJsonValidationErrors('pets.0.color');
+        $this->assertDatabaseHas('pets', ['pet_id' => 777, 'color' => 'Brown123']);
+        $this->submitSignedGrooming('/api/booking/store', ['number_of_pets' => 1, 'pets' => [[
+            'pet_name' => 'Online color', 'species' => 'Cat', 'color' => '  Blue-gray  ', 'medical_conditions' => 'Needs gentle handling',
+            'services' => ['ala_carte' => ['nail_clipping']],
+        ]]])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Online color', 'color' => 'Blue-gray', 'medical_conditions' => 'Needs gentle handling']);
+        $this->authenticateAs('staff');
+        $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567', 'pets' => [[
+            'pet_name' => 'Walkin color', 'species' => 'Dog', 'size' => 'small', 'color' => ' White   and Brown ', 'medical_conditions' => 'Shampoo allergy',
+            'groomer_id' => 1, 'services' => [['service_slug' => 'nail_clipping']],
+        ]]])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Walkin color', 'color' => 'White and Brown', 'medical_conditions' => 'Shampoo allergy']);
+    }
+
     public function test_invalid_weight_text_is_rejected_by_booking_and_grooming_walkin(): void
     {
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
@@ -661,32 +699,40 @@ class GroomingAdministrationAuthorizationTest extends TestCase
 
     public function test_unchanged_historical_weight_is_usable_for_customer_booking(): void
     {
-        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 1, 'pet_name' => 'Historical cat',
-            'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'is_archived' => false]);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 3, 'pet_name' => 'Historical cat',
+            'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
-        $pet = ['pet_id' => 101, 'pet_name' => 'Historical cat', 'species' => 'Cat', 'size' => 'small',
+        $pet = ['pet_id' => 101, 'color' => 'Brown123', 'pet_name' => 'Historical cat', 'species' => 'Cat', 'size' => 'small',
             'services' => ['ala_carte' => ['nail_clipping']]];
         $this->authenticateAs('customer');
         $this->submitSignedGrooming('/api/booking/store', ['booking_date' => now()->toDateString(), 'window_id' => 1,
             'number_of_pets' => 1, 'pets' => [$pet]])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis']);
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => 4.999, 'size' => 'small']);
     }
 
-    public function test_grooming_walkin_can_select_a_historical_pet_without_changing_its_weight(): void
+    #[DataProvider('historicalWalkinColors')]
+    public function test_grooming_walkin_can_select_a_historical_pet_without_changing_its_weight(?string $color): void
     {
         DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Maria', 'last_name' => 'Santos',
             'phone' => '09171234567', 'role' => 'customer']);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Historical cat',
-            'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'is_archived' => false]);
+            'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
         $this->authenticateAs('staff');
         $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
-            'pets' => [['pet_id' => 101, 'pet_name' => 'Historical cat', 'species' => 'Cat', 'size' => 'small',
+            'pets' => [['pet_id' => 101, 'color' => $color, 'pet_name' => 'Historical cat', 'species' => 'Cat', 'size' => 'small',
                 'groomer_id' => 1, 'services' => [['service_slug' => 'nail_clipping']]]], 'sedation_consent' => false, 'terms_agreed' => true])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis']);
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => 4.999, 'size' => 'small']);
+    }
+
+    public static function historicalWalkinColors(): array
+    {
+        return ['unchanged saved color' => ['Brown123'], 'older draft without color' => [null]];
     }
 
     public function test_customer_and_walk_in_range_prices_stay_unresolved_until_payment(): void

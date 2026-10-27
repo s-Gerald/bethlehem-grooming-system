@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pet Color browser regression</title>
+  <link rel="stylesheet" href="../css/output.css">
+  <link rel="stylesheet" href="../css/custom.css">
+</head>
+<body class="portal-theme bg-slate-50 p-4 text-slate-700">
+  <h1 class="text-xl font-bold">Pet Color browser regression</h1>
+  <p id="results" role="status" class="my-4 whitespace-pre-wrap">Running…</p>
+  <div id="fixture" class="rounded-xl border bg-white p-4" style="max-width:480px"></div>
+  <script type="module">
+    import { createColorCombobox } from '../scripts/components/color-combobox.js?pet-care=20261027-v1';
+    const forms = [
+      ['../pages/client/my-pets.html', 'petColor', 'petMedical'],
+      ['../pages/client/booking-pet-details.html', 'color', 'medicalNotes'],
+      ['../pages/client/grooming-pre-registration.html', 'color', 'medicalNotes'],
+      ['../pages/admin/pet-edit-form.html', 'adminPetColor', 'adminPetMedical'],
+      ['../pages/admin/walk-in-pet-details.html', 'color', 'medicalNotes'],
+    ];
+    const results = document.getElementById('results');
+    const fixture = document.getElementById('fixture');
+    const assert = (condition, message) => { if (!condition) throw new Error(message); };
+    const nextFrame = () => new Promise(requestAnimationFrame);
+    const key = (input, value) => input.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
+    try {
+      let checks = 0;
+      for (const [path, colorId, notesId] of forms) {
+        const source = new DOMParser().parseFromString(await (await fetch(path)).text(), 'text/html');
+        for (const width of [320, 375, 414, 768, 1280]) {
+          fixture.style.width = `${Math.min(width - 32, 480)}px`;
+          const form = document.createElement('form');
+          form.noValidate = true;
+          // Use the actual production field markup, inside a clipped modal-like surface.
+          form.style.cssText = 'height:110px;overflow:hidden;transform:translateZ(0)';
+          form.append(source.getElementById(colorId).parentElement.cloneNode(true));
+          const notes = source.getElementById(notesId).cloneNode(true);
+          fixture.replaceChildren(form);
+          const input = form.querySelector('input');
+          input.removeAttribute('x-model');
+          const listbox = form.querySelector('[role="listbox"]');
+          const errorElement = form.querySelector('[role="alert"]');
+          const control = createColorCombobox({ input, listbox, errorElement });
+          input.focus(); await nextFrame();
+          assert(input.getAttribute('aria-expanded') === 'true', `${path}: focus must open`);
+          assert([...listbox.children].slice(0, 4).map(el => el.textContent).join(',') === 'Black,White,Brown,Gray', `${path}: initial colors`);
+          assert(listbox.clientHeight === 160, `${path}: four complete rows (${listbox.clientHeight}px)`);
+          assert([...listbox.children].every(el => el.offsetHeight === 40), `${path}: row heights`);
+          assert(Math.abs(listbox.getBoundingClientRect().width - input.getBoundingClientRect().width) < 1, `${path}: matching widths`);
+          assert(getComputedStyle(listbox).overscrollBehaviorY === 'contain', `${path}: scroll containment`);
+          const bounds = listbox.getBoundingClientRect();
+          assert(document.elementFromPoint(bounds.left + 15, bounds.top + 140)?.getAttribute('role') === 'option', `${path}: fourth option must escape modal clipping`);
+          const pageScroll = window.scrollY;
+          for (let i = 0; i < 5; i++) key(input, 'ArrowDown');
+          assert(listbox.scrollTop > 0 && window.scrollY === pageScroll, `${path}: keyboard scroll stays in list`);
+          assert(document.activeElement === input, `${path}: focus stays in input`);
+          key(input, 'Escape');
+          assert(!input.hasAttribute('aria-activedescendant'), `${path}: Escape clears active option`);
+          input.value = '  BR  '; input.dispatchEvent(new Event('input', { bubbles: true }));
+          assert(listbox.firstElementChild.textContent === 'Brown', `${path}: filtering`);
+          key(input, 'ArrowDown'); key(input, 'Enter');
+          assert(input.value === 'Brown' && input.getAttribute('aria-expanded') === 'false', `${path}: keyboard selection`);
+          input.value = 'Blue-gray'; input.dispatchEvent(new Event('input', { bubbles: true }));
+          assert(control.showValidation(), `${path}: custom description`);
+          input.value = 'Brown123'; input.dispatchEvent(new Event('input', { bubbles: true }));
+          assert(input.value === 'Brown' && errorElement.textContent.includes('numbers'), `${path}: numeric input`);
+          control.setValue('Brown123', { preserveLegacy: true });
+          assert(control.getValue() === 'Brown123' && control.showValidation(), `${path}: legacy preservation`);
+          assert(notes.rows === 3 && notes.maxLength === 1000, `${path}: note rows and limit`);
+          assert(notes.placeholder === 'e.g. sensitive to shampoo, needs gentle handling', `${path}: concise note placeholder`);
+          control.close();
+          checks++;
+        }
+      }
+      fixture.style.width = '';
+      // Leave an ordinary account form ready for real keyboard, mouse and touch checks.
+      const source = new DOMParser().parseFromString(await (await fetch(forms[0][0])).text(), 'text/html');
+      fixture.replaceChildren(source.getElementById('petColor').parentElement.cloneNode(true));
+      const input = fixture.querySelector('input');
+      createColorCombobox({ input, listbox: fixture.querySelector('[role="listbox"]'), errorElement: fixture.querySelector('[role="alert"]') });
+      results.textContent = `PASS: ${checks} form/width combinations; geometry, modal clipping, scrolling, keyboard, filtering, validation and legacy values.`;
+      document.title = 'PASS — Pet Color browser regression';
+      input.focus();
+    } catch (error) {
+      results.textContent = `FAIL: ${error.message}`;
+      document.title = 'FAIL — Pet Color browser regression';
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

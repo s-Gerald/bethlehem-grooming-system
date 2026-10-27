@@ -362,7 +362,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
       const weightTools = { breedCoatCatalogueReady, initializeWeightField: noop, formatSavedWeight: () => "",
         getSizeForWeight: noop };
       const shared = { ...ui.context, ...weightTools, breedCombobox: ui.breedControl, breedCoatCombobox: ui.coatControl,
-        petTypeCombobox, genderCombobox: { setValue: noop }, sizeCombobox: { setValue: noop },
+        petTypeCombobox, colorCombobox: { setValue: noop }, genderCombobox: { setValue: noop }, sizeCombobox: { setValue: noop },
         syncWeightAndSize: noop, setStoredSize: noop };
       if (integration === "my-pets") {
         const handler = ui.source.slice(ui.source.indexOf("async function openEditModal("), ui.source.indexOf("  function showModal()"));
@@ -377,7 +377,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         const handler = ui.source.slice(ui.source.indexOf("    async startEditPet()"), ui.source.indexOf("    cancelEditPet()"));
         const edit = vm.runInNewContext(`({${handler}}).startEditPet`, {
           adminCustomerPetFields: { tools: weightTools, elements: ui.elements,
-            controls: { species: petTypeCombobox, gender: shared.genderCombobox, breed: ui.breedControl, furType: ui.coatControl } },
+            controls: { color: { setValue: noop }, species: petTypeCombobox, gender: shared.genderCombobox, breed: ui.breedControl, furType: ui.coatControl } },
         });
         const owner = { petModal: { pet: { species, breed, furType: coat } }, initializePetFormFields: async () => true,
           normalizePetSpecies: value => value, syncPetWeightAndSize: noop, setStoredPetSize: noop, refreshIcons: noop };

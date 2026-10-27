@@ -220,6 +220,7 @@ export function buildWalkInPets(reviewPayload) {
       fur_type:             item.pet.furType  || null,
       ...getPetWeightSubmission(item.pet),
       size:                 normalizeSizeForApi(item.pet.size),
+      color:                item.pet.color || null,
       medical_conditions:   item.pet.medicalNotes || null,
       special_instructions: item.selection.specialInstructions?.trim() || null,
       grooming_preference: item.selection.groomingPreference || null,

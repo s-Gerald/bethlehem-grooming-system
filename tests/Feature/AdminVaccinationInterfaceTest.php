@@ -128,9 +128,8 @@ class AdminVaccinationInterfaceTest extends TestCase
     public function test_form_mirrors_validation_and_does_not_send_server_managed_fields(): void
     {
         foreach ([
-            'Dose amount must be greater than zero.',
-            'Enter both Dose Amount and Dose Unit, or leave both blank.',
-            'Complete the required fields marked *.',
+            'clinicDoseErrors(this.form.dose_amount, this.effectiveDoseUnit, required)',
+            'Check the highlighted fields.',
             'Next vaccination date cannot be before today.',
             'Choose a supported administration route.',
         ] as $message) {

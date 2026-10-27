@@ -68,6 +68,7 @@ const product = {item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 
     writes.push(['update',pet,id,payload]); const vaccination = {id,state:'draft',...payload}; savedRecords = [vaccination]; return {vaccination};
   };
   state.selectVaccine(product);state.form.notes = 'Current visit';
+  state.form.dose_amount = '0.5'; state.form.dose_unit = 'mL';
   assert.equal(state.hasUnfinishedTreatment(),true);
   await state.saveTreatment();
   assert.equal(state.formModal.open,true);
@@ -86,10 +87,28 @@ const product = {item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 
   assert.equal(state.treatmentDetails(state.records[0]).some(field=>field.label==='Status'),false);
   assert.equal(state.doseLabel({}),'—');
 
+  const correction = {...state.records[0], state: 'draft', dose_amount: '2', dose_unit: '', clinic_appointment_id: 91};
+  state.records[0] = correction;
+  context.window.dispatchEvent(new context.CustomEvent('clinic-treatment-focus', {detail: {
+    id: 91, message: 'Dose unit required.', errors: {[`treatments.${correction.id}.dose_unit`]: ['Dose unit required.']},
+  }}));
+  assert.equal(state.formModal.recordId, correction.id, 'Finalization opens the exact saved treatment that failed');
+  assert.equal(state.formErrors.dose_unit, 'Dose unit required.');
+  state.form.dose_unit = 'mL'; state.validateDoseFields('input');
+  assert.equal(state.formErrors.dose_unit, undefined);
+  assert.equal(state.formErrorSummary, '', 'Correcting a finalization error immediately clears its summary');
+  state.resetInlineForm();
+
   // The case footer blocks unfinished entries, confirms once, and submits the whole medical record.
   vm.runInContext(`clinicPetWeightToolsReady = Promise.resolve({getWeightValueValidationMessage: () => ''});`,context);
   const modal = attach(context.adminClinicModal());modal.$el = {querySelector: () => null};modal.apptId=91;
+  modal.init();
   modal.currentAppt=appt(91);modal.open=true;
+  modal.treatmentValidationError = true; modal.modalError = 'Dose unit required.';
+  state.formErrors = {dose_unit: 'Dose unit required.'};
+  state.form.dose_amount = '0.5'; state.form.dose_unit = 'mL'; state.validateDoseFields('input');
+  assert.equal(modal.modalError, '', 'Correcting Treatment clears the related case footer summary');
+  state.resetInlineForm();
   Object.assign(modal.form,{primary_veterinarian_id:1,weight_kg:'12',temperature_c:38.5,heart_rate_bpm:80,respiratory_rate_bpm:20});
   const confirmations = [], caseSaves=[];
   modal.$store.clinicFeedback.confirm = async dialog => {confirmations.push(dialog);return false;};

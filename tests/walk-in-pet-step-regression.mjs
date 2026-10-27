@@ -68,7 +68,7 @@ function makeElement(initialClasses = []) {
 function combobox({ input }) {
   let value = "";
   return {
-    setValue(next) { value = next; input.value = next; },
+    setValue(next) { value = next ?? ""; input.value = value; },
     getValue() { return value; },
     setOptions() {},
     setDisabled(disabled) { input.disabled = disabled; },
@@ -139,6 +139,7 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
     "./breed-combobox.js": { createBreedCombobox: combobox },
     "./breed-coat-combobox.js": { createBreedCoatCombobox: combobox },
     "./fixed-option-combobox.js": { createFixedOptionCombobox: combobox },
+    "./color-combobox.js": { createColorCombobox: ({ input }) => ({ ...combobox({ input }), getValue: () => input.value.trim().replace(/\s+/g, " ") }) },
     "../services/booking-draft-service.js": { formatPetSizeLabel: (value) => value },
     "./pet-weight-size.js": weightTools,
   };
@@ -199,7 +200,7 @@ const newGroomingOwner = ownerDraft(null, "grooming");
 assert.equal(newGroomingOwner.ownerRecordType, "new");
 const newOwner = await runStep(newGroomingOwner, { draft: { pets: [{
   id: "new-pet", isNew: true, petName: "Fluffy", petType: "Cat", breed: "",
-  furType: "Long", weight: "", size: "small", medicalNotes: "",
+  furType: "Long", weight: "", size: "small", color: "Brown/White", medicalNotes: "",
 }] } });
 assert.deepEqual(newOwner.calls, []);
 assert.equal(newOwner.ui("petSelectionTabs").classList.contains("hidden"), true);
@@ -208,8 +209,9 @@ assert.equal(newOwner.ui("existingPetsSection").classList.contains("hidden"), tr
 assert.equal(newOwner.ui("nextBtn").disabled, false);
 const selectedCard = newOwner.ui("selectedPetCards").children[0].innerHTML;
 assert.match(selectedCard, /Fluffy/);
+assert.match(selectedCard, /Color:.*Brown\/White/);
 assert.match(selectedCard, /Fur Type:.*Long/);
-assert.doesNotMatch(selectedCard, /Medical Conditions \/ Special Needs|Weight:|Breed:/);
+assert.doesNotMatch(selectedCard, /Allergies &amp; Special Care Notes|Weight:|Breed:/);
 
 const newClinicOwner = await runStep(ownerDraft(null, "clinic"));
 assert.deepEqual(newClinicOwner.calls, []);
@@ -242,8 +244,10 @@ assert.deepEqual([...directClinic.stored], directDraft, "Back preserves the dire
 for (const appointmentType of ["grooming", "clinic"]) {
   for (const weight of ["4.780", "4.200000", "10.555"]) {
     const flow = await runStep(ownerDraft(null, appointmentType), { draft: {
-      pets: [], newPetForm: { petType: "Dog", petName: "Decimal puppy", breed: "Mixed Breed / Aspin", weight },
+      pets: [], newPetForm: { petType: "Dog", petName: "Decimal puppy", breed: "Mixed Breed / Aspin", color: "Light Brown", medicalNotes: "Shampoo allergy", weight },
     } });
+    assert.equal(flow.ui("color").value, "Light Brown");
+    assert.equal(flow.ui("medicalNotes").value, "Shampoo allergy");
     assert.equal(flow.ui("weight").value, weight);
     assert.equal(flow.ui("weightError").textContent, "Enter weight using no more than 2 decimal places.");
     await flow.handlers.handleAddPetSubmit({ preventDefault() {} });
@@ -257,6 +261,9 @@ for (const appointmentType of ["grooming", "clinic"]) {
     assert.equal(flow.ui("size").disabled, true);
     await flow.handlers.handleAddPetSubmit({ preventDefault() {} });
     assert.equal(flow.ui("selectedPetCards").children.length, 1);
+    const saved = JSON.parse(flow.stored.get("walkInPetStep")).pets[0];
+    assert.equal(saved.color, "Light Brown");
+    assert.equal(saved.medicalNotes, "Shampoo allergy");
   }
 }
 console.log("Walk-in customer selection, restored precision errors, blocked submissions and exact size derivation passed.");

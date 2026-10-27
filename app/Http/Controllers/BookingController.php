@@ -12,6 +12,7 @@ use App\Models\Service;
 use App\Models\TimeWindow;
 use App\Models\User;
 use App\Rules\ValidBreedCoat;
+use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Services\AvailabilityTimeWindowService;
@@ -67,8 +68,8 @@ class BookingController extends Controller
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.weight' => ['nullable', new ValidPetWeight],
-            'pets.*.color' => 'nullable|string|max:50',
-            'pets.*.medical_conditions' => 'nullable|string',
+            'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
+            'pets.*.medical_conditions' => 'nullable|string|max:1000',
             'pets.*.special_instructions' => 'nullable|string',
             'pets.*.haircut_requested' => 'sometimes|boolean',
             'pets.*.groomer_id' => 'nullable|integer',
@@ -175,6 +176,7 @@ class BookingController extends Controller
             foreach ($request->pets as $index => $petData) {
                 $pet = $savedPets->get($petData['pet_id'] ?? null);
                 $coat = ValidBreedCoat::validatedCoat($petData, $pet, "pets.{$index}.fur_type");
+                $color = ValidPetColor::validatedColor($petData, $pet, "pets.{$index}.color");
 
                 if ($pet) {
                     $pet->update([
@@ -195,7 +197,7 @@ class BookingController extends Controller
                         'breed' => $petData['breed'] ?? null,
                         'birthdate' => $petData['birthdate'] ?? null,
                         'weight' => $petData['weight'] ?? null,
-                        'color' => $petData['color'] ?? null,
+                        'color' => $color,
                         'size' => PetWeightSize::sizeFor($petData['species'] ?? 'Dog', $petData['weight'] ?? null)
                             ?? $petData['size'] ?? null,
                         'fur_type' => $coat,

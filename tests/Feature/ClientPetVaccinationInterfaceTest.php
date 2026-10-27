@@ -169,7 +169,7 @@ class ClientPetVaccinationInterfaceTest extends TestCase
             $this->assertStringNotContainsString('data-pet-panel="'.$removedTab.'"', $this->clientPage);
         }
         $this->assertStringContainsString('Clinic Visits', $this->clientPage);
-        $this->assertStringContainsString('Medical Conditions / Special Needs', $this->clientPage);
+        $this->assertStringContainsString('Allergies &amp; Special Care Notes', $this->clientPage);
     }
 
     private function sourceBetween(string $source, string $start, string $end): string

@@ -420,16 +420,6 @@
     white-space: pre-wrap;
   }
 
-  .pet-grooming-print-medical {
-    padding: 1.25mm;
-    border: 1.5pt solid #172033;
-  }
-
-  .pet-grooming-print-medical h2 {
-    font-size: 9pt;
-    font-weight: 800;
-  }
-
   .pet-grooming-print-brand {
     margin-top: auto;
     color: #475569;

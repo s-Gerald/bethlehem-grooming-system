@@ -28,7 +28,7 @@ function setup(preview) {
   const saved = new Map([["walkInOwnerStep", JSON.stringify({ ownerRecordType: "registered", customerUserId: 7 })]]);
   const calls = [], navigation = [], consentCalls = [];
   const item = {
-    pet: { petId: 12, petName: "Coco", petType: "dog", size: "Small", weight: 8 },
+    pet: { petId: 12, petName: "Coco", color: "Brown/White", medicalNotes: "Sensitive skin", petType: "dog", size: "Small", weight: 8 },
     selection: { specialInstructions: "", groomingPreference: "summer_cut", estimateFactors: ["thick_coat"] },
     pricing: { hasSelection: true, total: {}, lineItems: [{ kind: "ala_carte", serviceId: "facial_trimming", serviceName: "Facial Trimming", pricing: { displayPrice: "P100" } }] },
     groomingEstimate: { formatted: "2–4 hrs" },
@@ -77,6 +77,8 @@ async function main() {
   assert.equal(JSON.parse(review.saved.get("walkInReviewStep")).items.length, 1);
   const pets = consent.buildWalkInPets(review.payload);
   assert.equal(pets[0].grooming_preference, "summer_cut");
+  assert.equal(pets[0].color, "Brown/White");
+  assert.equal(pets[0].medical_conditions, "Sensitive skin");
   assert.equal("estimate_factors" in pets[0], false);
   console.log("Walk-in review proceeds without a forecast request.");
 }

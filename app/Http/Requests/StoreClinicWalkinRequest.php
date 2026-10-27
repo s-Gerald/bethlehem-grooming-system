@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Rules\ValidBreedCoat;
+use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\ClinicConcerns;
@@ -73,7 +74,7 @@ class StoreClinicWalkinRequest extends FormRequest
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'weight' => ['nullable', new ValidPetWeight],
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
-            'color' => ['nullable', 'string', 'max:50'],
+            'color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
             'medical_conditions' => ['nullable', 'string', 'max:1000'],
 
             // Clinic

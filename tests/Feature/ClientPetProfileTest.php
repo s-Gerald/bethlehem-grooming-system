@@ -12,6 +12,41 @@ use Tests\TestCase;
 class ClientPetProfileTest extends TestCase
 {
     use \Tests\Support\CreatesRegistrationAvailability;
+
+    public function test_color_validation_normalization_and_legacy_preservation_for_customer_admin_and_staff(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->increments('user_id');
+            $table->string('role');
+        });
+        DB::table('users')->insert(['user_id' => 10, 'role' => 'customer']);
+        try {
+            foreach (['customer', 'admin', 'staff'] as $role) {
+                $this->authenticateUser($role === 'customer' ? 10 : 20, $role);
+                $url = $role === 'customer' ? '/api/pets' : '/api/admin/customer-pets/registered/10';
+                $payload = ['pet_name' => "$role color", 'species' => 'Dog', 'medical_conditions' => 'Legacy heart condition; shampoo allergy'];
+                foreach ([123, '123', 'Brown123', '456White', '12.5', '---', '& /', 'Brown１２', str_repeat('x', 51)] as $invalid) {
+                    $this->postJson($url, [...$payload, 'color' => $invalid])->assertUnprocessable()->assertJsonValidationErrors('color');
+                }
+                $id = $this->postJson($url, [...$payload, 'color' => '  White   and  Brown  '])->assertCreated()
+                    ->assertJsonPath('pet.color', 'White and Brown')->json('pet.pet_id');
+                $edit = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
+                $this->putJson($edit, ['pet_name' => "$role renamed", 'species' => 'Dog'])->assertOk()
+                    ->assertJsonPath('pet.color', 'White and Brown')
+                    ->assertJsonPath('pet.medical_conditions', 'Legacy heart condition; shampoo allergy');
+                $this->putJson($edit, [...$payload, 'color' => 'Brown/White'])->assertOk()->assertJsonPath('pet.color', 'Brown/White');
+                DB::table('pets')->where('pet_id', $id)->update(['color' => 'Brown123']);
+                $this->putJson($edit, [...$payload, 'color' => 'Brown123'])->assertOk()->assertJsonPath('pet.color', 'Brown123');
+                $this->putJson($edit, [...$payload, 'color' => 'Brown456'])->assertUnprocessable()->assertJsonValidationErrors('color');
+                $this->assertDatabaseHas('pets', ['pet_id' => $id, 'color' => 'Brown123', 'medical_conditions' => $payload['medical_conditions']]);
+                $this->putJson($edit, [...$payload, 'color' => null, 'medical_conditions' => null])->assertOk()
+                    ->assertJsonPath('pet.color', null)->assertJsonPath('pet.medical_conditions', null);
+                $this->putJson($edit, [...$payload, 'medical_conditions' => str_repeat('x', 1001)])->assertUnprocessable()->assertJsonValidationErrors('medical_conditions');
+            }
+        } finally {
+            Schema::drop('users');
+        }
+    }
     public function test_customer_admin_and_staff_create_and_edit_enforce_conditional_fur(): void
     {
         Schema::create('users', function (Blueprint $table) {

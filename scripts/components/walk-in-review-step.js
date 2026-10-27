@@ -14,7 +14,7 @@ import {
   formatPriceOption,
   getPackageById,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026";
+import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1";
 
 const state = {
   bookingDraft: null,
@@ -263,6 +263,7 @@ function renderPetReviewCard(item, index) {
       </div>
 
       <div class="mt-6 space-y-4">
+        ${item.pet.color ? `<p class="text-sm text-slate-600">Color: ${escapeHtml(item.pet.color)}</p>` : ""}
         <p class="text-sm text-slate-600">Pet Groomer: ${escapeHtml(petGroomerLabel(item.selection))}</p>
         ${packageCard}
         ${renderGroomingPreference(item.selection)}

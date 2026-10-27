@@ -240,7 +240,7 @@ class PetInformationVerificationInterfaceTest extends TestCase
     {
         foreach ([
             'Basic Information',
-            'Medical Conditions / Special Needs',
+            'Allergies &amp; Special Care Notes',
             'Grooming Records',
             'Clinic Visits',
             'Vaccinations',

@@ -25,6 +25,43 @@
 .breed-suggestion-list::-webkit-scrollbar { width: 6px; }
 .breed-suggestion-list::-webkit-scrollbar-thumb { background: rgb(49 91 126 / 30%); border-radius: 6px; }
 
+/* Color uses the same four-row treatment in the top layer to escape modal clipping. */
+.color-suggestion-list {
+  position: fixed;
+  inset: auto;
+  z-index: 400;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  max-height: 162px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(49 91 126 / 30%) transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: white;
+  color: #334155;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 10%);
+  font: inherit;
+  font-size: 14px;
+}
+.color-suggestion-list.hidden { display: none; }
+.color-combobox-option {
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  line-height: 40px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.color-combobox-option:hover,
+.color-combobox-option[aria-selected="true"] { background: #edf5fc; }
+.color-suggestion-list::-webkit-scrollbar { width: 6px; }
+.color-suggestion-list::-webkit-scrollbar-thumb { background: rgb(49 91 126 / 30%); border-radius: 6px; }
+
 [x-cloak] {
   display: none !important;
 }

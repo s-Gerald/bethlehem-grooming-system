@@ -79,8 +79,10 @@
                   </div>
                   <div>
                     <label for="adminPetColor" class="mb-1 block text-sm font-medium text-slate-700">Color <span class="text-slate-400 font-normal">(optional)</span></label>
-                    <input id="adminPetColor" type="text" x-model="petModal.form.color" placeholder="e.g. White"
+                    <input maxlength="50" id="adminPetColor" type="text" x-model="petModal.form.color" placeholder="Type or select a color"
                       class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]">
+                    <div id="adminPetColorOptions" class="color-suggestion-list hidden" role="listbox" aria-label="Color suggestions" popover="manual"></div>
+                    <p id="adminPetColorError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
                   </div>
                 </div>
 
@@ -165,10 +167,10 @@
                 </div>
 
                 <div>
-                  <label for="adminPetMedical" class="mb-1 block text-sm font-medium text-slate-700">Medical conditions / special needs <span class="text-slate-400 font-normal">(optional)</span></label>
-                  <textarea id="adminPetMedical" x-model="petModal.form.medical_conditions" rows="3"
+                  <label for="adminPetMedical" class="mb-1 block text-sm font-medium text-slate-700">Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span></label>
+                  <textarea id="adminPetMedical" x-model="petModal.form.medical_conditions" rows="3" maxlength="1000"
                     class="w-full resize-none rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
-                    placeholder="e.g. allergic to certain shampoos, has heart condition..."></textarea>
+                    placeholder="e.g. sensitive to shampoo, needs gentle handling"></textarea>
                 </div>
 
                 <button type="submit" :disabled="petModal.saving"

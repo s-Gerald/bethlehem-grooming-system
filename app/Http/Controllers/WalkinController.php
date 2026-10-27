@@ -13,6 +13,7 @@ use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Models\Walkin;
 use App\Rules\ValidBreedCoat;
+use App\Rules\ValidPetColor;
 use App\Services\CustomerIdentityService;
 use App\Services\DailyPetQueue;
 use App\Services\GroomingServicePriceResolver;
@@ -364,6 +365,7 @@ class WalkinController extends Controller
             'fur_type' => ValidBreedCoat::validatedCoat($petData),
             'weight' => $petData['weight'] ?? null,
             'size' => $petData['size'] ?? null,
+            'color' => ValidPetColor::validatedColor($petData),
             'medical_conditions' => $petData['medical_conditions'] ?? null,
             'is_archived' => false,
         ]);
@@ -371,12 +373,14 @@ class WalkinController extends Controller
 
     private function updateWalkInPetDetails(Pet $pet, array $petData): Pet
     {
+        $petData['color'] ??= $pet->color;
         $pet->update([
             'breed' => $petData['breed'] ?? $pet->breed,
             'fur_type' => ValidBreedCoat::validatedCoat($petData, $pet),
             'weight' => $petData['weight'] ?? $pet->weight,
             'size' => PetWeightSize::sizeFor($pet->species, $petData['weight'] ?? $pet->weight)
                 ?? $petData['size'] ?? $pet->size,
+            'color' => ValidPetColor::validatedColor($petData, $pet),
             'medical_conditions' => $petData['medical_conditions'] ?? $pet->medical_conditions,
         ]);
 

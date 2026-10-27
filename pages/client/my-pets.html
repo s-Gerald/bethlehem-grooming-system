@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Pets | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027" />
-    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
     <div id="petsPageShell" class="min-h-screen flex">
@@ -333,8 +333,10 @@
             </div>
             <div>
               <label for="petColor" class="block text-sm font-medium text-portal-text mb-1">Color <span class="text-slate-400 font-normal">(optional)</span></label>
-              <input type="text" id="petColor" placeholder="e.g. White"
+              <input maxlength="50" type="text" id="petColor" placeholder="Type or select a color"
                 class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active" />
+              <div id="petColorOptions" class="color-suggestion-list hidden" role="listbox" aria-label="Color suggestions" popover="manual"></div>
+              <p id="petColorError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
             </div>
           </div>
 
@@ -406,10 +408,10 @@
             </div>
           </div>
 
-          <!-- Medical Conditions -->
+          <!-- Allergies and care notes -->
           <div>
-            <label for="petMedical" class="block text-sm font-medium text-portal-text mb-1">Medical Conditions / Special Needs <span class="text-slate-400 font-normal">(optional)</span></label>
-            <textarea id="petMedical" rows="3" placeholder="e.g. allergic to certain shampoos, has heart condition..."
+            <label for="petMedical" class="block text-sm font-medium text-portal-text mb-1">Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span></label>
+            <textarea id="petMedical" rows="3" maxlength="1000" placeholder="e.g. sensitive to shampoo, needs gentle handling"
               class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active resize-none"></textarea>
           </div>
 
@@ -454,7 +456,7 @@
 
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
-    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3&modal=static-20261025&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1"></script>
+    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3&modal=static-20261025&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp&registration-ui=20261027-v3"></script>
   </body>
 </html>

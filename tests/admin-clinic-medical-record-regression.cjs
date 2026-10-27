@@ -26,6 +26,50 @@ function component(user) {
 }
 
 (async () => {
+  const readings = component({user_id: 1, role: 'staff', staff_subrole: 'veterinarian'});
+  readings.currentAppt = {pet: {species: 'Dog'}};
+  readings.form.temperature_c = '999';
+  readings.validateVitalField('temperature_c', 'input');
+  assert.equal(readings.hasFieldError('temperature_c'), false, 'Fresh typing must not show an error');
+  readings.validateVitalField('temperature_c', 'blur');
+  assert.equal(readings.hasFieldError('temperature_c'), true);
+  readings.form.temperature_c = '';
+  readings.validateVitalField('temperature_c', 'input');
+  readings.form.temperature_c = '38.5';
+  readings.validateVitalField('temperature_c', 'input');
+  assert.equal(readings.hasFieldError('temperature_c'), false, 'A corrected reading clears without another blur/save');
+  assert.equal(readings.modalError, '');
+  assert.equal(readings.vitalWarning('temperature_c'), '');
+  readings.form.temperature_c = '40.5';
+  readings.validateVitalField('temperature_c', 'blur');
+  assert.equal(readings.hasFieldError('temperature_c'), false);
+  assert.ok(readings.vitalWarning('temperature_c'));
+  readings.currentAppt.pet.species = 'Other';
+  assert.equal(readings.vitalWarning('temperature_c'), '');
+  readings.currentAppt.pet.species = 'Cat';
+  readings.form.heart_rate_bpm = '100';
+  assert.ok(readings.vitalWarning('heart_rate_bpm'), 'Cat uses its existing species-specific interval');
+  readings.formErrors = {temperature_c: ['Server rejected this value']};
+  readings.modalError = 'Check the highlighted fields.';
+  readings.form.temperature_c = '38.5'; readings.validateVitalField('temperature_c', 'input');
+  assert.equal(readings.modalError, '', 'Correcting a server error also removes the summary');
+  readings.form.temperature_c = '999'; readings.validateVitalField('temperature_c', 'blur');
+  const originalError = readings.formErrors.temperature_c[0];
+  readings.form.temperature_c = '3.'; readings.validateVitalField('temperature_c', 'input');
+  assert.equal(readings.formErrors.temperature_c[0], originalError, 'Incomplete typing does not flash a different error');
+  for (const [field, value] of [['temperature_c', '38.55'], ['temperature_c', '3.85e1'], ['heart_rate_bpm', '0'], ['heart_rate_bpm', '80.5'], ['respiratory_rate_bpm', '201']]) {
+    readings.form[field] = value;
+    readings.validateVitalField(field, 'blur');
+    assert.equal(readings.hasFieldError(field), true, `${field} rejects ${value}`);
+  }
+  readings.form.heart_rate_bpm = '0';
+  readings.vitalExceptions.heart_rate_bpm = {value: '0', reason: 'Confirmed absent pulse during resuscitation'};
+  readings.validateVitalField('heart_rate_bpm', 'input');
+  assert.equal(readings.hasFieldError('heart_rate_bpm'), false);
+  readings.form.heart_rate_bpm = '401';
+  readings.validateVitalField('heart_rate_bpm', 'blur');
+  assert.equal(readings.hasFieldError('heart_rate_bpm'), true, 'Verification is bound to the observed value');
+  assert.equal(readings.vitalExceptions.heart_rate_bpm, undefined, 'Editing the value requires a new reason');
   let optionsCalls = [], saves = [];
   sandbox.API.getUserRole = () => 'admin';
   sandbox.API.getAdminVaccinationOptions = async clinicalOnly => {

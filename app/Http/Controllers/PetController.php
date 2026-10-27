@@ -7,6 +7,7 @@ use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Rules\ValidBreedCoat;
+use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\PetWeightSize;
@@ -69,7 +70,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
-            'color' => 'nullable|string|max:50',
+            'color' => ['nullable', 'string', new ValidPetColor],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
@@ -89,7 +90,7 @@ class PetController extends Controller
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => $data['weight'] ?? null,
-            'color' => $data['color'] ?? null,
+            'color' => ValidPetColor::validatedColor($data),
             'medical_conditions' => $data['medical_conditions'] ?? null,
             'is_archived' => 0,
         ]);
@@ -123,7 +124,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
-            'color' => 'nullable|string|max:50',
+            'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
@@ -143,8 +144,8 @@ class PetController extends Controller
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => $data['weight'] ?? null,
-            'color' => $data['color'] ?? null,
-            'medical_conditions' => $data['medical_conditions'] ?? null,
+            'color' => ValidPetColor::validatedColor($data, $pet),
+            'medical_conditions' => array_key_exists('medical_conditions', $data) ? $data['medical_conditions'] : $pet->medical_conditions,
         ];
 
         $changedVerifiedFields = array_intersect(
@@ -201,7 +202,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
-            'color' => 'nullable|string|max:50',
+            'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
@@ -228,8 +229,8 @@ class PetController extends Controller
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => $data['weight'] ?? null,
-            'color' => $data['color'] ?? null,
-            'medical_conditions' => $data['medical_conditions'] ?? null,
+            'color' => ValidPetColor::validatedColor($data, $pet),
+            'medical_conditions' => array_key_exists('medical_conditions', $data) ? $data['medical_conditions'] : $pet->medical_conditions,
         ];
 
         $changedVerifiedFields = $this->changedClinicVerifiableFields(
@@ -315,7 +316,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
-            'color' => 'nullable|string|max:50',
+            'color' => ['nullable', 'string', new ValidPetColor],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
@@ -342,7 +343,7 @@ class PetController extends Controller
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => $data['weight'] ?? null,
-            'color' => $data['color'] ?? null,
+            'color' => ValidPetColor::validatedColor($data),
             'medical_conditions' => $data['medical_conditions'] ?? null,
             'is_archived' => false,
         ]);

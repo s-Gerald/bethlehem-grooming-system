@@ -1,5 +1,6 @@
-import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1";
+import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
+import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1";
+import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924&pet-fields=20261026-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -36,6 +37,7 @@ const elements = {
   weight: document.getElementById("weight"),
   furType: document.getElementById("furType"),
   size: document.getElementById("size"),
+  color: document.getElementById("color"),
   medicalNotes: document.getElementById("medicalNotes"),
   selectedPetCount: document.getElementById("selectedPetCount"),
   selectedPetsEmptyState: document.getElementById("selectedPetsEmptyState"),
@@ -74,6 +76,12 @@ const breedCombobox = createBreedCombobox({
   errorElement: document.getElementById("breedError"),
   petTypeInput: elements.petType,
   getPetType: () => elements.petType.value,
+});
+
+const colorCombobox = createColorCombobox({
+  input: document.getElementById("color"),
+  listbox: document.getElementById("colorOptions"),
+  errorElement: document.getElementById("colorError"),
 });
 
 const breedCoatCombobox = createBreedCoatCombobox({
@@ -160,7 +168,8 @@ function getFormValues(form) {
     weight: getEnteredWeight(elements.weight),
     furType: form.furType.value,
     size: sizeCombobox.getValue(),
-    medicalNotes: normalizeText(form.medicalNotes.value),
+    color: colorCombobox.getValue(),
+    medicalNotes: form.medicalNotes.value.trim(),
   };
 }
 
@@ -203,6 +212,7 @@ function restorePetStepDraft() {
     sizeCombobox.setValue(values.size);
   }
 
+  colorCombobox.setValue(values.color);
   elements.medicalNotes.value = values.medicalNotes || "";
 }
 
@@ -222,6 +232,10 @@ function validatePetForm(values) {
     );
     if (duplicate) errors.petName = "This owner already has a pet with this name.";
   }
+
+  const colorMessage = colorCombobox.getValidationMessage();
+  if (colorMessage) errors.color = colorMessage;
+  if (values.medicalNotes.length > 1000) errors.medicalNotes = "Care notes must be 1,000 characters or fewer.";
 
   const breedValidationMessage = breedCombobox.getValidationMessage();
   if (breedValidationMessage) {
@@ -263,6 +277,7 @@ function createPetObject(formData) {
     furType: formData.furType,
     size: formData.size,
     sizeVerified: true,
+    color: formData.color,
     medicalNotes: formData.medicalNotes,
     petId: null,
     isNew: true,
@@ -282,6 +297,7 @@ function normalizeExistingPet(pet) {
       ? pet.size || ""
       : (getSizeForStoredWeight(pet.species, pet.weight).toLowerCase().replaceAll(" ", "_") || pet.size || ""),
     sizeVerified: Boolean(pet.sizeVerified),
+    color: pet.color || "",
     medicalNotes: pet.medicalConditions || "",
     isNew: false,
   };
@@ -381,7 +397,8 @@ function renderSelectedPets() {
         ["Fur Type", pet.furType],
         ["Weight", pet.weight ? `${formatSavedWeight(pet.weight)} kg` : ""],
         ["Size", pet.size ? formatPetSizeLabel(pet.size) : ""],
-        ["Medical Conditions / Special Needs", pet.medicalNotes],
+        ["Color", pet.color],
+        ["Allergies & Special Care Notes", pet.medicalNotes],
       ].filter(([, value]) => String(value ?? "").trim())
         .map(([label, value]) => `<p><span class="font-semibold text-slate-700">${label}:</span> ${escapeHtml(value)}</p>`)
         .join("")
@@ -468,6 +485,7 @@ function renderValidationErrors(values, { showAll = false } = {}) {
   });
 
   if (shouldShow) {
+    colorCombobox.showValidation(errors.color || "");
     breedCombobox.showValidation(errors.breed || "");
     breedCoatCombobox.showValidation(errors.furType || "");
   }
@@ -490,6 +508,7 @@ function resetAddPetForm() {
   petTypeCombobox.reset();
   breedCombobox.reset();
   breedCoatCombobox.reset();
+  colorCombobox.reset();
   sizeCombobox.reset();
   initializeWeightField(elements.weight);
   syncWeightAndSize({ clearManualSize: true });
@@ -508,7 +527,7 @@ function handleAddPetSubmit(event) {
       showWeightValidationInField(elements.weight, errors.weight);
     }
     renderValidationErrors(formValues, { showAll: true });
-    const firstInvalid = ["petType", "petName", "breed", "furType", "weight", "size"].find((field) => errors[field]);
+    const firstInvalid = ["petType", "petName", "breed", "color", "furType", "weight", "size", "medicalNotes"].find((field) => errors[field]);
     if (firstInvalid) elements[firstInvalid].focus();
     if (firstInvalid === "furType" && Object.keys(errors).length === 1) clearStepError();
     return;

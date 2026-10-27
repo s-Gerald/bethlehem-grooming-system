@@ -972,6 +972,21 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         return json_decode(file_get_contents(__DIR__.'/../Fixtures/weight-rules.json'), true)['pets'];
     }
 
+    public function test_clinic_walkin_validates_color_and_care_notes_for_admin_and_staff(): void
+    {
+        $payload = ['common_concerns' => ['Routine check-up'], 'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
+            'pet_name' => 'Coat color', 'species' => 'Dog', 'terms_agreed' => true];
+        foreach (['admin', 'staff'] as $role) {
+            $this->authenticateAs($role);
+            foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 1001)]] as [$field, $value]) {
+                $this->postJson('/api/admin/clinic-walk-in', [...$payload, $field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
+            }
+        }
+        $this->assertDatabaseCount('pets', 0);
+        $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'color' => '  Brown/White  ', 'medical_conditions' => 'Sensitive skin'])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Coat color', 'color' => 'Brown/White', 'medical_conditions' => 'Sensitive skin']);
+    }
+
     public function test_clinic_walkin_rejects_invalid_weight_text_for_admin_and_staff(): void
     {
         $invalid = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true)['invalid_weights'];
@@ -988,18 +1003,25 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseCount('clinic_appointments', 0);
     }
 
-    public function test_clinic_walkin_can_select_a_historical_pet_without_changing_its_weight(): void
+    #[DataProvider('historicalWalkinColors')]
+    public function test_clinic_walkin_can_select_a_historical_pet_without_changing_its_weight(?string $color): void
     {
         DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Maria', 'last_name' => 'Santos',
             'phone' => '09171234567', 'role' => 'customer']);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Historical dog',
-            'species' => 'Dog', 'weight' => 10.999, 'size' => 'small', 'is_archived' => false]);
+            'species' => 'Dog', 'weight' => 10.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         $this->authenticateAs('staff');
         $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
             'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
-            'pet_id' => 101, 'pet_name' => 'Historical dog', 'species' => 'Dog', 'terms_agreed' => true])->assertCreated();
+            'pet_id' => 101, 'color' => $color, 'pet_name' => 'Historical dog', 'species' => 'Dog', 'terms_agreed' => true])->assertCreated();
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis']);
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => 10.999, 'size' => 'small']);
+    }
+
+    public static function historicalWalkinColors(): array
+    {
+        return ['unchanged saved color' => ['Brown123'], 'older draft without color' => [null]];
     }
 
     public function test_clinic_vitals_share_precision_limits_and_preserve_records_on_invalid_input(): void
@@ -3148,6 +3170,63 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnostics', 'prescriptions.0']);
         $this->postJson('/api/admin/clinic-appointments/1/record', ['prescriptions' => ['malformed' => []], 'diagnostics' => ['malformed' => []]])
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnostics', 'prescriptions']);
+    }
+
+    public function test_clinical_vital_guardrails_reject_implausible_or_overprecise_values_without_rounding(): void
+    {
+        $this->authenticateAs('staff');
+        $this->insertClinicAppointment('in_consultation');
+        foreach ([['temperature_c', '999'], ['temperature_c', '38.55'], ['temperature_c', '3.85e1'],
+            ['heart_rate_bpm', '0'], ['heart_rate_bpm', '401'], ['heart_rate_bpm', '80.5'],
+            ['respiratory_rate_bpm', '201'], ['weight_kg', '24.001']] as [$field, $value]) {
+            $this->postJson('/api/admin/clinic-appointments/1/record', [$field => $value])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->postJson('/api/admin/clinic-appointments/1/record', [
+            'weight_kg' => '24.01', 'temperature_c' => '40.5', 'heart_rate_bpm' => '180', 'respiratory_rate_bpm' => '45',
+        ])->assertOk();
+        $this->assertDatabaseHas('clinic_vitals', ['temperature_c' => 40.5, 'weight_kg' => 24.01]);
+    }
+
+    public function test_emergency_vital_verification_is_vet_only_and_preserves_original_attribution(): void
+    {
+        (require database_path('migrations/2026_10_27_000001_add_clinic_vital_verification_history.php'))->up();
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        $this->authenticateAs('admin');
+        $this->insertClinicAppointment('in_consultation');
+        $payload = ['heart_rate_bpm' => '0', 'vital_exceptions' => ['heart_rate_bpm' => [
+            'value' => '0', 'reason' => 'Confirmed absent pulse during resuscitation',
+        ]]];
+        $this->postJson('/api/admin/clinic-appointments/1/record', $payload)->assertUnprocessable();
+        $this->authenticateAs('staff', 4, 'clinic_receptionist');
+        $this->postJson('/api/admin/clinic-appointments/1/record', $payload)->assertForbidden();
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['heart_rate_bpm' => '0'])
+            ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        $invalid = $payload;
+        $invalid['vital_exceptions']['heart_rate_bpm']['value'] = '401';
+        $this->postJson('/api/admin/clinic-appointments/1/record', $invalid)
+            ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        $this->postJson('/api/admin/clinic-appointments/1/record', $payload)->assertOk();
+        $history = json_decode(DB::table('clinic_vitals')->value('verification_history'), true);
+        $this->assertSame('0', $history[0]['value']);
+        $this->assertSame($payload['vital_exceptions']['heart_rate_bpm']['reason'], $history[0]['reason']);
+        $this->assertSame(1, $history[0]['verified_by_user_id']);
+        $this->assertNotEmpty($history[0]['verified_at']);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'clinical_record_updated', 'subject_type' => 'clinic_vitals', 'actor_id' => 1]);
+        $this->authenticateAs('admin', 3);
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['heart_rate_bpm' => '0', 'vet_notes' => 'Follow-up note'])->assertOk();
+        $this->assertSame($history, json_decode(DB::table('clinic_vitals')->value('verification_history'), true));
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['heart_rate_bpm' => '401'])
+            ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['respiratory_rate_bpm' => '0',
+            'vital_exceptions' => ['respiratory_rate_bpm' => ['value' => '0', 'reason' => 'Confirmed apnoea during resuscitation']]])->assertOk();
+        $this->assertCount(2, json_decode(DB::table('clinic_vitals')->value('verification_history'), true));
+        $this->postJson('/api/admin/clinic-appointments/1/record', [
+            'weight_kg' => '24', 'temperature_c' => '38.5', 'heart_rate_bpm' => '0', 'respiratory_rate_bpm' => '0', 'finish_case' => true,
+        ])->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment']);
     }
 
     public function test_medical_record_finish_endpoint_cannot_bypass_attending_attribution(): void

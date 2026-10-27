@@ -59,6 +59,7 @@ function emptyVaccinationDraftForm() {
     next_due_date: "",
     dose_amount: "",
     dose_unit: "",
+    dose_unit_other: "",
     route: "",
     administration_site: "",
     notes: "",
@@ -78,6 +79,9 @@ function adminClinicVaccinations() {
     _recordsRequest: 0,
     _detailRequest: 0,
     administrationRoutes: VACCINATION_ADMINISTRATION_ROUTES,
+    doseUnits: CLINIC_CLINICAL_RULES.doseUnits,
+    legacyDoseUnit: '',
+    doseCompletionAttempted: false,
 
     vaccineOptions: [],
     optionsLoading: false,
@@ -120,10 +124,18 @@ function adminClinicVaccinations() {
       });
       window.addEventListener('clinic-treatment-focus', event => {
         if (event.detail.id !== this.appointment?.id) return;
+        const errors = Object.entries(event.detail.errors || {});
+        const recordId = errors[0]?.[0].split('.')[1];
+        const record = this.records.find(record => String(record.id) === recordId);
+        if (record?.state === 'draft') {
+          this.openEditForm(record);
+          this.doseCompletionAttempted = true;
+          this.formErrors = Object.fromEntries(errors.map(([field, messages]) => [field.split('.').slice(2).join('.'), messages.join(' ')]));
+        }
         this.formErrorSummary = event.detail.message;
         this.$nextTick(() => {
           this.$refs.treatmentForm?.scrollIntoView({block: 'start'});
-          this.$refs.treatmentForm?.querySelector('input, button')?.focus();
+          this.focusValidationSummary();
         });
       });
       window.addEventListener("clinic-vaccinations-open", (event) => {
@@ -255,6 +267,8 @@ function adminClinicVaccinations() {
       if (!this.pet?.id || !this.caseOngoing()) return;
 
       this.form = emptyVaccinationDraftForm();
+      this.legacyDoseUnit = '';
+      this.doseCompletionAttempted = false;
       this.treatmentType = "vaccine";
       this.clearMedicine();
       this.recordKind = "inventory";
@@ -289,6 +303,7 @@ function adminClinicVaccinations() {
         next_due_date: record.next_due_date || "",
         dose_amount: record.dose_amount ?? "",
         dose_unit: record.dose_unit || "",
+        dose_unit_other: "",
         route: record.route || "",
         administration_site: record.administration_site || "",
         notes: record.notes || "",
@@ -302,6 +317,8 @@ function adminClinicVaccinations() {
         unavailableVaccineName: "",
       };
       this.treatmentType = record.treatment_type || "vaccine";
+      this.legacyDoseUnit = record.dose_unit || '';
+      this.doseCompletionAttempted = false;
       this.clearMedicine();
       this.recordKind = record.inventory_item_id ? "inventory" : "historical";
       this.selectedVaccine = null;
@@ -412,7 +429,9 @@ function adminClinicVaccinations() {
       this.treatmentType = type;
       this.clearVaccine();
       this.clearMedicine();
-      for (const field of ["vaccine_name", "product_name", "manufacturer", "batch_number", "product_expiry_date", "next_due_date", "dose_amount", "dose_unit"]) this.form[field] = "";
+      for (const field of ["vaccine_name", "product_name", "manufacturer", "batch_number", "product_expiry_date", "next_due_date", "dose_amount", "dose_unit", "dose_unit_other"]) this.form[field] = "";
+      this.legacyDoseUnit = '';
+      this.doseCompletionAttempted = false;
       this.form.inventory_quantity = 1;
       this.formErrors = {};
       this.formErrorSummary = "";
@@ -489,6 +508,34 @@ function adminClinicVaccinations() {
       delete this.formErrors.inventory_item_id;
     },
 
+    get effectiveDoseUnit() {
+      if (this.form.dose_unit === this.legacyDoseUnit) return this.legacyDoseUnit;
+      const unit = this.form.dose_unit === 'other' ? String(this.form.dose_unit_other || '').trim() : this.form.dose_unit;
+      return this.doseUnits.find(item => item.value.toLowerCase() === unit?.toLowerCase())?.value || unit;
+    },
+    doseFieldErrors(required = false) {
+      const errors = clinicDoseErrors(this.form.dose_amount, this.effectiveDoseUnit, required);
+      if (this.form.dose_unit === 'other' && this.legacyDoseUnit !== 'other' && (!this.form.dose_unit_other?.trim() || this.effectiveDoseUnit === 'other')) {
+        errors.dose_unit_other = 'Specify dose unit.';
+        delete errors.dose_unit;
+      }
+      if (this.form.dose_unit && !this.doseUnits.some(unit => unit.value === this.form.dose_unit) && this.form.dose_unit !== this.legacyDoseUnit) errors.dose_unit = 'Select a dose unit.';
+      if (String(this.effectiveDoseUnit || '').length > CLINIC_CLINICAL_RULES.doseUnitMaxLength) errors.dose_unit_other = 'Use up to 30 characters.';
+      return errors;
+    },
+    validateDoseFields(interaction = 'blur') {
+      const errors = this.doseFieldErrors(this.doseCompletionAttempted && this.recordKind === 'inventory');
+      for (const field of ['dose_amount', 'dose_unit', 'dose_unit_other']) {
+        if (interaction === 'input') {
+          if (this.formErrors[field] && !errors[field]) delete this.formErrors[field];
+        } else if (errors[field]) this.formErrors[field] = errors[field];
+        else delete this.formErrors[field];
+      }
+      this.formErrorSummary = Object.keys(this.formErrors).length ? 'Check the highlighted fields.' : '';
+      window.dispatchEvent(new CustomEvent('clinic-treatment-validation', {detail: {
+        id: this.appointment?.id, hasErrors: Object.keys(this.formErrors).length > 0,
+      }}));
+    },
     validateForm(finalizing = false) {
       const errors = {};
       const value = (field) => String(this.form[field] ?? "").trim();
@@ -512,17 +559,8 @@ function adminClinicVaccinations() {
         if (finalizing && medicine && !this.formModal.clinicAppointmentId) errors.clinic_appointment_id = "An ongoing Clinic case is required for a medicine treatment.";
       }
 
-      const dose = Number(value("dose_amount"));
-      if (value("dose_amount") && (!Number.isFinite(dose) || dose <= 0)) {
-        errors.dose_amount = "Dose amount must be greater than zero.";
-      } else if (dose > 99999.999) {
-        errors.dose_amount = "Dose amount must not exceed 99,999.999.";
-      }
-
-      if (Boolean(value("dose_amount")) !== Boolean(value("dose_unit"))) {
-        errors[value("dose_amount") ? "dose_unit" : "dose_amount"] = "Enter both Dose Amount and Dose Unit, or leave both blank.";
-      }
-      maxLength("dose_unit", 30, "Dose unit");
+      this.doseCompletionAttempted = finalizing;
+      Object.assign(errors, this.doseFieldErrors(finalizing && usesInventory));
       maxLength("administration_site", 100, "Administration site");
 
       if (
@@ -546,7 +584,7 @@ function adminClinicVaccinations() {
       }
 
       this.formErrors = errors;
-      this.formErrorSummary = Object.keys(errors).length ? "Complete the required fields marked *." : "";
+      this.formErrorSummary = Object.keys(errors).length ? "Check the highlighted fields." : "";
 
       if (this.formErrorSummary) {
         this.focusValidationSummary();
@@ -587,6 +625,7 @@ function adminClinicVaccinations() {
         next_due_date: this.treatmentType === "vaccine" ? nullableText("next_due_date") : null,
         dose_amount: nullableText("dose_amount"),
         dose_unit: nullableText("dose_unit"),
+        ...(this.form.dose_unit === 'other' && this.legacyDoseUnit !== 'other' ? {dose_unit_other: nullableText('dose_unit_other')} : {}),
         route: nullableText("route"),
         administration_site: nullableText("administration_site"),
         clinic_appointment_id: this.formModal.clinicAppointmentId
@@ -661,7 +700,7 @@ function adminClinicVaccinations() {
           Array.isArray(messages) ? messages.join(" ") : String(messages),
         ]),
       );
-      this.formErrorSummary = Object.keys(this.formErrors).length ? "Complete the required fields marked *." : (error.message || fallback);
+      this.formErrorSummary = Object.keys(this.formErrors).length ? "Check the highlighted fields." : (error.message || fallback);
       this.focusValidationSummary();
     },
 
@@ -781,7 +820,7 @@ function adminClinicVaccinations() {
         record.administration_site].filter(Boolean).join(' / ') || '—';
     },
     trapTreatmentFocus(event) {
-      const controls = [...event.currentTarget.querySelectorAll('button, input, textarea, [tabindex="0"]')]
+      const controls = [...event.currentTarget.querySelectorAll('button, input, select, textarea, [tabindex="0"]')]
         .filter(element => !element.disabled && element.getClientRects().length);
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }

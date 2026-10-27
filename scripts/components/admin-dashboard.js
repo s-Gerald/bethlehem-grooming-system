@@ -2783,8 +2783,8 @@ function adminDashboard() {
         </section>` : ""}
         ${staffNote ? `<section class="pet-grooming-print-section"><h2>Staff Note</h2><p class="pet-grooming-print-notes">${this.escapePrintHtml(staffNote)}</p></section>` : ""}
         ${medicalInformation ? `
-        <section class="pet-grooming-print-section pet-grooming-print-medical">
-          <h2>Medical Alert</h2>
+        <section class="pet-grooming-print-section">
+          <h2>Allergies &amp; Special Care Notes</h2>
           <p class="pet-grooming-print-notes">${this.escapePrintHtml(medicalInformation)}</p>
         </section>` : ""}
         <footer class="pet-grooming-print-brand">

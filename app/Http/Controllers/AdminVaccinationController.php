@@ -357,8 +357,12 @@ class AdminVaccinationController extends Controller
             'expected_weight_kg' => [...$optional, 'numeric', 'decimal:0,2', 'min:0.01', 'max:999999.99'],
             'strength_concentration' => ['prohibited'],
             'next_due_date' => [...$optional, 'date', ...($usesInventory ? ['after_or_equal:today'] : [])],
-            'dose_amount' => [...$optional, 'numeric', 'gt:0', 'max:99999.999'],
+            'dose_amount' => [...$optional, function ($attribute, $value, $fail) {
+                $errors = \App\Support\ClinicClinicalRules::doseErrors($value, null);
+                if (isset($errors['dose_amount'])) $fail($errors['dose_amount']);
+            }],
             'dose_unit' => [...$optional, 'string', 'max:30'],
+            'dose_unit_other' => ['sometimes', 'nullable', 'string', 'max:30'],
             'route' => [...$optional, Rule::in(VaccinationRecord::ADMINISTRATION_ROUTES)],
             'administration_site' => [...$optional, 'string', 'max:100'],
             'clinic_appointment_id' => [
@@ -385,18 +389,34 @@ class AdminVaccinationController extends Controller
             ]),
         ], [
             'next_due_date.after_or_equal' => 'The next vaccination date cannot be before today.',
-            'dose_amount.gt' => 'Dose amount must be greater than zero.',
-            'dose_amount.max' => 'Dose amount must not exceed 99,999.999.',
         ]);
 
         $validator->after(function ($validator) use ($request, $record): void {
             $amount = $request->input('dose_amount', $record?->dose_amount);
             $unit = $request->input('dose_unit', $record?->dose_unit);
-            if (filled($amount) !== filled($unit)) {
-                $validator->errors()->add(filled($amount) ? 'dose_unit' : 'dose_amount', 'Enter both Dose Amount and Dose Unit, or leave both blank.');
+            $units = array_column(\App\Support\ClinicClinicalRules::catalog()['doseUnits'], 'value');
+            // Unchanged legacy units are not reinterpreted or normalized.
+            $legacy = $record && $unit === $record->dose_unit;
+            if (is_string($unit) && filled($unit) && ! $legacy && ! in_array($unit, $units, true)) {
+                $validator->errors()->add('dose_unit', 'Select a dose unit.');
+            }
+            if ($unit === 'other' && ! $legacy) {
+                $custom = $request->input('dose_unit_other');
+                if (! is_string($custom) || trim($custom) === '' || \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom) === 'other') {
+                    $validator->errors()->add('dose_unit_other', 'Specify dose unit.');
+                }
+                $unit = is_string($custom) ? \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom) : null;
+            }
+            foreach (\App\Support\ClinicClinicalRules::doseErrors($amount, $unit) as $field => $message) {
+                $validator->errors()->add($field, $message);
             }
         });
         $data = $validator->validate();
+        if (($data['dose_unit'] ?? null) === 'other' && (! $record || $record->dose_unit !== 'other')) {
+            $custom = trim($data['dose_unit_other']);
+            $data['dose_unit'] = \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom);
+        }
+        unset($data['dose_unit_other']);
         if (! $record) $data['treatment_type'] = $type;
         if ($medicine) {
             $data = [...$data, 'next_due_date' => null, 'product_name' => null,

@@ -1,3 +1,4 @@
+import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3";
 import {
   MAX_PETS_PER_BOOKING as GROOMING_MAX_PETS,
@@ -162,6 +163,12 @@ const breedCombobox = createBreedCombobox({
   getPetType: () => elements.petType.value,
 });
 
+const colorCombobox = createColorCombobox({
+  input: document.getElementById("color"),
+  listbox: document.getElementById("colorOptions"),
+  errorElement: document.getElementById("colorError"),
+});
+
 const breedCoatCombobox = createBreedCoatCombobox({
   root: document.getElementById("furTypeCombobox"),
   breedInput: elements.breed,
@@ -294,7 +301,7 @@ function buildPetSummaryHtml(pet) {
       <p><span class="font-semibold text-slate-700">Size:</span> ${escapeHtml(
         pet.size || "Not specified",
       )} · ${pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}</p>
-      <p><span class="font-semibold text-slate-700">Medical Notes:</span> ${escapeHtml(
+      <p><span class="font-semibold text-slate-700">Allergies &amp; Special Care Notes:</span> ${escapeHtml(
         pet.medicalNotes || "None",
       )}</p>
     </div>
@@ -542,7 +549,7 @@ function getFormValues(form) {
     gender: genderCombobox.getValue(),
     birthdate: elements.birthdate.value,
     breed: form.breed.value,
-    color: elements.color.value,
+    color: colorCombobox.getValue(),
     weight: getEnteredWeight(elements.weight),
     furType: form.furType.value,
     size: sizeCombobox.getValue(),
@@ -571,7 +578,7 @@ function restoreAddPetFormDraft() {
   genderCombobox.setValue(values.gender || "");
   elements.birthdate.value = values.birthdate || "";
   breedCombobox.setValue(values.petType ? values.breed || "" : "");
-  elements.color.value = values.color || "";
+  colorCombobox.setValue(values.color);
 
   if (values.weight) {
     elements.weight.value = values.weight;
@@ -600,6 +607,10 @@ function validatePetForm(values) {
   if (!IS_CLINIC_VISIT && !isEligibleForGrooming(values)) {
     return GROOMING_MINIMUM_AGE_MESSAGE;
   }
+
+  const colorMessage = colorCombobox.getValidationMessage();
+  if (colorMessage) return colorMessage;
+  if (values.medicalNotes.length > 1000) return "Care notes must be 1,000 characters or fewer.";
 
   const breedValidationMessage = breedCombobox.getValidationMessage();
   if (breedValidationMessage) {
@@ -635,6 +646,7 @@ function resetAddPetForm() {
   genderCombobox.reset();
   breedCombobox.reset();
   breedCoatCombobox.reset();
+  colorCombobox.reset();
   sizeCombobox.reset();
   initializeWeightField(elements.weight);
   syncWeightAndSize({ clearManualSize: true });
@@ -649,6 +661,7 @@ async function handleAddPetSubmit(event) {
   const validationMessage = validatePetForm(formValues);
 
   if (validationMessage) {
+    colorCombobox.showValidation();
     breedCombobox.showValidation();
     breedCoatCombobox.showValidation();
     const weightMessage = getWeightFieldValidationMessage(elements.weight)
@@ -656,7 +669,10 @@ async function handleAddPetSubmit(event) {
     if (weightMessage) {
       showWeightValidationInField(elements.weight, weightMessage);
     }
-    if (validationMessage === breedCoatCombobox.getValidationMessage()) {
+    if (validationMessage === colorCombobox.getValidationMessage()) {
+      clearStepError();
+      elements.color.focus();
+    } else if (validationMessage === breedCoatCombobox.getValidationMessage()) {
       clearStepError();
       elements.furType.focus();
     } else if (validationMessage === breedCombobox.getValidationMessage()) {
@@ -701,6 +717,12 @@ async function handleAddPetSubmit(event) {
     renderSelectedPets();
     clearStepError();
   } catch (error) {
+    if (error.errors?.color?.[0]) {
+      clearStepError();
+      colorCombobox.showValidation(error.errors.color[0]);
+      elements.color.focus();
+      return;
+    }
     if (error.errors?.fur_type?.[0]) {
       clearStepError();
       breedCoatCombobox.showValidation(error.errors.fur_type[0]);

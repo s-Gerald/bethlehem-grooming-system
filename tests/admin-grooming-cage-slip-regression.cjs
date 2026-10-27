@@ -80,7 +80,7 @@ assert.equal(context.document.title, "#P12 Mochi <small>");
 const orderedContent = [
   "#P12", "Mochi &lt;small&gt;", "Persian · Small", "Alex &amp; Sam",
   "Regular Grooming", "Nail Trim", "Customer Note", "Keep tail fluffy.",
-  "Staff Note", "Handle gently around ears.", "Medical Alert", "Sensitive skin",
+  "Staff Note", "Handle gently around ears.", "Allergies &amp; Special Care Notes", "Sensitive skin",
   "Grooming Cage Slip", "Bethlehem Animal Clinic",
 ];
 let lastIndex = -1;
@@ -109,7 +109,7 @@ const emptyPet = {
 ui.printPetCard({ ownerName: "Taylor", internalStaffNote: " \n " }, emptyPet, 2);
 assert.ok(appended.innerHTML.includes("Not assigned"));
 assert.ok(appended.innerHTML.includes("Cat · Medium"), "Species replaces missing breed");
-for (const heading of ["Selected services", "Customer Note", "Staff Note", "Medical Alert"]) {
+for (const heading of ["Selected services", "Customer Note", "Staff Note", "Allergies &amp; Special Care Notes"]) {
   assert.ok(!appended.innerHTML.includes(heading), `${heading} is hidden when empty`);
 }
 fallback();

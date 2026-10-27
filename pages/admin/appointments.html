@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3" />
     <link
       rel="stylesheet"
-      href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003"
+      href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1"
     />
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=checkin-layout-20261009-2&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
@@ -1385,7 +1385,7 @@
                       <section x-show="pet.medicalConditions || pet.specialInstructions || canEditGroomingVisitNotes()" class="grooming-details-section">
                         <h5>Notes</h5>
                       <template x-if="pet.medicalConditions">
-                        <p class="mt-2 text-sm"><span class="text-slate-400">Medical Information:</span> <span class="text-red-600" x-text="pet.medicalConditions"></span></p>
+                        <p class="mt-2 text-sm"><span class="text-slate-400">Allergies &amp; Special Care Notes:</span> <span class="text-slate-700" x-text="pet.medicalConditions"></span></p>
                       </template>
                       <div x-show="pet.specialInstructions || canEditGroomingVisitNotes()" class="mt-2 text-sm">
                         <p class="font-semibold text-slate-500" x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Grooming & Visit Notes' : 'Customer Note'"></p>
@@ -1569,6 +1569,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3";
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import {
   CLINIC_VISIT_CONFIRMATION_KEY,

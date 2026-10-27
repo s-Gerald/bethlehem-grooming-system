@@ -546,7 +546,7 @@ class AdminVaccinationApiTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'next_due_date' => 'The next vaccination date cannot be before today.',
-                'dose_amount' => 'Dose amount must be greater than zero.',
+                'dose_amount',
                 'dose_unit',
                 'route',
                 'administration_site',
@@ -557,7 +557,7 @@ class AdminVaccinationApiTest extends TestCase
             'dose_amount' => 100000,
         ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['dose_amount' => 'Dose amount must not exceed 99,999.999.']);
+            ->assertJsonValidationErrors(['dose_amount']);
 
         $this->postJson('/api/admin/pets/101/vaccinations', ['inventory_item_id' => 301])
             ->assertCreated()->assertJsonPath('vaccination.dose_amount', null)->assertJsonPath('vaccination.dose_unit', null);
@@ -1238,7 +1238,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertEquals(2, DB::table('inventory_items')->where('item_id', 301)->value('quantity_on_hand'));
     }
 
-    public function test_vaccine_stock_quantity_is_independent_of_optional_or_changed_clinical_dose(): void
+    public function test_vaccine_stock_quantity_is_independent_of_draft_or_changed_clinical_dose(): void
     {
         Carbon::setTestNow('2026-07-23 10:00:00');
         $this->authenticateAs('admin', 1);
@@ -1252,6 +1252,10 @@ class AdminVaccinationApiTest extends TestCase
             if ($dose !== null) {
                 $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => 7.5])
                     ->assertOk()->assertJsonPath('vaccination.inventory_quantity', '1.00');
+            } else {
+                $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")
+                    ->assertUnprocessable()->assertJsonValidationErrors(['dose_amount', 'dose_unit']);
+                $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => 0.5, 'dose_unit' => 'mL'])->assertOk();
             }
             $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
         }
@@ -1260,7 +1264,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertDatabaseHas('vaccination_records', ['dose_amount' => 7.5, 'dose_unit' => 'mL']);
     }
 
-    public function test_bottle_medicine_deducts_one_unit_with_optional_dose_and_unchanged_flat_price(): void
+    public function test_bottle_medicine_deducts_one_unit_with_documented_dose_and_unchanged_flat_price(): void
     {
         $this->medicineStock();
         foreach ([null, 2.5] as $dose) {
@@ -1268,6 +1272,11 @@ class AdminVaccinationApiTest extends TestCase
                 'inventory_quantity' => 1, 'dose_amount' => $dose, 'dose_unit' => $dose === null ? null : 'mL',
             ]))->assertCreated()->json('vaccination.id');
             if ($dose !== null) $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => 9])->assertOk();
+            else {
+                $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")
+                    ->assertUnprocessable()->assertJsonValidationErrors(['dose_amount', 'dose_unit']);
+                $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => 0.5, 'dose_unit' => 'mL'])->assertOk();
+            }
             $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk()
                 ->assertJsonPath('vaccination.batch_number', 'MED-1')
                 ->assertJsonPath('vaccination.product_expiry_date', '2027-07-23');
@@ -1329,6 +1338,9 @@ class AdminVaccinationApiTest extends TestCase
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_unit' => null])
             ->assertUnprocessable()->assertJsonValidationErrors('dose_unit');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => null, 'dose_unit' => null])->assertOk();
+        $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")
+            ->assertUnprocessable()->assertJsonValidationErrors(['dose_amount', 'dose_unit']);
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => '0.5', 'dose_unit' => 'mL'])->assertOk();
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertOk();
     }
 
@@ -1576,7 +1588,7 @@ class AdminVaccinationApiTest extends TestCase
             $this->assertDatabaseHas('vaccination_records', ['id' => $id, 'published_at' => null]);
             $this->postJson($endpoint, ['finish_case' => true])->assertUnprocessable()->assertJsonValidationErrors('weight_kg');
             $payload = [...$vitals, 'weight_kg' => 5, 'working_diagnosis' => 'Final assessment', 'finish_case' => true];
-            $this->postJson($endpoint, $payload)->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id);
+            $this->postJson($endpoint, $payload)->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id.'.inventory_quantity');
             $this->assertDatabaseHas('clinic_records', ['clinic_appointment_id' => 201, 'working_diagnosis' => 'Unfinished']);
             $this->assertDatabaseHas('clinic_vitals', ['clinic_appointment_id' => 201, 'weight_kg' => 4]);
             $this->assertStockOnHand(301, '2');
@@ -1600,6 +1612,7 @@ class AdminVaccinationApiTest extends TestCase
         $medicine = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         $vaccine = $this->postJson('/api/admin/pets/101/vaccinations', [
             'inventory_item_id' => 302, 'inventory_quantity' => 1, 'clinic_appointment_id' => 201,
+            'dose_amount' => 0.5, 'dose_unit' => 'mL',
         ])->assertCreated()->json('vaccination.id');
         $this->assertDatabaseCount('clinic_charges', 0);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1651,7 +1664,7 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', [
             'clinic_appointment_id' => 201, 'treatment_type' => 'medicine',
         ])->assertCreated()->json('vaccination.id');
-        $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id);
+        $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable()->assertJsonValidationErrors('treatments.'.$id.'.treatment');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", [
             'vaccine_name' => 'External treatment', 'administered_date' => '2020-01-01',
         ])->assertOk();
@@ -1707,6 +1720,62 @@ class AdminVaccinationApiTest extends TestCase
             'pet_name' => $name,
             'species' => $species,
         ]);
+    }
+
+    public function test_dose_formats_precision_catalog_and_other_units_are_validated_for_both_types(): void
+    {
+        $this->authenticateAs('admin', 1);
+        $this->insertPet(101, 'Mochi', 'cat');
+        foreach (['vaccine', 'medicine'] as $type) {
+            foreach (['0', '-1', '1e2', 'Infinity', 'NaN', '0x10', '1.0001', '100000'] as $amount) {
+                $this->postJson('/api/admin/pets/101/vaccinations', [
+                    'treatment_type' => $type, 'dose_amount' => $amount, 'dose_unit' => 'mL',
+                ])->assertUnprocessable()->assertJsonValidationErrors('dose_amount');
+            }
+            foreach (['capsule', 'drop', 'puff', 'dose'] as $unit) {
+                $this->postJson('/api/admin/pets/101/vaccinations', [
+                    'treatment_type' => $type, 'dose_amount' => '0.5', 'dose_unit' => $unit,
+                ])->assertUnprocessable()->assertJsonValidationErrors('dose_amount');
+            }
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '0.5', 'dose_unit' => 'tablet',
+            ])->assertCreated()->assertJsonPath('vaccination.dose_unit', 'tablet');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '2', 'dose_unit' => 'other',
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_unit_other');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '2', 'dose_unit' => 'other', 'dose_unit_other' => 'OTHER',
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_unit_other');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '2', 'dose_unit' => 'other', 'dose_unit_other' => 'measured scoop',
+            ])->assertCreated()->assertJsonPath('vaccination.dose_unit', 'measured scoop');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '2', 'dose_unit' => 'unknown',
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_unit');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '0.5', 'dose_unit' => 'other', 'dose_unit_other' => 'CAPSULE',
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_amount');
+            $this->postJson('/api/admin/pets/101/vaccinations', [
+                'treatment_type' => $type, 'dose_amount' => '2', 'dose_unit' => 'other', 'dose_unit_other' => str_repeat('x', 31),
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_unit_other');
+        }
+    }
+
+    public function test_legacy_dose_units_are_editable_without_reinterpretation_and_new_units_are_canonical(): void
+    {
+        $this->authenticateAs('admin', 1);
+        $this->insertPet(101, 'Mochi', 'cat');
+        $id = $this->postJson('/api/admin/pets/101/vaccinations', ['dose_amount' => '0.125', 'dose_unit' => 'tablet'])
+            ->assertCreated()->json('vaccination.id');
+        foreach (['ml', 'legacy scoop', 'other', 'IU'] as $legacy) {
+            DB::table('vaccination_records')->where('id', $id)->update(['dose_unit' => $legacy]);
+            $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['notes' => 'Review historical record', 'dose_unit' => $legacy])
+                ->assertOk()->assertJsonPath('vaccination.dose_unit', $legacy);
+        }
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_unit' => 'mL'])
+            ->assertOk()->assertJsonPath('vaccination.dose_unit', 'mL');
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_unit' => 'other', 'dose_unit_other' => 'ML'])
+            ->assertOk()->assertJsonPath('vaccination.dose_unit', 'mL');
     }
 
     private function insertAppointment(int $appointmentId, int $petId, string $status = 'in_consultation'): void

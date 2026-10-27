@@ -26,9 +26,9 @@ class ClinicTreatmentFinalizer
             try {
                 $this->commit($record, $case, $actor);
             } catch (ValidationException $error) {
-                throw ValidationException::withMessages([
-                    'treatments.'.$record->id => array_merge(...array_values($error->errors())),
-                ]);
+                $errors = [];
+                foreach ($error->errors() as $field => $messages) $errors['treatments.'.$record->id.'.'.$field] = $messages;
+                throw ValidationException::withMessages($errors);
             }
         }
     }
@@ -43,9 +43,8 @@ class ClinicTreatmentFinalizer
         if ($usesInventory && $record->administered_date->toDateString() !== now()->toDateString()) {
             throw ValidationException::withMessages(['administered_date' => 'Review this treatment’s administration date before finalizing.']);
         }
-        if (($record->dose_amount === null) !== blank($record->dose_unit)) {
-            throw ValidationException::withMessages(['dose_amount' => 'Enter both Dose Amount and Dose Unit, or leave both blank.']);
-        }
+        $doseErrors = \App\Support\ClinicClinicalRules::doseErrors($record->dose_amount, $record->dose_unit, $usesInventory);
+        if ($doseErrors) throw ValidationException::withMessages($doseErrors);
 
         $item = null;
         if ($usesInventory) {

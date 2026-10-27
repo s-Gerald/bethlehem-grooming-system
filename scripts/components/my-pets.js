@@ -1,3 +1,4 @@
+import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
 import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
@@ -129,6 +130,12 @@ document.addEventListener("DOMContentLoaded", () => {
     petTypeInput: petSpecies,
     getPetType: () => petSpecies.value,
     errorElement: document.getElementById("petBreedError"),
+  });
+
+  const colorCombobox = createColorCombobox({
+    input: document.getElementById("petColor"),
+    listbox: document.getElementById("petColorOptions"),
+    errorElement: document.getElementById("petColorError"),
   });
 
   const breedCoatCombobox = createBreedCoatCombobox({
@@ -514,7 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["Fur Type", resolvedFurType],
       ["Weight", pet.weight ? `${formatSavedWeight(pet.weight)} kg` : null],
       ["Color", pet.color],
-      ["Medical", pet.medical_conditions],
+      ["Allergies & Special Care Notes", pet.medical_conditions],
     ].filter(([, v]) => v);
 
     const detailsHtml = rows.length
@@ -608,7 +615,7 @@ document.addEventListener("DOMContentLoaded", () => {
     breedCombobox.setValue(pet.breed || "");
     petFurType.value = pet.fur_type || "";
     breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
-    document.getElementById("petColor").value = pet.color || "";
+    colorCombobox.setValue(pet.color, { preserveLegacy: true });
     document.getElementById("petMedical").value = pet.medical_conditions || "";
 
     initializeWeightField(petWeight);
@@ -634,6 +641,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeModal() {
+    colorCombobox.close();
     petModal.classList.add("hidden");
     petModal.classList.remove("flex");
     editingPet = null;
@@ -699,7 +707,7 @@ document.addEventListener("DOMContentLoaded", () => {
       breed:              petBreed.value.trim() || null,
       gender:             genderCombobox.getValue() || null,
       birthdate:          petBirthdate.value || null,
-      color:              document.getElementById("petColor").value.trim() || null,
+      color:              colorCombobox.getValue() || null,
       size:               normalizePetSize(sizeCombobox.getValue()) || null,
       fur_type:           petFurType.value || null,
       weight:             weight || null,
@@ -708,6 +716,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const validationMessage = validatePetForm(payload);
     if (validationMessage) {
+      colorCombobox.showValidation();
       breedCombobox.showValidation();
       breedCoatCombobox.showValidation();
       const weightMessage = getWeightFieldValidationMessage(petWeight)
@@ -715,7 +724,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (weightMessage) {
         showWeightValidationInField(petWeight, weightMessage);
       }
-      if (validationMessage === breedCoatCombobox.getValidationMessage()) {
+      if (validationMessage === colorCombobox.getValidationMessage()) {
+        document.getElementById("petColor").focus();
+      } else if (validationMessage === breedCoatCombobox.getValidationMessage()) {
         petFurType.focus();
       } else if (validationMessage === breedCombobox.getValidationMessage()) {
         petBreed.focus();
@@ -759,6 +770,11 @@ document.addEventListener("DOMContentLoaded", () => {
       invalidatePetCollections();
       await loadPets();
     } catch (err) {
+      if (err.errors?.color?.[0]) {
+        colorCombobox.showValidation(err.errors.color[0]);
+        document.getElementById("petColor").focus();
+        return;
+      }
       if (err.errors?.fur_type?.[0]) {
         breedCoatCombobox.showValidation(err.errors.fur_type[0]);
         petFurType.focus();
@@ -916,7 +932,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetPetForm() {
     document.getElementById("petId").value = "";
     document.getElementById("petName").value = "";
-    document.getElementById("petColor").value = "";
+    colorCombobox.reset();
     document.getElementById("petMedical").value = "";
     petBirthdate.value = "";
 
@@ -962,6 +978,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (duplicatePetName) {
       return "You already have a pet with this name.";
     }
+
+    const colorMessage = colorCombobox.getValidationMessage();
+    if (colorMessage) return colorMessage;
+    if ((payload.medical_conditions || "").length > 1000) return "Care notes must be 1,000 characters or fewer.";
 
     const breedValidationMessage = breedCombobox.getValidationMessage();
     if (breedValidationMessage) {

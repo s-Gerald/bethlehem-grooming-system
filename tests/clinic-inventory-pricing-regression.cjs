@@ -112,6 +112,9 @@ modal.selectMedicine({...item, is_active: true, quantity_on_hand: 3, available_q
 assert.equal(modal.medicineQuote.price, 700);
 assert.equal(modal.form.inventory_quantity, 1);
 assert.equal(modal.form.dose_unit, "");
+assert.equal(modal.validateForm(false), true);
+assert.equal(modal.validateForm(true), false, 'Incomplete dose drafts cannot be finalized');
+modal.form.dose_amount = '0.5'; modal.form.dose_unit = 'mL';
 assert.equal(modal.validateForm(true), true);
 assert.equal(modal.buildPayload().expected_price, 700);
 modal.appointment.weight_kg = 5;

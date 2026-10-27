@@ -83,7 +83,7 @@ function petStep(clinic = false) {
     getGroomingSchedule: petService.getBookingSchedule, addStoredPet: petService.addPetToBooking,
     removeStoredPet: petService.removePetFromBooking, syncWeightSizeFields: weight.syncPetWeightAndSize,
     CLINIC_VISIT_PETS_KEY: "clinicPets", sessionStorage, URLSearchParams, console,
-    createFixedOptionCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox,
+    createColorCombobox: combobox, createFixedOptionCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox,
     formatBookingSchedule: () => "", formatPetSizeLabel: value => value, normalizePetSize: value => value,
     readClinicVisitDraft: () => ({}), updateClinicVisitDraft() {},
     isGroomingSinglePage: () => true, goToGroomingStep: step => { navigated = step; },
@@ -133,7 +133,7 @@ await ui.context.syncSavedPets();
 assert.deepEqual(petService.getBookingPets().map(pet => pet.id), ["six"]);
 ui.context.handleNext();
 assert.equal(ui.target(), "services");
-const values = { petType: "Dog", petName: "New Pet", birthdate: "" };
+const values = { petType: "Dog", petName: "New Pet", birthdate: "", medicalNotes: "" };
 assert.equal(ui.context.validatePetForm(values), "");
 assert.equal(ui.context.validatePetForm({ ...values, birthdate: underage.birthdate }), age.GROOMING_MINIMUM_AGE_MESSAGE);
 

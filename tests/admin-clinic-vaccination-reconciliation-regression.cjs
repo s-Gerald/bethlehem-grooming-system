@@ -37,6 +37,37 @@ const draft = {
 };
 
 (async () => {
+  const doses = component();
+  doses.form.dose_amount = '2';
+  doses.validateDoseFields('input');
+  assert.equal(doses.formErrors.dose_unit, undefined, 'Do not interrupt first-time typing');
+  doses.validateDoseFields('blur');
+  assert.ok(doses.formErrors.dose_unit);
+  doses.form.dose_unit = 'mL';
+  doses.validateDoseFields('input');
+  assert.equal(doses.formErrors.dose_unit, undefined, 'Selecting a unit clears its server/client error immediately');
+  doses.form.dose_amount = '0.5'; doses.form.dose_unit = 'capsule';
+  doses.validateDoseFields('blur');
+  assert.ok(doses.formErrors.dose_amount);
+  doses.form.dose_unit = 'tablet'; doses.validateDoseFields('input');
+  assert.equal(doses.formErrors.dose_amount, undefined, 'A different unit revalidates fractional amounts');
+  for (const amount of ['0', '-1', '1e2', 'Infinity', 'NaN', '0x10', '1.0001', '100000']) {
+    doses.form.dose_amount = amount; doses.validateDoseFields('blur');
+    assert.ok(doses.formErrors.dose_amount, `Reject dose ${amount}`);
+  }
+  doses.form.dose_amount = '0.5'; doses.form.dose_unit = 'other';
+  doses.validateDoseFields('blur');
+  assert.ok(doses.formErrors.dose_unit_other);
+  doses.form.dose_unit_other = 'measured scoop'; doses.validateDoseFields('input');
+  assert.equal(doses.formErrors.dose_unit_other, undefined);
+  assert.equal(doses.buildPayload().dose_unit, 'other');
+  assert.equal(doses.buildPayload().dose_unit_other, 'measured scoop');
+  doses.form.dose_unit_other = 'CAPSULE'; doses.validateDoseFields('blur');
+  assert.ok(doses.formErrors.dose_amount, 'Other cannot bypass whole-count rules for a recognized unit');
+  doses.form.dose_unit_other = 'measured scoop'; doses.validateDoseFields('input');
+  assert.equal(doses.formErrors.dose_amount, undefined);
+  doses.validateForm(true);
+  assert.equal(doses.formErrors.dose_amount, undefined);
   let resolveOptions;
   sandbox.API.getAdminVaccinationOptions = () => new Promise((resolve) => { resolveOptions = resolve; });
   const loading = component();
@@ -67,7 +98,8 @@ const draft = {
     assert.equal(loading.productSelectable(item), selectable);
   }
   loading.form.dose_amount = ""; loading.form.dose_unit = "";
-  assert.equal(loading.validateForm(true), true);
+  assert.equal(loading.validateForm(false), true, 'An incomplete dose is permitted in a draft');
+  assert.equal(loading.validateForm(true), false, 'An administered Inventory treatment needs a documented dose');
   loading.form.dose_amount = 2.5;
   assert.equal(loading.validateForm(), false);
   loading.form.dose_unit = "mL";
@@ -107,6 +139,14 @@ const draft = {
   current.pet = { id: 101 };
   current.appointment = { id: 201, status: "in_consultation" };
   current.vaccineOptions = [vaccine];
+  current.openEditForm(draft);
+  current.openEditForm({...draft, dose_unit: 'legacy scoop'});
+  assert.equal(current.form.dose_unit, 'legacy scoop');
+  assert.equal(current.buildPayload().dose_unit, 'legacy scoop');
+  assert.equal(current.validateForm(false), true);
+  current.openEditForm({...draft, dose_unit: 'other'});
+  assert.equal(current.validateForm(false), true, 'The historical literal other stays editable');
+  assert.equal(current.buildPayload().dose_unit, 'other');
   current.openEditForm(draft);
   current.loadVaccinations = async () => {};
   current.loadOptions = async () => {};

@@ -538,6 +538,22 @@ class AdminClinicController extends Controller
         $veterinarians = User::activeVeterinarian()->get(['user_id', 'first_name', 'last_name'])->keyBy('user_id');
         $request->merge(['primary_veterinarian_id' => $actor->isVeterinarian()
             ? $actor->user_id : $request->input('primary_veterinarian_id', $existing?->primary_veterinarian_id)]);
+        $vitalRule = function (string $field) use ($request, $appointment, $actor) {
+            return function ($attribute, $value, $fail) use ($field, $request, $appointment, $actor) {
+                $rules = \App\Support\ClinicClinicalRules::class;
+                if ($rules::validVital($field, $value)) return;
+                $verification = $request->input('vital_exceptions.'.$field);
+                if ($rules::validVital($field, $value, true)
+                    && ($rules::hasVerification($appointment->vitals, $field, $value)
+                        || ($actor->isVeterinarian() && is_array($verification)
+                            && is_scalar($verification['value'] ?? null)
+                            && trim((string) $verification['value']) === trim((string) $value)
+                            && is_string($verification['reason'] ?? null)
+                            && mb_strlen(trim($verification['reason'])) >= 5 && mb_strlen($verification['reason']) <= 200))) return;
+                $fail($field === 'temperature_c' ? 'Invalid temperature. Enter 25–45 °C with up to 1 decimal, or obtain veterinarian verification.'
+                    : 'Invalid value. Enter a positive whole number within the entry limit, or obtain veterinarian verification.');
+            };
+        };
         $data = $request->validate([
             'primary_veterinarian_id' => ['nullable', 'required_if_accepted:finish_case', 'integer', Rule::in($veterinarians->keys()->all())],
             'additional_veterinarian_ids' => ['sometimes', 'array', 'list', 'max:20'],
@@ -572,10 +588,14 @@ class AdminClinicController extends Controller
             'medicines' => ['prohibited'],
             // Vitals
             'weight_kg' => ['nullable', 'required_if_accepted:finish_case', new \App\Rules\ValidPetWeight(requireSpecies: false)],
-            'temperature_c' => ['nullable', 'required_if_accepted:finish_case', 'numeric', 'decimal:0,1', 'min:0', 'max:999.9'],
-            'heart_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', 'integer', 'min:0', 'max:65535'],
-            'respiratory_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', 'integer', 'min:0', 'max:65535'],
+            'temperature_c' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('temperature_c')],
+            'heart_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('heart_rate_bpm')],
+            'respiratory_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('respiratory_rate_bpm')],
             'body_condition_score' => ['nullable', 'integer', 'min:1', 'max:9'],
+            'vital_exceptions' => [Rule::prohibitedIf(! $actor->isVeterinarian()), 'sometimes', 'array:temperature_c,heart_rate_bpm,respiratory_rate_bpm'],
+            'vital_exceptions.*' => ['required', 'array:value,reason'],
+            'vital_exceptions.*.value' => ['required', 'string', 'max:20'],
+            'vital_exceptions.*.reason' => ['required', 'string', 'min:5', 'max:200'],
 
         ], [
             'diagnostics.prohibited' => 'Add diagnostic services through Billing > Clinic Services. Record imaging in Diagnostic Imaging.',
@@ -595,6 +615,24 @@ class AdminClinicController extends Controller
                 return response()->json(['success' => true, 'record' => $this->formatRecord($appt->record, $appt->id)]);
             }
             $this->assertClinicalContentEditable($appt);
+
+            $verificationHistory = [];
+            $newVerifications = [];
+            foreach (array_keys(\App\Support\ClinicClinicalRules::catalog()['vitals']) as $field) {
+                if (! isset($data[$field]) || \App\Support\ClinicClinicalRules::validVital($field, $data[$field])) continue;
+                $verificationHistory = $appt->vitals?->verification_history ?? [];
+                if (\App\Support\ClinicClinicalRules::hasVerification($appt->vitals, $field, $data[$field])) continue;
+                $verification = $data['vital_exceptions'][$field] ?? null;
+                if (! $actor->isVeterinarian() || ! $verification
+                    || trim($verification['value']) !== trim((string) $data[$field])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([$field => 'Veterinarian verification required for this reading.']);
+                }
+                $newVerifications[] = [
+                    'field' => $field, 'value' => trim((string) $data[$field]), 'reason' => trim($verification['reason']),
+                    'verified_by_user_id' => (int) $actor->user_id,
+                    'verified_by_name' => trim($actor->first_name.' '.$actor->last_name), 'verified_at' => now()->toIso8601String(),
+                ];
+            }
 
             $existing = $appt->record;
             $name = fn (User $user) => trim($user->first_name.' '.$user->last_name) ?: "User #{$user->user_id}";
@@ -652,6 +690,7 @@ class AdminClinicController extends Controller
                         'heart_rate_bpm' => array_key_exists('heart_rate_bpm', $data) ? $data['heart_rate_bpm'] : $appt->vitals?->heart_rate_bpm,
                         'respiratory_rate_bpm' => array_key_exists('respiratory_rate_bpm', $data) ? $data['respiratory_rate_bpm'] : $appt->vitals?->respiratory_rate_bpm,
                         'body_condition_score' => array_key_exists('body_condition_score', $data) ? $data['body_condition_score'] : $appt->vitals?->body_condition_score,
+                        ...($newVerifications ? ['verification_history' => [...$verificationHistory, ...$newVerifications]] : []),
                     ]
                 );
             }
@@ -902,6 +941,7 @@ class AdminClinicController extends Controller
                 'heart_rate_bpm' => $vitals->heart_rate_bpm,
                 'respiratory_rate_bpm' => $vitals->respiratory_rate_bpm,
                 'body_condition_score' => $vitals->body_condition_score,
+                'verification_history' => $vitals->verification_history ?? [],
             ] : null,
             'record' => $this->formatRecord($record, $a->id),
             'activity' => [

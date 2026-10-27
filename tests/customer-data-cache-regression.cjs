@@ -355,13 +355,13 @@ function mountPage(env, page) {
   context.setInterval = context.window.setInterval;
   context.window.ClientNotificationUI = { ensureDropdownControls: () => () => "all", setUnreadCount() {}, render() {} };
   const combobox = ({ input }) => ({
-    setValue(value) { input.value = value; }, reset() { input.value = ""; }, update() {}, setOptions() {},
+    close() {}, setValue(value) { input.value = value ?? ""; }, reset() { input.value = ""; }, update() {}, setOptions() {},
     setDisabled(value) { input.disabled = value; }, getValue: () => input.value, getValidationMessage: () => "", showValidation() {},
   });
   Object.assign(context, {
     ...healthRecordTools,
     ...petWeightTools, normalizePetSize, syncWeightSizeFields: petWeightTools?.syncPetWeightAndSize,
-    createBreedCombobox: combobox, createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
+    createColorCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
     breedCoatCatalogueReady: Promise.resolve(), URLSearchParams,
   });
   let script;
