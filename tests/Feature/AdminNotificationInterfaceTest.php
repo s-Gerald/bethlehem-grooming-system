@@ -6,11 +6,17 @@ use Tests\TestCase;
 
 class AdminNotificationInterfaceTest extends TestCase
 {
-    public function test_all_three_entry_points_load_the_same_notification_ui_and_service(): void
+    public function test_all_management_entry_points_load_one_shared_notification_ui_and_service(): void
     {
-        foreach (['dashboard.html' => 'dashboard', 'appointments.html' => 'grooming', 'clinic.html' => 'clinic'] as $page => $origin) {
-            $html = file_get_contents(base_path("pages/admin/{$page}"));
-            $this->assertStringContainsString('<admin-notification-bell origin="'.$origin.'">', $html);
+        $pages = array_map(fn ($page) => 'pages/admin/'.$page.'.html', [
+            'dashboard', 'clients', 'appointments', 'clinic', 'inventory/inventory', 'archive',
+            'transactions', 'reports', 'services', 'settings',
+        ]);
+        $pages = [...$pages, 'resources/views/admin/availability.html', 'resources/views/admin/activity-log.html'];
+        foreach ($pages as $page) {
+            $html = file_get_contents(base_path($page));
+            $this->assertSame(1, substr_count($html, '<admin-notification-bell>'), $page);
+            $this->assertStringContainsString('data-notification-mobile', $html);
             $this->assertStringContainsString('css/admin-notifications.css', $html);
             $service = strpos($html, 'scripts/services/admin-notification-service.js');
             $component = strpos($html, 'scripts/components/admin-notifications.js');
@@ -34,6 +40,8 @@ class AdminNotificationInterfaceTest extends TestCase
             $this->assertStringContainsString($contract, $html);
         }
         $this->assertStringNotContainsString('admin-custom-select', $html);
+        $this->assertStringNotContainsString('<admin-notification-bell', $html);
+        $this->assertStringNotContainsString('admin-notification-back', $html);
         $this->assertStringNotContainsString('aria-current="page"', $html);
         $sidebar = file_get_contents(base_path('scripts/components/admin-sidebar.js'));
         $this->assertStringNotContainsString('"notifications.html": "appointments"', $sidebar);

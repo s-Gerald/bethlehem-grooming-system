@@ -20,10 +20,26 @@ async function filtersCacheAndCountReuse() {
 
 function controller(e) {
   e.c.Intl = Intl;
+  if (!e.c.getAdminNotificationOrigin) {
+    e.c.document.querySelectorAll = () => [];
+    vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
+  }
   vm.runInContext(read('scripts/services/admin-notification-service.js'), e.c);
   vm.runInContext(read('scripts/components/admin-notifications.js'), e.c);
   return e.c.adminNotifications();
 }
+async function originsNeverClaimCurrentPage() {
+  for (const file of ['dashboard', 'activity-log', 'availability', 'settings']) {
+    const e = environment(), attributes = {};
+    Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?return_to=' + encodeURIComponent(`/pages/admin/${file}.html`)});
+    const link = {href: e.c.window.location.origin + `/pages/admin/${file}.html`, closest: () => null,
+      setAttribute: (name, value) => {attributes[name] = value;}};
+    e.c.document.querySelectorAll = () => [link];
+    vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
+    assert.equal(attributes[':aria-current'], 'null', `${file} is origin context, never the Notifications current page`);
+  }
+}
+
 async function filterRaceAndPagination() {
   const e = environment(), ui = controller(e), old = deferred();
   e.respond(() => old.promise);
@@ -55,9 +71,128 @@ async function mutationRacesAndUserIsolation() {
 async function sidebarOrigin() {
   const e = environment(); e.c.document.querySelectorAll = () => [];
   vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
-  for (const [from, expected] of [['dashboard', 'dashboard'], ['grooming', 'appointments'], ['clinic', 'clinic'], ['', ''], ['payments', ''], ['__proto__', '']]) {
-    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/notifications.html', `?from=${from}`), expected);
+  for (const [path, expected, section = ''] of [
+    ['dashboard.html', 'dashboard'], ['clients.html?q=pet', 'customers'],
+    ['appointments.html', 'appointments'], ['clinic.html#records', 'clinic'],
+    ['inventory/inventory.html#overview', 'inventory', 'overview'],
+    ['inventory/inventory.html#products?filter=expiry', 'inventory', 'products'],
+    ['inventory/inventory.html#history', 'inventory', 'history'],
+    ['inventory/inventory.html#stock-in?item=1&from=products', 'inventory', 'stock-in'],
+    ['inventory/inventory.html#__proto__', 'inventory', 'overview'],
+    ...['archive', 'transactions', 'reports', 'services', 'settings', 'availability', 'activity-log'].map(p => [p + '.html', p]),
+  ]) {
+    const returnTo = '/pages/admin/' + path;
+    const search = '?return_to=' + encodeURIComponent(returnTo);
+    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/notifications.html', search), expected);
+    const context = e.c.getAdminNotificationOrigin(search);
+    assert.equal(context.href, returnTo);
+    assert.equal(context.section, section);
   }
+  for (const value of ['', '//example.com/pages/admin/dashboard.html', 'https://example.com/pages/admin/dashboard.html',
+    '/pages/admin/sign-in.html', '/pages/admin/notifications.html', '/pages/admin/../client/dashboard.html', '__proto__', '/pages/admin/dashboard.html/extra']) {
+    const search = '?return_to=' + encodeURIComponent(value);
+    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/notifications.html', search), '');
+    assert.equal(e.c.getAdminNotificationOrigin(search), null);
+  }
+}
+
+async function targetedNavigationAndReadState() {
+  const e = environment(); e.c.document.querySelectorAll = () => [];
+  vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
+  const ui = controller(e);
+  e.c.window.removeEventListener = name => e.events.delete(name);
+  e.c.document.removeEventListener = () => {};
+  Object.assign(e.c.window.location, {pathname: '/pages/admin/inventory/inventory.html', search: '?q=soap', hash: '#products?filter=expiry'});
+  let navigated;
+  e.c.window.location.assign = value => {navigated = new URL(value, e.c.window.location.origin);};
+  ui.mode = 'dropdown';
+  for (const is_read of [false, true]) {
+    await ui.activateNotification({notification_id: 42, is_read}, {detail: 1});
+    assert.equal(navigated.pathname, '/pages/admin/notifications.html');
+    assert.equal(navigated.searchParams.get('selected_id'), '42');
+    assert.equal(navigated.searchParams.get('return_to'), '/pages/admin/inventory/inventory.html?q=soap#products?filter=expiry');
+    assert.equal(navigated.searchParams.has('focus'), false);
+  }
+  await ui.activateNotification({notification_id: 42, is_read: true}, {detail: 0});
+  assert.equal(navigated.searchParams.get('focus'), 'keyboard', 'Keyboard activation preserves a visible destination focus indicator');
+  assert.equal(e.calls.length, 0, 'Dropdown navigation never starts a read mutation');
+  const selected = {notification_id: 42, is_read: false, created_at: '2026-01-01'};
+  Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?selected_id=42', hash: ''});
+  e.c.setInterval = () => 1; e.c.clearInterval = () => {};
+  const full = e.c.adminNotifications();
+  full.$nextTick = fn => fn(); full.$root = {querySelector: () => null};
+  e.respond(endpoint => endpoint.endsWith('/read') ? {unread_count: 0} : {
+    unread_count: 1, notifications: [{notification_id: 1, is_read: true}], selected_notification: selected, pagination: {has_more: true},
+  });
+  await full.init();
+  assert.equal(full.notifications.some(n => n.notification_id === 42 && n.is_read), true);
+  assert.equal(e.calls.filter(c => c.method === 'PATCH').length, 1);
+  assert.equal(new URLSearchParams(e.calls[0].endpoint.split('?')[1]).get('selected_id'), '42');
+  assert.equal(full.highlightedId, '42');
+  e.respond(() => ({unread_count: 0, notifications: [{...selected, is_read: true}], pagination: {has_more: false}}));
+  await full.loadMore();
+  assert.equal(full.notifications.filter(n => n.notification_id === 42).length, 1, 'Pagination never duplicates the selected row');
+  await full.setStatus('unread');
+  assert.equal(full.selectedId, '', 'Manual filtering releases the selected record');
+  assert.equal(new URLSearchParams(e.calls.at(-1).endpoint.split('?')[1]).has('selected_id'), false);
+  full.destroy();
+}
+
+async function selectedReadFailuresAndFocus() {
+  for (const scenario of ['read', 'keyboard', 'unread', 'unavailable', 'failed', 'invalid']) {
+    const e = environment();
+    const ui = controller(e);
+    e.c.setInterval = () => 1; e.c.clearInterval = () => {};
+    e.c.window.removeEventListener = () => {}; e.c.document.removeEventListener = () => {};
+    Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?selected_id=' + (scenario === 'invalid' ? 'bad' : '42') + (scenario === 'keyboard' ? '&focus=keyboard' : '')});
+    let focused = 0, scrolled = 0;
+    const focusState = {};
+    ui.$nextTick = fn => fn();
+    ui.$root = {querySelector: selector => {
+      assert.equal(selector, '[data-notification-id="42"]');
+      return {dataset: focusState, focus: options => {assert.equal(options.preventScroll, true); focused++;}, scrollIntoView: () => scrolled++};
+    }};
+    e.respond((endpoint, options) => {
+      if (options.method === 'PATCH') {
+        if (scenario === 'failed') return {ok: false, status: 500, json: async () => ({message: 'Read failed.'}), headers: {get: () => null}};
+        return {unread_count: 0};
+      }
+      return {unread_count: scenario === 'read' ? 0 : 1, notifications: [],
+        selected_notification: scenario === 'unavailable' ? null : {notification_id: 42, is_read: ['read', 'keyboard'].includes(scenario)}};
+    });
+    await ui.init();
+    if (['unavailable', 'invalid'].includes(scenario)) {
+      assert.equal(ui.notice, 'Notification unavailable.');
+      assert.equal(focused, 0);
+    } else {
+      assert.equal(focused, 1); assert.equal(scrolled, 1);
+      assert.equal(focusState.pointerFocus, scenario === 'keyboard' ? undefined : 'true');
+      assert.equal(ui.notifications.length, 1);
+      assert.equal(ui.error, scenario === 'failed' ? 'Read failed.' : '');
+    }
+    assert.equal(e.calls.filter(c => c.method === 'PATCH').length, ['unread', 'failed'].includes(scenario) ? 1 : 0);
+    assert.equal(e.calls.filter(c => c.method === 'GET').length, 1, 'Target lookup shares the initial history request');
+    ui.destroy();
+  }
+}
+
+async function responsiveBellKeepsOneController() {
+  const e = environment(), ui = controller(e);
+  const home = {insertBefore: host => {host.parentNode = home;}};
+  const mobile = {append: host => {host.parentNode = mobile;}};
+  const products = {append: host => {host.parentNode = products;}};
+  let mutations = 0;
+  const host = {parentNode: home, before: comment => {comment.parentNode = home;}};
+  ui.$el = {closest: () => host};
+  e.c.document.createComment = () => ({});
+  e.c.document.querySelector = selector => selector === '[data-notification-mobile]' ? mobile : selector === '[data-notification-slot="products"]' ? products : null;
+  e.c.Alpine = {mutateDom: fn => {mutations++; fn();}};
+  Object.assign(e.c.window.location, {pathname: '/pages/admin/inventory/inventory.html', hash: '#products', search: ''});
+  e.c.window.innerWidth = 375; ui.placeBell(); assert.equal(host.parentNode, mobile);
+  ui.placeBell(); assert.equal(mutations, 1, 'Unchanged placement performs no DOM mutation');
+  e.c.window.innerWidth = 1280; ui.placeBell(); assert.equal(host.parentNode, products);
+  e.c.window.innerWidth = 375; ui.placeBell(); assert.equal(host.parentNode, mobile);
+  assert.equal(e.calls.length, 0, 'Responsive movement never initializes a second request owner');
 }
 async function sharedPollingAndLifecycle() {
   const e = environment(), timers = new Map(), documentEvents = new Map();
@@ -144,7 +279,8 @@ async function changedServerCountInvalidatesCachedHistory() {
   assert.equal(data.notifications[0]?.type, 'clinic_no_show', 'An authoritative changed count invalidates cached record pages');
 }
 (async () => {
-  for (const test of [filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges, serverNoShowRefreshesVisibleHistory, changedServerCountInvalidatesCachedHistory]) {
+  for (const test of [filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, targetedNavigationAndReadState, selectedReadFailuresAndFocus, responsiveBellKeepsOneController, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges, serverNoShowRefreshesVisibleHistory, changedServerCountInvalidatesCachedHistory]) {
     await test(); console.log(`${test.name} passed`);
   }
+  await originsNeverClaimCurrentPage(); console.log('originsNeverClaimCurrentPage passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

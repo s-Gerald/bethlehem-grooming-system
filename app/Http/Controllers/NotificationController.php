@@ -38,6 +38,7 @@ class NotificationController extends Controller
             'mode' => ['sometimes', Rule::in(['count', 'dropdown', 'full'])],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:30'],
+            'selected_id' => ['sometimes', 'integer', 'min:1', 'max:2147483647'],
         ]);
 
         $status = $filters['status'] ?? 'all';
@@ -51,7 +52,7 @@ class NotificationController extends Controller
         $page = (int) ($filters['page'] ?? 1);
         $perPage = (int) ($filters['per_page'] ?? ($mode === 'full' ? 10 : 30));
 
-        $query = $this->visibleNotifications()->with([
+        $visible = $this->visibleNotifications()->with([
             'booking.user',
             'booking.walkin',
             'booking.timeWindow',
@@ -61,6 +62,7 @@ class NotificationController extends Controller
             'clinicAppointment.pet',
             'clinicAppointment.timeWindow',
         ]);
+        $query = clone $visible;
 
         if ($status === 'unread') {
             $query->where('is_read', false);
@@ -86,6 +88,13 @@ class NotificationController extends Controller
             ->orderByDesc('notification_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
+        // One scoped primary-key lookup, only when the selected row is outside this page.
+        $selected = null;
+        if ($mode === 'full' && isset($filters['selected_id'])) {
+            $selected = $paginator->getCollection()->firstWhere('notification_id', (int) $filters['selected_id'])
+                ?? $visible->find((int) $filters['selected_id']);
+        }
+
         return response()->json([
             'success' => true,
             'unread_count' => $this->unreadCount(),
@@ -96,6 +105,8 @@ class NotificationController extends Controller
             'notifications' => collect($paginator->items())
                 ->map(fn (Notification $notification) => $this->serialize($notification))
                 ->values(),
+            ...($mode === 'full' && isset($filters['selected_id'])
+                ? ['selected_notification' => $selected ? $this->serialize($selected) : null] : []),
             'pagination' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),

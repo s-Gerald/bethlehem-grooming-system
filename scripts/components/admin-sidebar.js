@@ -1,3 +1,44 @@
+// Shared by sidebar context and notification navigation, including nested routes.
+const adminManagementBase = new URL('../../pages/admin/', document.currentScript?.src || new URL('/scripts/components/admin-sidebar.js', window.location.origin));
+const adminManagementPages = new Map([
+  ['dashboard.html', 'dashboard'], ['clients.html', 'customers'],
+  ['appointments.html', 'appointments'], ['clinic.html', 'clinic'],
+  ['inventory/inventory.html', 'inventory'], ['archive.html', 'archive'],
+  ['transactions.html', 'transactions'], ['reports.html', 'reports'],
+  ['services.html', 'services'], ['settings.html', 'settings'],
+  ['availability.html', 'availability'], ['activity-log.html', 'activity-log'],
+]);
+
+function validateAdminNotificationOrigin(value) {
+  if (!value || /^(?:\/\/|.*\\)/.test(value)) return null;
+  try {
+    const url = new URL(value, adminManagementBase);
+    if (url.origin !== adminManagementBase.origin || url.username || url.password) return null;
+    let route = [...adminManagementPages.keys()].find(path => new URL(path, adminManagementBase).pathname === url.pathname);
+    for (const page of ['availability', 'activity-log']) {
+      if (url.pathname === new URL(`../../api/admin/${page}/page`, adminManagementBase).pathname) route = `${page}.html`;
+    }
+    if (!route) return null;
+    const page = adminManagementPages.get(route);
+    const requestedSection = url.hash.slice(1).split('?')[0];
+    const section = page === 'inventory' ? adminInventoryRoutes.includes(requestedSection) ? requestedSection : 'overview' : '';
+    return {href: url.pathname + url.search + url.hash, page, section};
+  } catch { return null; }
+}
+
+function getAdminNotificationOrigin(search = window.location.search) {
+  return validateAdminNotificationOrigin(new URLSearchParams(search).get('return_to'));
+}
+
+function getAdminNotificationsHref(id) {
+  const url = new URL('notifications.html', adminManagementBase);
+  const {pathname, search = '', hash = ''} = window.location;
+  const origin = validateAdminNotificationOrigin(pathname + search + hash);
+  if (origin) url.searchParams.set('return_to', origin.href);
+  if (id != null) url.searchParams.set('selected_id', String(id));
+  return url.pathname + url.search;
+}
+
 function getAdminSidebarActivePage(pathname = window.location.pathname, search = window.location.search) {
   const normalizedPath = String(pathname || "")
     .replace(/\\/g, "/")
@@ -14,30 +55,16 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
   if (normalizedPath.endsWith('/api/admin/activity-log/page')) return 'activity-log';
   const pageName = normalizedPath.split("/").filter(Boolean).pop() || "";
   if (pageName === 'notifications.html') {
-    const origin = new URLSearchParams(search).get('from');
-    return new Map([['dashboard', 'dashboard'], ['grooming', 'appointments'], ['clinic', 'clinic']]).get(origin) || '';
+    return getAdminNotificationOrigin(search)?.page || '';
   }
-  const pageMap = {
-    "dashboard.html": "dashboard",
-    "clients.html": "customers",
-    "appointments.html": "appointments",
-    "clinic.html": "clinic",
-    "services.html": "services",
-    "archive.html": "archive",
-    "transactions.html": "transactions",
-    "reports.html": "reports",
-    "settings.html": "settings",
-    "availability.html": "availability",
-    "activity-log.html": "activity-log",
-  };
-
-  return pageMap[pageName] || "";
+  return adminManagementPages.get(pageName) || "";
 }
 
 const adminInventoryLinks = { overview: "Overview", products: "Products", "sell-product": "Point of Sale", history: "Stock Movements" };
 const adminInventoryRoutes = ["overview", "products", "sell-product", "stock-in", "stock-out", "history"];
 
 function getAdminInventorySection() {
+  if (window.location.pathname.endsWith('/notifications.html')) return getAdminNotificationOrigin()?.section || '';
   if (!String(window.location.pathname || "").endsWith("/inventory.html")) return "";
   const section = String(window.location.hash || "").slice(1).split("?")[0];
   return adminInventoryRoutes.includes(section) ? section : "overview";
@@ -72,7 +99,8 @@ function installAdminInventoryNavigation() {
       child.style.display = 'none';
     }
     child.textContent = label;
-    child.setAttribute(":aria-current", `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
+    child.setAttribute(":class", `activePage === 'inventory' && inventorySection === '${section}' ? 'is-context-selected' : ''`);
+    child.setAttribute(":aria-current", window.location.pathname.endsWith('/notifications.html') ? 'null' : `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
     child.setAttribute("@click", "sidebarOpen = false");
     submenu.appendChild(child);
   }
@@ -186,7 +214,8 @@ function renderCachedAdminSidebar() {
     submenu?.style.removeProperty('display');
     submenu?.querySelectorAll('a').forEach(link => {
       const selected = new URL(link.href).hash === `#${section}`;
-      if (selected) link.setAttribute('aria-current', 'page');
+      link.classList.toggle('is-context-selected', selected);
+      if (selected && !window.location.pathname.endsWith('/notifications.html')) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     });
   }
@@ -211,7 +240,8 @@ if (typeof document !== "undefined" && document.querySelector) {
     if (link.closest('.admin-inventory-submenu')) return;
     const page = getAdminSidebarActivePage(new URL(link.href).pathname);
     link.setAttribute(':class', `activePage === '${page}' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'`);
-    link.setAttribute(':aria-current', (window.location.pathname === new URL(link.href).pathname || page === 'activity-log' && getAdminSidebarActivePage() === page)
+    link.setAttribute(':aria-current', !window.location.pathname.endsWith('/notifications.html')
+      && (window.location.pathname === new URL(link.href).pathname || ['activity-log', 'availability'].includes(page) && getAdminSidebarActivePage() === page)
       ? `activePage === '${page}' ? 'page' : null` : 'null');
   });
   renderCachedAdminSidebar();

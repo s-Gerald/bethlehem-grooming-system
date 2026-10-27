@@ -7,13 +7,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Activity Log | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css" />
-    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261020-3" />
+    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
     <link rel="stylesheet" href="../../css/custom.css?v=admin-notification-filter-20260821&release=20261001&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
       <link rel="stylesheet" href="../../css/components/admin-activity.css?v=20261025-refinements" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -118,8 +118,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
 
 
@@ -129,18 +129,18 @@
             <p class="text-sm font-semibold text-[#5c7690]">Admin Panel</p>
             <h2 class="text-lg font-extrabold text-[#1f3850]">Activity Log</h2>
           </div>
-          <button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
+          <div class="admin-notification-header-actions"><span data-notification-mobile></span><button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
             <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
-          </button>
+          </button></div>
         </header>
 
         <main x-data="adminActivityLog()" @pointerdown.capture="setInteractionMode(false)" @keydown.capture="setInteractionMode(true)" class="flex-1 px-4 py-6 lg:px-6 lg:pt-0">
           <div x-ref="content" data-session-surface>
             <section class="lg:sticky lg:top-0 lg:z-30 lg:-mx-6 lg:bg-[#f5f8fb]/95 lg:px-6 lg:py-4 lg:backdrop-blur">
-              <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6" data-session-public>
+              <div class="rounded-[24px] border border-[#cfe0ee] bg-[#a9bfd6] px-4 py-4 lg:px-6" data-session-public><div class="flex items-center justify-between gap-3"><div>
                 <h2 class="text-3xl font-extrabold text-[#1f3850] lg:text-4xl">Activity Log</h2>
                 <p class="mt-1 text-sm text-[#355674]">Review activity across Clinic and Grooming.</p>
-              </div>
+              </div><admin-notification-bell></admin-notification-bell></div></div>
             </section>
             <section class="mt-6 overflow-hidden rounded-2xl border border-[#d7e3ef] bg-white shadow-sm" aria-label="Activity history" :aria-busy="loading">
               <form class="activity-toolbar" @submit.prevent="changeFilters()">
@@ -187,5 +187,7 @@
     </div>
     <script src="../../scripts/components/admin-activity-log.js?v=20261025-refinements"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>
 </html>

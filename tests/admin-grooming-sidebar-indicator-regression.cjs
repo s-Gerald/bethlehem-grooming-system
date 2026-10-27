@@ -11,8 +11,8 @@ const context = {
   Date: class extends Date {
     constructor(...args) { super(...(args.length ? args : [today + 'T00:00:01+08:00'])); }
   },
-  Intl, URLSearchParams, console,
-  document: {},
+  Intl, URL, URLSearchParams, console,
+  document: {currentScript: {src: 'http://localhost/scripts/components/admin-sidebar.js'}},
   API: {
     loadAdminData: (key, load, render) => load().then(render),
     getAdminToken: () => 'test-token',

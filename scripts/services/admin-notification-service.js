@@ -29,7 +29,8 @@ var AdminNotificationService = (() => {
       void emit({kind: 'count'});
     }
     // Consumers can update read state without mutating retained API responses.
-    return {...data, notifications: data.notifications?.map(notification => ({...notification}))};
+    return {...data, notifications: data.notifications?.map(notification => ({...notification})),
+      ...(data.selected_notification ? {selected_notification: {...data.selected_notification}} : {})};
   }
 
   async function refreshCount() {

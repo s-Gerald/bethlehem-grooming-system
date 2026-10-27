@@ -1,3 +1,7 @@
+const adminNotificationIcons = typeof document !== 'undefined' && document.currentScript
+  ? new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href
+  : '../../assets/icons/phosphor.svg?v=admin-icons-20261018';
+
 function getAdminNotificationIcon(name) {
   return ({ 'calendar-days': 'calendar-dots', 'circle-check': 'check-circle', 'credit-card': 'credit-card',
     'circle-x': 'x-circle', history: 'clock-counter-clockwise', stethoscope: 'stethoscope' })[name] || 'bell';
@@ -9,10 +13,12 @@ if (typeof customElements !== 'undefined') {
     connectedCallback() {
       if (this.childElementCount) return;
       this.innerHTML = `
-        <button type="button" @click="markOneRead(notification)" class="admin-notification-row"
-          :class="notification.is_read ? '' : 'is-unread'"
-          :aria-label="(notification.is_read ? '' : 'Mark as read: ') + notification.message_parts.map(part => part.text).join('')">
-          <span class="admin-notification-icon" aria-hidden="true"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" fill="currentColor"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + getAdminNotificationIcon(notification.icon)"></use></svg></span>
+        <button type="button" @click="activateNotification(notification, $event)" class="admin-notification-row"
+          @keydown="delete $el.dataset.pointerFocus" @blur="delete $el.dataset.pointerFocus"
+          :data-notification-id="notification.notification_id"
+          :class="{'is-unread': !notification.is_read, 'is-selected': highlightedId === String(notification.notification_id)}"
+          :aria-label="(mode === 'dropdown' ? 'Open notification: ' : notification.is_read ? '' : 'Mark as read: ') + notification.message_parts.map(part => part.text).join('')">
+          <span class="admin-notification-icon" aria-hidden="true"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" fill="currentColor"><use :href="'${adminNotificationIcons}#' + getAdminNotificationIcon(notification.icon)"></use></svg></span>
           <span class="min-w-0 flex-1">
             <span class="block text-sm leading-6 text-slate-600"><template x-for="(part, index) in notification.message_parts" :key="index"><span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span></template></span>
             <span x-show="notification.context_parts?.length" class="mt-1 block text-xs text-slate-400"><template x-for="(part, index) in notification.context_parts" :key="index"><span :class="part.emphasized ? 'font-semibold' : ''" x-text="part.text"></span></template></span>
@@ -25,17 +31,16 @@ if (typeof customElements !== 'undefined') {
   customElements.define('admin-notification-bell', class extends HTMLElement {
     connectedCallback() {
       if (this.childElementCount) return;
-      const origin = this.getAttribute('origin');
-      const from = ['dashboard', 'grooming', 'clinic'].includes(origin) ? origin : '';
       this.innerHTML = `
         <div x-data="adminNotifications('dropdown')" class="admin-notification-entry"
           @click.outside="if (!$refs.preview?.contains($event.target)) close()" @focusout="if (!$refs.preview?.contains($event.relatedTarget) && !$el.contains($event.relatedTarget)) close()"
-          @resize.window="if (open) positionPreview()"
+          @resize.window="placeBell()"
+          @hashchange.window="$nextTick(() => placeBell())"
           @keydown.escape.stop.prevent="close(true)">
           <button x-ref="bell" type="button" @click="toggle()" class="admin-notification-bell"
             aria-label="Notifications" :aria-label="unreadCount ? 'Notifications, ' + unreadCount + ' unread' : 'Notifications'"
             :aria-expanded="String(open)" aria-controls="admin-notification-preview">
-            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#bell"></use></svg>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${adminNotificationIcons}#bell"></use></svg>
             <span x-cloak x-show="unreadCount > 0" x-text="unreadCount" class="admin-notification-badge" aria-hidden="true"></span>
           </button>
           <template x-teleport="body"><section x-ref="preview" x-cloak x-show="open" :style="previewStyle" id="admin-notification-preview" aria-label="Notifications" tabindex="-1" class="admin-notification-preview"
@@ -56,7 +61,7 @@ if (typeof customElements !== 'undefined') {
                 <template x-for="notification in group.notifications" :key="notification.notification_id"><admin-notification-row></admin-notification-row></template>
               </section></template></div>
             </div>
-            <div class="admin-notification-preview-footer"><a href="./notifications.html${from ? '?from=' + from : ''}">See all notifications</a></div>
+            <div class="admin-notification-preview-footer"><a :href="historyHref">See all notifications</a></div>
           </section></template>
         </div>`;
     }
@@ -72,9 +77,19 @@ function adminNotifications(mode = 'full') {
     page: 1, hasMore: false, loading: false, loaded: false,
     _loadedFilter: '', loadingMore: false, error: '', _requestId: 0,
     open: false, busy: false, _destroyed: false, previewStyle: '',
+    selectedId: '', highlightedId: '', notice: '', _targetHandled: false, _highlightTimer: null,
+    historyHref: '',
 
     init() {
       if (this.clinicOnly) this.serviceFilter = 'clinic';
+      if (this.mode === 'full') {
+        const selected = new URLSearchParams(window.location.search).get('selected_id');
+        if (selected && /^[1-9]\d{0,9}$/.test(selected) && Number(selected) <= 2147483647) this.selectedId = selected;
+        else if (selected !== null) this.notice = 'Notification unavailable.';
+      } else {
+        this.historyHref = getAdminNotificationsHref();
+        this.placeBell();
+      }
       this._unsubscribe = AdminNotificationService.subscribe(event => this.onNotificationChange(event), {loadCount: this.mode !== 'full'});
       if (this.mode === 'full') {
         return this.loadNotifications(true);
@@ -85,6 +100,26 @@ function adminNotifications(mode = 'full') {
       this._destroyed = true;
       this._requestId++;
       this._unsubscribe?.();
+      clearTimeout(this._highlightTimer);
+    },
+
+    placeBell() {
+      const host = this.$el?.closest('admin-notification-bell');
+      if (!host) return;
+      if (!this._bellHome) {
+        this._bellHome = document.createComment('Notification bell desktop position');
+        host.before(this._bellHome);
+      }
+      const section = getAdminInventorySection();
+      const slot = window.innerWidth < 1024 ? document.querySelector('[data-notification-mobile]')
+        : section ? document.querySelector(`[data-notification-slot="${section}"]`) : null;
+      const parent = slot || this._bellHome.parentNode;
+      if (host.parentNode !== parent) {
+        // Relocation must not destroy/reinitialize Alpine or its shared service subscription.
+        Alpine.mutateDom(() => slot ? slot.append(host) : parent.insertBefore(host, this._bellHome.nextSibling));
+      }
+      this.historyHref = getAdminNotificationsHref();
+      if (this.open) this.positionPreview();
     },
 
     onNotificationChange(event) {
@@ -94,6 +129,8 @@ function adminNotifications(mode = 'full') {
         this._requestId++;
         this.notifications = [];
         this.loaded = this.loading = this.loadingMore = this.open = false;
+        this.highlightedId = ''; this._targetHandled = false;
+        clearTimeout(this._highlightTimer);
         return;
       }
       if (event.kind === 'changed') {
@@ -109,6 +146,7 @@ function adminNotifications(mode = 'full') {
     async toggle() {
       this.open = !this.open;
       if (this.open) {
+        this.historyHref = getAdminNotificationsHref();
         this.positionPreview();
         this.$nextTick(() => this.$refs.preview?.focus());
         await this.loadNotifications(true);
@@ -128,18 +166,21 @@ function adminNotifications(mode = 'full') {
     },
 
     async setStatus(value) {
-      if (this.statusFilter === value) return;
+      const selected = this.releaseSelection();
+      if (this.statusFilter === value && !selected) return;
       this.statusFilter = value;
       await this.loadNotifications(true);
     },
     async setService(value) {
       if (this.clinicOnly && value !== 'clinic') return;
-      if (this.serviceFilter === value) return;
+      const selected = this.releaseSelection();
+      if (this.serviceFilter === value && !selected) return;
       this.serviceFilter = value;
       await this.loadNotifications(true);
     },
     async setActivity(value) {
-      if (this.activityFilter === value) return;
+      const selected = this.releaseSelection();
+      if (this.activityFilter === value && !selected) return;
       this.activityFilter = value;
       await this.loadNotifications(true);
     },
@@ -158,15 +199,37 @@ function adminNotifications(mode = 'full') {
           mode: this.mode, status: this.statusFilter,
           service: this.serviceFilter, activity: this.activityFilter,
           page: this.page, per_page: 10,
+          ...(reset && this.selectedId ? {selected_id: this.selectedId} : {}),
         });
         if (requestId !== this._requestId || this._destroyed) return;
         const rows = Array.isArray(data.notifications) ? data.notifications : [];
-        this.notifications = reset ? rows : [...this.notifications, ...rows];
+        const selected = reset && this.selectedId ? data.selected_notification : null;
+        const combined = reset ? [...rows] : [...this.notifications, ...rows];
+        if (selected && !combined.some(row => String(row.notification_id) === String(selected.notification_id))) {
+          combined.push(selected);
+          combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.notification_id - a.notification_id);
+        }
+        this.notifications = [...new Map(combined.map(row => [String(row.notification_id), row])).values()];
         this.unreadCount = Number(data.unread_count || 0);
         this.activityOptions = data.activity_options || this.activityOptions;
         this.hasMore = Boolean(data.pagination?.has_more);
         this.loaded = true;
         this._loadedFilter = filter;
+        if (this.selectedId && !this._targetHandled) {
+          this._targetHandled = true;
+          const target = this.notifications.find(row => String(row.notification_id) === this.selectedId);
+          if (target) {
+            this.highlightedId = this.selectedId;
+            await new Promise(resolve => this.$nextTick ? this.$nextTick(resolve) : resolve());
+            if (requestId !== this._requestId || this._destroyed) return;
+            const element = this.$root?.querySelector(`[data-notification-id="${this.selectedId}"]`);
+            if (element && new URLSearchParams(window.location.search).get('focus') !== 'keyboard') element.dataset.pointerFocus = 'true';
+            element?.focus({preventScroll: true});
+            element?.scrollIntoView({block: 'center', behavior: 'instant'});
+            this._highlightTimer = setTimeout(() => { this.highlightedId = ''; }, 5000);
+            await this.markOneRead(target);
+          } else this.notice = 'Notification unavailable.';
+        }
       } catch (error) {
         if (requestId !== this._requestId || this._destroyed) return;
         this.error = error?.message || 'Unable to load notifications.';
@@ -196,6 +259,29 @@ function adminNotifications(mode = 'full') {
       try {
         await AdminNotificationService.markRead(notification.notification_id);
       } catch (error) { this.error = error?.message || 'Unable to mark the notification as read.'; }
+    },
+
+    activateNotification(notification, event) {
+      if (this.mode === 'dropdown') {
+        const url = new URL(getAdminNotificationsHref(notification.notification_id), window.location.origin);
+        if (event?.detail === 0) url.searchParams.set('focus', 'keyboard');
+        window.location.assign(url.pathname + url.search);
+        return;
+      }
+      return this.markOneRead(notification);
+    },
+
+    releaseSelection() {
+      if (!this.selectedId) return false;
+      this.selectedId = this.highlightedId = this.notice = '';
+      clearTimeout(this._highlightTimer);
+      if (window.history?.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('selected_id');
+        url.searchParams.delete('focus');
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      }
+      return true;
     },
 
     notificationGroups() {

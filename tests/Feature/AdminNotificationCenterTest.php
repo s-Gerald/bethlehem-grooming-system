@@ -14,6 +14,46 @@ use Tests\TestCase;
 
 class AdminNotificationCenterTest extends TestCase
 {
+    public function test_selected_old_record_uses_scoped_lookup_without_expanding_pagination(): void
+    {
+        $id = $this->insertNotification('booked', false, bookingId: 1, createdAt: now()->subDays(30));
+        for ($i = 0; $i < 24; $i++) {
+            $this->insertNotification('clinic_booked', false, clinicAppointmentId: 1);
+        }
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $payload = $this->notificationPayload(['mode' => 'full', 'selected_id' => $id]);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertLessThanOrEqual(20, count($queries), 'Lookup hydrates only one selected record and its existing relations.');
+        $this->assertTrue(collect($queries)->contains(fn ($query) => str_contains($query['query'], '"notifications"."notification_id" = ?')
+            && str_contains($query['query'], 'limit 1') && in_array($id, $query['bindings'], true)));
+        $this->assertCount(10, $payload['notifications']);
+        $this->assertSame(25, $payload['pagination']['total']);
+        $this->assertSame($id, $payload['selected_notification']['notification_id']);
+        $this->assertFalse($payload['selected_notification']['is_read']);
+        $this->assertArrayHasKey('message_parts', $payload['selected_notification']);
+        $this->assertNull($this->notificationPayload(['mode' => 'full', 'selected_id' => 999999])['selected_notification']);
+
+        \Laravel\Sanctum\Sanctum::actingAs(new User([
+            'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
+        ]));
+        $this->getJson('/api/admin/notifications?mode=full&selected_id='.$id)->assertOk()
+            ->assertJsonPath('selected_notification', null)->assertJsonPath('unread_count', 24);
+        $this->getJson('/api/admin/notifications?mode=full&selected_id=bad')->assertUnprocessable();
+        $this->getJson('/api/admin/notifications?mode=full&selected_id=-1')->assertUnprocessable();
+
+        foreach (['admin', 'grooming_receptionist', 'clinic_receptionist'] as $role) {
+            \Laravel\Sanctum\Sanctum::actingAs(new User([
+                'role' => $role === 'admin' ? 'admin' : 'staff', 'staff_type' => $role === 'grooming_receptionist' ? 'grooming' : 'clinic',
+                'staff_subrole' => $role === 'admin' ? null : $role, 'is_active' => true,
+            ]));
+            $this->getJson('/api/admin/notifications?mode=full&selected_id='.$id)->assertOk()->assertJsonPath('selected_notification.notification_id', $id);
+        }
+        \Laravel\Sanctum\Sanctum::actingAs(new User(['role' => 'customer', 'is_active' => true]));
+        $this->getJson('/api/admin/notifications?mode=full&selected_id='.$id)->assertForbidden();
+    }
+
     public function test_veterinary_notification_lists_counts_and_read_actions_are_clinic_scoped(): void
     {
         \Laravel\Sanctum\Sanctum::actingAs(new User([

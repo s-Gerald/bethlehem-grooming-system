@@ -11,8 +11,9 @@
     <link rel="stylesheet" href="../../css/admin-reports.css?v=clinic-reports-20261018" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
+    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -120,8 +121,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
 
 
@@ -134,19 +135,19 @@
             <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Reports</h2>
           </div>
 
-          <button
+          <div class="admin-notification-header-actions"><span data-notification-mobile></span><button
             type="button"
             class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm"
             aria-label="Open navigation" @click="sidebarOpen = true"
           >
             <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
-          </button>
+          </button></div>
         </header>
 
         <main x-data="adminReports()" class="reports-page flex-1 px-4 py-6 lg:px-6" aria-label="Reports">
-          <header class="reports-heading" data-session-surface>
+          <header class="reports-heading flex items-center justify-between gap-3" data-session-surface>
             <h1 data-session-public>Reports</h1>
-          </header>
+          <admin-notification-bell></admin-notification-bell></header>
           <div class="reports-tabs" role="tablist" aria-label="Report sections"
             @keydown.right.prevent="selectSection(activeSection === 'grooming' ? 'clinic' : 'grooming'); $nextTick(() => $refs[activeSection + 'Tab'].focus())"
             @keydown.left.prevent="selectSection(activeSection === 'grooming' ? 'clinic' : 'grooming'); $nextTick(() => $refs[activeSection + 'Tab'].focus())"
@@ -254,5 +255,7 @@
 
 
     <script src="../../scripts/components/admin-reports.js?v=clinic-reports-20261018&loading-ui=universal-20261018&icons=20261018"></script>
+    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>
 </html>

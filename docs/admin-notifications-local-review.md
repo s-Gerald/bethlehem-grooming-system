@@ -1,4 +1,43 @@
-# Admin/Staff notifications — local review, 2026-10-20
+# Admin/Staff notifications — local review, 2026-10-27
+
+## Current navigation/accessibility update
+
+Implemented locally on `gerald-frontend`. No commits, pushes, deployments, dependencies, schema changes, or notification generation changes.
+
+### Files changed
+
+- `scripts/components/admin-notifications.js`: dropdown rows navigate by ID; history handles selection, focus, scrolling, five-second blue highlight, concise unavailable/read-error states, and releases selection when filters change. One custom-element controller moves between mobile and desktop slots through `Alpine.mutateDom`, preserving its subscription and preview.
+- `scripts/components/admin-sidebar.js`: one management-route map supplies validated return URLs and trusted Back labels; all supported origins retain pathname/query/hash. Inventory retains its submenu context. Origin styling never sets `aria-current="page"`, including Activity Log's special server route.
+- `scripts/api.js`, `scripts/services/admin-notification-service.js`: pass optional `selected_id` through the existing authenticated, cached history request and clone the optional selected response. Existing caching, request deduplication, count sequencing, invalidation, mutation serialization, session guards, and shared timer remain in place.
+- `app/Http/Controllers/NotificationController.php`: optional selected record uses the existing serialization and authorization scope. Records already on the requested page are reused; older records use a primary-key lookup with the same eager-loaded relations. Pagination totals and rows remain unchanged. No new route or migration.
+- `css/admin-notifications.css`: existing blue palette for highlight and contextual submenu, Back-link focus styling, sticky-header scroll margin, and compact header action spacing. No new animation.
+- Management templates: `pages/admin/dashboard.html`, `clients.html`, `appointments.html`, `clinic.html`, `inventory/inventory.html`, `archive.html`, `transactions.html`, `reports.html`, `services.html`, `settings.html`; `resources/views/admin/availability.html`, `activity-log.html`. Each has exactly one bell and a mobile header slot. Inventory has desktop slots for its six headings.
+- `pages/admin/notifications.html`: compact contextual Back link and unavailable notice; no bell.
+- Seven `pages/admin/walk-in-*.html` consumers: shared script cache-version updates only; no bells added to these workflows. Changed shared asset URLs and preloads match across Admin pages.
+- Existing tests updated: `tests/Feature/AdminNotificationCenterTest.php`, `AdminNotificationInterfaceTest.php`, `tests/admin-notification-center-regression.cjs`, `admin-notifications-browser.cjs`, `admin-grooming-sidebar-indicator-regression.cjs`, `frontend-inventory-navigation-regression.cjs`. Obsolete three-origin assertions were replaced; isolated VM fixtures now supply the browser URL context.
+- `docs/superpowers/plans/2026-10-27-notification-navigation.md`: scoped implementation/verification plan.
+
+### UI and performance
+
+Clicking any preview row opens the Notifications page with its ID and validated origin, including already-read rows. Read mutations start on the destination, after the selected row renders. Already-read targets produce no mutation. The initial view uses All status and normal role visibility, so reading a target does not immediately hide it. Subsequent manual filter changes resume normal filtering. Load More deduplicates the selected record when its chronological page arrives.
+
+See all notifications preserves origin without selecting a record. Return URLs are allowlisted against internal management routes, including server-rendered Availability/Activity Log aliases; external and unknown destinations are rejected. Direct history URLs select no sidebar destination and offer “Go to Dashboard”. No origin workspace is loaded for context.
+
+Closed bells still request only the cached count; previews remain on demand. The target shares the initial history HTTP request rather than scanning pages or issuing a separate frontend lookup. Regression checks verify bounded database lookup, one shared timer, cache reuse, stale-response guards, hidden-tab suspension, mutation invalidation, responsive movement without additional requests, and no dropdown read request before navigation. No measured Core Web Vitals or production latency claims are made.
+
+### Verification executed for this update
+
+- Project PHP 8.4 runtime: `C:/Users/Gerald/AppData/Local/Programs/BethlehemTestTools/php84/php.exe vendor/phpunit/phpunit/phpunit --filter 'AdminNotification|AdminDashboardScriptDependencies|StaffSettingsInterface|ActivityLogTest|ClinicAdministrationAuthorization|GroomingAdministrationAuthorization' --no-progress`: **476 tests, 6,278 assertions; no failures; one existing skipped MySQL capacity concurrency case**. Uses the repository's isolated in-memory SQLite/non-sending test configuration. The sandbox incorrectly reported the bootstrap unreadable; the authorized external test process ran successfully.
+- Seven focused Node scripts passed: `admin-notification-center-regression.cjs` (14 scenarios), `admin-notifications-date-grouping-regression.cjs`, `admin-data-cache-regression.cjs`, `admin-sidebar-cache-regression.cjs`, `admin-navigation-performance-regression.cjs`, `admin-grooming-sidebar-indicator-regression.cjs`, `frontend-inventory-navigation-regression.cjs`. Additional focused reruns passed after the final sidebar semantic-state fix.
+- `node --check` passed for all four changed runtime scripts and `tests/admin-notifications-browser.cjs`; `git diff --check` passed.
+- `npm run build` passed: clinical rules, OCR/QR/PDF assets, Tailwind CSS and Vite production assets. Only the existing outdated Browserslist database warning appeared. Generated tracked CSS remained unchanged; Vite/vendor outputs follow existing ignore/deployment rules.
+- Inspected the signed-in Admin dashboard and its rendered dropdown in the existing ChatGPT browser tab. No other role tab was opened and no actual notification was marked read. Browser navigation, live data entry, OTP/password flows, and the fixture browser suite were not executed for this update; the user owns manual functional checks. The updated browser suite was syntax-checked only. Responsive relocation is covered by Node regressions, not a claim of a completed mobile browser sweep.
+
+### Production handoff
+
+Use the normal GitHub/Hostinger redeployment workflow with these source changes and its existing build commands. No migration or environment-variable change is needed. URLs derive from deployed assets/internal route definitions; no localhost destination is hardcoded in runtime changes. The production build passed locally; Hostinger deployment itself was not performed or verified.
+
+## Previous implementation notes — 2026-10-20
 
 Implemented on the existing `gerald-frontend` branch. No branch changes, commits, pushes, deployment, production access, new dependencies, database writes to the running application, or schema changes.
 

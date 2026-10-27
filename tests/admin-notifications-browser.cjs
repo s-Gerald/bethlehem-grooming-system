@@ -53,6 +53,7 @@ async function fixture(browser, role = 'admin') {
       const page = Number(params.get('page') || 1), perPage = Number(params.get('per_page') || 30);
       data = params.get('mode') === 'count' ? {unread_count} : {unread_count, notifications: rows.slice((page - 1) * perPage, page * perPage),
         activity_options: activities, pagination: {has_more: page * perPage < rows.length}};
+      if (params.has('selected_id')) data.selected_notification = state.rows.find(n => n.notification_id === Number(params.get('selected_id'))) || null;
     }
     if (path.startsWith('/api/admin/notifications/')) {
       const id = path.split('/')[4];
@@ -111,7 +112,7 @@ async function bellsAndNavigation(browser) {
         await f.page.screenshot({path: `${evidence}/notifications-clinic-preview.png`});
       }
       await preview(f.page).getByRole('link', {name: 'See all notifications'}).click();
-      assert.ok(f.page.url().endsWith(`?from=${from}`)); await ready(f.page);
+      assert.equal(new URL(f.page.url()).searchParams.get('return_to'), `/pages/admin/${file}`); await ready(f.page);
       await f.page.locator('main .admin-notification-row').first().waitFor();
       const active = f.page.locator('aside nav a.bg-\\[\\#315b7e\\]');
       assert.equal((await active.innerText()).trim(), label);
@@ -123,20 +124,20 @@ async function bellsAndNavigation(browser) {
       assert.equal(await f.page.locator('aside [aria-current="page"]').count(), 0);
       assert.equal(f.state.requests.slice(unrelated).some(r => /dashboard|bookings|grooming\/activity|clinic-cases/.test(r.path)), false, 'Origin must not fetch its workspace');
     }
-    for (const from of ['', '?from=invalid', '?from=__proto__']) {
+    for (const from of ['', '?return_to=invalid', '?return_to=__proto__', '?return_to=https://example.com/pages/admin/dashboard.html']) {
       await visit(f.page, 'notifications.html' + from); await ready(f.page);
       assert.equal(await f.page.locator('aside nav a.bg-\\[\\#315b7e\\]').count(), 0);
     }
     assert.deepEqual(f.state.errors, []);
     if (evidence) require('node:fs').writeFileSync(`${evidence}/notifications-network.json`, JSON.stringify({budgets, requests: f.state.requests}, null, 2));
     console.log('Notification request budgets: ' + JSON.stringify(budgets));
-    console.log('Three bells, desktop/mobile geometry, cached previews, origins and hard refresh passed');
+    console.log('Existing bells, desktop/mobile geometry, cached previews, validated origins and hard refresh passed');
   } finally {await f.context.close();}
 }
 async function filtersAndMutations(browser) {
   const f = await fixture(browser);
   try {
-    await visit(f.page, 'notifications.html?from=clinic'); await ready(f.page);
+    await visit(f.page, 'notifications.html?return_to=%2Fpages%2Fadmin%2Fclinic.html'); await ready(f.page);
     await f.page.locator('main .admin-notification-row').first().waitFor();
     await f.page.getByRole('button', {name: 'Load More', exact: true}).click();
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 20);
@@ -209,12 +210,12 @@ async function preAlpineOrigins(browser) {
   const f = await fixture(browser);
   try {
     await visit(f.page, 'dashboard.html'); await ready(f.page);
-    for (const [from, label] of [['dashboard', 'Dashboard'], ['grooming', 'Grooming'], ['clinic', 'Clinic'], ['invalid', '']]) {
+    for (const [from, label] of [['dashboard.html', 'Dashboard'], ['appointments.html', 'Grooming'], ['clinic.html', 'Clinic'], ['invalid', '']]) {
       const hold = deferred();
       const handler = async route => {await hold.promise; await route.fallback();};
       await f.context.route('**/alpinejs@*/**', handler);
       try {
-        await f.page.goto(`${origin}/pages/admin/notifications.html?from=${from}`, {waitUntil: 'commit'});
+        await f.page.goto(`${origin}/pages/admin/notifications.html?return_to=${encodeURIComponent('/pages/admin/' + from)}`, {waitUntil: 'commit'});
         await f.page.waitForFunction(() => typeof renderCachedAdminSidebar === 'function');
         const selected = f.page.locator('aside nav a.bg-\\[\\#315b7e\\]');
         assert.equal(await selected.count(), label ? 1 : 0);
@@ -240,6 +241,14 @@ async function crossTabAndHiddenPolling(browser) {
     await preview(other).locator('.admin-notification-row').first().waitFor();
     if (!await preview(f.page).isVisible()) await f.page.getByRole('button', {name: /^Notifications/}).click();
     await preview(f.page).locator('.admin-notification-row.is-unread').first().click();
+    await f.page.waitForURL('**/notifications.html?**selected_id=*');
+    await f.page.locator('main .admin-notification-row.is-selected').waitFor();
+    const selected = f.page.locator('main .admin-notification-row.is-selected');
+    assert.equal(await selected.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Mouse-opened selection has no focus rectangle');
+    assert.equal(await selected.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(234, 244, 251)');
+    assert.match(await selected.evaluate(el => getComputedStyle(el).boxShadow), /inset/);
+    await selected.press('ArrowRight');
+    assert.equal(await selected.evaluate(el => getComputedStyle(el).outlineStyle), 'solid', 'Keyboard interaction restores the visible focus indicator');
     await other.waitForFunction(() => document.querySelector('.admin-notification-badge').textContent === '17');
     if (!await preview(other).isVisible()) await other.getByRole('button', {name: /^Notifications/}).click();
     await other.waitForFunction(() => document.querySelectorAll('#admin-notification-preview .is-unread').length === 6);

@@ -367,7 +367,7 @@ async function testScannerLibraryIsSharedAndLoadedOnceOnUse() {
 }
 
 function testSidebarNavigation() {
-  const context={window:{location:{pathname:'/pages/admin/inventory/inventory.html',hash:'#products'}},document:{},URL};
+  const context={window:{location:{origin:'http://localhost',pathname:'/pages/admin/inventory/inventory.html',hash:'#products'}},document:{},URL};
   vm.createContext(context);
   vm.runInContext(read('scripts/components/admin-sidebar.js'),context);
   const sidebar=context.adminSidebar();

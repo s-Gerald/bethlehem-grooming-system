@@ -2373,6 +2373,8 @@ var API = (() => {
     if (filters.page) params.set("page", String(filters.page));
     if (filters.per_page) params.set("per_page", String(filters.per_page));
 
+    if (filters.selected_id) params.set("selected_id", String(filters.selected_id));
+
     const query = params.toString() ? `?${params.toString()}` : "";
     return request("GET", `/admin/notifications${query}`, null, getAdminToken());
   }
