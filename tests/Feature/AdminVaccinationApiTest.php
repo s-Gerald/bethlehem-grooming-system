@@ -214,6 +214,7 @@ class AdminVaccinationApiTest extends TestCase
         Carbon::setTestNow('2026-07-23 09:00:00');
         $this->authenticateAs('staff', 2);
         $this->insertRabiesStock(301);
+        $this->insertInventoryItem(305, 'Rabies Medicine', 'medicine', 8);
         $this->insertInventoryItem(302, 'Empty Vaccine', 'vaccine', 0);
         $this->insertInventoryItem(303, 'Expired Vaccine', 'vaccine', 8);
         $this->insertStockIn(303, 8, 'OLD', '2026-07-01', '2026-06-01');
@@ -222,6 +223,7 @@ class AdminVaccinationApiTest extends TestCase
         $items = collect($this->getJson('/api/admin/vaccination-options')->assertOk()
             ->assertJsonMissingPath('veterinarians')->json('vaccines'))->keyBy('item_id');
         $this->assertCount(4, $items);
+        $this->assertSame('vaccine', $items[301]['category']);
         $this->assertSame(5, $items[301]['available_quantity']);
         $this->assertSame('low_stock', $items[301]['stock_status']);
         $this->assertSame('LOT-EARLY', $items[301]['next_batch']['batch_number']);

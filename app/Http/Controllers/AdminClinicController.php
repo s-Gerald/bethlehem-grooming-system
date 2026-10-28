@@ -513,21 +513,32 @@ class AdminClinicController extends Controller
 
     public function medicineOptions(Request $request)
     {
+        $request->validate(['item_id' => 'sometimes|integer|min:1']);
+        $itemId = $request->integer('item_id');
         $q = trim($request->query('q', ''));
-        if (mb_strlen($q) < 2) return response()->json(['data' => []]);
+        $suggestions = $request->boolean('suggestions') && $q === '';
+        if (! $itemId && ! $suggestions && mb_strlen($q) < 2) return response()->json(['data' => []]);
         $items = InventoryItem::query()->where('category', 'medicine')
-            ->where('item_name', 'like', "%{$q}%")
-            ->with('weightPrices')->orderBy('item_name')->get();
+            ->when($itemId, fn ($query) => $query->where('item_id', $itemId))
+            ->when(! $suggestions && ! $itemId, fn ($query) => $query->where('item_name', 'like', "%{$q}%"))
+            ->when($suggestions, fn ($query) => $query->where('is_active', true)->where('quantity_on_hand', '>=', 1))
+            ->with('weightPrices')->orderByRaw('CASE WHEN is_active = 1 AND quantity_on_hand >= 1 THEN 0 ELSE 1 END')
+            ->orderBy('item_name')->limit(60)->get();
         $batchBalances = app(\App\Services\InventoryBatchBalanceService::class);
         $balances = $batchBalances->forItems($items->pluck('item_id'));
-        return response()->json(['data' => $items->map(fn ($item) => [
-            'item_id' => $item->item_id, 'item_name' => $item->item_name, 'unit' => $item->unit,
+        $formatted = $items->map(fn ($item) => [
+            'item_id' => $item->item_id, 'item_name' => $item->item_name, 'category' => $item->category, 'unit' => $item->unit,
             'medicine_type' => $item->medicine_type,
             ...$batchBalances->treatmentAvailability($item, $balances[$item->item_id]),
             'strength_concentration' => $item->strength_concentration,
             'pricing_method' => $item->pricing_method, 'weight_pricing_mode' => $item->weight_pricing_mode ?? 'legacy', 'selling_price' => $item->selling_price,
             'weight_prices' => $item->weightPrices->map->only(['min_weight_kg', 'max_weight_kg', 'price'])->values(),
-        ])]);
+        ]);
+        // Weight and price validation remain in the clinical quote/finalization paths.
+        $eligible = fn ($item) => $item['is_active'] && $item['available_quantity'] >= 1
+            && ($item['pricing_method'] === 'weight_based' ? $item['weight_prices']->isNotEmpty() : (float) $item['selling_price'] > 0);
+        return response()->json(['data' => ($suggestions ? $formatted->filter($eligible)
+            : $formatted->sortBy(fn ($item) => $eligible($item) ? 0 : 1))->take(12)->values()]);
     }
 
     public function saveRecord(Request $request, int $id)

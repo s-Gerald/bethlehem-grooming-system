@@ -468,38 +468,35 @@ class InventoryController extends Controller
         $this->requireAuth();
 
         $q = trim($request->query('q', ''));
-        $includeInactive = $request->boolean('include_inactive');
-        $forGrooming = $request->query('sale_context') === 'grooming';
-        $forPos = $request->query('sale_context') === 'pos';
+        $retail = in_array($request->query('sale_context'), ['grooming', 'pos'], true);
+        $suggestions = $retail && $request->boolean('suggestions') && $q === '';
+        $includeInactive = ! $suggestions && $request->boolean('include_inactive');
+        if (! $suggestions && mb_strlen($q) < 2) return response()->json(['data' => []]);
 
-        if (strlen($q) < 2) {
-            return response()->json(['data' => []]);
+        // Discovery includes unavailable retail items; barcode and checkout retain retailSale().
+        $query = $this->itemsQuery()
+            ->when(! $includeInactive, fn ($query) => $query->where('is_active', true))
+            ->when($retail, fn ($query) => $query->whereIn('category', InventoryItem::RETAIL_CATEGORIES))
+            ->when($suggestions, fn ($query) => $query->retailSale()->where('quantity_on_hand', '>=', 1))
+            ->when(! $suggestions, fn ($query) => $query->where(function ($query) use ($q) {
+                $query->where('item_name', 'like', "%{$q}%")->orWhere('barcode', 'like', "%{$q}%");
+            }));
+        if ($suggestions) {
+            // Only committed stock-outs count as retail history, including Grooming sales.
+            $query->orderByDesc(InventoryTransaction::query()->selectRaw('MAX(transaction_id)')
+                ->whereColumn('inventory_transactions.item_id', 'inventory_items.item_id')
+                ->where('type', 'stock_out')->where('reason', 'sold'));
         }
-
-        $items = $this->itemsQuery()
-            ->when(! $includeInactive, fn ($query) => $query->where('is_active', 1))
-            ->when($forGrooming, fn ($query) => $query->whereNotIn('category', ['medicine', 'vaccine'])
-                ->whereNotNull('selling_price'))
-            ->when($forPos, fn ($query) => $query->retailSale())
-            ->where(function ($query) use ($q) {
-                $query->where('item_name', 'like', "%{$q}%")
-                      ->orWhere('barcode', 'like', "%{$q}%");
-            })
-            ->when($forGrooming, fn ($query) => $query->orderByRaw('CASE WHEN is_active = 1 AND quantity_on_hand >= 1 THEN 0 ELSE 1 END'))
-            ->when($forPos, fn ($query) => $query->orderByRaw('CASE WHEN quantity_on_hand > 0 THEN 0 ELSE 1 END'))
-            ->orderBy('item_name')
-            ->limit($forGrooming || $forPos ? 50 : 10)
-            ->get();
-
+        $items = $query
+            ->when($retail, fn ($query) => $query->orderByRaw('CASE WHEN is_active = 1 AND quantity_on_hand >= 1 THEN 0 ELSE 1 END'))
+            ->orderBy('item_name')->limit($retail ? 60 : 10)->get();
         $formatted = $this->formatItems($items);
+        $eligible = fn ($item) => $item['is_active'] && (float) $item['saleable_quantity'] >= 1
+            && (float) $item['selling_price'] > 0 && (float) $item['selling_price'] <= self::MAX_MONEY;
 
         return response()->json([
-            'data' => $forGrooming || $forPos
-                ? $formatted->sortBy(fn ($item) => [
-                    $item['is_active'] && (float) $item['saleable_quantity'] >= 1 ? 0 : 1,
-                    $item['item_name'],
-                ])->take(10)->values()
-                : $formatted,
+            'data' => $suggestions ? $formatted->filter($eligible)->take(12)->values()
+                : ($retail ? $formatted->sortBy(fn ($item) => [$eligible($item) ? 0 : 1, $item['item_name']])->take(10)->values() : $formatted),
         ]);
     }
 

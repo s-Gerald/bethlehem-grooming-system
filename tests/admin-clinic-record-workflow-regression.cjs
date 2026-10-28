@@ -24,7 +24,7 @@ const attach = state => {
   return state;
 };
 const appt = id => ({id, pet: {id: 7, name: 'Mochi'}, status: 'in_consultation', vitals: {weight_kg: 12}});
-const product = {item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 'vial'};
+const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'Rabies', available_quantity: 10, unit: 'vial'};
 (async () => {
   const intakeRecord = attach(context.adminClinicModal());
   const intakeTreatment = attach(context.adminClinicVaccinations());

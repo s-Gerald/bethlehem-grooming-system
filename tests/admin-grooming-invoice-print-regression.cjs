@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../scripts/components/admin-dashboard.js"), "utf8");
-const context = { window: {}, console, Date, Intl };
+const context = { window: {}, console, Date, Intl, clearTimeout };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/utils/philippine-mobile.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/cash-payment.js"), "utf8"), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/payment-invoice.js"), "utf8"), context);

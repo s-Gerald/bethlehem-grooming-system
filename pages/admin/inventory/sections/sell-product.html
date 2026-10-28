@@ -1,31 +1,29 @@
 <div class="pos-workflow">
   <div class="pos-layout">
     <fieldset class="pos-left pos-fields" :disabled="submitting || validating || receiptOpen || !!onlinePayment" :aria-busy="submitting || validating" aria-label="Products and cart">
-      <section class="pos-panel" aria-labelledby="pos-search-title">
+      <section class="pos-panel" aria-labelledby="pos-search-title" @click.outside="productDropdown?.close()" @focusout="if (!$el.contains($event.relatedTarget)) productDropdown?.close()">
         <label id="pos-search-title" for="pos-product-search">Search or scan product</label>
         <div class="pos-search-input">
-        <input id="pos-product-search" x-ref="productSearch" x-model="searchQuery" @input="onSearchInput()"
-          @keydown.enter.prevent="searchEnter()" @keydown.arrow-down.prevent="focusResult()" @keydown.escape.prevent="cancelSearch()"
-          type="search" placeholder="Product name or barcode" autocomplete="off" aria-controls="pos-search-results" :aria-expanded="searchResults.length > 0" />
+        <input class="product-search-input" id="pos-product-search" x-ref="productSearch" x-model="searchQuery" @input="onSearchInput()"
+          role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="pos-product-results" :aria-expanded="Boolean(productDropdown?.open)" :aria-activedescendant="productDropdown?.open &amp;&amp; productDropdown?.activeId != null ? 'pos-product-option-' + productDropdown.activeId : null" @focus="focusProducts()" @keydown="productKey($event)"
+          type="search" placeholder="Product name or barcode" autocomplete="off" />
         <button type="button" class="pos-scan-button" @click="openScanner()" aria-label="Scan barcode" aria-haspopup="dialog" :aria-expanded="scannerActive">
           <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../../assets/icons/phosphor.svg?v=admin-icons-20261018#barcode"></use></svg>
         </button>
         </div>
         <p class="pos-helper">Medicine and Vaccine are excluded from retail sales.</p>
-        <admin-loader compact x-cloak x-show="searching"></admin-loader>
-        <p x-show="noResults" role="status" class="pos-helper">No retail products found. Try another name or barcode.</p>
-        <div id="pos-search-results" x-ref="results" x-show="searchResults.length" class="pos-results" aria-label="Product search results"
-          @keydown.arrow-down.prevent="moveResult($event, 1)" @keydown.arrow-up.prevent="moveResult($event, -1)" @keydown.escape.prevent="cancelSearch(); $refs.productSearch.focus()">
-          <template x-for="item in searchResults" :key="item.item_id">
-            <button type="button" @click="addToCart(item)" :disabled="!hasProductStock(item)" class="pos-result">
-              <span class="pos-product-name" x-text="item.item_name"></span>
-              <span class="pos-result-meta">
-                <span x-text="'₱' + fmt(item.selling_price)"></span>
-                <span x-show="hasProductStock(item)" x-text="productAvailability(item) + ' ' + item.unit + ' available'"></span>
-                <strong x-show="!hasProductStock(item)">Out of stock</strong>
-              </span>
-            </button>
-          </template>
+        <div x-ref="productPopup" x-cloak x-show="productDropdown?.open" :style="productDropdown?.style" class="product-search-popup">
+          <p class="product-search-heading" x-text="searchQuery.trim() ? 'Search Results' : ('Suggested Products')"></p>
+          <div id="pos-product-results" role="listbox" aria-label="Product suggestions" class="product-search-list" :style="productDropdown?.listStyle" :aria-busy="Boolean(searching)">
+            <template x-for="item in searchResults" :key="item.item_id">
+              <div role="option" :id="'pos-product-option-' + item.item_id" :data-product-id="item.item_id" :aria-disabled="!hasProductStock(item)" :aria-selected="productDropdown?.activeId === item.item_id" @mousedown.prevent @click="addToCart(item)" class="product-search-option" :title="item.item_name">
+                <span class="product-search-identity"><span class="product-search-name" x-text="item.item_name"></span><span class="product-search-meta" x-text="hasProductStock(item) ? Math.floor(Number(item.saleable_quantity)) + ' available · ' + item.unit : productStockLabel(item)"></span></span>
+                <span x-show="hasProductStock(item)" class="product-search-price" x-text="'₱' + fmt(item.selling_price)"></span>
+              </div>
+            </template>
+          </div>
+          <p x-show="searching" role="status" class="product-search-message">Loading…</p>
+          <p x-show="!error &amp;&amp; noResults" role="status" class="product-search-message" x-text="'No matching products'"></p>
         </div>
       </section>
       <section class="pos-panel" aria-labelledby="pos-cart-title">

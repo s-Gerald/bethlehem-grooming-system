@@ -1,0 +1,35 @@
+/* Hallmark · component scope · P5 H4 E4 S5 R5 V4 · existing Bethlehem palette */
+.product-search-popup {
+  --product-blue: #315b7e;
+  --product-border: #d7e3ef;
+  --product-white: #fff;
+  --product-soft: #f5f8fb;
+  --product-ink: #334155;
+  --product-muted: #52677c;
+  --product-error: #b91c1c;
+  position: fixed;
+  margin: 0 !important;
+  z-index: 250;
+  overflow: hidden;
+  border: 1px solid var(--product-border);
+  border-radius: 12px;
+  background: var(--product-white);
+  box-shadow: 0 8px 24px rgb(31 56 80 / 12%);
+  color: var(--product-ink);
+  font-size: 14px;
+  text-align: left;
+}
+.product-search-heading { height: 36px; margin: 0; padding: 9px 12px; color: var(--product-muted); font-size: 12px; font-weight: 600; }
+.product-search-list { max-height: 224px; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.product-search-option { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 8px 12px; border-top: 1px solid var(--product-border); cursor: pointer; }
+.product-search-identity { min-width: 0; }
+.product-search-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.product-search-meta { display: block; margin-top: 3px; font-size: 12px; color: var(--product-muted); }
+.product-search-price { flex-shrink: 0; font-size: 12px; color: var(--product-muted); }
+.product-search-option[aria-disabled="false"]:hover,
+.product-search-option[aria-selected="true"] { background: var(--product-soft); }
+.product-search-option[aria-selected="true"] { outline: 2px solid var(--product-blue); outline-offset: -2px; }
+.product-search-option[aria-disabled="true"] { background: var(--product-soft); color: var(--product-muted); cursor: not-allowed; }
+.product-search-option[aria-disabled="true"] .product-search-meta { color: var(--product-error); }
+.product-search-message { margin: 0; padding: 12px; font-size: 12px; color: var(--product-muted); }
+.product-search-input:focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; }

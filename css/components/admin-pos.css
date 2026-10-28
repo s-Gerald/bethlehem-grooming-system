@@ -33,14 +33,6 @@
 .pos-workflow :is(button, input):disabled { cursor: not-allowed; opacity: .55; }
 .pos-workflow button:active:not(:disabled) { transform: translateY(1px); }
 .pos-helper { margin-top: 6px; color: var(--pos-muted); font-size: 12px; font-weight: 400; }
-.pos-results { margin-top: 12px; border: 1px solid var(--pos-border); border-radius: 9px; max-height: 320px; overflow-y: auto; }
-.pos-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; width: 100%; text-align: left; }
-.pos-result + .pos-result { border-top: 1px solid var(--pos-border); }
-.pos-workflow .pos-result:disabled { opacity: 1; background: var(--pos-soft); color: var(--pos-muted); }
-.pos-result-meta { flex-shrink: 0; text-align: right; color: var(--pos-muted); font-size: 12px; }
-.pos-result-meta span { display: block; }
-.pos-result-meta strong { color: var(--pos-error); }
-.pos-product-name { min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .pos-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pos-text-button { color: var(--pos-blue); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .pos-empty { padding: 24px 0; color: var(--pos-muted); font-size: 14px; text-align: center; }
@@ -84,7 +76,7 @@
 .pos-success-reference { margin-top: 6px; font-weight: 600; }
 .pos-change dd { color: var(--pos-success); font-size: 20px; }
 @media (hover: hover) {
-  .pos-result:hover:not(:disabled), .pos-secondary:hover { background: var(--pos-soft); }
+  .pos-secondary:hover { background: var(--pos-soft); }
   .pos-primary:hover:not(:disabled) { background: var(--pos-hover); }
   .pos-scan-button:hover:not(:disabled) { background: var(--pos-soft); }
 }
@@ -98,8 +90,6 @@
 @media (max-width: 374px) {
   .pos-panel { padding: 14px; }
   .pos-success-content { padding: 20px; }
-  .pos-result { flex-direction: column; align-items: start; gap: 4px; }
-  .pos-result-meta { text-align: left; }
 }
 
 .pos-payment-methods { margin: 16px 0; }

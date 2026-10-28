@@ -618,6 +618,23 @@ class ClinicInventoryPricingTest extends TestCase
         $this->assertSame('1.00', $item->fresh()->quantity_on_hand);
     }
 
+    public function test_medicine_suggestions_are_bounded_category_strict_and_exclude_unusable_stock(): void
+    {
+        $item = $this->item();
+        $this->postJson('/api/inventory/stock-in', ['items' => [['item_id' => $item->item_id, 'quantity' => 3, 'reason' => 'purchase', 'batch_number' => 'SUGGEST', 'expiry_date' => today()->addYear()->toDateString()]]])->assertCreated();
+        $this->getJson('/api/admin/clinic-medicine-options?suggestions=1')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.category', 'medicine');
+        $this->getJson('/api/admin/clinic-medicine-options?q=C&item_id='.$item->item_id)->assertOk()->assertJsonPath('data.0.item_id', $item->item_id);
+        $item->update(['category' => 'vaccine']);
+        $this->getJson('/api/admin/clinic-medicine-options?item_id='.$item->item_id)->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/admin/clinic-medicine-options?q=Clinic')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/admin/clinic-medicine-options?suggestions=1')->assertOk()->assertJsonCount(0, 'data');
+        $item->update(['category' => 'medicine', 'is_active' => false]);
+        $this->getJson('/api/admin/clinic-medicine-options?suggestions=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/admin/clinic-medicine-options?q=Clinic')->assertOk()->assertJsonPath('data.0.is_active', false);
+        $this->getJson('/api/admin/clinic-medicine-options?q=C')->assertOk()->assertJsonCount(0, 'data');
+    }
+
     public function test_options_include_inactive_medicines_for_explanation_and_clinical_permissions_apply(): void
     {
         $item = $this->item();

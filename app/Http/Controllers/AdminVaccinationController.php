@@ -58,6 +58,7 @@ class AdminVaccinationController extends Controller
             return [
                 'item_id' => $item->item_id,
                 'item_name' => $item->item_name,
+                'category' => $item->category,
                 'unit' => $item->unit,
                 ...$this->batchBalances->treatmentAvailability($item, $balance),
             ];

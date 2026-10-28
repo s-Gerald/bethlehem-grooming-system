@@ -16,6 +16,7 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/admin-clinic.js"), "utf8"), sandbox);
+vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/product-search-dropdown.js"), "utf8"), sandbox);
 vm.runInContext(source, sandbox);
 
 function component() {
@@ -27,7 +28,7 @@ function component() {
 }
 
 const vaccine = {
-  item_id: 301, item_name: "Rabies", unit: "vial", is_active: true, quantity_on_hand: 4, stock_status: "available",
+  item_id: 301, category: "vaccine", item_name: "Rabies", unit: "vial", is_active: true, quantity_on_hand: 4, stock_status: "available",
   available_quantity: 3, next_batch: { batch_number: "EARLY", expiry_date: "2027-12-01" },
 };
 const draft = {
@@ -37,6 +38,50 @@ const draft = {
 };
 
 (async () => {
+  const discovery = component();
+  discovery.formModal.open = true;
+  discovery.vaccineOptions = [vaccine, {...vaccine, item_id: 302, category: 'medicine'}, {...vaccine, item_id: 303, is_active: false}, {...vaccine, item_id: 304, stock_status: 'expired', available_quantity: 0}];
+  await discovery.focusTreatmentProducts();
+  assert.deepEqual(Array.from(discovery.productResults, item => item.item_id), [301]);
+  discovery.productQuery = 'Rabies'; discovery.searchTreatmentProducts();
+  assert.deepEqual(Array.from(discovery.productResults, item => item.item_id), [301, 303, 304]);
+  discovery.selectVaccine({...vaccine, category: 'medicine'});
+  assert.equal(discovery.selectedVaccine, null);
+  discovery.formModal.unavailableVaccineName = 'Old vaccine';
+  discovery.changeTreatmentType('medicine');
+  assert.equal(discovery.formModal.unavailableVaccineName, '', 'Switching category clears the old unavailable-product notice');
+  assert.equal(discovery.productDropdown.open, false);
+  assert.equal(discovery.productResults.length, 0);
+  let resolveMedicine;
+  sandbox.API.clinicMedicineOptions = () => new Promise(resolve => {resolveMedicine = resolve;});
+  const pendingMedicine = discovery.focusTreatmentProducts();
+  discovery.changeTreatmentType('vaccine');
+  resolveMedicine({data: [{...vaccine, category: 'medicine'}]}); await pendingMedicine;
+  assert.equal(discovery.medicineResults.length, 0);
+  discovery.recordKind = 'historical'; discovery.changeSource();
+  assert.equal(discovery.productDropdown.open, false);
+
+  const defaults = component(); defaults.formModal.open = true;
+  defaults.vaccineOptions = Array.from({length: 20}, (_, index) => ({...vaccine, item_id: index + 1}));
+  assert.equal(defaults.productResults.length, 12);
+  defaults.changeTreatmentType('medicine');
+  defaults.appointment = {id: 201, weight_kg: 4};
+  const pricedMedicine = {...vaccine, category: 'medicine', pricing_method: 'flat', selling_price: 100};
+  sandbox.API.clinicMedicineOptions = async (query, suggestions) => {
+    assert.equal(query, ''); assert.equal(suggestions, true);
+    return {data: [pricedMedicine, vaccine, {...pricedMedicine, item_id: 305, is_active: false}]};
+  };
+  await defaults.focusTreatmentProducts();
+  assert.deepEqual(Array.from(defaults.productResults, item => item.item_id), [301]);
+  for (const item of [vaccine, {...pricedMedicine, stock_status: 'legacy_unit'}, {...pricedMedicine, available_quantity: 0}, {...pricedMedicine, selling_price: null}]) {
+    defaults.selectMedicine(item); assert.equal(defaults.selectedMedicine, null);
+  }
+  const weightMedicine = {...pricedMedicine, pricing_method: 'weight_based', weight_pricing_mode: 'ranges', weight_prices: [{min_weight_kg: 1, max_weight_kg: 5, price: 100}]};
+  defaults.appointment.weight_kg = null;
+  defaults.selectMedicine(weightMedicine); assert.equal(defaults.selectedMedicine, null, 'A missing weight cannot produce a valid product charge');
+  defaults.selectMedicine(weightMedicine, true);
+  assert.match(defaults.medicineQuote.error, /weight/, 'Restored drafts retain their existing unresolved-price guidance');
+
   const doses = component();
   doses.form.dose_amount = '2';
   doses.validateDoseFields('input');
@@ -89,7 +134,7 @@ const draft = {
   assert.equal(loading.vaccineSelectable({ ...vaccine, unit: "bottle" }), true);
   for (const [item, expected, selectable] of [
     [{ ...vaccine, quantity_on_hand: 0, available_quantity: 0, stock_status: "out_of_stock" }, "Out of stock", false],
-    [{ ...vaccine, quantity_on_hand: 8, available_quantity: 0, stock_status: "expired" }, "Expired stock", false],
+    [{ ...vaccine, quantity_on_hand: 8, available_quantity: 0, stock_status: "expired" }, "Expired", false],
     [{ ...vaccine, unit: "ml", quantity_on_hand: 8, available_quantity: 0, stock_status: "legacy_unit" }, "Legacy unit · review Inventory", false],
     [{ ...vaccine, quantity_on_hand: 8, available_quantity: 2, stock_status: "low_stock" }, "Low stock · 2 vials available", true],
     [{ ...vaccine, quantity_on_hand: 12, available_quantity: 3 }, "3 vials available", true],
@@ -155,7 +200,7 @@ const draft = {
   assert.equal(publications.length, 0);
   assert.equal(current.appointment.status, "in_consultation");
 
-  const medicine = { item_id: 302, item_name: "Medicine", unit: "bottle", available_quantity: 2, quantity_on_hand: 2, is_active: true, stock_status: "available", next_batch: { batch_number: "MED", expiry_date: "2027-12-01" },
+  const medicine = { item_id: 302, category: "medicine", item_name: "Medicine", unit: "bottle", available_quantity: 2, quantity_on_hand: 2, is_active: true, stock_status: "available", next_batch: { batch_number: "MED", expiry_date: "2027-12-01" },
     strength_concentration: "10 mg/mL", pricing_method: "weight_based", weight_pricing_mode: "ranges",
     weight_prices: [{ min_weight_kg: 1, max_weight_kg: 5, price: 250 }] };
   const treatment = component();

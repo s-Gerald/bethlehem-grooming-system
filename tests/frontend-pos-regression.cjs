@@ -10,7 +10,7 @@ function setup(api = {}) {
     InventoryAPI: {validateCart: async () => ({data: [product]}), ...api}, setTimeout: callback => {timer = callback; return 1;}, clearTimeout: () => {timer = null;},
     document: { currentScript: {src: 'http://localhost/scripts/components/product-sale-invoice.js'}, body: {style: {overflow: 'auto'}} },
   };
-  for (const file of ['cash-payment.js', 'product-form.js', 'payment-invoice.js', 'product-sale-invoice.js', 'admin-pos.js', 'admin-transactions.js'])
+  for (const file of ['product-search-dropdown.js', 'cash-payment.js', 'product-form.js', 'payment-invoice.js', 'product-sale-invoice.js', 'admin-pos.js', 'admin-transactions.js'])
     vm.runInNewContext(read('scripts/components/' + file), context);
   const ui = context.adminPos();
   ui.$nextTick = callback => callback();
@@ -61,7 +61,7 @@ async function testCheckoutAndDuplicateGuard() {
 async function testStaleSearchRefreshAndErrors() {
   let resolveOld;
   const app = setup({ searchItems: (query, inactive, context) => {
-    assert.equal(inactive, false); assert.equal(context, 'pos');
+    assert.equal(inactive, true); assert.equal(context, 'pos');
     return query === 'old' ? new Promise(resolve => {resolveOld = resolve;}) : Promise.resolve({data: [product]});
   }, validateCart: async () => ({data: [{...product, selling_price: 300, saleable_quantity: 1}]}),
   processSale: async () => {throw Object.assign(new Error('Invalid'), {status: 422, errors: {items: ['Stock changed. Reduce quantity.']}});},

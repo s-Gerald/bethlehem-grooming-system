@@ -1763,10 +1763,6 @@ video {
   animation: spin 1s linear infinite;
 }
 
-.cursor-default {
-  cursor: default;
-}
-
 .cursor-not-allowed {
   cursor: not-allowed;
 }
@@ -3920,10 +3916,6 @@ video {
 
 .last\:border-0:last-child {
   border-width: 0px;
-}
-
-.last\:border-b-0:last-child {
-  border-bottom-width: 0px;
 }
 
 .last\:pb-0:last-child {

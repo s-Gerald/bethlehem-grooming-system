@@ -93,7 +93,7 @@ for (const unit of ["kg", "g", "L", "mL"]) {
   assert.match(pf.validate(newMeasured), /physical inventory unit/);
 }
 for (const unit of ["tablet", "capsule", "bottle", "vial", "ampoule", "syringe", "pipette", "tube", "sachet", "pack", "box", "can", "bag", "dose kit", "other"]) assert.ok(pf.unitOptions.some(option => option.value === unit));
-const item = {item_id: 1, item_name: "Medicine", unit: "bottle", pricing_method: "weight_based", weight_prices: payload.weight_prices, weight_pricing_mode: "catalog", selling_price: null};
+const item = {category: "medicine", item_id: 1, item_name: "Medicine", unit: "bottle", pricing_method: "weight_based", weight_prices: payload.weight_prices, weight_pricing_mode: "catalog", selling_price: null};
 for (const [weight, price] of [[1,200], [5,200], [5.1,400], [10,400], [10.1,700], [12.4,700], [15,700], [41,900]])
   assert.equal(context.clinicMedicinePrice(item, weight).price, price);
 for (const weight of [null, "", 0, -1, NaN]) assert.match(context.clinicMedicinePrice(item, weight).error, /Record or update/);

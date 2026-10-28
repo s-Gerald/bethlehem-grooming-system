@@ -353,6 +353,7 @@ function adminDashboard() {
     _visibilityListener: null,
     _sessionResumeListener: null,
     _destroyed: false,
+    productDropdown: null, _paymentProductSearchVersion: 0,
 
     activeTab: "incoming",
     dashboardSearchQuery: "",
@@ -687,6 +688,7 @@ function adminDashboard() {
     },
 
     destroy() {
+      this.productDropdown?.close();
       this.syncGroomingModalFocus(null);
       this._destroyed = true;
       this.stopOnlinePaymentPoll();
@@ -3243,6 +3245,8 @@ function adminDashboard() {
 
     closePaymentModal(force = false) {
       if (this.paymentModal.busy && !force) return;
+      this.productDropdown?.close();
+      clearTimeout(this._paymentProductSearchTimer); ++this._paymentProductSearchVersion;
       this.stopOnlinePaymentPoll();
       this.closePaymentScanner();
       this.paymentModal = {
@@ -3290,62 +3294,85 @@ function adminDashboard() {
         this.paymentModal.productSearchError = "No valid barcode was scanned.";
         return;
       }
+      const modal = this.paymentModal;
+      this.productDropdown?.close();
+      const version = ++this._paymentProductSearchVersion;
       this.paymentModal.productQuery = barcode;
       this.paymentModal.productResults = [];
       clearTimeout(this._paymentProductSearchTimer);
       try {
         const response = await InventoryAPI.findByBarcode(barcode);
-        if (!this.paymentModal.open || this.paymentModal.productQuery !== barcode) return;
+        if (this.paymentModal !== modal || version !== this._paymentProductSearchVersion || !modal.open || modal.productQuery !== barcode) return;
         if (!this.hasPaymentProductStock(response.data)) {
           this.paymentModal.productSearchError = "This product is unavailable for Grooming add-ons.";
           return;
         }
         this.addPaymentProduct(response.data);
       } catch {
-        if (this.paymentModal.open) this.paymentModal.productSearchError = "No available product matches this barcode.";
+        if (this.paymentModal === modal && version === this._paymentProductSearchVersion && modal.open) modal.productSearchError = "No available product matches this barcode.";
       }
     },
 
     isPaymentProductSearchResult(item) {
-      return item && !["medicine", "vaccine"].includes(item.category)
-        && item.selling_price != null;
+      return item && ["food", "grooming_supply", "pet_shop", "miscellaneous"].includes(item.category);
     },
 
     isEligiblePaymentProduct(item) {
-      return item?.is_active && this.isPaymentProductSearchResult(item);
+      return item?.is_active && this.isPaymentProductSearchResult(item)
+        && Number(item.selling_price) > 0 && Number(item.selling_price) <= 999999.99;
     },
 
     hasPaymentProductStock(item) {
       return this.isEligiblePaymentProduct(item) && Number(item.saleable_quantity) >= 1;
     },
 
-    paymentProductStockLabel(item) {
-      if (!item.is_active) return "Deactivated";
-      if (Number(item.quantity_on_hand) <= 0) return "Out of stock";
-      if (Number(item.expired_quantity) > 0) return "Expired stock";
-      return "Unavailable stock";
+    paymentProductStockLabel(item) { return ProductSearchDropdown.retailStatus(item); },
+    openPaymentProducts() {
+      this.paymentModal.showProductSearch = true;
+      this.$nextTick(() => this.$refs.paymentProductSearch?.focus());
     },
-
+    showPaymentProductDropdown() {
+      this.productDropdown ||= ProductSearchDropdown.create(() => {
+        clearTimeout(this._paymentProductSearchTimer); ++this._paymentProductSearchVersion;
+        this.paymentModal.productLoading = false;
+      });
+      this.productDropdown.show(this.$refs.paymentProductSearch, this.$refs.paymentProductPopup);
+    },
+    async focusPaymentProducts() {
+      if (!this.paymentModal.open || this.paymentModal.busy || this.paymentModal.onlinePayment) return;
+      this.showPaymentProductDropdown();
+      if (this.paymentModal.productQuery.trim()) { this.searchPaymentProducts(); return; }
+      return this.loadPaymentProducts('', ++this._paymentProductSearchVersion, true);
+    },
+    async loadPaymentProducts(query, version, suggestions = false) {
+      const modal = this.paymentModal;
+      modal.productLoading = true; modal.productSearchError = ''; modal.productResults = [];
+      try {
+        const response = await InventoryAPI.searchItems(query, true, "grooming", suggestions);
+        if (modal !== this.paymentModal || version !== this._paymentProductSearchVersion || !modal.open) return;
+        modal.productResults = (response.data || []).filter(item => this.isPaymentProductSearchResult(item))
+          .filter(item => !suggestions || this.hasPaymentProductStock(item))
+          .sort((a, b) => Number(this.hasPaymentProductStock(b)) - Number(this.hasPaymentProductStock(a)));
+      } catch (error) {
+        if (modal === this.paymentModal && version === this._paymentProductSearchVersion && modal.open) {
+          modal.productResults = []; modal.productSearchError = error.message || "Product search failed.";
+        }
+      } finally { if (modal === this.paymentModal && version === this._paymentProductSearchVersion) modal.productLoading = false; }
+    },
     searchPaymentProducts() {
       const query = this.paymentModal.productQuery.trim();
       clearTimeout(this._paymentProductSearchTimer);
-      this.paymentModal.productSearchError = "";
-      if (query.length < 2) {
-        this.paymentModal.productResults = [];
-        return;
-      }
-      this._paymentProductSearchTimer = setTimeout(async () => {
-        try {
-          const response = await InventoryAPI.searchItems(query, true, "grooming");
-          if (this.paymentModal.productQuery.trim() !== query || !this.paymentModal.open) return;
-          this.paymentModal.productResults = (response.data || [])
-            .filter((item) => this.isPaymentProductSearchResult(item))
-            .sort((a, b) => Number(this.hasPaymentProductStock(b)) - Number(this.hasPaymentProductStock(a)));
-        } catch (error) {
-          this.paymentModal.productResults = [];
-          this.paymentModal.productSearchError = error.message || "Product search failed.";
-        }
-      }, 300);
+      this.showPaymentProductDropdown();
+      const version = ++this._paymentProductSearchVersion;
+      this.paymentModal.productResults = []; this.paymentModal.productSearchError = ''; this.paymentModal.productLoading = false;
+      if (!query) return this.loadPaymentProducts('', version, true);
+      if (query.length < 2) return;
+      this.paymentModal.productLoading = true;
+      this._paymentProductSearchTimer = setTimeout(() => this.loadPaymentProducts(query, version), 300);
+    },
+    paymentProductKey(event) {
+      if (['ArrowDown', 'ArrowUp'].includes(event.key) && !this.productDropdown?.open) this.focusPaymentProducts();
+      this.productDropdown?.key(event, this.paymentModal.productResults, item => this.hasPaymentProductStock(item), item => this.addPaymentProduct(item), this.$refs.paymentProductPopup);
     },
 
     addPaymentProduct(item) {
@@ -3364,6 +3391,8 @@ function adminDashboard() {
         this.paymentModal.products.push({ item_id: item.item_id, name: item.item_name,
           unit: item.unit, price: Number(item.selling_price), stock, quantity: 1 });
       }
+      this.productDropdown?.close();
+      clearTimeout(this._paymentProductSearchTimer); ++this._paymentProductSearchVersion;
       this.paymentModal.productQuery = "";
       this.paymentModal.productResults = [];
       this.paymentModal.error = "";

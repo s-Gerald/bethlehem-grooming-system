@@ -84,6 +84,7 @@ function adminClinicVaccinations() {
     doseCompletionAttempted: false,
 
     vaccineOptions: [],
+    productDropdown: null,
     optionsLoading: false,
     optionsError: "",
 
@@ -192,7 +193,10 @@ function adminClinicVaccinations() {
       if (this.inline && (changedCase || !this.formModal.open)) this.openCreateForm();
     },
 
+    destroy() { this.productDropdown?.close(); clearTimeout(this._medicineTimer); ++this._medicineRequest; },
+
     closeChildDialogs() {
+      this.productDropdown?.close();
       ++this._detailRequest;
       this.clearMedicine();
       this.formModal.open = false;
@@ -347,6 +351,7 @@ function adminClinicVaccinations() {
 
     closeForm() {
       if (this.formModal.saving) return;
+      this.productDropdown?.close();
       if (this.inline) { this.resetInlineForm(); return; }
       this.formModal.open = false;
       this.clearMedicine();
@@ -364,24 +369,51 @@ function adminClinicVaccinations() {
 
     filteredVaccines() {
       const query = this.vaccineQuery.trim().toLowerCase();
-      if (!query) return [];
-      return this.vaccineOptions.filter(
-        (item) => String(item.item_name || "").toLowerCase().includes(query),
-      );
+      if (query.length === 1) return [];
+      return this.vaccineOptions.filter(item => item.category === 'vaccine')
+        .filter(item => query ? String(item.item_name || '').toLowerCase().includes(query) : this.productSelectable(item))
+        .sort((a, b) => Number(this.productSelectable(b)) - Number(this.productSelectable(a))).slice(0, query ? 50 : 12);
     },
 
     get selectedProduct() { return this.treatmentType === "medicine" ? this.selectedMedicine : this.selectedVaccine; },
     get productQuery() { return this.treatmentType === "medicine" ? this.medicineQuery : this.vaccineQuery; },
     set productQuery(value) { if (this.treatmentType === "medicine") this.medicineQuery = value; else this.vaccineQuery = value; },
-    get productResults() { return (this.treatmentType === "medicine" ? this.medicineResults : this.filteredVaccines()).slice().sort((a, b) => Number(this.productSelectable(b)) - Number(this.productSelectable(a))); },
+    get productResults() { return this.treatmentType === "vaccine" ? this.filteredVaccines() : this.medicineResults
+      .filter(item => item.category === this.treatmentType).slice().sort((a, b) => Number(this.productSelectable(b)) - Number(this.productSelectable(a))); },
     get productLoading() { return this.treatmentType === "medicine" ? this.medicineLoading : this.optionsLoading; },
     get productSearchError() { return this.treatmentType === "medicine" ? this.medicineError : this.optionsError; },
-    searchTreatmentProducts() { if (this.treatmentType === "medicine") this.searchMedicines(); },
+    showTreatmentDropdown() {
+      this.productDropdown ||= ProductSearchDropdown.create(() => {
+        clearTimeout(this._medicineTimer); ++this._medicineRequest; this.medicineLoading = false;
+      });
+      this.productDropdown.show(this.$refs.productSearch, this.$refs.productPopup);
+    },
+    focusTreatmentProducts() {
+      if (this.recordKind !== 'inventory' || this.formModal.saving || !this.formModal.open) return;
+      this.showTreatmentDropdown();
+      if (this.treatmentType === 'medicine') {
+        if (this.medicineQuery.trim()) return this.searchMedicines();
+        return this.loadMedicineResults('', ++this._medicineRequest, null, true);
+      }
+    },
+    searchTreatmentProducts() {
+      this.showTreatmentDropdown();
+      if (this.treatmentType === "medicine") return this.searchMedicines();
+    },
+    treatmentProductKey(event) {
+      if (['ArrowDown', 'ArrowUp'].includes(event.key) && !this.productDropdown?.open) this.focusTreatmentProducts();
+      this.productDropdown?.key(event, this.productResults, item => this.productSelectable(item), item => this.selectProduct(item), this.$refs.productPopup);
+    },
     selectProduct(item) { if (this.treatmentType === "medicine") this.selectMedicine(item); else this.selectVaccine(item); },
-    clearProduct() { this.clearVaccine(); this.clearMedicine(); this.form.inventory_quantity = 1; },
+    clearProduct() { this.productDropdown?.close(); this.clearVaccine(); this.clearMedicine(); this.form.inventory_quantity = 1; },
 
+    productInventoryAvailable(item) {
+      return item?.category === this.treatmentType && item?.is_active === true && Number(item?.available_quantity) >= 1
+        && !['expired', 'legacy_unit', 'out_of_stock', 'unavailable'].includes(item.stock_status)
+        && !/^(kg|g|mg|mcg|l|ml|kilogram|gram|milligram|microgram|liter|litre|milliliter|millilitre)$/i.test(String(item.unit || '').trim());
+    },
     productSelectable(item) {
-      return item?.is_active !== false && Number(item?.available_quantity) >= 1;
+      return this.productInventoryAvailable(item) && (this.treatmentType !== 'medicine' || !clinicMedicinePrice(item, this.appointment?.id ? this.appointment.weight_kg : this.pet?.weight)?.error);
     },
     vaccineSelectable(item) { return this.productSelectable(item); },
 
@@ -393,10 +425,15 @@ function adminClinicVaccinations() {
     },
 
     productAvailabilityLabel(item) {
+      if (item?.is_active === false) return "Inactive";
       if (Number(item?.quantity_on_hand) <= 0) return "Out of stock";
-      if (item?.stock_status === "expired") return "Expired stock";
+      if (item?.stock_status === "expired") return "Expired";
       if (item?.stock_status === "legacy_unit") return "Legacy unit · review Inventory";
       if (Number(item?.available_quantity) < 1) return "Unavailable stock";
+      if (item.category === 'medicine') {
+        const quote = clinicMedicinePrice(item, this.appointment?.id ? this.appointment.weight_kg : this.pet?.weight);
+        if (quote?.error) return /weight/i.test(quote.error) ? 'Weight / price unavailable' : 'Price unavailable';
+      }
       const quantity = Number(item.available_quantity);
       const label = `${quantity} ${this.inventoryUnitLabel(item, quantity)} available`;
       return item.stock_status === "low_stock" ? `Low stock · ${label}` : label;
@@ -410,7 +447,9 @@ function adminClinicVaccinations() {
     },
 
     selectVaccine(item, restoring = false) {
-      if (!this.vaccineSelectable(item)) return;
+      if (this.treatmentType !== "vaccine" || this.recordKind !== "inventory" || !this.vaccineSelectable(item)) return;
+      this.productDropdown?.close();
+      this.vaccineQuery = "";
       this.selectedVaccine = item;
       this.form.inventory_item_id = String(item.item_id);
       if (!restoring) this.form.inventory_quantity = 1;
@@ -419,6 +458,7 @@ function adminClinicVaccinations() {
     },
 
     clearVaccine() {
+      this.formModal.unavailableVaccineName = "";
       this.selectedVaccine = null;
       this.form.inventory_item_id = "";
       this.vaccineQuery = "";
@@ -426,6 +466,7 @@ function adminClinicVaccinations() {
 
     changeTreatmentType(type) {
       if (this.formModal.saving || type === this.treatmentType) return;
+      this.productDropdown?.close();
       this.treatmentType = type;
       this.clearVaccine();
       this.clearMedicine();
@@ -438,6 +479,7 @@ function adminClinicVaccinations() {
     },
 
     changeSource() {
+      this.productDropdown?.close();
       this.clearVaccine();
       this.clearMedicine();
       this.form.inventory_quantity = 1;
@@ -447,6 +489,7 @@ function adminClinicVaccinations() {
     },
 
     clearMedicine() {
+      this.productDropdown?.close();
       clearTimeout(this._medicineTimer);
       ++this._medicineRequest;
       this.selectedMedicine = null;
@@ -466,23 +509,28 @@ function adminClinicVaccinations() {
       const query = this.medicineQuery;
       this.clearMedicine();
       this.medicineQuery = query;
+      this.showTreatmentDropdown();
       this.form.inventory_item_id = "";
+      if (!query.trim()) return this.loadMedicineResults("", this._medicineRequest, null, true);
       if (query.trim().length < 2) return;
       const request = this._medicineRequest;
+      this.medicineLoading = true;
       this._medicineTimer = setTimeout(() => this.loadMedicineResults(query.trim(), request), 300);
     },
 
-    async loadMedicineResults(query, request, restoreId = null) {
+    async loadMedicineResults(query, request, restoreId = null, suggestions = false) {
       this.medicineLoading = true;
+      this.medicineResults = [];
       try {
-        const response = await API.clinicMedicineOptions(query);
-        if (request !== this._medicineRequest || !this.formModal.open) return;
-        this.medicineResults = response.data || [];
+        const response = await API.clinicMedicineOptions(query, suggestions, restoreId);
+        if (request !== this._medicineRequest || !this.formModal.open || this.treatmentType !== "medicine" || this.recordKind !== "inventory") return;
+        this.medicineResults = (response.data || []).filter(item => item.category === "medicine")
+          .filter(item => !suggestions || this.productSelectable(item));
         if (restoreId) {
           const item = this.medicineResults.find(item => Number(item.item_id) === Number(restoreId));
-          if (item) this.selectMedicine(item, true);
+          if (item && this.productInventoryAvailable(item)) this.selectMedicine(item, true);
           else this.medicineError = "This medicine is no longer available. Select another medicine.";
-        } else if (!this.medicineResults.length) this.medicineError = "No matching Medicine products.";
+        }
       } catch (error) {
         if (request === this._medicineRequest) this.medicineError = error.message || "Unable to load medicines.";
       } finally {
@@ -496,9 +544,13 @@ function adminClinicVaccinations() {
     },
 
     selectMedicine(item, restoring = false) {
-      if (!this.productSelectable(item)) return;
+      if (this.treatmentType !== "medicine" || this.recordKind !== "inventory"
+        || !(restoring ? this.productInventoryAvailable(item) : this.productSelectable(item))) return;
+      this.productDropdown?.close();
+      clearTimeout(this._medicineTimer); ++this._medicineRequest;
+      this.medicineLoading = false;
       this.selectedMedicine = item;
-      this.medicineQuery = item.item_name;
+      this.medicineQuery = "";
       this.medicineResults = [];
       this.medicineError = "";
       this.form.inventory_item_id = String(item.item_id);

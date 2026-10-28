@@ -1,7 +1,7 @@
 function adminPos() {
   return {
     searchQuery: "", searchResults: [], searching: false, noResults: false,
-    _searchTimer: null, _searchVersion: 0,
+    _searchTimer: null, _searchVersion: 0, productDropdown: null,
     paymentMethod: "cash", onlinePayment: null, verifyingPayment: false, requestKey: null, _posCancelling: false,
     cart: [], amountTendered: "", notes: "",
     submitting: false, openingCheckout: false, validating: false, validationFailed: false, error: "", notice: "",
@@ -45,29 +45,49 @@ function adminPos() {
       this.$nextTick(() => this.$refs.productSearch?.focus());
     },
 
+    showProductDropdown() {
+      this.productDropdown ||= ProductSearchDropdown.create(() => {
+        clearTimeout(this._searchTimer); ++this._searchVersion; this.searching = false;
+      });
+      this.productDropdown.show(this.$refs.productSearch, this.$refs.productPopup);
+    },
+    async focusProducts() {
+      if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
+      this.showProductDropdown();
+      if (this.searchQuery.trim()) { this.onSearchInput(); return; }
+      return this.loadProductResults('', ++this._searchVersion, true);
+    },
+    async loadProductResults(query, version, suggestions = false) {
+      this.searching = true; this.noResults = false; this.searchResults = [];
+      try {
+        const res = await InventoryAPI.searchItems(query, true, "pos", suggestions);
+        if (version !== this._searchVersion) return;
+        this.searchResults = (res.data || []).filter(item => ["food", "grooming_supply", "pet_shop", "miscellaneous"].includes(item.category))
+          .filter(item => !suggestions || this.hasProductStock(item))
+          .sort((a, b) => Number(this.hasProductStock(b)) - Number(this.hasProductStock(a)));
+        this.noResults = !this.searchResults.length;
+      } catch (err) {
+        if (version === this._searchVersion) this.error = err.message || "Could not search products. Try again.";
+      } finally { if (version === this._searchVersion) this.searching = false; }
+    },
     onSearchInput() {
       if (this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
       clearTimeout(this._searchTimer);
+      this.showProductDropdown();
       const version = ++this._searchVersion;
       const q = this.searchQuery.trim();
-      this.searchResults = [];
-      this.noResults = false;
-      this.searching = false;
+      this.searchResults = []; this.noResults = false; this.searching = false;
+      if (!q) return this.loadProductResults('', version, true);
       if (q.length < 2) return;
       this.searching = true;
-      this._searchTimer = setTimeout(async () => {
-        try {
-          const res = await InventoryAPI.searchItems(q, false, "pos");
-          if (version !== this._searchVersion) return;
-          this.searchResults = res.data.sort((a, b) => Number(this.hasProductStock(b)) - Number(this.hasProductStock(a)));
-          this.noResults = !this.searchResults.length;
-        } catch (err) {
-          if (version === this._searchVersion) this.error = err.message || "Could not search products. Try again.";
-        } finally {
-          if (version === this._searchVersion) this.searching = false;
-        }
-      }, 300);
+      this._searchTimer = setTimeout(() => this.loadProductResults(q, version), 300);
     },
+    productKey(event) {
+      if (['ArrowDown', 'ArrowUp'].includes(event.key) && !this.productDropdown?.open) this.focusProducts();
+      const handled = this.productDropdown?.key(event, this.searchResults, item => this.hasProductStock(item), item => this.addToCart(item), this.$refs.productPopup);
+      if (event.key === 'Enter' && !handled) { event.preventDefault(); this.searchEnter(); }
+    },
+    productStockLabel(item) { return ProductSearchDropdown.retailStatus(item); },
 
     async scanBarcode(code = this.searchQuery.trim()) {
       if (!code || this.submitting || this.validating || this.onlinePayment || this.receiptOpen) return;
@@ -87,25 +107,14 @@ function adminPos() {
     },
 
     searchEnter() {
-      const exact = this.searchResults.find(item => item.barcode === this.searchQuery.trim());
+      const exact = this.searchResults.find(item => item.barcode === this.searchQuery.trim() && this.hasProductStock(item));
       if (exact) this.addToCart(exact);
       else if (/^\d+$/.test(this.searchQuery.trim())) this.scanBarcode();
-      else if (this.searchResults.length === 1) this.addToCart(this.searchResults[0]);
-      else this.focusResult();
-    },
-
-    focusResult() {
-      this.$refs.results?.querySelector('button:not(:disabled)')?.focus();
-    },
-
-    moveResult(event, direction) {
-      const buttons = Array.from(this.$refs.results.querySelectorAll('button:not(:disabled)'));
-      const next = buttons[buttons.indexOf(event.target) + direction];
-      if (next) next.focus();
-      else if (direction < 0) this.$refs.productSearch.focus();
+      else if (this.searchResults.length === 1 && this.hasProductStock(this.searchResults[0])) this.addToCart(this.searchResults[0]);
     },
 
     cancelSearch() {
+      this.productDropdown?.close();
       clearTimeout(this._searchTimer);
       ++this._searchVersion;
       this.searchResults = [];
@@ -145,7 +154,6 @@ function adminPos() {
       this.searchQuery = "";
       this.cancelSearch();
       this.error = "";
-      this.$nextTick(() => this.$refs.productSearch?.focus());
     },
 
     lineError(line) {

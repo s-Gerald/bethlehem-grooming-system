@@ -6,7 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027" />
+    <link rel="stylesheet" href="../../css/components/product-search-dropdown.css?v=20261029-v2" />
+    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3" />
     <link
@@ -16,8 +17,9 @@
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=checkin-layout-20261009-2&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="../../scripts/components/product-search-dropdown.js?v=20261029-v2"></script>
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -218,7 +220,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
@@ -867,27 +869,29 @@
                 <section class="space-y-3 border-t border-slate-200 pt-4">
                   <div class="flex items-center justify-between gap-3">
                     <h5 class="text-xs font-bold uppercase tracking-widest text-[#2f4b66]">Product Add-ons</h5>
-                    <button type="button" @click="paymentModal.showProductSearch = !paymentModal.showProductSearch" class="rounded-xl border border-[#b7ccdd] px-3 py-2 text-sm font-semibold text-[#315b7e] hover:bg-[#f5f8fb]">+ Add Product</button>
+                    <button type="button" @click="openPaymentProducts()" class="rounded-xl border border-[#b7ccdd] px-3 py-2 text-sm font-semibold text-[#315b7e] hover:bg-[#f5f8fb]">+ Add Product</button>
                   </div>
-                  <div x-show="paymentModal.showProductSearch" class="space-y-2">
+                  <div x-show="paymentModal.showProductSearch" class="space-y-2" @click.outside="productDropdown?.close()" @focusout="if (!$el.contains($event.relatedTarget)) productDropdown?.close()">
                     <div class="relative">
-                      <input type="search" x-model="paymentModal.productQuery" @input="searchPaymentProducts()" placeholder="Search product name or barcode" aria-label="Search products" class="w-full rounded-xl border border-slate-200 py-2 pl-4 pr-12 text-sm outline-none focus:border-[#315b7e]" />
+                      <input x-ref="paymentProductSearch" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="grooming-product-results" :aria-expanded="Boolean(productDropdown?.open)" :aria-activedescendant="productDropdown?.open &amp;&amp; productDropdown?.activeId != null ? 'grooming-product-option-' + productDropdown.activeId : null" @focus="focusPaymentProducts()" @keydown="paymentProductKey($event)" type="search" x-model="paymentModal.productQuery" @input="searchPaymentProducts()" placeholder="Search product name or barcode" aria-label="Search products" class="product-search-input w-full rounded-xl border border-slate-200 py-2 pl-4 pr-12 text-sm outline-none focus:border-[#315b7e]" />
                       <button type="button" @click="openPaymentScanner()" aria-label="Scan product barcode" title="Scan product barcode" class="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-[#eaf4fb] hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]">
                         <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#barcode"></use></svg>
                       </button>
                     </div>
                     <p x-show="paymentModal.productSearchError" class="text-xs text-red-600" x-text="paymentModal.productSearchError"></p>
-                    <template x-for="item in paymentModal.productResults" :key="item.item_id">
-                      <button type="button" @click="addPaymentProduct(item)" :disabled="!hasPaymentProductStock(item)" class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left text-sm" :class="hasPaymentProductStock(item) ? 'cursor-pointer hover:bg-[#f5f8fb]' : 'cursor-default bg-slate-50'">
-                        <span class="font-semibold" :class="hasPaymentProductStock(item) ? 'text-slate-700' : 'text-slate-400'" x-text="item.item_name"></span>
-                        <template x-if="hasPaymentProductStock(item)">
-                          <span class="text-xs text-slate-500"><span x-text="formatPeso(item.selling_price)"></span> · <span :class="item.low_stock ? 'text-amber-700 font-semibold' : ''" x-text="Math.floor(Number(item.saleable_quantity)) + ' available'"></span></span>
+                    <div x-ref="paymentProductPopup" x-cloak x-show="productDropdown?.open" :style="productDropdown?.style" class="product-search-popup">
+                      <p class="product-search-heading" x-text="paymentModal.productQuery.trim() ? 'Search Results' : ('Suggested Products')"></p>
+                      <div id="grooming-product-results" role="listbox" aria-label="Product suggestions" class="product-search-list" :style="productDropdown?.listStyle" :aria-busy="Boolean(paymentModal.productLoading)">
+                        <template x-for="item in paymentModal.productResults" :key="item.item_id">
+                          <div role="option" :id="'grooming-product-option-' + item.item_id" :data-product-id="item.item_id" :aria-disabled="!hasPaymentProductStock(item)" :aria-selected="productDropdown?.activeId === item.item_id" @mousedown.prevent @click="addPaymentProduct(item)" class="product-search-option" :title="item.item_name">
+                            <span class="product-search-identity"><span class="product-search-name" x-text="item.item_name"></span><span class="product-search-meta" x-text="hasPaymentProductStock(item) ? Math.floor(Number(item.saleable_quantity)) + ' available · ' + item.unit : paymentProductStockLabel(item)"></span></span>
+                            <span x-show="hasPaymentProductStock(item)" class="product-search-price" x-text="formatPeso(item.selling_price)"></span>
+                          </div>
                         </template>
-                        <template x-if="!hasPaymentProductStock(item)">
-                          <span class="shrink-0 text-xs font-semibold text-red-600" x-text="paymentProductStockLabel(item)"></span>
-                        </template>
-                      </button>
-                    </template>
+                      </div>
+                      <p x-show="paymentModal.productLoading" role="status" class="product-search-message">Loading…</p>
+                      <p x-show="!paymentModal.productSearchError &amp;&amp; !paymentModal.productLoading &amp;&amp; !paymentModal.productResults.length &amp;&amp; paymentModal.productQuery.trim().length !== 1" role="status" class="product-search-message" x-text="'No matching products'"></p>
+                    </div>
                   </div>
                   <template x-for="(line, index) in paymentModal.products" :key="line.item_id">
                     <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -1552,7 +1556,7 @@
     ></script>
 
 
-    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=combined-20261023&gateway=20261023-combined"></script>
+    <script src="../../scripts/services/inventory-service.js?v=grooming-products-20260926&payments=combined-20261023&gateway=20261023-combined&product-dropdown=20261029-v2"></script>
     <script src="../../scripts/components/product-form.js?v=physical-stock-units-20261012"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
@@ -1570,6 +1574,6 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2"></script>
   </body>
 </html>

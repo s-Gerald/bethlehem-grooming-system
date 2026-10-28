@@ -57,8 +57,9 @@ var InventoryAPI = (() => {
     return request("GET", `/inventory/barcode/${encodeURIComponent(barcode)}${params.size ? '?' + params : ''}`);
   }
 
-  function searchItems(q, includeInactive = false, saleContext = "") {
+  function searchItems(q, includeInactive = false, saleContext = "", suggestions = false) {
     const params = new URLSearchParams({ q });
+    if (suggestions) params.set("suggestions", "1");
     if (includeInactive) params.set("include_inactive", "1");
     if (saleContext) params.set("sale_context", saleContext);
     return request("GET", `/inventory/search?${params}`);

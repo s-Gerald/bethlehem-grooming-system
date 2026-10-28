@@ -579,23 +579,23 @@ class InventorySecurityRegressionTest extends TestCase
         $create('Search Medicine', 'medicine', 4);
         $create('Search Vaccine', 'vaccine', 4);
         $inactive = $create('Search Inactive', 'pet_shop', 4, 250, false);
-        $create('Search Unpriced', 'pet_shop', 4, null);
+        $unpriced = $create('Search Unpriced', 'pet_shop', 4, null);
         $create('Unrelated Product', 'pet_shop', 4);
 
         foreach (['admin', 'staff'] as $role) {
             Sanctum::actingAs($this->createUser($role, $role === 'admin' ? '09170000019' : '09170000020'));
             $data = $this->getJson('/api/inventory/search?q=Search&sale_context=grooming&include_inactive=1')
-                ->assertOk()->assertJsonCount(9, 'data')->json('data');
+                ->assertOk()->assertJsonCount(10, 'data')->json('data');
 
-            $this->assertSame([$mixed, $physical, $shop, $misc, $empty, $expired, $unknown, $depleted, $inactive], array_column($data, 'item_id'));
-            $this->assertEquals([2, 1, 3, 2, 0, 0, 0, 0, 4], array_column($data, 'saleable_quantity'));
+            $this->assertSame([$mixed, $physical, $shop, $misc, $empty, $expired, $unknown, $depleted, $inactive, $unpriced], array_column($data, 'item_id'));
+            $this->assertEquals([2, 1, 3, 2, 0, 0, 0, 0, 4, 4], array_column($data, 'saleable_quantity'));
             $this->assertEquals(250, $data[0]['selling_price']);
             $this->assertTrue($data[1]['low_stock']);
             $this->assertEquals(1, $data[1]['quantity_on_hand']);
             $this->assertEquals(4, $data[5]['expired_quantity']);
             $this->assertFalse($data[8]['is_active']);
             $activeResults = $this->getJson('/api/inventory/search?q=Search&sale_context=grooming')
-                ->assertOk()->assertJsonCount(8, 'data')->json('data');
+                ->assertOk()->assertJsonCount(9, 'data')->json('data');
             $this->assertNotContains($inactive, array_column($activeResults, 'item_id'));
             $this->getJson('/api/inventory/search?q=DoesNotExist&sale_context=grooming')
                 ->assertOk()->assertJsonCount(0, 'data');
@@ -1611,7 +1611,29 @@ class InventorySecurityRegressionTest extends TestCase
             ->assertJsonPath('data.current_batches.0.expiry_status', 'Expiry unknown');
     }
 
-    public function test_pos_search_and_barcode_exclude_medical_inactive_and_unpriced_products(): void
+    public function test_retail_suggestions_are_bounded_eligible_and_rank_recent_successful_sales(): void
+    {
+        Sanctum::actingAs($actor = $this->createUser('staff', '09170000049'));
+        $ids = [];
+        foreach (range(1, 15) as $number) {
+            $id = $this->createInventoryItem(sprintf('Suggest %02d', $number), 3, 50);
+            DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+            $ids[] = $id;
+        }
+        DB::table('inventory_items')->where('item_id', $ids[0])->update(['is_active' => false]);
+        DB::table('inventory_items')->where('item_id', $ids[1])->update(['quantity_on_hand' => 0]);
+        $this->recordInventoryTransaction($ids[14], 'stock_out', 1, ['reason' => 'sold']);
+        foreach (['pos', 'grooming'] as $context) {
+            $data = $this->getJson('/api/inventory/search?suggestions=1&sale_context='.$context)
+                ->assertOk()->assertJsonCount(12, 'data')->json('data');
+            $this->assertSame($ids[14], $data[0]['item_id']);
+            $this->assertNotContains($ids[0], array_column($data, 'item_id'));
+            $this->assertNotContains($ids[1], array_column($data, 'item_id'));
+        }
+        $this->getJson('/api/inventory/search?q=S&sale_context=pos')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    public function test_pos_search_discovers_unavailable_retail_while_barcode_keeps_sale_guards(): void
     {
         Sanctum::actingAs($this->createUser('staff', '09170000040'));
         $expected = [];
@@ -1630,9 +1652,10 @@ class InventorySecurityRegressionTest extends TestCase
         foreach ([['is_active' => false], ['selling_price' => null], ['selling_price' => 0]] as $changes) {
             $id = $this->createInventoryItem('Retail excluded', 1, 50);
             DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop', ...$changes]);
+            $expected[] = $id;
         }
         $result = $this->getJson('/api/inventory/search?q=Retail&sale_context=pos&include_inactive=1')
-            ->assertOk()->assertJsonCount(4, 'data');
+            ->assertOk()->assertJsonCount(7, 'data');
         $this->assertEqualsCanonicalizing($expected, array_column($result->json('data'), 'item_id'));
     }
 
