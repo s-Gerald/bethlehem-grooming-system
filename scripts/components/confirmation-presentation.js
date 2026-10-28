@@ -1,4 +1,5 @@
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import '../utils/philippine-mobile.js?v=mobile-format-20261029';
 
 export function confirmationFields(fields) {
   return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide]) => `
@@ -25,10 +26,7 @@ export function formatConfirmationTimestamp(value) {
 }
 
 export function formatConfirmationPhone(value) {
-  const text = String(value ?? "").trim();
-  const digits = text.replace(/\D/g, "");
-  const local = digits.startsWith("639") && digits.length === 12 ? `0${digits.slice(2)}` : digits;
-  return local.length === 11 ? `${local.slice(0, 4)}-${local.slice(4, 7)}-${local.slice(7)}` : text;
+  return globalThis.PhilippineMobile.format(value);
 }
 
 export function ownerConfirmationFields(owner = {}) {

@@ -2468,8 +2468,10 @@ var API = (() => {
 
   // ── Customer management (admin only) ─────────────────────────────────────
 
+  const phoneSearch = value => window.PhilippineMobile?.searchQuery(value) ?? String(value).trim();
+
   async function searchAdminDashboard(search = "") {
-    const params = new URLSearchParams({ q: String(search).trim() });
+    const params = new URLSearchParams({ q: phoneSearch(search) });
     return request("GET", `/admin/dashboard/search?${params.toString()}`, null, getAdminToken());
   }
 
@@ -2478,7 +2480,7 @@ var API = (() => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (tier)   params.set("tier",   tier);
-    if (search) params.set("search", search);
+    if (search) params.set("search", phoneSearch(search));
     const query = params.toString() ? `?${params.toString()}` : "";
     return request("GET", `/admin/customers${query}`, null, getAdminToken(), { force });
   }
@@ -2501,7 +2503,7 @@ var API = (() => {
   }
 
   async function searchWalkInCustomers(search = "") {
-    const params = new URLSearchParams({ q: String(search).trim() });
+    const params = new URLSearchParams({ q: phoneSearch(search) });
     return request("GET", `/admin/walk-in/customers?${params.toString()}`, null, getAdminToken());
   }
 
@@ -2542,7 +2544,7 @@ var API = (() => {
   async function getArchivedBookings({ search = "", date = "" } = {}, { force = false } = {}) {
     // GET /api/admin/bookings/archived  (protected — admin token)
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (search) params.set("search", phoneSearch(search));
     if (date)   params.set("date", date);
     const query = params.toString() ? `?${params.toString()}` : "";
     return request("GET", `/admin/bookings/archived${query}`, null, getAdminToken(), {force});
@@ -2554,7 +2556,7 @@ var API = (() => {
 
   async function getArchivedClinicAppointments({ search = "", date = "" } = {}, { force = false } = {}) {
     const params = new URLSearchParams();
-    if (search) params.set("search", search);
+    if (search) params.set("search", phoneSearch(search));
     if (date) params.set("date", date);
     const query = params.toString() ? `?${params.toString()}` : "";
     return request("GET", `/admin/clinic-appointments/archived${query}`, null, getAdminToken(), {force});

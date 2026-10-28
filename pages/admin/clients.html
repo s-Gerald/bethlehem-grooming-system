@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
@@ -124,7 +124,7 @@
         </div>
       </aside>
       <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2"></script>
+    <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main Content -->
@@ -609,8 +609,8 @@
                       type="tel"
                       autocomplete="tel"
                       inputmode="numeric"
-                      maxlength="11"
-                      placeholder="e.g. 09171234567"
+                      maxlength="13"
+                      placeholder="09XX XXX XXXX"
                       :aria-invalid="String(Boolean(addCustomerModal.errors.phone))"
                       aria-describedby="addCustomerPhoneError"
                       :class="addCustomerModal.errors.phone ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : 'border-slate-300 focus:border-[#315b7e] focus:ring-[#315b7e]/20'"
@@ -1331,8 +1331,8 @@
 
 
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-input-20261028-v2"></script>
-    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2"></script>
+    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
+    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

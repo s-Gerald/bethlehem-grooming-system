@@ -704,12 +704,7 @@ function adminArchive() {
       const text = String(value ?? "").trim();
       if (!text || text === "—") return fallback;
 
-      const digits = text.replace(/\D/g, "");
-      if (digits.length === 11) {
-        return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
-      }
-
-      return text;
+      return PhilippineMobile.format(text, fallback);
     },
 
     formatPeso(amount) {

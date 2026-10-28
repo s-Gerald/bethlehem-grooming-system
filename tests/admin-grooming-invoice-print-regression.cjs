@@ -5,10 +5,15 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../scripts/components/admin-dashboard.js"), "utf8");
 const context = { window: {}, console, Date, Intl };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/utils/philippine-mobile.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/cash-payment.js"), "utf8"), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components/payment-invoice.js"), "utf8"), context);
 vm.runInNewContext(source, context);
 const ui = context.adminDashboard();
+assert.equal(ui.formatMobileNumber('09171234567'), '0917 123 4567');
+assert.equal(ui.formatMobileNumber('08971234567'), '0897 123 4567');
+assert.equal(ui.formatMobileNumber('09031234567'), '09031234567', 'Legacy contacts outside the policy are not rewritten.');
+assert.equal(ui.formatMobileNumber(null), '—');
 
 assert.equal(ui.formatInvoicePeso(4620), "₱4,620.00");
 assert.equal(ui.formatInvoicePeso("1050.5"), "₱1,050.50");
@@ -42,6 +47,15 @@ context.document = {currentScript: {src: 'http://localhost/scripts/components/pr
 context.URL = URL;
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/product-sale-invoice.js'), 'utf8'), context);
 const clinicHtml = fs.readFileSync(path.join(__dirname, '../pages/admin/clinic.html'), 'utf8');
+for (const template of [invoice, context.window.PaymentInvoice.clinicTemplate]) {
+  const expression = template.match(/<p x-show="receiptModal.contactNumber" x-text="([^"]+)"/)[1];
+  assert.equal(new Function('window', 'receiptModal', `return ${expression}`)(context.window, {contactNumber:'09171234567'}), '0917 123 4567');
+  assert.equal(new Function('window', 'receiptModal', `return ${expression}`)(context.window, {contactNumber:'08971234567'}), '0897 123 4567');
+}
+for (const [source, variable] of [['row.owner?.phone', 'row'], ['profile.owner?.phone', 'profile']]) {
+  const expression = [...clinicHtml.matchAll(/x-text="([^"]+)"/g)].map(match => match[1]).find(value => value.includes(source));
+  assert.equal(new Function('window', variable, `return ${expression}`)(context.window, {owner:{phone:'09181234567'}}), '0918 123 4567');
+}
 const posHtml = fs.readFileSync(path.join(__dirname, '../pages/admin/inventory/sections/sell-product.html'), 'utf8');
 for (const [isTest, expected] of [[true, 'Paid · Test'], [false, 'Paid'], [undefined, 'Paid']]) {
   for (const template of [invoice, context.window.PaymentInvoice.clinicTemplate]) {

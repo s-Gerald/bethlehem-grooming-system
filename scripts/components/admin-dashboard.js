@@ -3038,15 +3038,7 @@ function adminDashboard() {
     },
 
     formatMobileNumber(value) {
-      const text = this.toStringValue(value).trim();
-      if (!text) return "—";
-
-      const digits = text.replace(/\D/g, "");
-      if (digits.length === 11) {
-        return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
-      }
-
-      return text;
+      return PhilippineMobile.format(value, '—');
     },
 
     // Converts backend status variants into the frontend status names used by the UI.

@@ -149,7 +149,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
       phoneInput.value = value; phoneInput.events.input(); assert.equal(phoneError.textContent, '');
     }
     phoneInput.value = '0897abc12345678'; phoneInput.selectionStart = 7; phoneInput.selectionEnd = 7;
-    phoneInput.events.input(); assert.equal(phoneInput.value, '08971234567'); assert.equal(phoneInput.selectionStart, 4);
+    phoneInput.events.input(); assert.equal(phoneInput.value, '0897 123 4567'); assert.equal(phoneInput.selectionStart, 4);
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
     assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html");
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
@@ -206,7 +206,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(missing.window.location.href, '', 'Collect a missing contact in the existing form');
     assert.equal(missing.get('ownerFirstName').value, 'Test');
     assert.equal(missing.get('walkInOwnerNextBtn').disabled, true);
-    missing.get('ownerPhoneNumber').value = '09179998888';
+    missing.get('ownerPhoneNumber').value = '0917 999 8888';
     await vm.runInContext('handleSubmit({ preventDefault() {} })', missing.context);
     const completed = JSON.parse(missing.storage.get('walkInOwnerStep'));
     assert.equal(completed.customerUserId, 17);
@@ -267,13 +267,14 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   phoneInput.events.blur(); assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter a mobile number.');
   for (const value of ['09181234567', '08971234567', '09221234567']) {
     phoneInput.value = value; phoneInput.events.input();
-    assert.equal(customers.addCustomerModal.form.phone, value);
+    assert.equal(customers.addCustomerModal.form.phone, value.slice(0, 4) + ' ' + value.slice(4, 7) + ' ' + value.slice(7));
     assert.equal(customers.addCustomerModal.errors.phone, undefined);
   }
-  Object.assign(customers.addCustomerModal.form, { first_name: " Test ", last_name: " Customer ", phone: "09171234567" });
+  Object.assign(customers.addCustomerModal.form, { first_name: " Test ", last_name: " Customer ", phone: "0917 123 4567" });
   await customers.submitUnregisteredCustomer();
   assert.equal(payload.first_name, "Test");
   assert.equal(payload.last_name, "Customer");
+  assert.equal(payload.phone, '09171234567', 'Customer creation sends the canonical contact, never display spaces.');
   assert.equal(customers.addCustomerModal.open, false);
   assert.equal(customers.statusFilter, "unregistered");
   assert.equal(refreshed, true);

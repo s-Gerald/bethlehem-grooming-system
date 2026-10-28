@@ -81,7 +81,7 @@ window.PaymentInvoice = (() => {
   <section class="payment-invoice-section payment-invoice-customer">
     <h2>Bill to</h2>
     <p class="payment-invoice-customer-name" x-text="receiptModal.ownerName"></p>
-    <p x-show="receiptModal.contactNumber" x-text="${clinic ? 'receiptModal.contactNumber' : "receiptModal.contactNumber ? formatMobileNumber(receiptModal.contactNumber) : ''"}"></p>
+    <p x-show="receiptModal.contactNumber" x-text="window.PhilippineMobile.format(receiptModal.contactNumber)"></p>
   </section>
 
   ${clinic ? `<section class="payment-invoice-section">

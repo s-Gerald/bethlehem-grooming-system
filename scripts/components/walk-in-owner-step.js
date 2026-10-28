@@ -77,7 +77,7 @@ function getFormValues() {
     firstName: elements.firstName.value,
     lastName: elements.lastName.value,
     middleInitial: normalizeMiddleInitial(elements.middleInitial.value),
-    phone: elements.phone.value.trim(),
+    phone: PhilippineMobile.unformat(elements.phone.value),
     email: AccountEmail.normalize(elements.email.value),
   };
 }
@@ -124,10 +124,7 @@ function escapeHtml(value) {
 }
 
 function formatPhone(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return digits.length === 11
-    ? `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`
-    : String(value || "Not provided");
+  return PhilippineMobile.format(value, 'Not provided');
 }
 
 function renderCustomerSearchResults() {
@@ -364,7 +361,7 @@ function continueToPetStep(values, confirmSimilarName = false) {
   elements.firstName.value = values.firstName;
   elements.lastName.value = values.lastName;
   elements.middleInitial.value = values.middleInitial;
-  elements.phone.value = values.phone;
+  elements.phone.value = PhilippineMobile.format(values.phone);
   elements.email.value = values.email;
 
   clearWalkInContinuationDraft();

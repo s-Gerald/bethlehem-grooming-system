@@ -1,5 +1,21 @@
 # Customer phone management and grooming completion SMS
 
+## Spaced mobile presentation — October 29, 2026
+
+Applicable inputs now display `0917 123 4567` progressively with the exact placeholder `09XX XXX XXXX`, a 13-character presentation limit and an 11-digit limit. `PhilippineMobile` owns grouping, recognized-number display (`format`), removal of presentation spaces (`unformat`), input editing and phone-shaped search normalization. The generated prefix block and its build process are unchanged. Required/optional validation and the separate OTP eligibility policy remain intact, including supported `08` prefixes.
+
+The binder preserves digit-relative selection/caret positions, handles Backspace/Delete beside separators, selected/middle/full-field paste, international paste/autofill and composition events. It avoids assigning an already formatted value. Sign-up, Add Customer, walk-in drafts/submissions and OTP sends convert displayed values back to unspaced canonical numbers. OTP challenges, passwords, cooldowns and privacy masks retain their existing behavior.
+
+Shared display formatting replaces the previous hyphen algorithms in Settings, Customers, dashboard/grooming, archives, walk-in suggestions and confirmation/history presentation. Clinic patient tables, profiles and owner suggestions now format at their text bindings. Grooming/clinic invoice templates format the recorded contact; the existing print clone uses that rendered snapshot. Empty states, masked contacts and unrecognized legacy text are preserved. Canonical API records, filtering/sorting and financial data are not rewritten.
+
+Existing customer/dashboard/walk-in/archive phone searches normalize phone-shaped input before constructing the request/cache key. Name/reference searches retain their previous handling. Equivalent spaced/unspaced queries reuse the existing cache entry. No formatting API calls, additional database queries, profile reads, cache invalidation, observers or dependencies were added.
+
+Primary changed files: `scripts/utils/philippine-mobile.js`, `scripts/api.js`, `signup.js`, `customer-phone-verification.js`, `walk-in-owner-step.js`, `admin-customers.js`, `client-settings.js`, `admin-dashboard.js`, `admin-archive.js`, `confirmation-presentation.js`, and `payment-invoice.js`; related page inputs/rendering bindings and transitive asset/import versions are refreshed. Existing signup/modal/walk-in/Settings/confirmation/invoice/cache regression scripts were updated in their original locations. Backend code, prefix policy JSON, provider integration, database/schema and credentials are unchanged.
+
+Validation: complete PHP suite **1,960 tests / 25,445 assertions**, eight existing environment-dependent skips, no failures; complete JavaScript suite **85/85 scripts passed**; production build and `git diff --check` passed. The build retains its existing non-blocking Browserslist-data notice. Logs: `storage/logs/mobile-format-php.log`, `storage/logs/mobile-format-node.log`, and `storage/logs/mobile-format-build.log`. Real browser/mobile keyboard and printed-paper acceptance were not performed; no real SMS delivery is claimed.
+
+Deploy the changed raw pages/scripts and complete normal build artifacts together through the existing Hostinger release process. No new configuration, migration or secret is required for this presentation-only change. No branch, commit, push or deployment was performed.
+
 ## Shared Philippine mobile input policy — October 28, 2026 follow-up
 
 General mobile validation now uses `resources/data/philippine-mobile-policy.json`, containing 94 recognized four-digit mobile prefixes. The snapshot includes the supplied reference and additional mobile ranges checked against the PH `<mobile>` section of [Google libphonenumber's maintained metadata](https://github.com/google/libphonenumber/blob/master/resources/PhoneNumberMetadata.xml), reviewed October 28, 2026. This is a maintained application policy, not a claim that a number is allocated to a particular person, currently active or reachable on its originally assigned carrier.

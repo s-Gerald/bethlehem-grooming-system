@@ -568,7 +568,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await trigger.dispatch('click');
     const dialog = element('phoneVerificationDialog');
     assert.equal(dialog.open, true);
-    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationPhone').value, '0917 123 4567');
     assert.equal(element('phoneVerificationPhoneField').hidden, false, 'Saved numbers remain editable.');
     assert.equal(element('phoneVerificationEntry').hidden, false);
     const phoneField = element('phoneVerificationPhone');
@@ -602,20 +602,20 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     }
     phoneField.value = '0917x12345678'; phoneField.selectionStart = 5; phoneField.selectionEnd = 5;
     await phoneField.dispatch('input');
-    assert.equal(phoneField.value, '09171234567');
+    assert.equal(phoneField.value, '0917 123 4567');
     assert.equal(phoneField.selectionStart, 4, 'Sanitizing preserves the caret relative to the remaining digits.');
     phoneField.value = '0917'; phoneField.selectionStart = 4; phoneField.selectionEnd = 4;
     await phoneField.dispatch('paste', { clipboardData: { getData: () => ' 123-45678' } });
-    assert.equal(phoneField.value, '09171234567');
+    assert.equal(phoneField.value, '0917 123 4567');
     phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
     await phoneField.dispatch('paste', { clipboardData: { getData: () => '0895' } });
-    assert.equal(phoneField.value, '08951234567', 'Pasting replaces the selected prefix.');
+    assert.equal(phoneField.value, '0895 123 4567', 'Pasting replaces the selected prefix.');
     phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
     await phoneField.dispatch('paste', { clipboardData: { getData: () => '089612345' } });
-    assert.equal(phoneField.value, '08961234567', 'An oversized paste preserves unselected trailing digits.');
-    phoneField.selectionStart = 0; phoneField.selectionEnd = 11;
+    assert.equal(phoneField.value, '0896 123 4567', 'An oversized paste preserves unselected trailing digits.');
+    phoneField.selectionStart = 0; phoneField.selectionEnd = 13;
     await phoneField.dispatch('paste', { clipboardData: { getData: () => '+63 897-123-4567' } });
-    assert.equal(phoneField.value, '08971234567', 'A full-field international paste is displayed in the required local format.');
+    assert.equal(phoneField.value, '0897 123 4567', 'A full-field international paste is displayed in the required local format.');
     phoneField.value = '09171234567'; await phoneField.dispatch('input');
     await trigger.dispatch('click'); assert.equal(calls.dialogs, 1);
     await dialog.dispatch('click'); assert.equal(dialog.open, true);
@@ -643,7 +643,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationTitle').textContent, 'Change Phone Number');
     assert.equal(element('phoneVerificationEntry').hidden, false);
-    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationPhone').value, '0917 123 4567');
     assert.equal(element('phoneVerificationNext').disabled, true, 'Editing does not reset cooldown.');
     assert.equal(global.document.activeElement, element('phoneVerificationPhone'));
     element('phoneVerificationPhone').value = '09991234567';
@@ -719,7 +719,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-input-20261028-v2');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-format-20261029');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -745,7 +745,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationRetry').textContent, 'Try Again in 42s');
     const requestsBeforeRecoveryEdit = [calls.sends, calls.resends, calls.profiles, stateCalls];
     await element('phoneVerificationChange').dispatch('click');
-    assert.equal(element('phoneVerificationPhone').value, '09171234567');
+    assert.equal(element('phoneVerificationPhone').value, '0917 123 4567');
     assert.equal(element('phoneVerificationPasswordField').hidden, true);
     element('phoneVerificationPhone').value = '09911234567';
     await element('phoneVerificationForm').dispatch('submit');

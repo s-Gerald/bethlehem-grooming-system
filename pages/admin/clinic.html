@@ -30,7 +30,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -120,7 +120,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
+    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main -->
@@ -298,7 +299,7 @@
                         </div>
                       </div>
                     </td>
-                    <td class="break-words px-4 py-3 text-slate-600" x-text="row.owner?.phone || '—'"></td>
+                    <td class="break-words px-4 py-3 text-slate-600" x-text="window.PhilippineMobile.format(row.owner?.phone, '—')"></td>
                     <td class="break-words px-4 py-3">
                       <template x-if="row.pets?.length === 1">
                         <div>
@@ -503,7 +504,7 @@
                   <h3 id="profile-owner-title" class="mb-3 text-sm font-bold text-[#2f4b66]">Owner Information</h3>
                   <dl class="grid gap-4 text-sm sm:grid-cols-3">
                     <div class="min-w-0"><dt class="text-xs text-slate-500">Owner Name</dt><dd class="mt-1 break-words font-medium text-slate-700" x-text="profile.owner?.fullName || '—'"></dd></div>
-                    <div class="min-w-0"><dt class="text-xs text-slate-500">Phone</dt><dd class="mt-1 break-words font-medium text-slate-700" x-text="profile.owner?.phone || '—'"></dd></div>
+                    <div class="min-w-0"><dt class="text-xs text-slate-500">Phone</dt><dd class="mt-1 break-words font-medium text-slate-700" x-text="window.PhilippineMobile.format(profile.owner?.phone, '—')"></dd></div>
                     <div class="min-w-0"><dt class="text-xs text-slate-500">Email</dt><dd class="mt-1 break-words font-medium text-slate-700" x-text="profile.owner?.email || '—'"></dd></div>
                   </dl>
                 </section>
@@ -864,7 +865,7 @@
                   x-text="ownerInitials(petPicker.owner?.fullName)"></div>
                 <div class="min-w-0">
                   <h2 class="text-lg font-bold text-[#2f4b66]" x-text="petPicker.owner?.fullName || '—'"></h2>
-                  <p class="text-xs text-slate-400" x-text="[petPicker.owner?.phone, petPicker.owner?.email].filter(Boolean).join(' · ')"></p>
+                  <p class="text-xs text-slate-400" x-text="[window.PhilippineMobile.format(petPicker.owner?.phone), petPicker.owner?.email].filter(Boolean).join(' · ')"></p>
                 </div>
               </div>
               <button @click="closePetPicker()" type="button" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
@@ -1749,12 +1750,12 @@
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024&mobile-format=20261029"></script>
 
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-clinic.js?clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1"></script>
+    <script src="../../scripts/components/admin-clinic.js?clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?v=20261015-confinement-weight-v1"></script>
     <script src="../../scripts/components/admin-vaccinations.js?clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019"></script>

@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const lastName       = document.getElementById("lastName").value.trim();
     const username       = usernameInput ? usernameInput.value.trim() : "";
     const email          = AccountEmail.normalize(emailInput.value);
-    const phone          = phoneInput.value.trim();
+    const phone          = PhilippineMobile.unformat(phoneInput.value);
     const password       = passwordInput.value;
     const confirmPassword = confirmPasswordInput.value;
 
@@ -220,7 +220,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         const id = fieldIds[field];
-        if (id === 'phone' && phoneInput.value !== phone) { setBusyState(false); return; }
+        if (id === 'phone' && PhilippineMobile.unformat(phoneInput.value) !== phone) { setBusyState(false); return; }
         const feedback = fieldErrors.get(id);
         const text = Array.isArray(firstError) ? firstError[0] : firstError;
         if (id === 'phone') phoneField.setError(text);

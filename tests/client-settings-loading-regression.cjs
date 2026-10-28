@@ -92,6 +92,7 @@ function createPage(getMe, phoneApi = {}) {
   vm.createContext(context);
   context.Event = class { constructor(type) { this.type = type; } };
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/human-name.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/philippine-mobile.js'), 'utf8'), context);
   vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   return element;
@@ -172,7 +173,7 @@ async function testPhoneVerificationBadgesUseServerStatus() {
     await flush();
     assert.equal(element('settingsPhoneStatus').textContent, label);
     assert.equal(element('settingsPhoneAction').textContent, !phone ? 'Add' : status === 'verified' ? 'Change' : 'Verify');
-    assert.equal(element('settingsPhone').value, phone ? '0917-123-4567' : 'Not provided');
+    assert.equal(element('settingsPhone').value, phone ? '0917 123 4567' : 'Not provided');
     assert.equal(requests, 1, 'Badge must reuse the Settings profile request.');
   }
 }
@@ -187,7 +188,7 @@ async function testPendingReplacementKeepsAuthoritativePhoneVisible() {
   assert.equal(element('settingsPhoneStatus').textContent, 'Pending');
   assert.equal(element('settingsPhoneAction').textContent, 'Continue verification');
   assert.equal(element('settingsPhoneCancel').hidden, false);
-  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(element('settingsPhone').value, '0917 123 4567');
   assert.equal(requests, 1);
 }
 
@@ -202,7 +203,7 @@ async function testCancelReplacementKeepsVerifiedPhoneAndRestoresChangeAction() 
   await flush();
   await element('settingsPhoneCancel').dispatch('click');
   assert.equal(canceled, 1);
-  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(element('settingsPhone').value, '0917 123 4567');
   assert.equal(element('settingsPhoneAction').textContent, 'Change');
   assert.equal(element('settingsPhoneStatus').textContent, 'Verified');
   assert.equal(element('settingsPhoneCancel').hidden, true);
@@ -217,7 +218,7 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
   await flush();
   element.emitVerified({ phone: '09171234567', phone_verification_status: 'verified' });
   assert.equal(element('settingsPhoneStatus').textContent, 'Verified');
-  assert.equal(element('settingsPhone').value, '0917-123-4567');
+  assert.equal(element('settingsPhone').value, '0917 123 4567');
   assert.equal(requests, 1, 'Settings reuses the refreshed server profile without another request.');
 }
 

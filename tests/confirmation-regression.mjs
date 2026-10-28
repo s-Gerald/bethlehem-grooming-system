@@ -34,7 +34,7 @@ const missing = groomingPetConfirmation({ petName: "Mochi", size: "small" });
 assert.doesNotMatch(missing, /Estimated from weight|Clinic verified|Weight<\/dt>|Grooming preference/);
 assert.match(groomingPetConfirmation({ size: "small", sizeVerified: false }), /Small · Estimated/);
 assert.match(ownerConfirmationFields({ name: "Maria Santos", phone: "639171234567" }), /Maria Santos/);
-assert.match(ownerConfirmationFields({ name: "Maria Santos", phone: "639171234567" }), /0917-123-4567/);
+assert.match(ownerConfirmationFields({ name: "Maria Santos", phone: "639171234567" }), /0917 123 4567/);
 assert.match(confirmationFields([["Queue number", 0]]), /<dd>0<\/dd>/);
 assert.match(formatConfirmationTimestamp("2026-10-10T02:30:00Z"), /10:30 AM/);
 assert.equal(formatConfirmationTimestamp("invalid"), "");

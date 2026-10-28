@@ -51,7 +51,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         dispatchEvent(event) { handlers[event.type]?.call(this, event); },
         setAttribute(name, value) { this.attributes[name] = value; },
         addEventListener(name, handler) { const previous = handlers[name]; handlers[name] = function (...args) { previous?.apply(this, args); return handler.apply(this, args); }; },
-        setSelectionRange(start, end) { this.selection = [start, end]; },
+        setSelectionRange(start, end) { this.selection = [start, end]; this.selectionStart = start; this.selectionEnd = end; },
         focus() { document.activeElement = this; handlers.focus?.(); },
         checkValidity() { return id === 'signupForm' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
         reportValidity() {},
@@ -110,7 +110,67 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const entry = page({ signup: true });
+  const input = entry.element('phone');
+  for (const [digits, visible] of [['0','0'], ['09','09'], ['0917','0917'], ['09171','0917 1'],
+    ['091712','0917 12'], ['0917123','0917 123'], ['09171234','0917 123 4'], ['09171234567','0917 123 4567'],
+    ['08971234567','0897 123 4567']]) {
+    input.value = digits; input.setSelectionRange(digits.length, digits.length);
+    entry.dispatch('phone', 'input', { inputType: 'insertText' });
+    assert.equal(input.value, visible);
+    assert.equal(input.selectionStart, visible.length);
+  }
+  assert.equal(input.attributes.maxlength, '13');
+  assert.equal(input.attributes.placeholder, '09XX XXX XXXX');
+  input.value = '0917 123 4567'; input.setSelectionRange(5, 5);
+  let prevented = false;
+  entry.dispatch('phone', 'beforeinput', {inputType:'deleteContentBackward', preventDefault() { prevented=true; }});
+  assert.equal(prevented, true);
+  assert.equal(input.value, '0911 234 567');
+  assert.equal(input.selectionStart, 3);
+  input.value = '0917 123 4567'; input.setSelectionRange(4, 4);
+  entry.dispatch('phone', 'beforeinput', {inputType:'deleteContentForward'});
+  assert.equal(input.value, '0917 234 567');
+  assert.equal(input.selectionStart, 4);
+  input.value = '0917 123 4567'; input.setSelectionRange(0, 4);
+  entry.dispatch('phone', 'paste', {clipboardData:{getData:()=> '0896'}});
+  assert.equal(input.value, '0896 123 4567');
+  assert.equal(input.selectionStart, 4);
+  input.setSelectionRange(0, 13);
+  entry.dispatch('phone', 'paste', {clipboardData:{getData:()=> '+63 897-123-4567'}});
+  assert.equal(input.value, '0897 123 4567');
+  input.value = '0917 123 4567'; input.setSelectionRange(6, 9);
+  entry.dispatch('phone', 'paste', {clipboardData:{getData:()=> '99'}});
+  assert.equal(input.value, '0917 199 4567');
+  assert.equal(input.selectionStart, 8);
+  entry.dispatch('phone', 'compositionstart');
+  input.value = '0897 123 4567x'; input.setSelectionRange(14,14);
+  entry.dispatch('phone', 'input', {isComposing:true});
+  assert.equal(input.value, '0897 123 4567x');
+  entry.dispatch('phone', 'compositionend');
+  assert.equal(input.value, '0897 123 4567');
+  input.value = '091712345678'; input.setSelectionRange(12, 12);
+  entry.dispatch('phone', 'input', {inputType:'insertReplacementText'});
+  assert.equal(input.value, '0917 123 4567', 'Autofill keeps a maximum of 11 actual digits.');
+  input.value = '0917 193 4567'; input.setSelectionRange(7, 7);
+  entry.dispatch('phone', 'input', {inputType:'insertText'});
+  assert.equal(input.selectionStart, 7, 'Editing in the middle must not move focus to the end.');
+  input.value = '0917 123 4567'; input.setSelectionRange(13, 13); entry.dispatch('phone', 'input');
+  input.value = '0917123 4567'; input.setSelectionRange(4,4);
+  entry.dispatch('phone', 'input', {inputType:'deleteContentBackward'});
+  assert.equal(input.value, '0911 234 567', 'Separator deletion also works without beforeinput.');
+  input.value = '0897 123 4567'; input.setSelectionRange(13,13); entry.dispatch('phone', 'input');
+  await entry.dispatch('signupForm', 'submit');
+  assert.equal(entry.calls[0][1].phone, '08971234567');
   const mobile = page({ signup: true }).window.PhilippineMobile;
+  for (const [raw, expected] of [['09171234567','0917 123 4567'], ['08971234567','0897 123 4567'],
+    ['0918-123-4567','0918 123 4567'], ['+63 917 123 4567','0917 123 4567'],
+    ['09031234567','09031234567'], ['02 8123 4567','02 8123 4567'], ['0917 •••• 567','0917 •••• 567'], ['Not provided','Not provided']]) {
+    assert.equal(mobile.format(raw), expected);
+  }
+  assert.equal(mobile.format(null, '—'), '—');
+  assert.equal(mobile.validate('0897 123 4567'), '');
+  assert.equal(mobile.validate('0918 123 4567'), '');
   const mobilePolicy = JSON.parse(fs.readFileSync(path.join(root, 'resources/data/philippine-mobile-policy.json'), 'utf8'));
   for (let prefix = 800; prefix < 1000; prefix++) {
     const localPrefix = `0${prefix}`;

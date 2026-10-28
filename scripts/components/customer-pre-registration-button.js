@@ -45,7 +45,7 @@ export function bindPreRegistrationButton(button) {
       if (!user) throw new Error("Unable to check your phone status. Please try again.");
       if (user.phone && user.phone_verification_status === "verified") { window.location.assign(button.href); return; }
       if (!flags.available) throw new Error("SMS verification is unavailable. Please contact the clinic before registering online.");
-      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-input-20261028-v2");
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-format-20261029");
       if (button.getAttribute("aria-disabled") !== "true") await openPhoneVerification(button, user);
     } catch (error) {
       entryMessage(button, error.message || "Unable to open phone verification. Please try again.");

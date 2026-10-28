@@ -130,7 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!serverUser || phoneAction.disabled) return;
     phoneAction.disabled = true; hideStatus();
     try {
-      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-input-20261028-v2");
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=mobile-format-20261029");
       await openPhoneVerification(phoneAction, serverUser, { navigate: false });
     } catch (error) { showStatus(error.message || "Unable to open phone verification.", "error"); }
     finally { phoneAction.disabled = false; }
@@ -362,17 +362,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function formatMobileNumber(value) {
     const text = String(value ?? "").trim();
     if (!text || text === "—" || text === "Not provided") return "";
-
-    const digits = text.replace(/\D/g, "");
-    const localDigits = digits.startsWith("639") && digits.length === 12
-      ? `0${digits.slice(2)}`
-      : digits;
-
-    if (localDigits.length === 11) {
-      return `${localDigits.slice(0, 4)}-${localDigits.slice(4, 7)}-${localDigits.slice(7)}`;
-    }
-
-    return text;
+    return PhilippineMobile.format(text);
   }
 
   function updateVisibleProfile(user) {

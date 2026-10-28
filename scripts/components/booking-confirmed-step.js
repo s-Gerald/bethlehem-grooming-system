@@ -5,7 +5,7 @@ import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
   readConfirmationData, renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
 
 export function groomingPetConfirmation(pet, review = {}, showPrice = true) {
   const price = getGroomingPricePresentation(review.pricing);

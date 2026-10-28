@@ -4,7 +4,7 @@ import { getGroomingPricePresentation } from "../services/grooming-service.js?v=
 import {
   confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,
-} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3";
+} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {

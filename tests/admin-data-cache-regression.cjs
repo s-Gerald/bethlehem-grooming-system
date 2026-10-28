@@ -24,6 +24,7 @@ function environment() {
       fetch: async (url, options) => { const endpoint = url.split('/api')[1]; calls.push({ endpoint, method: options.method });
         const data = await handler(endpoint, options); return data?.json ? data : response(data); },
     });
+    vm.runInContext(fs.readFileSync('scripts/utils/philippine-mobile.js', 'utf8'), c);
     vm.runInContext(source, c);
     return { API: c.API, c, events };
   }
@@ -43,6 +44,23 @@ async function navigationAndRetention() {
   waiting.resolve({ customers: [{ id: 2 }] }); await pending;
   assert.equal(visible.customers[0].id, 2);
   assert.ok(!JSON.stringify([...e.sessionStorage.values]).includes('synthetic-secret'));
+}
+
+async function formattedPhoneSearchPreservesCanonicalCacheKeys() {
+  const e = environment();
+  for (const [method, parameter] of [['getCustomers', 'search'], ['getArchivedBookings', 'search'], ['getArchivedClinicAppointments', 'search']]) {
+    await e.API[method]({ search:'0897 123 4567' });
+    const count = e.calls.length;
+    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get(parameter), '08971234567');
+    await e.API[method]({ search:'08971234567' });
+    assert.equal(e.calls.length, count, 'Formatting variants reuse the same existing API cache entry.');
+  }
+  for (const method of ['searchWalkInCustomers', 'searchAdminDashboard']) {
+    await e.API[method]('0917 123 4567');
+    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get('q'), '09171234567');
+    await e.API[method]('Maria Santos');
+    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get('q'), 'Maria Santos');
+  }
 }
 async function deduplicationAndMutationRace() {
   const e = environment(), old = deferred(); e.respond(() => old.promise);
@@ -272,6 +290,6 @@ async function inventoryReadMutationRace() {
   await e.API.adminRequest('GET',key);
 
 }
-if (require.main === module) (async () => { for (const test of [navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
+if (require.main === module) (async () => { for (const test of [formattedPhoneSearchPreservesCanonicalCacheKeys, navigationAndRetention, deduplicationAndMutationRace, preciseInvalidationAndCrossTab, failuresAndSessionOwnership, boundedSearchAndOperationalReuse, retainedDataWaitsForSessionVerification, dashboardRoleChangeRejectsPendingData]) {
   await test(); console.log(test.name+' passed');
 } for (const test of [scopedPresentationPolicies, scopedMutationInvalidation, onlineSettlementInvalidation, inventoryReadMutationRace]) { await test(); console.log(test.name+' passed'); } })().catch(error => { console.error(error); process.exitCode = 1; });
