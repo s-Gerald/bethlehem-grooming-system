@@ -21,15 +21,20 @@ class PasswordResetController extends Controller
 
         try {
             $passwordResets->sendCode($data['email']);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
+            // Public recovery must have the same quota response even when an
+            // eligible account's queue insertion failed.
+            app(\App\Services\AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'If eligible, a new code was requested. Check your email.',
             'email' => $passwordResets->maskEmail($data['email']),
-            'resend_after' => PasswordResetService::COOLDOWN_SECONDS,
+            ...app(\App\Services\AuthenticationEmailPolicy::class)->status($data['email']),
             // Public policy, identical for eligible and ineligible accounts.
             'expires_in' => $passwordResets->ttlMinutes() * 60,
         ], 202);

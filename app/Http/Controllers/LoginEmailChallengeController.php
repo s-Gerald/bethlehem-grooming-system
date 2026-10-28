@@ -19,7 +19,7 @@ class LoginEmailChallengeController extends Controller
         ]);
 
         try {
-            $receipt = $service->resend($data['poll_token']);
+            $issuance = $service->resend($data['poll_token']);
         } catch (HttpResponseException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
@@ -34,9 +34,7 @@ class LoginEmailChallengeController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'A new sign-in email is queued. Please check your inbox shortly.',
-            'email_delivery_token' => $receipt,
-            'resend_after' => LoginEmailChallengeService::resendAfter(LoginEmailChallenge::query()
-                ->where('poll_token_hash', hash('sha256', $data['poll_token']))->first()),
+            ...$issuance,
         ]);
     }
 
@@ -49,7 +47,7 @@ class LoginEmailChallengeController extends Controller
         $pollTokenHash = hash('sha256', $data['poll_token']);
         $attemptKey = 'login-code:'.$pollTokenHash;
 
-        if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
+        if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
             return $this->attemptsExceededResponse($attemptKey);
         }
 
@@ -62,7 +60,7 @@ class LoginEmailChallengeController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
+            if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
                 return $this->attemptsExceededResponse($attemptKey);
             }
 
@@ -82,6 +80,12 @@ class LoginEmailChallengeController extends Controller
                 return $expiredResponse;
             }
 
+            if ($challenge->approved_at) {
+                $challenge->delete();
+                return response()->json(['success' => false, 'code' => 'login_code_invalid',
+                    'message' => 'This code has already been used. Sign in again.'], 422);
+            }
+
             $user = $this->usableUser($challenge);
             if (! $user) {
                 $challenge->delete();
@@ -90,33 +94,38 @@ class LoginEmailChallengeController extends Controller
                 return $this->disabledResponse();
             }
 
+            LoginEmailChallengeService::assertAttemptBudget($user);
             $expectedHash = hash_hmac('sha256', $data['code'], $data['poll_token']);
             if (! hash_equals($challenge->token_hash, $expectedHash)) {
+                foreach (LoginEmailChallengeService::attemptKeys($user) as $key => $limit) {
+                    RateLimiter::hit($key, (int) config('authentication.otp_attempt_window', 900));
+                }
                 RateLimiter::hit($attemptKey, max(
                     1,
                     $challenge->expires_at->getTimestamp() - now()->getTimestamp(),
                 ));
 
-                if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::MAX_ATTEMPTS)) {
+                // Return, rather than throwing, so database-backed counters
+                // commit with this failed attempt instead of rolling back.
+                if ($locked = LoginEmailChallengeService::attemptBudgetResponse($user)) return $locked;
+
+                if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
                     return $this->attemptsExceededResponse($attemptKey);
                 }
 
                 return response()->json([
                     'success' => false,
                     'code' => 'login_code_invalid',
-                    'message' => 'The sign-in code is incorrect.',
+                    'message' => 'Incorrect code. Try again.',
                 ], 422);
             }
 
             RateLimiter::clear($attemptKey);
 
-            if (! $challenge->approved_at) {
-                $challenge->update(['approved_at' => now()]);
-            }
+            // Consume atomically with session issuance. A replay cannot rotate
+            // the customer's current session or create duplicate sessions.
+            $challenge->delete();
 
-            // Keep the challenge until the browser confirms that it safely
-            // stored this session. A lost response can be retried with the
-            // same code without stranding the customer.
             return $this->authenticatedResponse($user, $challenge->remember_me);
         });
     }
@@ -165,7 +174,7 @@ class LoginEmailChallengeController extends Controller
 
         return response()->json([
             'success' => false,
-            'message' => 'This sign-in confirmation has expired. Please sign in again.',
+            'message' => 'Code expired. Request a new one.',
             'expired' => true,
         ], 422);
     }
@@ -186,7 +195,7 @@ class LoginEmailChallengeController extends Controller
         return response()->json([
             'success' => false,
             'code' => 'login_code_locked',
-            'message' => 'Too many incorrect codes. Sign in again to request a new code.',
+            'message' => 'Too many attempts. Sign in again.',
             'retry_after' => $seconds,
         ], 429)->header('Retry-After', (string) $seconds);
     }
@@ -195,7 +204,7 @@ class LoginEmailChallengeController extends Controller
     {
         return max(
             60,
-            (int) config('app.login_confirmation_ttl_minutes', 15) * 60,
+            (int) config('authentication.otp_minutes', 10) * 60,
         );
     }
 

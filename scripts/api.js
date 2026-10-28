@@ -691,7 +691,7 @@ var API = (() => {
     } catch (error) {
       // Do not leave a half-written token without its matching role.
       clearAuthStorage();
-      throw error;
+      throw new Error("Browser storage is unavailable. Allow storage to continue.");
     }
 
     if (role === "customer") {
@@ -1642,7 +1642,7 @@ var API = (() => {
       const networkError = new Error(
         error?.name === "AbortError"
           ? "The server is taking too long to respond. Please try again."
-          : "Unable to reach the server. Please check your connection."
+          : "Connection lost. Please try again."
       );
       networkError.status = 0;
       networkError.errors = null;
@@ -1736,9 +1736,14 @@ var API = (() => {
         redirectToAdminDashboard();
       }
 
-      const error = new Error(data.message || "Something went wrong.");
+      const authenticationEndpoint = /^\/(?:register|sign-in|email\/|password\/)/.test(endpoint);
+      const internal = (authenticationEndpoint && response.status >= 500) || data.exception
+        || /Trying to|array offset|SQLSTATE|Stack trace|Undefined (?:variable|array)|PDOException|Illuminate\\|Symfony\\/i.test(data.message || "");
+      const error = new Error(internal ? (endpoint.startsWith("/register")
+        ? "Couldn't create your account. Please try again." : "Something went wrong. Please try again.")
+        : data.message || "Something went wrong. Please try again.");
       error.status = response.status;
-      error.errors = data.errors || null;
+      error.errors = internal ? null : data.errors || null;
       error.emailNotVerified = data.email_not_verified ?? false;
       error.email = data.email ?? null;
       error.expired = data.expired ?? false;
@@ -1786,8 +1791,7 @@ var API = (() => {
   async function register(payload) {
     // POST /api/register
     // payload: { first_name, last_name, username?, email, phone, password, password_confirmation }
-    // Registration establishes a browser session only after the customer
-    // enters the verification code sent to their email address.
+    // Registration establishes a session only after deliberate magic-link verification.
     const data = await request("POST", "/register", payload);
     storeEmailDelivery("registration", data.email_delivery_token);
     return data;
@@ -1815,6 +1819,7 @@ var API = (() => {
       storePendingLoginConfirmation(data?.login_poll_token, data?.email);
       try {
         sessionStorage.setItem("pendingLoginResendUntil", String(Date.now() + (data.resend_after ?? 60) * 1000));
+        sessionStorage.setItem("pendingLoginResendLimited", data.resend_limited ? "1" : "0");
       } catch { /* Server-side cooldown remains authoritative. */ }
       storeEmailDelivery("login", data.email_delivery_token);
       return data;
@@ -1876,19 +1881,29 @@ var API = (() => {
     return data;
   }
 
-  async function verifyEmail(emailOrLegacyToken, code) {
-    // POST /api/email/verify { email, code }; token is only for existing links.
-    // Successful customer signup verification also establishes the first
-    // authenticated browser session.
-    const payload = code === undefined ? { token: emailOrLegacyToken } : { email: emailOrLegacyToken, code,
-      registration_token: safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || undefined };
-    const data = await request("POST", "/email/verify", payload);
+  async function verifyEmail(token) {
+    const data = await request("POST", "/email/verify", { token });
     acceptRegistrationSession(data);
+    return data;
+  }
+
+  async function registrationSession(email = "", acknowledge = false) {
+    const revision = sessionRevision, previousToken = getAuthSession()?.token;
+    const data = await request("POST", "/email/registration/session", { email, acknowledge: false }, null, {cache: "no-store"});
+    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
+      throw new Error("Registration session changed. Please try again.");
+    }
+    if (email && data?.user?.email?.toLowerCase() !== email.toLowerCase()) return null;
+    if (!data?.session_token || data?.user?.role !== "customer") return null;
+    acceptRegistrationSession({ ...data, token: data.session_token });
+    // Announce readiness only after this tab has accepted the server session.
+    if (acknowledge) await request("POST", "/email/registration/session", {email, acknowledge: true}, null, {cache: "no-store"});
     return data;
   }
 
   function acceptRegistrationSession(data) {
     if (data?.token && data?.user?.role === "customer") {
+      if (getCustomerToken() === data.token) return;
       // Presentation-only session cookie: shared across tabs, never used for auth.
       // Leave it through sign-out/sign-in so the initial browser session stays new.
       if (data.user.user_id != null) {
@@ -1977,7 +1992,7 @@ var API = (() => {
       if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
 
       // Acknowledge only after the browser has stored the session. Failure is
-      // non-fatal: the approved challenge remains retryable until it expires.
+      // non-fatal: the code was already consumed atomically by the server.
       try {
         await request(
           "POST",
@@ -3383,6 +3398,7 @@ var API = (() => {
     getAdminVaccinationOptions,
     // Email verification
     verifyEmail,
+    registrationSession,
     updatePendingRegistration,
     adminGetPetProfile,
     adminGetPetCaseDetails,

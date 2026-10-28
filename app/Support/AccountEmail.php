@@ -33,7 +33,9 @@ final class AccountEmail
         if ($local === '' || $domain === '') return 'Enter a valid email address.';
         // Only ASCII mailbox syntax is supported by the current mail transport.
         if (preg_match('/[^\x21-\x7e]/', $email)) return 'Remove unsupported characters.';
-        $policy = config('account_email');
+        // A running deployment may still have a config cache from before this
+        // policy was introduced. Use the same source, never different rules.
+        $policy = config('account_email') ?? require base_path('config/account_email.php');
         $maxLength ??= $policy['max_length'];
         if (strlen($local) < $policy['min_local']) return 'Use at least 3 characters before @.';
         if (strlen($local) > $policy['max_local']) return 'Use no more than 64 characters before @.';

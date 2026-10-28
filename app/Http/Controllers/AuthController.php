@@ -9,6 +9,8 @@ use App\Services\LoginEmailChallengeService;
 use App\Services\CustomerRegistrationService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use App\Services\AuthenticationEmailPolicy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -22,6 +24,7 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         PendingCustomerRegistration::pruneExpired();
+        $browserToken = CustomerRegistrationService::browserToken($request);
 
         $phone = $request->input('phone');
         $request->merge([
@@ -36,7 +39,7 @@ class AuthController extends Controller
             ? ['required', 'email', 'max:150'] : AccountEmail::rules()]);
 
         try {
-            $result = DB::transaction(function () use ($request) {
+            $result = DB::transaction(function () use ($request, $browserToken) {
                 $identifiers = function ($query) use ($request) {
                     $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$request->input('email')]);
                     if ($request->filled('phone')) $query->orWhere('phone', $request->input('phone'));
@@ -82,7 +85,7 @@ class AuthController extends Controller
                     $pendingRegistration = PendingCustomerRegistration::query()->unexpired()
                         ->where('registration_edit_token_hash', hash('sha256', $credential['registration_token']))
                         ->lockForUpdate()->first();
-                    if (! $pendingRegistration) {
+                    if (! $pendingRegistration || ! CustomerRegistrationService::trustsBrowser($pendingRegistration, $request)) {
                         abort(422, 'This registration is no longer available. Please verify your email again.');
                     }
                 }
@@ -97,7 +100,8 @@ class AuthController extends Controller
                     'phone' => $data['phone'] ?? null,
                     'password_hash' => Hash::make($data['password']),
                     'registration_edit_token_hash' => hash('sha256', $editToken),
-                    'email_verification_token' => null,
+                    'registration_browser_token_hash' => hash('sha256', $browserToken),
+                    'email_verification_token' => $pendingRegistration?->email_verification_token,
                     'email_verification_code_hash' => null,
                     'email_verification_expires_at' => $pendingRegistration?->email_verification_expires_at,
                     'registration_recovery_token_hash' => null,
@@ -106,6 +110,10 @@ class AuthController extends Controller
                     'email_verification_attempts' => $pendingRegistration?->email_verification_attempts ?? 0,
                 ];
                 if ($pendingRegistration) {
+                    if (strcasecmp($pendingRegistration->email, $values['email']) !== 0) {
+                        $values['email_verification_token'] = null;
+                        $values['email_verification_expires_at'] = null;
+                    }
                     $pendingRegistration->update($values);
                 } else {
                     $pendingRegistration = PendingCustomerRegistration::create($values);
@@ -122,19 +130,20 @@ class AuthController extends Controller
         try {
             $receipt = EmailVerificationController::sendVerificationEmail($pendingRegistration);
         } catch (Throwable $exception) {
-            report($exception);
+            if (! $exception instanceof HttpResponseException) report($exception);
+            $throttled = $exception instanceof HttpResponseException ? $exception->getResponse()->getData(true) : [];
 
             // The pending registration remains recoverable through resend;
             // callers must not retry registration and hit duplicate fields.
             return response()->json([
                 'success' => true,
-                'message' => 'Registration saved, but the verification email could not be queued. Please use Resend Code.',
+                'message' => $throttled['message'] ?? "Couldn't send the verification email. Try resending.",
                 'requires_verification' => true,
                 'email_delivery_queued' => false,
                 'email' => $pendingRegistration->email,
                 'registration_token' => $editToken,
-                'resend_after' => max(0, ($pendingRegistration->fresh()?->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
-            ], 201);
+                ...app(AuthenticationEmailPolicy::class)->status($pendingRegistration->email),
+            ], 201)->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken))->header('Cache-Control', 'no-store');
         }
 
         return response()->json([
@@ -145,8 +154,8 @@ class AuthController extends Controller
             'email_delivery_token' => $receipt,
             'email' => $pendingRegistration->email,
             'registration_token' => $editToken,
-            'resend_after' => max(0, ($pendingRegistration->fresh()?->email_verification_last_sent_at?->timestamp ?? 0) + 45 - now()->timestamp),
-        ], 201);
+            ...app(AuthenticationEmailPolicy::class)->status($pendingRegistration->email),
+        ], 201)->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken))->header('Cache-Control', 'no-store');
     }
 
     private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null): array
@@ -290,30 +299,20 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'code' => 'email_not_verified',
-                'message' => 'Please verify your email address before signing in. Check your inbox for the verification code.',
+                'message' => 'Please verify your email address before signing in. Check your inbox for the verification link.',
                 'email_not_verified' => true,
                 'email' => $user->email,
             ], 403);
         }
 
         if (in_array($user->role, ['customer', 'admin', 'staff'], true)) {
-            $confirmationThrottleKey = 'login-confirmation:'
-                .hash('sha256', $user->user_id.'|'.$request->ip());
-            if (RateLimiter::tooManyAttempts($confirmationThrottleKey, 3)) {
-                $seconds = RateLimiter::availableIn($confirmationThrottleKey);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => "Too many login confirmation emails requested. Try again in {$seconds} seconds.",
-                    'retry_after' => $seconds,
-                ], 429)->header('Retry-After', (string) $seconds);
-            }
-
             try {
                 $challenge = $loginChallenges->send(
                     $user,
                     (bool) ($data['remember'] ?? true),
                 );
+            } catch (HttpResponseException $exception) {
+                throw $exception;
             } catch (Throwable $exception) {
                 report($exception);
 
@@ -323,7 +322,6 @@ class AuthController extends Controller
                 ], 503);
             }
 
-            RateLimiter::hit($confirmationThrottleKey, 600);
             RateLimiter::clear($throttleKey);
 
             return response()->json([
@@ -333,7 +331,7 @@ class AuthController extends Controller
                 'requires_login_confirmation' => true,
                 'email_delivery_queued' => true,
                 'email_delivery_token' => $challenge['delivery_token'],
-                'resend_after' => $challenge['resend_after'],
+                ...app(AuthenticationEmailPolicy::class)->status($user->email),
                 'login_poll_token' => $challenge['poll_token'],
                 'email' => $user->email,
             ], 202);

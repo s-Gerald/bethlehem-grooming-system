@@ -13,7 +13,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     ['pendingVerificationEmail', 'customer@gmail.com'],
     ['pendingVerificationPhone', '09171234542'],
     ['pendingRegistrationEditToken', 'private-edit-credential'],
-    ['pendingVerificationResendUntil', String(now + (deliveryFailed ? 0 : 45000))],
+    ['pendingVerificationResendUntil', String(now + (deliveryFailed ? 0 : 60000))],
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
   if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone }));
@@ -43,23 +43,25 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         },
         getAttribute(name) { return this.attributes[name] || ''; },
         append(...children) { this.children = children; },
+        parentElement: {appendChild(child) { elements.set(child.id, child); }},
         insertAdjacentElement(_where, el) { this.adjacent = el; },
         dispatchEvent(event) { handlers[event.type]?.call(this, event); },
         setAttribute(name, value) { this.attributes[name] = value; },
-        addEventListener(name, handler) { handlers[name] = handler; },
+        addEventListener(name, handler) { const previous = handlers[name]; handlers[name] = function (...args) { previous?.apply(this, args); return handler.apply(this, args); }; },
         setSelectionRange(start, end) { this.selection = [start, end]; },
         focus() { document.activeElement = this; handlers.focus?.(); },
         checkValidity() { return id === 'signupForm' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value); },
         reportValidity() {},
         setCustomValidity(message) { this.validationMessage = message; },
         querySelector() { return null; },
-        querySelectorAll() { return cells; },
+        querySelectorAll() { return []; },
       });
     }
     return elements.get(id);
   }
-  const cells = Array.from({ length: 6 }, (_, i) => element(`cell${i}`));
+  const windowHandlers = {};
   const window = {
+    addEventListener(name, callback) { windowHandlers[name] = callback; },
     location: { search: reviewing ? '?review=1' : editing ? '?edit=1' : '', hash: '', replace(target) { calls.push(['redirect', target]); } },
     setInterval(callback) { const id = ++nextId; intervals.set(id, callback); return id; },
     clearInterval(id) { intervals.delete(id); },
@@ -71,12 +73,14 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     async updatePendingRegistration(payload, token, grant) { calls.push(['update', payload, token, grant]); return grant ? { token: 'session', user: { role: 'customer' } } : { requires_verification: true, registration_token: 'rotated-edit-token' }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
-    async resendVerification(email) { calls.push(['send', email]); return { resend_after: 45 }; },
-    async verifyEmail(email, code) { calls.push(['verify', email, code]); return { token: 'session', user: { role: 'customer' } }; },
+    async resendVerification(email) { calls.push(['send', email]); return { resend_after: 60 }; },
+    async registrationSession() { return null; },
   };
   const context = vm.createContext({
     window, document, API, URLSearchParams, Event,
     Date: { now: () => now },
+    setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
+    setInterval: window.setInterval, clearInterval: window.clearInterval,
     sessionStorage: {
       getItem(key) { if (noStorage) throw Error('blocked'); return storage.get(key) ?? null; },
       setItem(key, value) { if (noStorage) throw Error('blocked'); storage.set(key, value); },
@@ -91,14 +95,13 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   ready();
   return {
-    element, cells, API, calls, storage, activeElement: () => document.activeElement,
+    element, API, calls, storage, windowHandlers, activeElement: () => document.activeElement,
     dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
     advance(ms) {
       now += ms;
       for (const [id, timeout] of [...timeouts]) if (timeout.at <= now) { timeouts.delete(id); timeout.callback(); }
       for (const callback of [...intervals.values()]) callback();
     },
-    type(value) { element('signupCode').value = value; this.dispatch('signupCode', 'input'); },
   };
 }
 
@@ -187,6 +190,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(abandoned.storage.has('pendingRegistrationEditToken'), false);
   assert.equal(abandoned.storage.has('pendingSignupDetails'), false, 'Unproven submitted details cannot become recovered account details');
 
+  const obsoleteResponse = page({signup:true});
+  obsoleteResponse.API.register = async () => ({success:true});
+  await obsoleteResponse.dispatch('signupForm','submit');
+  assert.deepEqual(obsoleteResponse.calls, [['redirect','./sign-in.html']], 'An unexpected registration response must not claim activation');
+
   const reviewing = page({ signup: true, reviewing: true });
   assert.equal(reviewing.element('firstName').value, 'Saved');
   assert.equal(reviewing.element('email').readOnly, true);
@@ -204,15 +212,6 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(unprovenReview.element('signupRecovery').classList.contains('hidden'), true);
   assert.deepEqual(unprovenReview.calls, [['redirect', './verify-email.html?recover=1']], 'A lost recovery grant returns to email proof');
 
-  const ownership = page();
-  ownership.API.verifyEmail = async () => ({ requires_registration_review: true, registration_recovery_token: 'ownership-grant',
-    details: { first_name: 'Saved', last_name: 'Customer', email: 'customer@gmail.com', phone: null, username: null } });
-  ownership.type('123456');
-  await ownership.dispatch('signupCodeForm', 'submit');
-  assert.deepEqual(ownership.calls, [['redirect', './signup.html?review=1']]);
-  assert.equal(ownership.storage.get('pendingRegistrationRecoveryToken'), 'ownership-grant');
-  assert.equal(JSON.parse(ownership.storage.get('pendingSignupDetails')).firstName, 'Saved');
-
   const interrupted = page({ signup: true });
   let failSignup;
   let submissions = 0;
@@ -229,123 +228,64 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(interrupted.element('email').attributes['aria-invalid'], 'true');
   assert.equal(interrupted.element('emailError').textContent, 'Enter a valid email address.');
 
-  const expiredCode = page();
-  expiredCode.API.verifyEmail = async () => { throw { status: 422, expired: true }; };
-  expiredCode.type('123456');
-  await expiredCode.dispatch('signupCodeForm', 'submit');
-  assert.equal(expiredCode.element('signupCodeMessage').textContent, 'This code has expired. Request a new one.');
-  assert.deepEqual(expiredCode.calls, []);
+  const pending = page();
+  assert.equal(pending.element('verificationDescription').textContent, 'We sent a verification link to:');
+  assert.equal(pending.element('verifyCodeEmail').textContent, 'c***@gmail.com');
+  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1:00');
+  assert.deepEqual(pending.calls, [], 'Waiting must never automatically verify or send');
+  pending.advance(60000);
+  await pending.dispatch('signupLinkForm', 'submit');
+  assert.deepEqual(pending.calls, [['send', 'customer@gmail.com']]);
+  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1:00');
 
-  const p = page();
-  assert.equal(p.element('verificationTitle').textContent, 'Verify your email');
-  assert.equal(p.element('verificationDescription').textContent, 'Enter the 6-digit code for');
-  assert.equal(p.element('verifyCodeEmail').textContent, 'c***@gmail.com');
-  assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
-  assert.equal(p.element('signupCodeSubmit').disabled, true);
-  p.type('12a34b567');
-  assert.equal(p.element('signupCode').value, '123456');
-  assert.deepEqual(p.cells.map(c => c.textContent), ['1', '2', '3', '4', '5', '6']);
-  assert.equal(p.cells[5].classList.contains('is-active'), true);
-  assert.equal(p.element('signupCodeSubmit').disabled, false);
-  let prevented = false;
-  p.dispatch('signupCode', 'paste', { preventDefault() { prevented = true; }, clipboardData: { getData: () => '98 76 54' } });
-  assert.equal(prevented, true);
-  assert.equal(p.element('signupCode').value, '987654');
-  assert.deepEqual(p.cells.map(c => c.textContent), ['9', '8', '7', '6', '5', '4']);
-
-  p.advance(45000);
-  assert.equal(p.element('signupResend').disabled, false);
-  assert.equal([...p.storage.values()].includes('123456'), false, 'OTP must never enter storage');
-  for (const digits of ['123456', '12']) {
-    const pending = page({ deliveryFailed: true });
-    pending.type(digits);
-    let reject;
-    let requests = 0;
-    pending.API.resendVerification = () => { requests++; return new Promise((_resolve, fail) => { reject = fail; }); };
-    const sending = pending.dispatch('signupResend', 'click');
-    assert.equal(pending.element('signupCode').value, '', 'Clear before the network responds');
-    assert.deepEqual(pending.cells.map(cell => cell.textContent), ['', '', '', '', '', '']);
-    assert.equal(pending.element('signupCodeSubmit').disabled, true);
-    assert.equal(pending.element('signupCode').attributes['aria-invalid'], 'false');
-    assert.equal(pending.element('signupResend').textContent, 'Sending...');
-    await pending.dispatch('signupResend', 'click');
-    assert.equal(requests, 1);
-    reject({ status: 503 });
-    await sending;
-    assert.equal(pending.element('signupCode').value, '');
-    assert.match(pending.element('signupCodeMessage').textContent, /Couldn't send/);
-  }
-  await p.dispatch('signupResend', 'click');
-  assert.equal(p.element('signupCodeMessage').attributes.role, 'status', 'A successful resend is a status confirmation, not an error alert');
-  assert.deepEqual(p.calls, [['send', 'customer@gmail.com']]);
-  assert.equal(p.element('signupResend').textContent, 'Resend in 0:45');
-  p.type('654321');
-  await p.dispatch('signupCodeForm', 'submit');
-  assert.deepEqual(p.calls.at(-1), ['verify', 'customer@gmail.com', '654321']);
-  assert.equal(p.storage.size, 0);
-  assert.equal(p.element('stateSuccess').classList.contains('hidden'), false);
-  p.advance(1500);
-  assert.deepEqual(p.calls.at(-1), ['redirect', './dashboard.html']);
-
-  const transportFailure = page({ deliveryStatus: 'failed' });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.match(transportFailure.element('signupCodeMessage').textContent, /Couldn't send the code/);
-  assert.doesNotMatch(transportFailure.element('verificationDescription').textContent, /We sent/);
-  assert.deepEqual(transportFailure.calls, [], 'Delivery failure cannot authenticate or redirect');
-  const transportAccepted = page({ deliveryStatus: 'sent' });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(transportAccepted.element('signupCodeMessage').textContent, '');
-  assert.equal(transportAccepted.element('verifyCodeEmail').textContent, 'c***@gmail.com');
-  assert.deepEqual(transportAccepted.calls, [], 'Delivery receipt alone cannot authenticate');
-
-  const throttled = page({ deliveryFailed: true });
-  assert.match(throttled.element('signupCodeMessage').textContent, /Couldn't send the code/);
+  const throttled = page({deliveryFailed: true});
+  throttled.API.resendVerification = async () => { throw {status:429, retryAfter:480, code:'email_rate_limited'}; };
+  await throttled.dispatch('signupLinkForm', 'submit');
+  assert.equal(throttled.element('signupResend').textContent, 'Resend link');
+  assert.equal(throttled.element('signupResend').disabled, true);
+  assert.match(throttled.element('signupLinkMessage').textContent, /Too many requests.*8 minutes/);
+  throttled.advance(480000);
   assert.equal(throttled.element('signupResend').disabled, false);
-  throttled.API.resendVerification = async () => { throw { status: 429, retryAfter: 90 }; };
-  await throttled.dispatch('signupResend', 'click');
-  assert.equal(throttled.element('signupResend').textContent, 'Resend in 1:30');
-  assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Try again later.');
-  assert.equal(throttled.element('signupCodeMessage').attributes.role, 'alert', 'A failed resend must still announce its error');
-  throttled.advance(90000);
-  throttled.API.resendVerification = async () => { throw { status: 503 }; };
-  await throttled.dispatch('signupResend', 'click');
-  assert.equal(throttled.element('signupResend').disabled, false);
-  assert.match(throttled.element('signupCodeMessage').textContent, /Couldn't send the code/);
-  throttled.API.verifyEmail = async () => { throw { status: 429 }; };
-  throttled.type('123456');
-  await throttled.dispatch('signupCodeForm', 'submit');
-  assert.equal(throttled.element('signupCodeMessage').textContent, 'Too many attempts. Try again later.');
-  assert.equal(throttled.element('signupCode').attributes['aria-invalid'], 'true');
+  assert.equal(throttled.element('signupLinkMessage').textContent, '');
 
-  const recovery = page({ noStorage: true });
+  const busy = page({deliveryFailed:true});
+  let resolveSend;
+  let sends = 0;
+  busy.API.resendVerification = () => { sends++; return new Promise(resolve => {resolveSend=resolve;}); };
+  const sending = busy.dispatch('signupLinkForm', 'submit');
+  await busy.dispatch('signupLinkForm', 'submit');
+  assert.equal(sends, 1);
+  assert.equal(busy.element('signupResend').textContent, 'Sending verification email...');
+  resolveSend({resend_after:60});
+  await sending;
+
+  const recovery = page({noStorage:true});
   assert.equal(recovery.element('verificationEmailRecovery').classList.contains('hidden'), false);
-  recovery.element('verificationEmail').value = 'restore@gmail.com';
-  await recovery.dispatch('signupResend', 'click');
+  recovery.element('verificationEmail').value='restore@gmail.com';
+  await recovery.dispatch('signupLinkForm', 'submit');
   assert.deepEqual(recovery.calls, [['send', 'restore@gmail.com']]);
 
-  const recoveredDelivery = page({ deliveryFailed: true, deliveryStatus: 'sent' });
-  recoveredDelivery.API.resendVerification = async () => ({ resend_after: 45, email_delivery_token: 'new-private-receipt' });
-  await recoveredDelivery.dispatch('signupResend', 'click');
-  assert.notEqual(recoveredDelivery.storage.get('pendingVerificationDeliveryFailed'), '1', 'A successful private resend must clear the persisted failure of the initial request');
-
-  for (const status of ['queued', 'sending', 'retrying', 'sent']) {
-    const quiet = page({ deliveryStatus: status });
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(quiet.element('signupCodeMessage').textContent, '', `${status} must not show a warning`);
-    quiet.type('123456');
-    assert.equal(quiet.element('signupCodeSubmit').disabled, false, 'Tracking cannot block OTP entry');
-  }
-  const delayed = page({ deliveryStatus: 'queued' });
+  const delivery = page({deliveryStatus:'failed'});
   await new Promise(resolve => setImmediate(resolve));
-  for (let i = 1; i < 24; i++) {
-    delayed.advance(5000);
-    await new Promise(resolve => setImmediate(resolve));
-  }
-  assert.match(delayed.element('signupCodeMessage').textContent, /Email is delayed/);
-  delayed.type('123456');
-  assert.equal(delayed.element('signupCodeSubmit').disabled, false);
-  const expiredTab = page();
-  expiredTab.advance(120000);
-  assert.equal(expiredTab.element('signupResend').disabled, false, 'Countdown uses elapsed time, including background tabs');
-  console.log('Customer signup verification regression checks passed');
+  assert.match(delivery.element('signupLinkMessage').textContent, /Couldn't send the verification email/);
+  assert.deepEqual(delivery.calls, []);
+
+  const safeHandoff = page();
+  await new Promise(resolve => setImmediate(resolve));
+  safeHandoff.API.registrationSession = async (email, acknowledge) => {
+    assert.equal(email, 'customer@gmail.com'); assert.equal(acknowledge, true);
+    return {session_token:'11|cookie', user:{role:'customer',email}};
+  };
+  await safeHandoff.windowHandlers.focus();
+  assert.deepEqual(safeHandoff.calls, [['redirect','./dashboard.html']]);
+
+  const fields = page({signup:true});
+  fields.API.register = async () => {throw {status:422,errors:{phone:['This phone is already in use.']}};};
+  await fields.dispatch('signupForm','submit');
+  assert.equal(fields.element('phoneServerError').textContent, 'This phone is already in use.');
+  fields.element('phone').value = '09171234567';
+  fields.dispatch('phone','input');
+  assert.equal(fields.element('phoneServerError').textContent, '');
+  assert.equal(fields.element('phone').attributes['aria-invalid'], 'false');
+  console.log('Customer magic-link waiting, signup validation and recovery regression checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -162,7 +162,7 @@ class PasswordResetTest extends TestCase
             ->assertOk()->json('token');
         $user->update(['email_verified_at' => null]);
         Notification::fake();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()
             ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
         Notification::assertNothingSent();
@@ -451,7 +451,7 @@ class PasswordResetTest extends TestCase
         $this->useDatabaseMailQueue();
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
@@ -467,7 +467,7 @@ class PasswordResetTest extends TestCase
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $oldCode = $this->resetCodeSentTo($user);
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         Notification::fake();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $newCode = $this->resetCodeSentTo($user);
@@ -513,7 +513,7 @@ class PasswordResetTest extends TestCase
     {
         Notification::fake();
         $user = $this->createUser('customer');
-        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 45);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 60);
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.40'])
             ->postJson('/api/password/forgot', ['email' => strtoupper($user->email)])
@@ -525,12 +525,12 @@ class PasswordResetTest extends TestCase
     {
         $this->freezeTime();
         foreach (range(1, 2) as $attempt) {
-            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 45);
-            $this->travel(45)->seconds();
+            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 60);
+            $this->travel(60)->seconds();
         }
-        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 510);
-        $this->travel(45)->seconds();
-        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '465');
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 780);
+        $this->travel(60)->seconds();
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '720');
     }
 
     public function test_password_resend_preserves_failed_attempts_and_queue_failure_preserves_state(): void
@@ -541,11 +541,11 @@ class PasswordResetTest extends TestCase
         $service->sendCode($user->email);
         $request = PasswordResetRequest::query()->sole();
         $request->update(['verification_attempts' => 2]);
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         $service->sendCode($user->email);
         $this->assertSame(2, $request->fresh()->verification_attempts);
         $before = $request->fresh()->getAttributes();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         $this->mock(\Illuminate\Contracts\Notifications\Dispatcher::class, fn ($mock) => $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('queue unavailable')));
         try {
             $service->sendCode($user->email);
@@ -561,7 +561,7 @@ class PasswordResetTest extends TestCase
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $before = PasswordResetRequest::query()->sole()->getAttributes();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
         $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
         $unknown = $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
@@ -591,7 +591,7 @@ class PasswordResetTest extends TestCase
             ->assertOk()->assertJsonStructure(['token', 'expires_in']);
         $grant = $verified->json('token');
         $before = PasswordResetRequest::query()->sole();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode($user->email);
         $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
         Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
@@ -613,7 +613,7 @@ class PasswordResetTest extends TestCase
             $service->verifyCode($user->email, '000000');
         }
         $before = PasswordResetRequest::query()->sole();
-        $this->travel(46)->seconds();
+        $this->travel(61)->seconds();
         $service->sendCode($user->email);
         $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
         Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);

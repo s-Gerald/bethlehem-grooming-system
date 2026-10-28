@@ -5,232 +5,144 @@ namespace App\Http\Controllers;
 use App\Support\AccountEmail;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
-use App\Services\RegistrationEmailCodeService;
+use App\Services\RegistrationMagicLinkService;
 use App\Services\CustomerRegistrationService;
 use App\Services\AuthenticationMailDelivery;
+use App\Services\AuthenticationEmailPolicy;
+use App\Services\AccountSessionService;
+use App\Http\Middleware\UseAccountSessionCookie;
 use Illuminate\Http\Exceptions\HttpResponseException;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Throwable;
 
 class EmailVerificationController extends Controller
 {
-    // New registrations use { email, code }. Tokens only consume already-issued links.
+    // GET only serves inert HTML. A deliberate button submits this POST.
     public function verify(Request $request)
     {
-        $codeMode = ! $request->has('token');
-        if ($codeMode) {
-            $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
-            $data = $request->validate(['email' => 'required|email|max:150']);
-            $code = (string) $request->input('code');
-            if (! preg_match('/^[0-9]{6}$/', $code)) {
-                return self::invalidCode();
-            }
-            $plainToken = null;
-        } else {
-            $data = $request->validate(['token' => 'required|string|size:64']);
-            $plainToken = $data['token'];
-            $code = null;
-        }
-        $tokenHash = $plainToken ? hash('sha256', $plainToken) : null;
-
+        $data = $request->validate(['token' => 'required|string|size:64']);
+        $hash = hash('sha256', $data['token']);
         try {
-            return DB::transaction(function () use ($request, $plainToken, $tokenHash, $codeMode, $data, $code) {
-                // A legacy user takes precedence over any inconsistent pending row.
-                // Never apply the pending password to an existing account.
-                if ($codeMode) {
-                    $existingUser = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->lockForUpdate()->first();
-                    if ($existingUser) {
-                        if (! CustomerRegistrationService::recoverableUser($existingUser)) return self::invalidCode();
-                        if ($error = self::validateCode($existingUser, $code)) return $error;
-                        return app(CustomerRegistrationService::class)->authorizeReview($existingUser);
-                    }
+            return DB::transaction(function () use ($request, $data, $hash) {
+                $legacyUntil = config('authentication.legacy_links_until');
+                $allowLegacy = $legacyUntil && now()->isBefore($legacyUntil);
+                $find = function ($query) use ($data, $hash, $allowLegacy) {
+                    $query->where('email_verification_token', $hash);
+                    if ($allowLegacy) $query->orWhere('email_verification_token', $data['token']);
+                };
+                $pending = PendingCustomerRegistration::query()->where($find)->lockForUpdate()->first();
+                $user = User::query()->where(function ($query) use ($find, $pending) {
+                    $query->where($find);
+                    if ($pending) $query->orWhereRaw(AccountEmail::lookupColumn().' = ?', [$pending->email]);
+                })->lockForUpdate()->first();
+                // A real account always wins collisions; pending credentials may
+                // never replace a legitimate customer's identity or password.
+                if ($user && ($pending || ! CustomerRegistrationService::recoverableUser($user))) return $this->invalidLink();
+                $registrant = $user ?? $pending;
+                if (! $registrant || ($pending && $pending->retentionExpired())) return $this->invalidLink();
+                if (! $registrant->email_verification_last_sent_at && ! $allowLegacy) return $this->invalidLink();
+                $expiry = $registrant->email_verification_expires_at;
+                if (! $expiry || now()->greaterThanOrEqualTo($expiry)
+                    || ($registrant->email_verification_last_sent_at && now()->greaterThanOrEqualTo(
+                        $registrant->email_verification_last_sent_at->copy()->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30)))))) {
+                    return $this->invalidLink(true);
                 }
-                $pendingRegistration = PendingCustomerRegistration::query()
-                    ->where(function ($query) use ($plainToken, $tokenHash, $codeMode, $data) {
-                        if ($codeMode) {
-                            $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']]);
-                        } else {
-                            $query->where('email_verification_token', $tokenHash)
-                                ->orWhere('email_verification_token', $plainToken);
-                        }
-                    })
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($pendingRegistration) {
-                    if ($pendingRegistration->retentionExpired()) return self::invalidCode();
-                    if ($codeMode && ($error = self::validateCode($pendingRegistration, $code))) {
-                        return $error;
-                    }
-                    if (! $pendingRegistration->email_verification_expires_at
-                        || now()->greaterThanOrEqualTo($pendingRegistration->email_verification_expires_at)) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'This verification link has expired. Please request a new one.',
-                            'expired' => true,
-                            'email' => $pendingRegistration->email,
-                        ], 422);
-                    }
-
-                    if ($codeMode) {
-                        $credential = $request->input('registration_token');
-                        if (! is_string($credential) || ! $pendingRegistration->registration_edit_token_hash
-                            || ! hash_equals($pendingRegistration->registration_edit_token_hash, hash('sha256', $credential))) {
-                            return app(CustomerRegistrationService::class)->authorizeReview($pendingRegistration);
-                        }
-                    }
-                    return app(CustomerRegistrationService::class)->complete($pendingRegistration);
+                if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)) {
+                    return app(CustomerRegistrationService::class)->complete($pending);
                 }
-
-                if ($codeMode) return self::invalidCode();
-
-                // Consume only links issued before the OTP rollout.
-                $user = User::query()->whereNull('email_verified_at')
-                    ->where(function ($query) use ($plainToken, $tokenHash) {
-                        $query->where('email_verification_token', $tokenHash)
-                            ->orWhere('email_verification_token', $plainToken);
-                    })->lockForUpdate()->first();
-
-                if (! $user) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid or already-used verification link.',
-                    ], 422);
-                }
-
-                if (! $user->is_active || $user->is_archived) {
-                    return response()->json([
-                        'success' => false,
-                        'code' => 'account_disabled',
-                        'message' => 'This account is disabled and cannot be verified. Please contact the clinic.',
-                    ], 403);
-                }
-
-                if (! $user->email_verification_expires_at || now()->greaterThanOrEqualTo($user->email_verification_expires_at)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'This verification link has expired. Please request a new one.',
-                        'expired' => true,
-                        'email' => $user->email,
-                    ], 422);
-                }
-
-                if ($user->role === 'customer') {
-                    return app(CustomerRegistrationService::class)->complete($user);
-                }
-
-                $user->update([...CustomerRegistrationService::clearedVerification(), 'email_verified_at' => now()]);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Email verified successfully.',
-                ]);
+                // Foreign browsers and legacy accounts must discard the pending
+                // password and establish their own through the email-proven grant.
+                return app(CustomerRegistrationService::class)->authorizeReview($registrant);
             }, 3);
-        } catch (UniqueConstraintViolationException $exception) {
-            return response()->json([
-                'success' => false,
-                'message' => 'These registration details are no longer available. Please register again.',
-            ], 422);
+        } catch (UniqueConstraintViolationException) {
+            return $this->invalidLink();
         }
     }
 
-    // POST /api/email/resend  { email: "..." }
+    private function invalidLink(bool $expired = false)
+    {
+        return response()->json(['success' => false, 'expired' => $expired,
+            'code' => $expired ? 'registration_link_expired' : 'registration_link_invalid',
+            'message' => $expired ? 'This link has expired. Request a new one.'
+                : 'This link is invalid or has already been used.'], 422)->header('Cache-Control', 'no-store');
+    }
+
     public function resend(Request $request)
     {
-        $request->merge([
-            'email' => Str::lower(trim((string) $request->input('email'))),
-        ]);
-        $data = $request->validate(['email' => 'required|email']);
-
-        // Existing users always win collisions, including verified/disabled users.
+        $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
+        $data = $request->validate(['email' => 'required|email|max:150']);
         $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
-        $registrant = $user
-            ? (CustomerRegistrationService::recoverableUser($user) ? $user : null)
+        $registrant = $user ? (CustomerRegistrationService::recoverableUser($user) ? $user : null)
             : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
-
-        $canInspectDelivery = $registrant instanceof PendingCustomerRegistration
-            && is_string($request->input('registration_token'))
-            && $registrant->registration_edit_token_hash
+        $canInspect = $registrant instanceof PendingCustomerRegistration
+            && CustomerRegistrationService::trustsBrowser($registrant, $request)
+            && is_string($request->input('registration_token')) && $registrant->registration_edit_token_hash
             && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')));
-
-        if ($registrant) {
-            try {
-                $receipt = self::sendVerificationEmail($registrant);
-            } catch (HttpResponseException $exception) {
-                if ($canInspectDelivery) throw $exception;
-            } catch (Throwable $exception) {
-                report($exception);
-
-                if ($canInspectDelivery) return response()->json([
-                    'success' => false,
-                    'message' => 'Verification email could not be queued right now. Please try again later.',
-                ], 503);
-            }
+        try {
+            $receipt = $registrant ? self::sendVerificationEmail($registrant)
+                : app(AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
+        } catch (HttpResponseException $exception) {
+            // Quotas apply identically to unknown destinations, preventing enumeration.
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+            if ($canInspect) return response()->json(['success' => false,
+                'message' => "Couldn't send the verification email. Try resending."], 503)->header('Cache-Control', 'no-store');
+            app(AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
         }
-
         return response()->json([
             'success' => true,
-            'message' => 'If that email is registered and unverified, a new verification email is queued.',
-            // Only the private signup tab may inspect delivery. Public recovery
-            // responses must not reveal whether an address is registered.
-            'email_delivery_token' => $canInspectDelivery ? ($receipt ?? null) : null,
-            'resend_after' => $canInspectDelivery && isset($receipt)
-                ? max(0, ($registrant->fresh()?->email_verification_last_sent_at?->timestamp ?? 0)
-                    + RegistrationEmailCodeService::COOLDOWN_SECONDS - now()->timestamp)
-                : RegistrationEmailCodeService::COOLDOWN_SECONDS,
-        ]);
+            'message' => 'If your registration is unfinished, check your inbox for a verification link.',
+            'email_delivery_token' => $canInspect ? ($receipt ?? null) : null,
+            ...app(AuthenticationEmailPolicy::class)->status($data['email']),
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    // A same-origin tab may restore only an existing usable HttpOnly session.
+    // This endpoint never issues a new session from a pending/edit credential.
+    public function registrationSession(Request $request)
+    {
+        $cookie = $request->cookie(UseAccountSessionCookie::NAME);
+        $token = is_string($cookie) ? PersonalAccessToken::findToken($cookie) : null;
+        $user = $token?->tokenable;
+        if (! $token || ! $user instanceof User || $user->role !== 'customer' || ! $user->email_verified_at
+            || ! $user->is_active || $user->is_archived || ! app(AccountSessionService::class)->isUsable($token, $user)) {
+            return response()->json(['success' => false, 'message' => 'Please sign in again.'], 401)->header('Cache-Control', 'no-store');
+        }
+        $key = 'registration-handoff:'.$token->getKey();
+        if (! Cache::has($key) || ($request->filled('email') && strcasecmp($request->input('email'), $user->email) !== 0)) {
+            return response()->json(['success' => false, 'message' => 'Please sign in again.'], 401)->header('Cache-Control', 'no-store');
+        }
+        if ($request->boolean('acknowledge') && Cache::has($key)) Cache::put($key, true, 600);
+        return response()->json(['success' => true, 'session_token' => $token->getKey().'|cookie',
+            'original_tab_confirmed' => Cache::get($key) === true,
+            'user' => $user->only(['user_id', 'first_name', 'last_name', 'email', 'phone', 'role']),
+        ])->header('Cache-Control', 'no-store');
     }
 
     public function deliveryStatus(Request $request)
     {
         $data = $request->validate(['delivery_token' => 'required|string|size:64']);
-
-        return response()->json([
-            'success' => true,
-            'status' => AuthenticationMailDelivery::status($data['delivery_token']),
-        ])->header('Cache-Control', 'no-store');
+        return response()->json(['success' => true, 'status' => AuthenticationMailDelivery::status($data['delivery_token'])])
+            ->header('Cache-Control', 'no-store');
     }
 
     public static function sendVerificationEmail(User|PendingCustomerRegistration $registrant): string
     {
-        return app(RegistrationEmailCodeService::class)->send($registrant);
-    }
-
-    private static function invalidCode(bool $expired = false)
-    {
-        return response()->json(['success' => false, 'expired' => $expired,
-            'message' => $expired ? 'This code has expired. Request a new one.' : 'Incorrect code. Try again.'], 422);
-    }
-
-    private static function validateCode(User|PendingCustomerRegistration $registrant, string $code)
-    {
-        if ($registrant->email_verification_attempts >= RegistrationEmailCodeService::MAX_ATTEMPTS) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Too many attempts. Try again later.',
-            ], 429);
-        }
-        if (! $registrant->email_verification_code_hash) return self::invalidCode();
-        $expired = RegistrationEmailCodeService::codeExpired($registrant);
-        if (! Hash::check($code, $registrant->email_verification_code_hash)) {
-            if (! $expired) $registrant->increment('email_verification_attempts');
-            return self::invalidCode();
-        }
-        if ($expired) return self::invalidCode(true);
-        return null;
+        return app(RegistrationMagicLinkService::class)->send($registrant);
     }
 
     public static function assertMailCanBeDelivered(): void
     {
+        RegistrationMagicLinkService::assertMailerDoesNotLogSecrets();
         if (app()->environment(['local', 'testing'])) {
             return;
         }
-
-        RegistrationEmailCodeService::assertMailerDoesNotLogCodes();
 
         $mailer = (string) config('mail.default');
         $frontendUrl = (string) config('app.frontend_url');

@@ -284,10 +284,10 @@ async function testTemporaryServerFailureDoesNotRedirect() {
   const browser = createBrowser({
     pathname: "/pages/client/dashboard.html",
     local: { customer_token: "valid-looking-token", user_role: "customer" },
-    fetchImpl: async () => jsonResponse(500, { message: "Temporary failure" }),
+    fetchImpl: async () => jsonResponse(500, { message: "Trying to access array offset on null" }),
   });
 
-  await assert.rejects(() => browser.API.getMe("customer"), /Temporary failure/);
+  await assert.rejects(() => browser.API.getMe("customer"), /Something went wrong/);
   assert.deepEqual(browser.replacements, []);
   assert.equal(browser.API.getCustomerToken(), "valid-looking-token");
 }
@@ -806,6 +806,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   };
   const context = {
     API: {
+      async registrationSession() { return {session_token:'11|cookie',user:{role:'customer'}}; },
       verifyEmail(token) {
         events.push({ type: "verify", token });
         return new Promise(() => {});
@@ -821,6 +822,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
       resendVerification: async () => ({}),
       async resendLoginCode() {
         events.push({ type: "resend-login-code" });
+        return {resend_after:60};
       },
     },
     URL,
@@ -846,11 +848,14 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
       return id;
     },
     clearInterval(id) { intervals.delete(id); },
+    location,
     window: { location, clearTimeout() {}, setTimeout() {} },
   };
 
   context.sessionStorage.setItem("pendingLoginResendUntil", String(now + 60000));
   vm.createContext(context);
+  const inline = fs.readFileSync(path.join(projectRoot, 'pages/client/verify-email.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+  vm.runInContext(inline, context);
   vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/email-delivery.js'), 'utf8'), context);
   vm.runInContext(source, context, {
@@ -877,24 +882,45 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   };
 }
 
-function testVerificationCredentialsAreScrubbedBeforeUse() {
+async function testVerificationCredentialsAreScrubbedBeforeUse() {
   const fragmentEvents = verificationPageHarness({
     search: "?token=legacy-token&campaign=welcome",
     hash: "#token=fragment-token",
   });
   assert.deepEqual(fragmentEvents.events, [
     { type: "scrub", target: "/pages/client/verify-email.html?campaign=welcome" },
-    { type: "verify", token: "fragment-token" },
-  ]);
+  ], 'Loading a link must scrub credentials without verifying');
+  fragmentEvents.dispatch('verifyLinkSubmit','click');
+  assert.deepEqual(fragmentEvents.events.at(-1), {type:'verify',token:'fragment-token'});
+  fragmentEvents.dispatch('verifyLinkSubmit','click');
+  assert.equal(fragmentEvents.events.filter(event => event.type==='verify').length, 1);
 
-  const legacyEvents = verificationPageHarness({
-    search: "?token=legacy-token",
-    hash: "",
-  });
-  assert.deepEqual(legacyEvents.events, [
-    { type: "scrub", target: "/pages/client/verify-email.html" },
-    { type: "verify", token: "legacy-token" },
-  ]);
+  const legacyEvents = verificationPageHarness({search:'?token=legacy-token',hash:''});
+  assert.deepEqual(legacyEvents.events, [{type:'scrub',target:'/pages/client/verify-email.html'}]);
+  legacyEvents.dispatch('verifyLinkSubmit','click');
+  assert.deepEqual(legacyEvents.events.at(-1), {type:'verify',token:'legacy-token'});
+
+  const success = verificationPageHarness({search:'',hash:'#token=valid-token'});
+  success.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
+  await success.dispatch('verifyLinkSubmit','click');
+  assert.equal(success.elements.get('successTitle').textContent,'Account created successfully!');
+  assert.equal(success.elements.get('successDashboard').classList.contains('hidden'),false);
+  assert.doesNotMatch(success.elements.get('successMessage').textContent,/close this tab/);
+
+  const foreign = verificationPageHarness({search:'',hash:'#token=foreign-token'});
+  foreign.API.verifyEmail = async () => ({requires_registration_review:true, registration_recovery_token:'private-grant',
+    details:{first_name:'Saved',last_name:'Owner',email:'owner@gmail.com'}});
+  await foreign.dispatch('verifyLinkSubmit','click');
+  assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryToken'),'private-grant');
+  assert.deepEqual(foreign.events.at(-1),{type:'redirect',target:'./signup.html?review=1'});
+
+  const unavailable = verificationPageHarness({search:'',hash:'#token=valid-token'});
+  unavailable.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
+  unavailable.API.registrationSession = async () => {throw {status:401};};
+  await unavailable.dispatch('verifyLinkSubmit','click');
+  assert.equal(unavailable.elements.get('stateError').classList.contains('hidden'),false);
+  assert.equal(unavailable.elements.get('stateSuccess').classList.contains('hidden'),true);
+
 }
 
 async function testLoginCodeIsEnteredOnTheOriginalTab() {
@@ -947,14 +973,13 @@ async function testLoginCodeResendCooldownAndLimit() {
     const original = page.API.resendLoginCode;
     page.API.resendLoginCode = () => { requests++; return new Promise((_resolve, fail) => { reject = fail; }); };
     const sending = page.dispatch('loginCodeResendBtn', 'click');
-    assert.equal(input.value, '', 'Resend clears login input immediately');
-    for (let i = 0; i < 6; i++) assert.equal(page.elements.get(`cell${i}`).textContent, '');
+    assert.equal(input.value, digits, 'Rejected resends must retain the entered code');
     assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
     await page.dispatch('loginCodeResendBtn', 'click');
     assert.equal(requests, 1);
     reject({ status: 503 });
     await sending;
-    assert.equal(input.value, '');
+    assert.equal(input.value, digits);
     page.API.resendLoginCode = original;
   }
 
@@ -971,7 +996,7 @@ async function testLoginCodeResendCooldownAndLimit() {
   assert.equal(page.elements.get("loginCodeMessage").textContent, "");
   page.API.resendLoginCode = async () => { throw { status: 429, retryAfter: 128 }; };
   await page.dispatch("loginCodeResendBtn", "click");
-  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend in 2:08");
+  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend code in 2:08");
   page.advanceSeconds(127);
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
@@ -1390,14 +1415,6 @@ function testStaticAuthContracts() {
 
   assert.doesNotMatch(signIn, /Auto-redirect already-authenticated users/);
   assert.doesNotMatch(signIn, /API\.(?:getUserRole|getAdminToken|getCustomerToken)/);
-  assert.match(verify, /new URLSearchParams\(window\.location\.hash\.slice\(1\)\)/);
-  assert.match(verify, /fragmentParams\.get\("token"\)/);
-  assert.match(verify, /searchParams\.delete\("token"\)/);
-  assert.match(verify, /cleanUrl\.hash = ""/);
-  assert.ok(
-    verify.indexOf('history.replaceState(') < verify.indexOf('await API.verifyEmail(verificationToken)'),
-    "Authentication credentials must be scrubbed before the API request",
-  );
   assert.doesNotMatch(verify, /login_token|approveLogin|pollLoginConfirmation/);
   assert.match(verify, /await API\.confirmLoginCode\(code\)/);
   assert.match(verify, /await API\.verifyEmail\(verificationToken\)/);
@@ -1450,6 +1467,25 @@ function testStaticAuthContracts() {
       }
     }
   }
+}
+
+async function testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement() {
+  const calls = [];
+  const browser = createBrowser({fetchImpl: async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body);
+    if (body.acknowledge) assert.equal(browser.API.getCustomerToken(), '11|cookie');
+    return jsonResponse(200, {session_token:'11|cookie', user:{user_id:7,role:'customer',email:'owner@gmail.com',first_name:'Owner',last_name:'Test'}});
+  }});
+  await browser.API.registrationSession('owner@gmail.com', true);
+  assert.deepEqual(calls, [{email:'owner@gmail.com',acknowledge:false},{email:'owner@gmail.com',acknowledge:true}]);
+  const cacheGeneration = browser.localStorage.getItem('bethlehem.customer.cache_session');
+  assert.ok(cacheGeneration);
+  await browser.API.registrationSession('owner@gmail.com');
+  assert.equal(browser.localStorage.getItem('bethlehem.customer.cache_session'), cacheGeneration, 'Checking handoff must not reset customer caches');
+  const mismatch = createBrowser({fetchImpl: async () => jsonResponse(200, {session_token:'11|cookie',user:{role:'customer',email:'other@gmail.com'}})});
+  assert.equal(await mismatch.API.registrationSession('owner@gmail.com', true), null);
+  assert.equal(mismatch.API.getCustomerToken(), null);
 }
 
 async function testInitialCustomerBrowserSessionMarker() {
@@ -1684,6 +1720,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
     return;
   }
   await testInitialCustomerBrowserSessionMarker();
+  await testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement();
   await testLoginCodeHonorsRememberMeStorage();
   await testProfileNameLivesAndDiesWithTheSession();
   testProfileNameIsAppliedWithoutWaitingForDomContentLoaded();
@@ -1706,7 +1743,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testPricingAuthFailuresStayLocalToTheRequestingSession();
   testTokenReplacementRemovalEventCannotClearFreshLogin();
   testBackForwardCacheGuard();
-  testVerificationCredentialsAreScrubbedBeforeUse();
+  await testVerificationCredentialsAreScrubbedBeforeUse();
   await testLoginCodeIsEnteredOnTheOriginalTab();
   await testLoginCodeResendCooldownAndLimit();
   await testLoginDeliveryErrorsAndPrivilegedRedirects();

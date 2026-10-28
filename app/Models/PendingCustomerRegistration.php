@@ -22,6 +22,7 @@ class PendingCustomerRegistration extends Model
         'email_verification_attempts',
         'email_verification_last_sent_at',
         'registration_edit_token_hash',
+        'registration_browser_token_hash',
         'registration_recovery_token_hash',
         'registration_recovery_expires_at',
     ];
@@ -31,6 +32,7 @@ class PendingCustomerRegistration extends Model
         'email_verification_token',
         'email_verification_code_hash',
         'registration_edit_token_hash',
+        'registration_browser_token_hash',
         'registration_recovery_token_hash',
     ];
 

@@ -2,12 +2,9 @@
 
 namespace App\Providers;
 
-use App\Services\PasswordResetService;
-use App\Services\RegistrationEmailCodeService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,18 +44,6 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('email-delivery-status', fn ($request) => Limit::perMinute(60)->by($request->ip()));
-
-        foreach (['registration-resend' => RegistrationEmailCodeService::COOLDOWN_SECONDS,
-            'password-resend' => PasswordResetService::COOLDOWN_SECONDS] as $name => $seconds) {
-            RateLimiter::for($name, function ($request) use ($seconds): array {
-                $emailKey = hash('sha256', Str::lower(trim((string) $request->input('email'))));
-                return [
-                    Limit::perMinutes(10, 3)->by('ip:'.$request->ip()),
-                    Limit::perMinutes(10, 3)->by('email:'.$emailKey),
-                    Limit::perSecond(1, $seconds)->by('cooldown:'.$emailKey),
-                ];
-            });
-        }
 
         RateLimiter::for('registration-verify', fn ($request) => Limit::perMinute(10)
             ->by($request->ip())

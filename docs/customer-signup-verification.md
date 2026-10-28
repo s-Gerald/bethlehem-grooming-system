@@ -1,5 +1,7 @@
 # Customer signup, verification, and recovery
 
+> Current October 28 magic-link, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
+
 Implemented against the latest local `gerald-frontend` branch on October 22, 2026.
 The working directory is `C:/bethlehem-clinic-frontend`; its configured remotes
 are `s-Gerald/bethlehem-clinic-frontend` and `rij-summit/bethlehem-grooming-system`.

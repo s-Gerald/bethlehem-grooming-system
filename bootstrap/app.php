@@ -40,6 +40,15 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->respond(function ($response) {
+            if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*') && $response->getStatusCode() >= 500) {
+                return response()->json(['success' => false, 'message' => request()->is('api/register*')
+                    ? "Couldn't create your account. Please try again."
+                    : 'Something went wrong. Please try again.'], $response->getStatusCode())
+                    ->header('Cache-Control', 'no-store');
+            }
+            return $response;
+        });
         $exceptions->render(function (AuthenticationException $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([

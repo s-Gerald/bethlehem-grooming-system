@@ -61,8 +61,6 @@ return [
     'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
 
 
-    'login_confirmation_ttl_minutes' => (int) env('LOGIN_CONFIRMATION_TTL_MINUTES', 15),
-
     'privileged_credential_change_code_ttl_minutes' => (int) env(
         'PRIVILEGED_CREDENTIAL_CHANGE_CODE_TTL_MINUTES',
         10,

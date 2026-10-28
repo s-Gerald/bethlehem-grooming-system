@@ -39,6 +39,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   } catch { /* storage unavailable; signup remains usable */ }
 
+  const fieldIds = {first_name: "firstName", last_name: "lastName", email: "email", username: "username",
+    phone: "phone", password: "password", password_confirmation: "confirmPassword"};
+  const fieldErrors = new Map();
+  for (const id of ["username", "phone", "password", "confirmPassword"]) {
+    const input = document.getElementById(id);
+    const feedback = document.createElement("p");
+    feedback.id = `${id}ServerError`;
+    feedback.className = "hidden mt-2 text-sm text-red-700";
+    feedback.setAttribute("role", "alert");
+    input.parentElement.appendChild(feedback);
+    fieldErrors.set(id, feedback);
+    const described = input.getAttribute("aria-describedby") || "";
+    input.setAttribute("aria-describedby", `${described} ${feedback.id}`.trim());
+    input.addEventListener("input", () => {
+      feedback.textContent = "";
+      feedback.classList.add("hidden");
+      input.setAttribute("aria-invalid", "false");
+      clearMessage();
+    });
+  }
+
   const originalEmail = editingToken || recoveryToken ? emailInput.value : "";
   const emailField = AccountEmail.bind(emailInput, {
     isUnchanged: () => Boolean(originalEmail) && emailInput.value.trim().toLowerCase() === originalEmail.trim().toLowerCase(),
@@ -173,6 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
             sessionStorage.removeItem("pendingSignupDetails");
           }
           sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (data.resend_after || 0) * 1000));
+          sessionStorage.setItem("pendingVerificationResendLimited", data.resend_limited ? "1" : "0");
           if (data.email_delivery_queued === false) {
             sessionStorage.setItem("pendingVerificationDeliveryFailed", "1");
           } else {
@@ -185,7 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Registration never implies authentication, including when talking to
       // an older backend response that omits requires_verification.
-      window.location.replace("./sign-in.html?registered=1");
+      window.location.replace("./sign-in.html");
     } catch (error) {
       if (error.errors) {
         const [field, firstError] = Object.entries(error.errors)[0];
@@ -198,15 +220,18 @@ document.addEventListener("DOMContentLoaded", () => {
           setBusyState(false);
           return;
         }
-        showMessage(Array.isArray(firstError) ? firstError[0] : firstError);
-        const id = { first_name: "firstName", last_name: "lastName", password: "password", email: "email", username: "username", phone: "phone" }[field];
+        const id = fieldIds[field];
+        const feedback = fieldErrors.get(id);
+        const text = Array.isArray(firstError) ? firstError[0] : firstError;
+        if (feedback) { feedback.textContent = text; feedback.classList.remove("hidden"); }
+        else showMessage(text);
         if (id) {
           const input = document.getElementById(id);
           input.setAttribute("aria-invalid", "true");
           input.focus();
         }
       } else {
-        showMessage(error.message);
+        showMessage(error.message || "Couldn't create your account. Please try again.");
       }
       setBusyState(false);
     }
@@ -218,7 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
     recoveryContinue.disabled = isBusy;
     signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
-    if (label) label.textContent = isBusy ? "Submitting Registration..." : recoveryToken ? "Complete registration" : "Create Account";
+    if (label) label.textContent = isBusy ? "Creating your account..." : recoveryToken ? "Complete registration" : "Create Account";
   }
 
   function clearMessage() {

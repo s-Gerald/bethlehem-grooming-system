@@ -27,7 +27,8 @@ class ConfirmLoginNotification extends Notification implements ShouldBeEncrypted
 
     public function toMail(object $notifiable): MailMessage
     {
-        $expiryMinutes = max(1, (int) config('app.login_confirmation_ttl_minutes', 15));
+        \App\Services\RegistrationMagicLinkService::assertMailerDoesNotLogSecrets();
+        $expiryMinutes = max(1, (int) config('authentication.otp_minutes', 10));
         $accountLabel = $notifiable->role === 'staff' ? 'staff account' : 'account';
         $subject = $notifiable->role === 'staff'
             ? 'Staff Sign-In Code - Bethlehem Animal Clinic'

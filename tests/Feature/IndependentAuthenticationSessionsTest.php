@@ -219,6 +219,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
     public function test_logout_only_revokes_the_requesting_token_even_for_the_same_account(): void
     {
         $normal = $this->login('admin');
+        $this->travel(61)->seconds();
         $private = $this->login('admin');
         $this->requestAs($normal, 'POST', '/api/logout')->assertUnauthorized()->assertJsonPath('code', 'session_replaced');
         $this->requestAs($normal, 'GET', '/api/me')->assertUnauthorized();
@@ -245,6 +246,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->requestAs($old, 'GET', '/api/me')->assertOk();
         $this->postJson('/api/sign-in', ['identifier' => "$role@example.test", 'password' => 'wrong'])->assertUnauthorized();
         $this->requestAs($old, 'GET', '/api/me')->assertOk();
+        $this->travel(61)->seconds();
         $pending = $this->postJson('/api/sign-in', ['identifier' => "$role@example.test", 'password' => 'SessionTest!123'])->assertAccepted();
         $this->requestAs($old, 'GET', '/api/me')->assertOk();
         $user = User::where('email', "$role@example.test")->firstOrFail();
@@ -340,7 +342,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->assertEquals($before, \Illuminate\Support\Facades\DB::table('personal_access_tokens')->orderBy('id')->get()->toArray());
     }
 
-    public function test_overlapping_verified_logins_leave_only_the_latest_session_active(): void
+    public function test_overlapping_otp_consumption_creates_exactly_one_session(): void
     {
         $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
         $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
@@ -412,12 +414,12 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $this->assertNotSame($one['pid'], $two['pid']);
             $this->assertTrue($two['busy'], 'The second verified login must overlap the first transaction.');
             $this->assertSame(200, $one['status']);
-            $this->assertSame(200, $two['status']);
-            $this->assertNotSame($one['public_id'], $two['public_id']);
+            $this->assertSame(422, $two['status']);
+            $this->assertNull($two['public_id']);
             $connection = new \PDO('sqlite:'.$database);
-            $this->assertSame(2, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
             $active = $connection->query('SELECT id FROM personal_access_tokens WHERE replaced_at IS NULL')->fetchAll(\PDO::FETCH_COLUMN);
-            $this->assertSame([explode('|', $two['public_id'])[0]], array_map('strval', $active));
+            $this->assertSame([explode('|', $one['public_id'])[0]], array_map('strval', $active));
         } finally {
             $first?->stop(); $second?->stop(); $connection = null;
             foreach (['sessions.sqlite', 'sessions.sqlite-journal', 'sessions.sqlite-wal', 'sessions.sqlite-shm', 'first-lock', 'second-attempt'] as $file) {

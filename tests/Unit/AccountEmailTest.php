@@ -9,6 +9,14 @@ use Tests\TestCase;
 
 class AccountEmailTest extends TestCase
 {
+    public function test_stale_cached_configuration_uses_the_shared_email_policy(): void
+    {
+        config()->set('account_email', null);
+        $this->assertNull(AccountEmail::entryError('customer@gmail.com'));
+        $this->assertSame('Use at least 3 characters before @.', AccountEmail::entryError('ab@gmail.com'));
+        $this->assertSame('Use Gmail, Outlook, Hotmail, Live, Yahoo, or iCloud.', AccountEmail::entryError('customer@unknown.example'));
+    }
+
     #[DataProvider('entryCases')]
     public function test_entry_policy(string $email, bool $valid, ?string $message = null): void
     {

@@ -7,16 +7,41 @@ use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class CustomerRegistrationService
 {
+    public const BROWSER_COOKIE = 'bethlehem_registration_browser';
+
+    public static function browserToken(Request $request): string
+    {
+        $token = $request->cookie(self::BROWSER_COOKIE);
+        return is_string($token) && preg_match('/^[A-Za-z0-9]{64}$/D', $token) ? $token : Str::random(64);
+    }
+
+    public static function browserCookie(Request $request, string $token): Cookie
+    {
+        return Cookie::create(self::BROWSER_COOKIE, $token)->withPath('/api')->withHttpOnly(true)->withSameSite('lax')
+            ->withSecure((bool) config('session.secure') || $request->isSecure() || str_starts_with(config('app.url'), 'https://'))
+            ->withExpires(now()->addHours(max(1, (int) config('app.pending_registration_retention_hours', 48))));
+    }
+
+    public static function trustsBrowser(PendingCustomerRegistration $registration, Request $request): bool
+    {
+        $token = $request->cookie(self::BROWSER_COOKIE);
+        return is_string($token) && $registration->registration_browser_token_hash
+            && hash_equals($registration->registration_browser_token_hash, hash('sha256', $token));
+    }
+
     public static function recoverableUser(User $user): bool
     {
         return $user->role === 'customer' && ! $user->email_verified_at
             && $user->is_active && ! $user->is_archived && ! $user->account_deleted_at;
     }
 
-    // Called only after OTP validation while holding the registrant's row lock.
+    // Called only after email ownership is proved, under the registrant row lock.
     public function authorizeReview(User|PendingCustomerRegistration $registrant)
     {
         $grant = Str::random(64);
@@ -27,6 +52,7 @@ class CustomerRegistrationService
         ];
         if ($registrant instanceof PendingCustomerRegistration) {
             $values['registration_edit_token_hash'] = null;
+            $values['registration_browser_token_hash'] = null;
         }
         $registrant->update($values);
 
@@ -72,10 +98,12 @@ class CustomerRegistrationService
             PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$user->email])->delete();
         }
 
+        $token = app(AccountSessionService::class)->issue($user);
+        Cache::put('registration-handoff:'.explode('|', $token)[0], false, 600);
         return response()->json([
             'success' => true,
             'message' => 'Email verified and account registered successfully.',
-            'token' => app(AccountSessionService::class)->issue($user),
+            'token' => $token,
             'user' => $user->only(['user_id', 'first_name', 'last_name', 'email', 'phone', 'role']),
         ])->header('Cache-Control', 'no-store');
     }

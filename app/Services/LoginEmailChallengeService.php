@@ -8,23 +8,55 @@ use App\Models\User;
 use App\Notifications\ConfirmLoginNotification;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 class LoginEmailChallengeService
 {
-    public const COOLDOWN_SECONDS = 60;
-    public const MAX_ATTEMPTS = 5;
+    public static function maxAttempts(): int
+    {
+        return max(1, (int) config('authentication.otp_attempts', 5));
+    }
+
+    public static function attemptKeys(User $user): array
+    {
+        return ['login-code-account:'.$user->getKey() => (int) config('authentication.otp_account_attempts', 5),
+            'login-code-ip:'.hash('sha256', (string) request()->ip()) => (int) config('authentication.otp_ip_attempts', 25)];
+    }
+
+    public static function assertAttemptBudget(User $user): void
+    {
+        if ($response = self::attemptBudgetResponse($user)) throw new HttpResponseException($response);
+    }
+
+    public static function attemptBudgetResponse(User $user)
+    {
+        foreach (self::attemptKeys($user) as $key => $limit) {
+            if (RateLimiter::tooManyAttempts($key, max(1, $limit))) {
+                $seconds = max(1, RateLimiter::availableIn($key));
+                return response()->json(['success' => false, 'code' => 'login_code_locked',
+                    'message' => 'Too many attempts. Sign in again.', 'retry_after' => $seconds], 429)
+                    ->header('Retry-After', (string) $seconds)->header('Cache-Control', 'no-store');
+            }
+        }
+        return null;
+    }
 
     public static function resendAfter(?LoginEmailChallenge $challenge): int
     {
-        return $challenge ? max(0, $challenge->updated_at->timestamp + self::COOLDOWN_SECONDS - now()->timestamp) : 0;
+        return $challenge ? max(0, $challenge->updated_at->timestamp + (int) config('authentication.email.cooldown', 60) - now()->timestamp) : 0;
     }
 
-    public function resend(string $plainPollToken): string
+    public function resend(string $plainPollToken): array
     {
         $pollTokenHash = hash('sha256', $plainPollToken);
 
-        return DB::transaction(function () use ($plainPollToken, $pollTokenHash): string {
+        $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
+        $recipient = $userId ? User::find($userId) : null;
+        if (! $recipient) throw new HttpResponseException(response()->json(['success' => false, 'expired' => true,
+            'message' => 'This sign-in session has expired. Please sign in again.'], 422));
+        self::assertAttemptBudget($recipient);
+        $receipt = app(AuthenticationEmailPolicy::class)->send($recipient->email, fn () => DB::transaction(function () use ($plainPollToken, $pollTokenHash): string {
             $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
             $user = $userId ? User::whereKey($userId)->lockForUpdate()->first() : null;
             $challenge = LoginEmailChallenge::query()
@@ -48,6 +80,7 @@ class LoginEmailChallengeService
                 ], 403));
             }
 
+            self::assertAttemptBudget($user);
             EmailVerificationController::assertMailCanBeDelivered();
 
             if ($remaining = self::resendAfter($challenge)) {
@@ -65,14 +98,11 @@ class LoginEmailChallengeService
 
             $challenge->update([
                 'token_hash' => $newTokenHash,
-                'expires_at' => now()->addMinutes(max(
-                    1,
-                    (int) config('app.login_confirmation_ttl_minutes', 15),
-                )),
                 'approved_at' => null,
             ]);
             return AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code), $challenge);
-        });
+        }));
+        return ['email_delivery_token' => $receipt, ...app(AuthenticationEmailPolicy::class)->status($recipient->email)];
     }
 
     public function send(User $user, bool $rememberMe): array
@@ -83,7 +113,8 @@ class LoginEmailChallengeService
         $pollTokenHash = hash('sha256', $plainPollToken);
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $tokenHash = hash_hmac('sha256', $code, $plainPollToken);
-        $receipt = DB::transaction(function () use (
+        self::assertAttemptBudget($user);
+        $receipt = app(AuthenticationEmailPolicy::class)->send($user->email, fn () => DB::transaction(function () use (
             $user,
             $rememberMe,
             $tokenHash,
@@ -109,6 +140,7 @@ class LoginEmailChallengeService
                 ->where('user_id', $lockedUser->user_id)
                 ->lockForUpdate()
                 ->first();
+            self::assertAttemptBudget($lockedUser);
             $challenge ??= new LoginEmailChallenge(['user_id' => $lockedUser->user_id]);
             $challenge->fill([
                 'token_hash' => $tokenHash,
@@ -116,18 +148,18 @@ class LoginEmailChallengeService
                 'remember_me' => $rememberMe,
                 'expires_at' => now()->addMinutes(max(
                     1,
-                    (int) config('app.login_confirmation_ttl_minutes', 15),
+                    (int) config('authentication.otp_minutes', 10),
                 )),
                 'approved_at' => null,
             ])->save();
 
             return AuthenticationMailDelivery::queue($lockedUser, new ConfirmLoginNotification($code), $challenge);
-        });
+        }));
 
         return [
             'poll_token' => $plainPollToken,
             'delivery_token' => $receipt,
-            'resend_after' => self::COOLDOWN_SECONDS,
+            'resend_after' => (int) config('authentication.email.cooldown', 60),
         ];
     }
 }

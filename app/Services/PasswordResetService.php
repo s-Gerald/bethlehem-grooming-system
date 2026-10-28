@@ -19,10 +19,14 @@ use Throwable;
 
 class PasswordResetService
 {
-    public const COOLDOWN_SECONDS = 45;
     public const MAX_ATTEMPTS = 5;
 
     public function sendCode(string $email): void
+    {
+        app(AuthenticationEmailPolicy::class)->send($email, fn () => $this->sendEligibleCode($email));
+    }
+
+    private function sendEligibleCode(string $email): void
     {
         $user = User::query()
             ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
@@ -44,7 +48,7 @@ class PasswordResetService
                 ->where('user_id', $lockedUser->getKey())
                 ->lockForUpdate()
                 ->first();
-            if ($existing && $existing->last_sent_at->timestamp + self::COOLDOWN_SECONDS > now()->timestamp) {
+            if ($existing && $existing->last_sent_at->timestamp + (int) config('authentication.email.cooldown', 60) > now()->timestamp) {
                 return;
             }
             $attempts = $existing && now()->isBefore($existing->expires_at) ? $existing->verification_attempts : 0;

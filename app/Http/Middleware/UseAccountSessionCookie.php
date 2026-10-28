@@ -64,6 +64,9 @@ class UseAccountSessionCookie
             }
         }
 
+        if ($request->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/session*')) {
+            $response->headers->set('Cache-Control', 'no-store');
+        }
         return $response;
     }
 }

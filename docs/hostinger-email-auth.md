@@ -1,5 +1,7 @@
 # Hostinger email authentication
 
+> Current October 28 magic-link, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
+
 The test deployment is https://darkorchid-horse-104804.hostingersite.com/.
 Keep Laravel notifications, the encrypted database queue, and the existing Brevo
 SMTP relay. Commit `5c12883` commented out the login challenge; the restored

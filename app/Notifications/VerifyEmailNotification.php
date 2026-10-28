@@ -15,10 +15,7 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
 
     public int $tries = 3;
 
-    // Hydrated only by notification jobs queued before the code rollout.
-    private ?string $verificationUrl = null;
-
-    public function __construct(public readonly string $code)
+    public function __construct(public readonly string $token)
     {
         $this->afterCommit();
     }
@@ -28,22 +25,20 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
         return ['mail'];
     }
 
+    public function shouldSend(object $notifiable, string $channel): bool
+    {
+        // Old queued signup codes cannot be used by the new verification API.
+        return isset($this->token) && strlen($this->token) === 64;
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
-        if (! isset($this->code) && $this->verificationUrl) {
-            return (new MailMessage)
-                ->subject('Verify your Bethlehem account')
-                ->line('Finish creating your Bethlehem Animal Clinic account.')
-                ->action('Verify Email Address', $this->verificationUrl)
-                ->line('If you did not create a Bethlehem account, you can ignore this email.');
-        }
-
-        // Recheck in the queue worker, where the mail configuration may differ.
-        \App\Services\RegistrationEmailCodeService::assertMailerDoesNotLogCodes();
-
+        \App\Services\RegistrationMagicLinkService::assertMailerDoesNotLogSecrets();
         return (new MailMessage)
-            ->subject('Your Bethlehem verification code')
-            ->view('mail.registration-code', ['code' => $this->code, 'ttlMinutes' => \App\Services\RegistrationEmailCodeService::TTL_MINUTES])
-            ->text('mail.registration-code-text', ['code' => $this->code, 'ttlMinutes' => \App\Services\RegistrationEmailCodeService::TTL_MINUTES]);
+            ->subject('Verify your Bethlehem account')
+            ->line('Confirm your email to activate your Bethlehem account.')
+            ->action('Verify Email Address', rtrim(config('app.frontend_url'), '/').'/pages/client/verify-email.html#token='.rawurlencode($this->token))
+            ->line('This link expires in '.(int) config('authentication.magic_link_minutes', 30).' minutes.')
+            ->line('If you did not start this registration, ignore this email.');
     }
 }

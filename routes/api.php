@@ -39,7 +39,7 @@ Route::post('/register', [AuthController::class, 'register'])->middleware('throt
 Route::put('/register/pending', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/sign-in', [AuthController::class, 'signIn']);
 Route::post('/password/forgot', [PasswordResetController::class, 'requestCode'])
-    ->middleware(ThrottleAuthenticationResends::class.':password-resend');
+    ->middleware('throttle:30,1,password-send');
 Route::post('/password/code/verify', [PasswordResetController::class, 'verifyCode'])
     ->middleware('throttle:10,1');
 Route::post('/password/reset', [PasswordResetController::class, 'reset'])
@@ -55,13 +55,14 @@ Route::post('/staff/email-recovery/verify', [\App\Http\Controllers\StaffEmailRec
 Route::post('/staff/email-recovery/complete', [\App\Http\Controllers\StaffEmailRecoveryController::class, 'complete'])
     ->middleware('throttle:10,1,staff-recovery-complete');
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:registration-verify');
-Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware(ThrottleAuthenticationResends::class.':registration-resend');
+Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:30,1,registration-send');
+Route::post('/email/registration/session', [EmailVerificationController::class, 'registrationSession'])->middleware('throttle:30,1,registration-session');
 Route::post('/email/delivery-status', [EmailVerificationController::class, 'deliveryStatus'])
     ->middleware('throttle:email-delivery-status');
 Route::post('/email/login/confirm', [LoginEmailChallengeController::class, 'confirm'])
     ->middleware('throttle:10,1');
 Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resend'])
-    ->middleware(ThrottleAuthenticationResends::class.':3,5');
+    ->middleware('throttle:30,1,login-send');
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
 Route::get('/timeslots', [BookingController::class, 'getTimeslots']);

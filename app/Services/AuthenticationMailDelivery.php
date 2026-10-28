@@ -87,7 +87,7 @@ class AuthenticationMailDelivery
             'status' => $status,
             'requested_at' => $requestedAt,
         ], now()->addMinutes(max(
-            1440, (int) config('app.login_confirmation_ttl_minutes', 15),
+            1440, (int) config('authentication.otp_minutes', 10),
             (int) config('auth.passwords.users.expire', 15),
         ) + 5));
         Log::info('Authentication mail delivery', [
