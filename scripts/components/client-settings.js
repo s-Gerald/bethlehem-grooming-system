@@ -40,10 +40,88 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let serverUser = null;
   let profileLoadPromise = null;
+  let editingName = false;
+  let savingName = false;
+  const namePassword = document.getElementById('nameCurrentPassword');
+  const nameSave = document.getElementById('saveCustomerName');
+  const nameCancel = document.getElementById('cancelCustomerName');
+  const nameEdit = document.getElementById('editCustomerName');
+  const nameActions = document.getElementById('customerNameActions');
+  const namePasswordArea = document.getElementById('customerNamePasswordArea');
+  const namePasswordError = document.getElementById('nameCurrentPasswordError');
+
+  function passwordError(message = '') {
+    namePasswordError.textContent = message;
+    namePasswordError.hidden = !message;
+    namePassword.setAttribute('aria-invalid', String(Boolean(message)));
+    namePassword.classList.toggle('!border-red-400', Boolean(message));
+  }
+
+  function setNameEditing(editing) {
+    editingName = editing;
+    for (const [input, field] of [[firstNameInput, 'first_name'], [lastNameInput, 'last_name']]) {
+      input.value = serverUser[field] || '';
+      input.readOnly = !editing;
+      HumanName.reset(input);
+    }
+    namePassword.value = ''; namePassword.type = 'password'; passwordError();
+    const toggle = document.querySelector('[data-password-toggle="nameCurrentPassword"]');
+    toggle?.setAttribute('aria-label', 'Show password');
+    toggle?.setAttribute('title', 'Show password');
+    toggle?.querySelector('.password-icon-closed')?.classList.remove('hidden');
+    toggle?.querySelector('.password-icon-open')?.classList.add('hidden');
+    nameEdit.hidden = editing;
+    nameActions.hidden = !editing; namePasswordArea.hidden = !editing;
+    (editing ? firstNameInput : nameEdit).focus();
+  }
+
+  nameEdit?.addEventListener('click', () => { if (serverUser && !savingName) { hideStatus(); setNameEditing(true); } });
+  nameCancel?.addEventListener('click', () => { if (!savingName) setNameEditing(false); });
+  namePassword?.addEventListener('input', () => passwordError());
+  document.getElementById('accountForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!editingName || savingName) return;
+    const firstValid = HumanName.finish(firstNameInput), lastValid = HumanName.finish(lastNameInput);
+    if (!firstValid || !lastValid) { (!firstValid ? firstNameInput : lastNameInput).focus(); return; }
+    if (firstNameInput.value === serverUser.first_name && lastNameInput.value === serverUser.last_name) {
+      setNameEditing(false); return;
+    }
+    if (!namePassword.value) { passwordError('Enter your current password.'); namePassword.focus(); return; }
+    savingName = true; hideStatus(); passwordError();
+    nameSave.disabled = true; nameCancel.disabled = true;
+    firstNameInput.disabled = true; lastNameInput.disabled = true; namePassword.disabled = true;
+    nameSave.textContent = 'Saving…'; nameSave.setAttribute('aria-busy', 'true');
+    try {
+      const { user } = await API.updateCustomerName({ first_name: firstNameInput.value,
+        last_name: lastNameInput.value, current_password: namePassword.value });
+      serverUser = { ...serverUser, ...user };
+      applyUserToAccount(serverUser); setNameEditing(false); showStatus('Name updated.', 'success');
+    } catch (error) {
+      let first;
+      for (const [field, messages] of Object.entries(error.errors || {})) {
+        const message = [].concat(messages)[0];
+        if (field === 'current_password') { passwordError(message); first ||= namePassword; }
+        else if (field === 'first_name' || field === 'last_name') {
+          const input = field === 'first_name' ? firstNameInput : lastNameInput;
+          HumanName.showError(input, message); first ||= input;
+        }
+      }
+      if (!first) showStatus(error.message || 'Unable to save your name. Try again.', 'error');
+      // Focus after restoring enabled controls below.
+      if (first) window.setTimeout(() => first.focus(), 0);
+    } finally {
+      savingName = false; nameSave.disabled = false; nameCancel.disabled = false;
+      firstNameInput.disabled = false; lastNameInput.disabled = false; namePassword.disabled = false;
+      nameSave.textContent = 'Save changes'; nameSave.setAttribute('aria-busy', 'false');
+    }
+  });
   window.addEventListener("customer-phone:verified", (event) => {
     serverUser = event.detail.user;
     applyUserToAccount(serverUser);
     showStatus(event.detail.message || "Phone number verified.", "success");
+  });
+  window.addEventListener('customer-profile:updated', event => {
+    if (serverUser) { serverUser = { ...serverUser, ...event.detail.user }; applyUserToAccount(serverUser); }
   });
   window.addEventListener("customer-phone:pending", () => {
     if (serverUser) { serverUser = { ...serverUser, phone_change_pending: true }; applyUserToAccount(serverUser); }
@@ -258,8 +336,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyUserToAccount(user) {
-    firstNameInput.value = user.first_name || "";
-    lastNameInput.value = user.last_name || "";
+    if (!editingName) {
+      firstNameInput.value = user.first_name || "";
+      lastNameInput.value = user.last_name || "";
+    }
     phoneInput.value = formatMobileNumber(user.phone) || "Not provided";
     const phoneStatus = document.getElementById("settingsPhoneStatus");
     if (phoneStatus) {

@@ -194,6 +194,14 @@ function adminCustomers() {
         },
       };
       AccountEmail.showError(document.getElementById('addCustomerEmail'), '');
+      this.$nextTick(() => {
+        for (const [id, field] of [['addCustomerFirstName', 'first_name'], ['addCustomerLastName', 'last_name']]) {
+          HumanName.bind(document.getElementById(id), message => {
+            if (message) this.addCustomerModal.errors[field] = [message];
+            else delete this.addCustomerModal.errors[field];
+          });
+        }
+      });
       this.setCustomerDetailScrollLock(true);
     },
 
@@ -206,6 +214,7 @@ function adminCustomers() {
     },
 
     clearAddCustomerFieldError(field) {
+      if (['first_name', 'last_name'].includes(field)) return;
       if (!this.addCustomerModal.errors[field]) return;
       const errors = { ...this.addCustomerModal.errors };
       delete errors[field];
@@ -218,8 +227,11 @@ function adminCustomers() {
       const phone = this.normalizeCustomerPhone(form.phone);
       const email = String(form.email || "").trim();
 
-      if (!String(form.first_name || "").trim()) errors.first_name = ["First name is required."];
-      if (!String(form.last_name || "").trim()) errors.last_name = ["Last name is required."];
+      for (const field of ['first_name', 'last_name']) {
+        form[field] = HumanName.normalize(form[field]);
+        const error = HumanName.validate(form[field]);
+        if (error) errors[field] = [error];
+      }
       if (!/^09\d{9}$/.test(phone)) errors.phone = ["Phone number must be 11 digits and start with 09."];
       const emailError = AccountEmail.validate(email, { required: false });
       if (emailError) {

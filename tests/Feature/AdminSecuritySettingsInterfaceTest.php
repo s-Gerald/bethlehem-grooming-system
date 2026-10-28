@@ -41,7 +41,6 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             '>Veterinarian</span>',
             '>Clinic Receptionist</span>',
             '>Grooming Receptionist</span>',
-            'x-model="addStaffModal.email" required',
             '>Account setup email sent</h3>',
             "A Set Up Your Password link was sent to the staff member's email address. Their account will become active after they complete setup.",
             'Update Changes',
@@ -56,6 +55,12 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
         ] as $control) {
             $this->assertStringContainsString($control, $security);
         }
+        $document = new \DOMDocument();
+        @$document->loadHTML($security);
+        $email = $document->getElementById('newStaffEmail');
+        $this->assertNotNull($email);
+        $this->assertTrue($email->hasAttribute('required'));
+        $this->assertSame('addStaffModal.email', $email->getAttribute('x-model'));
 
         $this->assertStringNotContainsString('Admin Account Change Password', $security);
         $this->assertStringNotContainsString('Staff Account Change Password', $security);

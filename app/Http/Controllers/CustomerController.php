@@ -8,12 +8,49 @@ use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Services\CustomerIdentityService;
+use App\Support\HumanName;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
+    public function updateOwnName(Request $request)
+    {
+        $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'current_password']);
+        if ($unexpected) {
+            throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
+        }
+        $data = $request->validate([
+            'first_name' => HumanName::rules(),
+            'last_name' => HumanName::rules(),
+            'current_password' => ['required', 'string'],
+        ], ['current_password.required' => 'Enter your current password.']);
+
+        $user = DB::transaction(function () use ($request, $data): User {
+            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
+            abort_unless($user->role === 'customer' && $user->is_active && ! $user->is_archived
+                && ! $user->account_deleted_at && $user->email_verified_at, 403);
+            if (! Hash::check($data['current_password'], $user->password_hash)) {
+                throw ValidationException::withMessages(['current_password' => 'Incorrect password.']);
+            }
+            foreach (['first_name', 'last_name'] as $field) {
+                if ($data[$field] !== $user->$field) $user->$field = User::normalizeName($data[$field]);
+            }
+            if ($user->isDirty()) $user->save();
+
+            return $user;
+        }, 3);
+
+        $request->setUserResolver(fn () => $user);
+        $response = app(AuthController::class)->me($request);
+        $response->setData([...$response->getData(true), 'message' => 'Name updated.']);
+
+        return $response;
+    }
+
     // ── ADMIN GUARD ───────────────────────────────────────
     private function requireAdmin(Request $request)
     {

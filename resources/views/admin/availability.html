@@ -6,7 +6,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Availability | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027" />
+    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&names=20261028-v2" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <style>
@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027" />
+    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
   <style>
       .admin-availability :is(button,input):focus-visible { outline: 2px solid #315b7e; outline-offset: 3px; }
@@ -137,7 +137,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027"></script>
+      <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main Content -->
@@ -207,7 +208,7 @@
                   <div class="mt-4 flex flex-wrap items-end gap-3" @keydown.escape.prevent="petGroomerEditor = null">
                     <div class="min-w-0 flex-1">
                       <label for="petGroomerFirstName" class="mb-1 block text-sm font-semibold text-[#1f3850]">First name</label>
-                      <input id="petGroomerFirstName" type="text" maxlength="100" autocomplete="given-name" x-model="petGroomerEditor.first_name" @keydown.enter.prevent="savePetGroomer({first_name: petGroomerEditor.first_name}, petGroomerEditor.id)" :disabled="groomersOnDutySaving" class="w-full rounded-xl border border-[#d7e3ef] px-3 py-2 text-sm focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20" />
+                      <input id="petGroomerFirstName" data-human-name autocomplete="given-name" autocapitalize="words" spellcheck="false" type="text" maxlength="100" x-model="petGroomerEditor.first_name" @keydown.enter.prevent="savePetGroomer({first_name: petGroomerEditor.first_name}, petGroomerEditor.id)" :disabled="groomersOnDutySaving" class="w-full rounded-xl border border-[#d7e3ef] px-3 py-2 text-sm focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20" />
                     </div>
                     <button type="button" @click="savePetGroomer({first_name: petGroomerEditor.first_name}, petGroomerEditor.id)" :disabled="groomersOnDutySaving || !petGroomerEditor.first_name.trim()" class="rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" x-text="groomersOnDutySaving ? 'Saving...' : 'Save'"></button>
                     <button type="button" @click="petGroomerEditor = null" :disabled="groomersOnDutySaving" class="rounded-xl border border-[#d7e3ef] px-4 py-2 text-sm text-[#315b7e]">Cancel</button>
@@ -365,7 +366,7 @@
 
     <script src="../../scripts/components/success-toast.js"></script>
     
-    <script src="../../scripts/components/admin-availability.js?v=20261027"></script>
+    <script src="../../scripts/components/admin-availability.js?v=20261027&names=20261028-v2"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

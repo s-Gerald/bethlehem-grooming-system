@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Sign Up | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?registration-ui=20261027-v3&availability=20261027&email-entry=20261028" />
+    <link rel="stylesheet" href="../../css/output.css?registration-ui=20261027-v3&availability=20261027&email-entry=20261028&names=20261028-v2" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
   </head>
   <body
@@ -70,7 +70,7 @@
                   </label>
                   <input
                     type="text"
-                    id="firstName"
+                    id="firstName" data-human-name maxlength="100" autocomplete="given-name" autocapitalize="words" spellcheck="false"
                     name="firstName"
                     placeholder="Enter your first name"
                     class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
@@ -87,7 +87,7 @@
                   </label>
                   <input
                     type="text"
-                    id="lastName"
+                    id="lastName" data-human-name maxlength="100" autocomplete="family-name" autocapitalize="words" spellcheck="false"
                     name="lastName"
                     placeholder="Enter your last name"
                     class="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
@@ -280,8 +280,9 @@
       </div>
     </div>
 
-    <script src="../../scripts/api.js?v=registration-recovery-20261022&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027" defer></script>
+    <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="../../scripts/api.js?v=registration-recovery-20261022&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2" defer></script>
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/auth/client/signup.js?v=registration-eligibility-20261022b&email-entry=20261028" defer></script>
+    <script src="../../scripts/auth/client/signup.js?v=registration-eligibility-20261022b&email-entry=20261028&names=20261028-v2" defer></script>
   </body>
 </html>

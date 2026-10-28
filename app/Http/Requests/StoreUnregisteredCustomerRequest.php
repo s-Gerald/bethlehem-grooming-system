@@ -19,8 +19,8 @@ class StoreUnregisteredCustomerRequest extends FormRequest
         $phone = $this->normalizePhone($this->input('phone'));
 
         $this->merge([
-            'first_name' => $this->normalizeText($this->input('first_name')),
-            'last_name' => $this->normalizeText($this->input('last_name')),
+            'first_name' => is_string($this->input('first_name')) ? \App\Support\HumanName::normalize($this->input('first_name')) : $this->input('first_name'),
+            'last_name' => is_string($this->input('last_name')) ? \App\Support\HumanName::normalize($this->input('last_name')) : $this->input('last_name'),
             'middle_name' => $middleName !== '' ? $middleName : null,
             'phone' => $phone,
             'email' => $email !== '' ? $email : null,
@@ -30,8 +30,8 @@ class StoreUnregisteredCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'first_name' => ['required', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
+            'first_name' => \App\Support\HumanName::rules(),
+            'last_name' => \App\Support\HumanName::rules(),
             'middle_name' => ['nullable', 'string', 'max:5'],
             'phone' => ['required', 'string', 'max:20', 'regex:/^09\d{9}$/'],
             'email' => AccountEmail::rules(required: false, maxLength: $this->is('api/admin/walk-in/customers/validate-new-owner') ? 255 : 150),

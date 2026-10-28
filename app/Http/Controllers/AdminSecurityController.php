@@ -137,18 +137,16 @@ class AdminSecurityController extends Controller
         foreach (['first_name', 'last_name', 'username'] as $field) {
             if (is_string($request->input($field))) {
                 $value = $request->input($field);
-                $request->merge([$field => $field === 'username' ? trim($value) : User::normalizeName($value)]);
+                $request->merge([$field => $field === 'username' ? trim($value) : ($value === $request->user()->$field ? $value : User::normalizeName($value))]);
             }
         }
 
         return $request->validate([
-            'first_name' => ['required', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
+            'first_name' => \App\Support\HumanName::rules(),
+            'last_name' => \App\Support\HumanName::rules(),
             'username' => AccountUsername::rules(),
             'current_password' => ['nullable', 'string'],
         ], [
-            'first_name.required' => 'Enter your first name.',
-            'last_name.required' => 'Enter your last name.',
             'username.required' => 'Enter a username.',
             'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
         ]);
@@ -217,8 +215,8 @@ class AdminSecurityController extends Controller
                 'string',
                 Rule::in(StaffRole::subrolesForType((string) $request->input('staff_type'))),
             ],
-            'first_name' => ['required', 'string', 'max:100'],
-            'last_name' => ['required', 'string', 'max:100'],
+            'first_name' => \App\Support\HumanName::rules(),
+            'last_name' => \App\Support\HumanName::rules(),
             'email' => PendingStaffAccountService::emailRules(),
         ]);
 

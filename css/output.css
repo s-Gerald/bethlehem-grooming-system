@@ -2205,6 +2205,11 @@ video {
   border-color: var(--portal-border) !important;
 }
 
+.\!border-red-400 {
+  --tw-border-opacity: 1 !important;
+  border-color: rgb(248 113 113 / var(--tw-border-opacity, 1)) !important;
+}
+
 .border-\[\#315b7e\] {
   --tw-border-opacity: 1;
   border-color: rgb(49 91 126 / var(--tw-border-opacity, 1));
@@ -3761,6 +3766,17 @@ video {
   outline-style: solid;
 }
 
+.ring-1 {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
+
+.ring-red-400 {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(248 113 113 / var(--tw-ring-opacity, 1));
+}
+
 .blur {
   --tw-blur: blur(8px);
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
@@ -4222,6 +4238,10 @@ video {
   border-color: var(--portal-accent);
 }
 
+.focus\:border-portal-primary:focus {
+  border-color: var(--portal-primary);
+}
+
 .focus\:border-red-400:focus {
   --tw-border-opacity: 1;
   border-color: rgb(248 113 113 / var(--tw-border-opacity, 1));
@@ -4296,6 +4316,10 @@ video {
 
 .focus\:ring-portal-active:focus {
   --tw-ring-color: var(--portal-active);
+}
+
+.focus\:ring-portal-primary:focus {
+  --tw-ring-color: var(--portal-primary);
 }
 
 .focus\:ring-red-100:focus {

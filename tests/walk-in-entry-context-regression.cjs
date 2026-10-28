@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
-const ownerSource = read("scripts/utils/account-email.js") + "\n" + read("scripts/components/walk-in-owner-step.js");
+const ownerSource = read("scripts/utils/human-name.js") + "\n" + read("scripts/utils/account-email.js") + "\n" + read("scripts/components/walk-in-owner-step.js");
 const ownerPage = read("pages/admin/walk-in-booking.html");
 const clinicSource = read("scripts/components/admin-clinic.js");
 const clinicPage = read("pages/admin/clinic.html");
@@ -205,7 +205,8 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.match(read("routes/api.php"), /post\('\/admin\/clinic-walk-in',[^\n]+middleware\('clinic:intake'\)/);
 
   // Exercise the unchanged dedicated Customers creation path with an API stub.
-  const customerContext = vm.createContext({ window: {}, document: { getElementById: () => null } });
+  const customerContext = vm.createContext({ window: {}, document: { getElementById: () => null, addEventListener() {} } });
+  vm.runInContext(read("scripts/utils/human-name.js"), customerContext);
   vm.runInContext(read("scripts/utils/account-email.js"), customerContext);
   const customerSource = read("scripts/components/admin-customers.js");
   vm.runInContext(customerSource.slice(customerSource.indexOf("function adminCustomers()")), customerContext);
@@ -216,6 +217,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   customers.loadCustomers = async () => { refreshed = true; };
   let payload;
   customerContext.API = { createUnregisteredCustomer: async (value) => { payload = value; } };
+  customers.$nextTick = callback => callback();
   customers.openAddCustomerModal();
   Object.assign(customers.addCustomerModal.form, { first_name: " Test ", last_name: " Customer ", phone: "09171234567" });
   await customers.submitUnregisteredCustomer();

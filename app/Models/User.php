@@ -215,9 +215,7 @@ class User extends Authenticatable
      */
     public static function normalizeName(mixed $name): string
     {
-        $normalized = preg_replace('/\s+/u', ' ', trim((string) $name)) ?: trim((string) $name);
-
-        return mb_convert_case(mb_strtolower($normalized), MB_CASE_TITLE, 'UTF-8');
+        return \App\Support\HumanName::normalize($name);
     }
 
     /**

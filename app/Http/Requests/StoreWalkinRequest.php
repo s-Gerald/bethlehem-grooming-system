@@ -32,8 +32,8 @@ class StoreWalkinRequest extends FormRequest
         }
 
         $this->merge([
-            'fname' => $this->normalizeText($this->input('fname')),
-            'lname' => $this->normalizeText($this->input('lname')),
+            'fname' => is_string($this->input('fname')) ? \App\Support\HumanName::normalize($this->input('fname')) : $this->input('fname'),
+            'lname' => is_string($this->input('lname')) ? \App\Support\HumanName::normalize($this->input('lname')) : $this->input('lname'),
             'mname' => $this->normalizeText($this->input('mname')) ?: null,
             'email' => $email !== '' ? $email : null,
             'phone' => $phone,
@@ -44,8 +44,11 @@ class StoreWalkinRequest extends FormRequest
     {
         return [
             // Owner
-            'fname' => ['required', 'string', 'max:100'],
-            'lname' => ['required', 'string', 'max:100'],
+            // Selected owners use persisted identity; these submitted names are not editable or saved.
+            'fname' => ($this->input('owner_record_type') ?? 'new') === 'new'
+                ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
+            'lname' => ($this->input('owner_record_type') ?? 'new') === 'new'
+                ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
             'mname' => ['nullable', 'string', 'max:100'],
             'email' => ($this->input('owner_record_type') ?? 'new') === 'new'
                 ? AccountEmail::rules(required: false, maxLength: 255)

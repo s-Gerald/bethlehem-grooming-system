@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027" />
+    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2" />
     <link rel="stylesheet" href="../../css/custom.css?ui=20260915-password-reveal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
 
   </head>
@@ -257,7 +257,7 @@
             >
               <h3 class="text-xl font-bold text-portal-text">Personal Information</h3>
               <form
-                id="accountForm"
+                id="accountForm" novalidate
                 class="rounded-3xl border border-portal-border bg-white p-5 shadow-portal sm:p-6"
               >
                 <div class="space-y-6">
@@ -285,6 +285,7 @@
                     </div>
                   </div>
 
+                  <button id="editCustomerName" type="button" class="rounded text-sm font-semibold text-portal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary">Edit name</button>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                       <label
@@ -295,11 +296,11 @@
                       </label>
                       <input
                         type="text"
-                        id="settingsFirstName"
+                        id="settingsFirstName" required data-human-name maxlength="100" autocomplete="given-name" autocapitalize="words" spellcheck="false"
                         name="first_name"
-                        autocomplete="given-name"
+
                         readonly
-                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none"
+                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
                       />
                     </div>
 
@@ -312,12 +313,30 @@
                       </label>
                       <input
                         type="text"
-                        id="settingsLastName"
+                        id="settingsLastName" required data-human-name maxlength="100" autocomplete="family-name" autocapitalize="words" spellcheck="false"
                         name="last_name"
-                        autocomplete="family-name"
+
                         readonly
-                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none"
+                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
                       />
+                    </div>
+                  </div>
+
+                  <div id="customerNamePasswordArea" hidden>
+                    <label for="nameCurrentPassword" class="mb-2 block text-sm font-semibold text-portal-text">Current password</label>
+                    <div class="relative">
+                      <input id="nameCurrentPassword" type="password" autocomplete="current-password" aria-describedby="nameCurrentPasswordError" class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 pr-12 text-portal-text focus:border-portal-primary focus:outline-none focus:ring-2 focus:ring-portal-primary" />
+                      <button type="button" data-password-toggle="nameCurrentPassword" aria-label="Show password" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-xl text-portal-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary">
+                        <svg class="password-icon-closed ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#eye-slash"></use></svg>
+                        <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#eye"></use></svg>
+                      </button>
+                    </div>
+                    <p id="nameCurrentPasswordError" class="mt-2 text-sm text-red-600" aria-live="polite" hidden></p>
+                  </div>
+                  <div id="customerNameActions" hidden>
+                    <div class="flex flex-wrap gap-3">
+                      <button id="saveCustomerName" type="submit" class="portal-button-primary text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">Save changes</button>
+                      <button id="cancelCustomerName" type="button" class="portal-button-secondary text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">Cancel</button>
                     </div>
                   </div>
 
@@ -494,10 +513,11 @@
       </main>
     </div>
 
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027"></script>
+    <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=phone-20261026-otp&registration-ui=20261027-v3"></script>
-    <script src="../../scripts/components/client-settings.js?v=phone-20261026-otp"></script>
+    <script src="../../scripts/components/client-settings.js?v=phone-20261026-otp&names=20261028-v2"></script>
   </body>
 </html>

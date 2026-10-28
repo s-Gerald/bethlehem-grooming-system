@@ -144,6 +144,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       console.error("Unable to load the customer profile.", error);
     }
   };
+  window.addEventListener('customer-profile:updated', () => { void loadDashboardProfile(); });
   scheduleCustomerDashboardAfterPaint(loadDashboardProfile);
 
   // Logout section: end the customer session and return to sign in.

@@ -31,8 +31,9 @@ global.window = {
   },
 };
 global.document = {
+  addEventListener() {},
   getElementById(id) {
-    return { focus() { focusedFields.push(id); } };
+    return { value: '', setAttribute() {}, getAttribute() { return ''; }, classList: { toggle() {} }, focus() { focusedFields.push(id); } };
   },
 };
 global.API = {
@@ -159,6 +160,7 @@ global.API = {
 
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/email-delivery.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/account-email.js'), 'utf8'));
+vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/human-name.js'), 'utf8'));
 vm.runInThisContext(componentSource, {
   filename: "scripts/components/admin-settings.js",
 });

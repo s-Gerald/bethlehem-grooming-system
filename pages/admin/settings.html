@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028" />
+    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <style>
@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027" />
+    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
@@ -131,7 +131,8 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027"></script>
+      <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main Content -->
@@ -818,11 +819,11 @@
                         <div class="grid gap-4 sm:grid-cols-2">
                           <label class="block">
                             <span class="mb-1.5 block text-sm font-semibold text-slate-600">First Name</span>
-                            <input id="newStaffFirstName" type="text" x-model="addStaffModal.firstName" required autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter first name" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
+                            <input id="newStaffFirstName" data-human-name maxlength="100" autocomplete="given-name" autocapitalize="words" spellcheck="false" type="text" x-model="addStaffModal.firstName" required data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter first name" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
                           </label>
                           <label class="block">
                             <span class="mb-1.5 block text-sm font-semibold text-slate-600">Last Name</span>
-                            <input id="newStaffLastName" type="text" x-model="addStaffModal.lastName" required autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter last name" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
+                            <input id="newStaffLastName" data-human-name maxlength="100" autocomplete="family-name" autocapitalize="words" spellcheck="false" type="text" x-model="addStaffModal.lastName" required data-lpignore="true" data-1p-ignore data-bwignore placeholder="Enter last name" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
                           </label>
                         </div>
                         <label class="block">
@@ -1084,12 +1085,12 @@
                         <legend class="sr-only">Edit your profile</legend>
                         <div>
                           <label for="staffProfileFirstName" class="mb-1.5 block text-sm font-semibold text-slate-600">First Name</label>
-                          <input id="staffProfileFirstName" name="first_name" type="text" x-model="staffProfile.firstName" @input="staffProfileInput('first_name')" @blur="validateStaffProfileField('first_name')" required maxlength="100" autocomplete="given-name" :aria-invalid="!!staffProfile.errors.first_name" aria-describedby="staffProfileFirstNameError" :class="staffProfile.errors.first_name ? 'border-red-400' : 'border-slate-200'" class="w-full rounded-xl border bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                          <input id="staffProfileFirstName" data-human-name autocomplete="given-name" autocapitalize="words" spellcheck="false" name="first_name" type="text" x-model="staffProfile.firstName" @input="staffProfileInput('first_name')" @blur="validateStaffProfileField('first_name')" required maxlength="100" :aria-invalid="!!staffProfile.errors.first_name" aria-describedby="staffProfileFirstNameError" :class="staffProfile.errors.first_name ? 'border-red-400' : 'border-slate-200'" class="w-full rounded-xl border bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
                           <p id="staffProfileFirstNameError" x-show="staffProfile.errors.first_name" x-text="staffProfile.errors.first_name" class="mt-1.5 text-sm text-red-600" role="alert"></p>
                         </div>
                         <div>
                           <label for="staffProfileLastName" class="mb-1.5 block text-sm font-semibold text-slate-600">Last Name</label>
-                          <input id="staffProfileLastName" name="last_name" type="text" x-model="staffProfile.lastName" @input="staffProfileInput('last_name')" @blur="validateStaffProfileField('last_name')" required maxlength="100" autocomplete="family-name" :aria-invalid="!!staffProfile.errors.last_name" aria-describedby="staffProfileLastNameError" :class="staffProfile.errors.last_name ? 'border-red-400' : 'border-slate-200'" class="w-full rounded-xl border bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
+                          <input id="staffProfileLastName" data-human-name autocomplete="family-name" autocapitalize="words" spellcheck="false" name="last_name" type="text" x-model="staffProfile.lastName" @input="staffProfileInput('last_name')" @blur="validateStaffProfileField('last_name')" required maxlength="100" :aria-invalid="!!staffProfile.errors.last_name" aria-describedby="staffProfileLastNameError" :class="staffProfile.errors.last_name ? 'border-red-400' : 'border-slate-200'" class="w-full rounded-xl border bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
                           <p id="staffProfileLastNameError" x-show="staffProfile.errors.last_name" x-text="staffProfile.errors.last_name" class="mt-1.5 text-sm text-red-600" role="alert"></p>
                         </div>
                         <div class="sm:col-span-2">
@@ -1299,7 +1300,7 @@
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028"></script>
+    <script src="../../scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

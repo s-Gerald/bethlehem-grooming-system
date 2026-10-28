@@ -167,8 +167,8 @@ class AdminStaffAccountManagementTest extends TestCase
             ->assertJsonMissingPath('password');
 
         $staff = User::query()->where('email', 'new.clinic.staff@gmail.com')->sole();
-        $this->assertSame('John', $staff->first_name);
-        $this->assertSame('Smith', $staff->last_name);
+        $this->assertSame('jOhN', $staff->first_name);
+        $this->assertSame('sMiTh', $staff->last_name);
         $this->assertSame('staff', $staff->role);
         $this->assertSame('clinic', $staff->staff_type);
         $this->assertSame('veterinarian', $staff->staff_subrole);
@@ -298,6 +298,17 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->staffSetupLinkSentTo($staff);
     }
 
+    public function test_staff_creation_rejects_numeric_names(): void
+    {
+        Notification::fake();
+        Sanctum::actingAs($this->createUser('admin', 'bethlehem.admin.test@gmail.com', 'Admin'));
+        $this->postJson('/api/admin/security/staff-accounts', ['staff_type' => 'clinic', 'staff_subrole' => 'veterinarian',
+            'first_name' => 'Gerald２', 'last_name' => 'McDonald', 'email' => 'numeric.staff@gmail.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+        $this->assertDatabaseMissing('users', ['email' => 'numeric.staff@gmail.com']);
+        Notification::assertNothingSent();
+    }
+
     public function test_username_is_generated_from_normalized_staff_names_only_at_setup_completion(): void
     {
         Notification::fake();
@@ -313,8 +324,8 @@ class AdminStaffAccountManagementTest extends TestCase
         ])->assertCreated();
 
         $staff = User::query()->where('email', 'generated.staff@gmail.com')->sole();
-        $this->assertSame('Juan', $staff->first_name);
-        $this->assertSame('Dela Cruz', $staff->last_name);
+        $this->assertSame('jUaN', $staff->first_name);
+        $this->assertSame('dElA cRuZ', $staff->last_name);
         $this->assertSame('grooming_receptionist', $staff->staff_subrole);
         $this->assertNull($staff->username);
         $this->assertTrue($staff->requiresPasswordSetup());
@@ -470,7 +481,8 @@ class AdminStaffAccountManagementTest extends TestCase
     #[DataProvider('fallbackNames')]
     public function test_generated_username_always_complies_with_existing_format(string $firstName, string $lastName): void
     {
-        [$staff, $token] = $this->inviteStaff($firstName, $lastName);
+        [$staff, $token] = $this->inviteStaff();
+        $staff->update(['first_name' => $firstName, 'last_name' => $lastName]);
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $token,
             'password' => 'CreatedPassword!234',

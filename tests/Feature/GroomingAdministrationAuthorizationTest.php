@@ -2079,10 +2079,10 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('staff');
 
         $response = $this->submitSignedGrooming('/api/admin/walk-in', [
-            'fname' => 'Maria',
-            'lname' => 'Santos',
+            'fname' => 'maria',
+            'lname' => 'SANTOS',
             'mname' => 'A',
-            'email' => 'maria.walkin@example.test',
+            'email' => 'maria.walkin@gmail.com',
             'phone' => '09171234567',
             'owner_record_type' => 'new',
             'pets' => [[

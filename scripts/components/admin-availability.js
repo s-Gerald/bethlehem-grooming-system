@@ -161,13 +161,24 @@ function adminAvailability() {
       if (!this.canManage) return;
       this.petGroomerEditor = { id: person?.id ?? null, first_name: person?.first_name || "" };
       this.groomersOnDutyError = "";
-      this.$nextTick(() => document.getElementById("petGroomerFirstName")?.focus());
+      this.$nextTick(() => {
+        const input = document.getElementById('petGroomerFirstName');
+        if (input) { HumanName.reset(input); input.focus(); }
+      });
     },
 
     async savePetGroomer(data, id = null, toggle = null) {
       const identity = this._identityRevision;
       if (!this.canManage || this.busy) return;
       if (this.groomersOnDutySaving) return;
+      if (data.first_name !== undefined) {
+        const original = this.petGroomers.find(person => person.id === id)?.first_name;
+        data = { ...data, first_name: data.first_name === original ? original : HumanName.normalize(data.first_name) };
+        if (this.petGroomerEditor?.id === id) this.petGroomerEditor.first_name = data.first_name;
+        const error = HumanName.validate(data.first_name);
+        HumanName.showError(document.getElementById('petGroomerFirstName'), error);
+        if (error) return;
+      }
       this.groomersOnDutySaving = true;
       this.groomersOnDutyError = "";
       try {
@@ -177,7 +188,8 @@ function adminAvailability() {
         this.groomersOnDuty = response.groomers_on_duty;
         if (!toggle) this.petGroomerEditor = null;
       } catch (error) {
-        this.groomersOnDutyError = error.message || "Could not save Pet Groomer.";
+        if (error.errors?.first_name) HumanName.showError(document.getElementById('petGroomerFirstName'), [].concat(error.errors.first_name)[0]);
+        else this.groomersOnDutyError = error.message || "Could not save Pet Groomer.";
         if (toggle) toggle.checked = this.petGroomers.find((person) => person.id === id)?.on_duty || false;
       } finally {
         this.groomersOnDutySaving = false;

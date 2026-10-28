@@ -497,7 +497,7 @@ class AdminCredentialChangeTest extends TestCase
             $this->withToken($token->plainTextToken)->patchJson('/api/settings/security/profile', [
                 'first_name' => '  MARÍA   JOSÉ ', 'last_name' => " O'NEILL-SANTOS ", 'username' => $staff->username,
             ])->assertOk()->assertJsonPath('account.first_name', 'María José')
-                ->assertJsonPath('account.last_name', "O'neill-Santos")
+                ->assertJsonPath('account.last_name', "O'Neill-Santos")
                 ->assertJsonPath('user.user_id', $staff->user_id)
                 ->assertJsonPath('user.staff_permissions', $staff->staffPermissions())
                 ->assertJsonPath('sidebar_revision', $staff->fresh()->sidebarRevision());
@@ -509,6 +509,8 @@ class AdminCredentialChangeTest extends TestCase
             $this->assertSame(1, $staff->tokens()->count());
             $this->app['auth']->forgetGuards();
             $this->getJson('/api/settings/security/account')->assertOk()->assertJsonPath('account.first_name', 'María José');
+            $this->patchJson('/api/settings/security/profile', ['first_name' => 'McDonald', 'last_name' => 'de la Cruz', 'username' => $staff->username])
+                ->assertOk()->assertJsonPath('account.first_name', 'McDonald')->assertJsonPath('account.last_name', 'de la Cruz');
             $this->app['auth']->forgetGuards();
         }
         Notification::assertNothingSent();
@@ -629,7 +631,7 @@ class AdminCredentialChangeTest extends TestCase
             $this->postJson('/api/settings/security/profile/validate', array_replace($profile, ['username' => $username]))
                 ->assertUnprocessable()->assertJsonValidationErrors('username');
         }
-        foreach (['', '   ', str_repeat('x', 101), ['invalid']] as $name) {
+        foreach (['', '   ', str_repeat('x', 101), ['invalid'], 'Maria２', 'Gerald123', '---', "Jo\nSmith"] as $name) {
             $this->patchJson('/api/settings/security/profile', array_replace($profile, ['first_name' => $name]))
                 ->assertUnprocessable()->assertJsonValidationErrors('first_name');
         }
@@ -894,6 +896,7 @@ class AdminCredentialChangeTest extends TestCase
         $service = app(\App\Services\PasswordResetService::class);
         $service->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
+        $this->travel(61)->seconds();
         $service->sendCode('new@gmail.com');
         Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class,
             fn ($notification, $channels, $recipient) => $recipient->email === 'new@gmail.com');
@@ -1219,6 +1222,7 @@ class AdminCredentialChangeTest extends TestCase
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
         app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
+        $this->travel(61)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode('new@gmail.com');
         Notification::assertSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
     }
@@ -1240,6 +1244,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertUnprocessable();
         $staleChallenge->save();
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertForbidden();
+        $this->travel(61)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         try { app(\App\Services\AccountSessionService::class)->issue($staff); $this->fail('Hold allowed session issuance.'); }

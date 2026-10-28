@@ -95,8 +95,8 @@ function initializeWalkInFlow() {
 
 function getFormValues() {
   return {
-    firstName: normalizeText(elements.firstName.value),
-    lastName: normalizeText(elements.lastName.value),
+    firstName: elements.firstName.value,
+    lastName: elements.lastName.value,
     middleInitial: normalizeMiddleInitial(elements.middleInitial.value),
     phone: normalizePhoneNumber(elements.phone.value),
     email: AccountEmail.normalize(elements.email.value),
@@ -253,6 +253,13 @@ function validateOwner(values) {
     errors.lastName = "Last name is required.";
   }
 
+  if (!selectedCustomer) {
+    for (const field of ['firstName', 'lastName']) {
+      const error = HumanName.validate(values[field]);
+      if (error && values[field]) errors[field] = error;
+    }
+  }
+
   if (!values.phone) {
     errors.phone = "Phone number is required.";
   } else if (!isValidPhoneNumber(values.phone)) {
@@ -291,6 +298,11 @@ function setFieldError(fieldName, message) {
     return;
   }
 
+  if (['firstName', 'lastName'].includes(fieldName)) {
+    elements[fieldName].setAttribute('aria-invalid', String(Boolean(message)));
+    elements[fieldName].classList.toggle('!border-red-400', Boolean(message));
+  }
+
   if (fieldName === 'email') {
     elements.email.setAttribute('aria-invalid', String(Boolean(message)));
     AccountEmail.showError(elements.email, message);
@@ -312,7 +324,7 @@ function renderValidationErrors(values, { showAll = false } = {}) {
   requestedFields.forEach((fieldName) => {
     const hasValue = Boolean(values[fieldName] || "");
     const shouldShow = showAll || hasSubmittedOnce || hasValue;
-    if (fieldName !== 'email' || showAll) setFieldError(fieldName, shouldShow ? errors[fieldName] || "" : "");
+    if (showAll || !['email', 'firstName', 'lastName'].includes(fieldName)) setFieldError(fieldName, shouldShow ? errors[fieldName] || "" : "");
   });
 
   const firstError = requestedFields.map((fieldName) => errors[fieldName]).find(Boolean);
@@ -446,6 +458,11 @@ async function handleSubmit(event) {
   if (ownerValidationInProgress) return;
   hasSubmittedOnce = true;
 
+  if (!selectedCustomer) {
+    elements.firstName.value = HumanName.normalize(elements.firstName.value);
+    elements.lastName.value = HumanName.normalize(elements.lastName.value);
+  }
+
   const values = getFormValues();
   const errors = validateOwner(values);
 
@@ -467,6 +484,10 @@ async function handleSubmit(event) {
 
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
+  for (const field of ['firstName', 'lastName']) HumanName.bind(elements[field], message => {
+    setFieldError(field, message);
+    elements[field].classList.toggle('border-red-400', Boolean(message));
+  });
   AccountEmail.bind(elements.email, { required: false, maxLength: 255, errorId: 'ownerEmailAddressError',
     isUnchanged: () => selectedCustomer && AccountEmail.normalize(elements.email.value) === AccountEmail.normalize(selectedCustomer.email),
   });

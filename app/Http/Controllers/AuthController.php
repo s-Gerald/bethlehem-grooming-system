@@ -156,8 +156,8 @@ class AuthController extends Controller
             $request->merge(['email' => $existing->email]);
         }
         $data = $request->validate([
-            'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
-            'last_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-Z\s\'\-]+$/'],
+            'first_name' => \App\Support\HumanName::rules(),
+            'last_name' => \App\Support\HumanName::rules(),
             'username' => [
                 'nullable',
                 'string',
@@ -178,6 +178,9 @@ class AuthController extends Controller
             ],
             'password' => 'required|string|min:8|max:100|confirmed',
         ]);
+        foreach (['first_name', 'last_name'] as $field) {
+            $data[$field] = $existing && $data[$field] === $existing->$field ? $data[$field] : User::normalizeName($data[$field]);
+        }
         AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
         return $data;
     }

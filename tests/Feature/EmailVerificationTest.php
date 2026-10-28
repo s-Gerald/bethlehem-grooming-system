@@ -17,6 +17,19 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_signup_and_pending_edits_share_unicode_name_validation_and_casing(): void
+    {
+        Notification::fake();
+        $payload = [...$this->registrationPayload(), 'first_name' => 'MARIA CLARA', 'last_name' => 'PEÑA'];
+        $registration = $this->postJson('/api/register', $payload)->assertCreated();
+        $this->assertDatabaseHas('pending_customer_registrations', ['first_name' => 'Maria Clara', 'last_name' => 'Peña']);
+        $this->putJson('/api/register/pending', [...$payload, 'registration_token' => $registration->json('registration_token'),
+            'first_name' => 'McDonald', 'last_name' => 'de la Cruz'])->assertCreated();
+        $this->assertDatabaseHas('pending_customer_registrations', ['first_name' => 'McDonald', 'last_name' => 'de la Cruz']);
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'numeric@gmail.com', 'first_name' => 'Gerald２'])
+            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

@@ -3,7 +3,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "npm run build:email && npm run build:clinical && npm run build:ocr && npm run build:css && vite build",
+        "build": "npm run build:email && npm run build:names && npm run build:clinical && npm run build:ocr && npm run build:css && vite build",
+        "build:names": "node scripts/build-human-name-policy.mjs",
         "build:email": "node scripts/build-account-email-policy.mjs",
         "build:clinical": "node scripts/build-clinic-clinical-rules.mjs",
         "build:ocr": "node scripts/build-ocr-assets.mjs",

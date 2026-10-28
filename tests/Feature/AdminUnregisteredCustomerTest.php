@@ -104,8 +104,8 @@ class AdminUnregisteredCustomerTest extends TestCase
         Sanctum::actingAs(User::query()->findOrFail(1), ['*']);
 
         $this->postJson('/api/admin/customers/unregistered', [
-            'first_name' => '  Maria  ',
-            'last_name' => ' Santos ',
+            'first_name' => '  maria  ',
+            'last_name' => ' SANTOS ',
             'middle_name' => 'a.',
             'phone' => '+63 917 123 4567',
             'email' => 'maria@GMAIL.COM',

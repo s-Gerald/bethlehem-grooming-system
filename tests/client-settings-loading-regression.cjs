@@ -52,7 +52,9 @@ function createPage(getMe, phoneApi = {}) {
         getAttribute(name) { return attributes.get(name) ?? null; },
         hasAttribute(name) { return attributes.has(name); },
         addEventListener(name, callback) { listeners.set(name, callback); },
-        dispatch(name) { return listeners.get(name)?.(); },
+        dispatch(name, event = { preventDefault() {} }) { return listeners.get(name)?.(event); },
+        dispatchEvent(event) { return listeners.get(event.type)?.(event); },
+        focus() {},
         querySelectorAll() { return []; },
       });
     }
@@ -72,6 +74,7 @@ function createPage(getMe, phoneApi = {}) {
     document: {
       body: { classList: { toggle() {} } },
       getElementById: element,
+      querySelector() { return null; },
       querySelectorAll() { return []; },
       addEventListener(name, callback) {
         if (name === "DOMContentLoaded") callback();
@@ -86,7 +89,10 @@ function createPage(getMe, phoneApi = {}) {
     },
   };
 
-  vm.runInNewContext(source, context);
+  vm.createContext(context);
+  context.Event = class { constructor(type) { this.type = type; } };
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/human-name.js'), 'utf8'), context);
+  vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   return element;
 }
@@ -216,6 +222,41 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
 }
 
 (async () => {
+  let saves = 0;
+  const original = { first_name: 'GERALD', last_name: 'de la Cruz', role: 'customer' };
+  const element = createPage(async () => ({ user: original }), {
+    async updateCustomerName(payload) {
+      saves++;
+      if (payload.current_password !== 'correct') throw { errors: { current_password: ['Incorrect password.'] } };
+      return { user: { ...original, first_name: payload.first_name, last_name: payload.last_name } };
+    },
+  });
+  await flush();
+  await element('editCustomerName').dispatch('click');
+  assert.equal(element('settingsFirstName').value, 'GERALD', 'Opening the editor preserves historical casing.');
+  assert.equal(element('settingsFirstName').readOnly, false);
+  element('settingsFirstName').value = 'mcdonald';
+  await element('accountForm').dispatch('submit');
+  assert.equal(saves, 0, 'Missing password is blocked locally.');
+  element('nameCurrentPassword').value = 'wrong';
+  await element('accountForm').dispatch('submit');
+  assert.equal(element('nameCurrentPasswordError').textContent, 'Incorrect password.');
+  assert.equal(element('settingsFirstName').value, 'McDonald');
+  element('nameCurrentPassword').value = 'correct';
+  await element('accountForm').dispatch('submit');
+  assert.equal(saves, 2);
+  assert.equal(element('accountDisplayName').textContent, 'McDonald de la Cruz');
+  assert.equal(element('accountInitials').textContent, 'MD');
+  assert.equal(element('nameCurrentPassword').value, '');
+  assert.equal(element('settingsFirstName').readOnly, true);
+  await element('editCustomerName').dispatch('click');
+  element('settingsFirstName').value = 'Discard'; element('nameCurrentPassword').value = 'secret';
+  await element('cancelCustomerName').dispatch('click');
+  assert.equal(element('settingsFirstName').value, 'McDonald');
+  assert.equal(element('nameCurrentPassword').value, '');
+  await element('editCustomerName').dispatch('click');
+  await element('accountForm').dispatch('submit');
+  assert.equal(saves, 2, 'Cancel and unchanged saves do not send requests.');
   await testSettingsWaitsForProfile();
   await testSettingsFailureKeepsFormHiddenUntilRetry();
   await testPhoneVerificationBadgesUseServerStatus();

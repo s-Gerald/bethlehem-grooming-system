@@ -98,6 +98,10 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     if (busy) return;
 
+    const nameInputs = ['firstName', 'lastName'].map(id => document.getElementById(id));
+    const validNames = nameInputs.map(input => HumanName.finish(input));
+    if (validNames.includes(false)) { nameInputs[validNames.indexOf(false)].focus(); return; }
+
     const firstName      = document.getElementById("firstName").value.trim();
     const lastName       = document.getElementById("lastName").value.trim();
     const username       = usernameInput ? usernameInput.value.trim() : "";
@@ -185,6 +189,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       if (error.errors) {
         const [field, firstError] = Object.entries(error.errors)[0];
+        if (field === 'first_name' || field === 'last_name') {
+          const input = document.getElementById(field === 'first_name' ? 'firstName' : 'lastName');
+          HumanName.showError(input, [].concat(firstError)[0]); input.focus(); setBusyState(false); return;
+        }
         if (field === "email") {
           if (emailField.setError(Array.isArray(firstError) ? firstError[0] : firstError, email)) emailInput.focus();
           setBusyState(false);

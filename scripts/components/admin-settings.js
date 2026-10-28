@@ -373,15 +373,16 @@ function adminSettings() {
     },
 
     staffProfileValues() {
-      return { first_name: this.staffProfile.firstName.trim().replace(/\s+/gu, ' '),
-        last_name: this.staffProfile.lastName.trim().replace(/\s+/gu, ' '), username: this.staffProfile.username.trim() };
+      return { first_name: this.staffProfile.firstName === this.staffAccount.firstName ? this.staffProfile.firstName : HumanName.normalize(this.staffProfile.firstName),
+        last_name: this.staffProfile.lastName === this.staffAccount.lastName ? this.staffProfile.lastName : HumanName.normalize(this.staffProfile.lastName), username: this.staffProfile.username.trim() };
     },
 
     staffProfileValidation() {
       const values = this.staffProfileValues(), errors = {};
       for (const [field, label] of [['first_name', 'first name'], ['last_name', 'last name']]) {
+        const nameError = HumanName.validate(values[field]);
         if (!values[field]) errors[field] = `Enter your ${label}.`;
-        else if (Array.from(values[field]).length > 100) errors[field] = 'Use 100 characters or fewer.';
+        else if (nameError) errors[field] = nameError;
       }
       if (!values.username) errors.username = 'Enter a username.';
       else if (values.username.length < 3 || values.username.length > 50) errors.username = 'Use 3–50 characters.';
@@ -395,7 +396,15 @@ function adminSettings() {
       this.staffProfile = { editing: true, confirming: false, submitting: false,
         firstName: this.staffAccount.firstName, lastName: this.staffAccount.lastName, username: this.staffAccount.username,
         currentPassword: "", showPassword: false, errors: {}, error: "" };
-      this.$nextTick(() => document.getElementById('staffProfileFirstName')?.focus());
+      this.$nextTick(() => {
+        for (const [id, field] of [['staffProfileFirstName', 'first_name'], ['staffProfileLastName', 'last_name']]) {
+          HumanName.bind(document.getElementById(id), message => {
+            if (message) this.staffProfile.errors[field] = message;
+            else delete this.staffProfile.errors[field];
+          });
+        }
+        document.getElementById('staffProfileFirstName')?.focus();
+      });
     },
 
     cancelStaffProfile() {
@@ -406,7 +415,7 @@ function adminSettings() {
     },
 
     staffProfileInput(field) {
-      delete this.staffProfile.errors[field];
+      if (!['first_name', 'last_name'].includes(field)) delete this.staffProfile.errors[field];
       this.staffProfile.error = "";
     },
 
@@ -456,6 +465,9 @@ function adminSettings() {
       if (['first_name', 'last_name', 'username'].some(field => errors[field])) this.staffProfile.confirming = false;
       this.$nextTick(() => {
         const ids = { first_name: 'staffProfileFirstName', last_name: 'staffProfileLastName', username: 'staffProfileUsername', current_password: 'staffProfileCurrentPassword' };
+        for (const field of ['first_name', 'last_name']) {
+          if (errors[field]) HumanName.showError(document.getElementById(ids[field]), [].concat(errors[field])[0]);
+        }
         document.getElementById(ids[Object.keys(errors)[0]])?.focus();
       });
     },
@@ -669,6 +681,12 @@ function adminSettings() {
       this.staffNotice = "";
       this.addStaffModal = this.emptyAddStaffModal(true);
       AccountEmail.showError(document.getElementById('newStaffEmail'), '');
+      this.$nextTick(() => {
+        for (const id of ['newStaffFirstName', 'newStaffLastName']) {
+          const input = document.getElementById(id);
+          if (input) HumanName.reset(input);
+        }
+      });
 
     },
 
@@ -730,12 +748,16 @@ function adminSettings() {
     async requestNewStaffAccount() {
       this.addStaffModal.error = "";
 
-      const firstName = this.addStaffModal.firstName.trim();
-      const lastName = this.addStaffModal.lastName.trim();
-      if (!firstName || !lastName) {
-        this.addStaffModal.error = "Enter the staff first and last name.";
-        return;
+      const firstName = HumanName.normalize(this.addStaffModal.firstName);
+      const lastName = HumanName.normalize(this.addStaffModal.lastName);
+      this.addStaffModal.firstName = firstName; this.addStaffModal.lastName = lastName;
+      let invalidName = false;
+      for (const [id, value] of [['newStaffFirstName', firstName], ['newStaffLastName', lastName]]) {
+        const error = HumanName.validate(value);
+        HumanName.showError(document.getElementById(id), error);
+        if (error) invalidName = true;
       }
+      if (invalidName) return;
 
       const staffSubrole = this.addStaffModal.staffSubrole;
       if (this.addStaffModal.staffType === "clinic"
@@ -765,6 +787,12 @@ function adminSettings() {
         await this.loadSecurityAccounts();
 
       } catch (error) {
+        if (error.errors?.first_name || error.errors?.last_name) {
+          for (const [field, id] of [['first_name', 'newStaffFirstName'], ['last_name', 'newStaffLastName']]) {
+            if (error.errors[field]) HumanName.showError(document.getElementById(id), [].concat(error.errors[field])[0]);
+          }
+          return;
+        }
         if (error.errors?.email) {
           if (AccountEmail.normalize(this.addStaffModal.email) === email) {
             this.addStaffModal.emailError = [].concat(error.errors.email)[0];

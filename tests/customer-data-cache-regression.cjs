@@ -581,6 +581,40 @@ async function testMyPetsStaticModalsAndWorkflows() {
 }
 
 async function main() {
+  {
+    const env = environment();
+    await env.API.getMe(); await env.API.getUserPets();
+    const beforeUpdateCache = env.sessionStorage.getItem('bethlehem.customer.data.v1');
+    const older = deferred();
+    const saved = { ...profile, user: { ...profile.user, first_name: 'Gerald', last_name: 'McDonald' } };
+    env.respond(endpoint => endpoint === '/me' ? older.promise : saved);
+    const stale = env.API.getMe('customer', { force: true });
+    const staleResult = stale.then(() => false, () => true);
+    await env.API.updateCustomerName({ first_name: 'Gerald', last_name: 'McDonald', current_password: 'secret' });
+    older.resolve(profile);
+    assert.equal(await staleResult, true, 'An older /me response cannot replace a saved identity.');
+    assert.equal((await env.API.getMe()).user.first_name, 'Gerald');
+    assert.equal(JSON.parse(env.localStorage.getItem('bethlehem.customer.profile_name')).last, 'McDonald');
+    const count = env.calls.length;
+    await env.API.getUserPets();
+    assert.equal(env.calls.length, count, 'Name changes retain the pet cache.');
+    const next = env.documentContext('settings.html');
+    assert.equal((await next.API.getMe()).user.last_name, 'McDonald', 'Saved profile survives page navigation.');
+    assert.equal(env.calls.length, count);
+    env.sessionStorage.setItem('bethlehem.customer.data.v1', beforeUpdateCache);
+    const missedSignal = env.documentContext('settings.html');
+    assert.equal((await missedSignal.API.getMe()).user.last_name, 'McDonald', 'A tab opening after the storage event cannot restore its older profile snapshot.');
+    assert.equal(env.calls.length, count);
+    const crossTab = env.documentContext('dashboard.html');
+    env.respond(() => older.promise);
+    const olderTabRequest = crossTab.API.getMe('customer', { force: true });
+    const before = env.calls.length;
+    crossTab.events.get('storage')({ storageArea: env.localStorage, key: 'bethlehem.customer.profile_changed',
+      newValue: JSON.stringify({ owner: 'customer:1', first_name: 'Maria', last_name: 'Peña' }) });
+    assert.equal(crossTab.API.readCustomerCache('/me').data.user.first_name, 'Maria');
+    await assert.rejects(olderTabRequest, /changed while loading/);
+    assert.equal(env.calls.length, before, 'Cross-tab name synchronization reuses cached profile data.');
+  }
   healthRecordTools = await import('../scripts/components/customer-health-records.js');
   petWeightTools = await import('../scripts/components/pet-weight-size.js');
   ({ normalizePetSize } = await import('../scripts/services/booking-draft-service.js'));
@@ -605,6 +639,7 @@ function serveBrowserFixture() {
   const baselinePath = process.argv.find((arg) => arg.startsWith("--baseline="))?.slice("--baseline=".length);
   const baseline = baselinePath ? JSON.parse(fs.readFileSync(baselinePath, "utf8")) : {};
   const requests = [];
+  let fixtureProfile = JSON.parse(JSON.stringify(profile));
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     if (url.pathname === "/__requests") {
@@ -613,9 +648,24 @@ function serveBrowserFixture() {
     }
     if (url.pathname.startsWith("/api/")) {
       requests.push({ endpoint: url.pathname + url.search, at: Date.now() });
+      if (url.pathname === '/api/customer/profile/name' && req.method === 'PATCH') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          const payload = JSON.parse(body);
+          res.setHeader('Content-Type', 'application/json');
+          if (payload.current_password !== 'fixture-password') {
+            res.statusCode = 422;
+            return res.end(JSON.stringify({ errors: { current_password: ['Incorrect password.'] } }));
+          }
+          fixtureProfile = { ...fixtureProfile, user: { ...fixtureProfile.user, first_name: payload.first_name, last_name: payload.last_name } };
+          res.end(JSON.stringify(fixtureProfile));
+        });
+        return;
+      }
       let data;
       switch (url.pathname) {
-        case "/api/me": data = profile; break;
+        case "/api/me": data = fixtureProfile; break;
         case "/api/pets": data = url.searchParams.get("archived") === "1" ? { pets: [] } : pets; break;
         case "/api/booking/history": data = bookings; break;
         case "/api/clinic/history": data = { medical_records: [] }; break;
@@ -642,16 +692,14 @@ function serveBrowserFixture() {
     if (extension === ".html") {
       content = String(content).replace(/<head>/i, `<head><script>
         window.BETHLEHEM_API_BASE_URL = location.origin + '/api';
-        if (!localStorage.getItem('customer_token')) {
-          localStorage.setItem('customer_token', '99001|synthetic-browser-fixture');
-          localStorage.setItem('user_role', 'customer');
-        }
         document.addEventListener('DOMContentLoaded', () => {
           const primary = document.querySelector('#petsContent, #historyContent, #settingsContent');
           if (!primary) return;
           requestAnimationFrame(() => console.info('Fixture primary at first frame: ' + (!primary.classList.contains('hidden') && !primary.hasAttribute('inert') ? 'visible' : 'loading')));
         });
       </script>`);
+      content = content.replace(/(<script src="[^"]*scripts\/api\.js[^"]*"><\/script>)/,
+        "$1<script>API.setCustomerToken('99001|synthetic-browser-fixture');</script>");
     }
     res.end(content);
   });

@@ -65,6 +65,7 @@ var API = (() => {
   let observedSession = null;
   let authRedirectStarted = false;
   const CUSTOMER_PROFILE_NAME_KEY = "bethlehem.customer.profile_name";
+  const CUSTOMER_PROFILE_CHANGED_KEY = "bethlehem.customer.profile_changed";
   const CUSTOMER_CACHE_KEY = "bethlehem.customer.data.v1";
   const CUSTOMER_CACHE_SESSION_KEY = "bethlehem.customer.cache_session";
   const customerCache = new Map();
@@ -385,6 +386,11 @@ var API = (() => {
     customerCacheRevisions.clear();
     customerCacheOwner = owner;
     customerCacheToken = token;
+    let profileChange = null;
+    if (customerSessionStorage() === localStorage) {
+      try { profileChange = JSON.parse(safeStorageGet(localStorage, CUSTOMER_PROFILE_CHANGED_KEY) || 'null'); }
+      catch { /* A malformed signal does not invalidate unrelated retained data. */ }
+    }
     try {
       const stored = JSON.parse(safeStorageGet(sessionStorage, CUSTOMER_CACHE_KEY) || "null");
       if (stored?.owner === owner) {
@@ -392,6 +398,10 @@ var API = (() => {
           const policy = customerCachePolicy(key);
           const age = Date.now() - entry?.at;
           if (policy && Number.isFinite(age) && age >= 0 && age < policy.retain && entry.data) {
+            if (key === '/me' && entry.data.user && profileChange?.owner === activitySessionId(getAuthSession())
+              && profileChange.at >= entry.at && typeof profileChange.first_name === 'string' && typeof profileChange.last_name === 'string') {
+              entry.data.user = { ...entry.data.user, first_name: profileChange.first_name, last_name: profileChange.last_name };
+            }
             customerCache.set(key, entry);
           }
         });
@@ -501,6 +511,7 @@ var API = (() => {
     USER_ROLE_KEY,
     AUTH_LAST_ACTIVITY_KEY,
     CUSTOMER_PROFILE_NAME_KEY,
+    CUSTOMER_PROFILE_CHANGED_KEY,
   ];
 
   let inactivityTimerId = null;
@@ -1447,6 +1458,24 @@ var API = (() => {
       if (event.key === CUSTOMER_TOKEN_KEY || event.key === CUSTOMER_CACHE_SESSION_KEY || event.key === USER_ROLE_KEY) {
         clearCustomerCache();
       }
+      if (event.key === CUSTOMER_PROFILE_CHANGED_KEY && event.newValue && current?.role === 'customer') {
+        try {
+          const change = JSON.parse(event.newValue);
+          if (change.owner === activitySessionId(current) && customerSessionStorage() === localStorage
+            && typeof change.first_name === 'string' && typeof change.last_name === 'string') {
+            const cached = readCustomerCache('/me')?.data;
+            invalidateCustomerCache('profile');
+            const user = { ...cached?.user, first_name: change.first_name, last_name: change.last_name };
+            if (cached) {
+              customerCache.set('/me', { at: Date.now(), data: { ...cached, user } });
+              persistCustomerCache();
+            }
+            rememberCustomerProfileName(user.first_name, user.last_name);
+            showCachedCustomerProfileName();
+            if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new CustomEvent('customer-profile:updated', { detail: { user } }));
+          }
+        } catch { /* Ignore malformed cross-tab signals. */ }
+      }
       if (event.key === ADMIN_TOKEN_KEY || event.key === USER_ROLE_KEY) {
         const previousIdentityToken = staffIdentityToken;
         clearAdminCache();
@@ -2017,6 +2046,26 @@ var API = (() => {
     if (isAdminRole(role) && token === getAdminToken() && identityEpoch === staffIdentityEpoch) rememberStaffIdentity(response, token);
     if (!isAdminRole(role) && response?.user) {
       rememberCustomerProfileName(response.user.first_name, response.user.last_name);
+    }
+    return response;
+  }
+
+  async function updateCustomerName(payload) {
+    const token = getCustomerToken();
+    const response = await request("PATCH", "/customer/profile/name", payload, token);
+    if (token !== getCustomerToken()) throw new Error("Session changed while saving your name.");
+    invalidateCustomerCache("profile");
+    if (response?.user && ensureCustomerCacheSession()) {
+      customerCache.set("/me", { at: Date.now(), data: response });
+      persistCustomerCache();
+      rememberCustomerProfileName(response.user.first_name, response.user.last_name);
+      showCachedCustomerProfileName();
+      if (customerSessionStorage() === localStorage) {
+        try {
+          localStorage.setItem(CUSTOMER_PROFILE_CHANGED_KEY, JSON.stringify({ owner: activitySessionId(getAuthSession()),
+            first_name: response.user.first_name, last_name: response.user.last_name, at: Date.now() }));
+        } catch { /* Profile synchronization in this tab still works without storage. */ }
+      }
     }
     return response;
   }
@@ -3112,6 +3161,7 @@ var API = (() => {
     readCustomerCache,
     loadCustomerData,
     invalidateCustomerCache,
+    updateCustomerName,
     adminRequest,
     // Token access (used by other scripts that need to attach the token)
     getCustomerToken,

@@ -18,14 +18,14 @@ class PetGroomerController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate(['first_name' => ['required', 'string', 'max:100']]);
+        $data = $request->validate(['first_name' => \App\Support\HumanName::rules()]);
         return $this->save($data);
     }
 
     public function update(Request $request, int $id)
     {
         $data = $request->validate([
-            'first_name' => ['sometimes', 'required', 'string', 'max:100'],
+            'first_name' => ['sometimes', ...\App\Support\HumanName::rules()],
             'on_duty' => ['sometimes', 'required', 'boolean'],
         ]);
         return $this->save($data, $id);
@@ -37,10 +37,7 @@ class PetGroomerController extends Controller
             ClinicSetting::current(lockForUpdate: true);
             $groomer = $id === null ? new PetGroomer(['on_duty' => false]) : PetGroomer::findOrFail($id);
             if (isset($data['first_name'])) {
-                $data['first_name'] = preg_replace('/\s+/u', ' ', trim($data['first_name']));
-                if ($data['first_name'] === '') {
-                    throw ValidationException::withMessages(['first_name' => 'First name is required.']);
-                }
+                $data['first_name'] = $data['first_name'] === $groomer->first_name ? $data['first_name'] : \App\Support\HumanName::normalize($data['first_name']);
             }
             if (($data['on_duty'] ?? false) && ! $groomer->on_duty
                 && PetGroomer::where('on_duty', true)->count() >= ClinicSetting::MAX_GROOMERS_ON_DUTY) {

@@ -261,7 +261,7 @@ class PasswordResetService
 
     private function generateStaffUsername(User $staff): string
     {
-        $asciiName = Str::ascii(User::normalizeName($staff->first_name).User::normalizeName($staff->last_name));
+        $asciiName = Str::ascii(mb_convert_case(mb_strtolower($staff->first_name), MB_CASE_TITLE, 'UTF-8').mb_convert_case(mb_strtolower($staff->last_name), MB_CASE_TITLE, 'UTF-8'));
         $base = preg_replace('/[^A-Za-z0-9._-]/', '', $asciiName) ?? '';
         $base = preg_replace('/^[^A-Za-z]+/', '', $base) ?? '';
         $base = substr(str_pad($base === '' ? 'Staff' : $base, 3, '0'), 0, 50);
