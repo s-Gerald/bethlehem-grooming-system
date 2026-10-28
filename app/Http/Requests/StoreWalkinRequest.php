@@ -37,6 +37,7 @@ class StoreWalkinRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'submission_key' => ['nullable', 'uuid'],
             // Owner
             // Selected owners use persisted identity; these submitted names are not editable or saved.
             'fname' => ($this->input('owner_record_type') ?? 'new') === 'new'

@@ -6,7 +6,6 @@ use App\Http\Requests\StoreWalkinRequest;
 use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\BookingService;
-use App\Models\ClinicSetting;
 use App\Models\Pet;
 use App\Models\Service;
 use App\Models\UnregisteredCustomer;
@@ -16,9 +15,12 @@ use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Services\CustomerIdentityService;
 use App\Services\DailyPetQueue;
+use App\Services\GroomingIntakeSequence;
 use App\Services\GroomingServicePriceResolver;
 use App\Support\PetWeightSize;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class WalkinController extends Controller
@@ -32,138 +34,164 @@ class WalkinController extends Controller
     {
         $queueDate = now()->toDateString();
 
-        return app(DailyPetQueue::class)->runForDate($queueDate, function () use ($request, $queueDate) {
-            $data = $request->validated();
-            $data['pets'] = app(\App\Services\PetGroomerSelection::class)->validate($data['pets'], true);
-            app(\App\Services\OperationalCapacity::class)->assertCanAccept('grooming', count($data['pets']));
-            $data['pets'] = array_map(
-                fn (array $pet) => PetWeightSize::withComputedSize($pet),
-                $data['pets'],
-            );
+        try {
+            return app(DailyPetQueue::class)->runForDate($queueDate, function () use ($request, $queueDate) {
+                $data = $request->validated();
+                $submissionKey = $data['submission_key'] ?? null;
+                $payloadHash = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR));
+                if ($submissionKey) {
+                    $previous = DB::table('grooming_walkin_submissions')->where('submission_key', $submissionKey)->first();
+                    if ($previous) {
+                        if ((int) $previous->actor_user_id !== (int) $request->user()->user_id || ! hash_equals($previous->payload_hash, $payloadHash)) {
+                            throw ValidationException::withMessages(['submission_key' => 'This submission has already been used. Start a new walk-in for another visit.']);
+                        }
 
-            [$user, $unregisteredCustomer, $owner] = $this->resolveOwner($data);
+                        return response()->json(json_decode($previous->response, true, flags: JSON_THROW_ON_ERROR), 201);
+                    }
+                }
+                $data['pets'] = app(\App\Services\PetGroomerSelection::class)->validate($data['pets'], true);
+                app(\App\Services\OperationalCapacity::class)->assertCanAccept('grooming', count($data['pets']));
+                $data['pets'] = array_map(
+                    fn (array $pet) => PetWeightSize::withComputedSize($pet),
+                    $data['pets'],
+                );
 
-            $resolvedPets = $this->resolveAllPets($data['pets'], $user, $unregisteredCustomer);
-            $totalAmount = array_sum(array_map(
-                fn ($p) => array_sum(array_column($p['services'], 'price')),
-                $resolvedPets,
-            ));
+                [$user, $unregisteredCustomer, $owner] = $this->resolveOwner($data);
 
-            // Create the walk-in record (owner info + consent)
-            $walkin = Walkin::create([
-                'fname' => $owner['fname'],
-                'lname' => $owner['lname'],
-                'mname' => $owner['mname'],
-                'email' => $owner['email'],
-                'phone' => $owner['phone'],
-                'sedation_consent' => $data['sedation_consent'],
-                'terms_agreed' => $data['terms_agreed'],
-                'user_id' => $user?->user_id,
-                ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
-                'appointment_type' => 'grooming',
-            ]);
+                $resolvedPets = $this->resolveAllPets($data['pets'], $user, $unregisteredCustomer);
+                $totalAmount = array_sum(array_map(
+                    fn ($p) => array_sum(array_column($p['services'], 'price')),
+                    $resolvedPets,
+                ));
 
-            // Scheduled and walk-in owners share the same daily queue.
-            $queueNumber = ((int) Booking::where('booking_date', $queueDate)
-                ->whereNotNull('queue_number')
-                ->max('queue_number')) + 1;
-
-            $bookingReference = 'WI-'.str_replace('-', '', $queueDate).'-'.str_pad($queueNumber, 3, '0', STR_PAD_LEFT);
-
-            // Create the booking — walk-in customers are already on-site so they
-            // enter the queue immediately (checked_in) rather than waiting_to_arrive
-            $booking = Booking::create([
-                'booking_reference' => $bookingReference,
-                'user_id' => $user?->user_id,
-                'walkin_id' => $walkin->id,
-                'booking_date' => $queueDate,
-                'number_of_pets' => count($resolvedPets),
-                'booking_type' => 'walk_in',
-                'status' => 'checked_in',
-                'queue_number' => $queueNumber,
-                'total_amount' => $totalAmount,
-                'dropped_off_at' => now(),
-            ]);
-
-            $signedConsent = \App\Services\GroomingConsentCapture::capture($booking, $data);
-
-            // For each pet: find or create a pet record, then attach services
-            $petsResponse = [];
-            $hasServiceSnapshots = \Illuminate\Support\Facades\Schema::hasColumn('booking_services', 'service_name_snapshot');
-            $groomers = \App\Models\PetGroomer::whereIn('id', array_column($data['pets'], 'groomer_id'))->get()->keyBy('id');
-            foreach ($resolvedPets as $item) {
-                $pet = $item['pet'];
-
-                $bookingPet = BookingPet::create([
-                    'booking_id' => $booking->booking_id,
-                    'pet_id' => $pet->pet_id,
-                    'registered_size' => $item['petData']['size'] ?? null,
-                    'confirmed_size' => $item['size'],
-                    'special_instructions' => trim($item['petData']['special_instructions'] ?? '') ?: null,
-                    'haircut_requested' => (bool) ($item['petData']['haircut_requested'] ?? false),
-                    'groomer_id' => $item['petData']['groomer_id'],
-                    'grooming_preference' => $item['petData']['grooming_preference'] ?? null,
+                // Create the walk-in record (owner info + consent)
+                $walkin = Walkin::create([
+                    'fname' => $owner['fname'],
+                    'lname' => $owner['lname'],
+                    'mname' => $owner['mname'],
+                    'email' => $owner['email'],
+                    'phone' => $owner['phone'],
+                    'sedation_consent' => $data['sedation_consent'],
+                    'terms_agreed' => $data['terms_agreed'],
+                    'user_id' => $user?->user_id,
+                    ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
+                    'appointment_type' => 'grooming',
                 ]);
 
+                // Scheduled and walk-in owners share the same daily queue.
+                $sequence = app(GroomingIntakeSequence::class)->reserve($queueDate, count($resolvedPets));
+                $queueNumber = $sequence['queue_number'];
+                $bookingReference = $sequence['booking_reference'];
 
-                foreach ($item['services'] as $svc) {
-                    BookingService::create([
+                // Create the booking — walk-in customers are already on-site so they
+                // enter the queue immediately (checked_in) rather than waiting_to_arrive
+                $booking = Booking::create([
+                    'booking_reference' => $bookingReference,
+                    'user_id' => $user?->user_id,
+                    'walkin_id' => $walkin->id,
+                    'booking_date' => $queueDate,
+                    'number_of_pets' => count($resolvedPets),
+                    'booking_type' => 'walk_in',
+                    'status' => 'checked_in',
+                    'queue_number' => $queueNumber,
+                    'total_amount' => $totalAmount,
+                    'dropped_off_at' => now(),
+                ]);
+
+                $signedConsent = \App\Services\GroomingConsentCapture::capture($booking, $data);
+
+                // For each pet: find or create a pet record, then attach services
+                $petsResponse = [];
+                $hasServiceSnapshots = \Illuminate\Support\Facades\Schema::hasColumn('booking_services', 'service_name_snapshot');
+                $groomers = \App\Models\PetGroomer::whereIn('id', array_column($data['pets'], 'groomer_id'))->get()->keyBy('id');
+                foreach ($resolvedPets as $item) {
+                    $pet = $item['pet'];
+
+                    $bookingPet = BookingPet::create([
                         'booking_id' => $booking->booking_id,
+                        'pet_id' => $pet->pet_id,
+                        'registered_size' => $item['petData']['size'] ?? null,
+                        'confirmed_size' => $item['size'],
+                        'special_instructions' => trim($item['petData']['special_instructions'] ?? '') ?: null,
+                        'haircut_requested' => (bool) ($item['petData']['haircut_requested'] ?? false),
+                        'groomer_id' => $item['petData']['groomer_id'],
+                        'grooming_preference' => $item['petData']['grooming_preference'] ?? null,
+                    ]);
+
+
+                    foreach ($item['services'] as $svc) {
+                        BookingService::create([
+                            'booking_id' => $booking->booking_id,
+                            'booking_pet_id' => $bookingPet->booking_pet_id,
+                            'service_id' => $svc['service_id'],
+                            ...($hasServiceSnapshots ? [
+                                'service_name_snapshot' => $svc['name'],
+                                'service_kind_snapshot' => $svc['kind'],
+                            ] : []),
+                            'price_at_booking' => $svc['price'],
+                            'price_min_at_booking' => $svc['price_min'],
+                            'price_max_at_booking' => $svc['price_max'],
+                        ]);
+                    }
+
+                    $petsResponse[] = [
                         'booking_pet_id' => $bookingPet->booking_pet_id,
-                        'service_id' => $svc['service_id'],
-                        ...($hasServiceSnapshots ? [
-                            'service_name_snapshot' => $svc['name'],
-                            'service_kind_snapshot' => $svc['kind'],
-                        ] : []),
-                        'price_at_booking' => $svc['price'],
-                        'price_min_at_booking' => $svc['price_min'],
-                        'price_max_at_booking' => $svc['price_max'],
+                        'groomer_id' => $bookingPet->groomer_id,
+                        'pet_groomer' => $groomers->get($bookingPet->groomer_id),
+                        'pet_id' => $pet->pet_id,
+                        'pet_name' => $item['petData']['pet_name'],
+                        'haircut_requested' => (bool) $bookingPet->haircut_requested,
+                        'species' => $item['petData']['species'],
+                        'size' => $item['size'],
+                        'grooming_preference' => $bookingPet->grooming_preference, 'grooming_preference_label' => $bookingPet->grooming_preference_label,
+                        'services' => array_map(fn ($s) => [
+                            'name' => $s['name'],
+                            'price' => $s['price'],
+                            'price_min' => $s['price_min'],
+                            'price_max' => $s['price_max'],
+                        ], $item['services']),
+                    ];
+                }
+
+                $petQueueNumbers = app(DailyPetQueue::class)->assignBookingPets($booking, $queueDate, $sequence['first_pet_number']);
+                foreach ($petsResponse as &$petResponse) {
+                    $petResponse['pet_queue_number'] = $petQueueNumbers[$petResponse['booking_pet_id']];
+                }
+                unset($petResponse);
+
+                $response = response()->json([
+                    'success' => true,
+                    'booking_reference' => $bookingReference,
+                    'queue_number' => $queueNumber,
+                    'booking_id' => $booking->booking_id,
+                    'consent' => $signedConsent->only(['grooming_consent', 'sedation_consent', 'signer_name', 'signed_at', 'consent_version']),
+                    'booking_date' => $booking->booking_date,
+                    'status' => $booking->status,
+                    'owner' => [
+                        'name' => trim("{$walkin->fname} {$walkin->lname}"),
+                        'email' => $walkin->email,
+                        'phone' => $walkin->phone,
+                    ],
+                    'pets' => $petsResponse,
+                    'total_amount' => $totalAmount,
+                    'returning_customer' => $user !== null || $unregisteredCustomer !== null,
+                ], 201);
+                if ($submissionKey) {
+                    DB::table('grooming_walkin_submissions')->insert([
+                        'submission_key' => $submissionKey,
+                        'actor_user_id' => $request->user()->user_id,
+                        'payload_hash' => $payloadHash,
+                        'booking_id' => $booking->booking_id,
+                        'response' => $response->getContent(),
                     ]);
                 }
 
-                $petsResponse[] = [
-                    'booking_pet_id' => $bookingPet->booking_pet_id,
-                    'groomer_id' => $bookingPet->groomer_id,
-                    'pet_groomer' => $groomers->get($bookingPet->groomer_id),
-                    'pet_id' => $pet->pet_id,
-                    'pet_name' => $item['petData']['pet_name'],
-                    'haircut_requested' => (bool) $bookingPet->haircut_requested,
-                    'species' => $item['petData']['species'],
-                    'size' => $item['size'],
-                    'grooming_preference' => $bookingPet->grooming_preference, 'grooming_preference_label' => $bookingPet->grooming_preference_label,
-                    'services' => array_map(fn ($s) => [
-                        'name' => $s['name'],
-                        'price' => $s['price'],
-                        'price_min' => $s['price_min'],
-                        'price_max' => $s['price_max'],
-                    ], $item['services']),
-                ];
-            }
-
-            $petQueueNumbers = app(DailyPetQueue::class)->assignBookingPets($booking, $queueDate);
-            foreach ($petsResponse as &$petResponse) {
-                $petResponse['pet_queue_number'] = $petQueueNumbers[$petResponse['booking_pet_id']];
-            }
-            unset($petResponse);
-
-            return response()->json([
-                'success' => true,
-                'booking_reference' => $bookingReference,
-                'queue_number' => $queueNumber,
-                'booking_id' => $booking->booking_id,
-                'consent' => $signedConsent->only(['grooming_consent', 'sedation_consent', 'signer_name', 'signed_at', 'consent_version']),
-                'booking_date' => $booking->booking_date,
-                'status' => $booking->status,
-                'owner' => [
-                    'name' => trim("{$walkin->fname} {$walkin->lname}"),
-                    'email' => $walkin->email,
-                    'phone' => $walkin->phone,
-                ],
-                'pets' => $petsResponse,
-                'total_amount' => $totalAmount,
-                'returning_customer' => $user !== null || $unregisteredCustomer !== null,
-            ], 201);
-        });
+                return $response;
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            report($exception);
+            throw ValidationException::withMessages(['walk_in' => 'The visit could not be registered. Ask an administrator to check the queue.']);
+        }
     }
 
     private function resolveOwner(array $data): array

@@ -2647,7 +2647,8 @@ function adminDashboard() {
     },
 
     shouldShowUndoCheckIn(booking) {
-      return this.normalizeStatus(booking?.status) === "queued"
+      return booking?.booking_type === "online" && booking?.walkin_id == null
+        && this.normalizeStatus(booking?.status) === "queued"
         && !this.isGroomingPaid(booking) && !this.hasStartedGroomingPets(booking)
         && (booking?.pets || []).every((pet) => ["not_started", "cancelled"].includes(this.petGroomingState(pet)))
         && !booking?.startedAt && !booking?.completedAt;

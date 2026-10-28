@@ -439,9 +439,8 @@ class AdminBookingController extends Controller
                 $pet->confirmClinicSize($size);
             }
 
-            $queueNumber = ((int) Booking::where('booking_date', $queueDate)
-                ->whereNotNull('queue_number')
-                ->max('queue_number')) + 1;
+            $sequence = app(\App\Services\GroomingIntakeSequence::class)->reserve($queueDate, $booking->bookingPets->count());
+            $queueNumber = $sequence['queue_number'];
 
             $bookingUpdates = [
                 'status' => 'checked_in',
@@ -453,7 +452,7 @@ class AdminBookingController extends Controller
             }
             $booking->update($bookingUpdates);
 
-            app(DailyPetQueue::class)->assignBookingPets($booking, $queueDate);
+            app(DailyPetQueue::class)->assignBookingPets($booking, $queueDate, $sequence['first_pet_number']);
 
             return ['queue_number' => $queueNumber];
         });
@@ -508,7 +507,7 @@ class AdminBookingController extends Controller
     // Undo check-in completely: restore the pre-arrival booking and release all queue fields.
     public function revertCheckIn($id)
     {
-        $result = DB::transaction(function () use ($id) {
+        $result = app(DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($id) {
             $booking = Booking::whereKey($id)->lockForUpdate()->first();
 
             if (! $booking) {
@@ -516,6 +515,10 @@ class AdminBookingController extends Controller
             }
 
             $this->assertUnpaidCorrection($booking);
+
+            if ($booking->booking_type === 'walk_in' || $booking->walkin_id !== null) {
+                return ['error' => ['message' => 'Walk-in visits cannot be moved to Incoming.', 'status' => 422]];
+            }
 
             if ($booking->status !== 'checked_in') {
                 return ['error' => [
@@ -546,6 +549,8 @@ class AdminBookingController extends Controller
                 ]];
             }
 
+            // Remember numbers issued before this migration before releasing them.
+            app(\App\Services\GroomingIntakeSequence::class)->current($booking->booking_date);
             $booking->update([
                 'status' => 'waiting_to_arrive',
                 'queue_number' => null,
@@ -1435,6 +1440,8 @@ class AdminBookingController extends Controller
             // Extra fields for the View Details modal
             'bookingReference' => $booking->booking_reference,
             'bookingType' => $booking->walkin_id !== null ? 'Walk-In' : 'Pre-Register',
+            'booking_type' => $booking->booking_type,
+            'walkin_id' => $booking->walkin_id,
             'specialNotes' => $booking->special_notes,
             'internalStaffNote' => $booking->walkin_id === null ? $booking->internal_staff_note : null,
             'numberOfPets' => $booking->number_of_pets,

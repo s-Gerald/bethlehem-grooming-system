@@ -47,7 +47,7 @@ class DailyPetQueue
      *
      * @return array<int, int> booking_pet_id => pet_queue_number
      */
-    public function assignBookingPets(Booking $booking, string $queueDate): array
+    public function assignBookingPets(Booking $booking, string $queueDate, int $firstPetNumber): array
     {
         $bookingPets = BookingPet::with('pet')
             ->where('booking_id', $booking->booking_id)
@@ -67,10 +67,7 @@ class DailyPetQueue
                     ?: $left->booking_pet_id <=> $right->booking_pet_id;
             });
 
-        $nextNumber = ((int) BookingPet::where('pet_queue_date', '>=', $queueDate)
-            ->where('pet_queue_date', '<', \Carbon\Carbon::parse($queueDate)->addDay()->toDateString())
-            ->whereNotNull('pet_queue_number')
-            ->max('pet_queue_number')) + 1;
+        $nextNumber = $firstPetNumber;
 
         $assigned = [];
 

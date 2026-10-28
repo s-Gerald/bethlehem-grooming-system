@@ -281,10 +281,13 @@ class AdminDashboardSummaryTest extends TestCase
             $table->dateTime('created_at')->nullable();
         });
         (require database_path('migrations/2026_10_16_000005_create_grooming_consents.php'))->up();
+        (require database_path('migrations/2026_10_29_000001_add_grooming_intake_sequences.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('grooming_walkin_submissions');
+        Schema::dropIfExists('grooming_intake_sequences');
         Carbon::setTestNow();
 
         Schema::dropIfExists('customer_notifications');

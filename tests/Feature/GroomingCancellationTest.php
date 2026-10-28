@@ -26,7 +26,9 @@ class GroomingCancellationTest extends TestCase
     {
         parent::setUp();
         $this->createGroomingVisitFixture();
+        DB::table('bookings')->update(['booking_date' => now()->toDateString()]);
         $this->createRegistrationAvailability();
+        (require database_path('migrations/2026_10_29_000001_add_grooming_intake_sequences.php'))->up();
     }
 
     private function request(string $reason = 'Customer decided not to proceed.'): Request

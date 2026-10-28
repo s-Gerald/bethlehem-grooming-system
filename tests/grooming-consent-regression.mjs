@@ -193,7 +193,7 @@ for (const walkIn of [false, true]) {
     const doc = { ...document, addEventListener: (name, handler) => { ready = handler; } };
     const context = vm.createContext({
       readReviewedServiceDay: () => '2026-10-16', registrationDayNotice: () => false, document: doc, API: api, sessionStorage, console, Date,
-      window: { location: { href: '' } },
+      window: { location: { href: '' } }, crypto: globalThis.crypto,
       initGroomingConsent, getPetWeightSubmission: () => ({ weight: 4 }), getPetWeightSubmissionValidationMessage: () => '',
       loadGroomingCatalogue: async () => {}, getBookingDraft: () => ({}), normalizeStepThreeDraft: () => [],
       selectedPricingSignature: () => null, goToGroomingStep: step => { navigated = step; },

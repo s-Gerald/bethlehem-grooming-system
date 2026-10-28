@@ -57,6 +57,11 @@ $started = microtime(true);
 try {
     if ($action === 'grooming-submit') {
         $response = $app->call([app(BookingController::class), 'store'], ['request' => $request]);
+    } elseif ($action === 'grooming-walk-in') {
+        $form = \App\Http\Requests\StoreWalkinRequest::createFrom($request);
+        $form->setContainer($app)->setRedirector($app['redirect']);
+        $form->validateResolved();
+        $response = app(\App\Http\Controllers\WalkinController::class)->store($form);
     } elseif ($action === 'clinic-submit') {
         $form = \App\Http\Requests\StoreClinicPreRegistrationRequest::createFrom($request);
         $form->setContainer($app)->setRedirector($app['redirect']);

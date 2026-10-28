@@ -3,12 +3,14 @@ import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from 
 const state = {
   reviewPayload: null,
   onBack: null,
+  submitting: false,
 };
 
 const WALK_IN_OWNER_STORAGE_KEY = "walkInOwnerStep";
 const WALK_IN_REVIEW_STORAGE_KEY = "walkInReviewStep";
 const WALK_IN_CONSENT_STORAGE_KEY = "walkInConsentStep";
 const WALK_IN_CONFIRMATION_STORAGE_KEY = "walkInBookingConfirmation";
+const WALK_IN_SUBMISSION_STORAGE_KEY = "walkInSubmissionKey";
 let consent;
 
 let elements = {};
@@ -140,14 +142,16 @@ function formatServiceName(value) {
 }
 
 function validateConsentForm(valid = false) {
-  elements.submitBookingButton.disabled = !valid;
-  elements.submitBookingButton.className = valid
+  const enabled = valid && !state.submitting;
+  elements.submitBookingButton.disabled = !enabled;
+  elements.submitBookingButton.className = enabled
     ? "inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274a67]"
     : "inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-slate-300 px-5 py-3 text-sm font-semibold text-white";
 }
 
 async function handleSubmit(event) {
   event.preventDefault();
+  if (state.submitting) return;
 
   if (!consent.valid) {
     consent.validate(true);
@@ -155,14 +159,17 @@ async function handleSubmit(event) {
     return;
   }
 
-  const consentPayload = consent.payload();
-  if (!await consent.confirmSubmission() || !consent.valid) return;
-  consent.setBusy(true);
-
-  elements.submitBookingButton.disabled = true;
-  elements.submitBookingButton.textContent = "Submitting…";
-
+  state.submitting = true;
+  validateConsentForm(consent.valid);
   try {
+    const consentPayload = consent.payload();
+    if (!await consent.confirmSubmission() || !consent.valid) {
+      resetSubmitButton();
+      return;
+    }
+    consent.setBusy(true);
+    elements.submitBookingButton.setAttribute("aria-busy", "true");
+    elements.submitBookingButton.textContent = "Submitting…";
     const owner        = getStoredData(WALK_IN_OWNER_STORAGE_KEY);
     const reviewPayload = state.reviewPayload || getStoredData(WALK_IN_REVIEW_STORAGE_KEY);
 
@@ -179,6 +186,12 @@ async function handleSubmit(event) {
       return;
     }
     const payload  = buildApiPayload(owner, reviewPayload, consentPayload);
+    let submissionKey = sessionStorage.getItem(WALK_IN_SUBMISSION_STORAGE_KEY);
+    if (!submissionKey) {
+      submissionKey = crypto.randomUUID();
+      sessionStorage.setItem(WALK_IN_SUBMISSION_STORAGE_KEY, submissionKey);
+    }
+    payload.submission_key = submissionKey;
     const response = await API.submitWalkIn(payload);
 
     // Merge real server fields with the shape the confirmation page expects
@@ -188,7 +201,7 @@ async function handleSubmit(event) {
     );
     window.location.href = "./walk-in-booking-confirmed.html";
   } catch (error) {
-    showSubmitError(error.data?.detail ? `${error.message} ${error.data.detail}` : error.message || "Failed to register walk-in. Please try again.");
+    showSubmitError(error.message || "Failed to register walk-in. Please try again.");
     resetSubmitButton();
   }
 }
@@ -308,7 +321,10 @@ function showSubmitError(message) {
 }
 
 function resetSubmitButton() {
+  state.submitting = false;
   consent.setBusy(false);
+  validateConsentForm(consent.valid);
+  elements.submitBookingButton.setAttribute("aria-busy", "false");
   elements.submitBookingButton.textContent = "Check In";
 }
 

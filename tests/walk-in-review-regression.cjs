@@ -80,6 +80,49 @@ async function main() {
   assert.equal(pets[0].color, "Brown/White");
   assert.equal(pets[0].medical_conditions, "Sensitive skin");
   assert.equal("estimate_factors" in pets[0], false);
+  // Run the actual submission handler: rapid events, lost responses, and recovery.
+  const draft = new Map([
+    ['walkInOwnerStep', JSON.stringify({ firstName: 'John', lastName: 'Lennon', phone: '09171234567' })],
+    ['walkInReviewStep', JSON.stringify(review.payload)],
+    ['walkInConsentStep', JSON.stringify({ signature_strokes: [[[1, 1], [30, 40]]] })],
+  ]);
+  const originalDraft = draft.get('walkInConsentStep');
+  const sent = [];
+  let rejectRequest;
+  const confirmations = [];
+  const button = element(), message = element();
+  const signature = { valid: true, payload: () => ({ signature_strokes: [[[1, 1], [30, 40]]] }),
+    confirmSubmission: () => new Promise(resolve => { confirmations.push(resolve); }),
+    setBusy(value) { this.valid = !value; } };
+  const submission = vm.createContext({
+    document: { addEventListener() {} }, window: { location: {} }, crypto: require('node:crypto').webcrypto,
+    sessionStorage: { getItem: key => draft.get(key), setItem: (key, value) => draft.set(key, value) },
+    getPetWeightSubmission: pet => ({ weight: pet.weight }), getPetWeightSubmissionValidationMessage: () => '',
+    API: { submitWalkIn(payload) { sent.push(payload); return new Promise((_, reject) => { rejectRequest = reject; }); } },
+  });
+  vm.runInContext(read('scripts/components/walk-in-consent-step.js').replace(/import[\s\S]*?from\s+"[^"]+";/g, '').replace(/export /g, ''), submission);
+  submission.signature = signature; submission.button = button; submission.message = message;
+  vm.runInContext('consent = signature; elements = { submitBookingButton: button, consentStatusMessage: message };', submission);
+  const event = { preventDefault() {} };
+  const first = submission.handleSubmit(event);
+  const second = submission.handleSubmit(event);
+  assert.equal(confirmations.length, 1, 'Rapid submits must open only one confirmation');
+  confirmations.shift()(true);
+  await flush();
+  assert.equal(sent.length, 1, 'Rapid submissions must share one pending request');
+  assert.equal(button.disabled, true);
+  rejectRequest(new Error('Connection lost. Please try again.'));
+  await Promise.all([first, second]);
+  assert.equal(draft.get('walkInConsentStep'), originalDraft, 'Failure preserves the captured signature');
+  assert.equal(signature.valid, true);
+  assert.match(message.textContent, /Connection lost/);
+  assert.match(sent[0].submission_key, /^[0-9a-f-]{36}$/);
+  const retry = submission.handleSubmit(event);
+  confirmations.shift()(true);
+  await flush();
+  assert.equal(sent[1].submission_key, sent[0].submission_key, 'A lost response retry keeps its identity');
+  rejectRequest(new Error('Still offline'));
+  await retry;
   console.log("Walk-in review proceeds without a forecast request.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

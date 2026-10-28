@@ -17,7 +17,7 @@ assert.equal(ui.sedationConsentSourceLabel({ sedationConsent: true, sedationCons
 assert.equal(ui.sedationConsentSourceLabel({ sedationConsent: true, sedationConsentSource: 'staff_in_person' }), 'In person');
 assert.equal(ui.sedationConsentSourceLabel({ sedationConsent: false }), '');
 const pet = { bookingPetId: 7, petQueueNumber: 12, petName: 'Hopper', species: 'Dog', breed: 'Dachshund', groomingState: 'not_started' };
-const booking = { id: 42, queueNumber: 3, ownerName: 'Erwin Francisco', pets: [pet], dropOffTime: '1:22 AM' };
+const booking = { id: 42, booking_type: 'online', walkin_id: null, queueNumber: 3, ownerName: 'Erwin Francisco', pets: [pet], dropOffTime: '1:22 AM' };
 
 for (const [tab, list, label, tone] of [
   ['queued', 'queuedList', 'Waiting', 'waiting'],
@@ -41,6 +41,13 @@ assert.equal(ui.groomingBookingTiming({ ...booking, status: 'in_progress', start
 assert.equal(ui.groomingBookingTiming({ ...booking, status: 'for-payment', completedAt: '3:10 AM' }), 'Finished 3:10 AM');
 assert.equal(ui.groomingBookingTiming({ status: 'for-payment' }), '');
 assert.equal(ui.shouldShowUndoCheckIn({ ...booking, status: 'queued' }), true);
+for (const origin of [{ booking_type: 'walk_in' }, { walkin_id: 42 }, { booking_type: undefined, walkin_id: undefined }]) {
+  const walkin = { ...booking, ...origin, bookingType: 'Pre-Register', status: 'queued' };
+  assert.equal(ui.shouldShowUndoCheckIn(walkin), false, 'Only persisted online origin permits Undo Check-in');
+  assert.equal(ui.shouldShowOwnerCancel(walkin), true);
+  ui.confirmUndoCheckIn(walkin);
+  assert.equal(ui.actionConfirmModal.open, false, 'A stale action cannot open an invalid correction');
+}
 assert.equal(ui.shouldShowUndoCheckIn({ ...booking, status: 'in-progress', pets: [{ ...pet, groomingState: 'in_progress' }] }), false);
 assert.equal(ui.shouldShowUndoCheckIn({ ...booking, status: 'in-progress', pets: [{ ...pet, groomingState: 'finished' }] }), false);
 assert.equal(ui.shouldShowUndoCheckIn({ ...booking, status: 'for-payment' }), false);
