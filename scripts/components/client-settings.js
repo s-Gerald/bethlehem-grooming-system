@@ -130,7 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!serverUser || phoneAction.disabled) return;
     phoneAction.disabled = true; hideStatus();
     try {
-      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=20261026-otp");
+      const { openPhoneVerification } = await import("./customer-phone-verification.js?v=auth-feedback-20261028");
       await openPhoneVerification(phoneAction, serverUser, { navigate: false });
     } catch (error) { showStatus(error.message || "Unable to open phone verification.", "error"); }
     finally { phoneAction.disabled = false; }

@@ -20,6 +20,7 @@ class AuthenticationMailDelivery
         ?Model $issuance = null,
         string $hashColumn = 'token_hash',
         string $expiryColumn = 'expires_at',
+        bool $allowImmediate = true,
     ): string
     {
         $receipt = Str::random(64);
@@ -41,7 +42,7 @@ class AuthenticationMailDelivery
         }
 
         try {
-            if (config('mail.authentication.delivery') === 'immediate') {
+            if ($allowImmediate && config('mail.authentication.delivery') === 'immediate') {
                 $notification->onConnection('database');
             }
             $connection = $notification->connection ?? config('queue.default');
@@ -58,7 +59,7 @@ class AuthenticationMailDelivery
             }
             // Persist encrypted work before responding, even in immediate mode.
             $recipient->notify($notification);
-            if (config('mail.authentication.delivery') === 'immediate') {
+            if ($allowImmediate && config('mail.authentication.delivery') === 'immediate') {
                 DB::afterCommit(function () use ($recipient, $notification, $tracking): void {
                     app()->terminating(function () use ($recipient, $notification, $tracking): void {
                         try {

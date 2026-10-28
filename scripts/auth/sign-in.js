@@ -88,10 +88,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let countdownTimer = null;
+  let busy = false;
+  let lockoutUntil = 0;
 
   signInForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (countdownTimer) return; // rate-limit lockout still active
+    if (busy || Date.now() < lockoutUntil) return;
     dismissReplacementAlert();
 
     const identifier = identifierInput.value.trim();
@@ -124,8 +126,8 @@ document.addEventListener("DOMContentLoaded", () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       window.location.href = dest;
     } catch (error) {
-      if (error.status === 429 && error.retryAfter) {
-        startCountdown(error.retryAfter);
+      if (error.status === 429 && (error.retryAfter || error.retry_after)) {
+        startCountdown(error.retryAfter || error.retry_after);
       } else if (error.emailNotVerified) {
         const email = error.email ?? "";
         showMessage(
@@ -140,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
         showMessage("error", error.message || "Unable to sign in.");
       }
     } finally {
-      if (!countdownTimer) setBusyState(false);
+      setBusyState(false);
     }
   });
 
@@ -165,10 +167,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startCountdown(seconds) {
     clearInterval(countdownTimer);
-    setBusyState(true);
-    let remaining = seconds;
+    countdownTimer = null;
+    lockoutUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+    try { sessionStorage.setItem("signInLockoutUntil", String(lockoutUntil)); } catch { /* UX only; server enforces the lockout. */ }
 
     function tick() {
+      const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
       if (remaining <= 0) {
         clearInterval(countdownTimer);
         countdownTimer = null;
@@ -176,19 +180,29 @@ document.addEventListener("DOMContentLoaded", () => {
         showMessage(null, "");
         return;
       }
-      showMessage("lockout", `Too many attempts. Try again in ${remaining}s.`);
-      remaining--;
+      submitButton.disabled = true;
+      showMessage("lockout", `Too many attempts. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`);
     }
 
     tick();
-    countdownTimer = setInterval(tick, 1000);
+    if (lockoutUntil > Date.now()) countdownTimer = setInterval(tick, 1000);
   }
 
   function setBusyState(isBusy) {
-    submitButton.disabled = isBusy;
+    busy = isBusy;
+    submitButton.disabled = isBusy || Date.now() < lockoutUntil;
     const label = document.getElementById("signInBtnLabel");
     if (label) label.textContent = isBusy ? "Signing In..." : "Sign In";
   }
+
+  try {
+    const saved = Number(sessionStorage.getItem("signInLockoutUntil")) || 0;
+    if (saved > Date.now()) startCountdown(Math.ceil((saved - Date.now()) / 1000));
+  } catch { /* Storage is optional. */ }
+  window.addEventListener("pagehide", () => clearInterval(countdownTimer));
+  window.addEventListener("pageshow", event => {
+    if (event.persisted) startCountdown(Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000)));
+  });
 
   function showMessage(type, text, prefillEmail = "") {
     if (type && replacementAlert && !replacementAlert.hidden) return;

@@ -23,7 +23,6 @@ class AuthController extends Controller
     // ── REGISTER ──────────────────────────────────────────
     public function register(Request $request)
     {
-        PendingCustomerRegistration::pruneExpired();
         $browserToken = CustomerRegistrationService::browserToken($request);
 
         $phone = $request->input('phone');
@@ -38,25 +37,36 @@ class AuthController extends Controller
         $request->validate(['email' => $request->isMethod('put')
             ? ['required', 'email', 'max:150'] : AccountEmail::rules()]);
 
+        if (! $request->isMethod('put')) {
+            // Specific status requires a credential issued before this request,
+            // bound to this browser. An email address alone proves no ownership.
+            if (is_string($request->input('registration_token')) && strlen($request->input('registration_token')) === 64) {
+                $pending = PendingCustomerRegistration::query()->unexpired()
+                    ->where('registration_edit_token_hash', hash('sha256', $request->input('registration_token')))->first();
+                if ($pending && strcasecmp($pending->email, $request->input('email')) === 0
+                    && CustomerRegistrationService::canEdit($pending, $request)) {
+                    $linkAvailable = CustomerRegistrationService::usableLink($pending);
+                    return response()->json([
+                        'success' => true, 'requires_verification' => true, 'registration_state' => 'resumed',
+                        'email_delivery_queued' => false, 'verification_link_available' => $linkAvailable,
+                        'verification_link_expires_at' => $linkAvailable
+                            ? $pending->email_verification_expires_at->min($pending->email_verification_last_sent_at->copy()
+                                ->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30))))->toIso8601String() : null,
+                        'email' => $pending->email, 'registration_token' => $request->input('registration_token'),
+                        ...app(AuthenticationEmailPolicy::class)->status($pending->email),
+                    ], 202)->header('Cache-Control', 'no-store');
+                }
+            }
+            $data = $this->registrationData($request, checkAvailability: false);
+            $data['password_hash'] = Hash::make($data['password']);
+            unset($data['password']);
+            return app(CustomerRegistrationService::class)->requestPublic($data['email'], $data, hash('sha256', $browserToken))
+                ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
+        }
+        PendingCustomerRegistration::pruneExpired();
+
         try {
             $result = DB::transaction(function () use ($request, $browserToken) {
-                $identifiers = function ($query) use ($request) {
-                    $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$request->input('email')]);
-                    if ($request->filled('phone')) $query->orWhere('phone', $request->input('phone'));
-                    if ($request->filled('username')) $query->orWhere('username', $request->input('username'));
-                };
-                $pendingMatches = PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->get(['id', 'email']);
-                $userMatches = User::query()->where($identifiers)->lockForUpdate()->get(['user_id', 'email']);
-                $sameEmail = fn ($registrant) => strcasecmp($registrant->email, $request->input('email')) === 0;
-                // An email alone cannot disclose recovery eligibility or change stored details.
-                if (! $request->isMethod('put')
-                    && ($userMatches->contains($sameEmail) || $pendingMatches->contains($sameEmail))) {
-                    return response()->json([
-                        'success' => true, 'requires_verification' => true,
-                        'message' => 'Continue with email verification, or sign in if your account is ready.',
-                        'resend_after' => 0,
-                    ], 202);
-                }
                 $pendingRegistration = null;
                 if ($request->isMethod('put') && $request->has('registration_recovery_token')) {
                     $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
@@ -139,6 +149,7 @@ class AuthController extends Controller
                 'success' => true,
                 'message' => $throttled['message'] ?? "Couldn't send the verification email. Try resending.",
                 'requires_verification' => true,
+                'registration_state' => 'updated',
                 'email_delivery_queued' => false,
                 'email' => $pendingRegistration->email,
                 'registration_token' => $editToken,
@@ -148,8 +159,9 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Please check your email to complete account registration.',
+            'message' => 'Verification email queued.',
             'requires_verification' => true,
+            'registration_state' => 'updated',
             'email_delivery_queued' => true,
             'email_delivery_token' => $receipt,
             'email' => $pendingRegistration->email,
@@ -158,7 +170,7 @@ class AuthController extends Controller
         ], 201)->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken))->header('Cache-Control', 'no-store');
     }
 
-    private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null): array
+    private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null, bool $checkAvailability = true): array
     {
         $existing = $legacy ?? $pendingRegistration;
         if ($existing && strcasecmp($existing->email, $request->input('email')) === 0) {
@@ -171,15 +183,15 @@ class AuthController extends Controller
                 'nullable',
                 'string',
                 'max:50',
-                Rule::unique('users', 'username')->ignore($legacy?->getKey(), 'user_id'),
-                Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey()),
+                ...($checkAvailability ? [Rule::unique('users', 'username')->ignore($legacy?->getKey(), 'user_id'),
+                    Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey())] : []),
             ],
             'phone' => [
                 'nullable',
                 'string',
                 'regex:/^09\d{9}$/',
-                Rule::unique('users', 'phone')->ignore($legacy?->getKey(), 'user_id'),
-                Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey()),
+                ...($checkAvailability ? [Rule::unique('users', 'phone')->ignore($legacy?->getKey(), 'user_id'),
+                    Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey())] : []),
             ],
             'email' => [
                 ...(($existing && strcasecmp($existing->email, $request->input('email')) === 0)
@@ -190,7 +202,7 @@ class AuthController extends Controller
         foreach (['first_name', 'last_name'] as $field) {
             $data[$field] = $existing && $data[$field] === $existing->$field ? $data[$field] : User::normalizeName($data[$field]);
         }
-        AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
+        if ($checkAvailability) AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
         return $data;
     }
 

@@ -76,29 +76,29 @@ class EmailVerificationController extends Controller
     {
         $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
         $data = $request->validate(['email' => 'required|email|max:150']);
-        $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
-        $registrant = $user ? (CustomerRegistrationService::recoverableUser($user) ? $user : null)
-            : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->first();
-        $canInspect = $registrant instanceof PendingCustomerRegistration
-            && CustomerRegistrationService::trustsBrowser($registrant, $request)
-            && is_string($request->input('registration_token')) && $registrant->registration_edit_token_hash
-            && hash_equals($registrant->registration_edit_token_hash, hash('sha256', $request->input('registration_token')));
+        $credential = $request->input('registration_token');
+        $owned = is_string($credential) && strlen($credential) === 64
+            ? PendingCustomerRegistration::query()->unexpired()->where('registration_edit_token_hash', hash('sha256', $credential))->first() : null;
+        if (! $owned || strcasecmp($owned->email, $data['email']) !== 0 || ! CustomerRegistrationService::canEdit($owned, $request)) {
+            return app(CustomerRegistrationService::class)->requestPublic($data['email'], null, '');
+        }
+        if (User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->exists()) {
+            return app(CustomerRegistrationService::class)->requestPublic($data['email'], null, '');
+        }
         try {
-            $receipt = $registrant ? self::sendVerificationEmail($registrant)
-                : app(AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
+            $receipt = self::sendVerificationEmail($owned);
         } catch (HttpResponseException $exception) {
-            // Quotas apply identically to unknown destinations, preventing enumeration.
             throw $exception;
         } catch (Throwable $exception) {
             report($exception);
-            if ($canInspect) return response()->json(['success' => false,
+            return response()->json(['success' => false,
                 'message' => "Couldn't send the verification email. Try resending."], 503)->header('Cache-Control', 'no-store');
-            app(AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
         }
         return response()->json([
             'success' => true,
-            'message' => 'If your registration is unfinished, check your inbox for a verification link.',
-            'email_delivery_token' => $canInspect ? ($receipt ?? null) : null,
+            'message' => 'Verification email queued.',
+            'email_delivery_token' => $receipt,
+            'email_delivery_queued' => true,
             ...app(AuthenticationEmailPolicy::class)->status($data['email']),
         ])->header('Cache-Control', 'no-store');
     }

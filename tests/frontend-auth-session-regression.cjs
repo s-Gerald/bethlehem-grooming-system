@@ -761,6 +761,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   const elements = new Map();
   const elementListeners = new Map();
   const intervals = new Map();
+  const windowHandlers = {};
   let nextIntervalId = 0;
   let now = 100000;
   let onReady = null;
@@ -849,7 +850,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     },
     clearInterval(id) { intervals.delete(id); },
     location,
-    window: { location, clearTimeout() {}, setTimeout() {} },
+    window: { location, clearTimeout() {}, setTimeout() {}, addEventListener(name, callback) { windowHandlers[name] = callback; } },
   };
 
   context.sessionStorage.setItem("pendingLoginResendUntil", String(now + 60000));
@@ -868,6 +869,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     events,
     API: context.API,
     storage: context.sessionStorage,
+    windowHandlers,
     advanceSeconds(seconds) {
       for (let second = 0; second < seconds; second++) {
         now += 1000;
@@ -959,7 +961,11 @@ async function testLoginCodeResendCooldownAndLimit() {
   const resend = page.elements.get("loginCodeResendBtn");
 
   assert.equal(resend.disabled, true);
-  page.advanceSeconds(59);
+  page.windowHandlers.pagehide({persisted:true});
+  page.advanceSeconds(10);
+  page.windowHandlers.pageshow({persisted:true});
+  assert.equal(page.elements.get('loginCodeResendCountdown').textContent, 'Resend code in 50s');
+  page.advanceSeconds(49);
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
   assert.equal(resend.disabled, false);
@@ -996,11 +1002,27 @@ async function testLoginCodeResendCooldownAndLimit() {
   assert.equal(page.elements.get("loginCodeMessage").textContent, "");
   page.API.resendLoginCode = async () => { throw { status: 429, retryAfter: 128 }; };
   await page.dispatch("loginCodeResendBtn", "click");
-  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend code in 2:08");
+  assert.equal(page.elements.get("loginCodeResendCountdown").textContent, "Resend code in 2m 08s");
   page.advanceSeconds(127);
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
   assert.equal(resend.disabled, false, "Server throttling must not permanently lock resends");
+  page.API.confirmLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
+  page.elements.get('loginCode').value = '123456';
+  await page.dispatch('loginCodeForm', 'submit');
+  assert.match(page.elements.get('loginCodeMessage').textContent, /1m 05s/);
+  assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
+  page.advanceSeconds(64);
+  assert.match(page.elements.get('loginCodeMessage').textContent, /1s/);
+  page.advanceSeconds(1);
+  assert.equal(page.elements.get('loginCodeSubmit').disabled, false);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, '');
+  page.API.resendLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
+  await page.dispatch('loginCodeResendBtn', 'click');
+  assert.equal(page.elements.get('loginCode').disabled, true, 'An OTP attempt lockout reported by resend also blocks verification');
+  assert.match(page.elements.get('loginCodeMessage').textContent, /1m 05s/);
+  page.advanceSeconds(65);
+  assert.equal(page.elements.get('loginCode').disabled, false);
 }
 
 async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
@@ -1119,7 +1141,7 @@ async function testPasswordResetRecovery() {
   forgot.getElement('enterResetCode').handlers.click();
   assert.deepEqual(requests, ['customer@example.com'], 'Entering a received code needs no extra request');
   assert.equal(forgot.getElement("verifyEmail").textContent, "c***@example.com");
-  assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1:15');
+  assert.equal(forgot.getElement('resendCode').textContent, 'Resend in 1m 15s');
   forgot.advance(74000);
   assert.equal(forgot.getElement('resendCode').disabled, true);
   forgot.advance(1000);
@@ -1323,7 +1345,7 @@ async function testPasswordResetRecovery() {
   resetRequestError = { status: 429, retryAfter: 510 };
   await resendLimited.getElement('resendCode').handlers.click();
   assert.match(resendLimited.getElement('verifyCodeMessage').textContent, /wait/i);
-  assert.equal(resendLimited.getElement('resendCode').textContent, 'Resend in 8:30');
+  assert.equal(resendLimited.getElement('resendCode').textContent, 'Resend in 8m 30s');
   const limitedRequests = requests.length;
   await resendLimited.getElement('resendCode').handlers.click();
   assert.equal(requests.length, limitedRequests);
@@ -1477,7 +1499,7 @@ async function testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement() {
     if (body.acknowledge) assert.equal(browser.API.getCustomerToken(), '11|cookie');
     return jsonResponse(200, {session_token:'11|cookie', user:{user_id:7,role:'customer',email:'owner@gmail.com',first_name:'Owner',last_name:'Test'}});
   }});
-  await browser.API.registrationSession('owner@gmail.com', true);
+  await Promise.all([browser.API.registrationSession('owner@gmail.com', true), browser.API.registrationSession('owner@gmail.com', true)]);
   assert.deepEqual(calls, [{email:'owner@gmail.com',acknowledge:false},{email:'owner@gmail.com',acknowledge:true}]);
   const cacheGeneration = browser.localStorage.getItem('bethlehem.customer.cache_session');
   assert.ok(cacheGeneration);

@@ -44,6 +44,7 @@ window.AuthenticationResend = {
     return data?.data?.resend_limited === true || data?.resend_limited === true || data?.code === 'email_rate_limited';
   },
   message(seconds) {
-    return `Too many requests. You've requested too many emails. Try again in about ${Math.max(1, Math.ceil(seconds / 60))} ${seconds > 60 ? 'minutes' : 'minute'}.`;
+    const duration = window.VerificationCode.formatCountdown(seconds);
+    return duration ? `Too many requests. Try again in ${duration}.` : "";
   },
 };

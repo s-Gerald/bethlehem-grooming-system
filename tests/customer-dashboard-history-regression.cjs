@@ -609,7 +609,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(global.document.activeElement, element('phoneVerificationCode'));
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.equal(element('phoneVerificationResend').disabled, true);
-    assert.match(element('phoneVerificationResend').textContent, /1:00/);
+    assert.match(element('phoneVerificationResend').textContent, /1m 00s/);
     await element('phoneVerificationResend').dispatch('click'); assert.equal(calls.resends, 0);
     const code = element('phoneVerificationCode');
     await code.dispatch('paste', { clipboardData: { getData: () => '12a345678' } });
@@ -673,7 +673,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=20261026-otp');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=auth-feedback-20261028');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -696,7 +696,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationVerify').disabled, true);
     assert.equal(element('phoneVerificationRecovery').hidden, false);
     assert.equal(element('phoneVerificationRetry').disabled, true);
-    assert.match(element('phoneVerificationRetry').textContent, /00:42/);
+    assert.equal(element('phoneVerificationRetry').textContent, 'Try Again in 42s');
     const requestsBeforeRecoveryEdit = [calls.sends, calls.resends, calls.profiles, stateCalls];
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationPhone').value, '09171234567');

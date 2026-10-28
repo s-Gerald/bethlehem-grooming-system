@@ -44,14 +44,15 @@
             </div>
             <h2 id="successTitle" class="text-2xl font-bold text-slate-800">Account created successfully!</h2>
             <p id="successMessage" class="mt-2 text-sm text-slate-500">Redirecting to your account…</p>
+            <a id="successDashboard" href="./dashboard.html" class="hidden verification-primary mt-6">Go to dashboard</a>
           </div>
 
           <div id="statePending" class="hidden">
             <div class="verification-heading">
-              <h1 id="verificationTitle">Check your email</h1>
-              <p id="verificationDescription">We sent a verification link to:</p>
+              <h1 id="verificationTitle">Registration pending</h1>
+              <p id="verificationDescription">Email delivery is not confirmed.</p>
               <p id="verifyCodeEmail" class="verification-email"></p>
-              <p>Open the link to finish creating your account.</p>
+              <p id="verificationInstruction">Open a verification link you've received to continue.</p>
             </div>
             <form id="signupLinkForm" class="space-y-5">
               <div id="verificationEmailRecovery" class="hidden">
@@ -63,8 +64,6 @@
                 <button id="signupResend" type="submit" class="verification-link">Resend link</button>
               </div>
             </form>
-            <a id="signupVerificationEdit" href="./signup.html?edit=1" class="hidden verification-resend verification-link block">Correct email address</a>
-            <button id="signupChangeEmail" type="button" class="hidden verification-resend verification-link">Use another email</button>
           </div>
 
           <div id="stateLink" class="hidden">
@@ -141,7 +140,7 @@
 
           <!-- Back to sign-in -->
           <div id="verificationBackLink" class="mt-6 text-center text-sm text-slate-500">
-            <a href="./sign-in.html" class="font-semibold text-[#315b7e] transition hover:text-[#274a66]">
+            <a id="verificationBackAction" href="./sign-in.html" class="font-semibold text-[#315b7e] transition hover:text-[#274a66]">
               Back to sign in
             </a>
           </div>
@@ -150,10 +149,10 @@
       </div>
     </main>
 
-    <script src="../../scripts/api.js?v=magic-links-20261028&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2" defer></script>
-    <script src="../../scripts/auth/email-delivery.js?v=magic-links-20261028" defer></script>
-    <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018" defer></script>
-    <script src="../../scripts/auth/client/signup-verification.js?v=magic-links-20261028" defer></script>
-    <script src="../../scripts/auth/client/verify-email.js?v=magic-links-20261028" defer></script>
+    <script src="../../scripts/api.js?v=magic-links-20261028&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/email-delivery.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/client/signup-verification.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/client/verify-email.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
   </body>
 </html>

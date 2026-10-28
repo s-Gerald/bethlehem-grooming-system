@@ -9,11 +9,82 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class CustomerRegistrationService
 {
     public const BROWSER_COOKIE = 'bethlehem_registration_browser';
+
+    public function requestPublic(string $email, ?array $details, string $browserHash): \Illuminate\Http\JsonResponse
+    {
+        $connection = config('queue.connections.'.config('queue.default').'.driver');
+        if (! app()->environment('testing') && $connection !== 'database') {
+            throw new \RuntimeException('Registration requires the durable database queue.');
+        }
+        try {
+            app(AuthenticationEmailPolicy::class)->send($email, fn () => app(\Illuminate\Contracts\Bus\Dispatcher::class)
+                ->dispatch(new \App\Jobs\ProcessPublicRegistration($email, $details, $browserHash, now()->timestamp)));
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException) {
+            // Destination history must not become a public account-status oracle.
+            // No new work is queued and no existing link is invalidated.
+        }
+        return response()->json([
+            'success' => true, 'requires_verification' => true, 'registration_state' => 'requested',
+            'message' => 'Request received. Email delivery is not confirmed.',
+            'resend_after' => (int) config('authentication.email.cooldown', 60),
+        ], 202)->header('Cache-Control', 'no-store');
+    }
+
+    public function processPublicRequest(string $email, ?array $details, string $browserHash, int $requestedAt): void
+    {
+        try {
+            DB::transaction(function () use ($email, $details, $browserHash, $requestedAt) {
+                if ($details !== null) {
+                    PendingCustomerRegistration::pruneExpired();
+                    $identifiers = function ($query) use ($email, $details) {
+                        $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$email]);
+                        foreach (['phone', 'username'] as $field) {
+                            if (! empty($details[$field])) $query->orWhere($field, $details[$field]);
+                        }
+                    };
+                    if (User::query()->where($identifiers)->lockForUpdate()->first()
+                        || PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->first()) return;
+                    $registrant = PendingCustomerRegistration::create([
+                        ...$details, 'email' => $email,
+                        'registration_browser_token_hash' => $browserHash,
+                        'registration_edit_token_hash' => hash('sha256', Str::random(64)),
+                    ]);
+                } else {
+                    $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
+                    $registrant = $user ? (self::recoverableUser($user) ? $user : null)
+                        : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
+                    // Retried or out-of-order work must not replace a newer link.
+                    if (! $registrant || $registrant->email_verification_last_sent_at?->timestamp >= $requestedAt) return;
+                }
+                app(RegistrationMagicLinkService::class)->issue($registrant, allowImmediate: false);
+            }, 3);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // A concurrent registration won; never overwrite it or send another link.
+        }
+    }
+
+    public static function canEdit(PendingCustomerRegistration $registration, Request $request): bool
+    {
+        $token = $request->input('registration_token');
+        return ! $registration->retentionExpired() && self::trustsBrowser($registration, $request)
+            && is_string($token) && strlen($token) === 64 && $registration->registration_edit_token_hash
+            && hash_equals($registration->registration_edit_token_hash, hash('sha256', $token));
+    }
+
+    public static function usableLink(PendingCustomerRegistration $registration): bool
+    {
+        return ! $registration->retentionExpired() && $registration->email_verification_token
+            && $registration->email_verification_expires_at?->isFuture()
+            && $registration->email_verification_last_sent_at
+            && $registration->email_verification_last_sent_at->copy()
+                ->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30)))->isFuture();
+    }
 
     public static function browserToken(Request $request): string
     {

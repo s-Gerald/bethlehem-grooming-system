@@ -647,6 +647,7 @@ var API = (() => {
     safeStorageRemove(sessionStorage, LOGIN_CONFIRMATION_EMAIL_KEY);
     safeStorageRemove(sessionStorage, "pending_login_email_delivery");
     safeStorageRemove(sessionStorage, "pendingLoginResendUntil");
+    safeStorageRemove(sessionStorage, "pendingLoginVerifyUntil");
   }
 
   function storePendingLoginConfirmation(pollToken, email = "") {
@@ -1792,8 +1793,8 @@ var API = (() => {
     // POST /api/register
     // payload: { first_name, last_name, username?, email, phone, password, password_confirmation }
     // Registration establishes a session only after deliberate magic-link verification.
-    const data = await request("POST", "/register", payload);
-    storeEmailDelivery("registration", data.email_delivery_token);
+    const data = await request("POST", "/register", {...payload, registration_token: pendingRegistrationToken(payload.email) || undefined});
+    if (data.registration_token) storeEmailDelivery("registration", data.email_delivery_token);
     return data;
   }
 
@@ -1887,7 +1888,16 @@ var API = (() => {
     return data;
   }
 
-  async function registrationSession(email = "", acknowledge = false) {
+  const registrationSessionRequests = new Map();
+  function registrationSession(email = "", acknowledge = false) {
+    const key = JSON.stringify([email.toLowerCase(), acknowledge, sessionRevision]);
+    if (registrationSessionRequests.has(key)) return registrationSessionRequests.get(key);
+    const pending = checkRegistrationSession(email, acknowledge).finally(() => registrationSessionRequests.delete(key));
+    registrationSessionRequests.set(key, pending);
+    return pending;
+  }
+
+  async function checkRegistrationSession(email, acknowledge) {
     const revision = sessionRevision, previousToken = getAuthSession()?.token;
     const data = await request("POST", "/email/registration/session", { email, acknowledge: false }, null, {cache: "no-store"});
     if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
@@ -1928,10 +1938,18 @@ var API = (() => {
     // POST /api/email/resend  { email }
     const data = await request("POST", "/email/resend", {
       email,
-      registration_token: safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || undefined,
+      registration_token: pendingRegistrationToken(email) || undefined,
     });
     storeEmailDelivery("registration", data.email_delivery_token);
     return data;
+  }
+
+  function pendingRegistrationToken(email) {
+    try {
+      const details = JSON.parse(safeStorageGet(sessionStorage, "pendingSignupDetails") || "null");
+      return details?.email?.toLowerCase() === email?.toLowerCase()
+        ? safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || "" : "";
+    } catch { return ""; }
   }
 
   function storeEmailDelivery(kind, receipt) {

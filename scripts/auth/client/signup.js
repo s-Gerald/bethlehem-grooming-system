@@ -182,20 +182,27 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (data?.requires_verification) {
+        if (!data.registration_token && data.registration_state !== "requested") {
+          showMessage("Registration couldn't continue. No new verification email was confirmed. Try another email or sign in.");
+          setBusyState(false);
+          return;
+        }
         try {
           sessionStorage.setItem("pendingVerificationEmail", data.email ?? email);
           sessionStorage.setItem("pendingVerificationPhone", phone);
           sessionStorage.removeItem("pendingRegistrationRecoveryToken");
           if (data.registration_token) {
             sessionStorage.setItem("pendingRegistrationEditToken", data.registration_token);
-            sessionStorage.setItem("pendingSignupDetails", JSON.stringify({ firstName, lastName, username, email, phone }));
-          } else {
-            sessionStorage.removeItem("pendingRegistrationEditToken");
-            sessionStorage.removeItem("pendingSignupDetails");
+            if (data.registration_state !== "resumed") {
+              sessionStorage.setItem("pendingSignupDetails", JSON.stringify({ firstName, lastName, username, email, phone }));
+            }
           }
+          sessionStorage.setItem("pendingVerificationState", data.registration_state === "requested" ? "requested"
+            : data.registration_state === "resumed" ? "resumed" : data.email_delivery_queued === false ? "failed" : "queued");
+          sessionStorage.setItem("pendingVerificationLinkUntil", String(Date.parse(data.verification_link_expires_at) || 0));
           sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + (data.resend_after || 0) * 1000));
           sessionStorage.setItem("pendingVerificationResendLimited", data.resend_limited ? "1" : "0");
-          if (data.email_delivery_queued === false) {
+          if (data.email_delivery_queued === false && data.registration_state !== "resumed") {
             sessionStorage.setItem("pendingVerificationDeliveryFailed", "1");
           } else {
             sessionStorage.removeItem("pendingVerificationDeliveryFailed");

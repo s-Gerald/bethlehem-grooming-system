@@ -14,7 +14,14 @@ class RegistrationMagicLinkService
     public function send(User|PendingCustomerRegistration $registrant): string
     {
         EmailVerificationController::assertMailCanBeDelivered();
-        return app(AuthenticationEmailPolicy::class)->send($registrant->email, fn () => DB::transaction(function () use ($registrant) {
+        return app(AuthenticationEmailPolicy::class)->send($registrant->email, fn () => $this->issue($registrant));
+    }
+
+    // Public jobs already reserved their quota when their encrypted work was queued.
+    public function issue(User|PendingCustomerRegistration $registrant, bool $allowImmediate = true): string
+    {
+        EmailVerificationController::assertMailCanBeDelivered();
+        return DB::transaction(function () use ($registrant, $allowImmediate) {
             $locked = $registrant->newQuery()->whereKey($registrant->getKey())->lockForUpdate()->firstOrFail();
             if (($locked instanceof User && ! CustomerRegistrationService::recoverableUser($locked))
                 || ($locked instanceof PendingCustomerRegistration && $locked->retentionExpired())) {
@@ -30,8 +37,8 @@ class RegistrationMagicLinkService
                 'registration_recovery_expires_at' => null,
             ]);
             return AuthenticationMailDelivery::queue($locked, new VerifyEmailNotification($token), $locked,
-                'email_verification_token', 'email_verification_expires_at');
-        }));
+                'email_verification_token', 'email_verification_expires_at', $allowImmediate);
+        });
     }
 
     public static function assertMailerDoesNotLogSecrets(): void

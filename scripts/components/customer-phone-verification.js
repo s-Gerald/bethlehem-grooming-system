@@ -1,4 +1,4 @@
-import "../auth/verification-code.js";
+import "../auth/verification-code.js?v=auth-feedback-20261028";
 
 let dialog, trigger, codeControl, timer;
 let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0;
@@ -48,7 +48,7 @@ function updateControls() {
   field("Retry").disabled = busy || locked || waiting > 0;
   field("Retry").setAttribute("aria-busy", String(busy));
   field("Retry").textContent = busy ? "Please wait…" : waiting
-    ? `Try Again in ${window.VerificationCode.formatCountdown(waiting).padStart(5, "0")}` : "Try Again";
+    ? `Try Again in ${window.VerificationCode.formatCountdown(waiting)}` : "Try Again";
   if (moveExpiredFocus && dialog.open) focusStep();
 }
 function setTiming(data) {

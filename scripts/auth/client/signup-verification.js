@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (params.get("mode") === "login" || window.registrationMagicLinkToken) return;
   const view = document.getElementById("statePending");
   const description = document.getElementById("verificationDescription");
+  const title = document.getElementById("verificationTitle");
+  const instruction = document.getElementById("verificationInstruction");
   const masked = document.getElementById("verifyCodeEmail");
   const form = document.getElementById("signupLinkForm");
   const resend = document.getElementById("signupResend");
@@ -15,8 +17,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let email = params.get("recover") === "1" ? "" : read("pendingVerificationEmail");
   let busy = false;
   let joining = false;
-  let joinAgain = false;
+  let state = read("pendingVerificationState");
   let until = Number(read("pendingVerificationResendUntil")) || 0;
+  let linkUntil = state === "resumed" ? Number(read("pendingVerificationLinkUntil")) || 0 : 0;
   let limited = read("pendingVerificationResendLimited") === "1";
   let timer;
   let stopDelivery = () => {};
@@ -30,13 +33,19 @@ document.addEventListener("DOMContentLoaded", () => {
     message.setAttribute("role", error ? "alert" : "status");
   }
   function renderEmail() {
-    description.textContent = email ? "We sent a verification link to:" : "Enter your email to request a verification link.";
+    title.textContent = state === "resumed" ? "Registration already started" : state === "requested" ? "Registration requested" : "Registration pending";
+    description.textContent = state === "resumed" ? "No new email was sent." : email ? "Email delivery is not confirmed." : "Enter your email to request a verification link.";
+    instruction.textContent = state === "resumed" ? linkUntil > Date.now()
+      ? "Use your latest verification link, or resend one when available." : "Request a new verification link when available."
+      : email ? "Open a verification link you've received to continue." : "";
     masked.textContent = email ? window.VerificationCode.maskEmail(email) : "";
     recovery.classList.toggle("hidden", !!email);
     recoveryEmail.required = !email;
-    const editable = !!read("pendingRegistrationEditToken");
-    document.getElementById("signupVerificationEdit").classList.toggle("hidden", !editable);
-    document.getElementById("signupChangeEmail").classList.toggle("hidden", editable || !email);
+    let editable = false;
+    try { editable = !!read("pendingRegistrationEditToken") && JSON.parse(read("pendingSignupDetails") || "null")?.email?.toLowerCase() === email.toLowerCase(); } catch { /* Normal signup remains available. */ }
+    const back = document.getElementById("verificationBackAction");
+    back.textContent = "Back to sign up";
+    back.setAttribute("href", editable ? "./signup.html?edit=1" : "./signup.html");
   }
   function tick() {
     const seconds = Math.max(0, Math.ceil((until - Date.now()) / 1000));
@@ -46,28 +55,39 @@ document.addEventListener("DOMContentLoaded", () => {
     form.setAttribute("aria-busy", String(busy));
     if (limited && seconds) announce(window.AuthenticationResend.message(seconds));
     if (!seconds && limited) { limited = false; write("pendingVerificationResendLimited", "0"); announce(); }
-    if (!seconds && timer) { clearInterval(timer); timer = null; }
+    if (state === "resumed" && linkUntil && Date.now() >= linkUntil) {
+      linkUntil = 0;
+      write("pendingVerificationLinkUntil", "0");
+      instruction.textContent = "Request a new verification link when available.";
+    }
+    if (!seconds && Date.now() >= linkUntil && timer) { clearInterval(timer); timer = null; }
+  }
+  function startTimer() {
+    if (!timer && Math.max(until, linkUntil) > Date.now()) timer = window.setInterval(tick, 1000);
+    tick();
   }
   function cooldown(data) {
     until = Date.now() + window.AuthenticationResend.seconds(data) * 1000;
     limited = window.AuthenticationResend.limited(data);
     write("pendingVerificationResendUntil", String(until));
     write("pendingVerificationResendLimited", limited ? "1" : "0");
-    if (!timer && until > Date.now()) timer = window.setInterval(tick, 1000);
-    tick();
+    startTimer();
   }
   function delivery(receipt) {
     stopDelivery();
     if (receipt) stopDelivery = window.AuthenticationEmailDelivery.watch(receipt, status => {
-      if (status === "failed") description.textContent = "We couldn't send a verification link to:";
-      else if (status === "sent") description.textContent = "We sent a verification link to:";
+      const headings = {sent: "Check your email", failed: "Email not sent", superseded: "Request a new link", delayed: "Email delayed"};
+      title.textContent = headings[status] || "Sending verification email";
+      description.textContent = status === "sent" ? "We sent a verification link to:"
+        : status === "failed" ? "We couldn't send a verification link to:" : "Email delivery is not confirmed.";
+      instruction.textContent = status === "sent" ? "Open the link to finish creating your account."
+        : status === "failed" || status === "superseded" ? "Request a new verification link when available." : "";
       const text = window.AuthenticationEmailDelivery.failureMessage(status, "link");
       if (text && !limited) announce(text, true);
     });
   }
   async function join() {
-    if (joining) { joinAgain = true; return; }
-    if (busy) return;
+    if (joining || busy || !email) return;
     joining = true;
     try {
       // Only the server-validated HttpOnly account cookie can establish a
@@ -82,7 +102,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { /* Not verified in this browser; keep waiting for the email. */ }
     finally {
       joining = false;
-      if (joinAgain) { joinAgain = false; join(); }
     }
   }
   form.addEventListener("submit", async event => {
@@ -98,8 +117,12 @@ document.addEventListener("DOMContentLoaded", () => {
     tick();
     try {
       const result = await API.resendVerification(email);
-      description.textContent = "We sent a verification link to:";
-      announce(result.message || "Check your inbox for a verification link.");
+      state = result.registration_state === "requested" ? "requested" : result.email_delivery_token ? "queued" : "";
+      linkUntil = 0;
+      write("pendingVerificationLinkUntil", "0");
+      write("pendingVerificationState", state);
+      renderEmail();
+      announce(result.email_delivery_token ? "" : result.message || "Request received. Email delivery is not confirmed.");
       write("pendingVerificationDeliveryFailed", "0");
       cooldown(result);
       delivery(result.email_delivery_token);
@@ -110,23 +133,27 @@ document.addEventListener("DOMContentLoaded", () => {
         : error.message || "Couldn't send the verification email. Try resending.", true);
     } finally { busy = false; tick(); }
   });
-  document.getElementById("signupChangeEmail").addEventListener("click", () => {
-    email = "";
-    renderEmail();
-    recoveryEmail.focus();
-  });
   if (channel) channel.onmessage = event => { if (event.data?.type === "registration-verified") join(); };
   window.addEventListener("focus", join);
-  window.addEventListener("pageshow", join);
-  window.addEventListener("pagehide", () => { stopDelivery(); clearInterval(timer); channel?.close(); });
+  window.addEventListener("pageshow", event => {
+    if (!event.persisted) return;
+    startTimer();
+    if (state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
+    join();
+  });
+  window.addEventListener("pagehide", event => {
+    stopDelivery();
+    clearInterval(timer);
+    timer = null;
+    if (!event.persisted) channel?.close();
+  });
   view.classList.remove("hidden");
   renderEmail();
-  timer = window.setInterval(tick, 1000);
-  tick();
+  startTimer();
   if (read("pendingVerificationDeliveryFailed") === "1" && !limited) {
-    description.textContent = "Your registration is saved. Request a verification link.";
+    title.textContent = "Email not sent";
+    description.textContent = "We couldn't send a verification link to:";
     announce("Couldn't send the verification email. Try resending.", true);
   }
-  delivery(API.getEmailDeliveryToken("registration"));
-  join();
+  if (state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
 });

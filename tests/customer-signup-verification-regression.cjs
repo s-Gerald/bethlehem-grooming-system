@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, editing = false, reviewing = false, missingGrant = false, phone = '' } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, signIn = false, editing = false, reviewing = false, missingGrant = false, phone = '', initialStorage = {} } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -16,16 +16,19 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     ['pendingVerificationResendUntil', String(now + (deliveryFailed ? 0 : 60000))],
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
+  if (!signup) storage.set('pendingSignupDetails', JSON.stringify({email:'customer@gmail.com'}));
   if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone }));
   if (reviewing) {
     storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@gmail.com', phone }));
     if (!missingGrant) storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
   }
+  for (const [key, value] of Object.entries(initialStorage)) storage.set(key, value);
   let nextId = 0;
   let ready;
   const elements = new Map();
   const document = {
     activeElement: null,
+    querySelector() { return null; },
     createElement: () => element(`generated-${++nextId}`),
     addEventListener(name, callback) { if (name === 'DOMContentLoaded') ready = callback; },
     getElementById: element,
@@ -69,16 +72,17 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     setTimeout(callback, ms) { const id = ++nextId; timeouts.set(id, { callback, at: now + ms }); return id; },
   };
   const API = {
-    async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_token: 'rotated-edit-token' }; },
-    async updatePendingRegistration(payload, token, grant) { calls.push(['update', payload, token, grant]); return grant ? { token: 'session', user: { role: 'customer' } } : { requires_verification: true, registration_token: 'rotated-edit-token' }; },
+    async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_state:'requested', resend_after:60 }; },
+    async updatePendingRegistration(payload, token, grant) { calls.push(['update', payload, token, grant]); return grant ? { token: 'session', user: { role: 'customer' } } : { requires_verification: true, registration_state:'updated', email_delivery_queued:true, registration_token: 'rotated-edit-token' }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 60 }; },
     async registrationSession() { return null; },
+    async signIn() { throw {status: 429, retryAfter: 576}; },
   };
   const context = vm.createContext({
     window, document, API, URLSearchParams, Event,
-    Date: { now: () => now },
+    Date: { now: () => now, parse: Date.parse },
     setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
     setInterval: window.setInterval, clearInterval: window.clearInterval,
     sessionStorage: {
@@ -90,12 +94,12 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   if (signup) {
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
-  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', 'scripts/auth/client/signup-verification.js']) {
+  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   ready();
   return {
-    element, API, calls, storage, windowHandlers, activeElement: () => document.activeElement,
+    element, API, calls, storage, windowHandlers, window, intervals, activeElement: () => document.activeElement,
     dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
     advance(ms) {
       now += ms;
@@ -106,6 +110,22 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const formatter = page().window.VerificationCode.formatCountdown;
+  for (const [seconds, expected] of [[576, '9m 36s'], [120, '2m 00s'], [65, '1m 05s'], [60, '1m 00s'], [45, '45s'], [10, '10s'], [1, '1s'], [0, ''], [-10, ''], [3600, '1h 00m 00s'], [80760, '22h 26m 00s']]) {
+    assert.equal(formatter(seconds), expected);
+  }
+  const signIn = page({signIn:true});
+  signIn.element('identifier').value = 'customer@gmail.com';
+  signIn.element('password').value = 'strong-password';
+  await signIn.dispatch('signin', 'submit');
+  assert.equal(signIn.element('signInBtnLabel').textContent, 'Sign In');
+  assert.equal(signIn.element('sharedSignInSubmit').disabled, true);
+  assert.equal(signIn.element('sharedSignInMessage').textContent, 'Too many attempts. Try again in 9m 36s.');
+  signIn.advance(511000);
+  assert.match(signIn.element('sharedSignInMessage').textContent, /1m 05s/);
+  signIn.advance(65000);
+  assert.equal(signIn.element('sharedSignInSubmit').disabled, false);
+  assert.equal(signIn.intervals.size, 0);
   const signupHtml = fs.readFileSync(path.join(root, 'pages/client/signup.html'), 'utf8');
   const requiredFields = { firstName: 'First Name', lastName: 'Last Name', email: 'Email Address', password: 'Password', confirmPassword: 'Confirm Password' };
   const optionalFields = { username: 'Username', phone: 'Mobile Number' };
@@ -137,7 +157,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       assert.equal(signup.calls[0][1].phone, phone || null);
       assert.equal(signup.calls[0][1].email, 'customer@gmail.com');
       if (editing) assert.equal(signup.calls[0][2], 'private-edit-credential');
-      assert.equal(signup.storage.get('pendingRegistrationEditToken'), 'rotated-edit-token');
+      assert.equal(signup.storage.get('pendingRegistrationEditToken'), editing ? 'rotated-edit-token' : 'private-edit-credential');
+      assert.equal(signup.storage.get('pendingVerificationState'), editing ? 'queued' : 'requested');
+      if (!editing) assert.equal(signup.storage.has('pendingSignupDetails'), false, 'Public input never becomes an authorized saved profile');
       assert.deepEqual(signup.calls.at(-1), ['redirect', './verify-email.html']);
       assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
     }
@@ -186,8 +208,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(abandoned.element('signupRecovery').classList.contains('hidden'), true, 'A public response cannot establish an unfinished registration');
   assert.equal(abandoned.element('firstName').value, 'Test');
   assert.equal(abandoned.element('password').value, 'strong-password');
-  assert.deepEqual(abandoned.calls, [['redirect', './verify-email.html']], 'Reuse verification without a second request or status-specific panel');
-  assert.equal(abandoned.storage.has('pendingRegistrationEditToken'), false);
+  assert.deepEqual(abandoned.calls, [], 'A response without authorized pending context stays on signup');
+  assert.match(abandoned.element('signupMessage').textContent, /Registration couldn't continue/);
+  assert.equal(abandoned.storage.get('pendingRegistrationEditToken'), 'private-edit-credential', 'An inconclusive response cannot erase an existing credential');
   assert.equal(abandoned.storage.has('pendingSignupDetails'), false, 'Unproven submitted details cannot become recovered account details');
 
   const obsoleteResponse = page({signup:true});
@@ -229,21 +252,38 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(interrupted.element('emailError').textContent, 'Enter a valid email address.');
 
   const pending = page();
-  assert.equal(pending.element('verificationDescription').textContent, 'We sent a verification link to:');
+  assert.equal(pending.element('verificationTitle').textContent, 'Registration pending');
+  assert.doesNotMatch(pending.element('verificationDescription').textContent, /We sent/);
+  assert.equal(pending.element('verificationBackAction').attributes.href, './signup.html?edit=1');
   assert.equal(pending.element('verifyCodeEmail').textContent, 'c***@gmail.com');
-  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1:00');
+  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1m 00s');
   assert.deepEqual(pending.calls, [], 'Waiting must never automatically verify or send');
+  pending.windowHandlers.pagehide({persisted:true});
+  pending.advance(10000);
+  pending.windowHandlers.pageshow({persisted:true});
+  assert.equal(pending.element('signupResend').textContent, 'Resend link in 50s');
+  assert.equal(pending.intervals.size, 1, 'Restoring a cached page restarts exactly one deadline timer');
   pending.advance(60000);
   await pending.dispatch('signupLinkForm', 'submit');
   assert.deepEqual(pending.calls, [['send', 'customer@gmail.com']]);
-  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1:00');
+  assert.equal(pending.element('signupResend').textContent, 'Resend link in 1m 00s');
+
+  const resumed = page({initialStorage:{pendingVerificationState:'resumed', pendingVerificationLinkUntil:'102000'}});
+  assert.equal(resumed.element('verificationTitle').textContent, 'Registration already started');
+  assert.match(resumed.element('verificationInstruction').textContent, /latest verification link/);
+  resumed.advance(2000);
+  assert.equal(resumed.element('verificationInstruction').textContent, 'Request a new verification link when available.');
+  const resumedResend = page({deliveryFailed:true, initialStorage:{pendingVerificationState:'resumed', pendingVerificationLinkUntil:'1900000'}});
+  await resumedResend.dispatch('signupLinkForm', 'submit');
+  resumedResend.advance(60000);
+  assert.equal(resumedResend.intervals.size, 0, 'A new request must retire the old link-guidance timer');
 
   const throttled = page({deliveryFailed: true});
   throttled.API.resendVerification = async () => { throw {status:429, retryAfter:480, code:'email_rate_limited'}; };
   await throttled.dispatch('signupLinkForm', 'submit');
   assert.equal(throttled.element('signupResend').textContent, 'Resend link');
   assert.equal(throttled.element('signupResend').disabled, true);
-  assert.match(throttled.element('signupLinkMessage').textContent, /Too many requests.*8 minutes/);
+  assert.match(throttled.element('signupLinkMessage').textContent, /Too many requests.*8m 00s/);
   throttled.advance(480000);
   assert.equal(throttled.element('signupResend').disabled, false);
   assert.equal(throttled.element('signupLinkMessage').textContent, '');
@@ -270,6 +310,13 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.match(delivery.element('signupLinkMessage').textContent, /Couldn't send the verification email/);
   assert.deepEqual(delivery.calls, []);
 
+  for (const [status, heading] of [['queued', 'Sending verification email'], ['sent', 'Check your email'], ['failed', 'Email not sent'], ['superseded', 'Request a new link']]) {
+    const state = page({deliveryStatus:status});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(state.element('verificationTitle').textContent, heading);
+    if (status !== 'sent') assert.doesNotMatch(state.element('verificationDescription').textContent, /We sent/);
+  }
+
   const safeHandoff = page();
   await new Promise(resolve => setImmediate(resolve));
   safeHandoff.API.registrationSession = async (email, acknowledge) => {
@@ -278,6 +325,19 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   };
   await safeHandoff.windowHandlers.focus();
   assert.deepEqual(safeHandoff.calls, [['redirect','./dashboard.html']]);
+
+  const concurrent = page();
+  let checks = 0;
+  let finishCheck;
+  concurrent.API.registrationSession = () => { checks++; return new Promise(resolve => { finishCheck = resolve; }); };
+  const focused = concurrent.windowHandlers.focus();
+  concurrent.windowHandlers.focus();
+  concurrent.windowHandlers.pageshow({persisted:false});
+  assert.equal(checks, 1);
+  finishCheck(null);
+  await focused;
+  await Promise.resolve();
+  assert.equal(checks, 1, 'Concurrent focus events do not schedule another failed session check');
 
   const fields = page({signup:true});
   fields.API.register = async () => {throw {status:422,errors:{phone:['This phone is already in use.']}};};
