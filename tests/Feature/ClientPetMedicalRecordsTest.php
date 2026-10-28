@@ -43,6 +43,8 @@ class ClientPetMedicalRecordsTest extends TestCase
             $table->text('chief_complaint')->nullable();
             $table->text('diagnosis')->nullable();
             $table->text('working_diagnosis')->nullable();
+            $table->string('primary_veterinarian_name')->nullable();
+            $table->unsignedInteger('primary_veterinarian_id')->nullable();
             $table->text('findings')->nullable();
             $table->text('treatment_given')->nullable();
             $table->date('follow_up_date')->nullable();
@@ -144,16 +146,49 @@ class ClientPetMedicalRecordsTest extends TestCase
         $this->authenticateCustomer(10);
         $this->insertPet(101, 10, 'Mochi');
         $id = $this->insertAppointment(1, 101, 'completed', 'CL-MOCHI', '2026-07-20');
-        $prescription = ['medicine' => 'Amoxicillin', 'dose' => '1 tablet', 'frequency' => 'Twice daily', 'duration' => '7 days', 'instructions' => 'Give with food.'];
+        $prescription = ['medicine' => 'Amoxicillin', 'strength_concentration' => '250 mg', 'dose' => '1 tablet', 'route' => 'Oral', 'frequency' => 'Twice daily', 'duration' => '7 days', 'instructions' => 'Give with food.'];
         DB::table('clinic_records')->where('id', $id)->update([
             'prescriptions' => json_encode([$prescription + ['inventory_item_id' => 12, 'notes' => 'PRIVATE']]),
             'working_diagnosis' => 'Bacterial skin infection',
+            'primary_veterinarian_name' => 'Dr. Ana Santos',
+            'primary_veterinarian_id' => 99,
         ]);
         foreach (['/api/clinic/history', '/api/pets/101/medical-records'] as $url) {
             $this->getJson($url)->assertOk()->assertJsonPath('medical_records.0.prescriptions', [$prescription])
                 ->assertJsonPath('medical_records.0.diagnosis', 'Bacterial skin infection')
+                ->assertJsonPath('medical_records.0.diagnosis_source', 'working_diagnosis')
+                ->assertJsonPath('medical_records.0.primary_veterinarian_name', 'Dr. Ana Santos')
+                ->assertJsonMissingPath('medical_records.0.primary_veterinarian_id')
                 ->assertJsonMissingPath('medical_records.0.prescriptions.0.inventory_item_id')
                 ->assertJsonMissingPath('medical_records.0.prescriptions.0.notes');
+        }
+    }
+
+    public function test_optional_and_historical_details_remain_safe_for_both_owner_views(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Mochi');
+        $id = $this->insertAppointment(1, 101, 'completed', 'CL-OLD', '2026-07-20');
+        foreach (['/api/clinic/history', '/api/pets/101/medical-records'] as $url) {
+            $this->getJson($url)->assertOk()
+                ->assertJsonPath('medical_records.0.diagnosis_source', 'diagnosis')
+                ->assertJsonPath('medical_records.0.primary_veterinarian_name', null);
+        }
+        DB::table('clinic_records')->where('id', $id)->update([
+            'diagnosis' => null, 'working_diagnosis' => null, 'treatment_given' => null,
+            'follow_up_date' => null, 'follow_up_notes' => null,
+            'prescriptions' => json_encode([null, 'invalid', [], ['medicine' => 'Medicine', 'instructions' => "Keep exactly.\nWith food.", 'notes' => 'PRIVATE']]),
+        ]);
+        foreach (['/api/clinic/history', '/api/pets/101/medical-records'] as $url) {
+            $this->getJson($url)->assertOk()
+                ->assertJsonPath('medical_records.0.chief_complaint', 'Reason for CL-OLD')
+                ->assertJsonPath('medical_records.0.diagnosis', null)
+                ->assertJsonPath('medical_records.0.diagnosis_source', null)
+                ->assertJsonPath('medical_records.0.treatment_given', null)
+                ->assertJsonPath('medical_records.0.vitals', null)
+                ->assertJsonPath('medical_records.0.follow_up_date', null)
+                ->assertJsonPath('medical_records.0.follow_up_notes', null)
+                ->assertJsonPath('medical_records.0.prescriptions', [['medicine' => 'Medicine', 'instructions' => "Keep exactly.\nWith food."]]);
         }
     }
 
@@ -298,6 +333,8 @@ class ClientPetMedicalRecordsTest extends TestCase
             'status',
             'chief_complaint',
             'diagnosis',
+            'diagnosis_source',
+            'primary_veterinarian_name',
             'treatment_given',
             'follow_up_date',
             'follow_up_notes',

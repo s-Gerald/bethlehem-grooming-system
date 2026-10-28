@@ -265,7 +265,6 @@ class PetInformationVerificationInterfaceTest extends TestCase
         foreach ([
             'break-words text-xs font-semibold text-portal-text',
             'break-words text-xs font-medium leading-5 text-slate-700',
-            'whitespace-pre-line break-words text-xs leading-5 text-portal-text',
             'mt-1 text-xs text-portal-text',
         ] as $compactInformationText) {
             $this->assertStringContainsString(
@@ -273,6 +272,12 @@ class PetInformationVerificationInterfaceTest extends TestCase
                 $this->petProfileComponent,
             );
         }
+
+        // Clinic typography is now owned by the shared owner-facing renderer.
+        $this->assertStringContainsString(
+            'whitespace-pre-line break-words text-xs leading-5 text-portal-text',
+            file_get_contents(base_path('scripts/components/customer-health-records.js')),
+        );
 
         $this->assertStringNotContainsString('text-lg font-bold', $this->petProfileComponent);
         $this->assertStringNotContainsString('text-xl font-bold', $this->petProfileComponent);

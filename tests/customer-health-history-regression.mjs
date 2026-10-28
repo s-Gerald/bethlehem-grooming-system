@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import { clinicVisitFields, healthDate } from "../scripts/components/customer-health-records.js";
+import * as healthRecords from "../scripts/components/customer-health-records.js";
+const { clinicVisitFields, healthDate } = healthRecords;
 
 const page = fs.readFileSync(new URL("../pages/client/grooming-history.html", import.meta.url), "utf8");
 const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
-  .replace(/^\s*import .*?;\s*/m, "");
+  .replace(/^\s*import .*?;\s*/gm, "");
 const clinic = {
   appointment_reference: "CL-20261015-001", appointment_date: "2026-10-15", status: "completed",
   pet: { pet_id: 1, pet_name: "Mochi", species: "cat" }, chief_complaint: "Reduced appetite",
@@ -45,7 +46,7 @@ async function run({ failClinic = false, failGrooming = false, empty = false } =
   let clinicFails = failClinic;
   const calls = [];
   const context = vm.createContext({
-    Intl, Date, console, clinicVisitFields, healthDate,
+    Intl, Date, console, ...healthRecords,
     document: { getElementById: element, body: element("body"), addEventListener() {} },
     window: { matchMedia: () => ({ matches: false, addEventListener() {} }), requestAnimationFrame() {} },
     API: {
@@ -61,12 +62,14 @@ async function run({ failClinic = false, failGrooming = false, empty = false } =
 
 assert.deepEqual(clinicVisitFields({ vet_notes: "PRIVATE", vitals: { heart_rate_bpm: 120 } }), []);
 assert.equal(healthDate(null), "Not recorded");
-assert.match(clinicVisitFields(clinic).find(([label]) => label === "Medications")[1], /Omeprazole.*Once daily/);
+assert.match(clinicVisitFields(clinic).find(([label]) => label === "Medications")[1], /Omeprazole[\s\S]*Frequency: Once daily/);
+assert.equal(clinicVisitFields({ diagnosis: "Possible gastritis", diagnosis_source: "working_diagnosis" })[0][0], "Working diagnosis");
+assert.equal(clinicVisitFields({ diagnosis: "Gastritis" })[0][0], "Diagnosis", "Old cached records remain supported");
 
 // Exercise the pet-focused renderers with sparse and complete clinic data.
 const profileSource = fs.readFileSync(new URL("../scripts/components/pet-details.js", import.meta.url), "utf8");
 const profileContext = vm.createContext({
-  clinicVisitFields, healthDate,
+  ...healthRecords,
   isMissing: (value) => value === null || value === undefined || String(value).trim() === "",
   escapeHtml: (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"),
   titleCase: (value) => String(value).replace(/\b\w/g, (letter) => letter.toUpperCase()),
@@ -84,6 +87,41 @@ assert.match(vaccination, /Rabies|Current|October 1, 2026|October 1, 2027/);
 assert.doesNotMatch(vaccination, /PRIVATE|subcutaneous|BATCH-001|Manufacturer|Route|Dose|Batch/);
 
 const ui = await run();
+const renderVisit = (record) => vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({ type: "clinic", pet: clinic.pet, reference: clinic.appointment_reference, date: clinic.appointment_date, record })})`, ui.context);
+const fullRecord = {
+  ...clinic, primary_veterinarian_name: "Dr. Ana Santos", diagnosis_source: "working_diagnosis",
+  vitals: { weight_kg: "4.250", temperature_c: 38.5, heart_rate_bpm: 120 },
+  follow_up_notes: "Return for reassessment.\nBring the medication.",
+  prescriptions: [
+    { medicine: "Omeprazole", strength_concentration: "10 mg", dose: "1 capsule", route: "Oral", frequency: "Once daily", duration: "5 days", instructions: "Before meals\nAs directed." },
+    { medicine: "Second medication", instructions: "Exactly as recorded." },
+  ],
+};
+const fullVisit = renderVisit(fullRecord);
+for (const text of ["Visit overview", "Care provided", "Next steps", "Attending veterinarian", "Dr. Ana Santos", "Working diagnosis", "Gastritis", "Visit weight", "4.25 kg", "Fluids administered", "Prescribed medications", "Omeprazole", "10 mg", "Dose", "1 capsule", "Route", "Oral", "Frequency", "Once daily", "Duration", "5 days", "Before meals\nAs directed.", "Second medication", "Exactly as recorded.", "Follow-up date", "October 20, 2026", "Follow-up instructions", fullRecord.follow_up_notes]) {
+  assert.ok(fullVisit.includes(text), `Full visit includes ${text}`);
+}
+assert.doesNotMatch(fullVisit, /38.5|120|PRIVATE|INTERNAL|radiograph|confirmed|Not recorded/);
+assert.equal((fullVisit.match(/<li\b/g) || []).length, 2, "Medications are separate readable groups");
+const reasonOnly = renderVisit({ chief_complaint: "Vaccination" });
+assert.match(reasonOnly, /Visit overview[\s\S]*Reason for visit[\s\S]*Vaccination/);
+assert.doesNotMatch(reasonOnly, /Care provided|Next steps|Attending veterinarian|Diagnosis|Visit weight|medications|Not recorded/);
+const blankVisit = renderVisit({ prescriptions: [null, {}, { medicine: " " }, "invalid"], vitals: { weight_kg: "invalid" }, chief_complaint: " " });
+assert.match(blankVisit, /Mochi[\s\S]*October 15, 2026[\s\S]*CL-20261015-001[\s\S]*Completed/);
+assert.doesNotMatch(blankVisit, /Visit overview|Care provided|Next steps|<li\b|Not recorded|No medications/);
+for (const weight of [null, "", " ", 0, -1, "Infinity", {}, true]) {
+  assert.doesNotMatch(renderVisit({ vitals: { weight_kg: weight } }), /Visit weight/);
+}
+assert.match(renderVisit({ vitals: { weight_kg: "4.257" } }), /4.257 kg/, "Historical weight precision is preserved");
+assert.match(renderVisit({ follow_up_notes: "Call with an update." }), /Next steps[\s\S]*Call with an update\./);
+assert.doesNotMatch(renderVisit({ follow_up_notes: "Call with an update." }), /Follow-up date|Visit overview|Care provided/);
+assert.doesNotMatch(renderVisit({ chief_complaint: {}, diagnosis: [], treatment_given: true, follow_up_notes: false }), /Visit overview|Care provided|Next steps|object Object/);
+const hostile = renderVisit({ chief_complaint: "<script>alert(1)</script>", primary_veterinarian_name: "Dr. <img src=x onerror=alert(1)>", diagnosis: "A & B", treatment_given: "<svg onload=alert(1)>", follow_up_notes: "<iframe>", prescriptions: [{ medicine: "<img>", strength_concentration: "<b>", instructions: "<script>" }] });
+assert.doesNotMatch(hostile, /<script>|<img|<svg|<iframe>|<b>/);
+assert.match(hostile, /&lt;script&gt;|&lt;img|A &amp; B/);
+const sharedVisit = vm.runInContext(`renderMedicalRecord(${JSON.stringify(fullRecord)})`, profileContext);
+for (const text of ["Working diagnosis", "Attending veterinarian", "Dr. Ana Santos", "Care provided", "Omeprazole", "Second medication", "Next steps", "4.25 kg"]) assert.ok(sharedVisit.includes(text), `My Pets includes ${text}`);
+assert.match(sharedVisit, /<dd class="[^"]*text-xs leading-5/, "My Pets retains compact clinical values");
 const list = () => ui.element("historyList").innerHTML;
 assert.equal(ui.element("historySummary").textContent, "3 records found");
 assert.equal(ui.calls.length, 2, "One request per service, independent of the number of pets");
@@ -114,6 +152,7 @@ assert.match(ui.element("historyModalContent").innerHTML, /Gastritis|Omeprazole/
 assert.doesNotMatch(ui.element("historyModalContent").innerHTML, /PRIVATE|INTERNAL|radiograph|Full grooming|Bath|Vaccinations/);
 vm.runInContext("closeHistoryModal()", ui.context);
 assert.equal(trigger.focused, true);
+assert.equal(ui.calls.length, 2, "Opening and closing the clinic modal adds no API requests");
 const groomingDetails = vm.runInContext(`buildHistoryModalContent(${JSON.stringify(booking)}, ${JSON.stringify(booking.pets[0])})`, ui.context);
 assert.match(groomingDetails, /Full grooming/);
 assert.doesNotMatch(groomingDetails, /800|500|Payment Method|Total|Reviewed adjustment|Gastritis|Bath/);

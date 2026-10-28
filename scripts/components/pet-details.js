@@ -3,7 +3,7 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const { formatSavedWeight } = await import("./pet-weight-size.js?v=pet-weight-size-20261011-v3");
-  const { clinicVisitFields, healthDate } = await import("./customer-health-records.js?v=20261016");
+  const { renderClinicVisitSections, healthDate } = await import("./customer-health-records.js?v=20261029");
   if (!API.hasAuthenticatedSession("customer")) {
     API.redirectToSignIn();
     return;
@@ -296,8 +296,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   const renderMedicalRecord = (record) => {
-    const fields = clinicVisitFields(record);
-    if (!isMissing(record.vitals?.weight_kg)) fields.push(["Weight", formatWeight(record.vitals.weight_kg)]);
     return `
       <article class="border-t border-portal-border py-5 first:border-t-0 first:pt-0 last:pb-0">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -307,14 +305,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
           <span class="w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">${escapeHtml(titleCase(record.status))}</span>
         </div>
-        ${fields.length ? `<dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          ${fields.map(([label, value]) => `
-            <div class="min-w-0">
-              <dt class="text-xs font-medium text-portal-muted">${escapeHtml(label)}</dt>
-              <dd class="mt-1 whitespace-pre-line break-words text-xs leading-5 text-portal-text">${escapeHtml(value)}</dd>
-            </div>
-          `).join("")}
-        </dl>` : ""}
+        ${renderClinicVisitSections(record, escapeHtml, { compact: true })}
       </article>`;
   };
 

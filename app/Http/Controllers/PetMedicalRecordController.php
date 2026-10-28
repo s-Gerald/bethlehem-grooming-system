@@ -65,7 +65,7 @@ class PetMedicalRecordController extends Controller
             ->whereHas('record')
             ->with([
                 'vitals:id,clinic_appointment_id,weight_kg,temperature_c,heart_rate_bpm,respiratory_rate_bpm,body_condition_score',
-                'record:id,clinic_appointment_id,chief_complaint,diagnosis,working_diagnosis,treatment_given,follow_up_date,follow_up_notes,prescriptions',
+                'record:id,clinic_appointment_id,chief_complaint,diagnosis,working_diagnosis,primary_veterinarian_name,treatment_given,follow_up_date,follow_up_notes,prescriptions',
             ])
             ->orderByDesc('appointment_date')
             ->orderByDesc('id');
@@ -75,17 +75,21 @@ class PetMedicalRecordController extends Controller
     {
         $record = $appointment->record;
         $vitals = $appointment->vitals;
+        $diagnosis = $record->working_diagnosis ?? $record->diagnosis;
 
         return [
             'appointment_reference' => $appointment->appointment_reference,
             'appointment_date' => $appointment->appointment_date?->toDateString(),
             'status' => $appointment->status,
             'chief_complaint' => $record->chief_complaint ?? $appointment->chief_complaint,
-            'diagnosis' => $record->working_diagnosis ?? $record->diagnosis,
+            'diagnosis' => $diagnosis,
+            'diagnosis_source' => filled($diagnosis) ? ($record->working_diagnosis !== null ? 'working_diagnosis' : 'diagnosis') : null,
+            'primary_veterinarian_name' => $record->primary_veterinarian_name,
             'treatment_given' => $record->treatment_given,
             'follow_up_date' => $record->follow_up_date?->toDateString(),
             'follow_up_notes' => $record->follow_up_notes,
-            'prescriptions' => collect($record->prescriptions ?? [])
+            'prescriptions' => collect(is_array($record->prescriptions) ? $record->prescriptions : [])
+                ->filter(fn ($prescription) => is_array($prescription) && $prescription !== [])
                 ->map(fn (array $prescription) => \Illuminate\Support\Arr::only($prescription, [
                     'medicine', 'strength_concentration', 'dose', 'route', 'frequency', 'duration', 'instructions',
                 ]))->values()->all(),
