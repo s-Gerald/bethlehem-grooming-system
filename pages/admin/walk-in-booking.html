@@ -149,8 +149,10 @@
                     name="phone"
                     type="tel"
                     autocomplete="tel"
-                    maxlength="20"
-                    placeholder="09XX XXX XXXX"
+                    maxlength="11"
+                    inputmode="numeric"
+                    aria-describedby="ownerPhoneNumberError"
+                    placeholder="e.g. 09171234567"
                     class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"
                     required
                   />
@@ -251,9 +253,10 @@
     <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
     <script src="../../scripts/api.js?v=session-inactivity-20260828&release=20261001&auth=session-scope-20261006&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2"></script>
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-input-20261028-v2"></script>
     <script
       type="module"
-      src="../../scripts/components/walk-in-owner-step.js?v=optional-phone-20261021&icons=20261018&session=walk-in-20261021&nav=walk-in-home-20261025&email-entry=20261028&names=20261028-v2"
+      src="../../scripts/components/walk-in-owner-step.js?v=optional-phone-20261021&icons=20261018&session=walk-in-20261021&nav=walk-in-home-20261025&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2"
     ></script>
   </body>
 </html>

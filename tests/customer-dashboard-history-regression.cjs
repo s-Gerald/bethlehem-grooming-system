@@ -500,7 +500,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
       querySelectorAll() { return cells; },
       appendChild() {},
       focus() { global.document.activeElement = node; },
-      setSelectionRange() {},
+      setSelectionRange(start, end) { node.selectionStart = start; node.selectionEnd = end; },
       showModal() { node.open = true; calls.dialogs++; },
       close() { node.open = false; void node.dispatch('close'); },
     };
@@ -530,14 +530,14 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     dispatchEvent() {},
   };
   global.API = {
-    async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery }; },
+    async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery, allowed_prefixes: ['0917', '0895', '0896', '0897', '0898', '0991'] }; },
     readCustomerCache: () => ({ fresh: true, data: { allowed: true, sms_verification: flags } }),
     async getPreRegistrationAccess() { calls.access++; return { allowed: eligible, sms_verification: flags }; },
     async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
     async sendPhoneVerification(phone, password) {
       calls.sends++;
       calls.sendArgs.push([phone, password]);
-      assert.match(phone, /^09\d{9}$/);
+      assert.match(phone, /^0[89]\d{9}$/);
       if (pendingSend) await pendingSend;
       if (sendError) throw sendError;
       return { success: true, challenge_id: 'generation-one', expires_in: 300, resend_after: 60 };
@@ -571,6 +571,52 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationPhone').value, '09171234567');
     assert.equal(element('phoneVerificationPhoneField').hidden, false, 'Saved numbers remain editable.');
     assert.equal(element('phoneVerificationEntry').hidden, false);
+    const phoneField = element('phoneVerificationPhone');
+    const phoneError = element('phoneVerificationPhoneError');
+    const requestsBeforeTyping = [calls.sends, stateCalls];
+    assert.equal(phoneError.textContent, '');
+    for (const value of ['09', '0999', '0999123456']) {
+      phoneField.value = value; await phoneField.dispatch('input');
+      assert.equal(phoneError.textContent, '', 'Incomplete typing has no premature error.');
+    }
+    phoneField.value = '09991234567'; await phoneField.dispatch('input');
+    assert.equal(phoneError.textContent, "SMS verification isn't supported for this number.");
+    assert.equal(phoneField.getAttribute('aria-invalid'), 'true');
+    assert.equal(element('phoneVerificationNext').disabled, true);
+    assert.equal(element('phoneVerificationMessage').textContent, '');
+    await element('phoneVerificationForm').dispatch('submit');
+    assert.deepEqual([calls.sends, stateCalls], requestsBeforeTyping, 'Unsupported edits and submission never request SMS or policy.');
+    phoneField.value = '0999123456'; await phoneField.dispatch('input');
+    assert.equal(phoneError.textContent, '');
+    assert.equal(phoneField.getAttribute('aria-invalid'), 'false');
+    await phoneField.dispatch('blur');
+    assert.equal(phoneError.textContent, 'Enter an 11-digit mobile number.');
+    phoneField.value = ''; await phoneField.dispatch('input'); await phoneField.dispatch('blur');
+    assert.equal(phoneError.textContent, '');
+    phoneField.value = '07123456789'; await phoneField.dispatch('input');
+    assert.equal(phoneError.textContent, 'Enter a valid Philippine mobile number.');
+    for (const value of ['08951234567', '08961234567', '08971234567', '08981234567', '09911234567']) {
+      phoneField.value = value; await phoneField.dispatch('input');
+      assert.equal(phoneError.textContent, '');
+      assert.equal(element('phoneVerificationNext').disabled, false);
+    }
+    phoneField.value = '0917x12345678'; phoneField.selectionStart = 5; phoneField.selectionEnd = 5;
+    await phoneField.dispatch('input');
+    assert.equal(phoneField.value, '09171234567');
+    assert.equal(phoneField.selectionStart, 4, 'Sanitizing preserves the caret relative to the remaining digits.');
+    phoneField.value = '0917'; phoneField.selectionStart = 4; phoneField.selectionEnd = 4;
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => ' 123-45678' } });
+    assert.equal(phoneField.value, '09171234567');
+    phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '0895' } });
+    assert.equal(phoneField.value, '08951234567', 'Pasting replaces the selected prefix.');
+    phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '089612345' } });
+    assert.equal(phoneField.value, '08961234567', 'An oversized paste preserves unselected trailing digits.');
+    phoneField.selectionStart = 0; phoneField.selectionEnd = 11;
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '+63 897-123-4567' } });
+    assert.equal(phoneField.value, '08971234567', 'A full-field international paste is displayed in the required local format.');
+    phoneField.value = '09171234567'; await phoneField.dispatch('input');
     await trigger.dispatch('click'); assert.equal(calls.dialogs, 1);
     await dialog.dispatch('click'); assert.equal(dialog.open, true);
     assert.equal((await dialog.dispatch('cancel')).defaultPrevented, true);
@@ -592,7 +638,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(element('phoneVerificationOtp').hidden, false);
     assert.equal(element('phoneVerificationNumber').textContent, '0917 \u2022\u2022\u2022\u2022 567');
     assert.equal(element('phoneVerificationChange').hidden, false);
-    assert.equal(element('phoneVerificationNetwork').textContent, 'Smart/TNT numbers are not supported.');
+    assert.equal(elements.has('phoneVerificationNetwork'), false);
     const readsBeforeEditing = [stateCalls, calls.profiles, calls.sends];
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationTitle').textContent, 'Change Phone Number');
@@ -673,7 +719,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=auth-feedback-20261028');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-input-20261028-v2');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -701,15 +747,15 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationPhone').value, '09171234567');
     assert.equal(element('phoneVerificationPasswordField').hidden, true);
-    element('phoneVerificationPhone').value = '09991234567';
+    element('phoneVerificationPhone').value = '09911234567';
     await element('phoneVerificationForm').dispatch('submit');
     assert.deepEqual([calls.sends, calls.resends, calls.profiles, stateCalls], requestsBeforeRecoveryEdit);
     now += 42000; timer();
-    const uncertainNew = { success: true, challenge_id: 'uncertain-two', masked_destination: '0999 •••• 567', expires_in: 300, resend_after: 60, status: 'uncertain', can_verify: false };
+    const uncertainNew = { success: true, challenge_id: 'uncertain-two', masked_destination: '0991 •••• 567', expires_in: 300, resend_after: 60, status: 'uncertain', can_verify: false };
     sendError = Object.assign(new Error('SMS could not be confirmed.'), { status: 503, code: 'sms_send_uncertain', data: { resend_after: 60, challenge: uncertainNew } });
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(element('phoneVerificationOtp').hidden, true, 'A failed replacement hides unusable code controls immediately.');
-    assert.equal(element('phoneVerificationNumber').textContent, '0999 •••• 567');
+    assert.equal(element('phoneVerificationNumber').textContent, '0991 •••• 567');
     assert.equal(element('phoneVerificationRetry').disabled, true);
     sendError = null;
     now += 60000; timer();
@@ -735,19 +781,19 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationPasswordField').hidden, false);
-    element('phoneVerificationPhone').value = '09991234567';
+    element('phoneVerificationPhone').value = '09911234567';
     const sendsBeforePassword = calls.sends;
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(calls.sends, sendsBeforePassword);
     element('phoneVerificationPassword').value = 'current-password';
     await element('phoneVerificationForm').dispatch('submit');
-    assert.deepEqual(calls.sendArgs.at(-1), ['09991234567', 'current-password']);
+    assert.deepEqual(calls.sendArgs.at(-1), ['09911234567', 'current-password']);
     assert.equal(element('phoneVerificationPassword').value, '', 'The password is cleared after requesting a replacement.');
     await element('phoneVerificationClose').dispatch('click');
     recovery = { ...recovery, replacement: false };
     await openPhoneVerification(trigger, user, { navigate: false });
     await element('phoneVerificationChange').dispatch('click');
-    element('phoneVerificationPhone').value = '09991234567';
+    element('phoneVerificationPhone').value = '09911234567';
     await element('phoneVerificationBack').dispatch('click');
     sendError = new Error('Connection lost');
     await element('phoneVerificationResend').dispatch('click');
@@ -758,17 +804,30 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(countdowns.size, 1, 'Recovery and resend reuse one countdown.');
     await element('phoneVerificationClose').dispatch('click');
     assert.equal(countdowns.size, 0);
+    recovery = { success: true, challenge_id: 'unsupported-legacy', masked_destination: '0999 •••• 567', expires_in: 120, resend_after: 0, status: 'active', can_verify: true };
+    await openPhoneVerification(trigger, user, { navigate: false });
+    sendError = Object.assign(new Error("SMS verification isn't supported for this number."), {
+      status: 422, errors: { phone: ["SMS verification isn't supported for this number."] },
+      data: { code: 'sms_destination_unsupported' },
+    });
+    await element('phoneVerificationResend').dispatch('click');
+    assert.equal(element('phoneVerificationEntry').hidden, false, 'A rejected legacy resend returns to the editable phone field.');
+    assert.equal(phoneError.textContent, "SMS verification isn't supported for this number.");
+    phoneField.value = '08951234567'; await phoneField.dispatch('input');
+    assert.equal(phoneError.textContent, '');
+    sendError = null;
+    await element('phoneVerificationClose').dispatch('click');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 0, status: 'active', can_verify: true };
     await openPhoneVerification(trigger, user, { navigate: false });
     await element('phoneVerificationChange').dispatch('click');
-    element('phoneVerificationPhone').value = '09991234567';
+    element('phoneVerificationPhone').value = '09911234567';
     recovery = { ...uncertainNew, challenge_id: 'lost-response' };
     sendError = Object.assign(new Error('Connection lost'), { status: 0 });
     const readsBeforeLostResponse = stateCalls, sendsBeforeLostResponse = calls.sends;
     await element('phoneVerificationForm').dispatch('submit');
     assert.equal(stateCalls, readsBeforeLostResponse + 1, 'A lost HTTP response recovers server timing once, without polling.');
     assert.equal(calls.sends, sendsBeforeLostResponse + 1, 'Network recovery does not retry sending.');
-    assert.equal(element('phoneVerificationNumber').textContent, '0999 •••• 567');
+    assert.equal(element('phoneVerificationNumber').textContent, '0991 •••• 567');
     assert.equal(element('phoneVerificationRetry').disabled, true);
     assert.equal(element('phoneVerificationOtp').hidden, true);
     sendError = null;
@@ -781,6 +840,18 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     finishState(); await opening; pendingState = null;
     assert.equal(dialog.open, false, 'Late state recovery never reopens a dismissed modal.');
     assert.ok(stateCalls > 0);
+    await openPhoneVerification(trigger, { phone: '09991234567', phone_verification_status: 'unverified' }, { navigate: false });
+    assert.equal(phoneError.textContent, "SMS verification isn't supported for this number.", 'A saved completed number explains why sending is disabled.');
+    assert.equal(element('phoneVerificationNext').disabled, true);
+    await element('phoneVerificationClose').dispatch('click');
+    for (const phone of ['08951234567', '08961234567', '08971234567', '08981234567']) {
+      await openPhoneVerification(trigger, { phone: null, phone_verification_status: 'not_added' }, { navigate: false });
+      phoneField.value = phone; await phoneField.dispatch('input');
+      await element('phoneVerificationForm').dispatch('submit');
+      assert.equal(calls.sendArgs.at(-1)[0], phone);
+      assert.equal(element('phoneVerificationOtp').hidden, false, 'Approved 08 numbers reach the existing code screen.');
+      await element('phoneVerificationClose').dispatch('click');
+    }
     trigger.customerProfileReady = Promise.resolve(user);
     flags = { available: false, enforced: true };
     await scheduled[0](); await new Promise(resolve => setImmediate(resolve));

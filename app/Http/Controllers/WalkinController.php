@@ -203,6 +203,11 @@ class WalkinController extends Controller
             }
         }
 
+        if ($user && $user->phone === null) {
+            $data['phone'] = \App\Support\PhilippineMobile::normalize($data['phone']);
+            validator(['phone' => $data['phone']], ['phone' => \App\Support\PhilippineMobile::rules()])->validate();
+        }
+
         $owner = $user
             ? [
                 'fname' => $user->first_name,

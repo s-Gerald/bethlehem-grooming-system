@@ -511,6 +511,7 @@ class PasswordResetTest extends TestCase
 
     public function test_password_resend_cannot_bypass_the_cooldown_by_changing_ip(): void
     {
+        $this->freezeTime();
         Notification::fake();
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 60);

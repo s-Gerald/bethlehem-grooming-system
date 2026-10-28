@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
-const ownerSource = read("scripts/utils/human-name.js") + "\n" + read("scripts/utils/account-email.js") + "\n" + read("scripts/components/walk-in-owner-step.js");
+const ownerSource = read("scripts/utils/human-name.js") + "\n" + read("scripts/utils/account-email.js") + "\n" + read("scripts/utils/philippine-mobile.js") + "\n" + read("scripts/components/walk-in-owner-step.js");
 const ownerPage = read("pages/admin/walk-in-booking.html");
 const clinicSource = read("scripts/components/admin-clinic.js");
 const clinicPage = read("pages/admin/clinic.html");
@@ -19,6 +19,7 @@ function element() {
   return {
     value: "", textContent: "", innerHTML: "", disabled: false,
     events: {}, addEventListener(name, callback) { this.events[name] = callback; }, focus() {},
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
     append() {}, insertAdjacentElement() {},
     setAttribute(key, value) { attributes.set(key, value); },
     getAttribute(key) { return attributes.get(key); },
@@ -130,6 +131,25 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   for (const type of ["grooming", "clinic"]) {
     const flow = ownerFlow(type);
     await flow.initialization;
+    const phoneInput = flow.get('ownerPhoneNumber'), phoneError = flow.get('ownerPhoneNumberError');
+    for (const value of ['5', '5677567576']) {
+      phoneInput.value = value; phoneInput.events.input();
+      assert.equal(phoneError.textContent, '', 'Incomplete mobile input stays quiet.');
+    }
+    phoneInput.value = '56775675767'; phoneInput.events.input();
+    assert.equal(phoneError.textContent, 'Enter a valid Philippine mobile number.');
+    phoneInput.value = '5677567576'; phoneInput.events.input();
+    assert.equal(phoneError.textContent, '');
+    phoneInput.events.blur();
+    assert.equal(phoneError.textContent, 'Enter an 11-digit mobile number.');
+    phoneInput.value = ''; phoneInput.events.input();
+    assert.equal(phoneError.textContent, '');
+    phoneInput.events.blur(); assert.equal(phoneError.textContent, 'Enter a mobile number.');
+    for (const value of ['09181234567', '08971234567', '09221234567', '09561234567']) {
+      phoneInput.value = value; phoneInput.events.input(); assert.equal(phoneError.textContent, '');
+    }
+    phoneInput.value = '0897abc12345678'; phoneInput.selectionStart = 7; phoneInput.selectionEnd = 7;
+    phoneInput.events.input(); assert.equal(phoneInput.value, '08971234567'); assert.equal(phoneInput.selectionStart, 4);
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
     assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html");
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
@@ -147,6 +167,9 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     const values = { firstName: "Test", lastName: "Owner", middleInitial: "", phone: "09171234567", email: "" };
     flow.context.values = values;
     for (const [id, value] of Object.entries({ ownerFirstName: values.firstName, ownerLastName: values.lastName, ownerPhoneNumber: values.phone })) flow.get(id).value = value;
+    phoneInput.value = '9171234567'; phoneInput.events.input();
+    assert.equal(flow.get('walkInOwnerNextBtn').disabled, true, 'New local input needs all 11 digits before continuing.');
+    phoneInput.value = values.phone; phoneInput.events.input();
     flow.context.API.validateWalkInNewOwner = async () => { throw { code: "similar_customer_name", data: { similarCustomers: [{ fullName: "Test Owner" }] } }; };
     await vm.runInContext("validateNewOwnerAndContinue(values)", flow.context);
     assert.equal(flow.window.location.href, "", "Similar names require acknowledgement");
@@ -160,13 +183,14 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(flow.window.location.href, "./walk-in-pet-details.html");
 
     for (const recordType of ["registered", "unregistered"]) {
-      flow.context.customer = { ...values, id: 7, recordType, pets: [{ petId: 4 }] };
+      flow.context.customer = { ...values, phone: '09031234567', id: 7, recordType, pets: [{ petId: 4 }] };
       vm.runInContext("selectExistingCustomer(customer)", flow.context);
       owner = JSON.parse(flow.storage.get("walkInOwnerStep"));
       assert.equal(owner.appointmentType, type);
       assert.equal(owner.ownerRecordType, recordType);
       assert.equal(owner[recordType === "registered" ? "customerUserId" : "unregisteredCustomerId"], 7);
       assert.equal(owner.existingPets[0].petId, 4);
+      assert.equal(owner.phone, '09031234567', 'Selecting a historical contact does not rewrite or newly validate it.');
     }
 
     const resume = ownerFlow(type, { fresh: false, draft: { appointmentType: type, firstName: "Saved" } });
@@ -205,9 +229,13 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.match(read("routes/api.php"), /post\('\/admin\/clinic-walk-in',[^\n]+middleware\('clinic:intake'\)/);
 
   // Exercise the unchanged dedicated Customers creation path with an API stub.
-  const customerContext = vm.createContext({ window: {}, document: { getElementById: () => null, addEventListener() {} } });
+  const customerElements = new Map();
+  const customerContext = vm.createContext({ window: {}, document: {
+    getElementById(id) { if (!customerElements.has(id)) customerElements.set(id, element()); return customerElements.get(id); }, addEventListener() {},
+  } });
   vm.runInContext(read("scripts/utils/human-name.js"), customerContext);
   vm.runInContext(read("scripts/utils/account-email.js"), customerContext);
+  vm.runInContext(read("scripts/utils/philippine-mobile.js"), customerContext);
   const customerSource = read("scripts/components/admin-customers.js");
   vm.runInContext(customerSource.slice(customerSource.indexOf("function adminCustomers()")), customerContext);
   const customers = customerContext.adminCustomers();
@@ -219,6 +247,29 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   customerContext.API = { createUnregisteredCustomer: async (value) => { payload = value; } };
   customers.$nextTick = callback => callback();
   customers.openAddCustomerModal();
+  const phoneInput = customerContext.document.getElementById('addCustomerPhone');
+  Object.assign(customers.addCustomerModal.form, { first_name: 'Test', last_name: 'Customer' });
+  for (const value of ['9171234567', '8971234567']) {
+    phoneInput.value = value; phoneInput.events.input();
+    await customers.submitUnregisteredCustomer();
+    assert.equal(payload, undefined, 'Server-side national normalization must not bypass the 11-digit local input requirement.');
+    assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter an 11-digit mobile number.');
+  }
+  for (const value of ['56775675767', '09031234567']) {
+    phoneInput.value = value; phoneInput.events.input();
+    assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter a valid Philippine mobile number.');
+    await customers.submitUnregisteredCustomer(); assert.equal(payload, undefined);
+  }
+  phoneInput.value = '0903123456'; phoneInput.events.input();
+  assert.equal(customers.addCustomerModal.errors.phone, undefined);
+  phoneInput.value = ''; phoneInput.events.input();
+  assert.equal(customers.addCustomerModal.errors.phone, undefined);
+  phoneInput.events.blur(); assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter a mobile number.');
+  for (const value of ['09181234567', '08971234567', '09221234567']) {
+    phoneInput.value = value; phoneInput.events.input();
+    assert.equal(customers.addCustomerModal.form.phone, value);
+    assert.equal(customers.addCustomerModal.errors.phone, undefined);
+  }
   Object.assign(customers.addCustomerModal.form, { first_name: " Test ", last_name: " Customer ", phone: "09171234567" });
   await customers.submitUnregisteredCustomer();
   assert.equal(payload.first_name, "Test");

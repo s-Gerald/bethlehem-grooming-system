@@ -139,6 +139,60 @@ class AdminUnregisteredCustomerTest extends TestCase
             ->assertJsonPath('customer.bookingCount', 0);
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidMobileInputs')]
+    public function test_invalid_mobile_inputs_do_not_create_customer_records(mixed $phone): void
+    {
+        Sanctum::actingAs(User::query()->findOrFail(1), ['*']);
+        foreach (['/api/admin/customers/unregistered', '/api/admin/walk-in/customers/validate-new-owner'] as $url) {
+            $this->postJson($url, ['first_name' => 'Mobile', 'last_name' => 'Entry', 'phone' => $phone])
+                ->assertUnprocessable()->assertJsonValidationErrors('phone');
+        }
+        $this->assertDatabaseCount('unregistered_customers', 0);
+    }
+
+    public static function invalidMobileInputs(): array
+    {
+        return [['56775675767'], ['08123456789'], ['09031234567'], ['0917123456'], ['0917abc1234567'], [['09171234567']]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('recognizedMobileInputs')]
+    public function test_staff_customer_creation_and_walkin_validation_accept_all_recognized_networks(string $phone, string $local): void
+    {
+        Sanctum::actingAs(User::query()->findOrFail(2), ['*']);
+        $payload = ['first_name' => 'Mobile', 'last_name' => 'Entry', 'phone' => $phone];
+        $this->postJson('/api/admin/walk-in/customers/validate-new-owner', $payload)->assertOk();
+        $this->postJson('/api/admin/customers/unregistered', $payload)->assertCreated()->assertJsonPath('customer.phone', $local);
+        $this->postJson('/api/admin/customers/unregistered', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
+        $this->assertDatabaseHas('unregistered_customers', ['phone' => $local]);
+    }
+
+    public static function recognizedMobileInputs(): array
+    {
+        return [['09181234567', '09181234567'], ['+63 897-123-4567', '08971234567'], ['8951234567', '08951234567'],
+            ['09221234567', '09221234567'], ['08131234567', '08131234567'], ['08171234567', '08171234567'],
+            ['09271234567', '09271234567'], ['09561234567', '09561234567'], ['09661234567', '09661234567'], ['09771234567', '09771234567']];
+    }
+
+    public function test_all_new_owner_request_rules_reject_unrecognized_mobile_prefixes(): void
+    {
+        foreach ([\App\Http\Requests\StoreUnregisteredCustomerRequest::class, \App\Http\Requests\StoreWalkinRequest::class,
+            \App\Http\Requests\StoreClinicWalkinRequest::class] as $requestClass) {
+            $request = new $requestClass;
+            $rules = ['phone' => $request->rules()['phone']];
+            foreach (['56775675767', '08123456789', '09031234567', '0917123456', '0917x1234567', null] as $phone) {
+                $this->assertTrue(\Illuminate\Support\Facades\Validator::make(['phone' => $phone], $rules)->fails(), $requestClass);
+            }
+            foreach (['09171234567', '09181234567', '08971234567', '09221234567', '08131234567', '09561234567'] as $phone) {
+                $this->assertFalse(\Illuminate\Support\Facades\Validator::make(['phone' => $phone], $rules)->fails(), $requestClass.' '.$phone);
+            }
+            if ($requestClass !== \App\Http\Requests\StoreUnregisteredCustomerRequest::class) {
+                $request->merge(['owner_record_type' => 'registered']);
+                $this->assertFalse(\Illuminate\Support\Facades\Validator::make(['phone' => '09031234567'], ['phone' => $request->rules()['phone']])->fails(),
+                    'Stored selected-owner contacts remain compatible; only newly entered contacts use the prefix policy.');
+            }
+        }
+    }
+
     public function test_unregistered_tab_has_an_empty_and_searchable_response(): void
     {
         Sanctum::actingAs(User::query()->findOrFail(2), ['*']);

@@ -1,11 +1,23 @@
 import "../auth/verification-code.js?v=auth-feedback-20261028";
+import "../utils/philippine-mobile.js?v=mobile-input-20261028-v2";
 
 let dialog, trigger, codeControl, timer;
 let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0;
 let navigate = true, canVerify = false, challengeStatus = null;
 let step = "entry", candidatePhone = "", maskedDestination = "", replacing = false;
+let allowedPrefixes = [];
 
 function field(id) { return dialog.querySelector(`#phoneVerification${id}`); }
+function phoneMessage(text = "") {
+  field("PhoneError").textContent = text;
+  field("PhoneError").hidden = !text;
+  field("Phone").setAttribute("aria-invalid", String(Boolean(text)));
+}
+function phoneValidation(phone) {
+  const error = window.PhilippineMobile.formatError(phone);
+  if (error) return error;
+  return allowedPrefixes.includes(phone.slice(0, 4)) ? "" : "SMS verification isn't supported for this number.";
+}
 function message(text, input = null, success = false) {
   field("Message").textContent = text;
   field("Message").hidden = !text;
@@ -23,7 +35,7 @@ function updateControls() {
   }
   const waiting = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
   const locked = challengeStatus === "locked";
-  field("Next").disabled = busy || locked || waiting > 0;
+  field("Next").disabled = busy || locked || waiting > 0 || Boolean(phoneValidation(field("Phone").value));
   field("Next").textContent = busy ? "Please wait…" : waiting ? `Send Code in ${window.VerificationCode.formatCountdown(waiting)}` : "Send Code";
   field("Next").setAttribute("aria-busy", String(busy));
   field("Phone").disabled = busy;
@@ -71,7 +83,12 @@ function applyCooldown(error) {
 function showError(error) {
   applyCooldown(error);
   const passwordError = error.errors?.current_password?.[0];
-  const text = passwordError || error.errors?.phone?.[0] || error.message || "Unable to connect. Please try again.";
+  const phoneError = error.errors?.phone?.[0];
+  const text = passwordError || phoneError || error.message || "Unable to connect. Please try again.";
+  if (phoneError) {
+    if (step === "challenge") showPhoneEntry(true);
+    message(""); phoneMessage(phoneError); return;
+  }
   if (error.data?.code === "attempts_exceeded" || error.code === "attempts_exceeded") {
     challengeStatus = "locked"; canVerify = false;
     if (step === "challenge") showChallenge();
@@ -80,6 +97,7 @@ function showError(error) {
 }
 function showChallenge() {
   step = "challenge";
+  phoneMessage();
   const unavailable = !canVerify && !["expired", "locked"].includes(challengeStatus);
   field("Title").textContent = unavailable ? "Verification Unavailable" : "Verify Phone Number";
   field("Description").textContent = unavailable ? (challengeStatus === "failed"
@@ -93,12 +111,13 @@ function showChallenge() {
   message(challengeStatus === "locked" ? "Too many attempts. Try again later."
     : challengeStatus === "expired" ? "Code expired. Send a new code." : "");
 }
-function showPhoneEntry() {
-  if (busy) return;
+function showPhoneEntry(force = false) {
+  if (busy && force !== true) return;
   step = "entry";
   field("Title").textContent = "Change Phone Number";
   field("Description").textContent = "Enter your mobile number to continue.";
   field("Phone").value = candidatePhone;
+  phoneMessage();
   field("PasswordField").hidden = !replacing;
   field("Password").value = "";
   field("Next").type = "submit";
@@ -125,8 +144,8 @@ function confirmedSend(data, phone = candidatePhone) {
 async function requestCode(resend = false) {
   if (busy || challengeStatus === "locked" || Date.now() < resendAt) return;
   const phone = resend || step === "challenge" ? candidatePhone : field("Phone").value.trim();
-  if (!resend && !/^09\d{9}$/.test(phone)) {
-    message("Enter a valid Philippine mobile number (09XXXXXXXXX).", field("Phone")); field("Phone").focus(); return;
+  if (!resend && phoneValidation(phone)) {
+    message(""); phoneMessage(phoneValidation(phone)); field("Phone").focus(); return;
   }
   if (!resend && challenge && canVerify && phone === candidatePhone && Date.now() < expiresAt) {
     showChallenge(); updateControls(); focusStep(); return;
@@ -171,7 +190,7 @@ async function requestCode(resend = false) {
 function createDialog() {
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
-  stylesheet.href = new URL("../../css/components/verification-code.css?v=phone-20261026-recovery", import.meta.url).href;
+  stylesheet.href = new URL("../../css/components/verification-code.css?v=phone-eligibility-20261028", import.meta.url).href;
   document.head.appendChild(stylesheet);
   dialog = document.createElement("dialog");
   dialog.id = "phoneVerificationDialog";
@@ -195,8 +214,8 @@ function createDialog() {
       <div id="phoneVerificationEntry">
         <div id="phoneVerificationPhoneField">
           <label for="phoneVerificationPhone" class="phone-verification-label">Phone Number</label>
-          <input id="phoneVerificationPhone" class="phone-verification-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="09XXXXXXXXX" maxlength="11" pattern="09[0-9]{9}" aria-describedby="phoneVerificationNetwork phoneVerificationMessage" />
-          <p id="phoneVerificationNetwork" class="phone-verification-helper">Smart/TNT numbers are not supported.</p>
+          <input id="phoneVerificationPhone" class="phone-verification-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="e.g. 09171234567" maxlength="11" pattern="0[89][0-9]{9}" aria-invalid="false" aria-describedby="phoneVerificationPhoneError" />
+          <p id="phoneVerificationPhoneError" class="verification-message phone-verification-error" aria-live="polite" aria-atomic="true" hidden></p>
         </div>
         <div id="phoneVerificationPasswordField" class="phone-verification-password" hidden>
           <label for="phoneVerificationPassword" class="phone-verification-label">Current Password</label>
@@ -237,6 +256,10 @@ function createDialog() {
     session++; busy = false; window.clearInterval(timer); codeControl.clear(); field("Password").value = ""; trigger?.focus();
   });
   field("Close").addEventListener("click", closeDialog);
+  window.PhilippineMobile.bind(field("Phone"), {
+    required: false, errorId: 'phoneVerificationPhoneError', getError: phoneValidation,
+    onError: phoneMessage, onChange: updateControls,
+  });
   field("Cancel").addEventListener("click", closeDialog);
   field("Change").addEventListener("click", showPhoneEntry);
   field("Back").addEventListener("click", () => {
@@ -290,13 +313,14 @@ export async function openPhoneVerification(button, user, options = {}) {
   if (dialog.open || busy) return;
   const previousChallenge = challenge, previousCandidate = candidatePhone;
   session++; trigger = button; challenge = null; resendAt = 0; expiresAt = 0; busy = true;
+  allowedPrefixes = [];
   navigate = options.navigate !== false; canVerify = false; challengeStatus = null;
   step = "entry"; candidatePhone = ""; maskedDestination = "";
   const currentSession = session;
   codeControl.clear();
   const phone = String(user.phone ?? "").trim();
   field("Phone").value = phone;
-  field("Phone").setAttribute("aria-invalid", "false");
+  phoneMessage();
   field("PhoneField").hidden = false;
   replacing = Boolean(phone && user.phone_verification_status === "verified");
   field("PasswordField").hidden = !replacing;
@@ -311,10 +335,12 @@ export async function openPhoneVerification(button, user, options = {}) {
   field("Otp").hidden = true;
   message(""); updateControls(); dialog.showModal();
   try {
-    const { challenge: saved } = await API.getPhoneVerificationState();
+    const { challenge: saved, allowed_prefixes: prefixes } = await API.getPhoneVerificationState();
     if (session !== currentSession || !dialog.open) return;
+    allowedPrefixes = Array.isArray(prefixes) ? prefixes : [];
     if (saved) confirmedSend(saved, saved.challenge_id === previousChallenge ? previousCandidate
       : !replacing && phone && maskPhone(phone) === saved.masked_destination ? phone : "");
+    else if (field("Phone").value.length === 11) phoneMessage(phoneValidation(field("Phone").value));
   } catch (error) {
     if (session === currentSession && dialog.open) { showError(error); closeDialog(); throw error; }
   } finally {

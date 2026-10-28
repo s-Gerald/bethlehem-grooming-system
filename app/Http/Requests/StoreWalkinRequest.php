@@ -23,13 +23,7 @@ class StoreWalkinRequest extends FormRequest
         }
 
         $email = AccountEmail::normalize((string) $this->input('email', ''));
-        $phone = preg_replace('/\D+/', '', trim((string) $this->input('phone', ''))) ?? '';
-
-        if (preg_match('/^63\d{10}$/', $phone)) {
-            $phone = '0'.substr($phone, 2);
-        } elseif (preg_match('/^9\d{9}$/', $phone)) {
-            $phone = '0'.$phone;
-        }
+        $phone = \App\Support\PhilippineMobile::normalize($this->input('phone'));
 
         $this->merge([
             'fname' => is_string($this->input('fname')) ? \App\Support\HumanName::normalize($this->input('fname')) : $this->input('fname'),
@@ -54,7 +48,7 @@ class StoreWalkinRequest extends FormRequest
                 ? AccountEmail::rules(required: false, maxLength: 255)
                 : ['nullable', 'string', 'max:255'],
             'phone' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? ['required', 'string', 'max:20', 'regex:/^09\d{9}$/']
+                ? \App\Support\PhilippineMobile::rules()
                 : ['required', 'string', 'max:20', 'regex:/^[0-9+\-\s()]+$/'],
             'owner_record_type' => ['nullable', 'in:new,registered,unregistered'],
             'customer_user_id' => ['nullable', 'integer', 'exists:users,user_id'],
@@ -95,9 +89,7 @@ class StoreWalkinRequest extends FormRequest
             'pets.min' => 'At least one pet must be included in the walk-in.',
             'pets.*.services.min' => 'Each pet must have at least one grooming service selected.',
             'pets.*.services.*.service_slug.exists' => 'One or more selected services were not found. Please refresh and try again.',
-            'phone.regex' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? 'Phone number must be 11 digits and start with 09.'
-                : 'Phone number may only contain digits, spaces, +, -, and parentheses.',
+            'phone.regex' => 'Phone number may only contain digits, spaces, +, -, and parentheses.',
         ];
     }
 

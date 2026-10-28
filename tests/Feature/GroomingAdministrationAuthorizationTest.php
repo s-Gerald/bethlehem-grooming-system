@@ -1956,9 +1956,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'terms_agreed' => true, 'sedation_consent' => false,
         ];
         $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
-        $payload['phone'] = '09179998888';
+        foreach (['56775675767', '09031234567'] as $phone) {
+            $this->submitSignedGrooming('/api/admin/walk-in', [...$payload, 'phone' => $phone])->assertUnprocessable()->assertJsonValidationErrors('phone');
+        }
+        $payload['phone'] = '+63 897-999-8888';
         $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated();
-        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09179998888']);
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '08979998888']);
         $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
         $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
     }
@@ -1972,7 +1975,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'first_name' => 'Active',
             'last_name' => 'Owner',
             'email' => 'active-owner@example.test',
-            'phone' => '09170000050',
+            'phone' => '09030000050',
             'role' => 'customer',
             'is_active' => true,
             'is_archived' => false,
@@ -2021,6 +2024,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('returning_customer', true)
             ->assertJsonPath('owner.name', 'Active Owner');
+
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09030000050']);
+        $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => '09030000050']);
 
         $registeredBookingId = $registeredResponse->json('booking_id');
         $this->assertDatabaseHas('bookings', [

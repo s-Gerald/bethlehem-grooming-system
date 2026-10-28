@@ -104,15 +104,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Strip non-digits, cap at 11, enforce 09 prefix in real time.
-  phoneInput.addEventListener("input", function () {
-    const digitsOnly = this.value.replace(/\D/g, "").slice(0, 11);
-    const isValid    = digitsOnly.length === 0 || /^09\d{0,9}$/.test(digitsOnly);
-
-    this.value = digitsOnly;
-    this.setCustomValidity(
-      isValid ? "" : "Phone number must start with 09 and be 11 digits."
-    );
+  const phoneField = PhilippineMobile.bind(phoneInput, {
+    required: false, errorId: 'phoneServerError', onChange: clearMessage,
   });
 
   signupForm.addEventListener("submit", async function (e) {
@@ -136,8 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!emailField.validate()) { emailInput.focus(); return; }
 
-    if (phone && !/^09\d{9}$/.test(phone)) {
-      showMessage("Phone number must start with 09 and be exactly 11 digits (e.g. 09XXXXXXXXX).");
+    if (!phoneField.validate()) {
       phoneInput.focus();
       return;
     }
@@ -228,9 +220,11 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         const id = fieldIds[field];
+        if (id === 'phone' && phoneInput.value !== phone) { setBusyState(false); return; }
         const feedback = fieldErrors.get(id);
         const text = Array.isArray(firstError) ? firstError[0] : firstError;
-        if (feedback) { feedback.textContent = text; feedback.classList.remove("hidden"); }
+        if (id === 'phone') phoneField.setError(text);
+        else if (feedback) { feedback.textContent = text; feedback.classList.remove("hidden"); }
         else showMessage(text);
         if (id) {
           const input = document.getElementById(id);

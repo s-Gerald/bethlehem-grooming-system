@@ -296,6 +296,122 @@ class PhoneVerificationTest extends TestCase
             ->assertOk()->assertJsonPath('success', true)->json('challenge_id');
     }
 
+    #[DataProvider('unsupportedOtpPhones')]
+    public function test_unsupported_destinations_never_reserve_budget_or_change_challenges(string $phone): void
+    {
+        Http::fake();
+        $this->postJson('/api/phone-verification/send', ['phone' => $phone])->assertUnprocessable()
+            ->assertJsonPath('code', 'sms_destination_unsupported')
+            ->assertJsonPath('errors.phone.0', "SMS verification isn't supported for this number.");
+        $this->assertDatabaseCount('phone_verification_attempts', 0);
+        foreach (['global:day', 'global:hour', 'user:'.$this->customer->getKey(), 'user-day:'.$this->customer->getKey(),
+            'phone:'.hash('sha256', $phone), 'phone-day:'.hash('sha256', $phone), 'ip:'.hash('sha256', '127.0.0.1')] as $key) {
+            $this->assertSame(0, \Illuminate\Support\Facades\RateLimiter::attempts('sms:'.$key));
+        }
+        Http::assertNothingSent();
+    }
+
+    #[DataProvider('unsupportedOtpPhones')]
+    public function test_historical_unsupported_resends_cannot_bypass_policy(string $phone): void
+    {
+        $this->fakeSend();
+        $id = $this->send();
+        DB::table('phone_verification_attempts')->update(['phone' => $phone]);
+        $before = (array) DB::table('phone_verification_attempts')->first();
+        $this->travel(60)->seconds();
+        $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertUnprocessable()
+            ->assertJsonPath('code', 'sms_destination_unsupported');
+        $this->assertSame($before, (array) DB::table('phone_verification_attempts')->first());
+        $this->assertSame(1, \Illuminate\Support\Facades\RateLimiter::attempts('sms:global:day'));
+        $this->assertSame(0, \Illuminate\Support\Facades\RateLimiter::attempts('sms:phone:'.hash('sha256', $phone)));
+        Http::assertSentCount(1);
+    }
+
+    #[DataProvider('invalidOtpPhones')]
+    public function test_malformed_otp_destinations_are_distinct_from_unsupported_prefixes(string $phone, string $message): void
+    {
+        Http::fake();
+        $this->postJson('/api/phone-verification/send', ['phone' => $phone])->assertUnprocessable()
+            ->assertJsonPath('code', 'phone_format_invalid')
+            ->assertJsonPath('errors.phone.0', $message);
+        $this->assertDatabaseCount('phone_verification_attempts', 0);
+        $this->assertSame(0, \Illuminate\Support\Facades\RateLimiter::attempts('sms:global:day'));
+        Http::assertNothingSent();
+    }
+
+    public static function invalidOtpPhones(): array
+    {
+        return [['0917123456', 'Enter an 11-digit mobile number.'], ['091712345678', 'Enter an 11-digit mobile number.'],
+            ['07171234567', 'Enter a valid Philippine mobile number.'], ['0917x123456', 'Enter an 11-digit mobile number.'],
+            ['+6389512345678', 'Enter an 11-digit mobile number.']];
+    }
+
+    public static function unsupportedOtpPhones(): array
+    {
+        return array_map(fn ($prefix) => [$prefix.'1234567'], [
+            '0907', '0908', '0909', '0918', '0919', '0920', '0928', '0939', '0947', '0949', '0950', '0961', '0998', '0999',
+            '0922', '0923', '0924', '0925', '0931', '0932', '0933', '0812', '0912', '0980',
+        ]);
+    }
+
+    #[DataProvider('supportedOtpPhones')]
+    public function test_approved_prefixes_normalize_send_and_verify(string $phone): void
+    {
+        $this->fakeSend('123456', $phone);
+        $input = str_starts_with($phone, '08') ? '+63 '.substr($phone, 1, 3).'-'.substr($phone, 4) : $phone;
+        $id = $this->postJson('/api/phone-verification/send', ['phone' => $input])->assertOk()->json('challenge_id');
+        $this->verify($id)->assertOk();
+        $this->assertSame($phone, $this->customer->fresh()->phone);
+        $this->assertNotNull($this->customer->fresh()->phone_verified_at);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/send_otp') && $r['phone_number'] === $phone);
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/verify_otp') && $r['phone_number'] === $phone);
+        Http::assertSentCount(2);
+    }
+
+    public static function supportedOtpPhones(): array
+    {
+        return array_map(fn ($prefix) => [$prefix.'1234567'], [
+            '0905', '0906', '0915', '0916', '0917', '0926', '0935', '0945', '0953', '0955', '0965', '0975', '0995',
+            '0895', '0896', '0897', '0898', '0991', '0992', '0993', '0994',
+        ]);
+    }
+
+    public function test_policy_change_blocks_resend_without_mutating_existing_challenge_or_budgets(): void
+    {
+        $this->fakeSend();
+        $id = $this->send();
+        $this->verify($id, '000000')->assertUnprocessable();
+        $before = (array) DB::table('phone_verification_attempts')->first();
+        config(['services.sms_verification.allowed_prefixes' => ['0895']]);
+        $this->travel(60)->seconds();
+        $this->postJson('/api/phone-verification/resend', ['challenge_id' => $id])->assertUnprocessable()
+            ->assertJsonPath('code', 'sms_destination_unsupported');
+        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertUnprocessable()
+            ->assertJsonPath('code', 'sms_destination_unsupported');
+        $this->assertSame($before, (array) DB::table('phone_verification_attempts')->first());
+        $this->assertSame(1, \Illuminate\Support\Facades\RateLimiter::attempts('sms:global:day'));
+        Http::assertSentCount(1);
+        $this->getJson('/api/phone-verification/state')->assertOk()->assertJsonPath('allowed_prefixes', ['0895']);
+    }
+
+    public function test_unsupported_replacement_preserves_verified_ownership_and_access(): void
+    {
+        Http::fake();
+        config(['services.sms_verification.enforced' => true]);
+        foreach (['09991234567', '08951234567'] as $phone) {
+            DB::table('users')->update(['phone' => $phone, 'phone_verified_at' => now()]);
+            $before = $this->customer->fresh()->getAttributes();
+            Sanctum::actingAs($this->customer->fresh());
+            $this->postJson('/api/phone-verification/send', ['phone' => '09071234567', 'current_password' => 'anything'])
+                ->assertUnprocessable()->assertJsonPath('code', 'sms_destination_unsupported');
+            $this->assertSame($before, $this->customer->fresh()->getAttributes());
+            foreach (['/api/booking/store', '/api/clinic/pre-register'] as $url) $this->postJson($url, [])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('phone_verification_attempts', 0);
+        $this->assertSame(0, \Illuminate\Support\Facades\RateLimiter::attempts('sms:global:day'));
+        Http::assertNothingSent();
+    }
+
     private function verify(string $id, string $code = '123456')
     {
         return $this->postJson('/api/phone-verification/verify', ['challenge_id' => $id, 'code' => $code]);
@@ -338,19 +454,19 @@ class PhoneVerificationTest extends TestCase
         $this->fakeSend();
         $old = $this->send();
         $this->verify($old, '000000')->assertUnprocessable();
-        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])
+        $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])
             ->assertStatus(429)->assertJsonPath('resend_after', 60);
         Http::assertSentCount(1);
         $this->travel(60)->seconds();
-        $this->fakeSend('654321', '09991234567');
-        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertOk()->json('challenge_id');
+        $this->fakeSend('654321', '09911234567');
+        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertOk()->json('challenge_id');
         $this->assertNotSame($old, $new);
         $this->assertSame(1, DB::table('phone_verification_attempts')->value('failed_attempts'));
         $this->assertNull($this->customer->fresh()->phone);
         $this->verify($old)->assertStatus(409);
         $this->verify($new, '123456')->assertUnprocessable();
         $this->verify($new, '654321')->assertOk();
-        $this->assertSame('09991234567', $this->customer->fresh()->phone);
+        $this->assertSame('09911234567', $this->customer->fresh()->phone);
         $this->assertNotNull($this->customer->fresh()->phone_verified_at);
         Http::assertSentCount(2);
     }
@@ -361,13 +477,13 @@ class PhoneVerificationTest extends TestCase
         $old = $this->send();
         for ($i = 0; $i < 4; $i++) $this->verify($old, '000000')->assertUnprocessable();
         $this->travel(60)->seconds();
-        $this->fakeSend('654321', '09991234567');
-        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertOk()->json('challenge_id');
+        $this->fakeSend('654321', '09911234567');
+        $new = $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertOk()->json('challenge_id');
         $this->assertSame(4, DB::table('phone_verification_attempts')->value('failed_attempts'));
         $this->verify($new, '000000')->assertUnprocessable();
         $this->verify($new, '654321')->assertStatus(429);
         $this->travel(60)->seconds();
-        $this->postJson('/api/phone-verification/send', ['phone' => '09221234567'])->assertStatus(429);
+        $this->postJson('/api/phone-verification/send', ['phone' => '08951234567'])->assertStatus(429);
         Http::assertSentCount(1);
         $this->assertNull($this->customer->fresh()->phone_verified_at);
     }
@@ -644,7 +760,7 @@ class PhoneVerificationTest extends TestCase
         foreach (['test-token', '123456', '09171234567', 'private request'] as $secret) {
             $this->assertStringNotContainsString($secret, json_encode($this->smsDiagnostics));
         }
-        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertStatus(429);
+        $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertStatus(429);
         $this->assertSame(1, $calls);
         $this->assertNull($this->customer->fresh()->phone_verified_at);
     }
@@ -721,9 +837,9 @@ class PhoneVerificationTest extends TestCase
             $t->id();
             $t->string('phone');
         });
-        DB::table('pending_customer_registrations')->insert(['phone' => '09991234567']);
+        DB::table('pending_customer_registrations')->insert(['phone' => '09911234567']);
         $this->travel(60)->seconds();
-        $this->postJson('/api/phone-verification/send', ['phone' => '09991234567'])->assertUnprocessable();
+        $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertUnprocessable();
         Http::assertSentCount(1);
     }
 

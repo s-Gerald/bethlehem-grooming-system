@@ -1053,9 +1053,12 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'pet_name' => 'Buddy', 'species' => 'Dog', 'common_concerns' => ['Routine check-up'], 'terms_agreed' => true,
         ];
         $this->postJson('/api/admin/clinic-walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
-        $payload['phone'] = '09179998888';
+        foreach (['56775675767', '09031234567'] as $phone) {
+            $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'phone' => $phone])->assertUnprocessable()->assertJsonValidationErrors('phone');
+        }
+        $payload['phone'] = '+63 897-999-8888';
         $this->postJson('/api/admin/clinic-walk-in', $payload)->assertCreated();
-        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09179998888']);
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '08979998888']);
         $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
         $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
     }

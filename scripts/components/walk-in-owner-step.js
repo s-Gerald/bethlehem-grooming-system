@@ -37,7 +37,6 @@ const flowParams = new URLSearchParams(window.location.search);
 const appointmentType = (flowParams.get("flow") || flowParams.get("source")) === "clinic"
   ? "clinic"
   : "grooming";
-let hasSubmittedOnce = false;
 let customerSearchTimer = null;
 let customerSearchRequestId = 0;
 let customerSearchResults = [];
@@ -60,26 +59,6 @@ function normalizeMiddleInitial(value) {
   return normalizeText(value).replace(/\.+$/, "").toUpperCase();
 }
 
-function normalizePhoneNumber(value) {
-  const rawValue = normalizeText(value);
-  const digits = rawValue.replace(/\D/g, "");
-
-  if (/^63\d{10}$/.test(digits)) {
-    return `0${digits.slice(2)}`;
-  }
-
-  if (/^9\d{9}$/.test(digits)) {
-    return `0${digits}`;
-  }
-
-  return rawValue;
-}
-
-function isValidPhoneNumber(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return digits.length === 11 && digits.startsWith("09");
-}
-
 function getAppointmentType() {
   return appointmentType;
 }
@@ -98,7 +77,7 @@ function getFormValues() {
     firstName: elements.firstName.value,
     lastName: elements.lastName.value,
     middleInitial: normalizeMiddleInitial(elements.middleInitial.value),
-    phone: normalizePhoneNumber(elements.phone.value),
+    phone: elements.phone.value.trim(),
     email: AccountEmail.normalize(elements.email.value),
   };
 }
@@ -221,7 +200,7 @@ function selectExistingCustomer(customer) {
     firstName: normalizeText(customer.firstName),
     lastName: normalizeText(customer.lastName),
     middleInitial: normalizeMiddleInitial(customer.middleName),
-    phone: normalizePhoneNumber(customer.phone),
+    phone: PhilippineMobile.normalize(customer.phone),
     email: normalizeText(customer.email),
   };
 
@@ -260,11 +239,9 @@ function validateOwner(values) {
     }
   }
 
-  if (!values.phone) {
-    errors.phone = "Phone number is required.";
-  } else if (!isValidPhoneNumber(values.phone)) {
-    errors.phone = "Phone number must be 11 digits and start with 09.";
-  }
+  const unchangedPhone = selectedCustomer?.phone && values.phone === PhilippineMobile.normalize(selectedCustomer.phone);
+  const phoneError = unchangedPhone ? '' : PhilippineMobile.validate(values.phone);
+  if (phoneError) errors.phone = phoneError;
 
   const unchangedEmail = selectedCustomer && values.email === AccountEmail.normalize(selectedCustomer.email);
   const emailError = unchangedEmail ? '' : AccountEmail.validate(values.email, { required: false, maxLength: 255 });
@@ -307,6 +284,7 @@ function setFieldError(fieldName, message) {
     elements.email.setAttribute('aria-invalid', String(Boolean(message)));
     AccountEmail.showError(elements.email, message);
   }
+  if (fieldName === 'phone') PhilippineMobile.showError(elements.phone, message);
   if (message) {
     errorElement.textContent = message;
     errorElement.className = "mt-2 text-sm text-red-600";
@@ -317,19 +295,12 @@ function setFieldError(fieldName, message) {
   errorElement.className = "mt-2 hidden text-sm text-red-600";
 }
 
-function renderValidationErrors(values, { showAll = false } = {}) {
-  const errors = validateOwner(values);
+function renderValidationErrors(errors) {
   const requestedFields = Object.keys(elements.fieldErrors);
 
-  requestedFields.forEach((fieldName) => {
-    const hasValue = Boolean(values[fieldName] || "");
-    const shouldShow = showAll || hasSubmittedOnce || hasValue;
-    if (showAll || !['email', 'firstName', 'lastName'].includes(fieldName)) setFieldError(fieldName, shouldShow ? errors[fieldName] || "" : "");
-  });
-
-  const firstError = requestedFields.map((fieldName) => errors[fieldName]).find(Boolean);
-
-  if (showAll && firstError) elements[requestedFields.find(name => errors[name])]?.focus();
+  requestedFields.forEach(fieldName => setFieldError(fieldName, errors[fieldName] || ''));
+  const firstError = requestedFields.find(name => errors[name]);
+  if (firstError) elements[firstError]?.focus();
 
   hideMessage();
 }
@@ -382,17 +353,10 @@ function syncNextButtonState() {
 function handleInput(event) {
   hideSimilarOwnerWarning();
   if (event.target !== elements.phone) selectedCustomer = null;
-  const values = getFormValues();
-  const fieldName = event.target?.name;
-
-  if (fieldName === "phone") {
-    elements.phone.value = normalizePhoneNumber(elements.phone.value);
-  }
-
   if (event.target === elements.email) {
     setFieldError('email', '');
-    hideMessage();
-  } else renderValidationErrors(values, { showAll: false });
+  }
+  hideMessage();
   syncNextButtonState();
 }
 
@@ -456,7 +420,6 @@ async function validateNewOwnerAndContinue(values, confirmSimilarName = false) {
 async function handleSubmit(event) {
   event.preventDefault();
   if (ownerValidationInProgress) return;
-  hasSubmittedOnce = true;
 
   if (!selectedCustomer) {
     elements.firstName.value = HumanName.normalize(elements.firstName.value);
@@ -467,7 +430,7 @@ async function handleSubmit(event) {
   const errors = validateOwner(values);
 
   if (Object.keys(errors).length > 0) {
-    renderValidationErrors(values, { showAll: true });
+    renderValidationErrors(errors);
     syncNextButtonState();
     return;
   }
@@ -491,12 +454,16 @@ function bindEvents() {
   AccountEmail.bind(elements.email, { required: false, maxLength: 255, errorId: 'ownerEmailAddressError',
     isUnchanged: () => selectedCustomer && AccountEmail.normalize(elements.email.value) === AccountEmail.normalize(selectedCustomer.email),
   });
+  PhilippineMobile.bind(elements.phone, {
+    errorId: 'ownerPhoneNumberError',
+    isUnchanged: () => selectedCustomer?.phone && PhilippineMobile.normalize(elements.phone.value) === PhilippineMobile.normalize(selectedCustomer.phone),
+    onChange: () => handleInput({ target: elements.phone }),
+  });
 
   [
     elements.firstName,
     elements.lastName,
     elements.middleInitial,
-    elements.phone,
     elements.email,
   ].forEach((input) => {
     input.addEventListener("input", handleInput);
@@ -537,6 +504,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   initializeWalkInFlow();
   bindEvents();
-  renderValidationErrors(getFormValues(), { showAll: false });
+  hideMessage();
   syncNextButtonState();
 });

@@ -25,13 +25,7 @@ class StoreClinicWalkinRequest extends FormRequest
         }
 
         $email = AccountEmail::normalize((string) $this->input('email', ''));
-        $phone = preg_replace('/\D+/', '', trim((string) $this->input('phone', ''))) ?? '';
-
-        if (preg_match('/^63\d{10}$/', $phone)) {
-            $phone = '0'.substr($phone, 2);
-        } elseif (preg_match('/^9\d{9}$/', $phone)) {
-            $phone = '0'.$phone;
-        }
+        $phone = \App\Support\PhilippineMobile::normalize($this->input('phone'));
 
         $this->merge([
             'fname' => is_string($this->input('fname')) ? \App\Support\HumanName::normalize($this->input('fname')) : $this->input('fname'),
@@ -56,7 +50,7 @@ class StoreClinicWalkinRequest extends FormRequest
                 ? AccountEmail::rules(required: false, maxLength: 255)
                 : ['nullable', 'string', 'max:255'],
             'phone' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? ['required', 'string', 'max:20', 'regex:/^09\d{9}$/']
+                ? \App\Support\PhilippineMobile::rules()
                 : ['required', 'string', 'max:20', 'regex:/^[0-9+\-\s()]+$/'],
             'owner_record_type' => ['nullable', 'in:new,registered,unregistered'],
             'customer_user_id' => ['nullable', 'integer', 'exists:users,user_id'],
@@ -101,9 +95,7 @@ class StoreClinicWalkinRequest extends FormRequest
             'common_concerns.required' => 'Select at least one common concern.',
             'common_concerns.min' => 'Select at least one common concern.',
             'common_concerns.*.in' => 'Select a valid common concern.',
-            'phone.regex' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? 'Phone number must be 11 digits and start with 09.'
-                : 'Phone number may only contain digits, spaces, +, -, and parentheses.',
+            'phone.regex' => 'Phone number may only contain digits, spaces, +, -, and parentheses.',
         ];
     }
 

@@ -38,7 +38,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       const classes = new Set(['hidden']);
       const handlers = {};
       elements.set(id, {
-        id, value: '', textContent: '', disabled: false, handlers, attributes: {},
+        id, value: '', textContent: '', validationMessage: '', disabled: false, handlers, attributes: {},
         classList: {
           add(name) { classes.add(name); }, remove(name) { classes.delete(name); },
           contains(name) { return classes.has(name); },
@@ -94,7 +94,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   if (signup) {
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
-  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
+  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   ready();
@@ -110,6 +110,15 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const mobile = page({ signup: true }).window.PhilippineMobile;
+  const mobilePolicy = JSON.parse(fs.readFileSync(path.join(root, 'resources/data/philippine-mobile-policy.json'), 'utf8'));
+  for (let prefix = 800; prefix < 1000; prefix++) {
+    const localPrefix = `0${prefix}`;
+    assert.equal(!mobile.validate(`${localPrefix}1234567`), mobilePolicy.prefixes.includes(localPrefix), 'Built frontend policy must match the shared source.');
+  }
+  assert.equal(mobile.validate('09171234567\n'), 'Enter an 11-digit mobile number.');
+  assert.equal(mobile.validate('', {required:false}), '');
+  assert.equal(mobile.validate(''), 'Enter a mobile number.');
   const formatter = page().window.VerificationCode.formatCountdown;
   for (const [seconds, expected] of [[576, '9m 36s'], [120, '2m 00s'], [65, '1m 05s'], [60, '1m 00s'], [45, '45s'], [10, '10s'], [1, '1s'], [0, ''], [-10, ''], [3600, '1h 00m 00s'], [80760, '22h 26m 00s']]) {
     assert.equal(formatter(seconds), expected);
@@ -148,7 +157,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.ok(signupHtml.indexOf('for="email"') < signupHtml.indexOf('for="username"'));
 
   for (const editing of [false, true]) {
-    for (const phone of ['', '09171234567']) {
+    for (const phone of ['', '09171234567', '08951234567', '08961234567', '08971234567', '08981234567', '09991234567', '09071234567', '09221234567', '08131234567', '08171234567', '09271234567', '09561234567', '09661234567', '09771234567']) {
       const signup = page({ signup: true, editing, phone });
       signup.dispatch('phone', 'input');
       assert.equal(signup.element('phone').validationMessage, '');
@@ -192,10 +201,18 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(staleEmail.element('emailError').textContent, '');
   assert.equal(staleEmail.element('email').attributes['aria-invalid'], 'false');
 
-  const invalidPhone = page({ signup: true, phone: '08123456789' });
+  for (const phone of ['56775675767', '12345678901', '08123456789', '09031234567']) {
+    const invalid = page({ signup: true, phone });
+    await invalid.dispatch('signupForm', 'submit');
+    assert.equal(invalid.calls.length, 0);
+    assert.equal(invalid.element('phoneServerError').textContent, 'Enter a valid Philippine mobile number.');
+    invalid.element('phone').value = phone.slice(0, -1); invalid.dispatch('phone', 'input');
+    assert.equal(invalid.element('phoneServerError').textContent, '');
+  }
+  const invalidPhone = page({ signup: true, phone: '0917123456' });
   await invalidPhone.dispatch('signupForm', 'submit');
   assert.equal(invalidPhone.calls.length, 0);
-  assert.match(invalidPhone.element('signupMessage').textContent, /Phone number must/);
+  assert.equal(invalidPhone.element('phoneServerError').textContent, 'Enter an 11-digit mobile number.');
   invalidPhone.element('phone').value = '';
   invalidPhone.dispatch('phone', 'input');
   assert.equal(invalidPhone.element('phone').validationMessage, '');

@@ -188,8 +188,7 @@ class AuthController extends Controller
             ],
             'phone' => [
                 'nullable',
-                'string',
-                'regex:/^09\d{9}$/',
+                ...\App\Support\PhilippineMobile::rules(required: false),
                 ...($checkAvailability ? [Rule::unique('users', 'phone')->ignore($legacy?->getKey(), 'user_id'),
                     Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey())] : []),
             ],
@@ -239,7 +238,7 @@ class AuthController extends Controller
 
         if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
             $field = 'email';
-        } elseif (preg_match('/^(09|\+639)\d{9}$/', $identifier)) {
+        } elseif (preg_match('/^(0[89]|\+63[89])[0-9]{9}$/D', $identifier)) {
             $field = 'phone';
         } else {
             $field = 'username';

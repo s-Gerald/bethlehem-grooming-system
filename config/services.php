@@ -11,6 +11,11 @@ return [
     'sms_verification' => [
         'available' => env('SMS_VERIFICATION_AVAILABLE', false),
         'enforced' => env('SMS_VERIFICATION_ENFORCED', false),
+        // SMS eligibility only: portability means prefixes do not prove the current carrier.
+        'allowed_prefixes' => [
+            '0905', '0906', '0915', '0916', '0917', '0926', '0935', '0945', '0953', '0955', '0965', '0975', '0995',
+            '0895', '0896', '0897', '0898', '0991', '0992', '0993', '0994',
+        ],
         'resend_seconds' => 60,
         'max_attempts' => 5,
         'attempt_window_seconds' => 3600,

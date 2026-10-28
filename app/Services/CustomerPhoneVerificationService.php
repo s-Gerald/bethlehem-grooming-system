@@ -36,7 +36,7 @@ class CustomerPhoneVerificationService
     public static function required(User $user): bool
     {
         return $user->role === 'customer'
-            && (! preg_match('/^09[0-9]{9}$/D', (string) $user->phone) || ! $user->phone_verified_at);
+            && (! preg_match('/^0[89][0-9]{9}$/D', (string) $user->phone) || ! $user->phone_verified_at);
     }
 
     public function state(User $user): array
@@ -47,10 +47,10 @@ class CustomerPhoneVerificationService
         if (! $attempt || in_array($attempt->status, ['consumed', 'superseded'], true)
             || $user->phone !== $attempt->original_phone
             || $user->getRawOriginal('phone_verified_at') !== $attempt->original_verified_at) {
-            return ['challenge' => null];
+            return ['challenge' => null, 'allowed_prefixes' => config('services.sms_verification.allowed_prefixes', [])];
         }
 
-        return ['challenge' => $this->timing($attempt)];
+        return ['challenge' => $this->timing($attempt), 'allowed_prefixes' => config('services.sms_verification.allowed_prefixes', [])];
     }
 
     public function cancel(User $user, string $generation): array
@@ -71,6 +71,17 @@ class CustomerPhoneVerificationService
     public function send(User $user, string $phone, string $ip, ?string $generation = null, #[\SensitiveParameter] ?string $password = null): array
     {
         $this->available();
+
+        if ($error = \App\Support\PhilippineMobile::formatError($phone)) {
+            self::fail($error, 422, 'phone_format_invalid', [
+                'errors' => ['phone' => [$error]],
+            ]);
+        }
+        if (! in_array(substr($phone, 0, 4), config('services.sms_verification.allowed_prefixes', []), true)) {
+            self::fail("SMS verification isn't supported for this number.", 422, 'sms_destination_unsupported', [
+                'errors' => ['phone' => ["SMS verification isn't supported for this number."]],
+            ]);
+        }
 
         return $this->locked($user->getKey(), $phone, function () use ($user, $phone, $ip, $generation, $password) {
             $user = User::findOrFail($user->getKey());

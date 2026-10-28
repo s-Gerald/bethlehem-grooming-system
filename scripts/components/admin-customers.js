@@ -195,6 +195,14 @@ function adminCustomers() {
       };
       AccountEmail.showError(document.getElementById('addCustomerEmail'), '');
       this.$nextTick(() => {
+        PhilippineMobile.bind(document.getElementById('addCustomerPhone'), {
+          errorId: 'addCustomerPhoneError',
+          onChange: value => { this.addCustomerModal.form.phone = value; },
+          onError: message => {
+            if (message) this.addCustomerModal.errors.phone = [message];
+            else delete this.addCustomerModal.errors.phone;
+          },
+        }).clear();
         for (const [id, field] of [['addCustomerFirstName', 'first_name'], ['addCustomerLastName', 'last_name']]) {
           HumanName.bind(document.getElementById(id), message => {
             if (message) this.addCustomerModal.errors[field] = [message];
@@ -224,7 +232,7 @@ function adminCustomers() {
     validateAddCustomerForm() {
       const form = this.addCustomerModal.form;
       const errors = {};
-      const phone = this.normalizeCustomerPhone(form.phone);
+      const phone = String(form.phone ?? '').trim();
       const email = String(form.email || "").trim();
 
       for (const field of ['first_name', 'last_name']) {
@@ -232,7 +240,9 @@ function adminCustomers() {
         const error = HumanName.validate(form[field]);
         if (error) errors[field] = [error];
       }
-      if (!/^09\d{9}$/.test(phone)) errors.phone = ["Phone number must be 11 digits and start with 09."];
+      const phoneError = PhilippineMobile.validate(phone);
+      if (phoneError) errors.phone = [phoneError];
+      PhilippineMobile.showError(document.getElementById('addCustomerPhone'), phoneError);
       const emailError = AccountEmail.validate(email, { required: false });
       if (emailError) {
         errors.email = [emailError];
@@ -281,6 +291,7 @@ function adminCustomers() {
         }
         const errors = { ...(err.errors || {}) };
         if (AccountEmail.normalize(form.email) !== (payload.email || '')) delete errors.email;
+        if (this.normalizeCustomerPhone(form.phone) !== payload.phone) delete errors.phone;
         this.addCustomerModal.errors = errors;
         if (Object.keys(errors).length) this.$nextTick(() => document.getElementById({ first_name: 'addCustomerFirstName', last_name: 'addCustomerLastName', phone: 'addCustomerPhone', email: 'addCustomerEmail' }[Object.keys(errors)[0]])?.focus());
         this.addCustomerModal.error = err.errors
@@ -951,12 +962,7 @@ function adminCustomers() {
     },
 
     normalizeCustomerPhone(value) {
-      const raw = String(value || "").trim();
-      const digits = raw.replace(/\D/g, "");
-
-      if (/^63\d{10}$/.test(digits)) return `0${digits.slice(2)}`;
-      if (/^9\d{9}$/.test(digits)) return `0${digits}`;
-      return digits;
+      return PhilippineMobile.normalize(value);
     },
 
     formatTextValue(value) {

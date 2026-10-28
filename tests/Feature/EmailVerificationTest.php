@@ -1075,14 +1075,33 @@ class EmailVerificationTest extends TestCase
 
     public static function invalidSignupPhones(): array
     {
-        return [['09123'], ['08123456789'], ['091234567890'], ['not-a-phone'], [9123456789], [[]], [['09123456789']]];
+        return [['09123'], ['56775675767'], ['12345678901'], ['08123456789'], ['09031234567'], ['07123456789'], ["09123\n456789"], ['091234567890'], ['not-a-phone'], [9123456789], [[]], [['09123456789']]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('validSignupPhones')]
+    public function test_mobile_registration_accepts_all_networks_without_phone_otp(string $phone): void
+    {
+        Notification::fake();
+        \Illuminate\Support\Facades\Http::fake();
+        $response = $this->registerInBrowser([...$this->registrationPayload(), 'phone' => $phone])->assertAccepted();
+        $pending = PendingCustomerRegistration::firstOrFail();
+        $this->assertSame($phone, $pending->phone);
+        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response),
+            'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        $this->assertDatabaseHas('users', ['phone' => $phone, 'phone_verified_at' => null]);
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public static function validSignupPhones(): array
+    {
+        return array_map(fn ($prefix) => [$prefix.'1234567'], ['0917', '0895', '0896', '0897', '0898', '0991', '0999', '0907', '0922', '0813', '0817', '0927', '0956', '0966', '0977']);
     }
 
     public function test_pending_phone_can_be_removed_and_added_with_rotating_edit_credentials(): void
     {
         Notification::fake();
         $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        foreach (['', '09178889999'] as $phone) {
+        foreach (['', '08958889999'] as $phone) {
             $pending = PendingCustomerRegistration::firstOrFail();
             $oldCode = $this->verificationTokenSentTo($pending);
             $this->travel(61)->seconds();
@@ -1096,7 +1115,23 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::firstOrFail();
         $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])
             ->assertOk();
-        $this->assertDatabaseHas('users', ['phone' => '09178889999', 'phone_verified_at' => null]);
+        $this->assertDatabaseHas('users', ['phone' => '08958889999', 'phone_verified_at' => null]);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('ditoLoginIdentifiers')]
+    public function test_registered_dito_number_can_start_existing_email_login_confirmation(string $identifier): void
+    {
+        Notification::fake();
+        User::factory()->create(['phone' => '08951234567', 'password_hash' => Hash::make('strong-password')]);
+        $this->postJson('/api/sign-in', ['identifier' => $identifier, 'password' => 'strong-password'])
+            ->assertAccepted()->assertJsonPath('code', 'login_confirmation_required');
+        $this->assertDatabaseCount('login_email_challenges', 1);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public static function ditoLoginIdentifiers(): array
+    {
+        return [['08951234567'], ['+638951234567']];
     }
 
 

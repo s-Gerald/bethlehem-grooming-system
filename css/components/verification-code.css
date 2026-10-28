@@ -276,7 +276,7 @@ body:has(.phone-verification-dialog[open]) { overflow: hidden; }
   border-radius: .5rem;
 }
 .phone-verification-phone[aria-invalid="true"] { border-color: #b91c1c; }
-.phone-verification-helper { margin: .5rem 0 0; color: #64748b; font-size: .75rem; line-height: 1.5; }
+.phone-verification-dialog .phone-verification-error { margin: .5rem 0 0; text-align: left; }
 .phone-verification-password { margin-top: 1rem; }
 .phone-verification-recipient { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .25rem .75rem; margin-top: .5rem; }
 .phone-verification-recipient .verification-recipient { margin: 0; }

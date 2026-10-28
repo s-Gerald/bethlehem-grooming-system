@@ -14,7 +14,6 @@ class PhoneVerificationController extends Controller
         if (str_starts_with($phone, '+63')) {
             $phone = '0'.substr($phone, 3);
         }
-        validator(['phone' => $phone], ['phone' => ['required', 'regex:/^09[0-9]{9}$/D']])->validate();
 
         return response()->json($verification->send($request->user(), $phone, $request->ip(), null, $data['current_password'] ?? null));
     }

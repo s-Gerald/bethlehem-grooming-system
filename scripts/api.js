@@ -1800,7 +1800,7 @@ var API = (() => {
 
   async function signIn(identifier, password, remember = true) {
     // POST /api/sign-in
-    // Accepts email, phone (09... or +639...), or username. Saves to the
+    // Accepts email, local/international mobile phone, or username. Saves to the
     // correct token key based on role. remember=false uses sessionStorage so
     // the session dies when the tab closes.
     const normalized = normalizePhoneLikeIdentifier(identifier);
@@ -3176,9 +3176,9 @@ var API = (() => {
     const digits = String(value || "").replace(/\D/g, "");
 
     if (!digits) return null;
-    if (/^09\d{9}$/.test(digits)) return digits;
-    if (/^639\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
-    if (/^9\d{9}$/.test(digits)) return `0${digits}`;
+    if (/^0[89]\d{9}$/.test(digits)) return digits;
+    if (/^63[89]\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
+    if (/^[89]\d{9}$/.test(digits)) return `0${digits}`;
 
     return null;
   }
