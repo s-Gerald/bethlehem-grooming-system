@@ -1722,7 +1722,18 @@ var API = (() => {
       error.status = 429;
       error.code = data.code || null;
       error.data = data;
-      error.retryAfter = Number(response.headers.get("Retry-After")) || data.retry_after || null;
+      const retryHeader = response.headers.get('Retry-After');
+      const seconds = value => {
+        if (!['number', 'string'].includes(typeof value) || String(value).trim() === '') return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? Math.ceil(parsed) : null;
+      };
+      // HTTP-date durations use the server's Date, never the device clock.
+      const serverDate = Date.parse(response.headers.get('Date'));
+      const retryDate = retryHeader && !/^[\d.+-]+$/.test(retryHeader.trim()) ? Date.parse(retryHeader) : NaN;
+      error.retryAfter = seconds(retryHeader)
+        ?? (Number.isFinite(serverDate) && Number.isFinite(retryDate) ? Math.max(0, Math.ceil((retryDate - serverDate) / 1000)) : null)
+        ?? seconds(data.retry_after);
       error.errors = null;
       throw error;
     }

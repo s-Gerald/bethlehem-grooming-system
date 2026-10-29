@@ -1092,6 +1092,132 @@ async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
   }
 }
 
+function signInPageHarness({ storage = new MemoryStorage(), signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; } } = {}) {
+  let elapsed = 0, wall = 100000, nextTimer = 0;
+  const intervals = new Map(), lifecycle = {}, events = {}, elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) {
+      const classes = new Set();
+      elements.set(id, { value: '', textContent: '', disabled: false, hidden: true, type: 'password', attributes: {}, handlers: {},
+        set innerHTML(value) { this.textContent = value; }, get innerHTML() { return this.textContent; },
+        classList: { add(c) { classes.add(c); }, toggle(c, on) { if (on) classes.add(c); else classes.delete(c); } },
+        setAttribute(k, v) { this.attributes[k] = v; }, focus() {},
+        addEventListener(k, f) { const previous = this.handlers[k]; this.handlers[k] = e => { previous?.(e); return f.call(this, e); }; },
+      });
+    }
+    return elements.get(id);
+  }
+  const API = { signIn };
+  const context = { API, URL, URLSearchParams, sessionStorage: storage,
+    Date: { now: () => wall }, performance: { now: () => elapsed },
+    setInterval(f) { const id = ++nextTimer; intervals.set(id, f); return id; }, clearInterval(id) { intervals.delete(id); },
+    window: { location: { search: '', replace() {} }, addEventListener(k, f) { lifecycle[k] = f; } },
+    document: { getElementById: element, querySelector: () => null,
+      addEventListener(k, f) { if (k === 'DOMContentLoaded') f(); else events[k] = f; } },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/sign-in.js'), 'utf8'), context);
+  element('identifier').value = 'customer@example.com'; element('password').value = 'password';
+  return { element, API, intervals, lifecycle, storage,
+    submit: () => element('signin').handlers.submit({ preventDefault() {} }),
+    edit(value) { element('identifier').value = value; element('identifier').handlers.input?.(); },
+    advance(ms, { tick = true, wallDelta = ms } = {}) { elapsed += ms; wall += wallDelta; if (tick) for (const f of [...intervals.values()]) f(); },
+    visible() { events.visibilitychange?.(); },
+  };
+}
+
+async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses() {
+  const key = 'signInLockoutUntil';
+  for (const stored of ['36100000', 'Infinity', 'NaN', '-1', 'garbage', '999999999999999999999']) {
+    const page = signInPageHarness({ storage: new MemoryStorage({ [key]: stored }) });
+    assert.equal(page.element('sharedSignInSubmit').disabled, false, 'Stored timestamps cannot restrict sign-in');
+    assert.equal(page.intervals.size, 0);
+    assert.equal(page.storage.getItem(key), null, 'Remove the obsolete stored timer');
+    await page.submit();
+    assert.equal(page.element('sharedSignInMessage').textContent, 'Invalid credentials.');
+  }
+  for (const code of ['email_rate_limited', 'email_cooldown', 'login_code_locked', 'sign_in_busy', null]) {
+    const page = signInPageHarness({ signIn: async () => { throw { status: 429, code, retryAfter: 43200, message: 'Please try again later.' }; } });
+    await page.submit();
+    assert.equal(page.intervals.size, 0, `${code} is not a password cooldown`);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(page.element('sharedSignInMessage').textContent, 'Please try again later.');
+  }
+  for (const duration of [null, undefined, '', 'bad', Infinity, NaN, -1, 0, 43200]) {
+    const page = signInPageHarness({ signIn: async () => { throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: duration }; } });
+    await page.submit();
+    assert.equal(page.intervals.size, 0, `Invalid duration ${duration} must not create a timer`);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+  }
+  let requests = 0;
+  const storage = new MemoryStorage();
+  const page = signInPageHarness({ storage, signIn: async () => { requests++; throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: 60 }; } });
+  await page.submit();
+  assert.equal(page.element('sharedSignInMessage').textContent, 'Too many attempts. Try again in 1m 00s.');
+  assert.equal(page.element('sharedSignInSubmit').disabled, true);
+  assert.equal(page.element('identifier').disabled, false);
+  assert.equal(page.element('password').disabled, false);
+  assert.equal(storage.getItem(key), null);
+  assert.equal(page.intervals.size, 1);
+  await page.submit(); assert.equal(requests, 1);
+  const announcement = page.element('sharedSignInStatus').textContent;
+  page.advance(1000, { wallDelta: -36000000 });
+  assert.match(page.element('sharedSignInMessage').textContent, /59s/);
+  assert.equal(page.element('sharedSignInStatus').textContent, announcement, 'Do not announce every second');
+  page.lifecycle.pagehide({ persisted: true });
+  page.advance(58000, { tick: false });
+  page.lifecycle.pageshow({ persisted: true });
+  assert.match(page.element('sharedSignInMessage').textContent, /1s/);
+  assert.equal(page.intervals.size, 1);
+  page.advance(1000, { tick: false }); page.visible();
+  assert.equal(page.element('sharedSignInSubmit').disabled, false);
+  assert.equal(page.element('sharedSignInMessage').textContent, '');
+  assert.equal(page.intervals.size, 0);
+  await page.submit(); assert.equal(requests, 2, 'Server response can establish a renewed restriction');
+
+  const reloaded = signInPageHarness({ storage, signIn: async () => { throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: 23 }; } });
+  assert.equal(reloaded.element('sharedSignInSubmit').disabled, false);
+  await reloaded.submit();
+  assert.match(reloaded.element('sharedSignInMessage').textContent, /23s/);
+  reloaded.edit('someone-else@example.com');
+  assert.equal(reloaded.element('sharedSignInSubmit').disabled, false);
+  assert.equal(reloaded.intervals.size, 0);
+  reloaded.API.signIn = async () => { throw { status: 429, code: 'sign_in_ip_cooldown', retryAfter: 30 }; };
+  await reloaded.submit(); reloaded.edit('another@example.com');
+  assert.equal(reloaded.element('sharedSignInSubmit').disabled, true, 'IP restrictions apply across identifiers');
+  reloaded.advance(30000);
+  assert.equal(reloaded.element('sharedSignInSubmit').disabled, false);
+
+  let reject;
+  const delayed = signInPageHarness({ signIn: () => new Promise((_resolve, fail) => { reject = fail; }) });
+  const pending = delayed.submit(); delayed.edit('other@example.com');
+  reject({ status: 429, code: 'sign_in_password_cooldown', retryAfter: 300 }); await pending;
+  assert.equal(delayed.element('sharedSignInSubmit').disabled, false, 'Old identifier response cannot block an edited identifier');
+  assert.equal(delayed.intervals.size, 0);
+
+  const expired = signInPageHarness({ signIn: async () => { throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: 60 }; } });
+  await expired.submit(); expired.advance(60000, { tick: false });
+  expired.API.signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; };
+  await expired.submit(); expired.advance(1000);
+  assert.equal(expired.element('sharedSignInMessage').textContent, 'Invalid credentials.', 'An expired suspended timer cannot erase the next response');
+  assert.equal(expired.intervals.size, 0);
+}
+
+async function testApiRetryAfterParsingPreservesSecurityLimitClassification() {
+  for (const [header, date, body, expected] of [
+    ['23', null, 60, 23], [null, null, 60, 60], ['bad', null, 60, 60],
+    ['Infinity', null, -1, null], ['-5', null, 'bad', null], ['0', null, 60, 0],
+    ['Wed, 01 Jan 2025 00:01:00 GMT', 'Wed, 01 Jan 2025 00:00:00 GMT', 99, 60],
+    ['Tue, 31 Dec 2024 23:59:00 GMT', 'Wed, 01 Jan 2025 00:00:00 GMT', 99, 0],
+  ]) {
+    const browser = createBrowser({ fetchImpl: async () => ({ ...jsonResponse(429, {code: 'sign_in_password_cooldown', retry_after: body}),
+      headers: { get: name => name === 'Retry-After' ? header : name === 'Date' ? date : null } }) });
+    await assert.rejects(browser.API.signIn('customer@example.com', 'wrong'), error => {
+      assert.equal(error.retryAfter, expected); assert.equal(error.code, 'sign_in_password_cooldown'); return true;
+    });
+  }
+}
+
 async function testPasswordResetRecovery() {
   const key = "pendingPasswordResetEmail";
   const storage = new MemoryStorage();
@@ -1129,6 +1255,7 @@ async function testPasswordResetRecovery() {
     const context = {
       URLSearchParams,
       Date: { now: () => now },
+      performance: { now: () => now },
       sessionStorage: storage,
       window: { location, addEventListener(name, handler) { lifecycle[name] = handler; }, setInterval(callback) { intervals.set(1, callback); return 1; }, clearInterval(id) { intervals.delete(id); } },
       API: {
@@ -1815,6 +1942,8 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testLoginCodeResendCooldownAndLimit();
   await testLoginDeliveryErrorsAndPrivilegedRedirects();
   await testPasswordResetRecovery();
+  await testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses();
+  await testApiRetryAfterParsingPreservesSecurityLimitClassification();
   testStaticAuthContracts();
   console.log("frontend auth/session regression checks passed");
 })().catch((error) => {

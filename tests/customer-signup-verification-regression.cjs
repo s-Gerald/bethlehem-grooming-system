@@ -79,11 +79,12 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 60 }; },
     async registrationSession() { return null; },
-    async signIn() { throw {status: 429, retryAfter: 576}; },
+    async signIn() { throw {status: 429, code: 'sign_in_password_cooldown', retryAfter: 576}; },
   };
   const context = vm.createContext({
     window, document, API, URLSearchParams, Event,
     Date: { now: () => now, parse: Date.parse },
+    performance: { now: () => now },
     setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
     setInterval: window.setInterval, clearInterval: window.clearInterval,
     localStorage: {

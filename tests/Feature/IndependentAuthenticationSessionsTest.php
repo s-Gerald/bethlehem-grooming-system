@@ -429,6 +429,83 @@ class IndependentAuthenticationSessionsTest extends TestCase
         }
     }
 
+    public function test_overlapping_password_failures_cannot_skip_or_extend_the_fifth_attempt_cooldown(): void
+    {
+        $migration = require base_path('database/migrations/0001_01_01_000001_create_cache_table.php');
+        $migration->up();
+        config(['cache.default' => 'database']);
+        $payload = ['identifier' => 'customer@example.test', 'password' => 'wrong'];
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $directory = sys_get_temp_dir().'/bethlehem-signin-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/signin.sqlite';
+        $first = $second = null;
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                [$script, $database, $role] = $argv;
+                $directory = realpath(dirname($database));
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-signin-[a-f0-9]{12}\z/', basename($directory))
+                    || basename($database) !== 'signin.sqlite' || !is_file($database)) {
+                    throw new RuntimeException('Only the disposable sign-in test database is allowed.');
+                }
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'cache.default' => 'database']);
+                Illuminate\Support\Facades\DB::purge('sqlite');
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('Sign-in overlap barrier timed out.');
+                };
+                if ($role === 'first') {
+                    Illuminate\Support\Facades\DB::listen(function ($query) use ($directory, $wait) {
+                        if (!str_contains($query->sql, 'from "users"')) return;
+                        touch($directory.'/first-check'); // Pair cache lock is held before the user lookup.
+                        $wait($directory.'/second-done');
+                    });
+                } else $wait($directory.'/first-check');
+                $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+                $request = fn () => Illuminate\Http\Request::create('/api/sign-in', 'POST',
+                    ['identifier' => 'customer@example.test', 'password' => 'wrong'],
+                    server: ['REMOTE_ADDR' => '127.0.0.1', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+                $response = $kernel->handle($request());
+                $data = json_decode($response->getContent(), true);
+                touch($directory.'/second-done');
+                echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'code' => $data['code'] ?? null,
+                    'retry_after' => $data['retry_after'] ?? null]);
+                PHP;
+            $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
+                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'database',
+                'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
+            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first'], base_path(), $environment);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second'], base_path(), $environment);
+            $first->setTimeout(15); $second->setTimeout(15);
+            $first->start(); $second->start(); $first->wait(); $second->wait();
+            $this->assertTrue($first->isSuccessful(), $first->getErrorOutput().$first->getOutput());
+            $this->assertTrue($second->isSuccessful(), $second->getErrorOutput().$second->getOutput().' First: '.$first->getOutput());
+            $one = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $two = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertNotSame($one['pid'], $two['pid']);
+            $this->assertSame('sign_in_password_cooldown', $one['code']);
+            $this->assertSame(429, $one['status']);
+            $this->assertSame(60, $one['retry_after']);
+            $this->assertSame('sign_in_busy', $two['code'], 'The concurrent request cannot race the counter update.');
+            $this->assertSame(429, $two['status']);
+        } finally {
+            $first?->stop(); $second?->stop();
+            foreach (['signin.sqlite', 'signin.sqlite-journal', 'signin.sqlite-wal', 'signin.sqlite-shm', 'first-check', 'second-done'] as $file) {
+                if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
+            }
+            rmdir($directory);
+            $migration->down();
+        }
+    }
+
     public function test_expired_privileged_session_requires_the_existing_full_email_otp_login(): void
     {
         $token = $this->login('admin');

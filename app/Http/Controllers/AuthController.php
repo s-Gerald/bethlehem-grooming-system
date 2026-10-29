@@ -11,6 +11,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use App\Services\AuthenticationEmailPolicy;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -143,22 +144,6 @@ class AuthController extends Controller
 
         $identifier = $data['identifier'];
         $normalizedIdentifier = Str::lower($identifier);
-        $throttleKey = 'sign-in:'.hash('sha256', $normalizedIdentifier.'|'.$request->ip());
-        $ipThrottleKey = 'sign-in-ip:'.hash('sha256', (string) $request->ip());
-
-        if (RateLimiter::tooManyAttempts($throttleKey, 5)
-            || RateLimiter::tooManyAttempts($ipThrottleKey, 25)) {
-            $seconds = max(
-                RateLimiter::availableIn($throttleKey),
-                RateLimiter::availableIn($ipThrottleKey),
-            );
-
-            return response()->json([
-                'success' => false,
-                'message' => "Too many sign-in attempts. Try again in {$seconds} seconds.",
-                'retry_after' => $seconds,
-            ], 429)->header('Retry-After', (string) $seconds);
-        }
 
         if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
             $field = 'email';
@@ -173,45 +158,86 @@ class AuthController extends Controller
             $field === 'phone' && str_starts_with($identifier, '+63') => '0'.substr($identifier, 3),
             default => $identifier,
         };
-        $lookupColumn = $field === 'email' ? AccountEmail::lookupColumn() : $field;
-        $user = User::whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
-        $pendingRegistration = $user
-            ? null
-            : PendingCustomerRegistration::query()->unexpired()->whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
+        // Isolate by identifier AND IP: a remote attacker cannot lock out an account globally.
+        $throttleKey = 'sign-in-password:'.hash('sha256', Str::lower($lookupIdentifier).'|'.$request->ip());
+        $ipThrottleKey = 'sign-in-ip:'.hash('sha256', (string) $request->ip());
+        $lock = Cache::lock($throttleKey.':lock', 30);
+        if (! $lock->get()) return $this->signInBusyResponse();
 
-        if ($user?->requiresPasswordSetup()) {
-            RateLimiter::clear($throttleKey);
+        try {
+            $state = Cache::get($throttleKey, ['failures' => 0, 'level' => 0, 'blocked_until' => 0]);
+            $seconds = max(0, $state['blocked_until'] - now()->timestamp);
+            // Keep this precheck read-only: tooManyAttempts may reset an expired
+            // counter while another identifier is starting the next IP window.
+            if (RateLimiter::attempts($ipThrottleKey) >= 25) {
+                $ipSeconds = RateLimiter::availableIn($ipThrottleKey);
+                if ($ipSeconds > 0) {
+                    return $this->signInCooldownResponse(max($seconds, $ipSeconds), $ipSeconds >= $seconds);
+                }
+            }
+            if ($seconds > 0) return $this->signInCooldownResponse($seconds);
 
-            return response()->json([
-                'success' => false,
-                'code' => 'password_setup_required',
-                'message' => 'Set up your password using the link sent to your email before signing in.',
-            ], 403);
-        }
+            $lookupColumn = $field === 'email' ? AccountEmail::lookupColumn() : $field;
+            $user = User::whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
+            $pendingRegistration = $user
+                ? null
+                : PendingCustomerRegistration::query()->unexpired()->whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
 
-        $passwordHash = $user?->password_hash
-            ?? $pendingRegistration?->password_hash
-            ?? '$2y$12$phAn9O3fw5n4sHb8YADptOZicYefzNF1mfQlOwFAKzEQ533R6y4iq';
-        $passwordMatches = Hash::check($data['password'], $passwordHash);
-
-        if ((! $user && ! $pendingRegistration) || ! $passwordMatches) {
-            RateLimiter::hit($throttleKey, 60);
-            RateLimiter::hit($ipThrottleKey, 60);
-            if ($user && in_array($user->role, ['admin', 'staff'], true)) {
-                // The attempted account is the subject, never a falsely authenticated actor.
-                app(\App\Services\ActivityRecorder::class)->record('sign_in_failed', 'system', 'account',
-                    (string) $user->getKey(), 'Staff sign-in', [], false, null, null, null, 'failed');
+            if ($user?->requiresPasswordSetup()) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'password_setup_required',
+                    'message' => 'Set up your password using the link sent to your email before signing in.',
+                ], 403);
             }
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials.',
-            ], 401);
+            $passwordHash = $user?->password_hash
+                ?? $pendingRegistration?->password_hash
+                ?? '$2y$12$phAn9O3fw5n4sHb8YADptOZicYefzNF1mfQlOwFAKzEQ533R6y4iq';
+            $passwordMatches = Hash::check($data['password'], $passwordHash);
+
+            if ((! $user && ! $pendingRegistration) || ! $passwordMatches) {
+                // Serialize only the short IP update, never password hashing or email delivery.
+                $ipLock = Cache::lock($ipThrottleKey.':lock', 5);
+                if (! $ipLock->get()) return $this->signInBusyResponse();
+                try {
+                    if (RateLimiter::tooManyAttempts($ipThrottleKey, 25)) {
+                        return $this->signInCooldownResponse(RateLimiter::availableIn($ipThrottleKey), true);
+                    }
+                    $ipAttempts = RateLimiter::hit($ipThrottleKey, 60);
+                    $state['failures']++;
+                    if ($state['failures'] >= 5) {
+                        $state['level'] = min(3, $state['level'] + 1);
+                        $state['failures'] = 0;
+                        $state['blocked_until'] = now()->timestamp + [1 => 60, 2 => 300, 3 => 900][$state['level']];
+                    }
+                    // Sliding inactivity expiry; blocked requests never refresh this record.
+                    Cache::put($throttleKey, $state, 900);
+                } finally {
+                    $ipLock->release();
+                }
+                if ($user && in_array($user->role, ['admin', 'staff'], true)) {
+                    // The attempted account is the subject, never a falsely authenticated actor.
+                    app(\App\Services\ActivityRecorder::class)->record('sign_in_failed', 'system', 'account',
+                        (string) $user->getKey(), 'Staff sign-in', [], false, null, null, null, 'failed');
+                }
+                $seconds = max(0, $state['blocked_until'] - now()->timestamp);
+                if ($ipAttempts >= 25) {
+                    $ipSeconds = RateLimiter::availableIn($ipThrottleKey);
+                    return $this->signInCooldownResponse(max($seconds, $ipSeconds), $ipSeconds >= $seconds);
+                }
+                if ($seconds > 0) return $this->signInCooldownResponse($seconds);
+
+                return response()->json(['success' => false, 'message' => 'Invalid credentials.'], 401);
+            }
+
+            // Password proof clears only this pair, even if account or email controls reject next.
+            Cache::forget($throttleKey);
+        } finally {
+            $lock->release();
         }
 
         if ($pendingRegistration) {
-            RateLimiter::clear($throttleKey);
-
             return response()->json([
                 'success' => false,
                 'code' => 'email_not_verified',
@@ -257,8 +283,6 @@ class AuthController extends Controller
                 ], 503);
             }
 
-            RateLimiter::clear($throttleKey);
-
             return response()->json([
                 'success' => true,
                 'code' => 'login_confirmation_required',
@@ -272,7 +296,6 @@ class AuthController extends Controller
             ], 202);
         }
 
-        RateLimiter::clear($throttleKey);
         $token = app(\App\Services\AccountSessionService::class)->issue($user);
 
         return response()->json([
@@ -298,6 +321,25 @@ class AuthController extends Controller
                 'staff_permissions' => $user->staffPermissions(),
             ],
         ], 200);
+    }
+
+    private function signInCooldownResponse(int $seconds, bool $ipLimited = false)
+    {
+        $seconds = max(1, $seconds);
+        return response()->json([
+            'success' => false,
+            'code' => $ipLimited ? 'sign_in_ip_cooldown' : 'sign_in_password_cooldown',
+            'message' => 'Too many attempts. Please wait before signing in again.',
+            'retry_after' => $seconds,
+        ], 429)->header('Retry-After', (string) $seconds)->header('Cache-Control', 'no-store');
+    }
+
+    private function signInBusyResponse()
+    {
+        return response()->json([
+            'success' => false, 'code' => 'sign_in_busy',
+            'message' => 'A sign-in attempt is in progress. Please try again.',
+        ], 429)->header('Retry-After', '1')->header('Cache-Control', 'no-store');
     }
 
     // ── LOGOUT ────────────────────────────────────────────

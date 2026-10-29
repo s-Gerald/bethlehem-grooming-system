@@ -90,15 +90,27 @@ document.addEventListener("DOMContentLoaded", () => {
   let countdownTimer = null;
   let busy = false;
   let lockoutUntil = 0;
+  let lockoutIdentifier = null;
+  const statusBox = document.getElementById('sharedSignInStatus');
+  const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
+
+  // Old versions persisted any 429, including day-long email quotas. Storage
+  // cannot establish a password restriction; only a new server response can.
+  try { sessionStorage.removeItem('signInLockoutUntil'); } catch { /* Storage is optional. */ }
+  identifierInput.addEventListener('input', () => {
+    if (lockoutIdentifier !== null && lockoutIdentifier !== currentIdentifier()) clearCountdown();
+  });
 
   signInForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (busy || Date.now() < lockoutUntil) return;
+    if (lockoutUntil && performance.now() >= lockoutUntil) clearCountdown();
+    if (busy || performance.now() < lockoutUntil) return;
     dismissReplacementAlert();
 
     const identifier = identifierInput.value.trim();
     const password   = passwordInput.value;
     const rememberMe = rememberMeCheckbox?.checked ?? true;
+    const submittedIdentifier = currentIdentifier();
 
     if (!identifier || !password) {
       showMessage("error", "Please fill in both fields.");
@@ -126,8 +138,15 @@ document.addEventListener("DOMContentLoaded", () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       window.location.href = dest;
     } catch (error) {
-      if (error.status === 429 && (error.retryAfter || error.retry_after)) {
-        startCountdown(error.retryAfter || error.retry_after);
+      if (error.status === 429 && ['sign_in_password_cooldown', 'sign_in_ip_cooldown'].includes(error.code)) {
+        if (error.code === 'sign_in_ip_cooldown' || submittedIdentifier === currentIdentifier()) {
+          const seconds = error.retryAfter;
+          if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && seconds <= 900) {
+            startCountdown(seconds, error.code === 'sign_in_ip_cooldown' ? null : submittedIdentifier);
+          } else {
+            showMessage('lockout', 'Too many attempts. Please try again.');
+          }
+        }
       } else if (error.emailNotVerified) {
         const email = error.email ?? "";
         showMessage(
@@ -165,47 +184,63 @@ document.addEventListener("DOMContentLoaded", () => {
     history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
   }
 
-  function startCountdown(seconds) {
+  function clearCountdown() {
     clearInterval(countdownTimer);
     countdownTimer = null;
-    lockoutUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
-    try { sessionStorage.setItem("signInLockoutUntil", String(lockoutUntil)); } catch { /* UX only; server enforces the lockout. */ }
+    lockoutUntil = 0;
+    lockoutIdentifier = null;
+    setBusyState(busy);
+    showMessage(null, '');
+  }
 
-    function tick() {
-      const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
-      if (remaining <= 0) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-        setBusyState(false);
-        showMessage(null, "");
-        return;
-      }
-      submitButton.disabled = true;
-      showMessage("lockout", `Too many attempts. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`);
+  function tickCountdown() {
+    const remaining = Math.max(0, Math.ceil((lockoutUntil - performance.now()) / 1000));
+    if (remaining <= 0) {
+      clearCountdown();
+      if (statusBox) statusBox.textContent = 'You can sign in again.';
+      return;
     }
+    submitButton.disabled = true;
+    messageBox.textContent = `Too many attempts. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`;
+  }
 
-    tick();
-    if (lockoutUntil > Date.now()) countdownTimer = setInterval(tick, 1000);
+  function startCountdown(seconds, identifier) {
+    clearInterval(countdownTimer);
+    // A monotonic deadline cannot grow when the device clock moves backwards.
+    lockoutUntil = performance.now() + seconds * 1000;
+    lockoutIdentifier = identifier;
+    showMessage('lockout', '');
+    tickCountdown();
+    if (statusBox) statusBox.textContent = messageBox.textContent;
+    countdownTimer = setInterval(tickCountdown, 1000);
   }
 
   function setBusyState(isBusy) {
     busy = isBusy;
-    submitButton.disabled = isBusy || Date.now() < lockoutUntil;
+    submitButton.disabled = isBusy || performance.now() < lockoutUntil;
     const label = document.getElementById("signInBtnLabel");
     if (label) label.textContent = isBusy ? "Signing In..." : "Sign In";
   }
 
-  try {
-    const saved = Number(sessionStorage.getItem("signInLockoutUntil")) || 0;
-    if (saved > Date.now()) startCountdown(Math.ceil((saved - Date.now()) / 1000));
-  } catch { /* Storage is optional. */ }
-  window.addEventListener("pagehide", () => clearInterval(countdownTimer));
+  window.addEventListener('pagehide', () => {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  });
   window.addEventListener("pageshow", event => {
-    if (event.persisted) startCountdown(Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000)));
+    if (!event.persisted || !lockoutUntil) return;
+    tickCountdown();
+    if (lockoutUntil && countdownTimer === null) countdownTimer = setInterval(tickCountdown, 1000);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (lockoutUntil) tickCountdown();
   });
 
   function showMessage(type, text, prefillEmail = "") {
     if (type && replacementAlert && !replacementAlert.hidden) return;
+    if (statusBox) statusBox.textContent = '';
+    messageBox.setAttribute('role', type === 'lockout' ? 'timer' : type === 'error' ? 'alert' : 'status');
+    messageBox.setAttribute('aria-live', type === 'lockout' ? 'off' : type === 'error' ? 'assertive' : 'polite');
+    if (type === 'lockout' && statusBox) statusBox.textContent = text;
     if (!type) {
       messageBox.className = "hidden rounded-2xl border px-4 py-3 text-sm";
       messageBox.innerHTML = "";

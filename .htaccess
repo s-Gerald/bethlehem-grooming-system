@@ -1,3 +1,9 @@
+<IfModule mod_headers.c>
+    <Files "sign-in.html">
+        Header always set Cache-Control "no-store, private, max-age=0, must-revalidate"
+    </Files>
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 

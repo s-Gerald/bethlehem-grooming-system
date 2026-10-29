@@ -10,6 +10,8 @@ use App\Notifications\VerifyEmailNotification;
 use Illuminate\Contracts\Notifications\Dispatcher;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
@@ -909,7 +911,7 @@ class EmailVerificationTest extends TestCase
         ]);
 
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.10']);
-        for ($attempt = 1; $attempt <= 5; $attempt++) {
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
             $this->postJson('/api/sign-in', [
                 'identifier' => $user->email,
                 'password' => 'wrong-password',
@@ -930,6 +932,160 @@ class EmailVerificationTest extends TestCase
             ])
             ->assertAccepted()
             ->assertJsonPath('requires_login_confirmation', true);
+    }
+
+    public function test_sign_in_password_cooldowns_progress_immediately_and_blocked_requests_do_not_extend_them(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->create();
+        $payload = ['identifier' => $user->email, 'password' => 'wrong-password'];
+        foreach ([60, 300, 900] as $duration) {
+            foreach (range(1, 4) as $attempt) {
+                $this->postJson('/api/sign-in', $payload)->assertUnauthorized()->assertHeaderMissing('Retry-After');
+            }
+            $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()
+                ->assertJsonPath('code', 'sign_in_password_cooldown')->assertJsonPath('retry_after', $duration)
+                ->assertHeader('Retry-After', (string) $duration)->assertHeader('Cache-Control', 'no-store, private');
+            $this->travel($duration - 1)->seconds();
+            foreach (range(1, 3) as $blocked) {
+                // No cookie or browser state is required for server enforcement.
+                $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()
+                    ->assertJsonPath('retry_after', 1)->assertHeader('Retry-After', '1');
+            }
+            $this->travel(1)->seconds();
+        }
+        // The full 15-minute cooldown is also 15 minutes without a checked failure.
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+    }
+
+    public function test_sign_in_escalation_resets_after_exactly_fifteen_minutes_without_a_failure(): void
+    {
+        $this->freezeTime();
+        $payload = ['identifier' => User::factory()->create()->email, 'password' => 'wrong-password'];
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests();
+        $this->travel(899)->seconds();
+        $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->travel(900)->seconds();
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+    }
+
+    public function test_verified_password_resets_pair_state_even_when_login_email_is_rate_limited(): void
+    {
+        Notification::fake();
+        $this->freezeTime();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $payload = ['identifier' => $user->email, 'password' => 'wrong-password'];
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests();
+        $this->travel(60)->seconds();
+        $this->postJson('/api/sign-in', [...$payload, 'password' => 'strong-password'])->assertAccepted();
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', [...$payload, 'password' => 'strong-password'])
+            ->assertTooManyRequests()->assertJsonPath('code', 'email_cooldown');
+        foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+    }
+
+    public function test_shared_ip_budget_survives_success_and_does_not_escalate_other_identifiers(): void
+    {
+        Notification::fake();
+        $this->freezeTime();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        foreach (range(1, 5) as $account) {
+            foreach (range(1, 4) as $attempt) {
+                $this->postJson('/api/sign-in', ['identifier' => "missing-$account", 'password' => 'wrong'])
+                    ->assertUnauthorized();
+            }
+        }
+        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
+        foreach (range(1, 4) as $attempt) {
+            $this->postJson('/api/sign-in', ['identifier' => 'another-missing', 'password' => 'wrong'])->assertUnauthorized();
+        }
+        $this->postJson('/api/sign-in', ['identifier' => 'another-missing', 'password' => 'wrong'])
+            ->assertTooManyRequests()->assertJsonPath('code', 'sign_in_ip_cooldown')->assertJsonPath('retry_after', 60);
+        $this->postJson('/api/sign-in', ['identifier' => 'other-staff', 'password' => 'correct'])
+            ->assertTooManyRequests()->assertJsonPath('code', 'sign_in_ip_cooldown');
+        $this->travel(60)->seconds();
+        $this->postJson('/api/sign-in', ['identifier' => 'other-staff', 'password' => 'wrong'])->assertUnauthorized();
+    }
+
+    public function test_phone_formats_share_the_same_password_cooldown(): void
+    {
+        $user = User::factory()->create(['phone' => '09171234567']);
+        foreach (range(1, 4) as $attempt) {
+            $this->postJson('/api/sign-in', ['identifier' => $user->phone, 'password' => 'wrong'])->assertUnauthorized();
+        }
+        $this->postJson('/api/sign-in', ['identifier' => '+639171234567', 'password' => 'wrong'])
+            ->assertTooManyRequests()->assertJsonPath('retry_after', 60);
+    }
+
+    public function test_long_email_quota_is_not_a_password_cooldown_and_keeps_password_errors_generic(): void
+    {
+        $this->freezeTime();
+        $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
+        $history = array_fill(0, 12, now()->timestamp - 43200);
+        Cache::put('auth-email:destination:'.hash('sha256', strtolower($user->email)), $history, 86400);
+        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])
+            ->assertTooManyRequests()->assertJsonPath('code', 'email_rate_limited')
+            ->assertJsonPath('retry_after', 43200)->assertHeader('Retry-After', '43200');
+        foreach ([$user->email, 'missing-account'] as $identifier) {
+            $this->postJson('/api/sign-in', ['identifier' => $identifier, 'password' => 'wrong'])
+                ->assertUnauthorized()->assertJsonPath('message', 'Invalid credentials.');
+        }
+    }
+
+    public function test_pair_cooldown_is_not_misclassified_as_a_long_shared_ip_restriction(): void
+    {
+        $this->freezeTime();
+        $payload = ['identifier' => User::factory()->create()->email, 'password' => 'wrong'];
+        foreach ([60, 300] as $duration) {
+            foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+            $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', $duration);
+            if ($duration === 60) $this->travel(60)->seconds();
+        }
+        $ipKey = 'sign-in-ip:'.hash('sha256', '127.0.0.1');
+        foreach (range(1, 20) as $attempt) RateLimiter::hit($ipKey, 60);
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()
+            ->assertJsonPath('code', 'sign_in_password_cooldown')->assertJsonPath('retry_after', 300);
+        $this->postJson('/api/sign-in', ['identifier' => 'different-staff', 'password' => 'wrong'])
+            ->assertTooManyRequests()->assertJsonPath('code', 'sign_in_ip_cooldown')->assertJsonPath('retry_after', 60);
+    }
+
+    public function test_password_cooldown_uses_persistent_database_cache_and_serializes_contending_attempts(): void
+    {
+        $migration = require base_path('database/migrations/0001_01_01_000001_create_cache_table.php');
+        $migration->up();
+        config(['cache.default' => 'database']);
+        $this->app->forgetInstance(\Illuminate\Cache\RateLimiter::class);
+        RateLimiter::clearResolvedInstance('cache.rate_limiter');
+        $this->freezeTime();
+        $user = User::factory()->create();
+        $payload = ['identifier' => $user->email, 'password' => 'wrong'];
+        $key = 'sign-in-password:'.hash('sha256', strtolower($user->email).'|127.0.0.1');
+        $lock = Cache::lock($key.':lock', 30);
+        $this->assertTrue($lock->get());
+        try {
+            $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('code', 'sign_in_busy');
+            $this->assertNull(Cache::get($key), 'A contending request must not mutate password counters.');
+        } finally {
+            $lock->release();
+        }
+        try {
+            foreach ([60, 300, 900] as $duration) {
+                foreach (range(1, 4) as $attempt) $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+                $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', $duration);
+                // Recreate cache repositories as another PHP request would.
+                app('cache')->forgetDriver('database');
+                $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('retry_after', $duration);
+                $this->travel($duration)->seconds();
+            }
+            $this->postJson('/api/sign-in', $payload)->assertUnauthorized();
+        } finally {
+            $migration->down();
+        }
     }
 
     public function test_resend_is_generic_and_issues_a_link_for_existing_unverified_users(): void
