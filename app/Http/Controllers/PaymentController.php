@@ -88,18 +88,15 @@ class PaymentController extends Controller
         $submittedSizes = collect($petSizes)->mapWithKeys(fn ($petSize) => [
             (int) $petSize['booking_pet_id'] => $petSize['size'],
         ]);
-        $editableServices = BookingService::query()
+        $allServices = BookingService::query()
             ->where('booking_id', $booking->booking_id)
-            ->whereIn('booking_pet_id', $editableBookingPetIds)
             ->with(['service', 'bookingPet'])
             ->lockForUpdate()
             ->get()
             ->keyBy('booking_service_id');
+        $editableServices = $allServices->whereIn('booking_pet_id', $editableBookingPetIds);
         $editableServiceIds = $editableServices->keys()->map(fn ($id) => (int) $id);
-        $allServiceIds = BookingService::query()
-            ->where('booking_id', $booking->booking_id)
-            ->pluck('booking_service_id')
-            ->map(fn ($id) => (int) $id);
+        $allServiceIds = $allServices->keys()->map(fn ($id) => (int) $id);
         $submittedPrices = collect($servicePrices)->mapWithKeys(fn ($line) => [
             (int) $line['booking_service_id'] => $this->paymentReadiness()->centsToMoney(
                 $this->paymentReadiness()->moneyToCents($line['amount']),
@@ -168,7 +165,10 @@ class PaymentController extends Controller
                 ->where('booking_id', $booking->booking_id)
                 ->where('booking_service_id', $bookingServiceId)
                 ->update(['price_at_booking' => $amount]);
+            $line->price_at_booking = $amount;
         }
+
+        $booking->setRelation('bookingServices', $allServices->values());
 
         return $warnings;
     }
@@ -211,6 +211,11 @@ class PaymentController extends Controller
             $bookingPet->confirmed_size = $size;
             $bookingPet->save();
         }
+        if ($booking->relationLoaded('bookingPets')) {
+            $booking->setRelation('bookingPets', $booking->bookingPets->map(
+                fn ($pet) => $bookingPets->get($pet->booking_pet_id) ?? $pet,
+            ));
+        }
     }
 
     private function prepareGroomingPayment(Booking $booking, array $data, bool $early): array
@@ -218,20 +223,22 @@ class PaymentController extends Controller
         $summary = null;
         if ($early) {
             $bookingPets = $booking->bookingPets()
-                ->where('grooming_state', '!=', BookingPet::GROOMING_STATE_CANCELLED)
-                ->with('pet:pet_id,pet_name')
+                ->with('pet')
                 ->lockForUpdate()
                 ->get();
+            $booking->setRelation('bookingPets', $bookingPets);
+            $activePetIds = $bookingPets->where('grooming_state', '!=', BookingPet::GROOMING_STATE_CANCELLED)
+                ->pluck('booking_pet_id');
             $servicePriceWarnings = $this->updateBookingServicePrices(
                 $booking,
                 $data['service_prices'] ?? [],
-                $bookingPets->pluck('booking_pet_id')->all(),
+                $activePetIds->all(),
                 $data['pet_sizes'] ?? [],
             );
             $this->updateBookingPetConfirmedSizes($booking, $data['pet_sizes'] ?? []);
             $serverTotalCents = BookingService::query()
                 ->where('booking_id', $booking->booking_id)
-                ->whereIn('booking_pet_id', $bookingPets->pluck('booking_pet_id'))
+                ->whereIn('booking_pet_id', $activePetIds)
                 ->lockForUpdate()
                 ->get(['price_at_booking'])
                 ->sum(fn (BookingService $line) => $this->paymentReadiness()
@@ -243,6 +250,8 @@ class PaymentController extends Controller
 
             [$productLines, $productCents] = $this->productSales()->prepare($data['products'] ?? []);
             $serverTotal = $this->paymentReadiness()->centsToMoney($serverTotalCents + $productCents);
+            // Reuse the locked pets/services with their confirmed prices and sizes.
+            $summary = $this->paymentReadiness()->summarize($booking);
         } else {
             $summary = $this->paymentReadiness()->summarize($booking, true);
             if (! $summary['payment_ready']) {
@@ -366,7 +375,7 @@ class PaymentController extends Controller
                 }
 
                 GatewayPayment::assertGroomingUnlocked($booking);
-                ['serverTotal' => $serverTotal, 'productLines' => $productLines,
+                ['serverTotal' => $serverTotal, 'summary' => $summary, 'productLines' => $productLines,
                     'servicePriceWarnings' => $servicePriceWarnings] = $this->prepareGroomingPayment($booking, $data, true);
                 $this->validateSubmittedTotal($data['final_price'], $serverTotal);
                 [$amountTendered, $paymentMethod, $notes] = $this->resolvePaymentInput(
@@ -379,7 +388,7 @@ class PaymentController extends Controller
                 );
                 ['payment' => $payment, 'allPetsFinished' => $allPetsFinished, 'remainingPets' => $remainingPets] = $settled;
 
-                return compact('booking', 'payment', 'allPetsFinished', 'remainingPets', 'productLines', 'servicePriceWarnings');
+                return compact('booking', 'payment', 'allPetsFinished', 'remainingPets', 'summary', 'productLines', 'servicePriceWarnings');
             });
         } catch (UniqueConstraintViolationException) {
             return response()->json([
@@ -409,6 +418,7 @@ class PaymentController extends Controller
             'all_pets_finished' => $result['allPetsFinished'],
             'remaining_pets' => $result['remainingPets'],
             'booking_status' => $result['booking']->status,
+            'payment_summary' => $result['summary'],
             'product_addons' => $this->formatProductLines($result['productLines']),
             'service_price_warnings' => $result['servicePriceWarnings'],
         ]);
@@ -432,7 +442,7 @@ class PaymentController extends Controller
                 throw ValidationException::withMessages(['payment' => 'This visit is not awaiting this payment.']);
             }
             $prepared = $this->prepareGroomingPayment($booking, $data, $flow === 'early');
-            $receiptSummary = $prepared['summary'] ?? $this->paymentReadiness()->summarize($booking, true);
+            $receiptSummary = $prepared['summary'];
             if ($flow === 'early') {
                 foreach ($receiptSummary['pets'] as &$pet) {
                     $pet['final_pet_charge'] = $pet['payment_kind'] === 'cancelled' ? '0.00' : $pet['original_pet_subtotal'];
@@ -534,7 +544,8 @@ class PaymentController extends Controller
                 'all_pets_finished' => $booking->status === 'released', 'payment_summary' => $attempt->snapshot['summary'],
                 'notes' => $attempt->snapshot['notes'],
                 'product_addons' => collect($attempt->snapshot['products'])->map(fn ($line) => [
-                    'itemName' => $line['name'], 'quantity' => $line['quantity'], 'subtotal' => $line['subtotalCents'] / 100,
+                    'itemName' => $line['name'], 'quantity' => $line['quantity'],
+                    'priceAtSale' => isset($line['priceCents']) ? $line['priceCents'] / 100 : null, 'subtotal' => $line['subtotalCents'] / 100,
                 ])->all(),
             ];
         }
@@ -784,11 +795,11 @@ class PaymentController extends Controller
         $productAddons = $gateway
             ? collect($gateway->snapshot['products'])->map(fn ($line) => [
                 'itemName' => $line['name'], 'quantity' => $line['quantity'],
-                'priceAtSale' => $line['priceCents'] / 100, 'subtotal' => $line['subtotalCents'] / 100,
+                'priceAtSale' => isset($line['priceCents']) ? $line['priceCents'] / 100 : null, 'subtotal' => $line['subtotalCents'] / 100,
             ])->values()
             : $payment->products->map(fn ($line) => [
                 'itemName' => $line->item_name, 'quantity' => $line->quantity,
-                'priceAtSale' => (float) $line->price_at_sale, 'subtotal' => (float) $line->subtotal,
+                'priceAtSale' => $line->price_at_sale !== null ? (float) $line->price_at_sale : null, 'subtotal' => (float) $line->subtotal,
             ])->values();
         $productTotal = (float) $productAddons->sum('subtotal');
 
@@ -1019,6 +1030,7 @@ class PaymentController extends Controller
         return collect($lines)->map(fn ($line) => [
             'itemName' => $line['item']->item_name,
             'quantity' => $line['quantity'],
+            'priceAtSale' => $line['priceCents'] / 100,
             'subtotal' => $line['subtotalCents'] / 100,
         ])->all();
     }

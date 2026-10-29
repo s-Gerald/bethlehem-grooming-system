@@ -77,6 +77,15 @@ async function testPosRecovery() {
   const pending = {id: 3, status: 'pending', amount: '160.00', checkout_url: 'https://checkout.paymongo.com/cs_pos'};
   const cart = [{item_id: 1, name: 'Treats', unit: 'pack', quantity: 2, price_at_sale: 80, subtotal: 160}];
   try {
+    const ordered = makePos();
+    const extra = {...ordered.cart[0], item_id: 2, item_name: 'Shampoo', quantity: 1, subtotal: 80};
+    ordered.cart.unshift(extra);
+    const visible = ordered.cart;
+    const savedCart = [...cart, {item_id: 2, name: 'Shampoo', unit: 'pack', quantity: 1, price_at_sale: 80, subtotal: 80}];
+    await ordered.applyPosOnlineStatus({online_payment: pending, cart: savedCart});
+    assert.equal(ordered.cart, visible, 'A server snapshot in another order must preserve the visible cart');
+    assert.equal(ordered.cart[0], extra, 'Polling must retain newest-first row identity');
+    assert.deepEqual(savedCart.map(line => line.item_id), [1, 2], 'Stored snapshots are not reordered');
     const ui = makePos(); const line = ui.cart[0];
     await ui.applyPosOnlineStatus({online_payment: pending, cart});
     assert.equal(ui.cart[0].stock, 3, 'Pending status must preserve the original cart stock and quantities');

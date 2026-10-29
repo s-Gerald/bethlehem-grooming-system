@@ -669,8 +669,8 @@
                   <h5 id="history-products-title">Product Add-ons</h5>
                   <template x-for="(line, index) in detailsBooking?.productAddons ?? []" :key="index">
                     <div class="history-product-line">
-                      <div><p x-text="line.itemName"></p><p x-show="showProductSubtotal(line)" class="history-label" x-text="formatPeso(line.priceAtSale) + ' × ' + line.quantity"></p></div>
-                      <span x-text="formatPeso(showProductSubtotal(line) ? line.subtotal : line.priceAtSale)"></span>
+                      <div><p x-text="line.itemName"></p><p class="history-label" x-text="window.RecordedProductPricing.formatPriceQuantity(line)"></p></div>
+                      <span x-text="window.RecordedProductPricing.formatLineTotal(line)"></span>
                     </div>
                   </template>
                 </section>
@@ -816,7 +816,8 @@
 
 
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261029"></script>
+    <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
+    <script src="../../scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261029&invoice-products=20261029"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

@@ -4,7 +4,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const context = { window: {}, Date, Intl, URLSearchParams, AbortController };
-for (const file of ["payment-invoice.js", "admin-transactions.js"]) {
+for (const file of ["recorded-product-pricing.js", "payment-invoice.js", "admin-transactions.js"]) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../scripts/components", file), "utf8"), context);
 }
 const ui = context.adminTransactions();
@@ -42,6 +42,15 @@ assert.equal(ui.receiptModal.change, 990);
 assert.equal(ui.receiptModal.pets[0].subtotal, 850, "Unfinished early-payment pet uses the existing service subtotal");
 assert.equal(ui.receiptModal.pets[0].lines[0].price, 550);
 assert.equal(ui.receiptModal.products[0].subtotal, 1160);
+assert.equal(ui.formatInvoiceProductUnitPrice(ui.receiptModal.products[0]), '₱1,160.00');
+const transactionProducts = fs.readFileSync(path.join(__dirname, '../pages/admin/transactions.html'), 'utf8')
+  .split('class="transaction-products"')[1].split('</section>')[0];
+const metadataExpression = transactionProducts.match(/<small x-text="([^"]+)"/)[1];
+for (const [line, expected] of [
+  [{priceAtSale: 80, quantity: 1, subtotal: 80}, '₱80.00 × 1'],
+  [{priceAtSale: 45, quantity: 2, subtotal: 89.99, selling_price: 55}, '₱45.00 × 2'],
+  [{quantity: 3, subtotal: 100}, '— × 3'],
+]) assert.equal(vm.runInNewContext(metadataExpression, {window: context.window, line}), expected);
 assert.equal(ui.receiptModal.bookingReference, tx.reference);
 assert.equal(ui.receiptModal.contactNumber, undefined, "Do not invent missing contact information");
 assert.equal(ui.formatInvoicePeso(tx.finalPrice), "₱2,010.00");

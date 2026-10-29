@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="../../css/output.css" />
     <link rel="stylesheet" href="../../css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023" />
-    <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
@@ -383,7 +383,7 @@
                         <h4 class="transaction-category-title">Product Add-ons</h4>
                         <dl class="transaction-line-items">
                           <template x-for="(line, index) in selectedTransaction.productAddons" :key="index">
-                            <div><dt><span x-text="line.itemName"></span><small x-text="'Qty ' + line.quantity"></small></dt><dd x-text="formatInvoicePeso(line.subtotal)"></dd></div>
+                            <div><dt><span x-text="line.itemName"></span><small x-text="window.RecordedProductPricing.formatPriceQuantity(line)"></small></dt><dd x-text="window.RecordedProductPricing.formatLineTotal(line)"></dd></div>
                           </template>
                         </dl>
                         <div x-show="selectedTransaction.productAddons.length > 1" class="transaction-category-total"><span>Product Add-ons</span><strong x-text="formatInvoicePeso(selectedTransaction.productAddonsTotal)"></strong></div>
@@ -440,7 +440,7 @@
                     <template id="legacy-qr-proof"><section class="transaction-proof" aria-label="Payment Proof">
                       <h4>Payment Proof</h4>
                       <p x-text="selectedTransaction.qrPayment.proof.name"></p>
-                      <button type="button" class="transaction-button" :disabled="proofBusy" @click="viewPaymentProof()" x-text="proofBusy ? 'Loading…' : 'View Payment Proof'"></button>
+                      <button type="button" class="transaction-button" :disabled="proofBusy" @click="viewPaymentProof()" x-text="proofBusy ? 'Loadingâ€¦' : 'View Payment Proof'"></button>
                       <p x-show="proofError" x-text="proofError" role="alert"></p>
                       <template x-if="proofUrl && selectedTransaction.qrPayment.proof.mime !== 'application/pdf'"><img :src="proofUrl" alt="Recorded payment proof" class="transaction-proof-image" /></template>
                       <template x-for="(page, index) in proofPages" :key="page"><img :src="page" :alt="'Payment proof page ' + (index + 1)" class="transaction-proof-image" /></template>
@@ -470,7 +470,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029"></script>
+    <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029"></script>
     <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024"></script>
     <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>

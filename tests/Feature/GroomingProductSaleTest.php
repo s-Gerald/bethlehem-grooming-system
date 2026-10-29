@@ -96,6 +96,9 @@ class GroomingProductSaleTest extends TestCase
 
         $this->assertSame('1.00', $item->fresh()->quantity_on_hand);
         $this->assertSame('500.00', GroomingPaymentProduct::first()->subtotal);
+        $item->update(['selling_price' => '300.00']);
+        $this->assertSame('250.00', GroomingPaymentProduct::first()->price_at_sale);
+        $this->assertSame('500.00', GroomingPaymentProduct::first()->subtotal);
         $this->assertDatabaseHas('inventory_transactions', [
             'item_id' => $item->item_id, 'type' => 'stock_out', 'quantity' => 2,
             'reason' => 'sold', 'reference_type' => 'grooming', 'reference_id' => 1025,

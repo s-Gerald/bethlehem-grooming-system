@@ -239,6 +239,15 @@
     padding-right: 0;
   }
 
+  body.payment-invoice-printing .payment-invoice-services-table :is(th, td):first-child {
+    width: 78%;
+  }
+
+  body.payment-invoice-printing .payment-invoice-services-table :is(th, td):last-child {
+    width: 22%;
+    white-space: nowrap;
+  }
+
   body.payment-invoice-printing .payment-invoice-category-total {
     display: flex;
     justify-content: flex-end;

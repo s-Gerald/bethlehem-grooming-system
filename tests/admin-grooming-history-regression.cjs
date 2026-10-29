@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const modalBody = { scrollTop: 0 };
 const dialog = { querySelector: (selector) => selector.includes('Close') ? { focus() {} } : modalBody };
 const context = { Date, Intl, URLSearchParams, window: {}, document: { body: { style: { overflow: '' } }, querySelector: () => dialog } };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/recorded-product-pricing.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-archive.js'), 'utf8'), context);
 const ui = context.adminArchive();
 for (const isTest of [true, false]) {
@@ -128,9 +129,22 @@ assert.equal(ui.petSize({ confirmedSize: 'medium', registeredSize: 'small' }), '
 assert.equal(ui.petSize({ registeredSize: 'small', size: 'large', sizeVerified: true }), 'Small', 'Current profile verification must not relabel a legacy session');
 assert.equal(ui.petSize({ size: 'large', sizeVerified: true }), 'Large · Profile size (session size not recorded)');
 assert.equal(ui.petSize({}), 'Not recorded');
-assert.equal(ui.showProductSubtotal({ quantity: 1, priceAtSale: '75.00', subtotal: 75 }), false);
-assert.equal(ui.showProductSubtotal({ quantity: 2, priceAtSale: 75, subtotal: 120 }), true, 'Retain the recorded subtotal instead of multiplying current prices');
-assert.equal(ui.showProductSubtotal({ quantity: 1, priceAtSale: 75, subtotal: 50 }), true);
+const productMarkup = fs.readFileSync(path.join(__dirname, '../pages/admin/archive.html'), 'utf8')
+  .split('aria-labelledby="history-products-title"')[1].split('</section>')[0];
+const metadataTag = productMarkup.match(/<p\b[^>]*class="history-label"[^>]*>/)[0];
+const metadataExpression = metadataTag.match(/x-text="([^"]+)"/)[1];
+const totalExpression = productMarkup.match(/<span x-text="([^"]+)"/)[1];
+for (const [line, detail, total] of [
+  [{quantity: 1, priceAtSale: '75.00', subtotal: 75}, '₱75.00 × 1', '₱75.00'],
+  [{quantity: 2, priceAtSale: 75, subtotal: 120}, '₱75.00 × 2', '₱120.00'],
+  [{quantity: 1, priceAtSale: 75, subtotal: 50}, '₱75.00 × 1', '₱50.00'],
+  [{quantity: 3, subtotal: 100}, '— × 3', '₱100.00'],
+]) {
+  const bindings = {window: context.window, line};
+  assert.equal(vm.runInNewContext(metadataExpression, bindings), detail);
+  assert.equal(vm.runInNewContext(totalExpression, bindings), total);
+  assert.equal(metadataTag.includes('x-show='), false, 'Quantity-one unit prices remain visible');
+}
 assert.equal(ui.productAddonsTotal(session), 150);
 assert.equal(ui.productAddonsTotal(repeat), 0);
 assert.equal(ui.transactionUrl(session), './transactions.html?payment=10&reference=BAC-20261003-0001');

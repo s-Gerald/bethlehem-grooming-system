@@ -58,10 +58,12 @@ async function testGroomingSearchAndAdding() {
   assert.equal(page.paymentModal.products[0].stock, 4);
   page.addPaymentProduct(physicalLimit);
   assert.equal(page.hasPaymentProductStock(physicalLimit), true);
-  assert.equal(page.paymentModal.products[1].price, 280);
-  assert.equal(page.paymentModal.products[1].stock, 1);
+  assert.deepEqual(Array.from(page.paymentModal.products, line => line.item_id), [3, 1]);
+  assert.equal(page.paymentModal.products[0].price, 280);
+  assert.equal(page.paymentModal.products[0].stock, 1);
   page.addPaymentProduct(physicalLimit);
-  assert.equal(page.paymentModal.products[1].quantity, 1);
+  assert.equal(page.paymentModal.products[0].quantity, 1);
+  assert.deepEqual(Array.from(page.paymentModal.products, line => line.item_id), [3, 1], 'Invalid duplicate adds retain the selected order');
   assert.match(page.paymentModal.productSearchError, /no more available stock/);
 }
 
@@ -116,18 +118,22 @@ async function testPosUsesSellableStock() {
   assert.equal(page.cart[0].stock, 4);
   assert.equal(page.cart[0].price, 250);
   await page.scanBarcode("001234");
-  assert.equal(page.cart[1].stock, 3);
-  assert.equal(page.cart[1].quantity, 1);
-  assert.equal(page.cart[1].subtotal, 250);
+  assert.deepEqual(Array.from(page.cart, line => line.item_id), [3, 1]);
+  const scanned = page.cart.find(line => line.item_id === 3);
+  assert.equal(scanned.stock, 3);
+  assert.equal(scanned.quantity, 1);
+  assert.equal(scanned.subtotal, 250);
   for (let i = 0; i < 4; i++) page.addToCart(nonexpiring);
-  assert.equal(page.cart[1].quantity, 3);
-  assert.equal(page.cart[1].subtotal, 750);
+  assert.equal(scanned.quantity, 3);
+  assert.equal(scanned.subtotal, 750);
   page.addToCart(product({ item_id: 4, saleable_quantity: 0.5 }));
   assert.equal(page.cart.length, 2, 'Retail cannot add a fraction of one unit');
   assert.match(page.error, /one whole unit/);
-  page.cart[0].quantity = 1.5; page.addToCart(product());
-  assert.equal(page.cart[0].quantity, 1.5, 'Invalid decimal input is rejected, never rounded');
-  assert.match(page.lineError(page.cart[0]), /whole quantity/);
+  const original = page.cart.find(line => line.item_id === 1);
+  original.quantity = 1.5; page.addToCart(product());
+  assert.equal(original.quantity, 1.5, 'Invalid decimal input is rejected, never rounded');
+  assert.match(page.lineError(original), /whole quantity/);
+  assert.deepEqual(Array.from(page.cart, line => line.item_id), [3, 1], 'Invalid quantities do not promote a row');
 }
 
 async function testFocusSuggestionsAndDismissal() {

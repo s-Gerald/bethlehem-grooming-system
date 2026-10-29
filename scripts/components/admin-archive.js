@@ -397,10 +397,6 @@ function adminArchive() {
       return (booking?.productAddons || []).reduce((sum, line) => sum + Number(line.subtotal || 0), 0);
     },
 
-    showProductSubtotal(line) {
-      return Number(line.quantity) > 1 || Number(line.subtotal) !== Number(line.priceAtSale);
-    },
-
     transactionUrl(booking = this.detailsBooking) {
       if (!booking?.payment) return "";
       const params = new URLSearchParams();

@@ -1472,7 +1472,7 @@ class AdminBookingController extends Controller
             'productAddons' => $productLines->map(fn ($line) => [
                 'itemName' => $line->item_name,
                 'quantity' => $line->quantity,
-                'priceAtSale' => (float) $line->price_at_sale,
+                'priceAtSale' => $line->price_at_sale !== null ? (float) $line->price_at_sale : null,
                 'subtotal' => (float) $line->subtotal,
             ])->values(),
             'pets' => $bpets->values()->map(function ($bp, $petIndex) use ($paymentPetsById) {

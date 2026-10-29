@@ -15,19 +15,16 @@ window.PaymentInvoice = (() => {
       return Number.isNaN(date.getTime()) ? recordedValue : dateFormatter.format(date);
     },
     formatPaymentDateTime(value) {
-      if (!value) return '�';
+      if (!value) return '—';
       let recorded = String(value).replace(' ', 'T');
       if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(recorded)) recorded += '+08:00';
       const date = new Date(recorded);
-      return Number.isNaN(date.getTime()) ? '�' : date.toLocaleString('en-PH', {
+      return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('en-PH', {
         year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila',
       });
     },
     formatProductUnitPrice(line) {
-      const quantity = Number(line.quantity);
-      const subtotal = Number(line.subtotal);
-      return Number.isFinite(quantity) && quantity > 0 && Number.isFinite(subtotal)
-        ? formatPeso(subtotal / quantity) : "—";
+      return window.RecordedProductPricing.formatUnitPrice(line);
     },
     print(invoiceId = "paymentInvoice") {
       const printClass = "payment-invoice-printing";
@@ -115,16 +112,14 @@ window.PaymentInvoice = (() => {
           <h3 x-text="pet.name"></h3>
           <p x-show="pet.species || pet.breed || pet.sizeLabel" x-text="[pet.species, pet.breed, pet.sizeLabel].filter(Boolean).join(' · ')"></p>
         </header>
-        <table class="payment-invoice-table">
+        <table class="payment-invoice-table payment-invoice-services-table">
           <thead>
-            <tr><th scope="col">Description</th><th scope="col">Qty</th><th scope="col">Unit price</th><th scope="col">Amount</th></tr>
+            <tr><th scope="col">Description</th><th scope="col">Amount</th></tr>
           </thead>
           <tbody>
             <template x-for="line in pet.lines" :key="line.id">
               <tr>
                 <td x-text="line.name"></td>
-                <td>1</td>
-                <td x-text="formatInvoicePeso(line.price)"></td>
                 <td x-text="formatInvoicePeso(line.price)"></td>
               </tr>
             </template>
@@ -152,7 +147,7 @@ window.PaymentInvoice = (() => {
             <td x-text="line.itemName"></td>
             <td x-text="line.quantity"></td>
             <td x-text="formatInvoiceProductUnitPrice(line)"></td>
-            <td x-text="formatInvoicePeso(line.subtotal)"></td>
+            <td x-text="window.RecordedProductPricing.formatLineTotal(line)"></td>
           </tr>
         </template>
       </tbody>

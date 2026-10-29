@@ -3379,7 +3379,8 @@ function adminDashboard() {
     addPaymentProduct(item) {
       if (!this.hasPaymentProductStock(item)) return;
       const stock = Math.floor(Number(item.saleable_quantity));
-      const existing = this.paymentModal.products.find((line) => line.item_id === item.item_id);
+      const existingIndex = this.paymentModal.products.findIndex((line) => line.item_id === item.item_id);
+      const existing = this.paymentModal.products[existingIndex];
       if (existing) {
         existing.stock = stock;
         if (existing.quantity >= stock) {
@@ -3387,9 +3388,13 @@ function adminDashboard() {
           return;
         }
         existing.quantity += 1;
+        if (existingIndex > 0) {
+          this.paymentModal.products.splice(existingIndex, 1);
+          this.paymentModal.products.unshift(existing);
+        }
       } else {
         if (stock < 1) return;
-        this.paymentModal.products.push({ item_id: item.item_id, name: item.item_name,
+        this.paymentModal.products.unshift({ item_id: item.item_id, name: item.item_name,
           unit: item.unit, price: Number(item.selling_price), stock, quantity: 1 });
       }
       this.productDropdown?.close();

@@ -160,6 +160,53 @@ class GroomingPayMongoTest extends TestCase
         Http::assertNothingSent();
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('cashProductFlows')]
+    public function test_cash_receipts_include_recorded_product_unit_prices_and_service_summary(bool $early): void
+    {
+        $this->addProduct();
+        $this->staff();
+        if ($early) {
+            DB::table('bookings')->update(['status' => 'in_progress']);
+            DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        }
+        $this->postJson('/api/admin/bookings/1/'.($early ? 'pay-now' : 'pay'), [
+            'final_price' => 1010, 'amount_paid' => 1100, 'payment_method' => 'cash',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+            'products' => [['item_id' => 10, 'quantity' => 2]],
+        ])->assertOk()->assertJsonPath('product_addons.0.priceAtSale', 80)
+            ->assertJsonPath('product_addons.0.quantity', 2)->assertJsonPath('product_addons.0.subtotal', 160)
+            ->assertJsonPath('payment_summary.pets.0.service_breakdown.0.price_at_booking', '850.00')
+            ->assertJsonPath('final_price', '1010.00')->assertJsonPath('change', '90.00');
+        DB::table('inventory_items')->update(['selling_price' => 99]);
+        $this->assertDatabaseHas('grooming_payment_products', ['price_at_sale' => 80, 'subtotal' => 160]);
+        $this->assertSame('80.00', \App\Models\GroomingPaymentProduct::firstOrFail()->price_at_sale);
+        Http::assertNothingSent();
+    }
+
+    public static function cashProductFlows(): array
+    {
+        return [[false], [true]];
+    }
+
+    public function test_early_receipt_preserves_cancelled_sibling_details_without_charging_them(): void
+    {
+        $this->staff();
+        DB::table('bookings')->update(['status' => 'in_progress']);
+        DB::table('pets')->insert(['pet_id' => 5, 'pet_name' => 'Sibling', 'species' => 'Dog', 'size' => 'large']);
+        DB::table('booking_pets')->insert(['booking_pet_id' => 3, 'booking_id' => 1, 'pet_id' => 5,
+            'registered_size' => 'large', 'grooming_state' => 'cancelled']);
+        DB::table('booking_services')->insert(['booking_service_id' => 4, 'booking_id' => 1, 'booking_pet_id' => 3,
+            'service_id' => 3, 'price_at_booking' => 75]);
+        $this->postJson('/api/admin/bookings/1/pay-now', [
+            'final_price' => 850, 'amount_paid' => 1000, 'payment_method' => 'cash',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+            'pet_sizes' => [['booking_pet_id' => 2, 'size' => 'large']],
+        ])->assertOk()->assertJsonPath('final_price', '850.00')->assertJsonCount(2, 'payment_summary.pets')
+            ->assertJsonPath('payment_summary.pets.1.payment_kind', 'cancelled')
+            ->assertJsonPath('payment_summary.pets.1.final_pet_charge', '0.00')
+            ->assertJsonPath('payment_summary.pets.1.service_breakdown.0.price_at_booking', '75.00');
+    }
+
     public function test_checkout_uses_server_total_and_does_not_create_a_paid_record(): void
     {
         $this->checkout(['final_price' => 1, 'amount_paid' => 999])->assertOk()->assertJsonPath('online_payment.amount', '850.00');
@@ -307,10 +354,15 @@ class GroomingPayMongoTest extends TestCase
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => false]);
     }
 
-    public function test_products_are_frozen_and_sold_only_once_after_payment(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('cashProductFlows')]
+    public function test_products_are_frozen_and_sold_only_once_after_payment(bool $early): void
     {
         $this->addProduct();
-        $this->checkout(['products' => [['item_id' => 10, 'quantity' => 2]]])->assertOk();
+        if ($early) {
+            DB::table('bookings')->update(['status' => 'in_progress']);
+            DB::table('booking_pets')->update(['grooming_state' => 'in_progress', 'grooming_end_time' => null]);
+        }
+        $this->checkout(['flow' => $early ? 'early' : 'final', 'products' => [['item_id' => 10, 'quantity' => 2]]])->assertOk();
         $this->assertSame('850.00', GatewayPayment::first()->snapshot['grooming_total']);
         $this->assertSame('1010.00', GatewayPayment::first()->snapshot['total']);
         $this->assertEquals(3, DB::table('inventory_items')->value('quantity_on_hand'));
@@ -323,6 +375,18 @@ class GroomingPayMongoTest extends TestCase
         $this->assertSame(1, DB::table('grooming_payment_products')->count());
         $this->assertSame(1, DB::table('inventory_transactions')->count());
         $this->assertDatabaseHas('grooming_payment_products', ['item_name' => 'Dog Treats', 'price_at_sale' => 80, 'subtotal' => 160]);
+        $this->getJson('/api/admin/bookings/1/online-payment')->assertOk()
+            ->assertJsonPath('payment.product_addons.0.itemName', 'Dog Treats')
+            ->assertJsonPath('payment.product_addons.0.priceAtSale', 80)
+            ->assertJsonPath('payment.product_addons.0.quantity', 2)
+            ->assertJsonPath('payment.product_addons.0.subtotal', 160);
+        $attempt = GatewayPayment::firstOrFail();
+        $snapshot = $attempt->snapshot;
+        unset($snapshot['products'][0]['priceCents']);
+        $attempt->update(['snapshot' => $snapshot]);
+        $this->getJson('/api/admin/bookings/1/online-payment')->assertOk()
+            ->assertJsonPath('payment.product_addons.0.priceAtSale', null)
+            ->assertJsonPath('payment.product_addons.0.subtotal', 160);
     }
 
     public function test_stock_conflict_keeps_successful_charge_and_flags_reconciliation(): void

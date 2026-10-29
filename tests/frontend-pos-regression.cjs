@@ -17,6 +17,26 @@ function setup(api = {}) {
   ui.$refs = { productSearch: {focus() {focused++;}}, successDialog: {showModal() {opened++;}, close() {closed++;}} };
   return {context, ui, runSearch: () => timer(), opened: () => opened, closed: () => closed, focused: () => focused};
 }
+function testNewestFirstProducts() {
+  const {ui} = setup();
+  const products = [1, 2, 3].map(item_id => ({...product, item_id, item_name: `Product ${item_id}`}));
+  products.forEach(item => ui.addToCart(item));
+  const order = () => Array.from(ui.cart, line => line.item_id);
+  assert.deepEqual(order(), [3, 2, 1]);
+  const first = ui.cart.find(line => line.item_id === 1);
+  ui.addToCart(products[0]);
+  assert.deepEqual(order(), [1, 3, 2]);
+  assert.equal(ui.cart[0], first);
+  assert.equal(first.quantity, 2);
+  ui.addToCart({...products[1], saleable_quantity: 1});
+  assert.deepEqual(order(), [1, 3, 2], 'A failed re-add leaves order unchanged');
+  assert.equal(ui.cart[2].quantity, 1);
+  ui.cart[2].quantity = 2; ui.updateLineSubtotal(ui.cart[2]);
+  assert.deepEqual(order(), [1, 3, 2], 'Quantity edits do not reorder');
+  assert.equal(ui.totalAmount, 1250);
+  ui.removeFromCart(1);
+  assert.deepEqual(order(), [1, 2]);
+}
 async function testCheckoutAndDuplicateGuard() {
   let calls = 0, validationCalls = 0, resolveValidation, resolveSale, submitted;
   const app = setup({validateCart: () => {validationCalls++; return new Promise(resolve => {resolveValidation = resolve;});},
@@ -208,6 +228,7 @@ function testPaymentAndScannerIntegration() {
   }
 }
 (async () => {
+  testNewestFirstProducts();
   await testCheckoutAndDuplicateGuard(); await testStaleSearchRefreshAndErrors(); await testChangedCartsRequireReviewAndCanThenComplete(); await testValidationRetryAndCheckoutRace(); testCashPaymentParity(); await testCameraScannerUsesExistingLookup(); testProductHistoryInvoice(); testPaymentAndScannerIntegration();
   console.log('Retail POS checkout and invoice regression checks passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});

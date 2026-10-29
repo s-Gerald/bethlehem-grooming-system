@@ -1925,6 +1925,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertStringStartsWith('2026-07-26T01:00:00', $repeat['completedAtIso']);
         $this->assertSame('2026-07-26 01:00:00', Carbon::parse($repeat['pets'][0]['groomingFinishedAtIso'])->timezone('Asia/Manila')->format('Y-m-d H:i:s'));
         $this->assertDatabaseHas('booking_services', ['booking_service_id' => 1, 'price_at_booking' => 250]);
+        // A legacy schema may lack a recorded unit price; preserve absence, not a fabricated zero.
+        Schema::table('grooming_payment_products', fn (Blueprint $table) => $table->decimal('price_at_sale', 8, 2)->nullable()->change());
+        DB::table('grooming_payment_products')->where('payment_id', 1)->update(['price_at_sale' => null]);
+        $legacy = collect($this->getJson('/api/admin/bookings/archived')->assertOk()->json('archived'))->firstWhere('id', 1);
+        $this->assertNull($legacy['productAddons'][0]['priceAtSale']);
+        $this->assertEquals(150, $legacy['productAddons'][0]['subtotal']);
     }
 
     #[DataProvider('authorizedGroomingRoles')]

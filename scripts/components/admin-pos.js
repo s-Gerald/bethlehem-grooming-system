@@ -135,7 +135,8 @@ function adminPos() {
       const available = this.productAvailability(item);
       if (available <= 0) { this.error = `${item.item_name} is out of stock.`; return; }
       if (available < 1) { this.error = `${item.item_name} has insufficient stock for one whole unit.`; return; }
-      const existing = this.cart.find(line => line.item_id === item.item_id);
+      const existingIndex = this.cart.findIndex(line => line.item_id === item.item_id);
+      const existing = this.cart[existingIndex];
       if (existing) {
         if (!Number.isInteger(Number(existing.quantity)) || Number(existing.quantity) < 1) {
           this.error = `Enter a whole quantity of at least 1 for ${item.item_name}.`; return;
@@ -145,9 +146,13 @@ function adminPos() {
         existing.stock = available;
         existing.quantity = nextQuantity;
         this.updateLineSubtotal(existing);
+        if (existingIndex > 0) {
+          this.cart.splice(existingIndex, 1);
+          this.cart.unshift(existing);
+        }
       } else {
         const quantity = 1;
-        this.cart.push({ item_id: item.item_id, item_name: item.item_name, unit: item.unit,
+        this.cart.unshift({ item_id: item.item_id, item_name: item.item_name, unit: item.unit,
           stock: available, quantity, price: Number(item.selling_price),
           subtotal: Math.round(quantity * Number(item.selling_price) * 100) / 100, unavailable: false });
       }
@@ -329,9 +334,11 @@ function adminPos() {
         return;
       }
       if (response.cart) {
-        const sameCart = this.cart.length === response.cart.length && response.cart.every((line, index) => {
-          const current = this.cart[index];
-          return Number(current.item_id) === Number(line.item_id) && Number(current.quantity) === Number(line.quantity)
+        const currentById = new Map();
+        for (const line of this.cart) currentById.set(Number(line.item_id), line);
+        const sameCart = this.cart.length === response.cart.length && response.cart.every(line => {
+          const current = currentById.get(Number(line.item_id));
+          return current && Number(current.quantity) === Number(line.quantity)
             && current.price === Number(line.price_at_sale) && current.subtotal === Number(line.subtotal);
         });
         if (!sameCart) this.cart = response.cart.map(line => ({
