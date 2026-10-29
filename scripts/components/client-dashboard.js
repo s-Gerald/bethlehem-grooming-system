@@ -560,7 +560,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   let dashboardBookings = [];
   let dashboardClinicVisits = [];
   let lastGroomingAnnouncement = "";
-  let lastAppointmentsMarkup = "";
+  let lastAppointmentsMarkup = null;
   let lastTrackerMarkup = "";
   let lastTrackerMetadataMarkup = "";
   let trackerVisits = [];
@@ -580,6 +580,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
   let appointmentsLoaded = false;
   let groomingCapacityLoading = false;
   let groomingCapacityLoaded = false;
+  let visitSummaryModule;
+  let visitSummaryOpenRequest = 0;
   const UPCOMING_APPOINTMENT_STATUSES = new Set(["waiting_to_arrive", "waiting"]);
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -636,14 +638,17 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const active = Array.isArray(data?.bookings) ? data.bookings : [];
     const history = Array.isArray(data?.history) ? data.history : [];
     const scheduled = active.filter(isUpcomingAppointment);
-    dashboardClinicVisits = Array.isArray(data?.clinic_visits) ? data.clinic_visits : [];
+    const clinicVisits = Array.isArray(data?.clinic_visits) ? data.clinic_visits : [];
+    // Refresh an open detail only when its saved dashboard state changes.
+    visitSummaryModule?.refreshOpenVisitSummary(active, clinicVisits);
+    dashboardClinicVisits = clinicVisits.filter((visit) => visit.status === "waiting_to_arrive" && !visit.checked_in_at);
     const atClinic = active.filter(b =>
       ["checked_in", "in_progress", "for_payment", "released"].includes(b?.status)
     ).filter(b => b.show_grooming_tracker !== false);
 
     dashboardBookings = active;
     const visibleGrooming = atClinic.filter((booking) => trackerPets(booking).length);
-    setDashboardHierarchy(visibleGrooming.length > 0, scheduled.length > 0 || dashboardClinicVisits.length > 0);
+    setDashboardHierarchy(scheduled.length > 0 || dashboardClinicVisits.length > 0);
     if (dashboardPetsLoadState === "loaded") renderMyPetsPreview();
 
     renderDashboardPanel(appointmentsList, "schedule", () => {
@@ -669,7 +674,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function renderDashboardPanelError(target, message) {
     if (!target) return;
-    if (target === appointmentsList) lastAppointmentsMarkup = "";
+    if (target === appointmentsList) lastAppointmentsMarkup = null;
     if (target === groomingTrackerEl) lastTrackerMarkup = "";
     if (target === myPetsPreviewEl) lastPetsMarkup = "";
     if (target === groomingHistoryEl) lastHistoryMarkup = "";
@@ -767,8 +772,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
     }
   }
 
-  function setDashboardHierarchy(hasGrooming, hasSchedule) {
-    upcomingSection?.classList.toggle("hidden", !hasGrooming && !hasSchedule);
+  function setDashboardHierarchy(hasSchedule) {
+    upcomingSection?.classList.toggle("hidden", !hasSchedule);
   }
 
   function renderAppointments(bookings) {
@@ -776,42 +781,53 @@ function scheduleCustomerDashboardAfterPaint(task) {
       String(a.booking_date || "").localeCompare(String(b.booking_date || "")) ||
       String(a.created_at || "").localeCompare(String(b.created_at || "")) || Number(a.booking_id) - Number(b.booking_id)
     ).slice(0, 3);
-    const visitMarkup = preview.map(buildBookingCard).join("") + dashboardClinicVisits.map(buildClinicRegistrationCard).join("");
-    const markup = visitMarkup || `
-      <div class="w-full rounded-[14px] border border-portal-border bg-portal-record px-5 py-6 text-center">
-        <p class="text-sm font-semibold text-portal-text">No upcoming visits</p>
-        <p class="mt-2 text-sm leading-relaxed text-portal-muted">Your online registrations will appear here.</p>
-      </div>`;
+    const markup = preview.map(buildBookingCard).join("") + dashboardClinicVisits.map(buildClinicRegistrationCard).join("");
     // Polls with unchanged schedules must not replace focused action buttons.
     if (lastAppointmentsMarkup === markup) return;
+    const focusedId = appointmentsList.contains(document.activeElement) ? document.activeElement.id : null;
     appointmentsList.innerHTML = markup;
     lastAppointmentsMarkup = markup;
-    preview.forEach((booking) => {
-      const currentBooking = () => dashboardBookings.find((record) => record.booking_id === booking.booking_id) || booking;
-      document.getElementById(`cancel-${booking.booking_id}`)?.addEventListener("click", () => handleCancel(currentBooking()));
-    });
+    if (focusedId) (document.getElementById(focusedId) || document.getElementById("trackerHeading"))?.focus({ preventScroll: true });
   }
 
-  function registrationTimestamp(value) {
-    if (!value) return "Not recorded";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "Not recorded" : new Intl.DateTimeFormat("en-PH", {
-      timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-    }).format(date);
+  function upcomingDateLine(serviceDay, createdAt) {
+    const validDateKey = (value) => {
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const date = new Date(value + "T00:00:00Z");
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+    };
+    const validDay = validDateKey(serviceDay);
+    // Server timestamps include an offset. Ambiguous local timestamps cannot establish a Manila calendar date.
+    const submitted = typeof createdAt === "string" && validDateKey(createdAt.slice(0, 10))
+      && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(createdAt) ? new Date(createdAt) : null;
+    const validSubmitted = submitted && Number.isFinite(submitted.getTime());
+    const submittedDay = validSubmitted ? new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(submitted) : null;
+    if (validDay && serviceDay !== submittedDay) return `Visit: ${formatDate(serviceDay)}`;
+    if (validSubmitted) {
+      const date = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric" }).format(submitted);
+      const time = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", hour12: true }).format(submitted);
+      return `Registered ${date}, ${time}`;
+    }
+    return "Date not recorded";
+  }
+
+  function upcomingVisitCard(id, service, names, serviceDay, createdAt) {
+    const attribute = service === "Clinic" ? "data-clinic-summary" : "data-visit-summary";
+    return `<button type="button" id="${service.toLowerCase()}-visit-${escapeDashboardHtml(id)}" ${attribute}="${escapeDashboardHtml(id)}"
+      class="upcoming-visit-card" aria-haspopup="dialog" aria-controls="groomingVisitSummary" aria-label="${escapeDashboardHtml(`${names}, ${service} visit details`)}">
+      <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">
+        <span class="block text-base font-semibold text-portal-text">${escapeDashboardHtml(names)}</span>
+        <span class="mt-1 block text-sm text-portal-primary">${service}</span>
+        <span class="mt-1 block text-sm text-portal-muted">${escapeDashboardHtml(upcomingDateLine(serviceDay, createdAt))}</span>
+      </span>
+      <svg class="ph-icon h-5 w-5 shrink-0 text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#caret-right"></use></svg>
+    </button>`;
   }
 
   function buildClinicRegistrationCard(visit) {
-    const status = { waiting_to_arrive: "Waiting to Arrive", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" }[visit.status] || visit.status;
-    return `<article class="rounded-[14px] bg-portal-surface-soft p-4 mb-3 [overflow-wrap:anywhere]">
-      <p class="text-xs font-semibold text-portal-primary">${visit.appointment_type === "walk_in" ? "Walk-in" : "Online Registration"}</p>
-      <p class="mt-1 font-semibold text-portal-text">${escapeDashboardHtml(visit.pet_name || "Your pet")} &middot; Clinic</p>
-      <p class="mt-1 text-sm text-portal-muted">Registration reference: ${escapeDashboardHtml(visit.reference)}</p>
-      <p class="mt-1 text-sm text-portal-muted">Visit day: ${formatDate(visit.service_day)}</p>
-      <p class="mt-1 text-sm text-portal-muted">${visit.appointment_type === "walk_in" ? "Registered" : "Submitted online"}: ${escapeDashboardHtml(registrationTimestamp(visit.created_at))}</p>
-      ${visit.queue_number != null ? `<p class="mt-1 text-sm text-portal-muted">Queue number: ${escapeDashboardHtml(visit.queue_number)}</p>` : ""}
-      ${visit.checked_in_at ? `<p class="mt-1 text-sm text-portal-muted">Checked in: ${escapeDashboardHtml(registrationTimestamp(visit.checked_in_at))}</p>` : ""}
-      <span class="mt-2 inline-flex rounded-full bg-portal-active px-2.5 py-1 text-xs font-semibold text-portal-primary">${escapeDashboardHtml(status)}</span>
-    </article>`;
+    return upcomingVisitCard(visit.id, "Clinic", visit.pet_name || "Your pet", visit.service_day, visit.created_at);
   }
 
   function serviceLabel(booking) {
@@ -821,48 +837,45 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   function buildBookingCard(booking) {
-    const status = getStatusConfig(booking.status);
-    const actionable = booking.status === "waiting_to_arrive" && !booking.paid;
-    const names = getPetNamesLabel(booking);
-    return `<article class="flex flex-wrap items-center gap-4 rounded-[14px] bg-portal-surface-soft p-4 [overflow-wrap:anywhere] mb-3 last:mb-0">
-      <div class="portal-icon-tile h-11 w-11 rounded-full">${petIcon(booking.pets?.[0])}</div>
-      <div class="min-w-0 flex-1">
-        <p class="text-xs font-semibold text-portal-primary">${booking.booking_type === "walk_in" ? "Walk-in" : "Online Registration"}</p>
-        <p class="mt-1 text-base font-semibold text-portal-text">${escapeDashboardHtml(names)}</p>
-        <p class="mt-1 text-sm text-portal-text">Grooming</p>
-        <p class="mt-1 text-sm text-portal-muted">Visit day: ${formatDate(booking.booking_date)}</p>
-        ${booking.created_at ? `<p class="mt-1 text-sm text-portal-muted">${booking.booking_type === "walk_in" ? "Registered" : "Submitted online"}: ${escapeDashboardHtml(registrationTimestamp(booking.created_at))}</p>` : ""}
-        <span class="mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.classes}">${escapeDashboardHtml(status.label)}</span>
-        <div>${visitSummaryAction(booking)}</div>
-      </div>
-      ${actionable ? `<div class="flex flex-wrap gap-2 max-[639px]:basis-full">
-
-        <button type="button" id="cancel-${escapeDashboardHtml(booking.booking_id)}" class="min-h-10 whitespace-nowrap rounded-2xl border border-portal-border px-3 py-2 text-xs font-semibold text-portal-danger transition-colors hover:bg-portal-danger-soft" aria-label="Cancel ${escapeDashboardHtml(names)}">Cancel</button>
-      </div>` : ""}
-    </article>`;
+    return upcomingVisitCard(booking.booking_id, "Grooming", getPetNamesLabel(booking), booking.booking_date, booking.created_at);
   }
 
-  // ── Grooming Tracker section ───────────────────────────────────────────────
-
+  // A sibling stretched button covers each session; disclosure controls remain above it.
   function visitSummaryAction(booking) {
-    const label = booking.booking_type === "walk_in" ? "View visit details" : "View online registration summary";
-    return `<button type="button" id="visit-summary-${escapeDashboardHtml(booking.booking_id)}" data-visit-summary="${escapeDashboardHtml(booking.booking_id)}" class="grooming-summary-action" aria-haspopup="dialog">${label}<span class="sr-only"> for ${escapeDashboardHtml(getPetNamesLabel(booking))}</span></button>`;
+    return `<button type="button" id="visit-summary-${escapeDashboardHtml(booking.booking_id)}" data-visit-summary="${escapeDashboardHtml(booking.booking_id)}"
+      class="tracker-visit-action" aria-haspopup="dialog" aria-controls="groomingVisitSummary"
+      aria-label="${escapeDashboardHtml(`${getPetNamesLabel(booking)}, Grooming visit details`)}"></button>`;
+  }
+
+  function groomingSummaryStatus(booking) {
+    if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
+    if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;
+    const statuses = trackerPets(booking).map((pet) => getTrackerPetStatus(pet, booking));
+    return getStatusConfig(trackerVisitStatus(statuses)).label;
   }
 
   async function openVisitSummary(event) {
-    const trigger = event.target.closest("[data-visit-summary]");
+    if (event.target.closest("[data-tracker-toggle]")) return;
+    const trigger = event.target.closest("[data-visit-summary], [data-clinic-summary]");
     if (!trigger) return;
-    const { openGroomingVisitSummary } = await import("./grooming-visit-summary.js?v=20261017&catalog=services-20261017-2&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029");
-    openGroomingVisitSummary(trigger.dataset.visitSummary, trigger, (booking) => {
-      if (isUpcomingAppointment(booking)) return getStatusConfig("waiting_to_arrive").label;
-      if (!["checked_in", "in_progress", "for_payment", "released"].includes(booking.status)) return getStatusConfig(booking.status).label;
-      const statuses = trackerPets(booking).map((pet) => getTrackerPetStatus(pet, booking));
-      return getStatusConfig(trackerVisitStatus(statuses)).label;
-    });
+    const currentOpenRequest = ++visitSummaryOpenRequest;
+    try {
+      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029");
+      if (currentOpenRequest !== visitSummaryOpenRequest) return;
+      if (trigger.dataset.clinicSummary) {
+        const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);
+        if (visit) await visitSummaryModule.openClinicVisitSummary(visit.id, trigger, visit);
+      } else {
+        const booking = dashboardBookings.find((item) => String(item.booking_id) === trigger.dataset.visitSummary);
+        if (booking) await visitSummaryModule.openGroomingVisitSummary(booking.booking_id, trigger, groomingSummaryStatus, handleCancel, booking);
+      }
+    } catch (error) {
+      console.error("Unable to open visit details.", error);
+    }
   }
 
   appointmentsList.addEventListener("click", openVisitSummary);
-  groomingTrackerEl.addEventListener("click", openVisitSummary);
+  trackerSection.addEventListener("click", openVisitSummary);
 
   function renderGroomingCapacity(data) {
     groomingQueueLoadingEl?.classList.add("hidden");
@@ -907,7 +920,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   function isUpcomingAppointment(booking) {
-    return UPCOMING_APPOINTMENT_STATUSES.has(String(booking?.status || "").toLowerCase());
+    return UPCOMING_APPOINTMENT_STATUSES.has(String(booking?.status || "").toLowerCase())
+      && !booking.dropped_off_at && !booking.dropped_off_timestamp;
   }
 
   function getPetNamesLabel(booking) {
@@ -959,19 +973,22 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function renderGroomingTracker(bookings) {
     trackerVisits = bookings;
-    const metadataMarkup = bookings.length ? buildTrackerMetadata(bookings[0]) : "";
+    const metadataMarkup = bookings.length === 1 ? buildTrackerMetadata(bookings[0]) : "";
+    trackerSection.classList.toggle("tracker-single-visit", bookings.length === 1);
     if (metadataMarkup !== lastTrackerMetadataMarkup) {
       if (groomingTrackerMetadataEl) groomingTrackerMetadataEl.innerHTML = metadataMarkup;
       lastTrackerMetadataMarkup = metadataMarkup;
     }
-    const markup = bookings.length ? bookings.map(buildTrackerCard).join("") : `
+    const markup = bookings.length ? bookings.map((booking) => buildTrackerCard(booking, bookings.length === 1)).join("") : `
       <div class="flex min-h-[160px] flex-1 flex-col items-center justify-center rounded-[14px] border border-portal-border bg-portal-record px-5 py-6 text-center">
         <p class="text-sm font-semibold text-portal-text">No grooming in progress</p>
         <p class="mt-2 text-sm leading-relaxed text-portal-muted">Your pet’s status will appear here after clinic check-in.</p>
       </div>`;
     if (lastTrackerMarkup !== markup) {
+      const focusedId = groomingTrackerEl.contains(document.activeElement) ? document.activeElement.id : null;
       groomingTrackerEl.innerHTML = markup;
       lastTrackerMarkup = markup;
+      if (focusedId) (document.getElementById(focusedId) || document.getElementById("trackerHeading"))?.focus({ preventScroll: true });
     }
     const announcement = bookings.flatMap((booking) => trackerPets(booking).map((pet) =>
       `${pet.pet_name}: ${getStatusConfig(getTrackerPetStatus(pet, booking)).label}.`
@@ -994,7 +1011,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     </div>`;
   }
 
-  function buildTrackerCard(booking, index) {
+  function buildTrackerCard(booking, single) {
     const pets = trackerPets(booking);
     const statuses = pets.map((pet) => getTrackerPetStatus(pet, booking));
     const readyStatuses = ["for_payment", "released"];
@@ -1032,8 +1049,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
         <span class="relative mt-2 block px-1 text-xs leading-snug ${index === current ? "font-semibold text-portal-text" : "text-portal-muted"}">${label}<span class="sr-only">${done ? ", complete" : index === current ? ", current" : ", upcoming"}</span></span>
       </li>`;
     }).join("");
-    return `<article class="border-b border-portal-border pb-5 mb-5 last:border-0 last:pb-0 last:mb-0">
-        ${index > 0 ? `<div class="mb-4 flex justify-end">${buildTrackerMetadata(booking)}</div>` : ""}
+    return `<article class="tracker-visit-card ${single ? "tracker-visit-card--single" : ""}">
+        ${visitSummaryAction({ ...booking, pets })}
+        ${!single ? `<div class="mb-4 flex justify-end">${buildTrackerMetadata(booking)}</div>` : ""}
         <div class="flex items-center gap-4">
           <div class="portal-icon-tile rounded-full">${petIcon(pets[0], "h-7 w-7")}</div>
           <div class="min-w-0 [overflow-wrap:anywhere]">
@@ -1048,10 +1066,9 @@ function scheduleCustomerDashboardAfterPaint(task) {
         <div id="tracker-pets-${id}" class="mt-3 grid gap-3 sm:grid-cols-2">${visiblePets.map((pet) => buildTrackerPetCard(pet, booking, mixedStatuses)).join("")}</div>
         ${pets.length > 4 ? `<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
           <p class="text-xs text-portal-muted">Showing ${visiblePets.length} of ${pets.length} pets</p>
-          <button id="tracker-toggle-${id}" type="button" data-tracker-toggle="${id}" aria-controls="tracker-pets-${id}" aria-expanded="${expanded}" class="portal-button-secondary px-4">${expanded ? "Show fewer" : `Show all ${pets.length} pets`}</button>
+          <button id="tracker-toggle-${id}" type="button" data-tracker-toggle="${id}" aria-controls="tracker-pets-${id}" aria-expanded="${expanded}" class="tracker-disclosure portal-button-secondary px-4">${expanded ? "Show fewer" : `Show all ${pets.length} pets`}</button>
         </div>` : ""}
         <ol class="mt-6 grid grid-cols-3" aria-label="Queue status for this grooming visit">${steps}</ol>
-        <div class="mt-3">${visitSummaryAction({ ...booking, pets })}</div>
     </article>`;
   }
 
@@ -1122,7 +1139,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     return { ...config, textClass: config.classes.split(" ").find((className) => className.startsWith("text-")) };
   }
 
-  // ── Reschedule modal ───────────────────────────────────────────────────────
+  // ── Cancellation confirmation ──────────────────────────────────────────────
 
   function handleCancel(booking) {
     openCancelModal(booking);
@@ -1134,13 +1151,12 @@ function scheduleCustomerDashboardAfterPaint(task) {
     hideCancelMessage();
     confirmCancelBtn.disabled = false;
     confirmCancelBtn.textContent = "Confirm cancellation";
-    cancelModal.classList.remove("hidden");
-    cancelModal.classList.add("flex");
+    cancelModal.showModal();
+    keepBookingBtn.focus({ preventScroll: true });
   }
 
   function closeCancelModal() {
-    cancelModal.classList.add("hidden");
-    cancelModal.classList.remove("flex");
+    cancelModal.close();
     cancelTargetBooking = null;
   }
 
@@ -1159,16 +1175,19 @@ function scheduleCustomerDashboardAfterPaint(task) {
   closeCancelModalBtn.addEventListener("click", closeCancelModal);
   keepBookingBtn.addEventListener("click", closeCancelModal);
   cancelModal.addEventListener("click", (e) => { if (e.target === cancelModal) closeCancelModal(); });
+  cancelModal.addEventListener("close", () => { cancelTargetBooking = null; });
 
   confirmCancelBtn.addEventListener("click", async () => {
     if (!cancelTargetBooking) return;
+    const booking = cancelTargetBooking;
     confirmCancelBtn.disabled = true;
     confirmCancelBtn.textContent = "Cancelling...";
     try {
-      await API.cancelBooking(cancelTargetBooking.booking_id);
-      closeCancelModal();
-      await loadAppointments();
+      await API.cancelBooking(booking.booking_id);
+      if (cancelTargetBooking === booking) closeCancelModal();
+      await loadAppointments({ force: true });
     } catch (error) {
+      if (cancelTargetBooking !== booking) return;
       showCancelMessage("error", error.message || "Cancellation failed. Please try again.");
       confirmCancelBtn.disabled = false;
       confirmCancelBtn.textContent = "Confirm cancellation";

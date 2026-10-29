@@ -19,6 +19,7 @@ const dashboardComponent = source.slice(start);
 
 function createElementStore() {
   const elements = new Map();
+  const state = { activeElement: null };
 
   function element(id) {
     if (!elements.has(id)) {
@@ -35,6 +36,10 @@ function createElementStore() {
         dataset: {},
         listeners: {},
         className: "",
+        hidden: false,
+        open: false,
+        isConnected: true,
+        attrs: {},
         classList: {
           add(...names) { names.forEach((name) => classes.add(name)); },
           remove(...names) { names.forEach((name) => classes.delete(name)); },
@@ -47,20 +52,26 @@ function createElementStore() {
           contains(name) { return classes.has(name); },
         },
         addEventListener(type, callback) { this.listeners[type] = callback; },
-        focus() { this.focused = true; },
+        focus() { this.focused = true; state.activeElement = this; },
+        showModal() { this.open = true; },
+        close() { this.open = false; this.listeners.close?.(); },
+        setAttribute(name, value) { this.attrs[name] = value; },
         setCustomValidity() {},
-        querySelectorAll() { return []; },
+        querySelectorAll() {
+          return id === 'groomingVisitSummary' ? ['closeVisitSummary', 'cancelVisitSummary', 'printVisitSummary'].map(element).filter(node => !node.disabled && !node.hidden) : [];
+        },
+        contains(target) { return Boolean(target?.id && this.innerHTML.includes(`id="${target.id}"`)); },
       });
     }
 
     return elements.get(id);
   }
 
-  return { element };
+  return { element, state };
 }
 
 async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}) {
-  const { element } = createElementStore();
+  const { element, state } = createElementStore();
   const consoleErrors = [];
   const context = {
     API: {
@@ -75,6 +86,8 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
     },
     document: {
       getElementById: element,
+      get activeElement() { return state.activeElement; },
+      body: element('body'),
       addEventListener(type, callback) {
         if (type === "DOMContentLoaded") callback();
       },
@@ -88,10 +101,10 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
   };
 
   vm.createContext(context);
-  vm.runInContext(dashboardComponent, context);
+  vm.runInContext(dashboardComponent, context, { filename: dashboardPath, importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   await new Promise((resolve) => setImmediate(resolve));
 
-  return { element, consoleErrors, refresh: context.window._refreshAppointments };
+  return { element, consoleErrors, context, refresh: context.window._refreshAppointments };
 }
 
 function testPhilippineDateRollover() {
@@ -119,7 +132,8 @@ async function testCompletedHistoryDoesNotBreakEmptySchedule() {
   const schedule = element("appointmentsList").innerHTML;
   const history = element("groomingHistory").innerHTML;
 
-  assert.match(schedule, /No upcoming visits/);
+  assert.equal(schedule, "");
+  assert.equal(element("upcomingSection").classList.contains("hidden"), true);
   assert.doesNotMatch(schedule, /Failed to load schedule/);
   assert.match(history, /Peter/);
   assert.doesNotMatch(history, /<initial>Loading/);
@@ -201,7 +215,7 @@ async function testStateHierarchyAndLiveTransitions() {
   assert.equal(hidden("trackerSection"), false);
   assert.equal(hidden("upcomingSection"), false);
   assert.match(dashboard.element("groomingTracker").innerHTML, /No grooming in progress/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /cancel-10/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /data-visit-summary="10"/);
 
   bookings.push({ booking_id: 11, status: "in_progress", pets: [{ pet_name: "Bruno", grooming_status: "in_progress" }] });
   await dashboard.refresh();
@@ -427,15 +441,16 @@ async function testTrackerDisclosureAndPrioritySurviveRefresh() {
 async function testVisitSummaryFollowsVisitState() {
   let booking = { booking_id: 701, booking_type: "online", status: "waiting_to_arrive", pets: [{ pet_name: "Coco" }] };
   const dashboard = await runDashboard(async () => ({ bookings: [booking], history: [] }));
-  assert.match(dashboard.element("appointmentsList").innerHTML, /View online registration summary/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /Waiting to Arrive/);
-  assert.match(dashboard.element("appointmentsList").innerHTML, /Cancel/);
+  assert.match(dashboard.element("appointmentsList").innerHTML, /data-visit-summary="701"/);
+  assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Waiting to Arrive|Cancel|View online registration summary/);
   assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   for (const status of ["checked_in", "in_progress", "for_payment", "released"]) {
     booking.status = status;
     await dashboard.refresh();
     assert.doesNotMatch(dashboard.element("appointmentsList").innerHTML, /Coco|View online registration summary/);
-    assert.match(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
+    assert.match(dashboard.element("groomingTracker").innerHTML, /data-visit-summary="701"/);
+    assert.equal(dashboard.element("upcomingSection").classList.contains("hidden"), true);
+    assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary|View visit details/);
   }
   booking.status = "checked_in";
   booking.pets = [{ pet_name: "Coco", grooming_status: "checked_in", pet_queue_number: 2 }, { pet_name: "Luna", grooming_status: "checked_in", pet_queue_number: 3 }];
@@ -445,7 +460,7 @@ async function testVisitSummaryFollowsVisitState() {
   assert.doesNotMatch(uniform, /Waiting to start grooming|All 2 pets|>Checked In<\/p>/);
   booking.booking_type = "walk_in";
   await dashboard.refresh();
-  assert.match(dashboard.element("groomingTracker").innerHTML, /View visit details/);
+  assert.match(dashboard.element("groomingTracker").innerHTML, /data-visit-summary="701"/);
   assert.doesNotMatch(dashboard.element("groomingTracker").innerHTML, /View online registration summary/);
   booking.show_grooming_tracker = false;
   await dashboard.refresh();
@@ -873,20 +888,160 @@ async function testClinicRegistrationUsesServerStatusAndCheckInNumber() {
   const dashboard = await runDashboard(async () => ({ bookings: [], history: [], clinic_visits: [visit] }));
   let card = dashboard.element("appointmentsList").innerHTML;
   assert.match(card, /Clinic patient/);
-  assert.match(card, /Waiting to Arrive/);
-  assert.match(card, /CL-20261026-017/);
-  assert.match(card, /Visit day/);
-  visit = { ...visit, status: "checked_in", queue_number: 11, checked_in_at: "2026-10-26T09:30:00+08:00" };
+  assert.match(card, /data-clinic-summary="17"/);
+  assert.match(card, /Registered Oct 26, 9:00 AM/);
+  assert.doesNotMatch(card, /Waiting to Arrive|CL-20261026-017|Visit day|Queue|Submitted|Online Registration/);
+  for (const status of ["checked_in", "in_consultation", "for_payment", "completed", "cancelled", "expired", "no_show"]) {
+    visit = { ...visit, status };
+    await dashboard.refresh();
+    assert.equal(dashboard.element("appointmentsList").innerHTML, "");
+    assert.equal(dashboard.element("upcomingSection").classList.contains("hidden"), true);
+  }
+  visit = { ...visit, status: "waiting_to_arrive", checked_in_at: "2026-10-26T09:30:00+08:00" };
   await dashboard.refresh();
-  card = dashboard.element("appointmentsList").innerHTML;
-  assert.match(card, /Queue number: 11/);
-  assert.match(card, /Checked in:/);
-  assert.match(card, /Checked In/);
-  assert.doesNotMatch(card, /Queue number: CL-/);
+  assert.equal(dashboard.element("appointmentsList").innerHTML, "", 'Recorded check-in overrides a stale pending status');
+  visit = { ...visit, checked_in_at: null };
+  await dashboard.refresh();
+  assert.equal(dashboard.element("upcomingSection").classList.contains("hidden"), false);
+}
+
+async function testSavedVisitDateUsesManilaSubmissionDay() {
+  const scenarios = [
+    ['2026-10-29', '2026-10-28T21:47:00Z', 'Registered Oct 29, 5:47 AM'],
+    ['2026-10-30', '2026-10-29T09:47:00Z', 'Visit: October 30, 2026'],
+    ['2027-01-01', '2026-12-31T16:00:00Z', 'Registered Jan 1, 12:00 AM'],
+    ['2027-01-01', '2026-12-31T15:59:00Z', 'Visit: January 1, 2027'],
+    ['2026-10-30', null, 'Visit: October 30, 2026'],
+    ['2026-10-30', 'invalid', 'Visit: October 30, 2026'],
+    ['invalid', 'invalid', 'Date not recorded'],
+    ['2026-02-30', null, 'Date not recorded'],
+    ['2026-03-02', '2026-02-30T00:00:00Z', 'Visit: March 2, 2026'],
+    ['2026-10-29', '2026-10-29T05:47:00', 'Visit: October 29, 2026'],
+  ];
+  for (const [day, created, expected] of scenarios) {
+    const dashboard = await runDashboard(async () => ({
+      bookings: [{ booking_id: 25, status: 'waiting_to_arrive', booking_date: day, created_at: created, pets: [{pet_name:'Luna'}] }],
+      clinic_visits: [{ id: 26, status: 'waiting_to_arrive', service_day: day, created_at: created, pet_name: 'Coco' }],
+    }));
+    const markup = dashboard.element('appointmentsList').innerHTML;
+    assert.equal(markup.split(expected).length - 1, 2, `Both services use ${expected}`);
+    assert.doesNotMatch(markup, /Invalid Date|View details|View online registration summary|Waiting to Arrive/);
+    assert.equal(dashboard.consoleErrors.length, 0);
+  }
+}
+
+async function testWholeCardRoutingAndExistingCancellationFlow() {
+  const originalGlobals = { document: global.document, API: global.API, window: global.window };
+  const pets = Array.from({length: 5}, (_, index) => ({pet_name: `Tracker pet ${index}`, grooming_status: 'checked_in'}));
+  let bookings = [
+    {booking_id: 101, status: 'waiting_to_arrive', pets: [{pet_name:'Pending A'}]},
+    {booking_id: 102, status: 'waiting_to_arrive', pets: [{pet_name:'Pending B'}]},
+    {booking_id: 201, status: 'checked_in', pets},
+    {booking_id: 202, status: 'checked_in', pets: [{pet_name:'Other session'}]},
+  ];
+  const savedBookings = new Map(bookings.map(booking => [booking.booking_id,booking]));
+  const dashboard = await runDashboard(async () => ({bookings, clinic_visits: [{id:101, pet_name:'Clinic pet', status:'waiting_to_arrive'}]}));
+  const {element, context} = dashboard;
+  const reads = [];
+  context.API.getBooking = async id => {
+    reads.push(['grooming', id]);
+    const item = savedBookings.get(id);
+    return {booking: {...item, booking_reference: `BAC-${id}`, can_cancel: item.status === 'waiting_to_arrive', booking_pets: item.pets.map(pet => ({pet}))}};
+  };
+  context.API.getClinicRegistration = async id => { reads.push(['clinic', id]); return {visit:{id, reference:`CL-${id}`, status:'waiting_to_arrive', pet:{pet_name:'Clinic pet'}}}; };
+  let cancelled;
+  context.API.cancelBooking = async id => { cancelled = id; savedBookings.get(id).status = 'cancelled'; bookings = bookings.filter(item => item.booking_id !== id); };
+  Object.assign(global, {document:context.document, API:context.API, window:context.window});
+  const summary = element('groomingVisitSummary');
+  const clickAction = async (service, id, surface) => {
+    const trigger = element(`${service}-visit-${id}`);
+    trigger.dataset = service === 'clinic' ? {clinicSummary:String(id)} : {visitSummary:String(id)};
+    await element(surface).listeners.click({target:{closest(selector) { return selector === '[data-tracker-toggle]' ? null : trigger; }}});
+  };
+  try {
+    // Two fast activations during the lazy import must show only the final target.
+    await Promise.all([clickAction('grooming',101,'appointmentsList'), clickAction('grooming',102,'appointmentsList')]);
+    assert.deepEqual(reads, [['grooming',102]]);
+    assert.match(element('groomingVisitSummaryContent').innerHTML, /BAC-102/);
+    summary.close();
+    await clickAction('clinic',101,'appointmentsList');
+    assert.deepEqual(reads.at(-1), ['clinic',101]);
+    assert.match(element('groomingVisitSummaryContent').innerHTML, /CL-101/);
+    summary.close();
+    for (const id of [201,202]) {
+      await clickAction('grooming',id,'trackerSection');
+      assert.deepEqual(reads.at(-1), ['grooming',id]);
+      assert.match(element('groomingVisitSummaryContent').innerHTML, new RegExp(`BAC-${id}`));
+      summary.close();
+    }
+    const toggle = element('tracker-toggle-201'); toggle.dataset.trackerToggle = '201';
+    const event = {target:{closest(selector) { return selector === '[data-tracker-toggle]' ? toggle : null; }}};
+    element('groomingTracker').listeners.click(event);
+    await element('trackerSection').listeners.click(event);
+    assert.match(element('groomingTracker').innerHTML, /Show fewer/);
+    assert.equal(summary.open,false);
+    assert.equal(reads.length,4,'Disclosure does not request visit details');
+    const focusTarget = element('grooming-visit-101'); focusTarget.focus();
+    const markup = element('appointmentsList').innerHTML;
+    await dashboard.refresh();
+    assert.equal(element('appointmentsList').innerHTML,markup);
+    assert.equal(context.document.activeElement,focusTarget,'An unchanged poll preserves focus');
+    await clickAction('grooming',101,'appointmentsList');
+    element('cancelVisitSummary').listeners.click();
+    assert.equal(element('cancelModal').open,true);
+    assert.equal(element('cancelBookingRef').textContent,'BAC-101');
+    assert.equal(context.document.activeElement,element('keepBookingBtn'));
+    assert.equal(cancelled,undefined,'Opening confirmation does not cancel');
+    element('keepBookingBtn').listeners.click();
+    assert.equal(element('cancelModal').open,false);
+    element('cancelVisitSummary').listeners.click();
+    await element('confirmCancelBtn').listeners.click();
+    assert.equal(cancelled,101);
+    assert.doesNotMatch(element('appointmentsList').innerHTML,/Pending A/);
+    assert.equal(summary.open,true,'Cancellation leaves the detail modal stable');
+    summary.listeners.keydown({key:'Escape',preventDefault(){}});
+    assert.equal(summary.open,false);
+    // A slow earlier cancellation cannot dismiss a different session's confirmation.
+    let finishCancellation;
+    context.API.cancelBooking = () => new Promise(resolve => { finishCancellation = resolve; });
+    await clickAction('grooming',102,'appointmentsList');
+    element('cancelVisitSummary').listeners.click();
+    const pendingCancellation = element('confirmCancelBtn').listeners.click();
+    element('closeCancelModal').listeners.click();
+    summary.close();
+    // Reintroduce another eligible saved registration while the first request is pending.
+    savedBookings.get(101).status = 'waiting_to_arrive'; bookings.push(savedBookings.get(101));
+    await dashboard.refresh();
+    await clickAction('grooming',101,'appointmentsList');
+    element('cancelVisitSummary').listeners.click();
+    finishCancellation(); await pendingCancellation;
+    assert.equal(element('cancelModal').open,true,'Only the matching cancellation may dismiss its confirmation');
+    assert.equal(element('cancelBookingRef').textContent,'BAC-101');
+    element('closeCancelModal').listeners.click(); summary.close();
+    assert.equal(dashboard.consoleErrors.length,0);
+  } finally { Object.assign(global, originalGlobals); }
+}
+
+async function testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty() {
+  let resolveHistory;
+  let reads = 0;
+  const dashboard = await runDashboard(() => { reads++; return new Promise(resolve => { resolveHistory = resolve; }); });
+  assert.match(dashboard.element('appointmentsList').innerHTML,/Loading/);
+  assert.equal(dashboard.element('upcomingSection').classList.contains('hidden'),false);
+  await dashboard.refresh();
+  assert.equal(reads,1,'Overlapping refreshes share the pending dashboard load');
+  resolveHistory({bookings:[{booking_id:9,status:'waiting_to_arrive',pets:[{pet_name:'Luna'}]}]});
+  await new Promise(resolve => setImmediate(resolve));
+  const markup = dashboard.element('appointmentsList').innerHTML;
+  dashboard.context.API.getBookingHistory = async () => { throw Object.assign(new Error('Temporary outage'), {status:503}); };
+  await dashboard.refresh();
+  assert.equal(dashboard.element('appointmentsList').innerHTML,markup);
+  assert.equal(dashboard.element('upcomingSection').classList.contains('hidden'),false);
 }
 
 
 (async () => {
+  await testSavedVisitDateUsesManilaSubmissionDay();
   await testClinicRegistrationUsesServerStatusAndCheckInNumber();
   await testPhoneVerificationUsesServerProofAndPreservesAccess();
   testPhilippineDateRollover();
@@ -902,6 +1057,8 @@ async function testClinicRegistrationUsesServerStatusAndCheckInNumber() {
   await testCompletedHistoryDoesNotBreakEmptySchedule();
   await testApiFailureSettlesEveryDashboardPanel();
   await testTrackerPaymentMetadata();
+  await testWholeCardRoutingAndExistingCancellationFlow();
+  await testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty();
   console.log("Customer dashboard history regression tests passed.");
 })().catch((error) => {
   console.error(error);

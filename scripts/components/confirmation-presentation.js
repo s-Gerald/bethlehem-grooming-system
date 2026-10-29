@@ -7,6 +7,21 @@ export function confirmationFields(fields) {
   `).join("")}</dl>`;
 }
 
+export function clinicReasonConfirmation(appointment) {
+  const concerns = Array.isArray(appointment.common_concerns) ? appointment.common_concerns : [];
+  let details = String(appointment.chief_complaint ?? "").trim();
+  // Current API summaries prefix the free text with the selected concerns.
+  // Only remove that exact prefix; preserve separately supplied free text.
+  const summary = concerns.join(", ");
+  if (summary && details === summary) details = "";
+  else if (summary && details.startsWith(summary + "\n")) details = details.slice(summary.length).trim();
+  return confirmationFields([
+    ["Selected concerns", concerns.join(" · ") || "None provided"],
+    ["Additional details", details || "None provided"],
+  ]).replace('class="confirmation-fields"', 'class="confirmation-fields confirmation-fields--reason"');
+}
+
+
 export function confirmationSection(title, content) {
   return `<section class="confirmation-section"><h2>${escapeHtml(title)}</h2>${content}</section>`;
 }

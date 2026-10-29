@@ -25,6 +25,10 @@ class CustomerGroomingVisitSummaryTest extends TestCase
             $t->string('status')->default('waiting_to_arrive');
             $t->integer('window_id')->nullable();
             $t->text('internal_staff_note')->nullable();
+            $t->boolean('paid')->default(false);
+            $t->integer('cancel_count')->default(0);
+            $t->dateTime('grooming_started_at')->nullable();
+            $t->dateTime('grooming_finished_at')->nullable();
         });
         Schema::create('time_windows', function (Blueprint $t) { $t->increments('window_id'); });
         Schema::create('pets', function (Blueprint $t) {
@@ -38,6 +42,14 @@ class CustomerGroomingVisitSummaryTest extends TestCase
             $t->integer('groomer_id')->nullable();
             $t->text('special_instructions')->nullable();
             $t->string('grooming_preference')->nullable();
+            $t->string('grooming_state')->default('not_started');
+            $t->dateTime('grooming_start_time')->nullable();
+            $t->dateTime('grooming_end_time')->nullable();
+        });
+        Schema::create('payments', function (Blueprint $t) {
+            $t->increments('payment_id');
+            $t->integer('booking_id');
+            $t->string('payment_status');
         });
         Schema::create('services', function (Blueprint $t) {
             $t->increments('service_id');
@@ -114,5 +126,22 @@ class CustomerGroomingVisitSummaryTest extends TestCase
     {
         DB::table('grooming_consents')->delete();
         $this->assertNull($this->readVisit(7)->getData(true)['booking']['consent']);
+    }
+
+    public function test_summary_cancellation_eligibility_uses_payment_state_and_count_safeguards(): void
+    {
+        $this->assertTrue($this->readVisit(7)->getData(true)['booking']['can_cancel']);
+        foreach ([['paid' => true], ['cancel_count' => 2], ['status' => 'checked_in'], ['grooming_started_at' => now()]] as $change) {
+            DB::table('bookings')->where('booking_id', 71)->update(array_merge([
+                'paid' => false, 'cancel_count' => 0, 'status' => 'waiting_to_arrive', 'grooming_started_at' => null,
+            ], $change));
+            $this->assertFalse($this->readVisit(7)->getData(true)['booking']['can_cancel']);
+        }
+        DB::table('bookings')->where('booking_id', 71)->update(['grooming_started_at' => null]);
+        DB::table('booking_pets')->where('booking_id', 71)->update(['grooming_state' => 'in_progress']);
+        $this->assertFalse($this->readVisit(7)->getData(true)['booking']['can_cancel']);
+        DB::table('booking_pets')->where('booking_id', 71)->update(['grooming_state' => 'not_started']);
+        DB::table('payments')->insert(['booking_id' => 71, 'payment_status' => 'paid']);
+        $this->assertFalse($this->readVisit(7)->getData(true)['booking']['can_cancel']);
     }
 }

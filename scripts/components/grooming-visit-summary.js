@@ -2,9 +2,9 @@ import { escapeHtml } from "../services/booking-draft-service.js?registration=fc
 import { formatBookingDate } from "../services/booking-format-service.js";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import {
-  confirmationDocument, confirmationFields, confirmationSection,
+  clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,
-} from "./confirmation-presentation.js?v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
+} from "./confirmation-presentation.js?visit-details=20261029&v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {
@@ -75,7 +75,8 @@ export function groomingVisitPresentation(booking, statusLabel) {
   const petSections = confirmationSection(`Pets (${pets.length})`, details);
   const owner = booking.user || booking.owner;
   const ownerSection = owner ? confirmationSection("Owner Information", ownerConfirmationFields(owner)) : "";
-  const sections = header + petSections + consentSection + priceSection;
+  const identity = `<div class="grooming-summary-identity"><h3>${escapeHtml(pets.map((item) => item.pet?.pet_name).filter(Boolean).join(", ") || "Your pet")}</h3><p>Grooming</p></div>`;
+  const sections = identity + header + petSections + consentSection + priceSection;
   return {
     title,
     html: sections,
@@ -87,73 +88,155 @@ export function groomingVisitPresentation(booking, statusLabel) {
   };
 }
 
+function clinicVisitPresentation(visit) {
+  const pet = visit.pet || {};
+  const status = visit.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(visit.status) || "Not recorded";
+  return {
+    title: "Clinic Visit Details",
+    html: `<div class="grooming-summary-identity"><h3>${escapeHtml(pet.pet_name || "Your pet")}</h3><p>Clinic</p></div>
+      <p class="grooming-summary-status">${escapeHtml(status)}</p>` +
+      confirmationSection("Registration Details", confirmationFields([
+        ["Registration reference", visit.reference || "Not recorded"],
+        ["Visit day", formatBookingDate(visit.service_day) || "Not recorded"],
+        ["Submitted online", formatConfirmationTimestamp(visit.created_at) || "Not recorded"],
+        ...(visit.checked_in_at ? [["Checked in", formatConfirmationTimestamp(visit.checked_in_at) || "Not recorded"]] : []),
+        ...(visit.queue_number != null ? [["Queue number", visit.queue_number]] : []),
+        ...(pet.species ? [["Species", formatConfirmationLabel(pet.species)]] : []),
+        ...(pet.breed ? [["Breed", pet.breed]] : []),
+      ])) + ((visit.common_concerns?.length || visit.chief_complaint?.trim())
+        ? confirmationSection("Reason for Visit", clinicReasonConfirmation(visit)) : ""),
+  };
+}
+
 let requestId = 0;
+let currentVisit;
 let returnTrigger;
 let initialized = false;
+const pendingDetails = new Map();
 
-export async function openGroomingVisitSummary(bookingId, trigger, statusFor) {
+export function openGroomingVisitSummary(bookingId, trigger, statusFor, onCancel, source) {
+  return openVisitSummary({ service: "grooming", id: bookingId, trigger, statusFor, onCancel, source });
+}
+
+export function openClinicVisitSummary(id, trigger, source) {
+  return openVisitSummary({ service: "clinic", id, trigger, source });
+}
+
+// No new polling: the dashboard calls this on its existing successful refresh.
+export function refreshOpenVisitSummary(bookings, clinicVisits) {
+  if (!currentVisit || !document.getElementById("groomingVisitSummary").open || currentVisit.sourceKey === undefined) return;
+  const records = currentVisit.service === "clinic" ? clinicVisits : bookings;
+  const source = records.find((item) => String(item.id ?? item.booking_id) === String(currentVisit.id));
+  const sourceKey = JSON.stringify(source ?? null);
+  if (sourceKey === currentVisit.sourceKey) return;
+  currentVisit.sourceKey = sourceKey;
+  return loadVisitDetails(currentVisit, true);
+}
+
+function initializeVisitDialog() {
+  if (initialized) return;
+  initialized = true;
+  const dialog = document.getElementById("groomingVisitSummary");
+  const closeButton = document.getElementById("closeVisitSummary");
+  closeButton.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { event.preventDefault(); dialog.close(); return; }
+    if (event.key !== "Tab") return;
+    const controls = [...dialog.querySelectorAll("button:not(:disabled)")].filter((button) => !button.hidden);
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  });
+  dialog.addEventListener("close", () => {
+    requestId++;
+    currentVisit = null;
+    document.body.classList.remove("grooming-summary-open");
+    const target = returnTrigger?.isConnected ? returnTrigger : document.getElementById(returnTrigger?.id);
+    (target || document.getElementById("trackerHeading"))?.focus({ preventScroll: true });
+  });
+  document.getElementById("cancelVisitSummary").addEventListener("click", () => {
+    if (currentVisit?.booking?.can_cancel && currentVisit.onCancel) currentVisit.onCancel(currentVisit.booking);
+  });
+  document.getElementById("printVisitSummary").addEventListener("click", () => {
+    if (currentVisit?.service !== "grooming" || !currentVisit.booking) return;
+    document.body.classList.add("grooming-summary-printing");
+    try { printConfirmation(); }
+    finally { document.body.classList.remove("grooming-summary-printing"); }
+  });
+}
+
+function openVisitSummary(visit) {
+  initializeVisitDialog();
+  const dialog = document.getElementById("groomingVisitSummary");
+  currentVisit = { ...visit, sourceKey: visit.source ? JSON.stringify(visit.source) : undefined };
+  returnTrigger = visit.trigger;
+  document.getElementById("groomingVisitSummaryHeading").textContent = visit.service === "clinic" ? "Clinic Visit Details" : "Grooming Visit Details";
+  if (!dialog.open) dialog.showModal();
+  document.body.classList.add("grooming-summary-open");
+  document.getElementById("closeVisitSummary").focus({ preventScroll: true });
+  return loadVisitDetails(currentVisit);
+}
+
+async function loadVisitDetails(visit, refresh = false) {
   const dialog = document.getElementById("groomingVisitSummary");
   const content = document.getElementById("groomingVisitSummaryContent");
   const printButton = document.getElementById("printVisitSummary");
+  const cancelButton = document.getElementById("cancelVisitSummary");
   const printRoot = document.getElementById("groomingVisitPrint");
-  const closeButton = document.getElementById("closeVisitSummary");
-  if (!initialized) {
-    initialized = true;
-    closeButton.addEventListener("click", () => dialog.close());
-    document.getElementById("dismissVisitSummary").addEventListener("click", () => dialog.close());
-    dialog.addEventListener("keydown", (event) => {
-      if (event.key !== "Tab") return;
-      const controls = [...dialog.querySelectorAll("button:not(:disabled)")];
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    });
-    dialog.addEventListener("close", () => {
-      requestId++;
-      document.body.classList.remove("grooming-summary-open");
-      // Dashboard polling may have replaced the original trigger while open.
-      const target = returnTrigger?.isConnected ? returnTrigger : document.getElementById(returnTrigger?.id);
-      (target || document.getElementById("trackerHeading"))?.focus({ preventScroll: true });
-    });
-    printButton.addEventListener("click", () => {
-      document.body.classList.add("grooming-summary-printing");
-      try { printConfirmation(); }
-      finally { document.body.classList.remove("grooming-summary-printing"); }
-    });
-  }
   const currentRequest = ++requestId;
-  returnTrigger = trigger;
   printButton.disabled = true;
+  printButton.hidden = visit.service !== "grooming";
+  cancelButton.hidden = true;
+  cancelButton.disabled = true;
   printRoot.innerHTML = "";
-  document.getElementById("groomingVisitSummaryHeading").textContent = "Registration Summary";
-  content.innerHTML = '<p role="status">Loading visit summary…</p>';
+  visit.booking = null;
+  if (!refresh) { content.innerHTML = '<p role="status">Loading visit summary…</p>'; content.scrollTop = 0; }
   content.setAttribute("aria-busy", "true");
-  if (!dialog.open) dialog.showModal();
-  document.body.classList.add("grooming-summary-open");
-  closeButton.focus({ preventScroll: true });
   try {
-    const { booking } = await API.getBooking(bookingId);
+    const key = `${visit.service}:${visit.id}`;
+    // A meaningful dashboard change supersedes a read begun before that change.
+    if (refresh && pendingDetails.has(key)) {
+      await pendingDetails.get(key).catch(() => {});
+      if (currentRequest !== requestId || !dialog.open) return;
+    }
+    if (!pendingDetails.has(key)) {
+      const request = visit.service === "clinic" ? API.getClinicRegistration(visit.id) : API.getBooking(visit.id);
+      pendingDetails.set(key, Promise.resolve(request).finally(() => pendingDetails.delete(key)));
+    }
+    const data = await pendingDetails.get(key);
     if (currentRequest !== requestId || !dialog.open) return;
-    const statusBooking = { ...booking, pets: (booking.booking_pets || []).map((pet) => ({
-      grooming_status: pet.grooming_state === "cancelled" ? "cancelled"
-        : pet.grooming_end_time ? "grooming_finished" : pet.grooming_start_time ? "in_progress" : booking.status,
-      grooming_started_at: pet.grooming_start_time || null, grooming_started_timestamp: pet.grooming_start_time || null,
-    })) };
-    const summary = groomingVisitPresentation(booking, statusFor(statusBooking));
+    let summary;
+    if (visit.service === "clinic") {
+      summary = clinicVisitPresentation(data.visit);
+    } else {
+      const booking = data.booking;
+      const statusBooking = { ...booking, pets: (booking.booking_pets || []).map((pet) => ({
+        grooming_status: pet.grooming_state === "cancelled" ? "cancelled"
+          : pet.grooming_end_time ? "grooming_finished" : pet.grooming_start_time ? "in_progress" : booking.status,
+        grooming_started_at: pet.grooming_start_time || null, grooming_started_timestamp: pet.grooming_start_time || null,
+      })) };
+      summary = groomingVisitPresentation(booking, visit.statusFor(statusBooking));
+      visit.booking = booking;
+      cancelButton.hidden = !(booking.can_cancel && visit.onCancel);
+      cancelButton.disabled = cancelButton.hidden;
+      printRoot.innerHTML = summary.print;
+      printButton.disabled = false;
+    }
     document.getElementById("groomingVisitSummaryHeading").textContent = summary.title;
     content.innerHTML = summary.html;
-    printRoot.innerHTML = summary.print;
-    printButton.disabled = false;
   } catch {
     if (currentRequest === requestId && dialog.open) content.innerHTML = '<p role="alert">Unable to load visit summary. Close and try again.</p>';
   } finally {
-    if (currentRequest === requestId) content.setAttribute("aria-busy", "false");
+    if (currentRequest === requestId) {
+      content.setAttribute("aria-busy", "false");
+      if ((document.activeElement === cancelButton && cancelButton.hidden) || document.activeElement === printButton && printButton.hidden) {
+        document.getElementById("closeVisitSummary").focus({ preventScroll: true });
+      }
+    }
   }
 }
 

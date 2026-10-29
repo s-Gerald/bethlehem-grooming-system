@@ -2303,6 +2303,10 @@ var API = (() => {
     return request("GET", `/booking/${encodeURIComponent(bookingId)}`, null, getCustomerToken(), { force: true });
   }
 
+  async function getClinicRegistration(id) {
+    return request("GET", `/clinic/registrations/${encodeURIComponent(id)}`, null, getCustomerToken(), { force: true });
+  }
+
   async function cancelBooking(bookingId, reason = null) {
     // POST /api/booking/cancel  (protected)
     return request("POST", "/booking/cancel", { booking_id: bookingId, reason }, getCustomerToken());
@@ -3265,6 +3269,7 @@ var API = (() => {
     getPreRegistrationAccess,
     getBookingHistory,
     getBooking,
+    getClinicRegistration,
     getGroomingCapacity,
     cancelBooking,
     rescheduleBooking,

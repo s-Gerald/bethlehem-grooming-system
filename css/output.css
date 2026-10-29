@@ -4089,10 +4089,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   background-color: var(--portal-active);
 }
 
-.hover\:bg-portal-danger-soft:hover {
-  background-color: var(--portal-danger-soft);
-}
-
 .hover\:bg-portal-surface-soft:hover {
   background-color: var(--portal-surface-soft);
 }

@@ -130,6 +130,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/booking/reschedule', [BookingController::class, 'reschedule']);
 
     // Customer — Clinic visit pre-registration
+    Route::get('/clinic/registrations/{id}', [ClinicWalkinController::class, 'customerRegistration'])->whereNumber('id');
     Route::post('/clinic/pre-register', [ClinicWalkinController::class, 'preRegister'])->middleware(\App\Http\Middleware\EnsureCustomerPhoneVerified::class);
 
     // Admin — Customer management (staff can view, admin can manage)

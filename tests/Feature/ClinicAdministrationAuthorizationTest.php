@@ -1855,6 +1855,59 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         return ['optional' => [false], 'verified and enforced' => [true]];
     }
 
+    public function test_dashboard_clinic_list_only_contains_pending_unchecked_arrivals(): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi']);
+        foreach (['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled', 'expired', 'no_show'] as $index => $status) {
+            DB::table('clinic_appointments')->insert([
+                'id' => $index + 1, 'appointment_reference' => 'CL-'.$index,
+                'appointment_type' => 'pre_registered', 'user_id' => 10, 'pet_id' => 101,
+                'status' => $status, 'appointment_date' => now()->toDateString(), 'created_at' => now(),
+            ]);
+        }
+        DB::table('clinic_appointments')->insert([
+            'id' => 9, 'appointment_reference' => 'CL-9', 'user_id' => 10, 'pet_id' => 101,
+            'status' => 'waiting_to_arrive', 'checked_in_at' => now(), 'appointment_date' => now()->toDateString(),
+        ]);
+        $this->getJson('/api/booking/history?history_limit=3')->assertOk()
+            ->assertJsonCount(1, 'clinic_visits')->assertJsonPath('clinic_visits.0.id', 1);
+        DB::table('clinic_appointments')->where('id', 1)->update(['checked_in_at' => now(), 'status' => 'checked_in']);
+        $this->getJson('/api/booking/history?history_limit=3')->assertOk()->assertJsonCount(0, 'clinic_visits');
+    }
+
+    public function test_customer_clinic_details_are_persisted_owner_scoped_and_exclude_clinical_information(): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat', 'breed' => 'Persian']);
+        DB::table('clinic_appointments')->insert([
+            'id' => 17, 'appointment_reference' => 'CL-17', 'appointment_type' => 'pre_registered',
+            'status' => 'waiting_to_arrive', 'user_id' => 10, 'pet_id' => 101,
+            'appointment_date' => now()->addDay()->toDateString(), 'created_at' => now(),
+            'chief_complaint' => "Vomiting\nSince yesterday", 'common_concerns' => '["Vomiting"]',
+            'notes' => 'Private staff note',
+        ]);
+        $visit = $this->getJson('/api/clinic/registrations/17')->assertOk()
+            ->assertJsonPath('visit.reference', 'CL-17')->assertJsonPath('visit.pet.pet_name', 'Mochi')
+            ->assertJsonPath('visit.common_concerns', ['Vomiting'])
+            ->assertJsonPath('visit.chief_complaint', "Vomiting\nSince yesterday")->json('visit');
+        $this->assertArrayNotHasKey('notes', $visit);
+        $this->assertArrayNotHasKey('record', $visit);
+        DB::table('clinic_appointments')->where('id', 17)->update(['status' => 'checked_in', 'checked_in_at' => now()]);
+        $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.status', 'checked_in');
+        $this->getJson('/api/clinic/registrations/999')->assertNotFound();
+        DB::table('clinic_appointments')->where('id', 17)->update(['appointment_type' => 'walk_in']);
+        $this->getJson('/api/clinic/registrations/17')->assertNotFound();
+        DB::table('clinic_appointments')->where('id', 17)->update(['appointment_type' => 'pre_registered']);
+        $this->authenticateAs('customer', 11);
+        $this->getJson('/api/clinic/registrations/17')->assertNotFound();
+    }
+
+    public function test_clinic_registration_details_require_authentication(): void
+    {
+        $this->getJson('/api/clinic/registrations/17')->assertUnauthorized();
+    }
+
     public function test_pre_registration_requires_common_concerns_and_allows_optional_details(): void
     {
         $this->authenticateAs('customer', 10);

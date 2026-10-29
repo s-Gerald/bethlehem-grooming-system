@@ -2,24 +2,10 @@ import {
   CLINIC_VISIT_CONFIRMATION_KEY, formatClinicVisitDate, requireCustomerSession,
 } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
 import {
-  confirmationFields, confirmationSection, formatConfirmationLabel,
+  clinicReasonConfirmation, confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
   renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
-
-export function clinicReasonConfirmation(appointment) {
-  const concerns = Array.isArray(appointment.common_concerns) ? appointment.common_concerns : [];
-  let details = String(appointment.chief_complaint ?? "").trim();
-  // Current API summaries prefix the free text with the selected concerns.
-  // Only remove that exact prefix; preserve separately supplied free text.
-  const summary = concerns.join(", ");
-  if (summary && details === summary) details = "";
-  else if (summary && details.startsWith(summary + "\n")) details = details.slice(summary.length).trim();
-  return confirmationFields([
-    ["Selected concerns", concerns.join(" · ") || "None provided"],
-    ["Additional details", details || "None provided"],
-  ]).replace('class="confirmation-fields"', 'class="confirmation-fields confirmation-fields--reason"');
-}
+} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
 
 export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";

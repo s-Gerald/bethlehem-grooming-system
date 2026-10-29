@@ -1,14 +1,38 @@
-/* Hallmark support: existing Bethlehem portal tokens and component hierarchy.
- * Pre-emit critique: Philosophy 5, Hierarchy 5, Execution 4, Specificity 5, Restraint 5, Variety 4. */
-.grooming-summary-action {
-  display: inline-flex; align-items: center; min-height: 44px; padding: .5rem 0; border: 0; background: transparent; text-align: left;
-  color: var(--portal-primary); font-size: .75rem; font-weight: 600; cursor: pointer;
+/* Hallmark · component scope: existing portal cards · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+.upcoming-visit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: .75rem; }
+.upcoming-visit-card {
+  display: flex; align-items: center; gap: 1rem; width: 100%; min-width: 0; padding: 1rem;
+  border: 1px solid var(--portal-border); border-radius: 14px; background: var(--portal-surface-soft);
+  text-align: left; cursor: pointer; transition: background-color 150ms ease;
 }
-.grooming-summary-action:hover { text-decoration: underline; }
-.grooming-summary-action:active { color: var(--portal-primary-hover); }
-.grooming-summary-action:focus-visible, .grooming-summary-dialog button:focus-visible {
+.upcoming-visit-card:hover { background: var(--portal-active); }
+.upcoming-visit-card:active { background: var(--portal-record); }
+.tracker-single-visit { position: relative; }
+.tracker-visit-card { position: relative; min-width: 0; border-radius: 14px; }
+.tracker-visit-card + .tracker-visit-card { margin-top: 1.25rem; border-top: 1px solid var(--portal-border); padding-top: 1.25rem; }
+.tracker-visit-card--single { position: static; }
+.tracker-visit-action {
+  position: absolute; inset: 0; z-index: 1; width: 100%; border: 0; border-radius: inherit;
+  background: transparent; cursor: pointer; transition: box-shadow 150ms ease;
+}
+.tracker-visit-action:hover { box-shadow: inset 0 0 0 1px var(--portal-border); }
+.tracker-visit-action:active { box-shadow: inset 0 0 0 2px var(--portal-border); }
+.tracker-disclosure { position: relative; z-index: 2; }
+.upcoming-visit-card:focus-visible, .tracker-visit-action:focus-visible,
+.grooming-summary-dialog button:focus-visible, .visit-cancel-dialog button:focus-visible {
   outline: 3px solid var(--portal-primary); outline-offset: 3px;
 }
+.visit-cancel-dialog { width: min(24rem, calc(100% - 2rem)); margin: auto; padding: 0; border: 1px solid var(--portal-border); border-radius: 24px; background: var(--portal-surface); }
+.visit-cancel-dialog::backdrop { background: rgb(15 23 42 / .5); }
+.visit-cancel-dialog button { min-height: 44px; }
+.visit-summary-cancel { color: var(--portal-danger); margin-right: auto; }
+.visit-summary-cancel:hover { background: var(--portal-danger-soft); }
+.grooming-summary-dialog [hidden] { display: none !important; }
+.grooming-summary-footer:not(:has(button:not([hidden]))) { display: none; }
+.grooming-summary-identity { margin-bottom: .75rem; }
+.grooming-summary-identity p { margin-top: .25rem !important; color: var(--portal-muted); }
+@media (max-width: 639px) { .upcoming-visit-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .upcoming-visit-card, .tracker-visit-action { transition: none; } }
 body.grooming-summary-open { overflow: hidden; }
 .grooming-summary-dialog {
   width: min(44rem, calc(100% - 2rem)); max-width: none; max-height: calc(100dvh - 2rem);
@@ -50,7 +74,7 @@ body.grooming-summary-open { overflow: hidden; }
 @media (max-width: 479px) {
   .grooming-summary-heading, .grooming-summary-footer, .grooming-summary-content { padding: 1rem; }
   .grooming-summary-content .confirmation-fields { grid-template-columns: minmax(0, 1fr); }
-  .grooming-summary-footer { flex-direction: column-reverse; gap: .75rem; }
+  .grooming-summary-footer { flex-direction: column; gap: .75rem; }
   .grooming-summary-footer button { width: 100%; }
 }
 @media print {

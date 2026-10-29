@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { groomingVisitPresentation, openGroomingVisitSummary } from '../scripts/components/grooming-visit-summary.js?grooming=actual-20261026';
+import { groomingVisitPresentation, openGroomingVisitSummary, openClinicVisitSummary, refreshOpenVisitSummary } from '../scripts/components/grooming-visit-summary.js?grooming=actual-20261026';
 
 const booking = {
   booking_id: 71, booking_reference: 'BAC-71', status: 'waiting_to_arrive', paid: false,
@@ -52,7 +52,8 @@ class Element {
   constructor(id) { this.id = id; }
   addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
   emit(type, event) { for (const listener of this.listeners[type] || []) listener(event); }
-  querySelectorAll() { return ['closeVisitSummary', 'dismissVisitSummary', 'printVisitSummary'].map(element).filter(node => !node.disabled); }
+  hidden = false;
+  querySelectorAll() { return ['closeVisitSummary', 'cancelVisitSummary', 'printVisitSummary'].map(element).filter(node => !node.disabled && !node.hidden); }
   setAttribute(name, value) { this.attrs[name] = value; }
   focus() { document.activeElement = this; }
   showModal() { this.open = true; }
@@ -97,7 +98,7 @@ printButton.emit('click');
 assert.match(printed, /BAC-71/);
 assert.equal(document.title, 'Customer dashboard');
 assert.equal(bodyClasses.has('grooming-summary-printing'), false);
-element('dismissVisitSummary').emit('click');
+element('closeVisitSummary').emit('click');
 assert.equal(modal.open, false);
 assert.equal(document.activeElement, trigger);
 assert.equal(bodyClasses.has('grooming-summary-open'), false);
@@ -115,7 +116,7 @@ let resolveOld;
 API.getBooking = () => new Promise(resolve => { resolveOld = resolve; });
 const oldRequest = openGroomingVisitSummary(73, trigger, () => 'Checked In');
 modal.emit('keydown', { key: 'Tab', shiftKey: true, preventDefault() {} });
-assert.equal(document.activeElement.id, 'dismissVisitSummary', 'Loading focus trap skips the disabled print control');
+assert.equal(document.activeElement.id, 'closeVisitSummary', 'Loading focus trap skips the unavailable footer controls');
 modal.close();
 API.getBooking = async () => ({ booking: { ...booking, booking_reference: 'BAC-74' } });
 await openGroomingVisitSummary(74, trigger, () => 'Checked In');
@@ -128,7 +129,69 @@ const replacementTrigger = new Element(trigger.id);
 elements.set(trigger.id, replacementTrigger);
 modal.close();
 assert.equal(document.activeElement, replacementTrigger, 'Focus returns to a trigger replaced by dashboard polling');
-console.log('Customer grooming visit summary regression tests passed.');
+
+const clinic = { id: 17, reference: 'CL-17', status: 'waiting_to_arrive', service_day: '2026-10-30',
+  created_at: '2026-10-29T09:47:00Z', pet: { pet_name: 'Mochi <3', species: 'cat', breed: 'Persian' },
+  common_concerns: ['Vomiting'], chief_complaint: 'Vomiting\nSince yesterday' };
+let clinicReads = 0;
+API.getClinicRegistration = async (id) => { assert.equal(id, 17); clinicReads++; return { visit: clinic }; };
+await openClinicVisitSummary(17, replacementTrigger, { id: 17, status: 'waiting_to_arrive' });
+assert.equal(modal.open, true);
+assert.match(content.innerHTML, /Mochi &lt;3/);
+assert.match(content.innerHTML, /CL-17/);
+assert.match(content.innerHTML, /October 30, 2026/);
+assert.match(content.innerHTML, /October 29, 2026/);
+assert.equal((content.innerHTML.match(/Vomiting/g) || []).length, 1);
+assert.match(content.innerHTML, /Since yesterday/);
+assert.equal(printButton.hidden, true);
+assert.equal(element('cancelVisitSummary').hidden, true);
+refreshOpenVisitSummary([], [{ id: 17, status: 'waiting_to_arrive' }]);
+assert.equal(clinicReads, 1, 'Harmless polling does not fetch details again');
+clinic.status = 'checked_in';
+await refreshOpenVisitSummary([], []);
+assert.equal(clinicReads, 2, 'Removal of the pending card refreshes the open saved detail once');
+assert.equal(modal.open, true);
+assert.match(content.innerHTML, /Checked In/);
+await refreshOpenVisitSummary([], []);
+assert.equal(clinicReads, 2);
+modal.close();
+
+let cancelTarget;
+const cancellable = { ...booking, can_cancel: true };
+API.getBooking = async () => ({ booking: cancellable });
+await openGroomingVisitSummary(71, replacementTrigger, () => 'Waiting to Arrive', value => { cancelTarget = value; });
+assert.equal(element('cancelVisitSummary').hidden, false);
+element('cancelVisitSummary').emit('click');
+assert.equal(cancelTarget.booking_id, 71);
+assert.equal(modal.open, true, 'The existing confirmation can layer over saved details');
+API.getBooking = async () => ({ booking: { ...booking, can_cancel: false, paid: true } });
+await openGroomingVisitSummary(71, replacementTrigger, () => 'Waiting to Arrive', () => { throw new Error('Ineligible cancellation'); });
+assert.equal(element('cancelVisitSummary').hidden, true);
+modal.close();
+
+// Repeated activation of the same session shares its in-flight detail request.
+let resolveShared;
+let sharedReads = 0;
+API.getBooking = () => { sharedReads++; return new Promise(resolve => { resolveShared = resolve; }); };
+const firstOpen = openGroomingVisitSummary(80, replacementTrigger, () => 'Checked In');
+const repeatedOpen = openGroomingVisitSummary(80, replacementTrigger, () => 'Checked In');
+resolveShared({ booking: { ...booking, booking_reference: 'BAC-80' } });
+await Promise.all([firstOpen, repeatedOpen]);
+assert.equal(sharedReads, 1);
+assert.match(content.innerHTML, /BAC-80/);
+modal.close();
+
+// A check-in during a slow detail read requires a fresh read after that request settles.
+let resolveBeforeCheckIn;
+API.getClinicRegistration = () => new Promise(resolve => { resolveBeforeCheckIn = resolve; });
+const beforeCheckIn = openClinicVisitSummary(17, replacementTrigger, { id:17, status:'waiting_to_arrive' });
+API.getClinicRegistration = async () => ({visit:{...clinic,status:'checked_in'}});
+const afterCheckIn = refreshOpenVisitSummary([], []);
+resolveBeforeCheckIn({visit:{...clinic,status:'waiting_to_arrive'}});
+await Promise.all([beforeCheckIn, afterCheckIn]);
+assert.match(content.innerHTML,/Checked In/);
+assert.doesNotMatch(content.innerHTML,/Waiting to Arrive/);
+modal.close();
 
 assert.match(view.html, /Actual Grooming Duration[\s\S]*2 hr 18 min/);
 const missing = structuredClone(booking); delete missing.booking_pets[0].grooming_end_time;
@@ -171,3 +234,4 @@ assert.match(petSections[0], /Regular Dog Grooming/); assert.match(petSections[0
 assert.doesNotMatch(petSections[0], /Nail Clipping/);
 assert.match(petSections[1], /Nail Clipping/); assert.match(petSections[1], /₱100/);
 assert.doesNotMatch(petSections[1], /Medicated Bath/);
+console.log('Customer grooming visit summary regression tests passed.');

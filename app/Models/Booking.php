@@ -143,4 +143,21 @@ class Booking extends Model
             : $this->payments()->where('payment_status', 'paid')->exists());
     }
 
+    public function hasCancellableState(): bool
+    {
+        if ($this->status !== 'waiting_to_arrive' || $this->grooming_started_at || $this->grooming_finished_at
+            || $this->hasSuccessfulPayment()) {
+            return false;
+        }
+
+        $started = fn ($pet) => ! in_array($pet->grooming_state, [BookingPet::GROOMING_STATE_NOT_STARTED, BookingPet::GROOMING_STATE_CANCELLED], true)
+            || $pet->grooming_start_time !== null || $pet->grooming_end_time !== null;
+
+        return $this->relationLoaded('bookingPets')
+            ? ! $this->bookingPets->contains($started)
+            : ! $this->bookingPets()->where(fn ($pet) => $pet
+                ->whereNotIn('grooming_state', [BookingPet::GROOMING_STATE_NOT_STARTED, BookingPet::GROOMING_STATE_CANCELLED])
+                ->orWhereNotNull('grooming_start_time')->orWhereNotNull('grooming_end_time'))->exists();
+    }
+
 }

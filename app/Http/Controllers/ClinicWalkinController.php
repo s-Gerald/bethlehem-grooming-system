@@ -25,6 +25,32 @@ use Illuminate\Validation\ValidationException;
 
 class ClinicWalkinController extends Controller
 {
+    public function customerRegistration(Request $request, int $id)
+    {
+        $visit = ClinicAppointment::query()->whereKey($id)
+            ->where('user_id', $request->user()->user_id)
+            ->where('appointment_type', 'pre_registered')
+            ->select(['id', 'pet_id', 'appointment_reference', 'status', 'appointment_date', 'created_at',
+                'checked_in_at', 'queue_number', 'common_concerns', 'chief_complaint'])
+            ->with('pet:pet_id,pet_name,species,breed')
+            ->first();
+
+        if (! $visit) {
+            return response()->json(['success' => false, 'message' => 'Visit not found.'], 404);
+        }
+
+        return response()->json(['success' => true, 'visit' => [
+            'id' => $visit->id, 'reference' => $visit->appointment_reference,
+            'status' => $visit->status, 'service_day' => $visit->appointment_date?->toDateString(),
+            'created_at' => $visit->created_at?->toIso8601String(),
+            'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
+            'queue_number' => $visit->queue_number,
+            'common_concerns' => $visit->common_concerns,
+            'chief_complaint' => $visit->chief_complaint,
+            'pet' => $visit->pet,
+        ]]);
+    }
+
     public function timeslots(
         Request $request,
         AvailabilityTimeWindowService $timeWindows,

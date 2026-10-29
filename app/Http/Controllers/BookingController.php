@@ -556,8 +556,9 @@ class BookingController extends Controller
             'history' => $history->map($format)->values(),
             'history_total' => $historyTotal,
             'clinic_visits' => Schema::hasTable('clinic_appointments') ? \App\Models\ClinicAppointment::query()
-                ->where('user_id', $userId)->whereIn('status', ['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment'])
-                ->with('pet:pet_id,pet_name,species,breed')->orderBy('created_at')->orderBy('id')
+                ->where('user_id', $userId)->where('status', 'waiting_to_arrive')->whereNull('checked_in_at')
+                ->select(['id', 'pet_id', 'appointment_reference', 'status', 'appointment_type', 'appointment_date', 'queue_number', 'created_at', 'checked_in_at'])
+                ->with('pet:pet_id,pet_name')->orderBy('created_at')->orderBy('id')
                 ->get()->map(fn ($visit) => [
                     'id' => $visit->id, 'reference' => $visit->appointment_reference,
                     'status' => $visit->status, 'appointment_type' => $visit->appointment_type,
@@ -635,6 +636,7 @@ class BookingController extends Controller
             }
         });
         $booking->setAttribute('consent', $booking->groomingConsent);
+        $booking->setAttribute('can_cancel', $booking->cancel_count < 2 && $booking->hasCancellableState());
         $booking->unsetRelation('groomingConsent');
         $owner = $request->user();
         $booking->setAttribute('owner', [
@@ -670,11 +672,7 @@ class BookingController extends Controller
                 ], 404);
             }
 
-            if ($booking->hasSuccessfulPayment() || $booking->status !== 'waiting_to_arrive'
-                || $booking->grooming_started_at || $booking->grooming_finished_at
-                || $booking->bookingPets()->where(fn ($pet) => $pet
-                    ->whereNotIn('grooming_state', [BookingPet::GROOMING_STATE_NOT_STARTED, BookingPet::GROOMING_STATE_CANCELLED])
-                    ->orWhereNotNull('grooming_start_time')->orWhereNotNull('grooming_end_time'))->exists()) {
+            if (! $booking->hasCancellableState()) {
                 return response()->json(['success' => false, 'message' => 'This visit cannot be cancelled.'], 422);
             }
 
