@@ -44,7 +44,7 @@ class AuthController extends Controller
                 $pending = PendingCustomerRegistration::query()->unexpired()
                     ->where('registration_edit_token_hash', hash('sha256', $request->input('registration_token')))->first();
                 if ($pending && strcasecmp($pending->email, $request->input('email')) === 0
-                    && CustomerRegistrationService::canEdit($pending, $request)) {
+                    && CustomerRegistrationService::canContinue($pending, $request)) {
                     $linkAvailable = CustomerRegistrationService::usableLink($pending);
                     return response()->json([
                         'success' => true, 'requires_verification' => true, 'registration_state' => 'resumed',
@@ -65,108 +65,33 @@ class AuthController extends Controller
         PendingCustomerRegistration::pruneExpired();
 
         try {
-            $result = DB::transaction(function () use ($request, $browserToken) {
+            $result = DB::transaction(function () use ($request) {
                 $pendingRegistration = null;
-                if ($request->isMethod('put') && $request->has('registration_recovery_token')) {
-                    $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
-                    $hash = hash('sha256', $credential['registration_recovery_token']);
-                    $legacy = User::query()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
-                    $registrant = $legacy ?? PendingCustomerRegistration::query()
-                        ->withActiveReview()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
-                    if (! $registrant || ! $registrant->registration_recovery_expires_at
-                        || now()->greaterThanOrEqualTo($registrant->registration_recovery_expires_at)
-                        || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {
-                        abort(422, 'This registration review has expired. Verify your email again.');
-                    }
-                    if (strcasecmp($request->input('email'), $registrant->email) !== 0) {
-                        abort(422, 'Use the email address you verified.');
-                    }
-                    $pendingRegistration = $legacy
-                        ? PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$legacy->email])->lockForUpdate()->first()
-                        : $registrant;
-                    $data = $this->registrationData($request, $pendingRegistration, $legacy);
-                    unset($data['password']);
-                    $data['password_hash'] = Hash::make($request->input('password'));
-                    return app(CustomerRegistrationService::class)->complete($registrant, $data);
+                $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
+                $hash = hash('sha256', $credential['registration_recovery_token']);
+                $legacy = User::query()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
+                $registrant = $legacy ?? PendingCustomerRegistration::query()
+                    ->withActiveReview()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
+                if (! $registrant || ! $registrant->registration_recovery_expires_at
+                    || now()->greaterThanOrEqualTo($registrant->registration_recovery_expires_at)
+                    || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {
+                    abort(422, 'This registration review has expired. Verify your email again.');
                 }
-                if ($request->isMethod('put')) {
-                    $credential = $request->validate(['registration_token' => 'required|string|size:64']);
-                    $pendingRegistration = PendingCustomerRegistration::query()->unexpired()
-                        ->where('registration_edit_token_hash', hash('sha256', $credential['registration_token']))
-                        ->lockForUpdate()->first();
-                    if (! $pendingRegistration || ! CustomerRegistrationService::trustsBrowser($pendingRegistration, $request)) {
-                        abort(422, 'This registration is no longer available. Please verify your email again.');
-                    }
+                if (strcasecmp($request->input('email'), $registrant->email) !== 0) {
+                    abort(422, 'Use the email address you verified.');
                 }
-                $editToken = Str::random(64);
-                $data = $this->registrationData($request, $pendingRegistration);
-
-                $values = [
-                    'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
-                    'username' => $data['username'] ?? null,
-                    'email' => $data['email'],
-                    'phone' => $data['phone'] ?? null,
-                    'password_hash' => Hash::make($data['password']),
-                    'registration_edit_token_hash' => hash('sha256', $editToken),
-                    'registration_browser_token_hash' => hash('sha256', $browserToken),
-                    'email_verification_token' => $pendingRegistration?->email_verification_token,
-                    'email_verification_code_hash' => null,
-                    'email_verification_expires_at' => $pendingRegistration?->email_verification_expires_at,
-                    'registration_recovery_token_hash' => null,
-                    'registration_recovery_expires_at' => null,
-                    // Editing must not reset the attempt budget or resend cooldown.
-                    'email_verification_attempts' => $pendingRegistration?->email_verification_attempts ?? 0,
-                ];
-                if ($pendingRegistration) {
-                    if (strcasecmp($pendingRegistration->email, $values['email']) !== 0) {
-                        $values['email_verification_token'] = null;
-                        $values['email_verification_expires_at'] = null;
-                    }
-                    $pendingRegistration->update($values);
-                } else {
-                    $pendingRegistration = PendingCustomerRegistration::create($values);
-                }
-                return [$pendingRegistration, $editToken];
-
+                $pendingRegistration = $legacy
+                    ? PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$legacy->email])->lockForUpdate()->first()
+                    : $registrant;
+                $data = $this->registrationData($request, $pendingRegistration, $legacy);
+                unset($data['password']);
+                $data['password_hash'] = Hash::make($request->input('password'));
+                return app(CustomerRegistrationService::class)->complete($registrant, $data);
             }, 3);
         } catch (UniqueConstraintViolationException) {
             return response()->json(['success' => false, 'message' => 'These details are already in use. Continue with email verification or update your details.'], 422);
         }
-        if (! is_array($result)) return $result;
-        [$pendingRegistration, $editToken] = $result;
-
-        try {
-            $receipt = EmailVerificationController::sendVerificationEmail($pendingRegistration);
-        } catch (Throwable $exception) {
-            if (! $exception instanceof HttpResponseException) report($exception);
-            $throttled = $exception instanceof HttpResponseException ? $exception->getResponse()->getData(true) : [];
-
-            // The pending registration remains recoverable through resend;
-            // callers must not retry registration and hit duplicate fields.
-            return response()->json([
-                'success' => true,
-                'message' => $throttled['message'] ?? "Couldn't send the verification email. Try resending.",
-                'requires_verification' => true,
-                'registration_state' => 'updated',
-                'email_delivery_queued' => false,
-                'email' => $pendingRegistration->email,
-                'registration_token' => $editToken,
-                ...app(AuthenticationEmailPolicy::class)->status($pendingRegistration->email),
-            ], 201)->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken))->header('Cache-Control', 'no-store');
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Verification email queued.',
-            'requires_verification' => true,
-            'registration_state' => 'updated',
-            'email_delivery_queued' => true,
-            'email_delivery_token' => $receipt,
-            'email' => $pendingRegistration->email,
-            'registration_token' => $editToken,
-            ...app(AuthenticationEmailPolicy::class)->status($pendingRegistration->email),
-        ], 201)->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken))->header('Cache-Control', 'no-store');
+        return $result;
     }
 
     private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null, bool $checkAvailability = true): array

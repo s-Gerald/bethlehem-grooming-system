@@ -17,6 +17,92 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_original_browser_can_choose_review_without_replacing_or_consuming_the_link(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $before = $pending->getAttributes();
+        $token = $this->verificationTokenSentTo($pending);
+        Notification::fake();
+        $this->postJson('/api/email/registration/review', ['email' => $pending->email])->assertAccepted()
+            ->assertJsonMissingPath('details')->assertJsonMissingPath('registration_recovery_token');
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        Notification::assertNothingSent();
+        $review = $this->postJson('/api/email/verify', ['token' => $token])->assertOk()
+            ->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $payload = [...$this->registrationPayload(), 'first_name' => 'John', 'password' => 'owner-password',
+            'password_confirmation' => 'owner-password', 'registration_recovery_token' => $review->json('registration_recovery_token')];
+        $this->putJson('/api/register/pending', $payload)->assertOk();
+        $this->assertDatabaseHas('users', ['first_name' => 'John']);
+        $this->assertTrue(Hash::check('owner-password', User::sole()->password_hash));
+        $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
+        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
+    }
+
+    public function test_link_confirmation_can_deliberately_request_review_in_the_original_browser(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo(PendingCustomerRegistration::sole()),
+            'review' => true])->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_review_intent_is_generic_and_cannot_inspect_or_edit_another_registration(): void
+    {
+        Notification::fake();
+        $response = $this->registerInBrowser($this->registrationPayload());
+        $originalCookie = $response->getCookie('bethlehem_registration_browser', false)->getValue();
+        $pending = PendingCustomerRegistration::sole();
+        $before = $pending->getAttributes();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('x', 64))->withCredentials();
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) { $queries[] = $query->sql; });
+        $first = $this->postJson('/api/email/registration/review', ['email' => $pending->email])->assertAccepted()->json();
+        $this->postJson('/api/email/registration/review', ['email' => 'unknown@gmail.com'])->assertAccepted()->assertExactJson($first);
+        $this->assertSame([], array_values(array_filter($queries, fn ($sql) => preg_match('/(?:from|into) ["`]*(?:users|pending_customer_registrations)/i', $sql))));
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $originalCookie)->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])
+            ->assertOk()->assertJsonMissingPath('requires_registration_review')->assertJsonStructure(['token']);
+    }
+
+    public function test_expired_review_intent_cannot_force_review_for_a_fresh_registration(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->postJson('/api/email/registration/review', ['email' => 'new.customer@gmail.com'])->assertAccepted();
+        $old = PendingCustomerRegistration::sole();
+        $this->travel(61)->minutes();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $fresh = PendingCustomerRegistration::sole();
+        $this->assertNotSame($old->getKey(), $fresh->getKey());
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($fresh)])
+            ->assertOk()->assertJsonMissingPath('requires_registration_review')->assertJsonStructure(['token']);
+    }
+
+    public function test_review_selected_before_the_registration_worker_runs_still_prevents_activation(): void
+    {
+        Notification::fake();
+        \Illuminate\Support\Facades\Queue::fake([\App\Jobs\ProcessPublicRegistration::class]);
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->postJson('/api/email/registration/review', ['email' => 'new.customer@gmail.com'])->assertAccepted();
+        $job = null;
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessPublicRegistration::class, function ($queued) use (&$job) {
+            $job = $queued;
+            return true;
+        });
+        $this->travel(59)->minutes();
+        $job->handle(app(\App\Services\CustomerRegistrationService::class));
+        $this->travel(2)->minutes();
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo(PendingCustomerRegistration::sole())])
+            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_public_registration_has_no_account_lookup_or_private_outcome_before_the_queued_work(): void
     {
         \Illuminate\Support\Facades\Queue::fake();
@@ -142,15 +228,17 @@ class EmailVerificationTest extends TestCase
         $this->assertTrue(LoginEmailChallenge::sole()->expires_at->equalTo($deadline));
     }
 
-    public function test_signup_and_pending_edits_share_unicode_name_validation_and_casing(): void
+    public function test_signup_and_email_proven_review_share_unicode_name_validation_and_casing(): void
     {
         Notification::fake();
         $payload = [...$this->registrationPayload(), 'first_name' => 'MARIA CLARA', 'last_name' => 'PEÑA'];
-        $registration = $this->registerInBrowser($payload)->assertAccepted();
-        $this->assertDatabaseHas('pending_customer_registrations', ['first_name' => 'Maria Clara', 'last_name' => 'Peña']);
-        $this->putJson('/api/register/pending', [...$payload, 'registration_token' => $this->authorizedEditCredential($registration),
-            'first_name' => 'McDonald', 'last_name' => 'de la Cruz'])->assertCreated();
-        $this->assertDatabaseHas('pending_customer_registrations', ['first_name' => 'McDonald', 'last_name' => 'de la Cruz']);
+        $this->registerInBrowser($payload)->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $this->assertSame('Maria Clara', $pending->first_name);
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
+        $this->putJson('/api/register/pending', [...$payload, 'registration_recovery_token' => $review->json('registration_recovery_token'),
+            'first_name' => 'McDonald', 'last_name' => 'de la Cruz'])->assertOk();
+        $this->assertDatabaseHas('users', ['first_name' => 'McDonald', 'last_name' => 'de la Cruz']);
         $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'numeric@gmail.com', 'first_name' => 'Gerald２'])
             ->assertUnprocessable()->assertJsonValidationErrors('first_name');
     }
@@ -1097,25 +1185,20 @@ class EmailVerificationTest extends TestCase
         return array_map(fn ($prefix) => [$prefix.'1234567'], ['0917', '0895', '0896', '0897', '0898', '0991', '0999', '0907', '0922', '0813', '0817', '0927', '0956', '0966', '0977']);
     }
 
-    public function test_pending_phone_can_be_removed_and_added_with_rotating_edit_credentials(): void
+    public function test_email_proven_review_can_remove_or_replace_the_optional_phone(): void
     {
         Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        foreach (['', '08958889999'] as $phone) {
-            $pending = PendingCustomerRegistration::firstOrFail();
-            $oldCode = $this->verificationTokenSentTo($pending);
+        foreach (['', '08958889999'] as $index => $phone) {
+            $payload = [...$this->registrationPayload(), 'email' => "phone{$index}@gmail.com", 'username' => null];
+            $this->registerInBrowser($payload)->assertAccepted();
+            $pending = PendingCustomerRegistration::sole();
+            $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
+            $completion = [...$payload, 'phone' => $phone, 'registration_recovery_token' => $review->json('registration_recovery_token')];
+            $this->putJson('/api/register/pending', $completion)->assertOk();
+            $this->putJson('/api/register/pending', $completion)->assertUnprocessable();
+            $this->assertDatabaseHas('users', ['email' => $payload['email'], 'phone' => $phone ?: null, 'phone_verified_at' => null]);
             $this->travel(61)->seconds();
-            Notification::fake();
-            $payload = [...$this->registrationPayload(), 'phone' => $phone, 'registration_token' => $this->authorizedEditCredential($response)];
-            $response = $this->putJson('/api/register/pending', $payload)->assertCreated();
-            $this->assertSame($phone ?: null, $pending->fresh()->phone);
-            $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-            $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => $pending->email, 'token' => $oldCode])->assertUnprocessable();
         }
-        $pending = PendingCustomerRegistration::firstOrFail();
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])
-            ->assertOk();
-        $this->assertDatabaseHas('users', ['phone' => '08958889999', 'phone_verified_at' => null]);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('ditoLoginIdentifiers')]
@@ -1224,29 +1307,20 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => $pending->email, 'token' => $code])->assertOk();
     }
 
-    public function test_pending_details_can_only_be_corrected_with_the_private_edit_credential(): void
+    public function test_browser_edit_credential_cannot_replace_details_before_email_proof(): void
     {
         Notification::fake();
         $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::firstOrFail();
-        $oldCode = $this->verificationTokenSentTo($pending);
-        $payload = $this->registrationPayload();
-        $payload['email'] = 'corrected@gmail.com';
-        $payload['phone'] = '09178889999';
-        $payload['registration_token'] = str_repeat('0', 64);
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-        $this->travel(61)->seconds();
-        Notification::fake();
-        $payload['registration_token'] = $this->authorizedEditCredential($response);
-        $edited = $this->putJson('/api/register/pending', $payload)->assertCreated()->assertJsonPath('email_delivery_queued', true);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->assertDatabaseCount('users', 0);
-        $pending->refresh();
-        $newCode = $this->verificationTokenSentTo($pending);
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['email' => 'new.customer@gmail.com', 'token' => $oldCode])->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($edited), 'email' => $pending->email, 'token' => $newCode])->assertOk();
-        $this->assertDatabaseHas('users', ['email' => 'corrected@gmail.com', 'phone' => '09178889999', 'phone_verified_at' => null]);
+        $credential = $this->authorizedEditCredential($response);
+        $pending = PendingCustomerRegistration::sole();
+        $before = $pending->getAttributes();
+        $token = $this->verificationTokenSentTo($pending);
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Attacker',
+            'password' => 'changed-password', 'password_confirmation' => 'changed-password', 'registration_token' => $credential])
+            ->assertUnprocessable()->assertJsonValidationErrors('registration_recovery_token');
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonPath('user.first_name', 'New');
+        $this->assertTrue(Hash::check('strong-password', User::sole()->password_hash));
     }
 
     public function test_no_sms_endpoint_or_phone_payload_can_complete_registration(): void
@@ -2189,20 +2263,19 @@ class EmailVerificationTest extends TestCase
             ->assertStatus(202)->assertJsonPath('requires_login_confirmation', true);
     }
 
-    public function test_unchanged_legacy_email_can_correct_registration_details_but_new_email_must_pass_policy(): void
+    public function test_email_proven_review_preserves_the_verified_legacy_address(): void
     {
         Notification::fake();
-        $created = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
         $pending->update(['email' => 'ab@legacy.example']);
-        $this->travel(61)->seconds();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
         $payload = [...$this->registrationPayload(), 'email' => 'ab@legacy.example', 'first_name' => 'Corrected',
-            'registration_token' => $this->authorizedEditCredential($created)];
-        $edited = $this->putJson('/api/register/pending', $payload)->assertCreated();
+            'registration_recovery_token' => $review->json('registration_recovery_token')];
+        $this->putJson('/api/register/pending', [...$payload, 'email' => 'new@unsupported.example'])->assertUnprocessable();
         $this->assertSame('ab@legacy.example', $pending->fresh()->email);
-        $this->putJson('/api/register/pending', [...$payload, 'email' => 'new@unsupported.example',
-            'registration_token' => $this->authorizedEditCredential($edited)])->assertUnprocessable()->assertJsonValidationErrors('email');
-        $this->assertSame('ab@legacy.example', $pending->fresh()->email);
+        $this->putJson('/api/register/pending', $payload)->assertOk();
+        $this->assertDatabaseHas('users', ['email' => 'ab@legacy.example', 'first_name' => 'Corrected']);
     }
 
     public function test_changed_registration_email_cannot_duplicate_an_account_by_local_part_case(): void
@@ -2211,7 +2284,7 @@ class EmailVerificationTest extends TestCase
         User::factory()->create(['email' => 'Registered@gmail.com']);
         $created = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'email' => 'registered@GMAIL.COM',
-            'registration_token' => $this->authorizedEditCredential($created)])->assertUnprocessable()->assertJsonValidationErrors('email');
+            'registration_token' => $this->authorizedEditCredential($created)])->assertUnprocessable();
         $this->assertSame('new.customer@gmail.com', PendingCustomerRegistration::query()->sole()->email);
     }
 
@@ -2410,14 +2483,15 @@ class EmailVerificationTest extends TestCase
         $credential = $this->authorizedEditCredential($response);
         $created = $pending->created_at->copy();
         $this->travel(45)->minutes();
-        $edit = $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Edited',
-            'registration_token' => $credential])->assertCreated();
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Edited',
+            'registration_token' => $credential])->assertUnprocessable();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
         $pending->refresh();
         $token = $this->verificationTokenSentTo($pending);
         $this->assertTrue($pending->created_at->equalTo($created));
         // Simulate an issuance stored under the previous deployment's policy.
         $pending->update(['email_verification_expires_at' => now()->addMinutes(30)]);
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'registration_token' => $edit->json('registration_token')])
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'registration_token' => $credential])
             ->assertAccepted()->assertJsonPath('verification_link_expires_at', $created->addHour()->toIso8601String());
         $this->travel(15)->minutes();
         $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()->assertJsonPath('code', 'registration_expired');

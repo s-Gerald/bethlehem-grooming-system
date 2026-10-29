@@ -118,6 +118,13 @@
                 </div>
               </div>
 
+              <section id="signupContinuation" class="hidden rounded-xl border border-slate-300 px-4 py-3" aria-labelledby="signupContinuationTitle" aria-live="polite" tabindex="-1">
+                <h3 id="signupContinuationTitle" class="font-semibold text-gray-800">Registration in progress</h3>
+                <p class="mt-2 text-sm text-gray-600">Continue verifying your email to finish creating your account.</p>
+                <button id="signupContinue" type="button" class="mt-3 w-full rounded-xl bg-[#315b7e] px-4 py-3 font-semibold text-white hover:bg-[#264760] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-70">Continue verification</button>
+                <button id="signupEdit" type="button" class="mt-3 w-full text-sm font-semibold text-[#315b7e] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-70">Edit registration details</button>
+              </section>
+
               <!-- Username + Phone -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -270,20 +277,16 @@
               role="alert"
               class="mt-5 hidden rounded-xl border px-4 py-3 text-sm"
             ></div>
-            <div id="signupRecovery" class="hidden mt-5 rounded-xl border border-slate-300 px-4 py-3" role="status" tabindex="-1">
-              <h3 class="font-semibold text-gray-800">Complete your registration</h3>
-              <p class="mt-2 text-sm text-gray-600">Your email is confirmed. Review your saved details to finish creating your account.</p>
-              <button id="signupRecoveryContinue" type="button" class="mt-3 w-full rounded-xl bg-[#315b7e] px-4 py-3 font-semibold text-white hover:bg-[#264760] disabled:opacity-70">Review details</button>
-            </div>
           </div>
         </div>
       </div>
     </div>
 
     <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?v=magic-links-20261028&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/api.js?v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3" defer></script>
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="../../scripts/auth/client/signup.js?v=mobile-format-20261029&email-entry=20261028&names=20261028-v2&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/client/signup-context.js?v=registration-review-20261029" defer></script>
+    <script src="../../scripts/auth/client/signup.js?v=registration-review-20261029" defer></script>
   </body>
 </html>

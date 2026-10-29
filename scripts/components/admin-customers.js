@@ -376,8 +376,8 @@ function adminCustomers() {
           : "Return this customer to current records. Their previous account access status will be preserved; unknown previous access stays deactivated.")
         : archive
           ? "Move this customer out of daily operations. Pet and transaction history will be preserved."
-          : action === "deactivate" ? "Disable portal login and end existing sessions. You can reactivate the account later."
-          : "Enable this customer's portal login.";
+          : action === "deactivate" ? "Disable online access and end existing sessions. You can reactivate the account later."
+          : "Enable online access for this customer.";
       this.confirmModal = { open: true, action, customer, title: label + "?", message, confirmLabel: label, error: "" };
       this.setCustomerDetailScrollLock(true);
       this.$nextTick(() => this.$refs.confirmCancel.focus());
@@ -1286,15 +1286,15 @@ function adminCustomers() {
     },
 
     categoryLabel(status) {
-      return ({ active: "Portal Accounts", unregistered: "Walk-in / Manual", inactive: "Deactivated", archived: "Archived" })[status] || "Customers";
+      return ({ active: "Online Accounts", unregistered: "Walk-in / Manual", inactive: "Deactivated", archived: "Archived" })[status] || "Customers";
     },
 
     categoryDescription() {
-      return ({ active: "Customers with an enabled online dashboard account.", unregistered: "Customer records created by staff without a portal account.", inactive: "Portal accounts with login access disabled.", archived: "Records retained for history and reference." })[this.statusFilter];
+      return ({ active: "Customers with an enabled online account.", unregistered: "Customer records created by staff without an online account.", inactive: "Online accounts with login access disabled.", archived: "Records retained for history and reference." })[this.statusFilter];
     },
 
     customerStatusLabel(customer) {
-      const type = customer?.recordType === "unregistered" ? "Manual record" : "Portal account";
+      const type = customer?.recordType === "unregistered" ? "Manual record" : "Online account";
       if (customer?.isArchived) return "Archived \u00b7 " + type;
       if (customer?.recordType === "unregistered") return type;
       return type + (customer?.isActive ? " \u00b7 Enabled" : " \u00b7 Deactivated");

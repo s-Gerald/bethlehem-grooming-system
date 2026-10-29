@@ -14,15 +14,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const recoveryEmail = document.getElementById("verificationEmail");
   const read = (key) => { try { return sessionStorage.getItem(key) || ""; } catch { return ""; } };
   const write = (key, value) => { try { sessionStorage.setItem(key, value); } catch { /* UX only */ } };
-  let email = params.get("recover") === "1" ? "" : read("pendingVerificationEmail");
+  const context = window.SignupContext;
+  const recovering = params.get("recover") === "1";
+  let email = recovering ? "" : read("pendingVerificationEmail") || context.read()?.email || "";
   let busy = false;
   let joining = false;
-  let state = read("pendingVerificationState");
+  let state = recovering ? "" : read("pendingVerificationState");
   let registrationEnded = state === "expired" || state === "restart_required";
-  let until = Number(read("pendingVerificationResendUntil")) || 0;
+  const registrationUntil = recovering ? 0 : Number(read("pendingVerificationRegistrationUntil")) || context.read(email)?.expiresAt || 0;
+  let until = recovering ? 0 : Number(read("pendingVerificationResendUntil")) || 0;
   let linkUntil = state === "resumed" ? Number(read("pendingVerificationLinkUntil")) || 0 : 0;
-  let limited = read("pendingVerificationResendLimited") === "1";
+  let limited = !recovering && read("pendingVerificationResendLimited") === "1";
   let timer;
+  let expirationTimer;
   let stopDelivery = () => {};
   let channel;
   try { channel = new BroadcastChannel("bethlehem-registration"); } catch { /* Focus remains a recovery path. */ }
@@ -34,19 +38,22 @@ document.addEventListener("DOMContentLoaded", () => {
     message.setAttribute("role", error ? "alert" : "status");
   }
   function renderEmail() {
-    title.textContent = state === "resumed" ? "Registration already started" : state === "requested" ? "Registration requested" : "Registration pending";
-    description.textContent = state === "resumed" ? "No new email was sent." : email ? "Email delivery is not confirmed." : "Enter your email to request a verification link.";
-    instruction.textContent = state === "resumed" ? linkUntil > Date.now()
-      ? "Use your latest verification link, or resend one when available." : "Request a new verification link when available."
+    title.textContent = state === "resumed" ? "Registration in progress" : state === "requested" ? "Registration requested" : "Registration pending";
+    description.textContent = state === "resumed" ? linkUntil && linkUntil <= Date.now()
+      ? "This link has expired. Request a new one." : "Use your latest verification link."
+      : email ? "Email delivery is not confirmed." : "Enter your email to request a verification link.";
+    instruction.textContent = state === "resumed" ? ""
       : email ? "Open a verification link you've received to continue." : "";
     masked.textContent = email ? window.VerificationCode.maskEmail(email) : "";
     recovery.classList.toggle("hidden", !!email);
     recoveryEmail.required = !email;
-    let editable = false;
-    try { editable = !!read("pendingRegistrationEditToken") && JSON.parse(read("pendingSignupDetails") || "null")?.email?.toLowerCase() === email.toLowerCase(); } catch { /* Normal signup remains available. */ }
     const back = document.getElementById("verificationBackAction");
     back.textContent = "Back to sign up";
-    back.setAttribute("href", editable && !registrationEnded ? "./signup.html?edit=1" : "./signup.html");
+    back.setAttribute("href", "./signup.html");
+    if (email && context.read(email)?.review && !registrationEnded) {
+      description.textContent = "Verify your email to edit your details.";
+      instruction.textContent = "Use your latest verification link.";
+    }
     if (registrationEnded) {
       title.textContent = state === "expired" ? "Registration expired" : "Registration ending";
       description.textContent = "";
@@ -56,11 +63,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
   function tick() {
+    if (!registrationEnded && registrationUntil && registrationUntil <= Date.now()) {
+      registrationEnded = true;
+      state = "expired";
+      write("pendingVerificationState", state);
+      stopDelivery();
+      renderEmail();
+    }
     if (registrationEnded) {
       resend.disabled = true;
       resend.classList.add("hidden");
       form.setAttribute("aria-busy", "false");
       clearInterval(timer);
+      window.clearTimeout(expirationTimer);
       timer = null;
       return;
     }
@@ -74,12 +89,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state === "resumed" && linkUntil && Date.now() >= linkUntil) {
       linkUntil = 0;
       write("pendingVerificationLinkUntil", "0");
-      instruction.textContent = "Request a new verification link when available.";
+      description.textContent = "This link has expired. Request a new one.";
+      instruction.textContent = "";
     }
     if (!seconds && Date.now() >= linkUntil && timer) { clearInterval(timer); timer = null; }
   }
   function startTimer() {
     if (!timer && Math.max(until, linkUntil) > Date.now()) timer = window.setInterval(tick, 1000);
+    window.clearTimeout(expirationTimer);
+    if (!registrationEnded && registrationUntil > Date.now()) expirationTimer = window.setTimeout(tick, registrationUntil - Date.now());
     tick();
   }
   function cooldown(data) {
@@ -110,8 +128,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // dashboard session. Broadcast messages and storage never authorize it.
       const result = await API.registrationSession(email, !!email);
       if (result) {
+        context.clear(email);
         stopDelivery();
         clearInterval(timer);
+        window.clearTimeout(expirationTimer);
         channel?.postMessage({ type: "registration-tab-ready" });
         window.location.replace("./dashboard.html");
       }
@@ -127,6 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!recoveryEmail.value.trim() || !recoveryEmail.checkValidity()) { recoveryEmail.reportValidity(); return; }
       email = recoveryEmail.value.trim().toLowerCase();
       write("pendingVerificationEmail", email);
+      write("pendingVerificationRegistrationUntil", "0");
       renderEmail();
     }
     busy = true;
@@ -168,16 +189,17 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("pagehide", event => {
     stopDelivery();
     clearInterval(timer);
+    window.clearTimeout(expirationTimer);
     timer = null;
     if (!event.persisted) channel?.close();
   });
   view.classList.remove("hidden");
   renderEmail();
   startTimer();
-  if (!registrationEnded && read("pendingVerificationDeliveryFailed") === "1" && !limited) {
+  if (email && !registrationEnded && read("pendingVerificationDeliveryFailed") === "1" && !limited) {
     title.textContent = "Email not sent";
     description.textContent = "We couldn't send a verification link to:";
     announce("Couldn't send the verification email. Try resending.", true);
   }
-  if (!registrationEnded && state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
+  if (email && !registrationEnded && state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
 });

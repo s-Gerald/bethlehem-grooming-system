@@ -13,31 +13,83 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!signupForm || !phoneInput || !emailInput) return;
 
-  let editingToken = "";
   let recoveryToken = "";
   let busy = false;
-  const recoveryPanel = document.getElementById("signupRecovery");
-  const recoveryContinue = document.getElementById("signupRecoveryContinue");
-  try {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("edit") === "1" || params.get("review") === "1") {
-      const draft = JSON.parse(sessionStorage.getItem("pendingSignupDetails") || "null");
-      recoveryToken = params.get("review") === "1" ? sessionStorage.getItem("pendingRegistrationRecoveryToken") || "" : "";
-      editingToken = recoveryToken ? "" : sessionStorage.getItem("pendingRegistrationEditToken") || "";
-      if (draft && (editingToken || recoveryToken)) {
-        for (const [id, value] of Object.entries(draft)) document.getElementById(id).value = value;
+  const context = window.SignupContext;
+  const continuation = document.getElementById("signupContinuation");
+  const continueButton = document.getElementById("signupContinue");
+  const editButton = document.getElementById("signupEdit");
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("review") === "1") {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("pendingSignupDetails") || "null");
+      const expiresAt = Number(sessionStorage.getItem("pendingRegistrationRecoveryUntil"));
+      recoveryToken = sessionStorage.getItem("pendingRegistrationRecoveryToken") || "";
+      if (!saved?.email || !recoveryToken || !Number.isFinite(expiresAt)
+          || expiresAt <= Date.now() || expiresAt > Date.now() + 600000) throw new Error("Expired review");
+      const proposed = context.draft(saved.email);
+      for (const id of ["firstName", "lastName", "username", "email", "phone"]) {
+        document.getElementById(id).value = typeof saved[id] === "string" ? saved[id] : "";
       }
-      if (recoveryToken) {
-        emailInput.readOnly = true;
-        document.getElementById("signupDescription").textContent = "Review your details and choose a password to finish.";
-        document.getElementById("signupBtnLabel").textContent = "Complete registration";
-        recoveryPanel.classList.remove("hidden");
-      } else if (params.get("review") === "1") {
-        window.location.replace("./verify-email.html?recover=1");
-        return;
-      }
+      for (const [id, value] of Object.entries(proposed)) document.getElementById(id).value = value;
+      passwordInput.value = "";
+      confirmPasswordInput.value = "";
+      emailInput.readOnly = true;
+      document.getElementById("signupTitle").textContent = "Review your details";
+      document.getElementById("signupDescription").textContent = Object.keys(proposed).length
+        ? "Your proposed changes are shown. Confirm your details and choose a password."
+        : "Email confirmed. Review your details and choose a password.";
+      document.getElementById("signupBtnLabel").textContent = "Complete registration";
+    } catch {
+      window.location.replace("./verify-email.html?recover=1");
+      return;
     }
-  } catch { /* storage unavailable; signup remains usable */ }
+  }
+  const touched = new Set();
+  for (const id of ["firstName", "lastName", "username", "phone"]) {
+    document.getElementById(id).addEventListener("input", () => touched.add(id));
+  }
+  function returningContext() { return !recoveryToken && context.read(emailInput.value); }
+  function renderContinuation() {
+    const returning = !!returningContext();
+    continuation.classList.toggle("hidden", !returning);
+    submitButton.classList.toggle("hidden", returning);
+    return returning;
+  }
+  function continueVerification() {
+    const pending = returningContext();
+    if (!pending) { renderContinuation(); return; }
+    try {
+      sessionStorage.setItem("pendingVerificationEmail", pending.email);
+      sessionStorage.setItem("pendingVerificationState", "resumed");
+      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(pending.expiresAt));
+    } catch { /* The waiting screen can restore non-secret context. */ }
+    window.location.replace("./verify-email.html");
+  }
+  continueButton.addEventListener("click", () => { if (!busy) continueVerification(); });
+  editButton.addEventListener("click", async () => {
+    if (busy || !returningContext()) return;
+    const values = {};
+    for (const id of ["firstName", "lastName", "username", "phone"]) {
+      const value = document.getElementById(id).value.trim();
+      if (value || touched.has(id)) values[id] = value;
+    }
+    const email = emailInput.value.trim().toLowerCase();
+    setBusyState(true);
+    try {
+      await API.requestRegistrationReview(email);
+      context.propose(email, values);
+      continueVerification();
+    } catch (error) {
+      showMessage(error.message || "Couldn't continue. Try again.");
+    } finally { setBusyState(false); }
+  });
+  emailInput.addEventListener("input", renderContinuation);
+  emailInput.addEventListener("change", renderContinuation);
+  window.addEventListener("pageshow", renderContinuation);
+  window.addEventListener("focus", renderContinuation);
+  window.addEventListener("storage", renderContinuation);
+  renderContinuation();
 
   const fieldIds = {first_name: "firstName", last_name: "lastName", email: "email", username: "username",
     phone: "phone", password: "password", password_confirmation: "confirmPassword"};
@@ -60,13 +112,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  const originalEmail = editingToken || recoveryToken ? emailInput.value : "";
+  const originalEmail = recoveryToken ? emailInput.value : "";
   const emailField = AccountEmail.bind(emailInput, {
     isUnchanged: () => Boolean(originalEmail) && emailInput.value.trim().toLowerCase() === originalEmail.trim().toLowerCase(),
-  });
-
-  recoveryContinue.addEventListener("click", () => {
-    if (!busy && recoveryToken) document.getElementById("firstName").focus();
   });
 
   // Independent toggle — each button only controls its own field and icons.
@@ -111,6 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
     if (busy) return;
+    if (renderContinuation()) { continuation.focus(); return; }
 
     const nameInputs = ['firstName', 'lastName'].map(id => document.getElementById(id));
     const validNames = nameInputs.map(input => HumanName.finish(input));
@@ -161,12 +210,13 @@ document.addEventListener("DOMContentLoaded", () => {
         password,
         password_confirmation: confirmPassword,
       };
-      const data = editingToken || recoveryToken
-        ? await API.updatePendingRegistration(payload, editingToken, recoveryToken)
+      const data = recoveryToken
+        ? await API.updatePendingRegistration(payload, recoveryToken)
         : await API.register(payload);
 
       if (recoveryToken && data?.token && data?.user?.role === "customer") {
-        for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
+        context.clear(email);
+        for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationRecoveryUntil", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationRegistrationUntil", "pendingVerificationState", "pendingVerificationLinkUntil", "pendingVerificationResendLimited", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
           try { sessionStorage.removeItem(key); } catch { /* session already established */ }
         }
         window.location.replace("./dashboard.html");
@@ -179,15 +229,14 @@ document.addEventListener("DOMContentLoaded", () => {
           setBusyState(false);
           return;
         }
+        const pendingContext = context.remember(email);
         try {
+          sessionStorage.setItem("pendingVerificationRegistrationUntil", String(pendingContext.expiresAt));
           sessionStorage.setItem("pendingVerificationEmail", data.email ?? email);
           sessionStorage.setItem("pendingVerificationPhone", phone);
           sessionStorage.removeItem("pendingRegistrationRecoveryToken");
           if (data.registration_token) {
             sessionStorage.setItem("pendingRegistrationEditToken", data.registration_token);
-            if (data.registration_state !== "resumed") {
-              sessionStorage.setItem("pendingSignupDetails", JSON.stringify({ firstName, lastName, username, email, phone }));
-            }
           }
           sessionStorage.setItem("pendingVerificationState", data.registration_state === "requested" ? "requested"
             : data.registration_state === "resumed" ? "resumed" : data.email_delivery_queued === false ? "failed" : "queued");
@@ -241,7 +290,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function setBusyState(isBusy) {
     busy = isBusy;
     submitButton.disabled = isBusy;
-    recoveryContinue.disabled = isBusy;
+    continueButton.disabled = isBusy;
+    editButton.disabled = isBusy;
     signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
     if (label) label.textContent = isBusy ? "Creating your account..." : recoveryToken ? "Complete registration" : "Create Account";

@@ -1874,16 +1874,19 @@ var API = (() => {
     return request("POST", "/staff/password-setup/request-new-link", { token });
   }
 
-  async function updatePendingRegistration(payload, registrationToken, recoveryToken = "") {
-    const credential = recoveryToken ? { registration_recovery_token: recoveryToken } : { registration_token: registrationToken };
-    const data = await request("PUT", "/register/pending", { ...payload, ...credential });
+  async function updatePendingRegistration(payload, recoveryToken) {
+    const data = await request("PUT", "/register/pending", { ...payload, registration_recovery_token: recoveryToken });
     storeEmailDelivery("registration", data.email_delivery_token);
     acceptRegistrationSession(data);
     return data;
   }
 
-  async function verifyEmail(token) {
-    const data = await request("POST", "/email/verify", { token });
+  async function requestRegistrationReview(email) {
+    return request("POST", "/email/registration/review", { email });
+  }
+
+  async function verifyEmail(token, review = false) {
+    const data = await request("POST", "/email/verify", { token, review });
     acceptRegistrationSession(data);
     return data;
   }
@@ -3423,6 +3426,7 @@ var API = (() => {
     getAdminVaccinationOptions,
     // Email verification
     verifyEmail,
+    requestRegistrationReview,
     registrationSession,
     updatePendingRegistration,
     adminGetPetProfile,

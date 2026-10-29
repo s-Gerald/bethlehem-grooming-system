@@ -25,7 +25,7 @@ class EmailVerificationController extends Controller
     // GET only serves inert HTML. A deliberate button submits this POST.
     public function verify(Request $request)
     {
-        $data = $request->validate(['token' => 'required|string|size:64']);
+        $data = $request->validate(['token' => 'required|string|size:64', 'review' => 'sometimes|boolean']);
         $hash = hash('sha256', $data['token']);
         try {
             return DB::transaction(function () use ($request, $data, $hash) {
@@ -51,7 +51,8 @@ class EmailVerificationController extends Controller
                 if (! $expiry || now()->greaterThanOrEqualTo($expiry)) {
                     return $this->invalidLink(true);
                 }
-                if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)) {
+                if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)
+                    && ! $request->boolean('review') && ! CustomerRegistrationService::wantsReview($pending, $request)) {
                     return app(CustomerRegistrationService::class)->complete($pending);
                 }
                 // Foreign browsers and legacy accounts must discard the pending
@@ -61,6 +62,18 @@ class EmailVerificationController extends Controller
         } catch (UniqueConstraintViolationException) {
             return $this->invalidLink();
         }
+    }
+
+    public function requestReview(Request $request)
+    {
+        $data = $request->validate(['email' => 'required|email|max:150']);
+        $browser = $request->cookie(CustomerRegistrationService::BROWSER_COOKIE);
+        if (is_string($browser) && preg_match('/^[A-Za-z0-9]{64}$/D', $browser)) {
+            Cache::put(CustomerRegistrationService::reviewIntentKey(hash('sha256', $browser), $data['email']), now()->timestamp, 3600);
+        }
+        // Same response without an account lookup, including unknown addresses.
+        return response()->json(['success' => true,
+            'message' => 'Use your latest verification link to review your details.'], 202)->header('Cache-Control', 'no-store');
     }
 
     private function invalidLink(bool $expired = false)
@@ -86,7 +99,7 @@ class EmailVerificationController extends Controller
             ? PendingCustomerRegistration::query()->where('registration_edit_token_hash', hash('sha256', $credential))->first() : null;
         if ($owned && strcasecmp($owned->email, $data['email']) === 0
             && CustomerRegistrationService::trustsBrowser($owned, $request) && $owned->retentionExpired()) return $this->expiredRegistration();
-        if (! $owned || strcasecmp($owned->email, $data['email']) !== 0 || ! CustomerRegistrationService::canEdit($owned, $request)) {
+        if (! $owned || strcasecmp($owned->email, $data['email']) !== 0 || ! CustomerRegistrationService::canContinue($owned, $request)) {
             return app(CustomerRegistrationService::class)->requestPublic($data['email'], null, '');
         }
         if (User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$data['email']])->exists()) {

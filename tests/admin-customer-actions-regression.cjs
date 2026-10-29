@@ -21,9 +21,19 @@ const manual = { ...portal, recordType: 'unregistered' };
 
 (async () => {
   assert.equal(ui.customerStatusLabel(manual), 'Manual record');
-  assert.equal(ui.customerStatusLabel(portal), 'Portal account · Enabled');
-  assert.equal(ui.customerStatusLabel({ ...portal, isActive: false }), 'Portal account · Deactivated');
+  assert.equal(ui.customerStatusLabel(portal), 'Online account · Enabled');
+  assert.equal(ui.customerStatusLabel({ ...portal, isActive: false }), 'Online account · Deactivated');
+  assert.equal(ui.customerStatusLabel({ ...portal, isArchived: true }), 'Archived · Online account');
   assert.equal(ui.customerStatusLabel({ ...manual, isArchived: true }), 'Archived · Manual record');
+  assert.equal(ui.categoryLabel('active'), 'Online Accounts');
+  for (const [status, description] of Object.entries({
+    active: 'Customers with an enabled online account.',
+    unregistered: 'Customer records created by staff without an online account.',
+    inactive: 'Online accounts with login access disabled.',
+  })) {
+    ui.statusFilter = status;
+    assert.equal(ui.categoryDescription(), description);
+  }
   assert.deepEqual(Array.from(ui.customerActions(portal), a => a.action), ['deactivate', 'archive']);
   assert.deepEqual(Array.from(ui.customerActions({ ...portal, isActive: false }), a => a.action), ['reactivate', 'archive']);
   role = 'staff';
@@ -49,6 +59,12 @@ const manual = { ...portal, recordType: 'unregistered' };
   assert.equal(ui.ownerActionsOpen, false);
   assert.equal(document.activeElement, ui.$refs.ownerActionsButton);
 
+  ui.confirmAction('deactivate', portal);
+  assert.equal(ui.confirmModal.message, 'Disable online access and end existing sessions. You can reactivate the account later.');
+  ui.closeConfirm();
+  ui.confirmAction('reactivate', { ...portal, isActive: false });
+  assert.equal(ui.confirmModal.message, 'Enable online access for this customer.');
+  ui.closeConfirm();
   ui.confirmAction('archive_unregistered', manual);
   ui.closeConfirm();
   await ui.executeAction();

@@ -1,6 +1,6 @@
 # Customer signup, verification, and recovery
 
-> Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The notes below are retained as history; their signup OTP, 48-hour/configurable retention, 45-second resend and repeatable-confirmation descriptions are superseded. Do not apply the historical retention environment settings below.
+> Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The notes below are retained as history; their signup OTP, pre-proof PUT editing, recovery-panel UI, 48-hour/configurable retention, 45-second resend and repeatable-confirmation descriptions are superseded. Do not apply the historical retention environment settings below.
 
 Implemented against the latest local `gerald-frontend` branch on October 22, 2026.
 The working directory is `C:/bethlehem-clinic-frontend`; its configured remotes

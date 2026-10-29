@@ -16,6 +16,19 @@ class CustomerRegistrationService
 {
     public const BROWSER_COOKIE = 'bethlehem_registration_browser';
 
+    // Presentation intent only: never authorizes access to saved details.
+    public static function reviewIntentKey(string $browserHash, string $email): string
+    {
+        return 'registration-review:'.hash('sha256', $browserHash.'|'.strtolower(trim($email)));
+    }
+
+    public static function wantsReview(PendingCustomerRegistration $registration, Request $request): bool
+    {
+        $browser = $request->cookie(self::BROWSER_COOKIE);
+        $intent = is_string($browser) ? Cache::get(self::reviewIntentKey(hash('sha256', $browser), $registration->email)) : null;
+        return is_int($intent) && $registration->created_at?->timestamp <= $intent;
+    }
+
     public function requestPublic(string $email, ?array $details, string $browserHash): \Illuminate\Http\JsonResponse
     {
         $connection = config('queue.connections.'.config('queue.default').'.driver');
@@ -57,6 +70,14 @@ class CustomerRegistrationService
                         'registration_browser_token_hash' => $browserHash,
                         'registration_edit_token_hash' => hash('sha256', Str::random(64)),
                     ]);
+                    // Editing may be selected before this durable job runs.
+                    // Carry it through this creation time and retention deadline,
+                    // including a retry after the transaction rolls back.
+                    $intentKey = self::reviewIntentKey($browserHash, $email);
+                    $intent = Cache::get($intentKey);
+                    if (is_int($intent) && $intent >= $requestedAt) {
+                        Cache::put($intentKey, now()->timestamp, $registrant->retentionExpiresAt());
+                    }
                 } else {
                     $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
                     $registrant = $user ? (self::recoverableUser($user) ? $user : null)
@@ -75,7 +96,7 @@ class CustomerRegistrationService
         }
     }
 
-    public static function canEdit(PendingCustomerRegistration $registration, Request $request): bool
+    public static function canContinue(PendingCustomerRegistration $registration, Request $request): bool
     {
         $token = $request->input('registration_token');
         return ! $registration->retentionExpired() && self::trustsBrowser($registration, $request)
@@ -135,6 +156,7 @@ class CustomerRegistrationService
             'success' => true,
             'requires_registration_review' => true,
             'registration_recovery_token' => $grant,
+            'registration_recovery_expires_at' => $values['registration_recovery_expires_at']->toIso8601String(),
             'details' => $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone']),
             'message' => 'Email confirmed. Review your details and choose a password to complete registration.',
         ])->header('Cache-Control', 'no-store');

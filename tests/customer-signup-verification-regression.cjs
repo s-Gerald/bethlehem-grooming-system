@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, signIn = false, editing = false, reviewing = false, missingGrant = false, phone = '', initialStorage = {} } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, signIn = false, reviewing = false, missingGrant = false, phone = '', search = '', initialStorage = {} } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -17,10 +17,10 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     ['pendingVerificationDeliveryFailed', deliveryFailed ? '1' : '0'],
   ]);
   if (!signup) storage.set('pendingSignupDetails', JSON.stringify({email:'customer@gmail.com'}));
-  if (editing) storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone }));
   if (reviewing) {
     storage.set('pendingSignupDetails', JSON.stringify({ firstName: 'Saved', lastName: 'Customer', email: 'customer@gmail.com', phone }));
     if (!missingGrant) storage.set('pendingRegistrationRecoveryToken', 'ownership-grant');
+    storage.set('pendingRegistrationRecoveryUntil', String(now + 600000));
   }
   for (const [key, value] of Object.entries(initialStorage)) storage.set(key, value);
   let nextId = 0;
@@ -65,15 +65,16 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const windowHandlers = {};
   const window = {
     addEventListener(name, callback) { windowHandlers[name] = callback; },
-    location: { search: reviewing ? '?review=1' : editing ? '?edit=1' : '', hash: '', replace(target) { calls.push(['redirect', target]); } },
+    location: { search: reviewing ? '?review=1' : search, hash: '', replace(target) { calls.push(['redirect', target]); } },
     setInterval(callback) { const id = ++nextId; intervals.set(id, callback); return id; },
     clearInterval(id) { intervals.delete(id); },
     clearTimeout(id) { timeouts.delete(id); },
     setTimeout(callback, ms) { const id = ++nextId; timeouts.set(id, { callback, at: now + ms }); return id; },
   };
   const API = {
+    async requestRegistrationReview(email) { calls.push(['review-intent', email]); return {success:true}; },
     async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_state:'requested', resend_after:60 }; },
-    async updatePendingRegistration(payload, token, grant) { calls.push(['update', payload, token, grant]); return grant ? { token: 'session', user: { role: 'customer' } } : { requires_verification: true, registration_state:'updated', email_delivery_queued:true, registration_token: 'rotated-edit-token' }; },
+    async updatePendingRegistration(payload, grant) { calls.push(['update', payload, grant]); return { token: 'session', user: { role: 'customer' } }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 60 }; },
@@ -85,6 +86,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     Date: { now: () => now, parse: Date.parse },
     setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
     setInterval: window.setInterval, clearInterval: window.clearInterval,
+    localStorage: {
+      getItem(key) { if (noStorage) throw Error('blocked'); return storage.get(key) ?? null; },
+      setItem(key, value) { if (noStorage) throw Error('blocked'); storage.set(key, value); },
+      removeItem(key) { if (noStorage) throw Error('blocked'); storage.delete(key); },
+    },
     sessionStorage: {
       getItem(key) { if (noStorage) throw Error('blocked'); return storage.get(key) ?? null; },
       setItem(key, value) { if (noStorage) throw Error('blocked'); storage.set(key, value); },
@@ -97,6 +103,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
+  vm.runInContext(fs.readFileSync(path.join(root, 'scripts/auth/client/signup-context.js'), 'utf8'), context);
   ready();
   return {
     element, API, calls, storage, windowHandlers, window, intervals, activeElement: () => document.activeElement,
@@ -110,6 +117,81 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const returning = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
+  assert.equal(returning.element('signupContinuation').classList.contains('hidden'), false);
+  await returning.dispatch('signupForm', 'submit');
+  assert.equal(returning.calls.length, 0, 'A recognized return cannot submit another public signup');
+  returning.element('firstName').value = 'John';
+  await returning.dispatch('signupEdit', 'click');
+  assert.deepEqual(returning.calls, [['review-intent','customer@gmail.com'], ['redirect','./verify-email.html']]);
+  const proposedContext = JSON.parse(returning.storage.get('pendingSignupContext'));
+  assert.equal(proposedContext.draft.firstName, 'John');
+  assert.equal(proposedContext.expiresAt, 3700000, 'Returning does not extend the original context');
+  for (const value of returning.storage.values()) assert.doesNotMatch(String(value), /strong-password|confirmPassword/);
+
+  const mismatched = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'other@gmail.com', expiresAt:3700000})}});
+  assert.equal(mismatched.element('signupContinuation').classList.contains('hidden'), true);
+  await mismatched.dispatch('signupForm', 'submit');
+  assert.equal(mismatched.calls[0][0], 'register');
+  const expiredContext = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:100000})}});
+  assert.equal(expiredContext.element('signupContinuation').classList.contains('hidden'), true);
+  await expiredContext.dispatch('signupForm', 'submit');
+  assert.equal(expiredContext.calls[0][0], 'register');
+
+  const liveContext = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:101000})}});
+  liveContext.advance(1000);
+  liveContext.windowHandlers.focus();
+  assert.equal(liveContext.element('signupContinuation').classList.contains('hidden'), true);
+
+  const draftReview = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'CUSTOMER@gmail.com', expiresAt:3700000, review:true,
+    draft:{firstName:'John', username:'john', phone:'', password:'must-not-prefill', confirmPassword:'must-not-prefill', email:'attacker@gmail.com'}})}});
+  assert.equal(draftReview.element('firstName').value, 'John');
+  assert.equal(draftReview.element('lastName').value, 'Customer');
+  assert.equal(draftReview.element('email').value, 'customer@gmail.com');
+  assert.equal(draftReview.element('password').value, '');
+  assert.equal(draftReview.element('confirmPassword').value, '');
+  assert.match(draftReview.element('signupDescription').textContent, /proposed changes/);
+  draftReview.element('password').value = 'owner-password';
+  draftReview.element('confirmPassword').value = 'owner-password';
+  await draftReview.dispatch('signupForm','submit');
+  assert.equal(draftReview.calls[0][1].first_name, 'John');
+  assert.equal(draftReview.calls[0][1].password, 'owner-password');
+  assert.equal(draftReview.storage.has('pendingSignupContext'), false);
+
+  for (const pendingRegistrationRecoveryUntil of ['100000','NaN','3700000']) {
+    const expiredReview = page({signup:true, reviewing:true, initialStorage:{pendingRegistrationRecoveryUntil}});
+    assert.deepEqual(expiredReview.calls, [['redirect','./verify-email.html?recover=1']]);
+  }
+  const expiredDraft = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:100000, review:true, draft:{firstName:'Stale'}})}});
+  assert.equal(expiredDraft.element('firstName').value, 'Saved');
+  const wrongDraft = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'other@gmail.com', expiresAt:3700000, review:true, draft:{firstName:'Wrong'}})}});
+  assert.equal(wrongDraft.element('firstName').value, 'Saved');
+
+  const rapidEdit = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
+  let finishIntent;
+  let intents = 0;
+  rapidEdit.API.requestRegistrationReview = () => { intents++; return new Promise(resolve => {finishIntent = resolve;}); };
+  const editing = rapidEdit.dispatch('signupEdit','click');
+  await rapidEdit.dispatch('signupEdit','click');
+  assert.equal(intents, 1);
+  assert.equal(rapidEdit.element('signupContinue').disabled, true);
+  finishIntent({success:true});
+  await editing;
+
+  const failedEdit = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
+  failedEdit.API.requestRegistrationReview = async () => {throw {message:'Try again.'};};
+  await failedEdit.dispatch('signupEdit','click');
+  assert.equal(failedEdit.calls.length, 0);
+  assert.equal(JSON.parse(failedEdit.storage.get('pendingSignupContext')).review, undefined);
+  assert.equal(failedEdit.element('signupEdit').disabled, false);
+
+  const waitingDeadline = page({initialStorage:{pendingVerificationState:'resumed', pendingVerificationRegistrationUntil:'101000'}});
+  waitingDeadline.advance(1000);
+  assert.equal(waitingDeadline.element('verificationTitle').textContent, 'Registration expired');
+  assert.equal(waitingDeadline.element('signupResend').disabled, true);
+  const freshRecovery = page({search:'?recover=1', initialStorage:{pendingVerificationState:'expired', pendingVerificationRegistrationUntil:'100000'}});
+  assert.equal(freshRecovery.element('verificationEmailRecovery').classList.contains('hidden'), false, 'Stale signup context cannot hide email recovery');
+  assert.equal(freshRecovery.element('signupResend').disabled, false);
   const entry = page({ signup: true });
   const input = entry.element('phone');
   for (const [digits, visible] of [['0','0'], ['09','09'], ['0917','0917'], ['09171','0917 1'],
@@ -216,20 +298,24 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.doesNotMatch(signupHtml, /Track pre-registrations and visit status/);
   assert.ok(signupHtml.indexOf('for="email"') < signupHtml.indexOf('for="username"'));
 
-  for (const editing of [false, true]) {
+  for (const reviewing of [false, true]) {
     for (const phone of ['', '09171234567', '08951234567', '08961234567', '08971234567', '08981234567', '09991234567', '09071234567', '09221234567', '08131234567', '08171234567', '09271234567', '09561234567', '09661234567', '09771234567']) {
-      const signup = page({ signup: true, editing, phone });
+      const signup = page({ signup: true, reviewing, phone });
+      signup.element('password').value = 'strong-password';
+      signup.element('confirmPassword').value = 'strong-password';
       signup.dispatch('phone', 'input');
       assert.equal(signup.element('phone').validationMessage, '');
       await signup.dispatch('signupForm', 'submit');
-      assert.equal(signup.calls[0]?.[0], editing ? 'update' : 'register');
+      assert.equal(signup.calls[0]?.[0], reviewing ? 'update' : 'register');
       assert.equal(signup.calls[0][1].phone, phone || null);
       assert.equal(signup.calls[0][1].email, 'customer@gmail.com');
-      if (editing) assert.equal(signup.calls[0][2], 'private-edit-credential');
-      assert.equal(signup.storage.get('pendingRegistrationEditToken'), editing ? 'rotated-edit-token' : 'private-edit-credential');
-      assert.equal(signup.storage.get('pendingVerificationState'), editing ? 'queued' : 'requested');
-      if (!editing) assert.equal(signup.storage.has('pendingSignupDetails'), false, 'Public input never becomes an authorized saved profile');
-      assert.deepEqual(signup.calls.at(-1), ['redirect', './verify-email.html']);
+      if (reviewing) assert.equal(signup.calls[0][2], 'ownership-grant');
+      else {
+        assert.equal(signup.storage.get('pendingVerificationState'), 'requested');
+        assert.equal(signup.storage.has('pendingSignupDetails'), false, 'Public input never becomes an authorized saved profile');
+        assert.equal(signup.storage.has('pendingSignupContext'), true);
+      }
+      assert.deepEqual(signup.calls.at(-1), ['redirect', reviewing ? './dashboard.html' : './verify-email.html']);
       assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
     }
   }
@@ -282,7 +368,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const abandoned = page({ signup: true });
   abandoned.API.register = async () => ({ requires_verification: true, resend_after: 0 });
   await abandoned.dispatch('signupForm', 'submit');
-  assert.equal(abandoned.element('signupRecovery').classList.contains('hidden'), true, 'A public response cannot establish an unfinished registration');
+  assert.equal(abandoned.element('signupContinuation').classList.contains('hidden'), true, 'A public response cannot establish an unfinished registration');
   assert.equal(abandoned.element('firstName').value, 'Test');
   assert.equal(abandoned.element('password').value, 'strong-password');
   assert.deepEqual(abandoned.calls, [], 'A response without authorized pending context stays on signup');
@@ -298,18 +384,17 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const reviewing = page({ signup: true, reviewing: true });
   assert.equal(reviewing.element('firstName').value, 'Saved');
   assert.equal(reviewing.element('email').readOnly, true);
-  assert.equal(reviewing.element('signupRecovery').classList.contains('hidden'), false, 'Email-proven recovery retains its existing panel design');
-  await reviewing.dispatch('signupRecoveryContinue', 'click');
-  assert.equal(reviewing.activeElement(), reviewing.element('firstName'));
+  assert.equal(reviewing.element('password').value, '', 'Review requires password reentry');
   assert.equal(reviewing.calls.length, 0, 'The confirmed email needs no second verification email');
+  reviewing.element('password').value = 'new-password';
+  reviewing.element('confirmPassword').value = 'new-password';
   await reviewing.dispatch('signupForm', 'submit');
   assert.equal(reviewing.calls[0][0], 'update');
-  assert.equal(reviewing.calls[0][3], 'ownership-grant');
+  assert.equal(reviewing.calls[0][2], 'ownership-grant');
   assert.deepEqual(reviewing.calls.at(-1), ['redirect', './dashboard.html']);
   assert.equal(reviewing.storage.has('pendingRegistrationRecoveryToken'), false);
 
   const unprovenReview = page({ signup: true, reviewing: true, missingGrant: true });
-  assert.equal(unprovenReview.element('signupRecovery').classList.contains('hidden'), true);
   assert.deepEqual(unprovenReview.calls, [['redirect', './verify-email.html?recover=1']], 'A lost recovery grant returns to email proof');
 
   const interrupted = page({ signup: true });
@@ -331,7 +416,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const pending = page();
   assert.equal(pending.element('verificationTitle').textContent, 'Registration pending');
   assert.doesNotMatch(pending.element('verificationDescription').textContent, /We sent/);
-  assert.equal(pending.element('verificationBackAction').attributes.href, './signup.html?edit=1');
+  assert.equal(pending.element('verificationBackAction').attributes.href, './signup.html');
   assert.equal(pending.element('verifyCodeEmail').textContent, 'c***@gmail.com');
   assert.equal(pending.element('signupResend').textContent, 'Resend link in 1m 00s');
   assert.deepEqual(pending.calls, [], 'Waiting must never automatically verify or send');
@@ -346,10 +431,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(pending.element('signupResend').textContent, 'Resend link in 1m 00s');
 
   const resumed = page({initialStorage:{pendingVerificationState:'resumed', pendingVerificationLinkUntil:'102000'}});
-  assert.equal(resumed.element('verificationTitle').textContent, 'Registration already started');
-  assert.match(resumed.element('verificationInstruction').textContent, /latest verification link/);
+  assert.equal(resumed.element('verificationTitle').textContent, 'Registration in progress');
+  assert.match(resumed.element('verificationDescription').textContent, /latest verification link/);
+  assert.equal(resumed.element('verificationInstruction').textContent, '');
   resumed.advance(2000);
-  assert.equal(resumed.element('verificationInstruction').textContent, 'Request a new verification link when available.');
+  assert.equal(resumed.element('verificationDescription').textContent, 'This link has expired. Request a new one.');
   const resumedResend = page({deliveryFailed:true, initialStorage:{pendingVerificationState:'resumed', pendingVerificationLinkUntil:'1900000'}});
   await resumedResend.dispatch('signupLinkForm', 'submit');
   resumedResend.advance(60000);

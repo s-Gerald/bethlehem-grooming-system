@@ -67,6 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showState("link");
     let verifying = false;
     const verifyButton = document.getElementById("verifyLinkSubmit");
+    const editButton = document.getElementById("verifyLinkEdit");
     const dashboard = document.getElementById("successDashboard");
     let channel;
     try { channel = new BroadcastChannel("bethlehem-registration"); } catch { /* Dashboard fallback remains available. */ }
@@ -80,20 +81,22 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch { /* Keep the working dashboard entry point. */ }
     }
     if (channel) channel.onmessage = event => { if (event.data?.type === "registration-tab-ready") confirmHandoff(); };
-    verifyButton.addEventListener("click", async () => {
+    async function verify(review = false) {
       if (verifying || !verificationToken) return;
       verifying = true;
       verifyButton.disabled = true;
+      editButton.disabled = true;
       verifyButton.textContent = "Verifying your email...";
       verifyButton.setAttribute("aria-busy", "true");
       showState("verifying");
       try {
-        const result = await API.verifyEmail(verificationToken);
+        const result = await API.verifyEmail(verificationToken, review);
         verificationToken = "";
         if (result?.requires_registration_review && result?.registration_recovery_token && result?.details) {
           const details = result.details;
           try {
             sessionStorage.setItem("pendingRegistrationRecoveryToken", result.registration_recovery_token);
+            sessionStorage.setItem("pendingRegistrationRecoveryUntil", String(Date.parse(result.registration_recovery_expires_at)));
             sessionStorage.setItem("pendingSignupDetails", JSON.stringify({firstName: details.first_name,
               lastName: details.last_name, username: details.username || "", email: details.email, phone: details.phone || ""}));
             sessionStorage.removeItem("pendingRegistrationEditToken");
@@ -106,6 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // A response marker alone is insufficient: confirm the HttpOnly cookie.
         const session = await API.registrationSession();
         if (!session) throw new Error("Email confirmed. Please sign in to continue.");
+        window.SignupContext.clear(session.user?.email);
         successTitle.textContent = "Account created successfully!";
         successMessage.textContent = "Your account is ready.";
         dashboard.classList.remove("hidden");
@@ -147,10 +151,13 @@ document.addEventListener("DOMContentLoaded", () => {
       } finally {
         verifying = false;
         verifyButton.disabled = false;
+        editButton.disabled = false;
         verifyButton.textContent = "Verify Email Address";
         verifyButton.setAttribute("aria-busy", "false");
       }
-    });
+    }
+    verifyButton.addEventListener("click", () => verify());
+    editButton.addEventListener("click", () => verify(true));
   } else if (loginCodeMode) {
     document.title = "Verify your sign-in | Bethlehem Animal Clinic";
 
@@ -310,6 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const result = await API.resendVerification(email);
       sessionStorage.setItem("pendingVerificationEmail", email);
+      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(window.SignupContext.read(email)?.expiresAt || 0));
       sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + window.AuthenticationResend.seconds(result) * 1000));
       sessionStorage.setItem("pendingVerificationResendLimited", window.AuthenticationResend.limited(result) ? "1" : "0");
       sessionStorage.setItem("pendingVerificationState", result.registration_state === "requested" ? "requested" : result.email_delivery_token ? "queued" : "");

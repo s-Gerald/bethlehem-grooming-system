@@ -821,8 +821,8 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   const context = {
     API: {
       async registrationSession() { return {session_token:'11|cookie',user:{role:'customer'}}; },
-      verifyEmail(token) {
-        events.push({ type: "verify", token });
+      verifyEmail(token, review = false) {
+        events.push({ type: "verify", token, review });
         return new Promise(() => {});
       },
       async confirmLoginCode(code) {
@@ -841,7 +841,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     },
     URL,
     URLSearchParams,
-    Date: { now: () => now },
+    Date: { now: () => now, parse: Date.parse },
     console,
     document: {
       addEventListener(name, handler) {
@@ -872,6 +872,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   vm.runInContext(inline, context);
   vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/email-delivery.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/client/signup-context.js'), 'utf8'), context);
   vm.runInContext(source, context, {
     filename: "scripts/auth/client/verify-email.js",
   });
@@ -931,14 +932,19 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
     { type: "scrub", target: "/pages/client/verify-email.html?campaign=welcome" },
   ], 'Loading a link must scrub credentials without verifying');
   fragmentEvents.dispatch('verifyLinkSubmit','click');
-  assert.deepEqual(fragmentEvents.events.at(-1), {type:'verify',token:'fragment-token'});
+  assert.deepEqual(fragmentEvents.events.at(-1), {type:'verify',token:'fragment-token', review:false});
   fragmentEvents.dispatch('verifyLinkSubmit','click');
   assert.equal(fragmentEvents.events.filter(event => event.type==='verify').length, 1);
 
   const legacyEvents = verificationPageHarness({search:'?token=legacy-token',hash:''});
   assert.deepEqual(legacyEvents.events, [{type:'scrub',target:'/pages/client/verify-email.html'}]);
   legacyEvents.dispatch('verifyLinkSubmit','click');
-  assert.deepEqual(legacyEvents.events.at(-1), {type:'verify',token:'legacy-token'});
+  assert.deepEqual(legacyEvents.events.at(-1), {type:'verify',token:'legacy-token', review:false});
+
+  const deliberateReview = verificationPageHarness({search:'', hash:'#token=review-token'});
+  deliberateReview.dispatch('verifyLinkEdit', 'click');
+  deliberateReview.dispatch('verifyLinkSubmit', 'click');
+  assert.deepEqual(deliberateReview.events.filter(event => event.type === 'verify'), [{type:'verify', token:'review-token', review:true}]);
 
   const success = verificationPageHarness({search:'',hash:'#token=valid-token'});
   success.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
@@ -948,10 +954,11 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
   assert.doesNotMatch(success.elements.get('successMessage').textContent,/close this tab/);
 
   const foreign = verificationPageHarness({search:'',hash:'#token=foreign-token'});
-  foreign.API.verifyEmail = async () => ({requires_registration_review:true, registration_recovery_token:'private-grant',
+  foreign.API.verifyEmail = async () => ({requires_registration_review:true, registration_recovery_token:'private-grant', registration_recovery_expires_at:'1970-01-01T00:11:40.000Z',
     details:{first_name:'Saved',last_name:'Owner',email:'owner@gmail.com'}});
   await foreign.dispatch('verifyLinkSubmit','click');
   assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryToken'),'private-grant');
+  assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryUntil'),'700000');
   assert.deepEqual(foreign.events.at(-1),{type:'redirect',target:'./signup.html?review=1'});
 
   const unavailable = verificationPageHarness({search:'',hash:'#token=valid-token'});
@@ -1477,7 +1484,6 @@ function testStaticAuthContracts() {
   assert.doesNotMatch(signIn, /API\.(?:getUserRole|getAdminToken|getCustomerToken)/);
   assert.doesNotMatch(verify, /login_token|approveLogin|pollLoginConfirmation/);
   assert.match(verify, /await API\.confirmLoginCode\(code\)/);
-  assert.match(verify, /await API\.verifyEmail\(verificationToken\)/);
   assert.match(verify, /dashboard\.html/);
   assert.match(verifyHtml, /<img\b[^>]*Bethlehem_Logo-256\.png/);
   assert.match(verifyHtml, /id="loginCode"/);

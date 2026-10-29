@@ -57,6 +57,7 @@ Route::post('/staff/email-recovery/complete', [\App\Http\Controllers\StaffEmailR
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:registration-verify');
 Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:30,1,registration-send');
 Route::post('/email/registration/session', [EmailVerificationController::class, 'registrationSession'])->middleware('throttle:30,1,registration-session');
+Route::post('/email/registration/review', [EmailVerificationController::class, 'requestReview'])->middleware('throttle:5,1');
 Route::post('/email/delivery-status', [EmailVerificationController::class, 'deliveryStatus'])
     ->middleware('throttle:email-delivery-status');
 Route::post('/email/login/confirm', [LoginEmailChallengeController::class, 'confirm'])
