@@ -210,9 +210,9 @@ class LoginEmailChallengeController extends Controller
 
     private function authenticatedResponse(User $user, bool $rememberMe)
     {
-        $token = app(\App\Services\AccountSessionService::class)->issue($user);
+        $token = app(\App\Services\AccountSessionService::class)->issue($user, $rememberMe);
 
-        return response()->json([
+        $response = response()->json([
             'success' => true,
             'message' => 'Sign-in confirmed successfully.',
             'approved' => true,
@@ -233,5 +233,11 @@ class LoginEmailChallengeController extends Controller
                 'staff_permissions' => $user->staffPermissions(),
             ],
         ]);
+        $devices = app(\App\Services\RememberedDeviceService::class);
+        // This method runs inside the OTP consumption transaction.
+        return $user->role === 'customer' && $rememberMe
+            ? $response->withCookie($devices->issue($user, $token))
+            : $response->withCookie(\App\Http\Middleware\UseAccountSessionCookie::cookie(
+                request(), $devices::COOKIE, '', now()->subYear()));
     }
 }

@@ -25,6 +25,14 @@ Schedule::command('pickups:remind')->hourly();
 // Remove expired bearer-token rows after their configured lifetime.
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 
+// Security checks run on every restore; cleanup only bounds storage and replay history.
+Schedule::call(function (): void {
+    app(\App\Services\RememberedDeviceService::class)->checkpointRetainedSessionActivity();
+    \App\Models\RememberedDevice::where('expires_at', '<=', now())->delete();
+    \App\Models\RememberedDevice::where('last_used_at', '<=', now()->subDays(7))->delete();
+    \App\Models\RememberedDevice::where('revoked_at', '<=', now()->subDay())->delete();
+})->name('remembered-devices:prune')->daily()->withoutOverlapping();
+
 // Pending signups are not customer accounts and are retained only long enough
 // for email verification and resend recovery.
 Schedule::call(function (): void {

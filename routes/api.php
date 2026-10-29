@@ -38,6 +38,10 @@ Route::post('/paymongo/webhook', \App\Http\Controllers\PayMongoWebhookController
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::put('/register/pending', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/sign-in', [AuthController::class, 'signIn']);
+Route::post('/session/restore', [\App\Http\Controllers\SessionController::class, 'restore'])
+    ->middleware('throttle:remembered-session')->name('session.restore');
+// Cookie-bound logout also revokes remembered devices after an active session expires.
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('throttle:60,1,logout')->name('auth.logout');
 Route::post('/password/forgot', [PasswordResetController::class, 'requestCode'])
     ->middleware('throttle:30,1,password-send');
 Route::post('/password/code/verify', [PasswordResetController::class, 'verifyCode'])
@@ -93,7 +97,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::patch('/admin/grooming/services/{service}/pricing', [GroomingPricingController::class, 'update'])->middleware('role:admin');
 
     // Auth
-    Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::patch('/customer/profile/name', [CustomerController::class, 'updateOwnName'])

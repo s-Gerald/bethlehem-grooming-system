@@ -163,6 +163,7 @@ async function permissionRevalidation() {
   assert.equal(sidebar.clinicPermissions.access, undefined);
   assert.equal(sidebar.sidebarReady, true);
   assert.equal(c.API.readAdminCache('/inventory/items?page=1'), null, 'A verified permission change discards page data from the former role');
+  e.respond(() => ({success: true}));
   await c.API.logout('staff');
   assert.equal(sidebar.sidebarReady, false, 'Logout clears the existing navigation identity immediately');
   assert.equal(sidebar.canAccessGrooming, false, 'Logout revokes permission-dependent presentation');

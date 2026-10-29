@@ -18,7 +18,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -885,7 +885,7 @@ function configurePageForFlow() {
 
 export async function initBookingPetStep() {
   if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ dashboardPath: "./dashboard.html" })) return;
-  if (IS_CLINIC_VISIT && !requireCustomerSession("./sign-in.html")) {
+  if (IS_CLINIC_VISIT && !await requireCustomerSession("./sign-in.html")) {
     return;
   }
 

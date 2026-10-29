@@ -9,7 +9,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   validateClinicVisitReason,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
 
 const elements = {
   details: document.getElementById("clinicVisitSummaryDetails"),
@@ -64,7 +64,7 @@ async function refreshAvailability() {
 }
 
 async function init() {
-  if (!requireCustomerSession("./sign-in.html")) {
+  if (!await requireCustomerSession("./sign-in.html")) {
     return;
   }
 

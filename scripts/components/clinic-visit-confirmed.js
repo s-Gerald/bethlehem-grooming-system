@@ -1,6 +1,6 @@
 import {
   CLINIC_VISIT_CONFIRMATION_KEY, formatClinicVisitDate, requireCustomerSession,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
 import {
   clinicReasonConfirmation, confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
@@ -10,7 +10,7 @@ import {
 export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";
   if (walkIn && !await API.waitForSessionVerification()) return;
-  if (!walkIn && !requireCustomerSession("./sign-in.html")) return;
+  if (!walkIn && !await requireCustomerSession("./sign-in.html")) return;
   const appointment = readConfirmationData(walkIn ? "walkInClinicConfirmation" : CLINIC_VISIT_CONFIRMATION_KEY);
   const root = document.getElementById("confirmationRoot");
   if (!appointment?.appointment_reference) {

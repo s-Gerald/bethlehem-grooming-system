@@ -37,6 +37,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!signInForm || !identifierInput || !passwordInput) return;
 
+  void API.retryPendingLogout?.().catch(() => showMessage('error', 'Unable to confirm sign-out. Connect and try again.'));
+
   const replacementAlert = document.getElementById('sessionReplacedAlert');
   const signoutReasonKey = 'bethlehem.auth.signout_reason';
   try {
@@ -111,7 +113,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const identifier = identifierInput.value.trim();
     const password   = passwordInput.value;
-    const rememberMe = rememberMeCheckbox?.checked ?? true;
+    const rememberMe = rememberMeCheckbox?.checked ?? false;
     const submittedIdentifier = currentIdentifier();
 
     if (!identifier || !password) {

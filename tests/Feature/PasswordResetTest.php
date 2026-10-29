@@ -61,10 +61,13 @@ class PasswordResetTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
+        (require base_path('database/migrations/2026_10_29_000003_create_remembered_devices.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('remembered_device_credentials');
+        Schema::dropIfExists('remembered_devices');
         Schema::dropIfExists('jobs');
         Schema::dropIfExists('job_batches');
         Schema::dropIfExists('failed_jobs');
@@ -81,7 +84,8 @@ class PasswordResetTest extends TestCase
         Notification::fake();
         $user = $this->createUser($role);
         $username = $user->username;
-        $user->createToken('auth_token');
+        $session = $user->createToken('auth_token')->plainTextToken;
+        if ($role === 'customer') app(\App\Services\RememberedDeviceService::class)->issue($user, $session);
 
         $this->postJson('/api/password/forgot', [
             'email' => ' CUSTOMER@EXAMPLE.TEST ',
@@ -137,6 +141,7 @@ class PasswordResetTest extends TestCase
         $this->assertSame($username, $user->fresh()->username);
         $this->assertDatabaseCount('password_reset_requests', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
+        if ($role === 'customer') $this->assertNotNull(\App\Models\RememberedDevice::sole()->revoked_at);
         Notification::assertSentToTimes($user, PasswordChangedNotification::class, 1);
 
         $this->postJson('/api/password/reset', [

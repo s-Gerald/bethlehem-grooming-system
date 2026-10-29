@@ -75,6 +75,13 @@ class User extends Authenticatable
 
     protected static function booted(): void
     {
+        static::updated(function (User $user): void {
+            if ($user->wasChanged(['password_hash', 'role', 'email'])
+                || ($user->wasChanged(['is_active', 'is_archived', 'account_deleted_at', 'email_recovery_id', 'email_verified_at'])
+                    && ! app(\App\Services\AccountSessionService::class)->accountIsUsable($user))) {
+                app(\App\Services\RememberedDeviceService::class)->revokeFor($user);
+            }
+        });
         static::saving(function (User $user): void {
             if ($user->exists && $user->isDirty('phone')) {
                 $user->phone_verified_at = null;
@@ -111,6 +118,11 @@ class User extends Authenticatable
     public function emailRecovery()
     {
         return $this->belongsTo(StaffEmailRecovery::class, 'email_recovery_id');
+    }
+
+    public function rememberedDevices()
+    {
+        return $this->hasMany(RememberedDevice::class, 'user_id', 'user_id');
     }
 
     public function requiresPasswordSetup(): bool

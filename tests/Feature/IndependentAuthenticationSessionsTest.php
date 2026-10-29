@@ -16,6 +16,7 @@ use Tests\TestCase;
 class IndependentAuthenticationSessionsTest extends TestCase
 {
     private array $browserCookies = [];
+    private array $rememberCookies = [];
 
     protected function setUp(): void
     {
@@ -45,6 +46,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
+        (require base_path('database/migrations/2026_10_29_000003_create_remembered_devices.php'))->up();
         Schema::create('login_email_challenges', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('user_id')->unique();
@@ -90,7 +92,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['services', 'personal_access_tokens', 'login_email_challenges', 'users'] as $table) {
+        foreach (['remembered_device_credentials', 'remembered_devices', 'services', 'personal_access_tokens', 'login_email_challenges', 'users'] as $table) {
             Schema::dropIfExists($table);
         }
         parent::tearDown();
@@ -102,7 +104,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
         $pending = $this->postJson('/api/sign-in', [
             'identifier' => "$role@example.test", 'password' => 'SessionTest!123', 'remember' => $remember,
-        ])->assertAccepted()->assertJsonMissingPath('token')->assertCookieMissing('bethlehem_account_session');
+        ])->assertAccepted()->assertJsonMissingPath('token')->assertCookieMissing('bethlehem_account_session')
+            ->assertCookieMissing('bethlehem_remembered_device');
         $user = User::where('email', "$role@example.test")->firstOrFail();
         $code = Notification::sent($user, ConfirmLoginNotification::class)->last()->code;
 
@@ -114,10 +117,18 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
         $credential = $confirmed->getCookie('bethlehem_account_session', false)->getValue();
         $cookieExpiry = $confirmed->getCookie('bethlehem_account_session', false)->getExpiresTime();
-        if ($user->role === 'customer' && ! $remember) $this->assertSame(0, $cookieExpiry);
+        if (! $remember) $this->assertSame(0, $cookieExpiry);
         else $this->assertGreaterThan(now()->timestamp, $cookieExpiry);
         $this->assertSame(explode('|', $credential)[0].'|cookie', $confirmed->json('token'));
         $this->browserCookies[$confirmed->json('token')] = $credential;
+        $deviceCookie = $confirmed->getCookie('bethlehem_remembered_device', false);
+        if ($user->role === 'customer' && $remember) {
+            $this->assertNotNull($deviceCookie);
+            $this->assertTrue($deviceCookie->isHttpOnly());
+            $deadline = \App\Models\RememberedDevice::where('session_token_id', explode('|', $credential)[0])->sole()->expires_at;
+            $this->assertSame($deadline->timestamp, $deviceCookie->getExpiresTime());
+            $this->rememberCookies[$confirmed->json('token')] = $deviceCookie->getValue();
+        } else $confirmed->assertCookieExpired('bethlehem_remembered_device');
         return $confirmed->json('token');
     }
 
@@ -128,6 +139,339 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$token])->withCredentials();
 
         return $this->json($method, $uri, $data, ['Authorization' => 'Bearer '.$token]);
+    }
+
+    public function test_unchecked_remember_me_is_nonpersistent_for_every_role(): void
+    {
+        foreach (['customer', 'admin', 'clinic_receptionist', 'grooming_receptionist'] as $role) {
+            $token = $this->login($role, false);
+            $this->requestAs($token, 'GET', '/api/session')->assertOk();
+        }
+    }
+
+    public function test_shared_session_policy_gives_customers_24_hours_and_honors_explicit_token_expiry(): void
+    {
+        $publicId = $this->login('customer', false);
+        $token = \Laravel\Sanctum\PersonalAccessToken::findToken($this->browserCookies[$publicId]);
+        $user = $token->tokenable;
+        $this->travel(13)->hours();
+        $token->forceFill(['last_interaction_at' => now()])->save();
+        $this->assertTrue(app(\App\Services\AccountSessionService::class)->isUsable($token, $user));
+        $token->forceFill(['expires_at' => now()->subSecond()])->save();
+        $this->assertFalse(app(\App\Services\AccountSessionService::class)->isUsable($token, $user));
+    }
+
+    private function restoreDevice(string $cookie, string $sessionCookie = '', array $body = [])
+    {
+        $this->app['auth']->forgetGuards();
+        return $this->withHeader('Authorization', '')->withCredentials()
+            ->withUnencryptedCookie('bethlehem_account_session', $sessionCookie)
+            ->withUnencryptedCookie('bethlehem_remembered_device', $cookie)
+            ->postJson('/api/session/restore', $body);
+    }
+
+    public function test_customer_device_is_separate_from_session_and_restores_next_day_with_rotation(): void
+    {
+        $old = $this->login('customer', true);
+        $cookie = $this->rememberCookies[$old];
+        $device = \App\Models\RememberedDevice::sole();
+        $this->assertDatabaseCount('remembered_device_credentials', 1);
+        $this->assertStringNotContainsString(explode('.', $cookie)[1], json_encode(DB::table('remembered_device_credentials')->get()));
+        $this->travel(1)->days();
+        $restored = $this->restoreDevice($cookie)->assertOk()->assertJsonPath('user.role', 'customer');
+        $this->assertNotSame($old, $restored->json('token'));
+        $rotated = $restored->getCookie('bethlehem_remembered_device', false);
+        $this->assertNotSame($cookie, $rotated->getValue());
+        $this->assertSame($device->expires_at->timestamp, $rotated->getExpiresTime());
+        $this->assertStringNotContainsString($rotated->getValue(), $restored->getContent());
+        $raw = $restored->getCookie('bethlehem_account_session', false)->getValue();
+        $this->browserCookies[$restored->json('token')] = $raw;
+        $this->requestAs($restored->json('token'), 'GET', '/api/session')->assertOk()
+            ->assertJsonPath('expires_at', now()->addDay()->toIso8601String());
+        $this->assertSame(1, DB::table('personal_access_tokens')->whereNull('replaced_at')->count());
+        Notification::assertSentTimes(ConfirmLoginNotification::class, 1);
+    }
+
+    public function test_idle_expiry_restores_but_duplicate_requests_do_not_replace_the_restored_session(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(30)->minutes();
+        $this->requestAs($old, 'GET', '/api/session')->assertUnauthorized();
+        $first = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
+        $second = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
+        $this->assertSame($first->json('token'), $second->json('token'));
+        foreach (['bethlehem_account_session', 'bethlehem_remembered_device'] as $name) {
+            $this->assertSame($first->getCookie($name, false)->getValue(), $second->getCookie($name, false)->getValue());
+        }
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseCount('remembered_device_credentials', 2);
+    }
+
+    public function test_consumed_credential_replay_after_grace_revokes_device_and_its_session(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(31)->minutes();
+        $this->restoreDevice($this->rememberCookies[$old])->assertOk();
+        $this->travel(61)->seconds();
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
+        $this->assertNotNull(\App\Models\RememberedDevice::sole()->revoked_at);
+        $this->assertSame(0, DB::table('personal_access_tokens')->whereNull('replaced_at')->count());
+    }
+
+    public function test_remembered_inactivity_expires_at_seven_days(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(7)->days();
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized()->assertJsonPath('code', 'remembered_session_invalid');
+        $this->assertNotNull(\App\Models\RememberedDevice::sole()->revoked_at);
+    }
+
+    public function test_absolute_fourteen_day_deadline_is_never_extended_by_daily_restoration(): void
+    {
+        $old = $this->login('customer', true);
+        $cookie = $this->rememberCookies[$old];
+        $deadline = \App\Models\RememberedDevice::sole()->expires_at;
+        for ($day = 1; $day < 14; $day++) {
+            $this->travel(1)->days();
+            $response = $this->restoreDevice($cookie)->assertOk();
+            $cookie = $response->getCookie('bethlehem_remembered_device', false)->getValue();
+            $this->assertTrue($deadline->equalTo(\App\Models\RememberedDevice::sole()->expires_at));
+        }
+        $this->travel(1)->days();
+        $this->restoreDevice($cookie)->assertUnauthorized();
+    }
+
+    public function test_valid_active_cookie_recovery_does_not_create_or_replace_a_session(): void
+    {
+        $old = $this->login('customer', true);
+        $this->restoreDevice($this->rememberCookies[$old], $this->browserCookies[$old])->assertOk()->assertJsonPath('token', $old);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseCount('remembered_device_credentials', 1);
+    }
+
+    public function test_unchecked_customer_can_recover_its_existing_browser_session_without_becoming_remembered(): void
+    {
+        $old = $this->login('customer', false);
+        $this->restoreDevice('', $this->browserCookies[$old])->assertOk()->assertJsonPath('token', $old)
+            ->assertJsonPath('remember_me', false)->assertCookieMissing('bethlehem_remembered_device');
+        $this->assertDatabaseCount('remembered_devices', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->travel(30)->minutes();
+        $this->restoreDevice('', $this->browserCookies[$old])->assertUnauthorized();
+    }
+
+    public static function privilegedRememberChoices(): array
+    {
+        return [['admin', false], ['admin', true], ['clinic_receptionist', false], ['clinic_receptionist', true]];
+    }
+
+    #[DataProvider('privilegedRememberChoices')]
+    public function test_privileged_checkbox_never_changes_lock_or_absolute_expiration(string $role, bool $remember): void
+    {
+        $old = $this->login($role, $remember);
+        $this->travel(30)->minutes();
+        $this->requestAs($old, 'GET', '/api/me')->assertStatus(423);
+        $this->restoreDevice('', $this->browserCookies[$old])->assertUnauthorized();
+        $this->requestAs($old, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk();
+        $this->travel(11)->hours();
+        $this->travel(30)->minutes();
+        $this->requestAs($old, 'GET', '/api/session')->assertUnauthorized();
+        $this->assertDatabaseCount('remembered_devices', 0);
+    }
+
+    public function test_explicit_logout_revokes_device_and_expires_both_cookies_even_after_session_expiry(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(1)->days();
+        $this->withUnencryptedCookie('bethlehem_remembered_device', $this->rememberCookies[$old]);
+        $this->requestAs($old, 'POST', '/api/logout')->assertOk()
+            ->assertCookieExpired('bethlehem_account_session')->assertCookieExpired('bethlehem_remembered_device');
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_logout_can_revoke_device_when_active_token_and_cookie_are_already_gone(): void
+    {
+        $old = $this->login('customer', true);
+        DB::table('personal_access_tokens')->delete();
+        $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
+            ->withUnencryptedCookie('bethlehem_account_session', '')
+            ->withUnencryptedCookie('bethlehem_remembered_device', $this->rememberCookies[$old])
+            ->postJson('/api/logout')->assertOk()->assertCookieExpired('bethlehem_remembered_device');
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
+    }
+
+    public function test_logout_started_during_restoration_can_revoke_the_successor_on_the_same_device(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(31)->minutes();
+        $restored = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
+        $rotated = $restored->getCookie('bethlehem_remembered_device', false)->getValue();
+        $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
+            ->withUnencryptedCookie('bethlehem_account_session', $restored->getCookie('bethlehem_account_session', false)->getValue())
+            ->withUnencryptedCookie('bethlehem_remembered_device', $rotated)->postJson('/api/logout')->assertOk();
+        $this->restoreDevice($rotated)->assertUnauthorized();
+    }
+
+    public function test_obsolete_logout_cannot_remove_a_new_full_login_cookie_or_device(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(61)->seconds();
+        $new = $this->login('customer', true);
+        $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
+            ->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$new])
+            ->withUnencryptedCookie('bethlehem_remembered_device', $this->rememberCookies[$new])
+            ->postJson('/api/logout')->assertUnauthorized()->assertCookieMissing('bethlehem_account_session')
+            ->assertCookieMissing('bethlehem_remembered_device');
+        $this->requestAs($new, 'GET', '/api/me')->assertOk();
+    }
+
+    public function test_remembered_migration_round_trip_preserves_existing_accounts_and_sessions(): void
+    {
+        $token = $this->login('customer', false);
+        $users = DB::table('users')->get()->toArray();
+        $sessions = DB::table('personal_access_tokens')->get()->toArray();
+        $migration = require base_path('database/migrations/2026_10_29_000003_create_remembered_devices.php');
+        $migration->down();
+        $migration->up();
+        $this->assertEquals($users, DB::table('users')->get()->toArray());
+        $this->assertEquals($sessions, DB::table('personal_access_tokens')->get()->toArray());
+        $this->requestAs($token, 'GET', '/api/me')->assertOk();
+    }
+
+    public function test_remembered_activity_is_bounded_and_never_revives_an_expired_credential(): void
+    {
+        $token = $this->login('customer', true);
+        $device = \App\Models\RememberedDevice::sole();
+        $this->travel(20)->minutes();
+        $this->requestAs($token, 'POST', '/api/session/activity')->assertOk();
+        $this->assertTrue($device->last_used_at->equalTo($device->fresh()->last_used_at));
+        for ($step = 0; $step < 3; $step++) {
+            $this->travel(20)->minutes();
+            $this->requestAs($token, 'POST', '/api/session/activity')->assertOk();
+        }
+        $this->assertTrue($device->fresh()->last_used_at->greaterThan($device->last_used_at));
+        $device->update(['last_used_at' => now()->subDays(7)]);
+        DB::table('personal_access_tokens')->update(['last_interaction_at' => now()->subDays(7)]);
+        $this->requestAs($token, 'POST', '/api/session/activity')->assertUnauthorized();
+        $this->restoreDevice($this->rememberCookies[$token])->assertUnauthorized();
+    }
+
+    public function test_sparse_interactions_do_not_leave_the_device_activity_checkpoint_more_than_an_hour_behind(): void
+    {
+        $token = $this->login('customer', true);
+        foreach ([20, 20, 19, 29, 22, 20, 20] as $minutes) {
+            $this->travel($minutes)->minutes();
+            $this->requestAs($token, 'POST', '/api/session/activity')->assertOk();
+        }
+        $this->assertTrue(\App\Models\RememberedDevice::sole()->last_used_at->gte(now()->subHour()));
+    }
+
+    public static function inactivityBoundary(): array
+    {
+        return [['idle', -1], ['idle', 0], ['sanctum', -1], ['prune', -1]];
+    }
+
+    #[DataProvider('inactivityBoundary')]
+    public function test_seven_day_device_window_uses_the_actual_last_interaction_after_session_deletion(string $expiration, int $offset): void
+    {
+        $token = $this->login('customer', true);
+        $this->travel(20)->minutes();
+        $this->requestAs($token, 'POST', '/api/session/activity')->assertOk();
+        $interaction = \Illuminate\Support\Carbon::parse(DB::table('personal_access_tokens')->value('last_interaction_at'));
+        if ($expiration === 'prune') {
+            $this->travel(49)->hours();
+            // Laravel intentionally disables Symfony console events in unit tests.
+            $this->app->make(\Illuminate\Contracts\Console\Kernel::class)->rerouteSymfonyCommandEvents();
+            $this->artisan('sanctum:prune-expired', ['--hours' => 24])->assertSuccessful();
+        } else {
+            $this->travel($expiration === 'idle' ? 1 : 25)->hours();
+            $this->requestAs($token, 'GET', '/api/session')->assertUnauthorized();
+        }
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertTrue(\App\Models\RememberedDevice::sole()->last_used_at->equalTo($interaction));
+        $this->travelTo($interaction->copy()->addDays(7)->addSeconds($offset));
+        $response = $this->restoreDevice($this->rememberCookies[$token]);
+        if ($offset < 0) $response->assertOk();
+        else $response->assertUnauthorized();
+    }
+
+    public function test_restoration_reads_actual_activity_from_an_expired_session_that_has_not_been_pruned(): void
+    {
+        $token = $this->login('customer', true);
+        $this->travel(20)->minutes();
+        $this->requestAs($token, 'POST', '/api/session/activity')->assertOk();
+        $interaction = \Illuminate\Support\Carbon::parse(DB::table('personal_access_tokens')->value('last_interaction_at'));
+        $this->travelTo($interaction->copy()->addDays(7)->subSecond());
+        $this->restoreDevice($this->rememberCookies[$token])->assertOk();
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
+    public function test_new_device_full_login_revokes_previous_device_without_a_restoration_loop(): void
+    {
+        $old = $this->login('customer', true);
+        $this->travel(61)->seconds();
+        $new = $this->login('customer', true);
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
+        $this->restoreDevice($this->rememberCookies[$new], $this->browserCookies[$new])->assertOk()->assertJsonPath('token', $new);
+        $this->requestAs($new, 'GET', '/api/me')->assertOk();
+    }
+
+    public function test_password_change_and_deactivation_permanently_revoke_remembered_devices(): void
+    {
+        $old = $this->login('customer', true);
+        $user = User::where('role', 'customer')->firstOrFail();
+        $user->update(['password_hash' => Hash::make('Changed!123')]);
+        $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
+        $user->update(['password_hash' => Hash::make('SessionTest!123')]);
+        $this->travel(61)->seconds();
+        $new = $this->login('customer', true);
+        $user->update(['is_active' => false]);
+        $user->update(['is_active' => true]);
+        $this->restoreDevice($this->rememberCookies[$new])->assertUnauthorized();
+    }
+
+    public function test_restore_rejects_invalid_credentials_and_origins_without_exposing_accounts(): void
+    {
+        $old = $this->login('customer', true);
+        $wrong = explode('.', $this->rememberCookies[$old])[0].'.'.str_repeat('0', 64);
+        $this->restoreDevice($wrong)->assertUnauthorized()->assertJsonPath('code', 'remembered_session_invalid');
+        $this->assertNull(\App\Models\RememberedDevice::sole()->revoked_at);
+        $this->restoreDevice($this->rememberCookies[$old], '', ['account_id' => 99999])->assertUnauthorized();
+        $this->withHeader('Origin', 'https://unrelated.example');
+        $this->restoreDevice($this->rememberCookies[$old])->assertStatus(419);
+        $this->withHeader('Origin', '')->withHeader('X-Requested-With', '');
+        $this->restoreDevice($this->rememberCookies[$old])->assertStatus(419);
+        $this->withHeader('X-Requested-With', 'XMLHttpRequest');
+        $this->restoreDevice('invalid')->assertUnauthorized()->assertJsonMissingPath('user');
+    }
+
+    public function test_restore_limiter_is_independent_of_password_and_does_not_share_an_empty_cookie_bucket(): void
+    {
+        for ($attempt = 0; $attempt < 15; $attempt++) $this->restoreDevice('')->assertUnauthorized();
+        $this->restoreDevice('')->assertTooManyRequests();
+        $token = $this->login('customer', false);
+        $this->restoreDevice('', $this->browserCookies[$token])->assertOk();
+    }
+
+    public function test_production_cookie_attributes_are_host_only_secure_and_api_scoped(): void
+    {
+        config(['app.url' => 'https://clinic.example']);
+        $old = $this->login('customer', true);
+        $response = $this->restoreDevice($this->rememberCookies[$old], $this->browserCookies[$old])->assertOk();
+        $cookie = $response->getCookie('bethlehem_account_session', false);
+        $this->assertTrue($cookie->isSecure());
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertSame('lax', $cookie->getSameSite());
+        $this->assertNull($cookie->getDomain());
+        $this->assertSame('/api', $cookie->getPath());
+        $this->travel(31)->minutes();
+        $remembered = $this->restoreDevice($this->rememberCookies[$old])->assertOk()->getCookie('bethlehem_remembered_device', false);
+        $this->assertTrue($remembered->isSecure());
+        $this->assertTrue($remembered->isHttpOnly());
+        $this->assertNull($remembered->getDomain());
+        $this->assertSame('/api', $remembered->getPath());
+        $this->assertSame('lax', $remembered->getSameSite());
     }
 
     public static function loginOrders(): array
@@ -342,11 +686,25 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->assertEquals($before, \Illuminate\Support\Facades\DB::table('personal_access_tokens')->orderBy('id')->get()->toArray());
     }
 
-    public function test_overlapping_otp_consumption_creates_exactly_one_session(): void
+    public static function overlappingAuthentication(): array
     {
-        $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
-        $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
-        $payload = json_encode(['poll_token' => $pending->json('login_poll_token'), 'code' => $code], JSON_THROW_ON_ERROR);
+        return [['otp'], ['restore']];
+    }
+
+    #[DataProvider('overlappingAuthentication')]
+    public function test_overlapping_authentication_creates_exactly_one_session(string $mode): void
+    {
+        if ($mode === 'otp') {
+            $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
+            $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
+            $payload = ['path' => '/api/email/login/confirm', 'body' => ['poll_token' => $pending->json('login_poll_token'), 'code' => $code], 'cookies' => []];
+        } else {
+            $old = $this->login('customer', true);
+            DB::table('personal_access_tokens')->update(['created_at' => now()->subHours(25)]);
+            $payload = ['path' => '/api/session/restore', 'body' => [],
+                'cookies' => ['bethlehem_remembered_device' => $this->rememberCookies[$old]]];
+        }
+        $payload = json_encode($payload, JSON_THROW_ON_ERROR);
         $directory = sys_get_temp_dir().'/bethlehem-session-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
         $database = $directory.'/sessions.sqlite';
@@ -393,11 +751,13 @@ class IndependentAuthenticationSessionsTest extends TestCase
                         touch($directory.'/first-lock');
                         $wait($directory.'/second-attempt');
                     });
-                $request = Illuminate\Http\Request::create('/api/email/login/confirm', 'POST', json_decode($payload, true),
+                $input = json_decode($payload, true);
+                $request = Illuminate\Http\Request::create($input['path'], 'POST', $input['body'], $input['cookies'],
                     server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy,
-                    'public_id' => json_decode($response->getContent(), true)['token'] ?? null]);
+                    'public_id' => json_decode($response->getContent(), true)['token'] ?? null,
+                    'cookies' => array_map(fn ($cookie) => hash('sha256', $cookie->getValue()), $response->headers->getCookies())]);
                 PHP;
             $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
                 'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
@@ -414,8 +774,14 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $this->assertNotSame($one['pid'], $two['pid']);
             $this->assertTrue($two['busy'], 'The second verified login must overlap the first transaction.');
             $this->assertSame(200, $one['status']);
-            $this->assertSame(422, $two['status']);
-            $this->assertNull($two['public_id']);
+            if ($mode === 'otp') {
+                $this->assertSame(422, $two['status']);
+                $this->assertNull($two['public_id']);
+            } else {
+                $this->assertSame(200, $two['status']);
+                $this->assertSame($one['public_id'], $two['public_id']);
+                $this->assertSame($one['cookies'], $two['cookies']);
+            }
             $connection = new \PDO('sqlite:'.$database);
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
             $active = $connection->query('SELECT id FROM personal_access_tokens WHERE replaced_at IS NULL')->fetchAll(\PDO::FETCH_COLUMN);

@@ -1,7 +1,7 @@
 // Client notification center. API message/read/destination behavior is shared
 // with the header bell; this page loads older notifications in 30-item pages.
-(function () {
-  if (!API.hasAuthenticatedSession("customer")) {
+(async function () {
+  if (!(API.waitForCustomerSession ? await API.waitForCustomerSession() : API.hasAuthenticatedSession("customer"))) {
     API.redirectToSignIn();
     return;
   }

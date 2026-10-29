@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use App\Services\AccountSessionService;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\TransientToken;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,13 +30,15 @@ class EnsureSessionIsActive
         // Email changes revalidate account/session inside their own retryable
         // transaction. Keep that transaction outside the HTTP exception renderer.
         $ownsTransaction = $request->routeIs('staff.email-change.*', 'admin.staff-recovery.*');
-        $response = DB::transaction(function () use ($request, $accessToken, $next, $ownsTransaction) {
+        $lockAccount = (! $request->isMethodSafe() && ! $ownsTransaction)
+            || $request->attributes->get('lock_account_for_expiration', false);
+        $response = DB::transaction(function () use ($request, $accessToken, $next, $ownsTransaction, $lockAccount) {
             // Keep mutations ordered against takeover through their controller.
-            if (! $request->isMethodSafe() && ! $ownsTransaction) {
+            if ($lockAccount) {
                 $account = $request->user()->newQuery()->whereKey($request->user()->getKey())
                     ->lockForUpdate()->firstOrFail();
-                if ($account->hasEmailRecoveryHold()) {
-                    return response()->json(['code' => 'account_disabled', 'message' => 'This account is in recovery. Contact the clinic.'], 403);
+                if (! app(AccountSessionService::class)->accountIsUsable($account)) {
+                    return response()->json(['code' => 'account_disabled', 'message' => 'This account is unavailable. Contact the clinic.'], 403);
                 }
             }
             $token = $accessToken->newQuery()->lockForUpdate()->find($accessToken->getKey());
@@ -46,9 +48,12 @@ class EnsureSessionIsActive
 
             $now = now();
             $privileged = in_array($request->user()->role, ['admin', 'staff'], true);
-            $expiresAt = $token->created_at->copy()->addHours($privileged ? 12 : 24);
-            $idleAt = Carbon::parse($token->last_interaction_at ?? $token->created_at)->addMinutes(30);
+            $policy = app(AccountSessionService::class);
+            $expiresAt = $policy->expiresAt($token, $request->user());
+            $idleAt = $policy->idleAt($token);
             if ($now->gte($expiresAt) || (! $privileged && $now->gte($idleAt))) {
+                if (! $privileged && ! $lockAccount) return false;
+                if (! $privileged) app(\App\Services\RememberedDeviceService::class)->checkpointSessionActivity($token);
                 $token->delete();
 
                 return response()->json([
@@ -86,6 +91,7 @@ class EnsureSessionIsActive
             // browser supplies no authoritative time and late reports are denied.
             if ($request->routeIs('session.activity')) {
                 $token->forceFill(['last_interaction_at' => $now])->save();
+                if (! $privileged) app(\App\Services\RememberedDeviceService::class)->recordActivity($request->user(), $token);
                 $request->attributes->set('auth_session', [
                     ...$session, 'idle_at' => $now->copy()->addMinutes(30)->toIso8601String(),
                 ]);
@@ -94,6 +100,12 @@ class EnsureSessionIsActive
             return $request->isMethodSafe() || $ownsTransaction ? null : $next($request);
         });
 
+        if ($response === false) {
+            // Release the read lock, then reacquire account -> token -> device.
+            // Checkpoint and deletion stay atomic without locking every normal GET.
+            $request->attributes->set('lock_account_for_expiration', true);
+            return $this->handle($request, $next);
+        }
         return $response ?? $next($request);
     }
 }

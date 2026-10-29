@@ -1,8 +1,8 @@
 // Connected to pages/client/settings.html
 // Depends on: api.js
 
-document.addEventListener("DOMContentLoaded", () => {
-  if (!API.hasAuthenticatedSession("customer")) {
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!(API.waitForCustomerSession ? await API.waitForCustomerSession() : API.hasAuthenticatedSession("customer"))) {
     API.redirectToSignIn();
     return;
   }

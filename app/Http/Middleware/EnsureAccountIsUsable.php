@@ -31,7 +31,7 @@ class EnsureAccountIsUsable
             ], 403);
         }
 
-        if ($isInactive || $isArchived || $user?->hasEmailRecoveryHold()) {
+        if ($isInactive || $isArchived || $user?->account_deleted_at || $user?->hasEmailRecoveryHold()) {
             $this->revokeCurrentToken($user);
 
             return new JsonResponse([

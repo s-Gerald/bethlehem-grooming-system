@@ -3,10 +3,10 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
 
-function init() {
-  if (!requireCustomerSession("./sign-in.html")) return;
+async function init() {
+  if (!await requireCustomerSession("./sign-in.html")) return;
 
   const draft = readClinicVisitDraft();
   if (!draft.pet?.id) {

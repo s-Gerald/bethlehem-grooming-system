@@ -41,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->respond(function ($response) {
+            if (request()->is('api/session*', 'api/logout')) $response->headers->set('Cache-Control', 'no-store');
             if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*') && $response->getStatusCode() >= 500) {
                 return response()->json(['success' => false, 'message' => request()->is('api/register*')
                     ? "Couldn't create your account. Please try again."

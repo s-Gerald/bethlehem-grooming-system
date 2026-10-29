@@ -1,5 +1,141 @@
 # Customer authentication — October 29, 2026
 
+## Remember me
+
+The unchecked checkbox remains **Remember me**, with the existing sign-in layout and blue controls. This release adds a separate customer device credential; it does not lengthen Sanctum sessions.
+
+| Account / checkbox | Active session | Browser persistence | Device restoration |
+| --- | --- | --- | --- |
+| Customer / off | 30-minute inactivity; 24-hour absolute | Session cookie; tab-scoped public reference | None after active session expiry |
+| Customer / on | Same active session limits | Auth cookie capped at 24 hours; separate device cookie | 14-day absolute deadline from OTP; 7-day device inactivity limit |
+| Admin or staff / off | Password lock after 30 minutes; 12-hour absolute | Session cookie; tab-scoped public reference | No customer device capability |
+| Admin or staff / on | Same lock and 12-hour limit | Cookie/reference persist to the original deadline | Normal password/email OTP required after expiry |
+
+Browsers may restore session cookies; closing a browser is not authoritative revocation. Backend idle/absolute limits always apply. A new customer tab may recover the public reference to an already valid active cookie without creating a device or extending the session. Recovery never unlocks privileged sessions. Sensitive actions retain existing password/reauthentication requirements.
+
+### Security and concurrency
+
+- The original checkbox value is stored in the OTP challenge and consumed atomically. Only successful OTP confirmation creates a device; password verification and resends cannot create one.
+- `remembered_devices` contains account/session bindings, fixed expiration, last activity and revocation. `remembered_device_credentials` contains public random selectors and SHA-256 validator hashes, retaining consumed generations for replay detection. Secrets appear only in HttpOnly cookies and transient request/response memory, never JSON, URLs, logs or browser storage.
+- New full authentication replaces the previous account session and revokes its previous devices. Restoration preserves its own device family while issuing one fresh session. User model security changes revoke devices on password/email/role changes, disable/archive/delete, loss of verified email or recovery hold. Existing password reset also deletes active tokens.
+- Account row locks serialize OTP, replacement, rotation, logout and account security changes. Concurrent retries within **60 seconds** derive the identical successor and session using keyed HMAC without storing recoverable secrets. A correctly matched consumed credential after that window revokes its family/current session and records a warning. Guessed invalid validators cannot revoke another device. A current credential cannot be distinguished from its legitimate owner solely by possession; the short retry window deliberately accommodates concurrent tabs.
+- Valid active sessions are recovered without replacement. Rotation accompanies fresh session establishment. The 14-day deadline never moves. The existing explicit interaction endpoint writes device activity at most hourly during an active session. The exact final interaction is checkpointed before idle/absolute session deletion, including Sanctum expiry and scheduled/manual token pruning. Restoration also reads retained session interaction timestamps. This enforces the seven-day window from actual activity without a write on every interaction. Background reads and polling do not renew device activity. Every restore checks server deadlines and revocation independently of cleanup.
+- Logout can revoke a device after the shorter session expires. Credential history binds logout during restoration to the same device successor; an obsolete logout cannot revoke a new full-login device. Both authentication cookies are explicitly expired. Existing replacement messaging remains intact.
+
+Cookies are **HttpOnly, SameSite=Lax, host-only, Secure in production**, and scoped to the configured application URL path plus `/api`. Secure is also enabled by HTTPS requests, an HTTPS application URL or the existing secure-cookie setting. The device cookie expires at its original 14-day deadline; the database enforces the shorter inactivity limit. Public `id|cookie` references still require their bound authentication cookie for ordinary protected requests.
+
+Restoration/logout require `X-Requested-With: XMLHttpRequest`, validate any supplied Origin against the exact CORS allowlist, and reject `Sec-Fetch-Site: cross-site`. Credentialed CORS remains restricted to configured origins. Restore throttling is separate from password/email limits: 60 requests/minute/IP and 15/minute/presented device or active cookie, with an IP fallback when neither exists. Missing, expired, invalid and revoked credentials share the same response without account details. Authentication responses are not cacheable.
+
+### Frontend and caching
+
+Protected customer initialization verifies an existing session, then shares one controlled restoration attempt when needed. Browser Web Locks coordinate cookie-changing transitions across tabs where supported; authoritative backend transactions/idempotent rotation also handle browsers without that API. The restoration response includes session deadlines, avoiding another status request. Ordinary data reads do not each verify authentication; very recent verification is reused. An idle remembered tab conceals private content and pauses restoration until trusted interaction or a return to the tab, so background polling cannot keep renewing the device.
+
+Private content is gated from the initial HTML paint and on BFCache restoration. Presentation caches remain session-scoped. Mixed temporary/persistent account switches clear only obsolete state in the affected tab and preserve the newer browser login. A valid active-session recovery preserves its cache; a fresh session invalidates authentication-bound presentation through the existing initialization, and cannot reuse another session's data. Failed booking/payment mutations are never replayed. Delayed responses cannot overwrite newer authentication or return uncached protected reads for a former session.
+
+Connectivity failures retain usable references and keep private content gated with Retry. They do not clear credentials as proof of invalidity. Explicit logout hides private content and clears references immediately, broadcasts the existing event, and saves a nonsecret pending-revocation marker plus restoration block. Retry/sign-in first attempts outstanding revocation. If expired/replaced cookies make that impossible (401), only a deliberate complete password/OTP sign-in can clear the block; password verification alone cannot. Network/server errors remain retryable and do not count as confirmation. Successful logout leaves restoration blocked until deliberate sign-in. Restricted storage prevents creating an untrackable restored session. **Offline server revocation cannot be guaranteed until a request succeeds**, and failed requests are not reported as confirmed invalidation.
+
+### Hostinger release and rollback
+
+1. Run `php artisan migrate --force` with the site's verified PHP CLI before activating the new PHP code, or use the existing maintenance/release procedure to publish backend, HTML, scripts and imports together. Migration `2026_10_29_000003_create_remembered_devices.php` adds only the two indexed device/history tables with cascading cleanup. Existing account/session/business rows are preserved. Explicit timestamp defaults prevent older MySQL modes from auto-updating the absolute deadline.
+2. Keep `APP_ENV=production`, `APP_DEBUG=false`, an HTTPS canonical `APP_URL`, `SESSION_SECURE_COOKIE=true`, and the existing stable `APP_KEY` across processes. Set `FRONTEND_ORIGINS` to exact HTTPS origins without paths/wildcards. Frontend/API must be on the same site; unrelated cross-site cookie restoration is intentionally rejected. Preserve any existing production HTTPS `BETHLEHEM_API_BASE_URL` configuration. Subdirectory deployments must set that existing override to their application API path, because the default frontend API URL is the origin-root `/api`.
+3. Keep the existing shared persistent cache/rate-limit store; database is sufficient. No Redis, queue or worker is added for Remember me. Preserve password/email quota counters and cache-lock tables. Rebuild `config:cache` and any existing `route:cache` normally; do not use `cache:clear` or `optimize:clear` as a release shortcut. Publish dated `remember=20261029` entry/import URLs, including server-rendered admin pages. Purge stale HTML/static CDN assets only; never cache authentication/Set-Cookie responses.
+4. The existing `schedule:run` cron performs daily indexed device cleanup and cascades credential history. Security does not depend on cron. Keep the current authentication email queue/worker configuration and restart existing long-lived workers normally when releasing PHP code.
+5. Verify live HTTPS cookie attributes, routing and CORS; smoke-test OTP/checkbox choices, returning customers, staff locks, logout and device replacement. Verify migration/locking against the site's MySQL/MariaDB version in a disposable staging database. Local tests use PHP 8.4/SQLite, including real overlapping processes; this does **not** certify live MySQL/Hostinger behavior. The Hostinger account tool did not return a result during implementation; no deployed code, hosting configuration or production data was changed.
+6. Take the normal release/database backup. For rollback, revoke devices and disable/remove the restoration route before reverting code/static assets; leave additive tables until the older release is stable. Reverting code without revoking credentials could revive them on later redeploy. Roll back this specific migration only after no deployed code/scheduler uses it; do not roll back unrelated migrations. Down removes only device/history tables.
+
+Security references: [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [Sanctum expiration](https://laravel.com/docs/12.x/sanctum#token-expiration), and [Laravel transactions](https://laravel.com/docs/12.x/database#database-transactions).
+
+### Verification for this release
+
+- PHP 8.4.26 / PHPUnit: **446 tests, 6,319 assertions, all passed** across authentication/session, OTP/email policy, password reset/recovery, credential changes, staff management, customer account/name/access/deletion and related page contracts. Includes real overlapping PHP processes, exact seven-day interaction boundaries before/after idle expiry, Sanctum expiry, manual pruning, and retained expired tokens, plus the fixed fourteen-day limit.
+- `npm test`: **87/87 frontend regression scripts passed**, including restoration, blocked unattended renewal, safe-read deduplication, mutation non-replay, stale responses, mixed account storage, logout acknowledgement/retry and cache isolation.
+- `npm run build` passed. It reported the existing outdated Browserslist dataset advisory; no dependency was changed. PHP/JavaScript syntax checks and `git diff --check` passed. No unrelated failing tests remained in the executed suites.
+- Local results: `storage/framework/testing/remember-me-backend.log`, `remember-me-backend.xml`, `remember-me-frontend.log`, and `remember-me-build.log`. Live Hostinger/native MySQL and functional browser acceptance remain release checks as described above.
+
+### Implementation files
+
+Backend changes are limited to authentication/session policy, cookie transport, device lifecycle, revocation and cleanup. Customer entry pages add the existing authorization gate; administrative entry pages and module-only consumers update shared asset URLs/preloads. The sign-in design and checkbox text are unchanged. Existing regression files were updated rather than adding a competing test suite. `LoginEmailChallengeService`, the verification-page confirmation flow and Sanctum configuration were inspected and reused without requiring edits. No dependency or new infrastructure service was added.
+
+Changed files (including this report and the implementation plan):
+
+```text
+app/Http/Controllers/AuthController.php
+app/Http/Controllers/LoginEmailChallengeController.php
+app/Http/Controllers/SessionController.php
+app/Http/Middleware/EnsureAccountIsUsable.php
+app/Http/Middleware/EnsureSessionIsActive.php
+app/Http/Middleware/UseAccountSessionCookie.php
+app/Models/RememberedDevice.php
+app/Models/User.php
+app/Providers/AppServiceProvider.php
+app/Services/AccountSessionService.php
+app/Services/RememberedDeviceService.php
+bootstrap/app.php
+database/migrations/2026_10_29_000003_create_remembered_devices.php
+docs/customer-authentication.md
+docs/superpowers/plans/2026-10-29-remember-me.md
+pages/admin/appointments.html
+pages/admin/archive.html
+pages/admin/clients.html
+pages/admin/clinic.html
+pages/admin/dashboard.html
+pages/admin/inventory/inventory.html
+pages/admin/notifications.html
+pages/admin/reports.html
+pages/admin/services.html
+pages/admin/settings.html
+pages/admin/transactions.html
+pages/admin/walk-in-booking-confirmed.html
+pages/admin/walk-in-booking-review.html
+pages/admin/walk-in-booking.html
+pages/admin/walk-in-clinic-confirmed.html
+pages/admin/walk-in-consent.html
+pages/admin/walk-in-grooming-services.html
+pages/admin/walk-in-pet-details.html
+pages/client/booking-pet-details.html
+pages/client/clinic-visit-confirmed.html
+pages/client/clinic-visit-reason.html
+pages/client/clinic-visit-summary.html
+pages/client/confirm-email-recovery.html
+pages/client/dashboard.html
+pages/client/forgot-password.html
+pages/client/grooming-history.html
+pages/client/grooming-pre-registration.html
+pages/client/my-pets.html
+pages/client/notifications.html
+pages/client/pet-details.html
+pages/client/pre-register.html
+pages/client/set-up-password.html
+pages/client/settings.html
+pages/client/sign-in.html
+pages/client/signup.html
+pages/client/verify-email.html
+resources/views/admin/activity-log.html
+resources/views/admin/availability.html
+routes/api.php
+routes/console.php
+scripts/api.js
+scripts/auth/sign-in.js
+scripts/components/booking-pet-step.js
+scripts/components/client-notifications-page.js
+scripts/components/client-settings.js
+scripts/components/clinic-visit-confirmed.js
+scripts/components/clinic-visit-reason-fields.js
+scripts/components/clinic-visit-reason.js
+scripts/components/clinic-visit-summary.js
+scripts/components/grooming-pre-registration.js
+scripts/components/pre-registration-options.js
+scripts/components/walk-in-clinic-consent-step.js
+scripts/services/clinic-visit-service.js
+tests/Feature/EmailVerificationTest.php
+tests/Feature/IndependentAuthenticationSessionsTest.php
+tests/Feature/PasswordResetTest.php
+tests/admin-sidebar-cache-regression.cjs
+tests/customer-data-cache-regression.cjs
+tests/frontend-auth-session-regression.cjs
+tests/session-inactivity-regression.cjs
+```
+
 ## Current behavior
 
 Public signup and registration resend use **Option 2: uniform public responses**. Every syntactically valid unauthenticated request returns the same HTTP 202 body with `registration_state: requested`, `requires_verification: true`, and “Request received. Email delivery is not confirmed.” The response supplies no account details, edit credential, delivery receipt, or destination-specific quota history. Invalid syntax can still receive field validation errors, independent of account existence. Both new and conflicting signup attempts navigate to the same neutral **Registration requested** card.
@@ -81,11 +217,11 @@ For a Hostinger release, an operator must:
 5. Preserve the verified Brevo/SMTP sender, credentials and bounded transport timeout. Reject logging transports, including logging failovers. Ensure the existing worker/cron processes the database queue and `AUTH_MAIL_QUEUE` when named. Public signup/resend now always depend on this worker, including when `AUTH_MAIL_DELIVERY=immediate`: they have a public-processing stage followed by the mail stage. No post-response SMTP callback is retained by public processing in long-lived workers. Existing immediate behavior for other authorized authentication requests is preserved. Restart workers with `php artisan queue:restart`; no new worker or public processing route is required.
 6. Keep one `php artisan schedule:run` cron running each minute. The existing `pending-customer-registrations:prune` job now runs every five minutes with `withoutOverlapping()`. It uses the existing `pending_registration_created_idx`; no migration or extra index is needed. The indexed DELETE takes the same row locks as verification, preserves active email-proven review grants and never touches `users`. Server deadlines work even when cron is late. Rate histories expire automatically; only hashed destinations/IPs and bounded timestamps are retained.
 7. Retire old registration codes and old queued registration notifications. They cannot authenticate through the new API. Existing database code columns remain only for safe migration history; the registration-code service, templates, input and handlers were removed. By default pre-cutover links without issuance metadata are rejected. If a deliberate transition is needed, set `REGISTRATION_LEGACY_LINKS_UNTIL` to a fixed near-term ISO timestamp, then remove it and rebuild config after that deadline. Legacy links still require explicit confirmation and password review; they cannot directly issue a session.
-8. Remove obsolete `PENDING_REGISTRATION_RETENTION_HOURS` and `PENDING_REGISTRATION_RETENTION_DAYS` environment entries. Retention is fixed at one hour; `config/app.php` reports `1`, and the pending model enforces it even with a stale cached value. Keep `REGISTRATION_MAGIC_LINK_MINUTES=30` for the maximum. Run `php artisan config:cache`, then `php artisan queue:restart`; do not flush the shared cache or reset abuse counters. Deploy `verify-email.html` with its versioned scripts. No migration or production-data operation is required. Existing pending records use their original creation timestamp and are never granted a fresh hour at deployment.
+8. Remove obsolete `PENDING_REGISTRATION_RETENTION_HOURS` and `PENDING_REGISTRATION_RETENTION_DAYS` environment entries. Retention is fixed at one hour; `config/app.php` reports `1`, and the pending model enforces it even with a stale cached value. Keep `REGISTRATION_MAGIC_LINK_MINUTES=30` for the maximum. Run `php artisan config:cache`, then `php artisan queue:restart`; do not flush the shared cache or reset abuse counters. Deploy `verify-email.html` with its versioned scripts. No migration or production-data operation is required for that pending-registration retention correction. Existing pending records use their original creation timestamp and are never granted a fresh hour at deployment.
 
 SMTP transport acceptance is not proof of inbox delivery. A process crash after SMTP acceptance but before recording `sent` can still cause an ordinary queue retry to deliver twice; exactly-once inbox delivery is not claimed. Queue guards prevent superseded, expired or consumed issuances from being sent.
 
-The signup and verification entry pages now include the shared `scripts/auth/client/signup-context.js` and dated cache keys for their changed scripts. No new migration, dependency, environment setting, queue, cron or Hostinger configuration is required. Deploy these pages, scripts and Laravel changes together; refresh an existing route cache through the normal deployment process. Keep the existing shared persistent cache and HTTPS/cookie configuration. A queued registration worker must be restarted through the normal release process to load the updated service. Affected auth and shared phone-verification import URLs have dated cache keys. Publish their entry pages and scripts together so browsers do not mix module versions. Preserve shared cache/rate-limit data; do not flush abuse counters or unrelated production caches. A cron-only worker can add its existing scheduling delay before the first link is sent. Live Hostinger latency, MySQL concurrency and actual SMTP delivery still require operator verification; uniform public bodies and moving account-dependent work out of the request are not a claim of mathematically constant network response times.
+The signup and verification entry pages now include the shared `scripts/auth/client/signup-context.js` and dated cache keys for their changed scripts. These earlier signup/email changes need no additional infrastructure; the Remember me release above additionally requires its new migration. Deploy these pages, scripts and Laravel changes together; refresh an existing route cache through the normal deployment process. Keep the existing shared persistent cache and HTTPS/cookie configuration. A queued registration worker must be restarted through the normal release process to load the updated service. Affected auth and shared phone-verification import URLs have dated cache keys. Publish their entry pages and scripts together so browsers do not mix module versions. Preserve shared cache/rate-limit data; do not flush abuse counters or unrelated production caches. A cron-only worker can add its existing scheduling delay before the first link is sent. Live Hostinger latency, MySQL concurrency and actual SMTP delivery still require operator verification; uniform public bodies and moving account-dependent work out of the request are not a claim of mathematically constant network response times.
 
 ## Verification and manual acceptance
 

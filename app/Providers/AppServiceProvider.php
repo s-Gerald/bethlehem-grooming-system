@@ -37,13 +37,27 @@ class AppServiceProvider extends ServiceProvider
         // Sanctum rejects expired tokens before route middleware can revoke them.
         \Laravel\Sanctum\Sanctum::authenticateAccessTokensUsing(function ($token, bool $valid): bool {
             if (! $valid) {
+                app(\App\Services\RememberedDeviceService::class)->checkpointSessionActivity($token);
                 $token->delete();
             }
 
             return $valid;
         });
 
+        $this->app['events']->listen(\Illuminate\Console\Events\CommandStarting::class, function ($event): void {
+            if ($event->command === 'sanctum:prune-expired') {
+                app(\App\Services\RememberedDeviceService::class)->checkpointRetainedSessionActivity();
+            }
+        });
+
         RateLimiter::for('email-delivery-status', fn ($request) => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('remembered-session', fn ($request) => [
+            Limit::perMinute(60)->by('remember-ip:'.$request->ip()),
+            Limit::perMinute(15)->by('remember-device:'.hash('sha256', (string) (
+                $request->cookie(\App\Services\RememberedDeviceService::COOKIE)
+                ?: $request->cookie(\App\Http\Middleware\UseAccountSessionCookie::NAME) ?: $request->ip()
+            ))),
+        ]);
 
         RateLimiter::for('registration-verify', fn ($request) => Limit::perMinute(10)
             ->by($request->ip())

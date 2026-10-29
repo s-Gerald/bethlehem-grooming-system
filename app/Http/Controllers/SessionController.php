@@ -9,6 +9,12 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class SessionController extends Controller
 {
+    public function restore(Request $request, \App\Services\RememberedDeviceService $devices)
+    {
+        $request->validate(['account_id' => ['nullable', 'integer', 'min:1']]);
+        return $devices->restore($request);
+    }
+
     public function status(Request $request)
     {
         $user = $request->user();
@@ -42,7 +48,7 @@ class SessionController extends Controller
         return DB::transaction(function () use ($request, $key) {
             $accessToken = $request->user()->currentAccessToken();
             $token = $accessToken->newQuery()->lockForUpdate()->find($accessToken->getKey());
-            if (! $token || now()->gte($token->created_at->copy()->addHours(12))) {
+            if (! $token || $token->replaced_at || now()->gte(app(\App\Services\AccountSessionService::class)->expiresAt($token, $request->user()))) {
                 $token?->delete();
 
                 return response()->json(['message' => 'Session expired. Please sign in again.'], 401);

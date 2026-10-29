@@ -48,11 +48,12 @@ function createIdleBrowser(role, fixture = {}) {
   const requests = [];
   const tokenKey = role === "customer" ? "customer_token" : "admin_token";
   const token = options.token || `${role}-token`;
-  const localStorage = options.storage || new MemoryStorage({
+  const authSeed = {
     [tokenKey]: token,
     user_role: role,
-  });
-  const sessionStorage = new MemoryStorage();
+  };
+  const localStorage = options.storage || new MemoryStorage(options.remember === false ? {} : authSeed);
+  const sessionStorage = new MemoryStorage(options.remember === false ? authSeed : {});
 
   function addListener(collection, name, handler) {
     const handlers = collection.get(name) || [];
@@ -165,6 +166,7 @@ function createIdleBrowser(role, fixture = {}) {
     document,
     fetch: async (url, options) => {
       requests.push({ url, options });
+      if (url.endsWith('/session/restore')) return jsonResponse(401, {code: 'remembered_session_invalid'});
       if (fixture.replaced) return jsonResponse(401, {code: 'session_replaced'});
       if (fixture.user) assert.equal(options.headers.Authorization, `Bearer ${token}`, 'Every request uses this context\'s token');
       if (url.endsWith("/logout") && fixture.failLogout) throw new Error("Offline");
@@ -462,6 +464,7 @@ async function testResumeExpirationAndCustomerPolicy() {
     assert.equal(browser.root.attributes["data-session-gate"], undefined);
     assert.equal(browser.API.isSessionLocked(), false);
     fixture.statusFailure = 401;
+    if (role === 'customer') browser.sleep(1); // Reuse very recent verified status instead of requesting on every focus event.
     browser.dispatchWindow("focus");
     await browser.settle();
     assert.equal(browser.API.getUserRole(), null);
@@ -620,9 +623,10 @@ async function testFailedLogoutRetainsRevocationRetry() {
     await browser.settle();
     if (statusFailure === undefined) await browser.advance(30);
     await browser.elements.get("session-other-account").dispatch("click");
-    assert.equal(browser.localStorage.getItem("admin_token"), "admin-token");
+    assert.equal(browser.localStorage.getItem("admin_token"), null, 'Failed revocation must still remove the authenticated presentation immediately');
+    assert.ok(browser.localStorage.getItem('bethlehem.auth.logout_pending'));
     assert.deepEqual(browser.replacements, []);
-    const message = browser.elements.get(statusFailure === undefined ? "session-error" : "session-lock-description");
+    const message = browser.elements.get("session-lock-description");
     assert.equal(message.textContent, "Unable to sign out. Please try again.", "Revocation failure stays visible even when the password form is hidden");
     fixture.failLogout = false;
     await browser.elements.get("session-other-account").dispatch("click");
@@ -631,7 +635,7 @@ async function testFailedLogoutRetainsRevocationRetry() {
 }
 
 async function testCustomerThirtyMinuteTimeout() {
-  const browser = createIdleBrowser("customer");
+  const browser = createIdleBrowser("customer", {remember: false});
   await browser.settle();
   const policy = browser.API.getSessionInactivityPolicy("customer");
   assert.equal(policy.warningMs, 29 * 60 * 1000);
@@ -644,6 +648,24 @@ async function testCustomerThirtyMinuteTimeout() {
   await browser.advance(1);
   assert.equal(browser.localStorage.getItem("customer_token"), null);
   assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+}
+
+async function testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns() {
+  const browser = createIdleBrowser('customer');
+  await browser.settle();
+  await browser.advance(30);
+  assert.equal(browser.root.attributes['data-session-gate'], 'checking');
+  assert.equal(browser.requests.filter(request => request.url.endsWith('/session/restore')).length, 0);
+  const reads = Promise.allSettled([browser.API.getMe(), browser.API.getMe()]);
+  await browser.settle();
+  await browser.advance(60);
+  assert.equal(browser.requests.filter(request => request.url.endsWith('/session/restore')).length, 0,
+    'Background polls cannot renew remembered-device inactivity');
+  browser.dispatchDocument('pointerdown');
+  await browser.settle();
+  await reads;
+  assert.equal(browser.requests.filter(request => request.url.endsWith('/session/restore')).length, 1);
+  assert.equal(browser.replacements.at(-1), '/pages/client/sign-in.html', 'The fixture has no valid device credential');
 }
 
 async function testReceptionistContextsLockUnlockAndExpireIndependently() {
@@ -723,6 +745,7 @@ async function testReplacementDetectionReusesTheSessionLifecycle() {
   await testDelayedStatusCannotRelockAfterPasswordUnlock();
   await testPausedReadsResumeOnceAndWritesAreNeverReplayed();
   await testCustomerThirtyMinuteTimeout();
+  await testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns();
   await testReceptionistContextsLockUnlockAndExpireIndependently();
   console.log("Session inactivity regression tests passed.");
 })().catch((error) => {

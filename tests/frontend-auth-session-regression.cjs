@@ -38,6 +38,8 @@ function createBrowser({
   local = {},
   session = {},
   elements = {},
+  managed = false,
+  locks = null,
   fetchImpl = async () => jsonResponse(200, {}),
 } = {}) {
   const localStorage = local instanceof MemoryStorage ? local : new MemoryStorage(local);
@@ -57,6 +59,7 @@ function createBrowser({
     },
   };
   const window = {
+    navigator: {locks},
     location,
     dispatchEvent(event) {
       for (const handler of listeners.get(event.type) || []) handler(event);
@@ -81,11 +84,15 @@ function createBrowser({
       querySelectorAll: () => [],
       getElementById: (id) => elements[id] || null,
       addEventListener() {},
+      ...(managed ? { createElement: () => ({}), documentElement: {
+        setAttribute(name, value) { this[name] = value; },
+        removeAttribute(name) { delete this[name]; },
+      } } : {}),
     },
     fetch: (...args) => fetchImpl(...args),
     localStorage,
     sessionStorage,
-    setTimeout,
+    setTimeout: (...args) => { const timer = setTimeout(...args); timer.unref?.(); return timer; },
     window,
   };
 
@@ -113,10 +120,10 @@ function createBrowser({
 // One profile shares localStorage and storage events between documents. Each
 // tab owns sessionStorage; navigation preserves that tab's store. Profiles
 // have no shared storage/event channel, as with normal and incognito windows.
-function createBrowserProfile(fetchImpl) {
+function createBrowserProfile(fetchImpl, locks = null) {
   const values = new Map(), tabs = [];
   return {
-    page(session = new MemoryStorage(), pathname = '/pages/client/sign-in.html') {
+    page(session = new MemoryStorage(), pathname = '/pages/client/sign-in.html', managed = false) {
       const local = new MemoryStorage();
       local.values = values;
       const broadcast = (key, oldValue, newValue) => {
@@ -136,7 +143,7 @@ function createBrowserProfile(fetchImpl) {
         values.delete(key);
         broadcast(key, oldValue, null);
       };
-      const tab = createBrowser({ local, session, pathname, fetchImpl });
+      const tab = createBrowser({ local, session, pathname, fetchImpl, locks, managed });
       tabs.push(tab);
       return tab;
     },
@@ -185,6 +192,223 @@ async function testLoginCodeHonorsRememberMeStorage() {
       body: { poll_token: "login-poll-token" },
     },
   ]);
+}
+
+async function testEveryRoleHonorsTheServerConfirmedCheckbox() {
+  for (const role of ['customer', 'admin', 'staff']) {
+    for (const remember of [false, true]) {
+      const browser = createBrowser({session: {pending_login_poll_token: 'pending'},
+        fetchImpl: async url => jsonResponse(200, url.endsWith('/complete') ? {} : {
+          token: '201|cookie', remember_me: remember, user: {user_id: 10, role},
+        })});
+      await browser.API.confirmLoginCode('012345');
+      const key = role === 'customer' ? 'customer_token' : 'admin_token';
+      assert.equal(browser[remember ? 'localStorage' : 'sessionStorage'].getItem(key), '201|cookie');
+      assert.equal(browser[remember ? 'sessionStorage' : 'localStorage'].getItem(key), null);
+    }
+  }
+}
+
+const turn = () => new Promise(resolve => setImmediate(resolve));
+function activeSession() {
+  return {locked: false, server_now: new Date().toISOString(),
+    idle_at: new Date(Date.now() + 30 * 60000).toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString()};
+}
+
+async function testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads() {
+  const calls = [];
+  let completeRestore;
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+    fetchImpl: async (url, options) => {
+      calls.push({url, options});
+      if (url.endsWith('/session/restore')) return new Promise(resolve => { completeRestore = resolve; });
+      if (url.endsWith('/session')) return jsonResponse(200, activeSession());
+      return jsonResponse(200, {user: {role: 'customer', user_id: 7}, data: []});
+    }});
+  const one = browser.API.waitForCustomerSession();
+  const two = browser.API.waitForCustomerSession();
+  const read = browser.API.getMe();
+  await turn();
+  assert.equal(calls.filter(call => call.url.endsWith('/session/restore')).length, 1);
+  assert.equal(calls.some(call => call.url.endsWith('/me')), false);
+  await assert.rejects(browser.API.addPet({name: 'Pending'}), /session/i);
+  completeRestore(jsonResponse(200, {token: '301|cookie', remember_me: true, user: {user_id: 7, role: 'customer'}}));
+  assert.equal(await one, true);
+  assert.equal(await two, true);
+  await read;
+  assert.equal(browser.API.getCustomerToken(), '301|cookie');
+  assert.equal(calls.filter(call => call.options.method !== 'GET' && !call.url.endsWith('/session/restore')).length, 0);
+  assert.deepEqual(browser.replacements, []);
+}
+
+async function testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalidity() {
+  let online = false, restores = 0;
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+    local: {customer_token: '302|cookie', user_role: 'customer'}, fetchImpl: async url => {
+      if (!online) throw new Error('offline');
+      if (url.endsWith('/session/restore')) { restores++; return jsonResponse(401, {}); }
+      return jsonResponse(200, activeSession());
+    }});
+  await turn();
+  assert.equal(restores, 0);
+  assert.equal(browser.API.getCustomerToken(), '302|cookie');
+  assert.equal(browser.document.documentElement['data-session-gate'], 'unavailable');
+  assert.deepEqual(browser.replacements, []);
+  online = true;
+  await browser.API.syncSessionState();
+  assert.equal(await browser.API.waitForCustomerSession(), true);
+  assert.equal(restores, 0);
+}
+
+async function testDelayedRestoreCannotOverwriteANewerAccount() {
+  let complete;
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+    fetchImpl: async url => url.endsWith('/session/restore') ? new Promise(resolve => { complete = resolve; })
+      : jsonResponse(200, activeSession())});
+  await turn();
+  browser.API.setCustomerToken('401|cookie', false);
+  complete(jsonResponse(200, {token: '300|cookie', remember_me: true, user: {role: 'customer', user_id: 3}}));
+  await turn();
+  assert.equal(browser.API.getCustomerToken(), '401|cookie');
+}
+
+async function testUnconfirmedLogoutBlocksRestorationAcrossNavigation() {
+  const local = new MemoryStorage({customer_token: '501|cookie', user_role: 'customer'});
+  const browser = createBrowser({local, fetchImpl: async () => { throw new Error('offline'); }});
+  await assert.rejects(browser.API.logout(), /Connection/);
+  assert.equal(browser.API.getCustomerToken(), null);
+  assert.ok(local.getItem('bethlehem.auth.logout_pending'));
+  let restores = 0;
+  createBrowser({local, managed: true, pathname: '/pages/client/dashboard.html', fetchImpl: async url => {
+    if (url.endsWith('/session/restore')) restores++;
+    throw new Error('offline');
+  }});
+  await turn();
+  assert.equal(restores, 0);
+}
+
+async function testMultipleTabsShareOneRestorationWhenBrowserLocksAreAvailable() {
+  let tail = Promise.resolve(), restores = 0;
+  const locks = {request(_name, action) {
+    const result = tail.then(action, action);
+    tail = result.catch(() => {});
+    return result;
+  }};
+  const profile = createBrowserProfile(async (url, options) => {
+    if (url.endsWith('/session/restore')) {
+      restores++;
+      return jsonResponse(200, {token: '601|cookie', remember_me: true, user: {user_id: 6, role: 'customer'}, ...activeSession()});
+    }
+    assert.equal(options.headers.Authorization, 'Bearer 601|cookie');
+    return jsonResponse(200, activeSession());
+  }, locks);
+  const first = profile.page(new MemoryStorage(), '/pages/client/dashboard.html', true);
+  const second = profile.page(new MemoryStorage(), '/pages/client/my-pets.html', true);
+  assert.equal(await first.API.waitForCustomerSession(), true);
+  assert.equal(await second.API.waitForCustomerSession(), true);
+  assert.equal(restores, 1);
+  assert.equal(first.API.getCustomerToken(), second.API.getCustomerToken());
+}
+
+async function testDelayedRestoreRejectionAndUncachedReadsCannotAffectNewAccount() {
+  let release;
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html', fetchImpl: async url =>
+    url.endsWith('/session/restore') ? new Promise(resolve => { release = resolve; }) : jsonResponse(200, activeSession())});
+  await turn();
+  browser.API.setCustomerToken('701|cookie', false);
+  release(jsonResponse(401, {code: 'remembered_session_invalid'}));
+  await turn();
+  assert.equal(browser.API.getCustomerToken(), '701|cookie');
+  assert.deepEqual(browser.replacements, []);
+  const reading = createBrowser({session: {customer_token: '702|cookie', user_role: 'customer'},
+    fetchImpl: () => new Promise(resolve => { release = resolve; })});
+  const oldRead = reading.API.getPet(1);
+  reading.API.setCustomerToken('703|cookie', false);
+  release(jsonResponse(200, {pet: {pet_id: 1, user_id: 7}}));
+  await assert.rejects(oldRead, /Session changed/);
+}
+
+async function testStorageRestrictionsDoNotCreateAnUntrackableRememberedSession() {
+  const storage = new MemoryStorage();
+  storage.setItem = () => { throw new Error('Storage restricted'); };
+  let restores = 0;
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html', local: storage,
+    fetchImpl: async () => { restores++; return jsonResponse(401, {}); }});
+  await turn();
+  assert.equal(restores, 0);
+  assert.equal(browser.API.getCustomerToken(), null);
+  assert.equal(browser.document.documentElement['data-session-gate'], 'unavailable');
+}
+
+async function testExpiredReadsCanRetryAfterRestorationButMutationsCannot() {
+  for (const mutation of [false, true]) {
+    let expired = false, operations = 0, restores = 0;
+    const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+      local: {customer_token: '801|cookie', user_role: 'customer'}, fetchImpl: async url => {
+        if (url.endsWith('/session')) return jsonResponse(expired ? 401 : 200, expired ? {code: 'session_expired'} : activeSession());
+        if (url.endsWith('/session/restore')) {
+          restores++;
+          expired = false;
+          return jsonResponse(200, {token: '802|cookie', remember_me: true, user: {role: 'customer', user_id: 8}, ...activeSession()});
+        }
+        operations++;
+        if (operations === 1) { expired = true; return jsonResponse(401, {code: 'session_expired'}); }
+        return jsonResponse(200, {pet: {pet_id: 1}});
+      }});
+    assert.equal(await browser.API.waitForCustomerSession(), true);
+    if (mutation) await assert.rejects(browser.API.addPet({name: 'Pending'}), error => error.status === 401);
+    else assert.equal((await browser.API.getPet(1)).pet.pet_id, 1);
+    assert.equal(operations, mutation ? 1 : 2);
+    assert.equal(restores, 1);
+    assert.equal(browser.API.getCustomerToken(), '802|cookie');
+    assert.deepEqual(browser.replacements, []);
+  }
+}
+
+async function testUnconfirmableOldLogoutAllowsOnlyDeliberateFullSignInRecovery() {
+  const browser = createBrowser({local: {customer_token: '901|cookie', user_role: 'customer'},
+    fetchImpl: async url => {
+      if (url.endsWith('/logout')) return jsonResponse(401, {code: 'session_changed'});
+      if (url.endsWith('/sign-in')) return jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'recovery'});
+      if (url.endsWith('/email/login/confirm')) return jsonResponse(200, {
+        token: '902|cookie', remember_me: false, user: {role: 'customer', user_id: 9}});
+      return jsonResponse(200, {success: true});
+    }});
+  await assert.rejects(browser.API.logout(), error => error.status === 401);
+  assert.ok(browser.localStorage.getItem('bethlehem.auth.signed_out'));
+  assert.equal((await browser.API.signIn('customer@example.test', 'password', false)).requires_login_confirmation, true);
+  assert.equal(browser.API.getCustomerToken(), null);
+  assert.ok(browser.localStorage.getItem('bethlehem.auth.signed_out'), 'Password verification alone cannot reenable restoration');
+  await browser.API.confirmLoginCode('012345');
+  assert.equal(browser.API.getCustomerToken(), '902|cookie');
+  assert.equal(browser.localStorage.getItem('bethlehem.auth.signed_out'), null);
+  assert.equal(browser.localStorage.getItem('bethlehem.auth.logout_pending'), null);
+}
+
+async function testLogoutRequiresAnExplicitServerRevocationAcknowledgement() {
+  const browser = createBrowser({local: {customer_token: '903|cookie', user_role: 'customer'},
+    fetchImpl: async () => jsonResponse(200, {})});
+  await assert.rejects(browser.API.logout(), /confirm sign-out/i);
+  assert.equal(browser.API.getCustomerToken(), null);
+  assert.ok(browser.localStorage.getItem('bethlehem.auth.logout_pending'));
+  assert.ok(browser.localStorage.getItem('bethlehem.auth.signed_out'));
+}
+
+async function testMixedCrossTabAccountSwitchHidesOnlyTheObsoleteTabState() {
+  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+    session: {customer_token: '904|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '9',
+      bookingStep2: 'old customer draft', unrelated: 'keep'}, fetchImpl: async () => jsonResponse(200, activeSession())});
+  assert.equal(await browser.API.waitForCustomerSession(), true);
+  browser.localStorage.setItem('bethlehem.auth.account_id', '10');
+  browser.localStorage.setItem('customer_token', '905|cookie');
+  browser.localStorage.setItem('user_role', 'customer');
+  browser.dispatch('storage', {storageArea: browser.localStorage, key: 'user_role', newValue: 'customer'});
+  assert.equal(browser.document.documentElement['data-session-gate'], 'checking');
+  assert.equal(browser.replacements.at(-1), '/pages/client/sign-in.html');
+  assert.equal(browser.localStorage.getItem('customer_token'), '905|cookie');
+  assert.equal(browser.sessionStorage.getItem('customer_token'), null);
+  assert.equal(browser.sessionStorage.getItem('bookingStep2'), null);
+  assert.equal(browser.sessionStorage.getItem('unrelated'), 'keep');
 }
 
 async function testProfileNameLivesAndDiesWithTheSession() {
@@ -484,14 +708,14 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
           staff_type: receptionist ? (identifier === 'clinic_receptionist' ? 'clinic' : 'grooming') : null,
           clinic_permissions: {access: true, services_view: true, clinical: false},
           staff_permissions: {grooming: true, grooming_services_view: true, services_manage: false} };
-        challenges.set(identifier, user);
+        challenges.set(identifier, {user, remember: JSON.parse(options.body).remember});
         return jsonResponse(202, { requires_login_confirmation: true, login_poll_token: identifier });
       }
       if (url.endsWith('/email/login/confirm')) {
-        const user = challenges.get(JSON.parse(options.body).poll_token);
+        const {user, remember} = challenges.get(JSON.parse(options.body).poll_token);
         const token = `${++sequence}|${user.user_id}-secret`;
         tokens.set(token, user);
-        return jsonResponse(200, { token, user });
+        return jsonResponse(200, { token, user, remember_me: remember });
       }
       const token = options.headers.Authorization?.replace(/^Bearer /, "");
       const user = tokens.get(token);
@@ -509,7 +733,7 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
     const normalProfile = createBrowserProfile(fetchImpl), privateProfile = createBrowserProfile(fetchImpl);
     const normal = normalProfile.page();
     const privateWindow = privateProfile.page();
-    await normal.API.signIn(roles[0], "password");
+    await normal.API.signIn(roles[0], "password", true);
     await normal.API.confirmLoginCode('012345');
     const normalToken = normal.API.getAdminToken() || normal.API.getCustomerToken();
     await privateWindow.API.signIn(roles[1], "password", false);
@@ -529,7 +753,8 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
         assert.equal(calls.filter(url => url.endsWith('/me')).length, reads, 'Navigation restores owned identity without another /me');
         assert.equal(navigation.sidebar().staffRoleLabel, role === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
         const otherTab = profile.page(new MemoryStorage(), '/pages/admin/services.html');
-        assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role);
+        if (browser === normal) assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role);
+        else await assert.rejects(otherTab.API.getStaffIdentity(), /Session ended/);
       }
       await browser.API.getGroomingCatalogue();
       assert.deepEqual(browser.replacements, []);
@@ -566,7 +791,7 @@ async function testDelayedRevocationCannotClearNewerStaffSession() {
     local: {admin_token: '601|clinic-secret', user_role: 'staff'},
     fetchImpl: async () => new Promise(resolve => { release = () => resolve(jsonResponse(200, {success: true})); }),
   });
-  const pending = browser.API.logout('staff', {requireRevocation: true});
+  const pending = browser.API.logout('staff');
   browser.API.setAdminToken('602|grooming-secret');
   browser.API.setUserRole('staff');
   release();
@@ -674,13 +899,14 @@ async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
         users.set(token, user);
         return jsonResponse(200, {token, user});
       }
+      if (url.endsWith('/logout')) return jsonResponse(200, {success: true});
       const user = users.get(options.headers.Authorization?.replace(/^Bearer /, ''));
       const result = jsonResponse(200, {user, sidebar_revision: `revision-${user?.user_id}`});
       if (url.endsWith('/me') && pauseIdentity) return new Promise(resolve => { release = () => resolve(result); });
       return result;
     });
     const first = profile.page();
-    await first.API.signIn(roles[0], 'password');
+    await first.API.signIn(roles[0], 'password', true);
     const sibling = profile.page(new MemoryStorage(), '/pages/admin/clinic.html');
     const cached = await sibling.API.getStaffIdentity();
     assert.equal(cached.user.staff_subrole, roles[0]);
@@ -688,7 +914,7 @@ async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
     const pendingTab = profile.page();
     pauseIdentity = true;
     const pending = pendingTab.API.getStaffIdentity();
-    await first.API.signIn(roles[1], 'password');
+    await first.API.signIn(roles[1], 'password', true);
     assert.equal(sibling.API.getCachedStaffIdentity(), null, 'Shared token replacement invalidates the former identity');
     release();
     await assert.rejects(pending, /changed|superseded|ended/i);
@@ -1734,7 +1960,8 @@ async function testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement() {
 
 async function testInitialCustomerBrowserSessionMarker() {
   const user = { user_id: 7, role: "customer", first_name: "Gerald", last_name: "Senining" };
-  const browser = createBrowser({ fetchImpl: async () => jsonResponse(200, { token: "session-token", user }) });
+  const browser = createBrowser({ fetchImpl: async url => jsonResponse(200,
+    url.endsWith('/logout') ? {success: true} : { token: "session-token", user }) });
   await browser.API.verifyEmail("verification-token");
   assert.equal(browser.document.cookie, "bethlehem_customer_initial_session_7=1; Path=/; SameSite=Lax");
   assert.doesNotMatch(browser.document.cookie, /Expires|Max-Age/i, "The greeting marker must end with the browser session.");
@@ -1906,7 +2133,7 @@ async function testReplacementNotifiesEveryAffectedTab() {
     ? jsonResponse(200, {token: '91|cookie', user: {role: 'staff'}})
     : jsonResponse(401, {code: 'session_replaced'}));
   const login = profile.page();
-  await login.API.signIn('staff', 'password');
+  await login.API.signIn('staff', 'password', true);
   const tabs = [profile.page(new MemoryStorage(), '/pages/admin/clinic.html'),
     profile.page(new MemoryStorage(), '/pages/admin/dashboard.html')];
   await assert.rejects(tabs[0].API.getMe('staff'));
@@ -1951,6 +2178,18 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
 }
 
 (async () => {
+  await testEveryRoleHonorsTheServerConfirmedCheckbox();
+  await testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads();
+  await testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalidity();
+  await testDelayedRestoreCannotOverwriteANewerAccount();
+  await testUnconfirmedLogoutBlocksRestorationAcrossNavigation();
+  await testMultipleTabsShareOneRestorationWhenBrowserLocksAreAvailable();
+  await testDelayedRestoreRejectionAndUncachedReadsCannotAffectNewAccount();
+  await testStorageRestrictionsDoNotCreateAnUntrackableRememberedSession();
+  await testExpiredReadsCanRetryAfterRestorationButMutationsCannot();
+  await testUnconfirmableOldLogoutAllowsOnlyDeliberateFullSignInRecovery();
+  await testLogoutRequiresAnExplicitServerRevocationAcknowledgement();
+  await testMixedCrossTabAccountSwitchHidesOnlyTheObsoleteTabState();
   await testReplacementReasonAndCookieTransport();
   await testReplacementNotifiesEveryAffectedTab();
   await testNetworkFailureDoesNotCreateReplacementReason();

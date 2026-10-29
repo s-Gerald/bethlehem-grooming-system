@@ -270,7 +270,7 @@ class AuthController extends Controller
             try {
                 $challenge = $loginChallenges->send(
                     $user,
-                    (bool) ($data['remember'] ?? true),
+                    (bool) ($data['remember'] ?? false),
                 );
             } catch (HttpResponseException $exception) {
                 throw $exception;
@@ -345,15 +345,7 @@ class AuthController extends Controller
     // ── LOGOUT ────────────────────────────────────────────
     public function logout(Request $request)
     {
-        $accessToken = $request->user()->currentAccessToken();
-        if ($accessToken && method_exists($accessToken, 'delete')) {
-            $accessToken->delete();
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully',
-        ], 200);
+        return app(\App\Services\RememberedDeviceService::class)->logout($request);
     }
 
     // ── GET CURRENT USER ──────────────────────────────────

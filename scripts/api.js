@@ -59,6 +59,16 @@ var API = (() => {
   const AUTH_LAST_ACTIVITY_KEY = "bethlehem.auth.last_activity";
   const AUTH_SESSION_STATE_KEY = "bethlehem.auth.session_state";
   const SIGNOUT_REASON_KEY = "bethlehem.auth.signout_reason";
+  const AUTH_ACCOUNT_KEY = "bethlehem.auth.account_id";
+  const LOGOUT_PENDING_KEY = "bethlehem.auth.logout_pending";
+  const RESTORE_BLOCK_KEY = "bethlehem.auth.signed_out";
+  let logoutPending = null;
+  let restoreBlocked = false;
+  let customerInitialization = null;
+  let customerVerificationEnabled = false;
+  let customerRestoreAttempted = false;
+  let customerVerifiedAt = 0;
+  let customerWaitingForInteraction = false;
   // One-time upgrade of credentials left by older deployed frontend versions.
   // Raw credentials are removed from storage immediately and never persisted again.
   const legacyCredentials = new Map();
@@ -427,6 +437,7 @@ var API = (() => {
   }
 
   function readCustomerCache(endpoint) {
+    if (customerVerificationEnabled && isProtectedClientPage() && sessionChecking) return null;
     if (!ensureCustomerCacheSession()) return null;
     const policy = customerCachePolicy(endpoint);
     const entry = customerCache.get(endpoint);
@@ -453,6 +464,7 @@ var API = (() => {
   // Render retained data synchronously, then refresh without hiding that data.
   // Access/authorization failures still propagate through the normal handlers.
   async function loadCustomerData(endpoint, load, render, { force = false } = {}) {
+    if (customerVerificationEnabled && isProtectedClientPage() && !await waitForCustomerSession()) throw new Error('Session ended.');
     const token = getCustomerToken();
     const cached = readCustomerCache(endpoint);
     if (cached) render(cached.data);
@@ -509,6 +521,7 @@ var API = (() => {
     CUSTOMER_TOKEN_KEY,
     ADMIN_TOKEN_KEY,
     USER_ROLE_KEY,
+    AUTH_ACCOUNT_KEY,
     AUTH_LAST_ACTIVITY_KEY,
     CUSTOMER_PROFILE_NAME_KEY,
     CUSTOMER_PROFILE_CHANGED_KEY,
@@ -603,7 +616,7 @@ var API = (() => {
       token = publicId;
     }
 
-    return token ? { token, role, tokenKey, persistent } : null;
+    return token ? { token, role, tokenKey, persistent, accountId: safeStorageGet(storage, AUTH_ACCOUNT_KEY) } : null;
   }
 
   function getAuthSession() {
@@ -617,7 +630,9 @@ var API = (() => {
     return persistent || temporary;
   }
 
-  function clearAuthStorage() {
+  function clearAuthStorage(preserveWaiters = false) {
+    legacyCredentials.clear();
+    customerWaitingForInteraction = false;
     observedSession = null;
     safeStorageRemove(sessionStorage, SIGNOUT_REASON_KEY);
     clearAdminCache();
@@ -629,7 +644,7 @@ var API = (() => {
     if (sessionPollTimer) clearTimeout(sessionPollTimer);
     if (activityReportTimer) clearTimeout(activityReportTimer);
     sessionPollTimer = activityReportTimer = null;
-    sessionWaiters.splice(0).forEach(({ reject }) => reject(new Error("Session ended.")));
+    if (!preserveWaiters) sessionWaiters.splice(0).forEach(({ reject }) => reject(new Error("Session ended.")));
     pausedSessionReads.clear();
     clearCustomerCache();
     safeStorageRemove(localStorage, CUSTOMER_CACHE_SESSION_KEY);
@@ -673,20 +688,21 @@ var API = (() => {
     return safeStorageGet(sessionStorage, LOGIN_CONFIRMATION_EMAIL_KEY) || "";
   }
 
-  function setAuthSession(token, role, remember = true) {
+  function setAuthSession(token, role, remember = false, accountId = null, restored = false) {
     if (!token || (role !== "customer" && !isAdminRole(role))) {
       throw new Error("The server returned an invalid authentication session.");
     }
 
-    const persistent = isAdminRole(role) || remember;
+    const persistent = remember === true;
     const storage = persistent ? localStorage : sessionStorage;
     const tokenKey = isAdminRole(role) ? ADMIN_TOKEN_KEY : CUSTOMER_TOKEN_KEY;
 
     // A browser has one current Bethlehem session. Clear every old token/role
     // first so localStorage can never shadow a newer sessionStorage login.
-    clearAuthStorage();
+    clearAuthStorage(restored);
 
     try {
+      if (accountId) storage.setItem(AUTH_ACCOUNT_KEY, String(accountId));
       storage.setItem(tokenKey, token);
       storage.setItem(USER_ROLE_KEY, role);
     } catch (error) {
@@ -703,12 +719,18 @@ var API = (() => {
 
     inactivityLogoutStarted = false;
     authRedirectStarted = false;
+    if (!restored) {
+      clearPendingLogout();
+      restoreBlocked = false;
+      safeStorageRemove(localStorage, RESTORE_BLOCK_KEY);
+      safeStorageRemove(sessionStorage, RESTORE_BLOCK_KEY);
+    }
     const session = getAuthSession();
     observedSession = session;
     const timestamp = Date.now();
     writeSessionActivity(session, timestamp);
     lastActivityWriteAt = timestamp;
-    if (inactivityManagerInstalled) evaluateSessionInactivity(timestamp);
+    if (inactivityManagerInstalled && !sessionChecking) evaluateSessionInactivity(timestamp);
   }
 
   function getCustomerToken() {
@@ -872,6 +894,7 @@ var API = (() => {
     if (isAdminPage()) return enforceAdminPageAccess();
 
     if (isProtectedClientPage() && !hasAuthenticatedSession("customer")) {
+      if (customerVerificationEnabled) return true; // The shared gate verifies/restores before private content is released.
       redirectToSignIn();
       return false;
     }
@@ -933,6 +956,177 @@ var API = (() => {
 
   function getSessionInactivityPolicy(role = getUserRole()) {
     return SESSION_INACTIVITY_POLICIES[role] || null;
+  }
+
+  function isSessionControl(endpoint) {
+    return endpoint === '/session' || endpoint.startsWith('/session/') || endpoint === '/logout';
+  }
+
+  function verificationError() {
+    const error = new Error('Verify your session before continuing.');
+    error.status = 503;
+    error.code = 'session_verification_unavailable';
+    return error;
+  }
+
+  function withAuthTransition(action) {
+    const locks = window.navigator?.locks;
+    return locks?.request ? locks.request('bethlehem.authentication', action) : action();
+  }
+
+  function pendingLogout() {
+    try {
+      const stored = safeStorageGet(localStorage, LOGOUT_PENDING_KEY) || safeStorageGet(sessionStorage, LOGOUT_PENDING_KEY);
+      return stored ? JSON.parse(stored) : logoutPending;
+    } catch { return logoutPending; }
+  }
+
+  function clearPendingLogout(expected) {
+    if (expected && pendingLogout()?.id !== expected.id) return;
+    logoutPending = null;
+    safeStorageRemove(localStorage, LOGOUT_PENDING_KEY);
+    safeStorageRemove(sessionStorage, LOGOUT_PENDING_KEY);
+  }
+
+  async function retryPendingLogout() {
+    if (!pendingLogout()) return;
+    return withAuthTransition(retryPendingLogoutUnlocked);
+  }
+
+  async function retryPendingLogoutUnlocked() {
+    const pending = pendingLogout();
+    if (!pending) return;
+    const data = await networkRequest('POST', '/logout', null, pending.token, {suppressAuthRedirect: true});
+    if (data.success !== true) throw new Error('Unable to confirm sign-out. Try again.');
+    clearPendingLogout(pending);
+  }
+
+  function restorationIsBlocked() {
+    return restoreBlocked || !!safeStorageGet(localStorage, RESTORE_BLOCK_KEY) || !!safeStorageGet(sessionStorage, RESTORE_BLOCK_KEY);
+  }
+
+  function canPersistAuthReference() {
+    try {
+      localStorage.setItem('bethlehem.auth.storage_check', '1');
+      localStorage.removeItem('bethlehem.auth.storage_check');
+      return true;
+    } catch { return false; }
+  }
+
+  function concealCustomerSession() {
+    sessionRevision++;
+    sessionChecking = true;
+    pauseInactivityTracking();
+    sessionGate('checking');
+  }
+
+  async function waitForCustomerSession() {
+    if (!customerVerificationEnabled) return hasAuthenticatedSession('customer');
+    await initializeCustomerSession();
+    while (sessionChecking && !authRedirectStarted) {
+      try { await new Promise((resolve, reject) => sessionWaiters.push({resolve, reject})); }
+      catch { return false; }
+    }
+    return !authRedirectStarted && hasAuthenticatedSession('customer');
+  }
+
+  function initializeCustomerSession(force = false) {
+    if (!customerVerificationEnabled) return Promise.resolve(false);
+    if (customerWaitingForInteraction) return Promise.resolve(false);
+    if (customerInitialization) {
+      return force ? customerInitialization.then(() => initializeCustomerSession()) : customerInitialization;
+    }
+    if (!force && !sessionChecking && serverSession?.token === getCustomerToken()
+      && Date.now() < serverSession.idleAt && Date.now() < serverSession.expiresAt
+      && Date.now() - customerVerifiedAt < 15000) return Promise.resolve(true);
+    let revision = sessionRevision, initialToken = getAuthSession()?.token;
+    const accountId = getAuthSession()?.accountId || observedSession?.accountId;
+    const unchanged = () => revision === sessionRevision && initialToken === getAuthSession()?.token;
+    let obsolete = false, pending;
+    const attempt = async () => {
+      try {
+        if (!unchanged()) { obsolete = true; return false; }
+        await retryPendingLogoutUnlocked();
+        if (restorationIsBlocked() || (getAuthSession() && getAuthSession().role !== 'customer')) {
+          redirectToSignIn();
+          return false;
+        }
+        let token = getCustomerToken();
+        if (token) {
+          try {
+            const status = await networkRequest('GET', '/session', null, token, {cache: 'no-store', suppressAuthRedirect: true});
+            if (!unchanged()) { obsolete = true; return false; }
+            if (!applyServerSession(status, token)) throw verificationError();
+            customerVerifiedAt = Date.now();
+            startSessionInactivityManager(true);
+            return true;
+          } catch (error) {
+            if (!unchanged()) { obsolete = true; return false; }
+            if (error.code === 'session_replaced' || (error.status === 403 && INVALID_SESSION_CODES.has(error.code))) {
+              invalidateSession('customer', error.code);
+              return false;
+            }
+            // Connectivity failures do not authorize credential restoration or destruction.
+            if (error.status !== 401) throw error;
+            const activity = readSessionActivity(getAuthSession());
+            if (getAuthSession()?.persistent && activity !== null && Date.now() - activity >= 30 * 60000) {
+              customerWaitingForInteraction = true;
+              concealCustomerSession();
+              return false;
+            }
+          }
+        }
+        if (customerRestoreAttempted) { invalidateSession('customer', 'expired'); return false; }
+        if (!canPersistAuthReference()) throw new Error('Browser storage is unavailable. Allow storage to continue.');
+        customerRestoreAttempted = true;
+        let restored;
+        try {
+          restored = await networkRequest('POST', '/session/restore', {account_id: accountId || undefined}, null,
+            {cache: 'no-store', suppressAuthRedirect: true});
+        } catch (error) {
+          // A recoverable failure may be retried explicitly; backend rotation is idempotent.
+          if (error.status === 0 || error.status >= 500 || error.status === 429) customerRestoreAttempted = false;
+          throw error;
+        }
+        if (!unchanged() || restorationIsBlocked()) { obsolete = true; return false; }
+        if (!restored.token || restored.user?.role !== 'customer') throw verificationError();
+        if (token !== restored.token) setAuthSession(restored.token, 'customer', restored.remember_me === true, restored.user.user_id, true);
+        token = restored.token;
+        revision = sessionRevision;
+        initialToken = token;
+        sessionChecking = true;
+        const acceptedRevision = sessionRevision;
+        const status = typeof restored.locked === 'boolean' ? restored
+          : await networkRequest('GET', '/session', null, token, {cache: 'no-store', suppressAuthRedirect: true});
+        if (acceptedRevision !== sessionRevision || getCustomerToken() !== token) { obsolete = true; return false; }
+        if (!applyServerSession(status, token)) throw verificationError();
+        customerVerifiedAt = Date.now();
+        startSessionInactivityManager(true);
+        return true;
+      } catch (error) {
+        if (!unchanged()) { obsolete = true; return false; }
+        if (error.status === 401 || (error.status === 403 && INVALID_SESSION_CODES.has(error.code))) {
+          invalidateSession('customer', error.code === 'session_replaced' ? error.code : 'expired');
+          return false;
+        }
+        sessionChecking = true;
+        ensureSessionLockCard();
+        sessionGate('unavailable');
+        sessionLockError('Unable to restore your session. Try again.');
+        return false;
+      }
+    };
+    pending = Promise.resolve(withAuthTransition(attempt)).finally(() => {
+      if (customerInitialization !== pending) return;
+      customerInitialization = null;
+      if (obsolete && sessionChecking && !restorationIsBlocked()) { void initializeCustomerSession(); return; }
+      if (sessionPollTimer) clearTimeout(sessionPollTimer);
+      if (!authRedirectStarted && getCustomerToken()) sessionPollTimer = setTimeout(() => {
+        if (document.visibilityState !== 'hidden') void initializeCustomerSession();
+      }, 60000);
+    });
+    customerInitialization = pending;
+    return pending;
   }
 
   function activitySessionId(session) {
@@ -1057,8 +1251,13 @@ var API = (() => {
     inactivityLogoutStarted = true;
     pauseInactivityTracking();
 
-    // logout() clears browser state synchronously and starts a keepalive
-    // revocation request before navigation, so the abandoned token is unusable.
+    if (session.role === 'customer' && session.persistent && customerVerificationEnabled) {
+      // Session expiry is distinct from manual logout: the device may establish a new session.
+      concealCustomerSession();
+      customerRestoreAttempted = false;
+      customerWaitingForInteraction = true;
+      return;
+    }
     void logout(session.role, { reason: "inactivity", keepalive: true }).catch(() => {});
     redirectToSignIn({ replace: true });
   }
@@ -1075,7 +1274,7 @@ var API = (() => {
       expireSessionForInactivity(session);
       return { state: "expired", idleMs: 0 };
     }
-    if (isAdminRole(session.role) && (sessionLocked || sessionChecking)) {
+    if (sessionChecking || (isAdminRole(session.role) && sessionLocked)) {
       return { state: sessionLocked ? "locked" : "checking", idleMs: 0 };
     }
     let lastActivityAt = serverSession?.token === session.token
@@ -1181,7 +1380,13 @@ var API = (() => {
       button.disabled = true;
       button.textContent = "Retrying…";
       card.setAttribute("aria-busy", "true");
-      try { await syncSessionState(); }
+      try {
+        if (pendingLogout()) { await retryPendingLogout(); redirectToSignIn(); }
+        else await syncSessionState();
+      } catch {
+        sessionGate('unavailable');
+        sessionLockError('Unable to confirm sign-out. Connect and try again.');
+      }
       finally {
         button.disabled = false;
         button.textContent = "Retry";
@@ -1232,10 +1437,10 @@ var API = (() => {
       const button = card.querySelector("#session-other-account");
       button.disabled = true;
       try {
-        await logout(null, { keepalive: true, requireRevocation: true });
+        await logout(null, { keepalive: true });
         redirectToSignIn();
       } catch (error) {
-        // Keep the token available for a revocation retry if the network failed.
+        // The recovery state retains a public revocation reference, never authenticated content.
         sessionLockError("Unable to sign out. Please try again.");
       } finally { button.disabled = false; }
     });
@@ -1272,6 +1477,7 @@ var API = (() => {
   }
 
   function concealSession() {
+    if (customerVerificationEnabled && isProtectedClientPage()) { concealCustomerSession(); return; }
     if (!isAdminRole(getAuthSession()?.role) || !isManagedProtectedSession()) return;
     // Navigation/BFCache restoration requires a response newer than suspension.
     sessionRevision += 1;
@@ -1356,12 +1562,19 @@ var API = (() => {
       if (wasLocked && typeof window.dispatchEvent === 'function') {
         window.dispatchEvent(new CustomEvent('admin-session:unlocked'));
       }
+    } else if (customerVerificationEnabled && isProtectedClientPage()) {
+      if (idleAt <= timestamp) return false;
+      sessionChecking = false;
+      inactivityLogoutStarted = false;
+      sessionGate(null);
+      sessionWaiters.splice(0).forEach(({ resolve }) => resolve());
     }
     evaluateSessionInactivity(timestamp);
     return true;
   }
 
   function syncSessionState(force = false) {
+    if (customerVerificationEnabled && isProtectedClientPage()) return initializeCustomerSession(force);
     const session = getAuthSession();
     if (!isManagedProtectedSession(session)) return Promise.resolve();
     if (!force && sessionSync?.revision === sessionRevision) return sessionSync.promise;
@@ -1410,7 +1623,7 @@ var API = (() => {
     else report();
   }
 
-  function startSessionInactivityManager() {
+  function startSessionInactivityManager(verified = false) {
     const session = getAuthSession();
     if (!isManagedProtectedSession(session)) return false;
     if (
@@ -1425,7 +1638,9 @@ var API = (() => {
 
     if (!inactivityManagerInstalled) {
       const onActivity = (event) => {
-        if (event.isTrusted && document.visibilityState !== "hidden") recordSessionActivity(false);
+        if (!event.isTrusted || document.visibilityState === 'hidden') return;
+        if (customerVerificationEnabled && customerWaitingForInteraction) { resumeSession(); return; }
+        recordSessionActivity(false);
       };
       document.addEventListener("pointerdown", onActivity, { passive: true });
       document.addEventListener("mousemove", onActivity, { passive: true });
@@ -1438,24 +1653,56 @@ var API = (() => {
       inactivityManagerInstalled = true;
     }
 
-    concealSession();
+    if (!verified) concealSession();
     evaluateSessionInactivity();
-    void syncSessionState();
+    if (!verified) void syncSessionState();
     return true;
   }
 
   function resumeSession() {
     if (document.visibilityState === "hidden") return;
+    if (customerVerificationEnabled && isProtectedClientPage()) {
+      customerWaitingForInteraction = false;
+      inactivityLogoutStarted = false;
+      writeSessionActivity(getAuthSession(), Date.now());
+      if (serverSession && Date.now() < serverSession.idleAt && Date.now() < serverSession.expiresAt && !sessionChecking) {
+        void initializeCustomerSession();
+      } else { concealCustomerSession(); void initializeCustomerSession(); }
+      return;
+    }
     evaluateSessionInactivity();
     void syncSessionState();
   }
 
   if (typeof window !== "undefined") {
+    customerVerificationEnabled = isProtectedClientPage() && typeof document.createElement === 'function';
     observedSession = getAuthSession();
     window.addEventListener("storage", (event) => {
       if (event.storageArea !== localStorage) return;
+      if (event.key === LOGOUT_PENDING_KEY) {
+        try { logoutPending = event.newValue ? JSON.parse(event.newValue) : null; } catch { /* Ignore malformed signals. */ }
+      }
+      const previous = observedSession;
       const current = getAuthSession();
       if (current) observedSession = current;
+      if (customerVerificationEnabled && previous && !current && AUTH_STORAGE_KEYS.includes(event.key)
+        && readAuthSessionFrom(localStorage, true) && readAuthSessionFrom(sessionStorage, false)) {
+        // A newer persistent login must not be erased by this obsolete temporary tab.
+        concealCustomerSession();
+        AUTH_STORAGE_KEYS.forEach(key => safeStorageRemove(sessionStorage, key));
+        BOOKING_SESSION_KEYS.forEach(key => safeStorageRemove(sessionStorage, key));
+        clearCustomerCache();
+        redirectToSignIn();
+        return;
+      }
+      if (customerVerificationEnabled && previous?.token && current?.token && previous.token !== current.token
+        && [CUSTOMER_TOKEN_KEY, USER_ROLE_KEY].includes(event.key)) {
+        if (!previous.accountId || previous.accountId !== current.accountId) {
+          BOOKING_SESSION_KEYS.forEach(key => safeStorageRemove(sessionStorage, key));
+        }
+        concealCustomerSession();
+        window.location.reload?.();
+      }
       if (event.key === CUSTOMER_TOKEN_KEY || event.key === CUSTOMER_CACHE_SESSION_KEY || event.key === USER_ROLE_KEY) {
         clearCustomerCache();
       }
@@ -1520,11 +1767,17 @@ var API = (() => {
       }
     });
 
-    if (enforceProtectedPageAccess()) startSessionInactivityManager();
+    if (customerVerificationEnabled) {
+      concealCustomerSession();
+      void initializeCustomerSession();
+    } else if (enforceProtectedPageAccess()) startSessionInactivityManager();
     window.addEventListener("pageshow", (event) => {
       // A logout page navigation can leave a protected dashboard in the
       // browser back-forward cache. Re-check storage whenever it is restored.
-      if (event.persisted && enforceProtectedPageAccess()) startSessionInactivityManager();
+      if (event.persisted && customerVerificationEnabled) {
+        concealCustomerSession();
+        void initializeCustomerSession(true);
+      } else if (event.persisted && enforceProtectedPageAccess()) startSessionInactivityManager();
     });
   }
 
@@ -1536,6 +1789,27 @@ var API = (() => {
   //   error.errors  — Laravel validation errors object (422 only), or null
 
   function request(method, endpoint, body = null, token = null, requestOptions = {}) {
+    return requestForSession(method, endpoint, body, token, requestOptions).catch(error => {
+      if (method === 'GET' && error.code === 'session_restored' && getCustomerToken()) {
+        return requestForSession(method, endpoint, null, getCustomerToken(), requestOptions);
+      }
+      throw error;
+    });
+  }
+
+  function requestForSession(method, endpoint, body = null, token = null, requestOptions = {}) {
+    if (customerVerificationEnabled && isProtectedClientPage() && !isSessionControl(endpoint)
+      && (sessionChecking || customerInitialization)) {
+      if (method !== 'GET') return Promise.reject(verificationError());
+      const key = `customer:${token || ''}:${endpoint}:${requestOptions.responseType || 'json'}`;
+      if (pausedSessionReads.has(key)) return pausedSessionReads.get(key);
+      const pending = waitForCustomerSession().then(verified => {
+        if (!verified) throw new Error('Session ended.');
+        return request(method, endpoint, body, getCustomerToken(), requestOptions);
+      }).finally(() => { if (pausedSessionReads.get(key) === pending) pausedSessionReads.delete(key); });
+      pausedSessionReads.set(key, pending);
+      return pending;
+    }
     if (method === "GET" && token && token === getAdminToken() && isManagedProtectedSession()
       && (sessionLocked || sessionChecking)) {
       const key = `${token}:${endpoint}:${requestOptions.responseType || "json"}`;
@@ -1586,7 +1860,7 @@ var API = (() => {
   }
 
   async function networkRequest(method, endpoint, body = null, token = null, requestOptions = {}) {
-    const sessionControl = endpoint === "/session" || endpoint.startsWith("/session/") || endpoint === "/logout";
+    const sessionControl = isSessionControl(endpoint);
     if (!sessionControl && token && token === getAdminToken() && isManagedProtectedSession()
       && (sessionLocked || sessionChecking || (sessionSync?.verifyChange && sessionSync.revision === sessionRevision && method !== "GET"))) {
       if (method !== "GET") {
@@ -1662,6 +1936,9 @@ var API = (() => {
     const currentSession = getAuthSession();
     const responseBelongsToCurrentSession = !!token
       && currentSession?.token === token;
+    if (response.ok && method === 'GET' && token && !responseBelongsToCurrentSession && !sessionControl) {
+      throw new Error('Session changed while loading. Please try again.');
+    }
     if (response.ok && endpoint === '/session') legacyCredentials.delete(token);
     // Creation can commit a stock hold before returning an uncertain HTTP 502;
     // provider-confirmed expiry can release it during a GET status check.
@@ -1707,14 +1984,25 @@ var API = (() => {
       && getAuthSession()?.token === token
       && !requestOptions.suppressAuthRedirect
     ) {
-      // Public sign-in/register failures have no bearer token and therefore
-      // fall through for their forms to render. Only a real authenticated
-      // session failure clears state and navigates away.
-      const failedRole = token === rawAdminToken() ? "admin" : "customer";
-      invalidateSession(
-        failedRole,
-        invalidAccountSession ? data.code : data.code === 'session_replaced' ? 'session_replaced' : "expired",
-      );
+      if (lostAuthenticatedSession && currentSession?.role === 'customer' && customerVerificationEnabled
+        && data.code !== 'session_replaced' && (!sessionControl || endpoint === '/session/activity')) {
+        concealCustomerSession();
+        customerRestoreAttempted = false;
+        const restored = await initializeCustomerSession();
+        // Only reads can be reissued. A rejected mutation always returns its original error.
+        if (restored && method === 'GET') {
+          const error = new Error('Session restored.');
+          error.code = 'session_restored';
+          throw error;
+        }
+      } else {
+        // Only an authenticated session failure clears state and redirects.
+        const failedRole = token === rawAdminToken() ? "admin" : "customer";
+        invalidateSession(
+          failedRole,
+          invalidAccountSession ? data.code : data.code === 'session_replaced' ? 'session_replaced' : "expired",
+        );
+      }
     }
 
     if (response.status === 429) {
@@ -1809,11 +2097,19 @@ var API = (() => {
     return data;
   }
 
-  async function signIn(identifier, password, remember = true) {
+  async function signIn(identifier, password, remember = false) {
     // POST /api/sign-in
     // Accepts email, local/international mobile phone, or username. Saves to the
-    // correct token key based on role. remember=false uses sessionStorage so
-    // the session dies when the tab closes.
+    // correct public-reference key based on role. The backend owns cookie
+    // persistence and every inactivity/absolute deadline.
+    if (pendingLogout()) {
+      try { await retryPendingLogout(); }
+      catch (error) {
+        // Lost/replaced cookies cannot prove revocation. Require the complete
+        // password/OTP flow; restoration remains blocked until it succeeds.
+        if (error.status !== 401) throw error;
+      }
+    }
     const normalized = normalizePhoneLikeIdentifier(identifier);
     const resolvedIdentifier = normalized || identifier;
     const revision = sessionRevision, previousToken = getAuthSession()?.token;
@@ -1839,7 +2135,7 @@ var API = (() => {
 
     const role = data?.user?.role;
     if (role === "customer") clearBookingDraft();
-    setAuthSession(data?.token, role, isAdminRole(role) ? true : remember);
+    setAuthSession(data?.token, role, data?.remember_me === true || (data?.remember_me === undefined && remember), data?.user?.user_id);
     if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
     return data;
   }
@@ -1993,6 +2289,10 @@ var API = (() => {
   }
 
   async function confirmLoginCode(code) {
+    return withAuthTransition(() => confirmLoginCodeUnlocked(code));
+  }
+
+  async function confirmLoginCodeUnlocked(code) {
     const pollToken = safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY);
     const revision = sessionRevision, previousToken = getAuthSession()?.token;
     if (!pollToken) {
@@ -2019,7 +2319,8 @@ var API = (() => {
       setAuthSession(
         data.token,
         role,
-        isAdminRole(role) ? true : data?.remember_me !== false,
+        data?.remember_me === true,
+        data.user.user_id,
       );
       if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
 
@@ -2048,7 +2349,7 @@ var API = (() => {
   }
 
   async function logout(role = null, logoutOptions = {}) {
-    // POST /api/logout  (protected — sends the correct token in the header)
+    // POST /api/logout (cookie-bound, including after active session expiration).
     // Capture the current bearer token, then clear the browser before waiting
     // for the network. Logout remains immediate even if the server is down.
     const currentSession = getAuthSession();
@@ -2056,29 +2357,36 @@ var API = (() => {
     const token = currentSession?.token
       ?? (isAdminRole(role) ? rawAdminToken() : rawCustomerToken());
 
-    const revoke = () => request("POST", "/logout", null, token, {
+    const revoke = () => networkRequest("POST", "/logout", null, token, {
       suppressAuthRedirect: true, keepalive: logoutOptions.keepalive === true,
     });
-    if (logoutOptions.requireRevocation && token) {
-      try { await revoke(); }
-      catch (error) { if (error?.status !== 401) throw error; }
-      if (getAuthSession()?.token !== currentSession?.token) return { success: true };
+    // A nonsecret tombstone survives failed requests and prevents silent restoration.
+    restoreBlocked = true;
+    logoutPending = currentSession ? null : pendingLogout();
+    logoutPending ||= { id: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      token: /^\d+\|cookie$/.test(token || '') ? token : null, role: resolvedRole, at: Date.now() };
+    const pendingMarker = logoutPending;
+    for (const storage of [localStorage, sessionStorage]) {
+      try { storage.setItem(RESTORE_BLOCK_KEY, '1'); storage.setItem(LOGOUT_PENDING_KEY, JSON.stringify(logoutPending)); } catch { /* Memory still blocks this document. */ }
     }
-
     clearAuthStorage();
+    const logoutRevision = sessionRevision;
+    if (isProtectedClientPage() || isAdminPage()) { sessionChecking = true; sessionGate('checking'); }
     if (resolvedRole === "customer") clearBookingDraft();
     notifyLogout(resolvedRole, logoutOptions.reason || "logout", currentSession);
 
-    if (logoutOptions.requireRevocation) return { success: true };
-
-    if (!token) return { success: true, local_only: true };
-
     try {
-      return await revoke();
+      const data = await withAuthTransition(revoke);
+      if (data.success !== true) throw new Error('Unable to confirm sign-out. Try again.');
+      clearPendingLogout(pendingMarker);
+      return data;
     } catch (error) {
-      // A missing/expired server session is already equivalent to logout.
-      if (error?.status === 401) {
-        return { success: true, local_only: true };
+      if (logoutRevision === sessionRevision && !getAuthSession() && (isProtectedClientPage() || isAdminPage())) {
+        sessionLocked = false;
+        sessionChecking = true;
+        ensureSessionLockCard();
+        sessionGate('unavailable');
+        sessionLockError('Unable to confirm sign-out. Connect and try again.');
       }
       throw error;
     }
@@ -3208,6 +3516,9 @@ var API = (() => {
     // Resolved endpoint (shared by standalone browser services).
     getBaseUrl,
     waitForSessionVerification,
+    waitForCustomerSession,
+    syncSessionState,
+    retryPendingLogout,
     readAdminCache,
     loadAdminData,
     readCustomerCache,

@@ -306,6 +306,7 @@ class EmailVerificationTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
         (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
+        (require base_path('database/migrations/2026_10_29_000003_create_remembered_devices.php'))->up();
         (require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php'))->up();
         (require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
         (require base_path('database/migrations/2026_10_28_000002_add_registration_browser_binding.php'))->up();
@@ -313,6 +314,8 @@ class EmailVerificationTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('remembered_device_credentials');
+        Schema::dropIfExists('remembered_devices');
         Schema::dropIfExists('jobs');
         Schema::dropIfExists('job_batches');
         Schema::dropIfExists('failed_jobs');

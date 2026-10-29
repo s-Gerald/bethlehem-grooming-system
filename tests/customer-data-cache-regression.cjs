@@ -146,7 +146,7 @@ async function testDeduplicationAndRaces() {
   const oldSession = env.API.getUserPets();
   env.API.setCustomerToken("2|other-synthetic-secret");
   pending.resolve(pets);
-  await assert.rejects(oldSession, /Customer data changed/);
+  await assert.rejects(oldSession, /Session changed/);
   assert.equal(env.API.readCustomerCache("/pets?archived=0"), null);
 }
 
@@ -230,6 +230,7 @@ async function testSessionIsolationAndFreshness() {
   await env.API.getBookingHistory({ historyLimit: 3, force: true });
   assert.equal(env.calls.length, count + 2, "Polling must bypass freshness even inside the TTL.");
   assert.equal(env.API.readCustomerCache("/booking/history?history_limit=3").data.bookings[0].status, "in_progress");
+  env.respond(() => ({success: true}));
   await env.API.logout();
   assert.equal(env.sessionStorage.getItem("bethlehem.customer.data.v1"), null);
   assert.equal(env.API.readCustomerCache("/pets?archived=0"), null);
@@ -402,6 +403,7 @@ async function testActualPageLoaders() {
   assert.match(cachedPets.element("petsGrid").innerHTML, /Mochi/);
   assert.equal(env.calls.length, count, "Actual My Pets loader must reuse the shared active list.");
   const settings = mountPage(env, "settings.html");
+  await flush(); // Settings waits for the shared authentication gate before rendering retained profile data.
   assert.equal(settings.element("settingsContent").hasAttribute("inert"), false);
   assert.equal(settings.element("settingsFirstName").value, "Test");
   assert.equal(env.calls.length, count);

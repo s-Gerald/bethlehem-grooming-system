@@ -5,12 +5,22 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\AccountSessionService;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
 class UseAccountSessionCookie
 {
     public const NAME = 'bethlehem_account_session';
+
+    public static function cookie(Request $request, string $name, string $value, $expires = 0): Cookie
+    {
+        $prefix = rtrim((string) parse_url(config('app.url'), PHP_URL_PATH), '/');
+        return Cookie::create($name, $value)->withPath($prefix.'/api')->withHttpOnly(true)->withSameSite('lax')
+            ->withSecure(app()->isProduction() || (bool) config('session.secure') || $request->isSecure()
+                || str_starts_with(config('app.url'), 'https://'))->withExpires($expires);
+    }
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -24,18 +34,25 @@ class UseAccountSessionCookie
         // Custom headers and an explicit origin allowlist prevent cookie/login
         // CSRF. Raw bearer clients do not rely on ambient credentials.
         $browserMutation = ! $request->isMethodSafe() && ! $bearer && ! $request->is('api/paymongo/webhook');
-        if ($cookieRequest || $browserMutation) {
+        $ambientControl = $request->routeIs('session.restore', 'auth.logout');
+        if ($cookieRequest || $browserMutation || $ambientControl) {
             $origin = $request->headers->get('Origin');
             if ($request->header('X-Requested-With') !== 'XMLHttpRequest'
+                || $request->header('Sec-Fetch-Site') === 'cross-site'
                 || ($origin && ! in_array($origin, config('cors.allowed_origins'), true))) {
                 return response()->json(['message' => 'Request origin could not be verified.'], 419);
             }
         }
         if ($cookieRequest) {
+            $request->attributes->set('public_session_id', (int) $match[1]);
             if (! is_string($cookie) || ! str_starts_with($cookie, $match[1].'|')) {
-                return response()->json(['success' => false, 'code' => 'session_changed', 'message' => 'Please sign in again.'], 401);
+                // Logout can revoke a device after the shorter active cookie has expired.
+                if (! $request->routeIs('auth.logout')) {
+                    return response()->json(['success' => false, 'code' => 'session_changed', 'message' => 'Please sign in again.'], 401);
+                }
+            } else {
+                $request->headers->set('Authorization', 'Bearer '.$cookie);
             }
-            $request->headers->set('Authorization', 'Bearer '.$cookie);
         }
 
         $response = $next($request);
@@ -47,18 +64,13 @@ class UseAccountSessionCookie
             if ($request->routeIs('session.status') && $bearer && ! $cookieRequest) $issuedToken = $bearer;
             if (is_string($issuedToken) && preg_match('/^(\d+)\|(.+)$/D', $issuedToken, $issued)
                 && (isset($data['user']['role']) || $request->routeIs('session.status'))) {
-                $role = $data['user']['role'] ?? $request->user()->role;
-                $privileged = in_array($role, ['admin', 'staff'], true);
-                $persistent = $privileged || ($request->routeIs('session.status')
-                    ? $request->header('X-Session-Persistent') === '1'
-                    : ($data['remember_me'] ?? true));
-                $expiry = $request->routeIs('session.status')
-                    ? $request->user()->currentAccessToken()->created_at->copy()->addHours($privileged ? 12 : 24)
-                    : now()->addHours($privileged ? 12 : 24);
-                $response->headers->setCookie(Cookie::create(self::NAME, $issuedToken)
-                    ->withPath('/api')->withHttpOnly(true)->withSameSite('lax')
-                    ->withSecure((bool) config('session.secure') || $request->isSecure() || str_starts_with(config('app.url'), 'https://'))
-                    ->withExpires($persistent ? $expiry : 0));
+                $token = PersonalAccessToken::findToken($issuedToken);
+                $abilities = $token?->abilities ?? [];
+                $legacy = ! in_array('session:persistent', $abilities, true) && ! in_array('session:temporary', $abilities, true);
+                $persistent = in_array('session:persistent', $abilities, true)
+                    || ($legacy && $request->routeIs('session.status') && $request->header('X-Session-Persistent') === '1');
+                $expiry = $token ? app(AccountSessionService::class)->expiresAt($token, $token->tokenable) : 0;
+                $response->headers->setCookie(self::cookie($request, self::NAME, $issuedToken, $persistent ? $expiry : 0));
                 if (isset($data['token'])) $data['token'] = $issued[1].'|cookie';
                 $response->setData($data)->header('Cache-Control', 'no-store');
             }
