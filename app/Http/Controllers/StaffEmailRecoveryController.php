@@ -71,7 +71,7 @@ class StaffEmailRecoveryController extends Controller
     {
         try { $result = $operation(); }
         catch (UniqueConstraintViolationException) { throw ValidationException::withMessages(['email' => 'This email is already in use.']); }
-        catch (ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException | HttpExceptionInterface $exception) { throw $exception; }
+        catch (ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException | HttpExceptionInterface | \Illuminate\Http\Exceptions\HttpResponseException $exception) { throw $exception; }
         catch (Throwable $exception) {
             // Never report request credentials or queue payloads.
             \Illuminate\Support\Facades\Log::warning('Staff email recovery could not be processed.', ['exception_type' => $exception::class]);

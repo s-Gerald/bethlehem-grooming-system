@@ -21,8 +21,15 @@ class AuthenticationMailDelivery
         string $hashColumn = 'token_hash',
         string $expiryColumn = 'expires_at',
         bool $allowImmediate = true,
+        ?string $purpose = null,
     ): string
     {
+        if ($purpose !== null) {
+            $email = $recipient->routeNotificationFor('mail', $notification);
+            if (! is_string($email)) throw new \RuntimeException('Authentication mail requires one destination.');
+            return app(AuthenticationEmailPolicy::class)->send($email,
+                fn () => self::queue($recipient, $notification, $issuance, $hashColumn, $expiryColumn, $allowImmediate), $purpose);
+        }
         $receipt = Str::random(64);
         self::record($receipt, 'queued', [
             'request_ms' => max(0, (int) round((microtime(true) - (float) request()->server('REQUEST_TIME_FLOAT', microtime(true))) * 1000)),

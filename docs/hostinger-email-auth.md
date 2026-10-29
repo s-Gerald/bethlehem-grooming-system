@@ -1,5 +1,7 @@
 # Hostinger email authentication
 
+> October 30 local hardening, the two new forward migrations, purpose/provider quotas, source-aware OTP restrictions and future deployment/edge steps are documented in [authentication-security-hardening.md](authentication-security-hardening.md). Both migrations were applied only to localhost. No live deployment or hosting change was made. The October 29 note below that no migration was needed applies only to that earlier release.
+
 > Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
 
 ## One-hour signup release — October 29, 2026

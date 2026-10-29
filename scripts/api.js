@@ -654,6 +654,7 @@ var API = (() => {
       safeStorageRemove(sessionStorage, key);
     });
     clearPendingLoginConfirmation();
+    safeStorageRemove(sessionStorage, 'bethlehem.security.alert');
     pauseInactivityTracking();
   }
 
@@ -2117,6 +2118,7 @@ var API = (() => {
       identifier: resolvedIdentifier,
       password,
       remember,
+      login_poll_token: safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY) || undefined,
     });
 
     if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
@@ -2324,6 +2326,11 @@ var API = (() => {
       );
       if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
 
+      if (isAdminRole(role) && Number.isSafeInteger(data.security_incident_id) && data.security_incident_id > 0) {
+        try { sessionStorage.setItem('bethlehem.security.alert', JSON.stringify({ owner: activitySessionId(getAuthSession()), id: data.security_incident_id })); }
+        catch { /* The private Settings activity remains available. */ }
+      }
+
       // Acknowledge only after the browser has stored the session. Failure is
       // non-fatal: the code was already consumed atomically by the server.
       try {
@@ -2341,7 +2348,7 @@ var API = (() => {
       return data;
     } catch (error) {
       if (pollToken === safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY)
-        && (error?.expired || error?.status === 403 || error?.status === 429)) {
+        && (error?.expired || error?.status === 403 || (error?.status === 429 && error.code === 'login_code_locked'))) {
         clearPendingLoginConfirmation();
       }
       throw error;
@@ -2959,6 +2966,29 @@ var API = (() => {
 
   async function getSettingsSecurityAccount() {
     return request("GET", "/settings/security/account", null, getAdminToken());
+  }
+
+  function getSecurityAlert() {
+    const session = getAuthSession(), owner = activitySessionId(session);
+    if (!owner || !isAdminRole(session?.role)) return null;
+    try {
+      const alert = JSON.parse(safeStorageGet(sessionStorage, 'bethlehem.security.alert') || 'null');
+      return alert?.owner === owner && Number.isSafeInteger(alert?.id) && alert.id > 0 ? alert.id : null;
+    } catch { return null; }
+  }
+
+  function getSecurityActivity(focusId = null) {
+    const query = Number.isSafeInteger(focusId) && focusId > 0 ? '?incident=' + focusId : '';
+    return request('GET', '/settings/security/activity' + query, null, getAdminToken(), { cache: 'no-store' });
+  }
+
+  async function reviewSecurityActivity(id) {
+    const result = await request('POST', `/settings/security/activity/${encodeURIComponent(id)}/review`, null, getAdminToken());
+    if (getSecurityAlert() === id) {
+      safeStorageRemove(sessionStorage, 'bethlehem.security.alert');
+      document.getElementById('account-security-alert')?.remove();
+    }
+    return result;
   }
 
   function validateStaffProfile(payload) {
@@ -3654,6 +3684,9 @@ var API = (() => {
     adminUpdateCapacity,
     getAdminSecurityAccounts,
     getSettingsSecurityAccount,
+    getSecurityAlert,
+    getSecurityActivity,
+    reviewSecurityActivity,
     validateStaffProfile,
     updateStaffProfile,
     requestStaffPasswordChange,

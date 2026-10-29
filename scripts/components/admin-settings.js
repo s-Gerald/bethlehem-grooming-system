@@ -6,6 +6,13 @@ function adminSettings() {
     isAdmin: currentRole === "admin",
     isStaff: currentRole === "staff",
     activeSettingsTab: "general",
+    securityIncidents: [],
+    securityActivityLoaded: false,
+    securityActivityLoading: false,
+    securityActivityError: '',
+    securityReviewBusyId: null,
+    _securityActivityRequest: null,
+    _securityActivityRevision: 0,
     adminAccount: {
       email: "Admin email",
       username: "",
@@ -159,14 +166,76 @@ function adminSettings() {
     selectSettingsTab(tab) {
       if (!['general', 'security'].includes(tab)) tab = 'general';
       this.activeSettingsTab = tab;
-      if (tab !== "security" || this.staffLoaded) return Promise.resolve();
+      if (tab !== "security") return Promise.resolve();
+      const activity = this.loadSecurityActivity();
+      if (this.staffLoaded) return activity;
       if (this._securityRequest) return this._securityRequest;
-      this._securityRequest = (this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount())
+      this._securityRequest = Promise.all([activity, this.isAdmin ? this.loadSecurityAccounts() : this.loadOwnAccount()])
         .finally(() => { this._securityRequest = null; });
       return this._securityRequest;
     },
 
+    loadSecurityActivity() {
+      if (this.securityActivityLoaded) return Promise.resolve();
+      if (this._securityActivityRequest) return this._securityActivityRequest;
+      const revision = ++this._securityActivityRevision;
+      this.securityActivityLoading = true;
+      this.securityActivityError = '';
+      const requested = new URLSearchParams(window.location?.search || '').get('incident');
+      const focusId = /^[1-9]\d*$/.test(requested || '') && Number.isSafeInteger(Number(requested)) ? Number(requested) : null;
+      this._securityActivityRequest = API.getSecurityActivity(focusId).then(response => {
+        if (revision !== this._securityActivityRevision) return;
+        this.securityIncidents = response.incidents || [];
+        this.securityActivityLoaded = true;
+        const id = focusId === null ? '' : String(focusId);
+        if (/^[1-9]\d*$/.test(id || '') && this.securityIncidents.some(incident => String(incident.id) === id)) {
+          this.$nextTick(() => {
+            const target = document.getElementById('security-incident-' + id);
+            target?.focus({ preventScroll: true });
+            target?.scrollIntoView({ block: 'center' });
+          });
+        }
+      }).catch(error => {
+        if (revision === this._securityActivityRevision) this.securityActivityError = error.message || 'Could not load security activity.';
+      }).finally(() => {
+        if (revision === this._securityActivityRevision) {
+          this.securityActivityLoading = false;
+          this._securityActivityRequest = null;
+        }
+      });
+      return this._securityActivityRequest;
+    },
+
+    securityActivityTime(value) {
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-PH', {
+        timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short',
+      }).format(date) + ' PHT' : '';
+    },
+
+    async markSecurityReviewed(incident) {
+      if (this.securityReviewBusyId !== null || incident.status === 'Reviewed') return;
+      this.securityReviewBusyId = incident.id;
+      this.securityActivityError = '';
+      try {
+        const response = await API.reviewSecurityActivity(incident.id);
+        this.securityIncidents = this.securityIncidents.map(item => item.id === incident.id ? response.incident : item);
+        this.$nextTick(() => document.getElementById('security-incident-' + incident.id)?.focus({ preventScroll: true }));
+      } catch (error) { this.securityActivityError = error.message || 'Could not mark this activity as reviewed.'; }
+      finally { this.securityReviewBusyId = null; }
+    },
+
+    secureAccount() {
+      this.activeSettingsTab = 'security';
+      this.$nextTick(() => {
+        const field = document.querySelector(this.isAdmin ? '[x-model="adminPassword.current"]' : '[x-model="staffPassword.current"]');
+        field?.focus({ preventScroll: true });
+        field?.scrollIntoView({ block: 'center' });
+      });
+    },
+
     destroy() {
+      ++this._securityActivityRevision;
       this.stopSecurityVerificationFeedback();
       window.clearInterval(this._staffEmailResendTimer);
       window.clearInterval(this._staffRecoveryResendTimer);

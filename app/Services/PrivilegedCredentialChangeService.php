@@ -244,7 +244,7 @@ class PrivilegedCredentialChangeService
             $this->purposeLabel($change),
             $this->displayName($target),
             $target->role === 'admin',
-        ), $change, 'code_hash');
+        ), $change, 'code_hash', purpose: 'privileged_change');
     }
 
     private function challengePayload(

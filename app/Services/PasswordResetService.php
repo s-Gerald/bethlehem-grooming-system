@@ -23,7 +23,7 @@ class PasswordResetService
 
     public function sendCode(string $email): void
     {
-        app(AuthenticationEmailPolicy::class)->send($email, fn () => $this->sendEligibleCode($email));
+        app(AuthenticationEmailPolicy::class)->send($email, fn () => $this->sendEligibleCode($email), 'password_recovery');
     }
 
     private function sendEligibleCode(string $email): void
@@ -150,7 +150,7 @@ class PasswordResetService
 
             DB::afterCommit(function () use ($user): void {
                 try {
-                    $user->notify(new PasswordChangedNotification);
+                    AuthenticationMailDelivery::queue($user, new PasswordChangedNotification, allowImmediate: false, purpose: 'security_notice');
                 } catch (Throwable $exception) {
                     // The password change is committed even if queueing fails.
                     report($exception);
@@ -323,7 +323,7 @@ class PasswordResetService
             $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
             $setupUrl = $frontendUrl.'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
             // Durable queue insertion and token rotation commit or roll back together.
-            AuthenticationMailDelivery::queue($user, new SetUpStaffPasswordNotification($setupUrl), $request);
+            AuthenticationMailDelivery::queue($user, new SetUpStaffPasswordNotification($setupUrl), $request, purpose: 'privileged_change');
 
             return ['status' => 'sent'];
         }, 3);

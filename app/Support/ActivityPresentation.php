@@ -36,7 +36,8 @@ class ActivityPresentation
         'Inventory' => ['inventory_created', 'inventory_updated', 'inventory_stock_adjusted', 'inventory_archived', 'inventory_restored'],
         'Services' => ['service_created', 'service_updated', 'service_price_updated', 'service_activated', 'service_deactivated'],
         'Staff & Security' => ['staff_created', 'staff_activated', 'staff_deactivated', 'staff_role_changed', 'staff_updated',
-            'email_changed', 'password_changed', 'sign_in', 'sign_in_failed', 'recovery_completed'],
+            'email_changed', 'password_changed', 'sign_in', 'sign_in_failed', 'recovery_completed',
+            'suspicious_verification', 'account_otp_restricted', 'security_incident_reviewed'],
         'System' => ['settings_updated'],
     ];
 

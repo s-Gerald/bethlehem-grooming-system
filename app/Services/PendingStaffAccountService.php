@@ -82,7 +82,7 @@ class PendingStaffAccountService
 
         try {
             AuthenticationMailDelivery::queue($staff, new SetUpStaffPasswordNotification($setupUrl),
-                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail());
+                PasswordResetRequest::query()->where('token_hash', $tokenHash)->firstOrFail(), purpose: 'privileged_change');
         } catch (Throwable $exception) {
             DB::transaction(function () use ($staff, $tokenHash): void {
                 $createdStaff = User::query()

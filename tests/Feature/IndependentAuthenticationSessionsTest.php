@@ -57,6 +57,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $table->timestamp('approved_at')->nullable();
             $table->timestamps();
         });
+        (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
         Schema::create('services', function (Blueprint $table) {
             $table->increments('service_id');
             $table->string('slug');
@@ -92,6 +94,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('account_security_incidents');
         foreach (['remembered_device_credentials', 'remembered_devices', 'services', 'personal_access_tokens', 'login_email_challenges', 'users'] as $table) {
             Schema::dropIfExists($table);
         }

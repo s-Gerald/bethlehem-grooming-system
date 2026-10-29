@@ -11,6 +11,7 @@ use Illuminate\Notifications\Notification;
 class PasswordChangedNotification extends Notification implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
+    use Concerns\TracksAuthenticationMail;
 
     public int $tries = 3;
 

@@ -96,6 +96,8 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->timestamp('approved_at')->nullable()->index();
             $table->timestamps();
         });
+        (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
 
         Schema::create('privileged_credential_changes', function (Blueprint $table): void {
             $table->id();
@@ -128,6 +130,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('account_security_incidents');
         (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->down();
         Schema::dropIfExists('staff_email_changes');
         Schema::dropIfExists('jobs');
@@ -1043,6 +1046,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/status", ['active' => true])
             ->assertUnprocessable();
 
+        $this->travel(61)->seconds();
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/setup-email")
             ->assertOk();
         $notifications = Notification::sent($staff, SetUpStaffPasswordNotification::class);
@@ -1282,6 +1286,7 @@ class AdminStaffAccountManagementTest extends TestCase
         ])->assertOk();
         $corrected = Notification::sent($staff, SetUpStaffPasswordNotification::class)->last();
         parse_str((string) parse_url($corrected->setupUrl, PHP_URL_FRAGMENT), $fragment);
+        $this->travel(61)->seconds();
         $this->postJson("/api/admin/security/staff/{$staff->user_id}/setup-email")->assertOk();
         $this->postJson('/api/staff/password-setup/verify', ['token' => $fragment['token']])->assertUnprocessable();
         $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
@@ -1411,6 +1416,7 @@ class AdminStaffAccountManagementTest extends TestCase
     public function test_durable_queue_insertion_failure_rolls_back_correction_and_resend(): void
     {
         [, $staff, $token] = $this->pendingEmailFixture();
+        $this->travel(61)->seconds();
         (require base_path('database/migrations/0001_01_01_000002_create_jobs_table.php'))->up();
         config(['queue.default' => 'database']);
         Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));

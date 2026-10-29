@@ -16,6 +16,9 @@ class ActivityRecorder
         'consultation_started', 'consultation_completed'];
 
     public const LABELS = [
+        'suspicious_verification' => 'Suspicious verification activity detected',
+        'account_otp_restricted' => 'Account-wide OTP restriction triggered',
+        'security_incident_reviewed' => 'Security incident acknowledged',
         'customer_registered' => 'Customer registered', 'customer_updated' => 'Customer information updated',
         'customer_archived' => 'Customer archived', 'customer_restored' => 'Customer restored',
         'pet_registered' => 'Pet registered', 'pet_updated' => 'Pet information updated',

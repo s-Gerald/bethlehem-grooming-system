@@ -19,22 +19,20 @@ class PasswordResetController extends Controller
             'email' => ['required', 'email', 'max:150'],
         ]);
 
+        $publicStatus = app(\App\Services\AuthenticationEmailPolicy::class)->publicRecoveryRequest($data['email']);
         try {
             $passwordResets->sendCode($data['email']);
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
-            throw $exception;
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException) {
+            // Destination restrictions cannot become a public account-status oracle.
         } catch (Throwable $exception) {
             report($exception);
-            // Public recovery must have the same quota response even when an
-            // eligible account's queue insertion failed.
-            app(\App\Services\AuthenticationEmailPolicy::class)->send($data['email'], fn () => null);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'If eligible, a new code was requested. Check your email.',
             'email' => $passwordResets->maskEmail($data['email']),
-            ...app(\App\Services\AuthenticationEmailPolicy::class)->status($data['email']),
+            ...$publicStatus,
             // Public policy, identical for eligible and ineligible accounts.
             'expires_in' => $passwordResets->ttlMinutes() * 60,
         ], 202);

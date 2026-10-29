@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trustProxies(headers:
+            \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO |
+            \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT);
         // Protected HTML routes use the same sign-in destination as the frontend.
         // API authentication errors still render the JSON 401 response below.
         $middleware->redirectGuestsTo('/pages/client/sign-in.html');
@@ -41,7 +44,9 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->respond(function ($response) {
-            if (request()->is('api/session*', 'api/logout')) $response->headers->set('Cache-Control', 'no-store');
+            if (\App\Http\Middleware\UseAccountSessionCookie::isAuthenticationRequest(request())) {
+                $response->headers->set('Cache-Control', 'no-store');
+            }
             if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*') && $response->getStatusCode() >= 500) {
                 return response()->json(['success' => false, 'message' => request()->is('api/register*')
                     ? "Couldn't create your account. Please try again."

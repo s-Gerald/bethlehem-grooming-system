@@ -314,7 +314,7 @@ class StaffEmailRecoveryService
     {
         EmailVerificationController::assertMailCanBeDelivered();
         return AuthenticationMailDelivery::queue(Notification::route('mail', $recovery->admin_email),
-            new VerifyAdminStaffRecoveryNotification($code, $recovery->id, $recovery->code_expires_at->toIso8601String()), $recovery, 'code_hash', 'code_expires_at');
+            new VerifyAdminStaffRecoveryNotification($code, $recovery->id, $recovery->code_expires_at->toIso8601String()), $recovery, 'code_hash', 'code_expires_at', purpose: 'privileged_change');
     }
 
     private function sendLink(StaffEmailRecovery $recovery, int $actorId): string
@@ -324,7 +324,7 @@ class StaffEmailRecoveryService
         $recovery->update(['token_hash' => hash('sha256', $plain), 'expires_at' => now()->addMinutes(30), 'last_sent_at' => now(), 'expiration_recorded_at' => null]);
         $frontend = rtrim((string) config('app.frontend_url', config('app.url')), '/');
         $receipt = AuthenticationMailDelivery::queue(Notification::route('mail', $recovery->new_email),
-            new StaffEmailRecoveryLinkNotification($frontend.'/pages/client/confirm-email-recovery.html#'.$plain, $recovery->id, $recovery->expires_at->toIso8601String()), $recovery);
+            new StaffEmailRecoveryLinkNotification($frontend.'/pages/client/confirm-email-recovery.html#'.$plain, $recovery->id, $recovery->expires_at->toIso8601String()), $recovery, purpose: 'privileged_change');
         $this->audit($recovery, 'link_issued', $actorId);
         return $receipt;
     }
@@ -346,7 +346,8 @@ class StaffEmailRecoveryService
     private function notice(StaffEmailRecovery $recovery, bool $completed): void
     {
         DB::afterCommit(function () use ($recovery, $completed): void {
-            try { Notification::route('mail', $recovery->current_email)->notify(new StaffEmailRecoveryNotice($completed)); }
+            try { AuthenticationMailDelivery::queue(Notification::route('mail', $recovery->current_email), new StaffEmailRecoveryNotice($completed),
+                allowImmediate: false, purpose: 'security_notice'); }
             catch (Throwable) { Log::warning('Staff recovery notice could not be queued.', ['recovery_id' => $recovery->id]); }
         });
     }

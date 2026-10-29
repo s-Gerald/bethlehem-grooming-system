@@ -23,6 +23,30 @@ use Throwable;
 
 class AdminSecurityController extends Controller
 {
+    public function activity(Request $request)
+    {
+        $data = $request->validate(['incident' => ['nullable', 'integer', 'min:1']]);
+        return response()->json(['success' => true,
+            'incidents' => app(\App\Services\AccountSecurityService::class)->recent($request->user(),
+                isset($data['incident']) ? (string) $data['incident'] : null)])
+            ->header('Cache-Control', 'no-store');
+    }
+
+    public function reviewActivity(Request $request, int $incident)
+    {
+        return DB::transaction(function () use ($request, $incident) {
+            $record = \App\Models\AccountSecurityIncident::where('user_id', $request->user()->getKey())
+                ->whereKey($incident)->lockForUpdate()->firstOrFail();
+            if (! $record->reviewed_at) {
+                $record->update(['reviewed_at' => now()]);
+                app(\App\Services\ActivityRecorder::class)->record('security_incident_reviewed', 'system', 'account',
+                    (string) $request->user()->getKey(), 'Security activity reviewed', [], false, $request->user(),
+                    'security-reviewed:'.$record->getKey().':'.$record->last_occurred_at->timestamp.':'.$record->failure_count);
+            }
+            return response()->json(['success' => true, 'incident' => $record->payload()])->header('Cache-Control', 'no-store');
+        });
+    }
+
     public function accounts(Request $request)
     {
         $admin = $request->user();
@@ -231,6 +255,8 @@ class AdminSecurityController extends Controller
             );
         } catch (ValidationException $exception) {
             throw $exception;
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -342,6 +368,8 @@ class AdminSecurityController extends Controller
             $updated = $staffAccounts->correctEmail($request->user(), $staff, $data['email'], $data['current_password']);
         } catch (ValidationException | \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
             throw $exception;
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
             return response()->json(['success' => false, 'message' => 'The setup email could not be queued. Please try again.'], 503);
@@ -362,6 +390,8 @@ class AdminSecurityController extends Controller
 
         try {
             $result = $passwordResets->resendStaffSetupLink($staff);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -478,6 +508,8 @@ class AdminSecurityController extends Controller
     ) {
         try {
             $result = $credentialChanges->resend($request->user(), $change);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -544,6 +576,8 @@ class AdminSecurityController extends Controller
                 $data['password'] ?? null,
             );
         } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
             report($exception);

@@ -140,6 +140,7 @@ class AuthController extends Controller
             'identifier' => 'required|string',
             'password' => 'required|string',
             'remember' => 'sometimes|boolean',
+            'login_poll_token' => 'sometimes|nullable|string|size:64',
         ]);
 
         $identifier = $data['identifier'];
@@ -271,6 +272,7 @@ class AuthController extends Controller
                 $challenge = $loginChallenges->send(
                     $user,
                     (bool) ($data['remember'] ?? false),
+                    $data['login_poll_token'] ?? null,
                 );
             } catch (HttpResponseException $exception) {
                 throw $exception;
@@ -286,11 +288,12 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'code' => 'login_confirmation_required',
-                'message' => 'Your sign-in email is queued. Enter the code when it arrives.',
+                'message' => $challenge['email_delivery_queued'] ? 'Your sign-in email is queued. Enter the code when it arrives.'
+                    : 'Enter your sign-in code to continue.',
                 'requires_login_confirmation' => true,
-                'email_delivery_queued' => true,
+                'email_delivery_queued' => $challenge['email_delivery_queued'],
                 'email_delivery_token' => $challenge['delivery_token'],
-                ...app(AuthenticationEmailPolicy::class)->status($user->email),
+                ...app(AuthenticationEmailPolicy::class)->status($user->email, 'login'),
                 'login_poll_token' => $challenge['poll_token'],
                 'email' => $user->email,
             ], 202);

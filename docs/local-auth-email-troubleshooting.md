@@ -1,5 +1,7 @@
 # Local authentication email diagnosis — 2026-10-18
 
+> For the October 30 independent-challenge migrations, current security defaults, safe local testing and verification results, see [authentication-security-hardening.md](authentication-security-hardening.md). The diagnosis below is historical; authentication mail still cannot use a logging transport.
+
 ## Confirmed failure
 
 The localhost sign-in error was a database failure before email queue dispatch:

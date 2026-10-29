@@ -1722,6 +1722,10 @@ video {
   flex-shrink: 0;
 }
 
+.grow {
+  flex-grow: 1;
+}
+
 .basis-full {
   flex-basis: 100%;
 }
@@ -2026,6 +2030,11 @@ video {
 .divide-\[\#e6eef7\] > :not([hidden]) ~ :not([hidden]) {
   --tw-divide-opacity: 1;
   border-color: rgb(230 238 247 / var(--tw-divide-opacity, 1));
+}
+
+.divide-\[\#e8f0f8\] > :not([hidden]) ~ :not([hidden]) {
+  --tw-divide-opacity: 1;
+  border-color: rgb(232 240 248 / var(--tw-divide-opacity, 1));
 }
 
 .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
@@ -4346,6 +4355,10 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   --tw-ring-color: rgb(255 255 255 / 0.7);
 }
 
+.focus-visible\:rounded-xl:focus-visible {
+  border-radius: 0.75rem;
+}
+
 .focus-visible\:bg-\[\#eaf4fb\]:focus-visible {
   --tw-bg-opacity: 1;
   background-color: rgb(234 244 251 / var(--tw-bg-opacity, 1));
@@ -4379,6 +4392,10 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 
 .focus-visible\:outline-offset-2:focus-visible {
   outline-offset: 2px;
+}
+
+.focus-visible\:outline-offset-4:focus-visible {
+  outline-offset: 4px;
 }
 
 .focus-visible\:outline-\[\#315b7e\]:focus-visible {

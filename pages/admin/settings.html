@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2" />
+    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
     <link rel="stylesheet" href="../../css/components/toast.css" />
     <style>
@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
+    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030" />
+    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -132,8 +132,8 @@
         </div>
       </aside>
       <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
+    <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
+      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -455,6 +455,36 @@
               class="space-y-6"
               @keydown.escape.window="closeSecurityModals()"
             >
+              <section aria-labelledby="recent-security-title" class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
+                <div class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6">
+                  <h3 id="recent-security-title" class="text-xl font-bold text-[#1f3850]">Recent security activity</h3>
+                </div>
+                <div class="px-5 py-4 lg:px-6" :aria-busy="securityActivityLoading">
+                  <p x-show="securityActivityLoading &amp;&amp; !securityActivityLoaded" class="text-sm text-slate-500" role="status">Loading security activity…</p>
+                  <p x-cloak x-show="securityActivityError" class="admin-load-error" role="alert"><span x-text="securityActivityError"></span><button x-show="!securityActivityLoaded" type="button" @click="loadSecurityActivity()">Retry</button></p>
+                  <p x-cloak x-show="securityActivityLoaded &amp;&amp; !securityIncidents.length" class="text-sm text-slate-500">No recent security activity.</p>
+                  <ul class="divide-y divide-[#e8f0f8]">
+                    <template x-for="incident in securityIncidents" :key="incident.id">
+                      <li :id="'security-incident-' + incident.id" tabindex="-1" class="py-4 first:pt-0 last:pb-0 focus-visible:rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#315b7e]">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div class="min-w-0">
+                            <h4 class="font-semibold text-[#1f3850]" x-text="incident.title"></h4>
+                            <time class="mt-1 block text-sm text-slate-500" :datetime="incident.last_occurred_at" x-text="securityActivityTime(incident.last_occurred_at)"></time>
+                            <p x-show="incident.failure_count > 0" class="mt-1 text-sm text-slate-600" x-text="incident.failure_count + ' unsuccessful verification attempts'"></p>
+                            <p x-show="incident.type === 'multiple_incomplete_verifications'" class="mt-1 text-sm text-slate-600">Verification was not completed across multiple network sources.</p>
+                          </div>
+                          <span class="shrink-0 text-sm font-semibold text-[#315b7e]" x-text="incident.status"></span>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                          <button x-show="incident.status !== 'Reviewed'" type="button" @click="markSecurityReviewed(incident)" :disabled="securityReviewBusyId !== null" class="whitespace-nowrap rounded-xl border border-[#d7e3ef] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60" x-text="securityReviewBusyId === incident.id ? 'Saving…' : 'Mark as reviewed'">Mark as reviewed</button>
+                          <button type="button" @click="secureAccount()" :disabled="!staffLoaded || staffLoading" class="whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-60">Secure account</button>
+                        </div>
+                      </li>
+                    </template>
+                  </ul>
+                  <p x-cloak x-show="securityActivityLoaded &amp;&amp; securityIncidents.length" class="sr-only" role="status" x-text="securityIncidents.filter(incident => incident.status === 'Needs review').length + ' security incidents need review'"></p>
+                </div>
+              </section>
               <admin-loader page x-cloak x-show="staffLoading &amp;&amp; !staffLoaded"></admin-loader>
               <p x-cloak x-show="!staffLoaded &amp;&amp; !staffLoading &amp;&amp; (staffError || staffPassword.error)" class="admin-load-error" role="alert"><span x-text="staffError || staffPassword.error"></span><button type="button" @click="selectSettingsTab('security')">Retry</button></p>
               <div x-cloak x-show="staffLoaded" :aria-busy="staffLoading">
@@ -1300,7 +1330,7 @@
     <script src="../../scripts/components/success-toast.js"></script>
     <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2"></script>
+    <script src="../../scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

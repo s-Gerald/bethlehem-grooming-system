@@ -14,6 +14,31 @@ use Tests\TestCase;
 
 class AdminCredentialChangeTest extends TestCase
 {
+    public function test_login_challenge_forward_migration_preserves_expiry_and_independent_verification(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('admin', 'admin@gmail.com', '09170009999', 'Admin');
+        $token = str_repeat('a', 64);
+        $first = \App\Models\LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+            'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+        $expiry = $first->expires_at->copy();
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql') {
+            // Reproduce the older deployed first-TIMESTAMP schema without ever
+            // changing an application database (setUp enforces a disposable name).
+            \Illuminate\Support\Facades\DB::statement('ALTER TABLE login_email_challenges MODIFY expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+        }
+        (require database_path('migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        $first->increment('failed_attempts');
+        $this->assertSame($expiry->timestamp, $first->fresh()->expires_at->timestamp, 'An attempt-count update must not change OTP expiry.');
+        $second = app(\App\Services\LoginEmailChallengeService::class)->send($user, false);
+        $code = Notification::sent($user, \App\Notifications\ConfirmLoginNotification::class)->last()->code;
+        $this->assertDatabaseCount('login_email_challenges', 2);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '123456'])->assertOk();
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $second['poll_token'], 'code' => $code])->assertOk();
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '123456'])->assertUnprocessable();
+        $this->assertDatabaseCount('login_email_challenges', 0);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -90,10 +115,13 @@ class AdminCredentialChangeTest extends TestCase
         (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->up();
         (require database_path('migrations/2026_08_19_000002_create_login_email_challenges_table.php'))->up();
         (require database_path('migrations/2026_08_19_000003_add_polling_to_login_email_challenges_table.php'))->up();
+        (require database_path('migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        (require database_path('migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('account_security_incidents');
         (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->down();
         Schema::dropIfExists('staff_email_changes');
         Schema::dropIfExists('login_email_challenges');
@@ -258,12 +286,12 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson("/api/admin/security/credential-changes/{$change->id}/resend")
             ->assertTooManyRequests()->assertHeader('Retry-After');
 
-        $change->update(['last_sent_at' => now()->subMinutes(2)]);
+        $this->travel(61)->seconds();
         $this->postJson("/api/admin/security/credential-changes/{$change->id}/resend")
             ->assertOk()
             ->assertJsonPath('purpose', 'Admin password change')
             ->assertJsonPath('message', 'New code requested. Check your email.')
-            ->assertJsonPath('resend_after', 600)->assertJsonStructure(['email_delivery_token']);
+            ->assertJsonPath('resend_after', 539)->assertJsonStructure(['email_delivery_token']);
 
         $this->assertNotSame($oldHash, $change->fresh()->code_hash);
         Notification::assertSentToTimes(
@@ -378,6 +406,7 @@ class AdminCredentialChangeTest extends TestCase
         $change->update(['confirmed_at' => now(), 'code_hash' => null]);
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+        $this->travel(61)->seconds();
         $service->request($admin, $admin, 'AnotherAdmin', null);
         $this->travel(11)->minutes();
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
@@ -960,6 +989,7 @@ class AdminCredentialChangeTest extends TestCase
             $secondUser->update(['staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
             $this->useEmailToken($secondUser->createToken('staff')->plainTextToken);
             $secondId = $this->startEmailChange()['id'];
+            $this->travel(61)->seconds();
             $this->postJson("/api/settings/security/email-change/{$secondId}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
             $secondCode = $this->latestEmailCode();
         }
@@ -1126,6 +1156,7 @@ class AdminCredentialChangeTest extends TestCase
             $claimant->update(['staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']);
             $this->useEmailToken($claimant->createToken('staff')->plainTextToken);
             $claimId = $this->startEmailChange()['id'];
+            $this->travel(61)->seconds();
             $this->postJson("/api/settings/security/email-change/{$claimId}/confirm", ['stage' => 'current', 'code' => $this->latestEmailCode()])->assertOk();
             $claimArguments = ['claim', $claimant->getKey(), $claimant->tokens()->firstOrFail()->getKey(), $claimId, $this->latestEmailCode(), $grant];
             $this->useEmailToken($adminToken);
@@ -1221,7 +1252,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
         $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
-        app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
+        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertAccepted();
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         $this->travel(61)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode('new@gmail.com');
@@ -1246,7 +1277,7 @@ class AdminCredentialChangeTest extends TestCase
         $staleChallenge->save();
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertForbidden();
         $this->travel(61)->seconds();
-        app(\App\Services\PasswordResetService::class)->sendCode('current@gmail.com');
+        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertAccepted();
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         try { app(\App\Services\AccountSessionService::class)->issue($staff); $this->fail('Hold allowed session issuance.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403, $error->getStatusCode()); }

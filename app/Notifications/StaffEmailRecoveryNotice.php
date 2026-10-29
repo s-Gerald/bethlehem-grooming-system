@@ -11,6 +11,7 @@ use Illuminate\Notifications\Notification;
 class StaffEmailRecoveryNotice extends Notification implements ShouldQueue, ShouldBeEncrypted
 {
     use Queueable;
+    use Concerns\TracksAuthenticationMail;
     public int $tries = 3;
     public function __construct(public readonly bool $completed)
     {

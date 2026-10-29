@@ -8,6 +8,7 @@ use App\Services\LoginEmailChallengeService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 
 class LoginEmailChallengeController extends Controller
@@ -40,6 +41,7 @@ class LoginEmailChallengeController extends Controller
 
     public function confirm(Request $request)
     {
+        app(\App\Services\AuthenticationEmailPolicy::class)->assertSharedStore();
         $data = $request->validate([
             'poll_token' => ['required', 'string', 'size:64'],
             'code' => ['required', 'string', 'regex:/^\d{6}$/'],
@@ -51,6 +53,12 @@ class LoginEmailChallengeController extends Controller
             return $this->attemptsExceededResponse($attemptKey);
         }
 
+        $ipLock = Cache::lock('login-code-ip-lock:'.hash('sha256', (string) $request->ip()), 30);
+        if (! $ipLock->get()) {
+            return response()->json(['success' => false, 'code' => 'login_code_busy', 'message' => 'Verification is busy. Try again.', 'retry_after' => 1], 429)
+                ->header('Retry-After', '1')->header('Cache-Control', 'no-store');
+        }
+        try {
         return DB::transaction(function () use ($data, $pollTokenHash, $attemptKey) {
             // Match issuance/resend lock order: account, then challenge/token.
             $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
@@ -95,8 +103,12 @@ class LoginEmailChallengeController extends Controller
             }
 
             LoginEmailChallengeService::assertAttemptBudget($user);
+            if ($challenge->failed_attempts >= LoginEmailChallengeService::maxAttempts()) {
+                return $this->attemptsExceededResponse($attemptKey, $challenge);
+            }
             $expectedHash = hash_hmac('sha256', $data['code'], $data['poll_token']);
             if (! hash_equals($challenge->token_hash, $expectedHash)) {
+                $challenge->increment('failed_attempts');
                 foreach (LoginEmailChallengeService::attemptKeys($user) as $key => $limit) {
                     RateLimiter::hit($key, (int) config('authentication.otp_attempt_window', 900));
                 }
@@ -104,6 +116,7 @@ class LoginEmailChallengeController extends Controller
                     1,
                     $challenge->expires_at->getTimestamp() - now()->getTimestamp(),
                 ));
+                app(\App\Services\AccountSecurityService::class)->failed($user);
 
                 // Return, rather than throwing, so database-backed counters
                 // commit with this failed attempt instead of rolling back.
@@ -120,14 +133,20 @@ class LoginEmailChallengeController extends Controller
                 ], 422);
             }
 
-            RateLimiter::clear($attemptKey);
-
             // Consume atomically with session issuance. A replay cannot rotate
             // the customer's current session or create duplicate sessions.
             $challenge->delete();
 
-            return $this->authenticatedResponse($user, $challenge->remember_me);
+            $response = $this->authenticatedResponse($user, $challenge->remember_me);
+            RateLimiter::clear($attemptKey);
+            foreach (LoginEmailChallengeService::attemptKeys($user) as $key => $limit) {
+                if (! str_starts_with($key, 'login-code-ip:')) RateLimiter::clear($key);
+            }
+            return $response;
         });
+        } finally {
+            $ipLock->release();
+        }
     }
 
     public function complete(Request $request)
@@ -188,14 +207,14 @@ class LoginEmailChallengeController extends Controller
         ], 403);
     }
 
-    private function attemptsExceededResponse(string $attemptKey)
+    private function attemptsExceededResponse(string $attemptKey, ?LoginEmailChallenge $challenge = null)
     {
-        $seconds = max(1, RateLimiter::availableIn($attemptKey));
+        $seconds = max(1, RateLimiter::availableIn($attemptKey), $challenge ? $challenge->expires_at->timestamp - now()->timestamp : 0);
 
         return response()->json([
             'success' => false,
             'code' => 'login_code_locked',
-            'message' => 'Too many attempts. Sign in again.',
+            'message' => 'Too many incorrect codes. Sign in again.',
             'retry_after' => $seconds,
         ], 429)->header('Retry-After', (string) $seconds);
     }
@@ -219,6 +238,7 @@ class LoginEmailChallengeController extends Controller
             'session_established' => true,
             'token' => $token,
             'remember_me' => $rememberMe,
+            'security_incident_id' => app(\App\Services\AccountSecurityService::class)->unreviewedId($user),
             'user' => [
                 'user_id' => $user->user_id,
                 'first_name' => $user->first_name,

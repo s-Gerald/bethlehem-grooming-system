@@ -199,14 +199,22 @@ async function testEveryRoleHonorsTheServerConfirmedCheckbox() {
     for (const remember of [false, true]) {
       const browser = createBrowser({session: {pending_login_poll_token: 'pending'},
         fetchImpl: async url => jsonResponse(200, url.endsWith('/complete') ? {} : {
-          token: '201|cookie', remember_me: remember, user: {user_id: 10, role},
+          token: '201|cookie', remember_me: remember, security_incident_id: 7, user: {user_id: 10, role},
         })});
       await browser.API.confirmLoginCode('012345');
       const key = role === 'customer' ? 'customer_token' : 'admin_token';
       assert.equal(browser[remember ? 'localStorage' : 'sessionStorage'].getItem(key), '201|cookie');
       assert.equal(browser[remember ? 'sessionStorage' : 'localStorage'].getItem(key), null);
+      assert.equal(browser.API.getSecurityAlert(), role === 'customer' ? null : 7);
     }
   }
+}
+
+async function testTemporaryVerificationThrottlingPreservesTheBrowserChallenge() {
+  const browser = createBrowser({session: {pending_login_poll_token: 'pending-challenge'},
+    fetchImpl: async () => jsonResponse(429, {code: 'login_code_busy', retry_after: 1})});
+  await assert.rejects(browser.API.confirmLoginCode('123456'), error => error.status === 429);
+  assert.equal(browser.sessionStorage.getItem('pending_login_poll_token'), 'pending-challenge');
 }
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -2205,6 +2213,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testInitialCustomerBrowserSessionMarker();
   await testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement();
   await testLoginCodeHonorsRememberMeStorage();
+  await testTemporaryVerificationThrottlingPreservesTheBrowserChallenge();
   await testProfileNameLivesAndDiesWithTheSession();
   testProfileNameIsAppliedWithoutWaitingForDomContentLoaded();
   await testCustomerPasswordStepDoesNotCreateBrowserSession();

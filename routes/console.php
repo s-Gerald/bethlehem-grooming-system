@@ -43,12 +43,11 @@ Schedule::call(function (): void {
     ->withoutOverlapping();
 
 Schedule::call(function (): void {
-    LoginEmailChallenge::query()
-        ->where('expires_at', '<', now())
-        ->delete();
+    LoginEmailChallenge::pruneExpired();
+    \App\Models\AccountSecurityIncident::pruneExpired();
 })
     ->name('login-email-challenges:prune')
-    ->hourly()
+    ->everyFiveMinutes()
     ->withoutOverlapping();
 
 Artisan::command('qr-payments:prune-orphans', function () {

@@ -93,7 +93,8 @@ class StaffEmailChangeService
                 $oldEmail = $user->email;
                 app(AccountEmailChangeService::class)->complete($user, $change->new_email);
                 DB::afterCommit(function () use ($oldEmail, $user): void {
-                    try { Notification::route('mail', $oldEmail)->notify(new StaffEmailChangedNotification); }
+                    try { AuthenticationMailDelivery::queue(Notification::route('mail', $oldEmail), new StaffEmailChangedNotification,
+                        allowImmediate: false, purpose: 'security_notice'); }
                     catch (Throwable) { Log::warning('Staff email change notification could not be queued.', ['user_id' => $user->getKey()]); }
                 });
                 return ['status' => 'completed', 'completed' => true];
@@ -198,6 +199,6 @@ class StaffEmailChangeService
         EmailVerificationController::assertMailCanBeDelivered();
         $email = $change->stage === 'current' ? $change->current_email : $change->new_email;
         return AuthenticationMailDelivery::queue(Notification::route('mail', $email),
-            new VerifyStaffEmailChangeNotification($code, $change->stage, $change->id, $change->code_expires_at->toIso8601String()), $change, 'code_hash', 'code_expires_at');
+            new VerifyStaffEmailChangeNotification($code, $change->stage, $change->id, $change->code_expires_at->toIso8601String()), $change, 'code_hash', 'code_expires_at', purpose: 'privileged_change');
     }
 }

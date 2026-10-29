@@ -833,6 +833,41 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.canAssistStaffEmail, true);
   settings.staffDetailsModal.staff.active = false;
   assert.equal(settings.canAssistStaffEmail, false);
+  settings = adminSettings();
+  settings.$nextTick = callback => callback();
+  settings.staffLoaded = true;
+  settings.isAdmin = true;
+  let activityReads = 0;
+  const reviewed = [];
+  API.getSecurityActivity = async () => { activityReads++; return { incidents: [
+    { id: 1, status: 'Needs review', failure_count: 3 }, { id: 2, status: 'Needs review', failure_count: 4 },
+  ] }; };
+  API.reviewSecurityActivity = async id => { reviewed.push(id); return { incident: { id, status: 'Reviewed', failure_count: 3 } }; };
+  await settings.loadSecurityActivity();
+  await settings.loadSecurityActivity();
+  assert.equal(activityReads, 1, 'Reopening Security reuses loaded activity without polling.');
+  await settings.markSecurityReviewed(settings.securityIncidents[0]);
+  assert.deepEqual(reviewed, [1]);
+  assert.equal(settings.securityIncidents[0].status, 'Reviewed');
+  assert.equal(settings.securityIncidents[1].status, 'Needs review');
+  const passwordTargets = [];
+  document.querySelector = selector => ({ focus() { passwordTargets.push(selector); }, scrollIntoView() {} });
+  settings.secureAccount();
+  assert.deepEqual(passwordTargets, ['[x-model="adminPassword.current"]']);
+  settings.isAdmin = false;
+  settings.secureAccount();
+  assert.equal(passwordTargets[1], '[x-model="staffPassword.current"]');
+  assert.equal(settings.securityVerification.open, false, 'Secure account focuses the existing form without authorizing a change.');
+  window.location = { search: '?tab=security&incident=2' };
+  document.getElementById = id => ({ focus() { focusedFields.push(id); }, scrollIntoView() {} });
+  API.getSecurityActivity = async id => {
+    assert.equal(id, 2, 'The same bounded request includes the selected incident.');
+    return { incidents: [{ id: 2, status: 'Needs review' }] };
+  };
+  settings = adminSettings();
+  settings.$nextTick = callback => callback();
+  await settings.loadSecurityActivity();
+  assert.equal(focusedFields.at(-1), 'security-incident-2');
   console.log("Admin security settings regression tests passed.");
 })().catch((error) => {
   console.error(error);

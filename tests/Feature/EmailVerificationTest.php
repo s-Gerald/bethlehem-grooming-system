@@ -19,6 +19,302 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_security_activity_focus_keeps_an_older_owned_incident_in_the_bounded_list(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        foreach (range(0, 20) as $days) {
+            $incident = \App\Models\AccountSecurityIncident::create(['user_id' => $user->getKey(),
+                'incident_day' => now()->subDays($days)->toDateString(), 'first_occurred_at' => now()->subDays($days),
+                'last_occurred_at' => now()->subDays($days), 'reviewed_at' => $days === 20 ? null : now()]);
+        }
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+        $this->getJson('/api/settings/security/activity?incident='.$incident->getKey())->assertOk()
+            ->assertJsonCount(20, 'incidents')->assertJsonPath('incidents.0.id', $incident->getKey());
+        $foreign = \App\Models\AccountSecurityIncident::create(['user_id' => User::factory()->create()->getKey(),
+            'incident_day' => now()->toDateString(), 'first_occurred_at' => now(), 'last_occurred_at' => now()]);
+        $this->getJson('/api/settings/security/activity?incident='.$foreign->getKey())->assertOk()
+            ->assertJsonMissing(['id' => $foreign->getKey()]);
+    }
+
+    public function test_security_cleanup_is_bounded_and_preserves_unexpired_challenges_and_recent_incidents(): void
+    {
+        $user = User::factory()->create();
+        foreach ([-2, -1, 10] as $i => $minutes) {
+            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', 'poll-'.$i),
+                'token_hash' => hash('sha256', 'code-'.$i), 'expires_at' => now()->addMinutes($minutes)]);
+        }
+        foreach ([92, 91, 0] as $days) {
+            \App\Models\AccountSecurityIncident::create(['user_id' => $user->getKey(), 'incident_day' => now()->subDays($days)->toDateString(),
+                'first_occurred_at' => now()->subDays($days), 'last_occurred_at' => now()->subDays($days)]);
+        }
+        $this->assertSame(1, LoginEmailChallenge::pruneExpired(1));
+        $this->assertDatabaseCount('login_email_challenges', 2);
+        $this->assertSame(1, \App\Models\AccountSecurityIncident::pruneExpired(1));
+        $this->assertDatabaseCount('account_security_incidents', 2);
+        $this->assertSame(1, LoginEmailChallenge::pruneExpired());
+        $this->assertSame(1, \App\Models\AccountSecurityIncident::pruneExpired());
+        $this->assertTrue(LoginEmailChallenge::sole()->expires_at->isFuture());
+        $this->assertTrue(\App\Models\AccountSecurityIncident::sole()->last_occurred_at->isAfter(now()->subDay()));
+    }
+
+    public function test_warning_mail_is_encrypted_durable_and_contains_no_authentication_material(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create(['role' => 'admin']);
+        $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $code = unserialize(app('encrypter')->decrypt($command))->notification->code;
+        foreach (range(1, 3) as $i) {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $login->json('login_poll_token'),
+                'code' => $code === '000000' ? '111111' : '000000'])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('jobs', 2);
+        $warning = json_decode(DB::table('jobs')->orderByDesc('id')->value('payload'), true)['data']['command'];
+        $this->assertStringNotContainsString('UnusualSignInActivityNotification', $warning);
+        $this->assertInstanceOf(\App\Notifications\UnusualSignInActivityNotification::class,
+            unserialize(app('encrypter')->decrypt($warning))->notification);
+        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(2, $messages);
+        $mail = $messages[1]->getOriginalMessage();
+        $this->assertSame('Unusual sign-in activity - Bethlehem Animal Clinic', $mail->getSubject());
+        $this->assertStringNotContainsString($code, $mail->getHtmlBody());
+        $this->assertStringNotContainsString($login->json('login_poll_token'), $mail->getHtmlBody());
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_database_cache_preserves_failure_budgets_and_serializes_source_contention(): void
+    {
+        (require base_path('database/migrations/0001_01_01_000001_create_cache_table.php'))->up();
+        config(['cache.default' => 'database']);
+        $this->app->forgetInstance(\Illuminate\Cache\RateLimiter::class);
+        RateLimiter::clearResolvedInstance('cache.rate_limiter');
+        $user = User::factory()->create();
+        $token = str_repeat('d', 64);
+        $challenge = LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+            'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+        $lock = Cache::lock('login-code-ip-lock:'.hash('sha256', '127.0.0.1'), 30);
+        $this->assertTrue($lock->get());
+        try {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])
+                ->assertTooManyRequests()->assertHeader('Retry-After', '1')->assertJsonPath('code', 'login_code_busy');
+            $this->assertSame(0, $challenge->fresh()->failed_attempts);
+        } finally { $lock->release(); }
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])->assertUnprocessable();
+        app('cache')->forgetDriver('database');
+        $this->assertSame(1, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '123456'])->assertOk();
+        $this->assertSame(0, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->assertSame(1, RateLimiter::attempts('login-code-ip:'.hash('sha256', '127.0.0.1')));
+    }
+
+    public function test_security_activity_requires_fully_authenticated_privileged_access(): void
+    {
+        $response = $this->getJson('/api/settings/security/activity')->assertUnauthorized();
+        $this->assertTrue($response->headers->hasCacheControlDirective('no-store'));
+        \Laravel\Sanctum\Sanctum::actingAs(User::factory()->create());
+        $this->getJson('/api/settings/security/activity')->assertForbidden();
+        $this->postJson('/api/settings/security/activity/1/review')->assertForbidden();
+    }
+
+    public function test_warning_queue_failure_preserves_the_incident_and_allows_a_valid_otp(): void
+    {
+        $this->useDatabaseMailQueue();
+        $user = User::factory()->create(['role' => 'admin']);
+        $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $code = unserialize(app('encrypter')->decrypt($command))->notification->code;
+        DB::statement("CREATE TRIGGER reject_security_warning BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        foreach (range(1, 3) as $i) {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $login->json('login_poll_token'),
+                'code' => $code === '000000' ? '111111' : '000000'])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('account_security_incidents', 1);
+        $this->assertDatabaseCount('jobs', 1);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $login->json('login_poll_token'), 'code' => $code])
+            ->assertOk()->assertJsonPath('security_incident_id', \App\Models\AccountSecurityIncident::sole()->id);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertSame(3, RateLimiter::attempts('login-code-ip:'.hash('sha256', '127.0.0.1')));
+    }
+
+    public function test_daily_incidents_do_not_bypass_the_rolling_warning_deduplication(): void
+    {
+        Notification::fake();
+        $this->travelTo(now()->utc()->setTime(23, 59));
+        $user = User::factory()->create(['role' => 'admin']);
+        foreach (['a', 'b'] as $index => $letter) {
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.($index + 1)]);
+            $token = str_repeat($letter, 64);
+            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+                'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+            foreach (range(1, 3) as $i) $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])->assertUnprocessable();
+            $this->travel(2)->minutes();
+        }
+        $this->assertDatabaseCount('account_security_incidents', 2);
+        Notification::assertSentToTimes($user, \App\Notifications\UnusualSignInActivityNotification::class, 1);
+    }
+
+    public function test_untrusted_forwarding_headers_cannot_evade_the_account_source_budget(): void
+    {
+        $user = User::factory()->create();
+        foreach (range(1, 6) as $i) {
+            $token = str_pad((string) $i, 64, 'a');
+            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+                'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+            $this->withHeader('X-Forwarded-For', '192.0.2.'.$i)->postJson('/api/email/login/confirm', [
+                'poll_token' => $token, 'code' => $i === 6 ? '123456' : '000000'])->assertStatus($i >= 5 ? 429 : 422);
+        }
+        $this->assertSame(5, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_independent_challenge_migration_can_resume_without_replacing_existing_challenges(): void
+    {
+        $user = User::factory()->create();
+        LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', 'one'),
+            'token_hash' => hash('sha256', 'code-one'), 'expires_at' => now()->addMinutes(10)]);
+        $before = LoginEmailChallenge::sole()->getAttributes();
+        (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', 'two'),
+            'token_hash' => hash('sha256', 'code-two'), 'expires_at' => now()->addMinutes(10)]);
+        $this->assertDatabaseCount('login_email_challenges', 2);
+        $this->assertSame($before['token_hash'], LoginEmailChallenge::find($before['id'])->token_hash);
+    }
+
+    public function test_repeated_otp_failures_create_one_private_incident_and_one_warning_without_revoking_sessions(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['role' => 'admin']);
+        $active = $user->createToken('existing-session')->accessToken;
+        $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+        $wrong = $this->loginCodeSentTo($user) === '000000' ? '111111' : '000000';
+        $payload = ['poll_token' => $login->json('login_poll_token'), 'code' => $wrong];
+        $this->postJson('/api/email/login/confirm', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('account_security_incidents', 0);
+        foreach (range(2, 4) as $i) $this->postJson('/api/email/login/confirm', $payload)->assertUnprocessable();
+        $incident = \App\Models\AccountSecurityIncident::sole();
+        $this->assertSame(4, $incident->failure_count);
+        $this->assertNull($incident->reviewed_at);
+        $this->assertNull($active->fresh()->replaced_at);
+        Notification::assertSentToTimes($user, \App\Notifications\UnusualSignInActivityNotification::class, 1);
+        $other = User::factory()->create(['role' => 'staff']);
+        \Laravel\Sanctum\Sanctum::actingAs($other);
+        $this->getJson('/api/settings/security/activity')->assertOk()->assertJsonCount(0, 'incidents');
+        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/review')->assertNotFound();
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+        $this->getJson('/api/settings/security/activity')->assertOk()->assertJsonPath('incidents.0.failure_count', 4);
+        $this->postJson('/api/settings/security/activity/'.$incident->getKey().'/review')->assertOk();
+        $this->assertNotNull($incident->fresh()->reviewed_at);
+        $this->assertSame(4, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->assertNull($active->fresh()->replaced_at);
+        $good = Notification::sent($user, ConfirmLoginNotification::class)->last()->code;
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $login->json('login_poll_token'), 'code' => $good])->assertOk();
+        $token = str_repeat('n', 64);
+        LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+            'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => '000000'])->assertUnprocessable();
+        $this->assertSame(5, $incident->fresh()->failure_count, 'A successful sign-in clears guessing budgets, not incident history.');
+        $this->assertNull($incident->fresh()->reviewed_at);
+        Notification::assertSentToTimes($user, \App\Notifications\UnusualSignInActivityNotification::class, 1);
+    }
+
+    public function test_twenty_distributed_failures_exhaust_the_account_budget_without_resend_reset(): void
+    {
+        Notification::fake();
+        config(['authentication.email.quarter_hour' => 30, 'authentication.email.hour' => 30,
+            'authentication.email.day' => 30, 'authentication.email.purposes.login.quarter_hour' => 30]);
+        $user = User::factory()->create();
+        $firstToken = null;
+        foreach (range(1, 4) as $source) {
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.$source]);
+            $this->travel(61)->seconds();
+            $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+            $token = $login->json('login_poll_token');
+            $firstToken ??= $token;
+            $wrong = $this->loginCodeSentTo($user) === '000000' ? '111111' : '000000';
+            foreach (range(1, 5) as $i) {
+                $this->postJson('/api/email/login/confirm', ['poll_token' => $token, 'code' => $wrong])->assertStatus($i === 5 ? 429 : 422);
+            }
+        }
+        $this->assertSame(20, RateLimiter::attempts('login-code-account:'.$user->getKey()));
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1']);
+        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertTooManyRequests()->assertHeader('Retry-After');
+        $this->postJson('/api/email/login/resend', ['poll_token' => $firstToken])->assertTooManyRequests();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->travel(901)->seconds();
+        $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'password'])->assertAccepted();
+    }
+
+    public function test_outstanding_challenge_limit_rejects_new_work_without_invalidating_a_valid_code(): void
+    {
+        Notification::fake();
+        config(['authentication.outstanding_challenges' => 1]);
+        $user = User::factory()->create();
+        $payload = ['identifier' => $user->email, 'password' => 'password'];
+        $login = $this->postJson('/api/sign-in', $payload)->assertAccepted();
+        $code = $this->loginCodeSentTo($user);
+        $this->travel(61)->seconds();
+        $this->postJson('/api/sign-in', $payload)->assertTooManyRequests()->assertJsonPath('code', 'login_challenges_limited');
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $login->json('login_poll_token'), 'code' => $code])->assertOk();
+    }
+
+    public function test_independent_login_challenges_survive_other_browser_issuance_and_resend(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['role' => 'admin']);
+        $payload = ['identifier' => $user->email, 'password' => 'password'];
+        $first = $this->postJson('/api/sign-in', $payload)->assertAccepted();
+        $firstCode = $this->loginCodeSentTo($user);
+        $this->travel(61)->seconds();
+        $second = $this->postJson('/api/sign-in', $payload)->assertAccepted();
+        $this->assertDatabaseCount('login_email_challenges', 2);
+        $this->assertNotSame($first->json('login_poll_token'), $second->json('login_poll_token'));
+        $this->travel(61)->seconds();
+        $this->postJson('/api/email/login/resend', ['poll_token' => $second->json('login_poll_token')])->assertOk();
+        $this->postJson('/api/email/login/confirm', ['poll_token' => $first->json('login_poll_token'), 'code' => $firstCode])
+            ->assertOk()->assertJsonPath('approved', true);
+        $this->assertDatabaseCount('login_email_challenges', 1);
+    }
+
+    public function test_password_proven_browser_resumes_only_its_own_challenge_without_another_email(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create();
+        $payload = ['identifier' => $user->email, 'password' => 'password'];
+        $first = $this->postJson('/api/sign-in', $payload)->assertAccepted();
+        $before = LoginEmailChallenge::sole()->getAttributes();
+        Notification::fake();
+        $this->postJson('/api/sign-in', [...$payload, 'login_poll_token' => $first->json('login_poll_token')])
+            ->assertAccepted()->assertJsonPath('login_poll_token', $first->json('login_poll_token'))
+            ->assertJsonPath('email_delivery_queued', false);
+        Notification::assertNothingSent();
+        $this->assertSame($before, LoginEmailChallenge::sole()->getAttributes());
+        $this->postJson('/api/sign-in', [...$payload, 'password' => 'wrong', 'login_poll_token' => $first->json('login_poll_token')])
+            ->assertUnauthorized()->assertJsonMissingPath('login_poll_token');
+    }
+
+    public function test_five_source_failures_leave_another_source_challenge_usable(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create(['role' => 'admin']);
+        $payload = ['identifier' => $user->email, 'password' => 'password'];
+        $first = $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1'])->postJson('/api/sign-in', $payload)->assertAccepted();
+        $this->travel(61)->seconds();
+        $second = $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.2'])->postJson('/api/sign-in', $payload)->assertAccepted();
+        $code = $this->loginCodeSentTo($user);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1']);
+        foreach (range(1, 5) as $i) {
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $first->json('login_poll_token'), 'code' => 'wrong0'])
+                ->assertUnprocessable(); // Malformed input does not spend an OTP guess.
+            $this->postJson('/api/email/login/confirm', ['poll_token' => $first->json('login_poll_token'),
+                'code' => $this->loginCodeSentTo($user) === '000000' ? '111111' : '000000'])->assertStatus($i === 5 ? 429 : 422);
+            $this->travel(7)->seconds();
+        }
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.2'])
+            ->postJson('/api/email/login/confirm', ['poll_token' => $second->json('login_poll_token'), 'code' => $code])->assertOk();
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1'])->postJson('/api/sign-in', $payload)->assertTooManyRequests();
+    }
+
     public function test_original_browser_can_choose_review_without_replacing_or_consuming_the_link(): void
     {
         Notification::fake();
@@ -291,6 +587,8 @@ class EmailVerificationTest extends TestCase
             $table->timestamp('approved_at')->nullable()->index();
             $table->timestamps();
         });
+        (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
+        (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
 
         Schema::create('personal_access_tokens', function (Blueprint $table) {
             $table->id();
@@ -314,6 +612,7 @@ class EmailVerificationTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('account_security_incidents');
         Schema::dropIfExists('remembered_device_credentials');
         Schema::dropIfExists('remembered_devices');
         Schema::dropIfExists('jobs');
@@ -1609,7 +1908,7 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
-    public function test_login_email_requests_are_throttled_before_replacing_the_challenge(): void
+    public function test_login_email_requests_are_throttled_before_creating_another_challenge(): void
     {
         Notification::fake();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
@@ -2270,14 +2569,28 @@ class EmailVerificationTest extends TestCase
         $this->assertEquals($pendingBefore, DB::table('pending_customer_registrations')->get()->toArray());
     }
 
-    public function test_overlapping_verification_requests_consume_one_pending_registration_on_sqlite(): void
+    public static function simultaneousVerificationFlows(): array
+    {
+        return [['registration'], ['login']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('simultaneousVerificationFlows')]
+    public function test_overlapping_verification_requests_consume_only_one_issuance_on_sqlite(string $flow): void
     {
         Notification::fake();
+        if ($flow === 'login') {
+            $user = User::factory()->create();
+            $token = str_repeat('a', 64);
+            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+                'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+            $payload = json_encode(['poll_token' => $token, 'code' => '123456', '_verification_endpoint' => '/api/email/login/confirm'], JSON_THROW_ON_ERROR);
+        } else {
         $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::query()->sole();
         $payload = json_encode(['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending),
             'registration_token' => $this->authorizedEditCredential($response),
             'registration_browser' => $response->getCookie('bethlehem_registration_browser', false)->getValue()], JSON_THROW_ON_ERROR);
+        }
         $directory = sys_get_temp_dir().'/bethlehem-signup-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
         $database = $directory.'/registration.sqlite';
@@ -2356,9 +2669,10 @@ class EmailVerificationTest extends TestCase
                         usleep(200000);
                     });
                 $parameters = json_decode($payload, true);
-                $request = Illuminate\Http\Request::create('/api/email/verify', 'POST', $parameters,
-                    ['bethlehem_registration_browser' => $parameters['registration_browser']],
-                    server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+                $request = Illuminate\Http\Request::create($parameters['_verification_endpoint'] ?? '/api/email/verify', 'POST', $parameters,
+                    ['bethlehem_registration_browser' => $parameters['registration_browser'] ?? ''],
+                    server: ['REMOTE_ADDR' => $role === 'first' ? '192.0.2.1' : '192.0.2.2',
+                        'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy]);
                 PHP;
@@ -2381,6 +2695,7 @@ class EmailVerificationTest extends TestCase
             $connection = new \PDO('sqlite:'.$database);
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM users')->fetchColumn());
             $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM pending_customer_registrations')->fetchColumn());
+            $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM login_email_challenges')->fetchColumn());
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
         } finally {
             $first?->stop(); $second?->stop();
@@ -2523,6 +2838,7 @@ class EmailVerificationTest extends TestCase
 
     public function test_restart_and_ip_change_do_not_reset_the_account_otp_budget(): void
     {
+        config(['authentication.otp_account_attempts' => 5]); // Verify a stricter configured global budget too.
         Notification::fake();
         $user = User::factory()->create(['password_hash' => Hash::make('strong-password')]);
         $login = $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();

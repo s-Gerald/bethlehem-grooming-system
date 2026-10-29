@@ -315,8 +315,25 @@ async function availabilityNavigationForAuthorizedRoles() {
   }
 }
 
+async function privateSecurityAlertRendersOnce() {
+  const {c} = environment();
+  const nodes = new Map(), cards = [];
+  c.API.getSecurityAlert = () => 17;
+  c.document.getElementById = id => nodes.get(id) || null;
+  c.document.querySelector = selector => selector === 'main' ? { prepend(card) { cards.push(card); nodes.set(card.id, card); } } : null;
+  c.document.createElement = tag => ({ tag, children: [], setAttribute() {}, append(...children) { this.children.push(...children); } });
+  vm.runInContext('showAccountSecurityAlert(); showAccountSecurityAlert();', c);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].children[0].textContent, 'Unusual sign-in activity');
+  assert.equal(cards[0].children[2].href, '/pages/admin/settings.html?tab=security&incident=17');
+  nodes.clear();
+  c.window.location.pathname = '/pages/admin/settings.html';
+  vm.runInContext('showAccountSecurityAlert()', c);
+  assert.equal(cards.length, 1, 'Settings presents the activity section without duplicating the initial warning.');
+}
+
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles]) {
+  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

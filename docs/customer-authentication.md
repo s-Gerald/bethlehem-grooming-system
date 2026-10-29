@@ -1,5 +1,7 @@
 # Customer authentication — October 29, 2026
 
+> Updated October 30 authentication-security limits, independent challenges, private activity, new forward migrations and deployment guidance are covered in [authentication-security-hardening.md](authentication-security-hardening.md). Registration and remembered-device behavior below remains applicable.
+
 ## Remember me
 
 The unchecked checkbox remains **Remember me**, with the existing sign-in layout and blue controls. This release adds a separate customer device credential; it does not lengthen Sanctum sessions.
@@ -184,13 +186,14 @@ All customer sending policy lives in `config/authentication.php` and `Authentica
 | Registration review grant | Original 10 minutes after email proof; single use; at most 70 minutes from pending creation |
 | Pending registration retention | Exactly 60 minutes from server creation; old hours/days overrides ignored |
 | Sign-in OTP | 10 minutes from initial issuance; resend does not extend the deadline |
-| Incorrect OTP attempts | 5/challenge and 5/account per 15 minutes; 25/IP per 15 minutes |
-| Minimum email interval | 60 seconds per destination, across relevant auth flows |
+| Incorrect OTP attempts | 5/challenge; 5/account + source and 20/account per 15 minutes; 25/IP per 15 minutes |
+| Minimum email interval | 60 seconds per purpose/destination; separate bounded security-notice and warning purposes |
 | Email requests | Initial request plus 2 further requests in a rolling 15 minutes |
 | Destination limits | 6/rolling hour; 12/rolling 24 hours |
 | IP sending limits | 30/rolling hour; 100/rolling 24 hours |
+| Authentication provider pool | 100/rolling day by default; configure against the verified provider allocation |
 
-Registration, sign-in and password recovery share destination/IP flood protection. Public recovery requests consume the same budget for unknown/ineligible addresses, preventing quota responses from disclosing eligibility. Password-reset code validity, reset grants, eligibility, staff setup and recovery holds retain their separate rules. Existing operator environment values override defaults; explicitly set `LOGIN_CONFIRMATION_TTL_MINUTES=10` when replacing an older 15-minute configuration.
+Registration, sign-in and password recovery share aggregate destination/IP/provider flood protection within purpose-aware budgets. Public password-recovery feedback uses a separate source/address request budget, identical for known and unknown addresses, so private sending history is not disclosed. Password-reset code validity, reset grants, eligibility, staff setup and recovery holds retain their separate rules. Existing operator environment values override defaults; explicitly set `LOGIN_CONFIRMATION_TTL_MINUTES=10` and `AUTH_OTP_ACCOUNT_ATTEMPTS=20` when adopting the updated policy over older explicit values.
 
 Authorized server responses provide `resend_after`, `retry_after`, `next_eligible_at`, and `resend_limited`. Their HTTP 429 also includes `Retry-After` and a machine-readable code (`email_cooldown`, `email_rate_limited`, `email_sending`, or `login_code_locked`). Public signup/resend deliberately withhold destination-specific restrictions as described above. Longer sending restrictions never disable entry of an otherwise valid OTP. Rejected/failed resends do not replace the current credential. Destination and IP locks serialize quota reservations through encrypted database-job insertion; job retries do not reserve another email.
 

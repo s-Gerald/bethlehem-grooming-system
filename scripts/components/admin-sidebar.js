@@ -9,6 +9,34 @@ const adminManagementPages = new Map([
   ['availability.html', 'availability'], ['activity-log.html', 'activity-log'],
 ]);
 
+function showAccountSecurityAlert() {
+  const id = API.getSecurityAlert?.();
+  if (!id || document.getElementById('account-security-alert') || window.location.pathname.endsWith('/settings.html')) return;
+  const main = document.querySelector('main');
+  if (!main) return;
+  const alert = document.createElement('section');
+  alert.id = 'account-security-alert';
+  alert.setAttribute('role', 'status');
+  alert.setAttribute('aria-labelledby', 'account-security-alert-title');
+  alert.className = 'mb-4 rounded-2xl border border-[#d7e3ef] bg-white px-5 py-4 text-sm text-[#1f3850]';
+  const title = document.createElement('h2');
+  title.id = 'account-security-alert-title';
+  title.className = 'font-semibold';
+  title.textContent = 'Unusual sign-in activity';
+  const message = document.createElement('p');
+  message.className = 'mt-1 text-slate-600';
+  message.textContent = "Several sign-in verification attempts failed. Review this activity if you don't recognize it.";
+  const action = document.createElement('a');
+  const href = new URL('settings.html', adminManagementBase);
+  href.searchParams.set('tab', 'security');
+  href.searchParams.set('incident', id);
+  action.href = href.pathname + href.search;
+  action.className = 'mt-2 inline-flex rounded text-sm font-semibold text-[#315b7e] underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]';
+  action.textContent = 'Review activity';
+  alert.append(title, message, action);
+  main.prepend(alert);
+}
+
 function validateAdminNotificationOrigin(value) {
   if (!value || /^(?:\/\/|.*\\)/.test(value)) return null;
   try {
@@ -358,6 +386,7 @@ function adminSidebar() {
         const user = response?.user;
         if (!user || this._destroyed || revision !== this._identityRevision) return;
         Object.assign(this, getAdminSidebarIdentityState(user));
+        showAccountSecurityAlert();
         API.enforceAdminPageAccess?.();
         this.$nextTick?.(() => {
           if (this._destroyed || revision !== this._identityRevision) return;

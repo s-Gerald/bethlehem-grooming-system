@@ -14,6 +14,12 @@ class UseAccountSessionCookie
 {
     public const NAME = 'bethlehem_account_session';
 
+    public static function isAuthenticationRequest(Request $request): bool
+    {
+        return $request->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/session*', 'api/logout',
+            'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*');
+    }
+
     public static function cookie(Request $request, string $name, string $value, $expires = 0): Cookie
     {
         $prefix = rtrim((string) parse_url(config('app.url'), PHP_URL_PATH), '/');
@@ -76,7 +82,7 @@ class UseAccountSessionCookie
             }
         }
 
-        if ($request->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/session*')) {
+        if (self::isAuthenticationRequest($request)) {
             $response->headers->set('Cache-Control', 'no-store');
         }
         return $response;

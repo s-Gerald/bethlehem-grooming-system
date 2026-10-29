@@ -52,7 +52,7 @@ class StaffEmailChangeController extends Controller
     private function respond(callable $operation, int $successStatus = 200)
     {
         try { $result = $operation(); }
-        catch (ValidationException | HttpExceptionInterface $exception) { throw $exception; }
+        catch (ValidationException | HttpExceptionInterface | \Illuminate\Http\Exceptions\HttpResponseException $exception) { throw $exception; }
         catch (Throwable $exception) {
             report($exception);
             return response()->json(['message' => 'The verification email could not be queued. Please try again.'], 503);

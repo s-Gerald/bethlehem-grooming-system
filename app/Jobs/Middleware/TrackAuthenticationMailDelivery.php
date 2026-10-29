@@ -57,7 +57,8 @@ class TrackAuthenticationMailDelivery
                 || $current->getAttribute('confirmed_at')
                 || $current->getAttribute('verified_token_hash')
                 || $current->getAttribute('verification_attempts') >= PasswordResetService::MAX_ATTEMPTS
-                || $current->getAttribute('failed_attempts') >= PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS
+                || $current->getAttribute('failed_attempts') >= ($current instanceof \App\Models\LoginEmailChallenge
+                    ? LoginEmailChallengeService::maxAttempts() : PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS)
                 || ($current->getAttribute('poll_token_hash') && RateLimiter::tooManyAttempts(
                     'login-code:'.$current->getAttribute('poll_token_hash'), LoginEmailChallengeService::maxAttempts()))
                 || ! hash_equals($guard['hash'], (string) $current->getAttribute($guard['hash_column']))

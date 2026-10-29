@@ -16,6 +16,21 @@ use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
 {
+    public function test_public_recovery_does_not_disclose_private_destination_email_history(): void
+    {
+        $this->freezeTime();
+        Notification::fake();
+        $user = $this->createUser('customer');
+        config(['authentication.email.quarter_hour' => 2]);
+        app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'login');
+        app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'privileged_change');
+        $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 60);
+        $unknown = $this->postJson('/api/password/forgot', ['email' => 'unknown@example.test'])->assertAccepted();
+        $this->assertSame($known->json('resend_after'), $unknown->json('resend_after'));
+        $this->assertSame($known->json('resend_limited'), $unknown->json('resend_limited'));
+        Notification::assertNothingSent();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -492,6 +507,7 @@ class PasswordResetTest extends TestCase
         ]);
         $service = app(\App\Services\PasswordResetService::class);
         $service->resendStaffSetupLink($user);
+        $this->travel(61)->seconds();
         $service->resendStaffSetupLink($user);
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
@@ -501,6 +517,7 @@ class PasswordResetTest extends TestCase
         preg_match('/set-up-password\.html#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
         $this->assertNotEmpty($matches);
         $this->assertSame('valid', $service->inspectStaffSetup($matches[1])['status']);
+        $this->travel(61)->seconds();
         $service->resendStaffSetupLink($user);
         $this->travel(25)->hours();
         $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
@@ -523,7 +540,8 @@ class PasswordResetTest extends TestCase
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.40'])
             ->postJson('/api/password/forgot', ['email' => strtoupper($user->email)])
-            ->assertTooManyRequests()->assertHeader('Retry-After');
+            ->assertAccepted()->assertJsonPath('resend_after', 60);
+        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
     }
 
