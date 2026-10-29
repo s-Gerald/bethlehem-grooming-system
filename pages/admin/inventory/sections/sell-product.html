@@ -60,7 +60,7 @@
       </div>
       <div x-show="paymentMethod === 'cash'">
       <label for="pos-cash">Cash Received</label>
-      <input data-money-input id="pos-cash" x-model="amountTendered" type="number" step="0.01" :min="totalAmount" :max="paymentMaximumAmount" placeholder="0.00" inputmode="decimal" x-effect="enforcePaymentAmountLimit()" @input="enforcePaymentAmountLimit($event)" aria-describedby="pos-cash-help" :aria-invalid="amountTendered !== '' && Boolean(cashError)" />
+      <input data-money-input id="pos-cash" x-model="amountTendered" type="text" placeholder="0.00" inputmode="decimal" x-effect="enforcePaymentAmountLimit()" @input="enforcePaymentAmountLimit($event)" aria-describedby="pos-cash-help" :aria-invalid="amountTendered !== '' && Boolean(cashError)" />
       <p id="pos-cash-help" x-show="amountTendered !== '' && cashError" class="pos-helper pos-cash-error" role="status" x-text="cashError"></p>
       <dl class="pos-summary-values"><div><dt>Change</dt><dd x-text="'₱' + fmt(changeAmount)"></dd></div></dl>
       </div>

@@ -108,7 +108,7 @@ function adminInventory() {
         const mount = async () => {
           const config = InventorySections[section];
           const [response] = await Promise.all([
-            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2`),
+            fetch(`./sections/${section}.html?v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2${section === 'sell-product' ? '&cash-input=20261030' : ''}`),
             ...config.dependencies.map(loadInventoryScript),
             loadInventoryScript(config.script),
           ]);

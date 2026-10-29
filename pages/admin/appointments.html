@@ -931,11 +931,9 @@
                   <label for="grooming-cash-received" class="mb-1 block text-xs font-semibold text-slate-600">Cash Received</label>
                   <input
                     id="grooming-cash-received"
-                    type="number"
+                    type="text"
+                    inputmode="decimal"
                     x-model="paymentModal.amountPaid"
-                    :min="paymentTotalDue"
-                    :max="paymentMaximumAmount"
-                    step="0.01"
                     placeholder="0.00"
                     x-effect="enforcePaymentAmountLimit()"
                     @input="enforcePaymentAmountLimit($event)"

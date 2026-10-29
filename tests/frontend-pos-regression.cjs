@@ -227,8 +227,110 @@ function testPaymentAndScannerIntegration() {
     assert.ok(html.indexOf('scripts/components/cash-payment.js') < html.indexOf('scripts/components/admin-dashboard.js'));
   }
 }
+async function testPaymentInputInteractions() {
+  const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+  const path = require('node:path');
+  const alpine = process.env.ALPINE_PATH ? fs.readFileSync(process.env.ALPINE_PATH, 'utf8')
+    : await (await fetch('https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js', {signal: AbortSignal.timeout(15000)})).text();
+  const browser = await chromium.launch({headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {})});
+  try {
+    for (const [workflow, file, id, change, canPay] of [
+      ['grooming', 'pages/admin/appointments.html', 'grooming-cash-received', 'paymentChange', 'canSubmitPayment'],
+      ['early', 'pages/admin/appointments.html', 'grooming-cash-received', 'paymentChange', 'canSubmitPayment'],
+      ['clinic', 'pages/admin/clinic.html', 'clinic-cash-received', 'paymentChange', 'canConfirmPayment'],
+      ['pos', 'pages/admin/inventory/sections/sell-product.html', 'pos-cash', 'changeAmount', 'canProcess'],
+    ]) {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      // Exercise the shipped input/bindings and real payment components without API calls.
+      const inputTag = read(file).match(new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`))[0];
+      await page.route('https://payment-input.example/', route => route.fulfill({contentType: 'text/html', body: `<style>#scroll{height:220px;overflow:auto}input{display:block;margin:20px;width:240px;height:40px}</style>
+        <main data-money-input-root x-data="paymentFixture()"><div id="scroll">${inputTag}<div style="height:1200px"></div></div>
+        <output id="change" x-text="${change}"></output><button id="confirm" :disabled="!${canPay}">Confirm</button></main>`}));
+      await page.goto('https://payment-input.example/');
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+      for (const name of ['cash-payment', 'admin-dashboard', 'admin-clinic', 'admin-pos', 'inventory-money-input'])
+        await page.addScriptTag({path: path.join(__dirname, `../scripts/components/${name}.js`)});
+      await page.evaluate(workflow => {
+        window.paymentFixture = () => {
+          const ui = workflow === 'pos' ? adminPos() : workflow === 'clinic' ? adminClinicPage() : adminDashboard();
+          ui.init = () => {};
+          if (workflow === 'pos') ui.cart = [{item_id: 1, item_name: 'Treats', unit: 'pack', price: 350.5, stock: 3, quantity: 1, subtotal: 350.5}];
+          else if (workflow === 'clinic') {
+            ui.payment.open = true; ui.payment.case = {id: 1, total_amount: 350.5, status: 'for_payment'};
+          } else {
+            ui.paymentModal.isEarlyPayment = workflow === 'early';
+            ui.paymentModal.petBreakdown = [{lines: [{amount: '350.50', minAmount: 0, maxAmount: null}]}];
+          }
+          return ui;
+        };
+        document.addEventListener('alpine:init', () => Alpine.store('clinicAccess', {permissions: {payment: true}}));
+      }, workflow);
+      await page.addScriptTag({content: alpine});
+      const input = page.locator(`#${id}`), confirm = page.locator('#confirm');
+      assert.equal(await input.getAttribute('inputmode'), 'decimal', `${workflow}: mobile decimal keyboard`);
+      await input.fill('500.25');
+      await page.waitForFunction(() => document.querySelector('#change').textContent === '149.75');
+      assert.equal(await confirm.isEnabled(), true, workflow);
+      await input.hover();
+      await page.mouse.wheel(0, 110);
+      await page.waitForFunction(() => document.querySelector('#scroll').scrollTop > 0);
+      assert.equal(await input.inputValue(), '500.25', `${workflow}: wheel preserves focused cash`);
+      assert.equal(await input.evaluate(el => document.activeElement === el), true, 'Wheel must not blur');
+      await input.press('ArrowUp');
+      assert.equal(await input.inputValue(), '500.25', `${workflow}: ArrowUp must not increment`);
+      await input.press('ArrowDown');
+      assert.equal(await input.inputValue(), '500.25', `${workflow}: ArrowDown must not decrement`);
+      await confirm.focus();
+      await page.locator('#scroll').evaluate(el => {el.scrollTop = 0;});
+      await input.hover();
+      await page.mouse.wheel(0, 110);
+      await page.waitForFunction(() => document.querySelector('#scroll').scrollTop > 0);
+      assert.equal(await input.inputValue(), '500.25', `${workflow}: unfocused wheel preserves cash`);
+      await page.locator('#scroll').evaluate(el => {el.scrollTop = 0;});
+      await input.click();
+      await input.press('ControlOrMeta+A');
+      await input.press('Backspace');
+      await input.pressSequentially('500.');
+      assert.equal(await input.inputValue(), '500.', `${workflow}: preserve partial decimal`);
+      assert.equal(await input.evaluate(el => Alpine.evaluate(el, el.getAttribute('x-model'))), '500.', 'Alpine preserves partial text');
+      await input.pressSequentially('25');
+      await page.waitForFunction(() => document.querySelector('#change').textContent === '149.75');
+      await input.press('Home'); await input.press('ArrowRight'); await input.press('Delete');
+      assert.equal(await input.inputValue(), '50.25');
+      assert.equal(await input.evaluate(el => el.selectionStart), 1, 'Editing must preserve caret');
+      for (const invalid of ['', '.', '350.49', '500.001']) {
+        await input.fill(invalid);
+        assert.equal(await confirm.isEnabled(), false, `${workflow}: reject ${invalid}`);
+        assert.equal(await page.locator('#change').textContent(), '0');
+      }
+      await input.fill('2000.01');
+      assert.equal(await input.inputValue(), '2000', `${workflow}: preserve existing live cap`);
+      assert.equal(await page.locator('#change').textContent(), '1649.5');
+      await input.fill('350.50');
+      assert.equal(await confirm.isEnabled(), true, `${workflow}: correction clears validation`);
+      assert.equal(await page.locator('#change').textContent(), '0');
+      await page.evaluate(() => navigator.clipboard.writeText('500.25'));
+      await input.press('ControlOrMeta+A'); await input.press('ControlOrMeta+V');
+      await page.waitForFunction(() => document.querySelector('#change').textContent === '149.75');
+      assert.equal(await input.inputValue(), '500.25', `${workflow}: native decimal paste`);
+      if (workflow !== 'pos') for (const invalid of ['-500', 'abc', '1e3']) {
+        await input.fill(invalid);
+        assert.equal(await confirm.isEnabled(), false, `${workflow}: reject ${invalid}`);
+      }
+      await input.fill('500.25');
+      await input.press('Tab');
+      assert.equal(await confirm.evaluate(el => document.activeElement === el), true, 'Tab remains usable');
+      assert.deepEqual(errors, [], workflow);
+      console.log(`${workflow}: payment input keyboard, wheel, scrolling, editing and validation passed`);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+}
 (async () => {
   testNewestFirstProducts();
   await testCheckoutAndDuplicateGuard(); await testStaleSearchRefreshAndErrors(); await testChangedCartsRequireReviewAndCanThenComplete(); await testValidationRetryAndCheckoutRace(); testCashPaymentParity(); await testCameraScannerUsesExistingLookup(); testProductHistoryInvoice(); testPaymentAndScannerIntegration();
+  if (process.argv.includes('--browser')) await testPaymentInputInteractions();
   console.log('Retail POS checkout and invoice regression checks passed');
 })().catch(error => {console.error(error); process.exitCode = 1;});
