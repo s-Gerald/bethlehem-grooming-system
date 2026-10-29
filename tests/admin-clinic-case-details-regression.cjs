@@ -43,6 +43,7 @@ function setup(reduced = false) {
     API: {adminGetPetCaseDetails: async (petId, id) => {calls.push(['case', petId, id]); return structuredClone(cases[id]);},
       getClinicConfinementObservations: async (id, page) => {calls.push(['observations', id, page]); return {data: [{id: 1, notes: 'Comfortable'}], current_page: page, last_page: 2};}}};
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
   for (const file of ['admin-clinic.js', 'admin-clinic-confinement.js', 'admin-vaccinations.js'])
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../scripts/components', file), 'utf8'), context);
   const state = context.adminClinicPage();

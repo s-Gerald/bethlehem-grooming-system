@@ -1,10 +1,3 @@
-function clinicConfinementDuration(admittedAt, end = Date.now()) {
-  if (!admittedAt) return '—';
-  const minutes = Math.max(0, Math.floor((new Date(end).getTime() - new Date(admittedAt).getTime()) / 60000));
-  const days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60);
-  return `${days ? days + 'd ' : ''}${hours}h ${minutes % 60}m`;
-}
-
 function clinicConfinementWorkspace() {
   const {money, methodLabel, sizeLabel, cataloguePrice} = clinicCaseWorkspace();
   return {

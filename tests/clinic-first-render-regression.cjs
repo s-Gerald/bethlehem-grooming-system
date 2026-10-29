@@ -15,7 +15,7 @@ function clinic() {
   e.c.window.removeEventListener = () => {};
   e.c.document.removeEventListener = () => {};
   e.c.document.addEventListener = (name, fn) => listeners.set(name, fn);
-  for (const file of ['clinic-feedback.js', 'admin-clinic.js', 'admin-clinic-shell.js'])
+  for (const file of ['clinic-feedback.js', 'clinic-record-presentation.js', 'admin-clinic.js', 'admin-clinic-shell.js'])
     vm.runInContext(fs.readFileSync('scripts/components/' + file, 'utf8'), e.c);
   listeners.get('alpine:init')();
   const ui = e.c.adminClinicCasesSection();

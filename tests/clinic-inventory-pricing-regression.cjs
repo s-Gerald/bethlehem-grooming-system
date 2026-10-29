@@ -4,6 +4,7 @@ const vm = require("node:vm");
 const { randomUUID } = require("node:crypto");
 const context = { window: {}, document: { addEventListener() {} }, setTimeout, clearTimeout, crypto: { randomUUID }, API: {} };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync("scripts/components/product-form.js", "utf8"), context);
 vm.runInContext(fs.readFileSync("scripts/components/admin-clinic.js", "utf8"), context, {
   filename: require("node:path").resolve("scripts/components/admin-clinic.js"),

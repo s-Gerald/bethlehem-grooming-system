@@ -27,6 +27,7 @@ const sandbox = {
   crypto: webcrypto, URL, URLSearchParams, setTimeout, clearTimeout,
 };
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), sandbox);
 for (const file of ['clinic-feedback.js', 'cash-payment.js', 'admin-clinic.js', 'admin-clinic-case-workspace.js', 'admin-vaccinations.js', 'admin-sidebar.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', file), 'utf8'), sandbox, {
     filename: path.join(root, 'scripts/components', file),
@@ -235,7 +236,7 @@ function permissions(clinical, payment, queue, customers) {
     assert.equal(page.includes(label), false, `${label} must be removed`);
   }
   assert.match(page, /aria-label="Billing"/);
-  assert.match(page, /Attachments<\/p>/);
+  assert.match(fs.readFileSync(path.join(root, 'scripts/components/clinic-record-presentation.js'), 'utf8'), /Attachments<\/p>/);
   assert.match(page, /Follow-up<\/h3>/);
   assert.equal((page.match(/x-for="caseItem in caseRows"/g) || []).length, 1);
   receptionist.clinicToday = '2026-10-24';

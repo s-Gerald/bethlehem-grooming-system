@@ -25,6 +25,7 @@ const context = {
   }},
 };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
 for (const file of ['cash-payment.js', 'payment-invoice.js', 'admin-clinic.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', file), 'utf8'), context);
 }

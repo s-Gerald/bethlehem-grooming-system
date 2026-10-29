@@ -98,14 +98,33 @@ function adminCustomers() {
       profileLoaded: false,
       profileError: "",
       groomingRecords: [],
-      medicalRecords: [],
-      vaccinations: [],
+
     },
     _petEditMarkupReady: null,
+    _petHistoryRequest: 0,
+    petHistories: {},
+    detail: {record: null},
+    detailAttachmentBusyId: null,
+    detailAttachmentError: '',
+    _petCaseRequests: {},
+    _petObservationRequests: {},
 
     // ── Init ──────────────────────────────────────────────
 
     async init() {
+      this.resetPetHistory();
+      this._refreshPetHistory = () => {
+        if (!this.petModal.open || document.visibilityState === 'hidden') return;
+        this._petCaseRequests = {}; this._petObservationRequests = {};
+        for (const state of Object.values(this.petHistories)) state.loadedAt = 0;
+        if (!this.detail.record && ['medical', 'confinements'].includes(this.petModal.activeTab)) {
+          void this.loadPetHistory(this.petModal.activeTab);
+        }
+      };
+      window.addEventListener('clinic-case-updated', this._refreshPetHistory);
+      window.addEventListener('focus', this._refreshPetHistory);
+      window.addEventListener('admin-session:unlocked', this._refreshPetHistory);
+      document.addEventListener('visibilitychange', this._refreshPetHistory);
       const params = new URLSearchParams(window.location.search);
       const recordType = params.get("record_type");
       if (recordType === "unregistered") {
@@ -434,6 +453,7 @@ function adminCustomers() {
         return;
       }
       adminCustomerPetFields?.controls.color.close();
+      this.resetPetHistory();
       this.petModal.open = false;
       this.petModal.editing = false;
       this.petDiscardOpen = false;
@@ -447,6 +467,7 @@ function adminCustomers() {
     },
 
     async openPetDetail(pet) {
+      this.resetPetHistory();
       this._petReturnFocus = document.activeElement;
       this.closeOwnerActions(false);
       this.petModal = {
@@ -463,8 +484,7 @@ function adminCustomers() {
         profileLoaded: false,
         profileError: "",
         groomingRecords: [],
-        medicalRecords: [],
-        vaccinations: [],
+
       };
       this.setCustomerDetailScrollLock(true);
       this.$nextTick(() => { this.$refs.petBody.scrollTop = 0; this.$refs.petClose.focus(); });
@@ -472,36 +492,191 @@ function adminCustomers() {
     },
 
     async loadPetProfile() {
-      const petId = this.petModal.pet?.id;
-      if (!petId || this.petModal.creating) return;
+      const petId = this.petModal.pet?.id, request = this._petHistoryRequest;
+      if (!petId || this.petModal.creating || this.petModal.profileLoading && this._petProfilePending) return;
+      this._petProfilePending = true;
 
       this.petModal.profileLoading = true;
       this.petModal.profileError = "";
 
       try {
-        const data = await API.getAdminPetProfile(petId);
-        if (!this.petModal.open || String(this.petModal.pet?.id) !== String(petId)) return;
+        const data = await API.getAdminPetProfile(petId, "grooming");
+        if (request !== this._petHistoryRequest || !this.petModal.open || String(this.petModal.pet?.id) !== String(petId)) return;
 
         this.petModal.groomingRecords = data.grooming_records || [];
-        this.petModal.medicalRecords = data.medical_records || [];
-        this.petModal.vaccinations = data.vaccinations || [];
         this.petModal.profileLoaded = true;
       } catch (error) {
-        if (!this.petModal.open || String(this.petModal.pet?.id) !== String(petId)) return;
+        if (request !== this._petHistoryRequest || !this.petModal.open || String(this.petModal.pet?.id) !== String(petId)) return;
         this.petModal.profileError = error.message || "Pet history could not be loaded.";
       } finally {
-        if (this.petModal.open && String(this.petModal.pet?.id) === String(petId)) {
+        if (request === this._petHistoryRequest && this.petModal.open && String(this.petModal.pet?.id) === String(petId)) {
+          this._petProfilePending = false;
           this.petModal.profileLoading = false;
         }
       }
     },
 
-    selectPetProfileTab(tab) {
-      if (!["overview", "grooming", "medical", "vaccinations"].includes(tab)) return;
+    destroy() {
+      window.removeEventListener('clinic-case-updated', this._refreshPetHistory);
+      window.removeEventListener('focus', this._refreshPetHistory);
+      window.removeEventListener('admin-session:unlocked', this._refreshPetHistory);
+      document.removeEventListener('visibilitychange', this._refreshPetHistory);
+      this.resetPetHistory();
+    },
+
+    resetPetHistory() {
+      this._petHistoryRequest++;
+      this._petProfilePending = false;
+      this.petHistories = Object.fromEntries(['medical', 'confinements'].map(tab => [tab,
+        {rows: [], loading: false, loaded: false, error: '', page: 0, lastPage: 1, loadedAt: 0}]));
+      this._petCaseRequests = {}; this._petObservationRequests = {};
+      this.detail = {record: null};
+      this.detailAttachmentError = ''; this.detailAttachmentBusyId = null;
+    },
+
+    async selectPetProfileTab(tab) {
+      if (!['overview', 'grooming', 'medical', 'confinements'].includes(tab)) return;
+      this.detail = {record: null};
       this.petModal.activeTab = tab;
+      if (['medical', 'confinements'].includes(tab)) {
+        const state = this.petHistories[tab];
+        if (!state?.loaded || Date.now() - state.loadedAt >= 15000) await this.loadPetHistory(tab);
+      }
+    },
+
+    petProfileTabKeydown(event) {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = ['overview', 'grooming', 'medical', 'confinements'];
+      const current = tabs.indexOf(this.petModal.activeTab);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? 3 : (current + (event.key === 'ArrowRight' ? 1 : 3)) % 4;
+      void this.selectPetProfileTab(tabs[next]);
+      event.currentTarget.querySelectorAll('[role="tab"]')[next]?.focus();
+    },
+
+    async loadPetHistory(tab, page = 1) {
+      const state = this.petHistories[tab], request = this._petHistoryRequest, petId = this.petModal.pet?.id;
+      if (!state || state.loading || !petId || !this.petModal.open) return;
+      state.loading = true; state.error = ''; state.retryPage = page;
+      try {
+        const data = await API.adminGetPetProfile(petId, tab === 'medical' ? 'clinical' : 'confinement', page, 'history');
+        if (request !== this._petHistoryRequest || !this.petModal.open) return;
+        state.rows = page === 1 ? data.data : [...state.rows, ...data.data];
+        state.page = data.current_page; state.lastPage = data.last_page;
+        state.loaded = true; state.loadedAt = Date.now();
+      } catch (error) {
+        if (request === this._petHistoryRequest) state.error = error.message || 'Could not load patient history.';
+      } finally { if (request === this._petHistoryRequest) state.loading = false; }
+    },
+
+    historyCaseId(record) { return clinicHistoryCaseId(record); },
+    historyCaseLabel(record) { return record?.appointment_reference || record?.appointment?.appointment_reference || 'Historical record'; },
+    historyService(record) { return clinicHistoryService(record); },
+    historyPrice(value) { return clinicHistoryPrice(value); },
+    historyTime(value) { return clinicHistoryTime(value); },
+    historyDuration(record) { return clinicConfinementDuration(record.admitted_at, record.discharged_at || Date.now()); },
+    fmtDate(value) { return clinicHistoryDate(value); },
+    formatFileSize(bytes) { return formatClinicFileSize(bytes); },
+    caseTreatmentFields(record) {
+      return clinicTreatmentDetails(record).filter(field => !['Treatment', 'Case', 'Published', 'Published By', 'Voided', 'Voided By'].includes(field.label))
+        .map(field => field.label === 'Status' ? {...field, value: record.state === 'published' ? 'Administered' : field.value} : field)
+        .filter(field => field.value != null && field.value !== '' && field.value !== '—');
+    },
+    confinementDetailFields(record) { return clinicConfinementFields(record, null); },
+    get petHistoryTitle() { return this.detail.kind === 'confinement' ? 'Confinement' : this.detail.caseId ? 'Case Details' : 'Treatment Record'; },
+    get petHistorySubtitle() {
+      const record = this.detail.case || this.detail.record;
+      if (!record) return '';
+      return [this.detail.caseId ? this.historyCaseLabel(record) : null,
+        this.fmtDate(record.appointment_date || record.treatment?.administered_date || record.appointment?.appointment_date)].filter(Boolean).join(' · ');
+    },
+    get petHistoryStatus() {
+      const status = this.detail.case?.status;
+      return ({for_payment: 'For Payment', completed: 'Completed'})[status] || '';
+    },
+
+    async viewPetHistory(record, trigger = document.activeElement, kind = 'medical') {
+      this._petHistoryScroll = this.$refs.petBody?.scrollTop || 0;
+      this._petHistoryTrigger = trigger?.querySelector?.('button') || trigger;
+      const caseId = this.historyCaseId(record);
+      this.detail = {record, kind, caseId, case: null, medical: null, treatments: [], services: [], confinement: null,
+        loading: !!caseId && kind !== 'confinement', error: '', observations: [], observationsLoading: false, observationsError: '', page: 0, lastPage: 1};
+      this.detailAttachmentError = ''; this.detailAttachmentBusyId = null;
+      this.$nextTick(() => { if (this.$refs.petBody) this.$refs.petBody.scrollTop = 0; this.$refs.petHistoryBack?.focus(); });
+      if (kind === 'confinement') {
+        this.detail.confinement = record;
+        this.detail.case = record.appointment;
+        await this.loadHistoryObservations();
+      } else if (!caseId) {
+        this.detail.treatments = [record.treatment];
+      } else await this.loadCaseDetail();
+    },
+
+    async loadCaseDetail() {
+      const detail = this.detail, request = this._petHistoryRequest, petId = this.petModal.pet?.id;
+      if (!detail.caseId || detail.pending) return;
+      detail.loading = true; detail.pending = true; detail.error = '';
+      const cache = this._petCaseRequests;
+      let entry = cache[detail.caseId];
+      try {
+        if (!entry || !entry.pending && Date.now() - entry.at >= 15000) {
+          entry = {pending: true};
+          entry.promise = API.adminGetPetCaseDetails(petId, detail.caseId, 'history').then(data => {
+            entry.pending = false; entry.at = Date.now(); return data;
+          });
+          cache[detail.caseId] = entry;
+        }
+        const data = await entry.promise;
+        if (request !== this._petHistoryRequest || this.detail !== detail || !this.petModal.open) return;
+        Object.assign(detail, {case: data.case, medical: data.medical_record, treatments: data.treatments || [], services: data.services || []});
+      } catch (error) {
+        if (cache[detail.caseId] === entry) delete cache[detail.caseId];
+        if (request === this._petHistoryRequest && this.detail === detail) detail.error = error.message || 'Could not load case details.';
+      } finally { if (request === this._petHistoryRequest && this.detail === detail) { detail.loading = false; detail.pending = false; } }
+    },
+
+    async loadHistoryObservations(page = 1) {
+      const detail = this.detail, request = this._petHistoryRequest, cache = this._petObservationRequests;
+      if (!detail.confinement || detail.observationsLoading) return;
+      detail.observationsLoading = true; detail.observationsError = '';
+      const key = `${detail.caseId}:${page}`;
+      let entry = cache[key];
+      try {
+        if (!entry || !entry.pending && Date.now() - entry.at >= 15000) {
+          entry = {pending: true};
+          entry.promise = API.getClinicConfinementObservations(detail.caseId, page).then(data => {
+            entry.pending = false; entry.at = Date.now(); return data;
+          });
+          cache[key] = entry;
+        }
+        const data = await entry.promise;
+        if (request !== this._petHistoryRequest || this.detail !== detail || !this.petModal.open) return;
+        detail.observations = page === 1 ? data.data : [...detail.observations, ...data.data];
+        detail.page = data.current_page; detail.lastPage = data.last_page;
+      } catch (error) {
+        if (cache[key] === entry) delete cache[key];
+        if (request === this._petHistoryRequest && this.detail === detail) detail.observationsError = error.message || 'Could not load monitoring history.';
+      } finally { if (request === this._petHistoryRequest && this.detail === detail) detail.observationsLoading = false; }
+    },
+
+    backToPetHistory() {
+      this.detail = {record: null};
+      this.$nextTick(() => {
+        if (this.$refs.petBody) this.$refs.petBody.scrollTop = this._petHistoryScroll;
+        this._petHistoryTrigger?.focus({preventScroll: true});
+      });
+    },
+
+    async downloadDetailAttachment(attachment) {
+      const detail = this.detail;
+      this.detailAttachmentBusyId = attachment.id; this.detailAttachmentError = '';
+      try { await downloadClinicAttachment(detail.caseId, attachment); }
+      catch (error) { if (this.detail === detail) this.detailAttachmentError = error.message || 'Failed to download attachment.'; }
+      finally { if (this.detail === detail) this.detailAttachmentBusyId = null; }
     },
 
     async openAddPetForCustomer(customer) {
+      this.resetPetHistory();
       if (!customer || customer.recordType !== "unregistered" || customer.isArchived) return;
 
       this._petReturnFocus = document.activeElement;
@@ -518,8 +693,7 @@ function adminCustomers() {
         profileLoaded: false,
         profileError: "",
         groomingRecords: [],
-        medicalRecords: [],
-        vaccinations: [],
+
         form: {
           pet_name: "",
           species: "",
@@ -1109,27 +1283,6 @@ function adminCustomers() {
         no_show: "bg-slate-100 text-slate-600",
         expired: "bg-slate-100 text-slate-600",
       })[status] || "bg-slate-100 text-slate-700";
-    },
-
-    vaccinationStatusLabel(status) {
-      return ({ current: "Current", due_soon: "Due soon", overdue: "Overdue", unknown: "Unknown" })[status] || "Unknown";
-    },
-
-    vaccinationStatusClasses(status) {
-      return ({
-        current: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        due_soon: "border-amber-200 bg-amber-50 text-amber-800",
-        overdue: "border-red-200 bg-red-50 text-red-700",
-        unknown: "border-slate-200 bg-slate-50 text-slate-600",
-      })[status] || "border-slate-200 bg-slate-50 text-slate-600";
-    },
-
-    vaccinationDose(record) {
-      if (record?.dose_amount === null || record?.dose_amount === undefined || record?.dose_amount === "") {
-        return "Not provided";
-      }
-
-      return `${record.dose_amount}${record.dose_unit ? ` ${record.dose_unit}` : ""}`;
     },
 
     categoryLabel(status) {

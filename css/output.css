@@ -3868,6 +3868,17 @@ video {
   overflow-wrap: anywhere;
 }
 
+clinic-record-sections .case-detail-section ~ .case-detail-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+:is(clinic-record-sections h3, clinic-record-sections h4, [data-case-entry], .customer-clinical-history button, .customer-clinical-history [tabindex], [aria-label="Pet profile sections"] button):focus-visible {
+  outline: 2px solid #315b7e;
+  outline-offset: 2px;
+}
+
 /* Existing email field error treatment, including Alpine/backend errors. */
 
 [data-email-entry][aria-invalid="true"],
@@ -5360,10 +5371,6 @@ video {
 
   .xl\:grid-cols-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .xl\:grid-cols-5 {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .xl\:grid-cols-\[minmax\(0\2c 2fr\)_minmax\(0\2c 1fr\)\] {

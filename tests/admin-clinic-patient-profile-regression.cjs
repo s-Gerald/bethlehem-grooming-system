@@ -31,6 +31,7 @@ function setup() {
     setTimeout, clearTimeout, console,
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
   vm.runInContext(source, context);
   const state = context.adminClinicPage();
   state.$nextTick = callback => callback();

@@ -82,6 +82,7 @@ class AdminPetProfileTest extends TestCase
             $table->unsignedBigInteger('clinic_appointment_id');
             $table->text('chief_complaint')->nullable();
             $table->text('diagnosis')->nullable();
+            $table->text('working_diagnosis')->nullable();
             $table->text('findings')->nullable();
             $table->text('treatment_given')->nullable();
             $table->text('vet_notes')->nullable();
@@ -408,6 +409,69 @@ class AdminPetProfileTest extends TestCase
         $this->getJson('/api/admin/pets/101/cases/701/details')->assertForbidden();
     }
 
+    public function test_customers_clinical_history_covers_eligible_cases_once_and_unlinked_treatments(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->insertPet(202, 'Other Pet');
+        $this->authenticate(20, 'admin');
+        $this->createCaseHistoryTables();
+        DB::table('clinic_services')->insert(['id' => 1, 'name' => 'Consultation']);
+        $this->getJson('/api/admin/pets/101/profile?history=clinical')->assertOk()->assertJsonPath('total', 0);
+        foreach (range(1, 28) as $id) {
+            DB::table('clinic_appointments')->insert(['id' => $id, 'pet_id' => $id === 28 ? 202 : 101,
+                'appointment_reference' => 'CL-'.$id, 'appointment_date' => '2026-10-01',
+                'status' => $id === 27 ? 'in_consultation' : 'completed', 'chief_complaint' => 'Limping']);
+            if ($id <= 22 || $id >= 27) {
+                DB::table('clinic_records')->insert(['clinic_appointment_id' => $id, 'working_diagnosis' => 'Sprain']);
+            }
+        }
+        foreach ([23, 23, 25, 26, 27, null, null, null] as $index => $caseId) {
+            DB::table('vaccination_records')->insert(['id' => 100 + $index, 'pet_id' => 101,
+                'clinic_appointment_id' => $caseId, 'treatment_type' => $index === 1 ? 'vaccine' : 'medicine',
+                'vaccine_name' => 'Treatment '.$index, 'administered_date' => '2026-10-02',
+                'published_at' => in_array($index, [3, 6]) ? null : '2026-10-02 10:00:00',
+                'voided_at' => in_array($index, [2, 7]) ? '2026-10-02 11:00:00' : null]);
+        }
+        foreach ([23, 24] as $id) {
+            DB::table('clinic_case_services')->insert(['clinic_appointment_id' => $id, 'clinic_service_id' => 1,
+                'status' => 'performed', 'service_snapshot' => '{}', 'applied_price' => 500, 'performed_at' => now()]);
+        }
+        foreach ([null, '2026-10-02 11:00:00'] as $voidedAt) {
+            DB::table('vaccination_records')->insert(['pet_id' => 101, 'clinic_appointment_id' => 23,
+                'vaccine_name' => 'Unavailable treatment', 'administered_date' => '2026-10-02',
+                'published_at' => $voidedAt ? '2026-10-02 10:00:00' : null, 'voided_at' => $voidedAt]);
+        }
+        $first = $this->getJson('/api/admin/pets/101/profile?history=clinical')->assertOk()
+            ->assertJsonPath('total', 25)->assertJsonPath('last_page', 2)->assertJsonCount(20, 'data')
+            ->assertJsonPath('data.0.record_type', 'historical')->assertJsonPath('data.0.treatment.id', 105)
+            ->assertJsonPath('data.0.treatment.treatment_type', 'medicine')
+            ->assertJsonPath('data.1.appointment_id', 24)->assertJsonPath('data.2.appointment_id', 23)
+            ->assertJsonMissingPath('data.3.attachments')->assertJsonMissingPath('data.3.vitals');
+        $second = $this->getJson('/api/admin/pets/101/profile?history=clinical&page=2')->assertOk()->assertJsonCount(5, 'data');
+        $rows = [...$first->json('data'), ...$second->json('data')];
+        $ids = array_values(array_filter(array_column($rows, 'appointment_id')));
+        $this->assertSame(range(24, 1), $ids);
+        $this->assertSame('Sprain', $rows[3]['working_diagnosis']);
+        $this->getJson('/api/admin/pets/101/cases/23/details?view=history')->assertOk()
+            ->assertJsonCount(2, 'treatments')->assertJsonCount(1, 'services')->assertJsonPath('medical_record', null);
+        $this->getJson('/api/admin/pets/101/cases/25/details?view=history')->assertNotFound();
+        $this->getJson('/api/admin/pets/101/cases/27/details?view=history')->assertNotFound();
+        $this->getJson('/api/admin/pets/101/cases/28/details?view=history')->assertNotFound();
+        $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk()->assertJsonMissingPath('medical_records');
+        $this->authenticate(30, 'staff');
+        $this->getJson('/api/admin/pets/101/profile?history=clinical')->assertForbidden();
+        $this->getJson('/api/admin/pets/101/profile?history=confinement&view=history')->assertForbidden();
+        $this->getJson('/api/admin/pets/101/cases/23/details?view=history')->assertForbidden();
+        foreach (['veterinarian', 'clinic_receptionist'] as $subrole) {
+            $this->authenticate(30, 'staff', $subrole);
+            $this->getJson('/api/admin/pets/101/profile?history=clinical')->assertOk();
+            $this->getJson('/api/admin/pets/101/profile?history=confinement&view=history')->assertOk();
+            $this->getJson('/api/admin/pets/101/cases/23/details?view=history')->assertOk();
+        }
+        $this->authenticate(10, 'customer');
+        $this->getJson('/api/admin/pets/101/profile?history=clinical')->assertForbidden();
+    }
+
     private function createCaseHistoryTables(): void
     {
         Schema::create('clinic_services', function (Blueprint $table) {
@@ -438,7 +502,7 @@ class AdminPetProfileTest extends TestCase
         ]);
     }
 
-    private function authenticate(int $userId, string $role): void
+    private function authenticate(int $userId, string $role, ?string $subrole = null): void
     {
         $user = new User;
         $user->forceFill([
@@ -446,6 +510,8 @@ class AdminPetProfileTest extends TestCase
             'first_name' => 'Jamie',
             'last_name' => 'Santos',
             'role' => $role,
+            'staff_type' => $subrole ? 'clinic' : null,
+            'staff_subrole' => $subrole,
         ]);
         $user->exists = true;
 

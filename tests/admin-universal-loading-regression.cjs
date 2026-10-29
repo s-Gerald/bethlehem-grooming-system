@@ -9,6 +9,7 @@ function component(file, factory, API = {}, extra = {}) {
   API.loadAdminData ??= (key, load, render) => load().then(render);
   const context = vm.createContext({ API, console, Date, Intl, URL, URLSearchParams, setTimeout, clearTimeout,
     window: {}, ...extra });
+  if (file === 'admin-clinic.js') vm.runInContext(fs.readFileSync(path.join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
   vm.runInContext(source, context);
   const ui = context[factory](); ui.$nextTick = fn => fn(); ui.refreshIcons = () => {};
   return { ui, context };

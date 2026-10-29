@@ -74,7 +74,7 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
         $this->assertStringNotContainsString('Account actions', $detailsModal);
         $this->assertStringNotContainsString('Feature coming soon', $page);
         $this->assertStringNotContainsString('openResetPassword', $page);
-        $this->assertStringContainsString('admin-customers.js?v=customer-records-20261029', $page);
+        $this->assertStringContainsString('admin-customers.js?clinical-history=20261029', $page);
         $component = file_get_contents(base_path('scripts/components/admin-customers.js'));
         foreach (['Deactivate account', 'Reactivate account', 'Archive customer', 'Restore customer'] as $label) {
             $this->assertStringContainsString($label, $component);
@@ -147,7 +147,7 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
         $this->assertSame(1, substr_count($petSearchResults, '&middot;'));
     }
 
-    public function test_pet_view_details_matches_the_customer_pet_profile_ui_without_notifications(): void
+    public function test_pet_view_details_preserves_overview_and_grooming_and_uses_shared_clinical_history(): void
     {
         $page = file_get_contents(base_path('pages/admin/clients.html'));
         $petModal = $this->sourceBetween(
@@ -164,19 +164,22 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
             '<span>Overview</span>',
             '<span>Grooming Records</span>',
             '<span>Medical Records</span>',
-            '<span>Vaccinations</span>',
+            '<span>Confinements</span>',
             '>Basic Information</h3>',
-            '>Clinic Medical Records</h3>',
-            '>Vaccination History</h3>',
             'petOverviewDetails()',
             'petModal.groomingRecords',
-            'petModal.medicalRecords',
-            'petModal.vaccinations',
+            'petHistories.medical.rows',
+            'petHistories.confinements.rows',
+            '<clinic-record-sections compact>',
+            'Back to Medical Records',
         ] as $profileUi) {
             $this->assertStringContainsString($profileUi, $petModal);
         }
 
-        $this->assertStringContainsString('mirrors the customer My Pets profile', $petModal);
+        $this->assertStringNotContainsString('<span>Vaccinations</span>', $petModal);
+        $this->assertStringNotContainsString('Vaccination History', $petModal);
+        $this->assertStringNotContainsString('data-lucide', $petModal);
+        $this->assertDoesNotMatchRegularExpression('/\bpublish(?:ed|ing)?\b/i', $petModal);
         $this->assertStringNotContainsString('<span>Notifications</span>', $petModal);
         $this->assertStringNotContainsString('data-lucide="bell"', $petModal);
     }
@@ -292,7 +295,7 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
             '<!-- Tab description -->',
         );
 
-        foreach (['Portal Accounts', 'Walk-in / Manual', 'Deactivated', 'Archived'] as $label) {
+        foreach (['Online Accounts', 'Walk-in / Manual', 'Deactivated', 'Archived'] as $label) {
             $this->assertMatchesRegularExpression(
                 '/>\s*'.preg_quote($label, '/').'\s*<\/button>/',
                 $statusTabs,

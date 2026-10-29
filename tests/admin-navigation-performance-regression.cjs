@@ -106,6 +106,7 @@ async function clinicDefersRecordsAndKeepsConfinedOnDemand() {
   e.c.IntersectionObserver = class { constructor(fn) { observe = fn; } observe() {} disconnect() {} };
   e.c.window.addEventListener = () => {};
   e.c.CustomEvent = class {};
+  vm.runInContext(read('scripts/components/clinic-record-presentation.js'), e.c);
   vm.runInContext(read('scripts/components/admin-clinic.js'), e.c);
   const ui = e.c.adminClinicPage(); ui.$root = { querySelector: () => ({}) };
   ui.$nextTick = fn => fn();
@@ -123,6 +124,7 @@ async function clinicDefersRecordsAndKeepsConfinedOnDemand() {
 async function clinicListRefreshPreservesWorkspaceDetails() {
   const e = environment(), listeners = new Map();
   e.c.window.addEventListener = (name, fn) => listeners.set(name, fn);
+  vm.runInContext(read('scripts/components/clinic-record-presentation.js'), e.c);
   vm.runInContext(read('scripts/components/admin-clinic.js'), e.c);
   vm.runInContext(read('scripts/components/admin-vaccinations.js'), e.c);
   const ui = e.c.adminClinicVaccinations(); ui.init();

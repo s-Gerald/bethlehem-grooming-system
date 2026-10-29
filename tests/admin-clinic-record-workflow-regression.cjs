@@ -15,6 +15,7 @@ const context = {console, setTimeout, clearTimeout, crypto: webcrypto,
   API: {getUserRole: () => 'staff'},
 };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
 for (const file of ['admin-clinic.js', 'admin-clinic-case-workspace.js', 'admin-clinic-confinement.js', 'admin-vaccinations.js'])
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', file), 'utf8'), context);
 const access = {permissions: {access: true, clinical: true, intake: true}};

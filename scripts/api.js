@@ -1925,13 +1925,13 @@ var API = (() => {
     }
   }
 
-  async function adminGetPetProfile(petId, history = null, page = 1) {
-    const query = history ? `?history=${encodeURIComponent(history)}&page=${page}` : '';
+  async function adminGetPetProfile(petId, history = null, page = 1, view = null) {
+    const query = history ? `?history=${encodeURIComponent(history)}&page=${page}${view ? '&view=' + encodeURIComponent(view) : ''}` : '';
     return request("GET", `/admin/pets/${encodeURIComponent(petId)}/profile${query}`, null, getAdminToken());
   }
 
-  function adminGetPetCaseDetails(petId, caseId) {
-    return request("GET", `/admin/pets/${encodeURIComponent(petId)}/cases/${encodeURIComponent(caseId)}/details`, null, getAdminToken());
+  function adminGetPetCaseDetails(petId, caseId, view = null) {
+    return request("GET", `/admin/pets/${encodeURIComponent(petId)}/cases/${encodeURIComponent(caseId)}/details${view ? '?view=' + encodeURIComponent(view) : ''}`, null, getAdminToken());
   }
 
   async function resendVerification(email) {
@@ -3116,13 +3116,8 @@ var API = (() => {
     );
   }
 
-  async function getAdminPetProfile(petId) {
-    return request(
-      "GET",
-      `/admin/pets/${encodeURIComponent(petId)}/profile`,
-      null,
-      getAdminToken(),
-    );
+  async function getAdminPetProfile(petId, history = null) {
+    return adminGetPetProfile(petId, history);
   }
 
   async function getAdminPetVaccination(petId, vaccinationId) {

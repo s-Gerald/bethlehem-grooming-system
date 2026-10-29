@@ -15,6 +15,7 @@ const sandbox = {
   crypto: { randomUUID: require("node:crypto").randomUUID },
 };
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/admin-clinic.js"), "utf8"), sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/product-search-dropdown.js"), "utf8"), sandbox);
 vm.runInContext(source, sandbox);

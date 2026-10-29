@@ -5,12 +5,12 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?customer-records=20261029&email-entry=20261028&names=20261028-v2" />
+    <link rel="stylesheet" href="../../css/output.css?clinical-history=20261029&customer-records=20261029&email-entry=20261028&names=20261028-v2" />
     <link rel="stylesheet" href="../../css/custom.css?v=customer-records-20261029&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
+    <link rel="preload" as="script" href="../../scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
@@ -124,7 +124,7 @@
         </div>
       </aside>
       <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
+    <script src="../../scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main Content -->
@@ -943,38 +943,38 @@
 
               <!-- View mode: mirrors the customer My Pets profile, without Notifications. -->
               <div x-show="!petModal.editing" class="mt-4 space-y-4">
-                <div class="overflow-x-auto pb-1">
-                  <div class="inline-flex min-w-full gap-1 rounded-2xl border border-[#cfe0ee] bg-white p-1 shadow-sm sm:min-w-0" role="tablist" aria-label="Pet profile sections">
+                <div x-show="!detail.record" class="overflow-x-auto pb-1">
+                  <div class="inline-flex min-w-full gap-1 rounded-2xl border border-[#cfe0ee] bg-white p-1 shadow-sm sm:min-w-0" role="tablist" aria-label="Pet profile sections" @keydown="petProfileTabKeydown($event)">
                     <button type="button" @click="selectPetProfileTab('overview')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'overview' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
-                      role="tab" :aria-selected="petModal.activeTab === 'overview'">
+                      id="customer-pet-overview-tab" aria-controls="customer-pet-overview-panel" :tabindex="petModal.activeTab === 'overview' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'overview'">
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg><span>Overview</span>
                     </button>
                     <button type="button" @click="selectPetProfileTab('grooming')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'grooming' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
-                      role="tab" :aria-selected="petModal.activeTab === 'grooming'">
+                      id="customer-pet-grooming-tab" aria-controls="customer-pet-grooming-panel" :tabindex="petModal.activeTab === 'grooming' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'grooming'">
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg><span>Grooming Records</span>
                     </button>
                     <button type="button" @click="selectPetProfileTab('medical')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'medical' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
-                      role="tab" :aria-selected="petModal.activeTab === 'medical'">
+                      id="customer-pet-medical-tab" aria-controls="customer-pet-medical-panel" :tabindex="petModal.activeTab === 'medical' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'medical'">
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg><span>Medical Records</span>
                     </button>
-                    <button type="button" @click="selectPetProfileTab('vaccinations')"
+                    <button type="button" @click="selectPetProfileTab('confinements')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
-                      :class="petModal.activeTab === 'vaccinations' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
-                      role="tab" :aria-selected="petModal.activeTab === 'vaccinations'">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#syringe"></use></svg><span>Vaccinations</span>
+                      :class="petModal.activeTab === 'confinements' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
+                      id="customer-pet-confinements-tab" aria-controls="customer-pet-confinements-panel" :tabindex="petModal.activeTab === 'confinements' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'confinements'">
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#buildings"></use></svg><span>Confinements</span>
                     </button>
                   </div>
                 </div>
 
-                <admin-loader x-cloak x-show="petModal.profileLoading && !petModal.profileLoaded && petModal.activeTab !== 'overview'"></admin-loader>
+                <admin-loader x-cloak x-show="petModal.profileLoading && !petModal.profileLoaded && petModal.activeTab === 'grooming'"></admin-loader>
 
-                <div x-show="!petModal.profileLoading && petModal.profileError" class="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-center" role="alert">
+                <div x-show="!petModal.profileLoading && petModal.profileError && petModal.activeTab === 'grooming'" class="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-center" role="alert">
                   <svg class="ph-icon mx-auto h-8 w-8 text-red-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning-circle"></use></svg>
                   <h4 class="mt-3 font-bold text-red-800">Pet records could not be loaded</h4>
                   <p class="mt-1 text-sm text-red-600" x-text="petModal.profileError"></p>
@@ -983,7 +983,7 @@
                   </button>
                 </div>
 
-                <section x-show="petModal.activeTab === 'overview'" role="tabpanel" class="space-y-4">
+                <section id="customer-pet-overview-panel" aria-labelledby="customer-pet-overview-tab" x-show="petModal.activeTab === 'overview' && !detail.record" role="tabpanel" class="space-y-4">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4">
                       <h3 class="text-xl font-bold text-[#2f4b66]">Basic Information</h3>
@@ -1012,7 +1012,7 @@
                   </div>
                 </section>
 
-                <section x-show="petModal.profileLoaded && petModal.activeTab === 'grooming'" role="tabpanel" :aria-busy="petModal.profileLoading">
+                <section id="customer-pet-grooming-panel" aria-labelledby="customer-pet-grooming-tab" x-show="petModal.profileLoaded && petModal.activeTab === 'grooming' && !detail.record" role="tabpanel" :aria-busy="petModal.profileLoading">
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-4">
                       <h3 class="text-xl font-bold text-[#2f4b66]">Grooming Records</h3>
@@ -1047,98 +1047,66 @@
                   </div>
                 </section>
 
-                <section x-show="petModal.profileLoaded && petModal.activeTab === 'medical'" role="tabpanel" :aria-busy="petModal.profileLoading">
-                  <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div class="mb-4 flex items-start gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg></div>
-                      <div>
-                        <h3 class="text-xl font-bold text-[#2f4b66]">Clinic Medical Records</h3>
-                        <p class="mt-1 text-sm leading-6 text-slate-500">Completed clinic visits for this pet.</p>
-                      </div>
-                    </div>
-                    <div x-show="petModal.medicalRecords.length === 0" class="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center">
-                      <svg class="ph-icon mx-auto h-8 w-8 text-slate-300" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
-                      <h4 class="mt-3 font-bold text-slate-700">No completed medical records</h4>
-                      <p class="mt-1 text-sm text-slate-500">No completed clinic visits are connected to this pet yet.</p>
-                    </div>
-                    <div x-show="petModal.medicalRecords.length > 0" class="space-y-3">
-                      <template x-for="record in petModal.medicalRecords" :key="record.appointment_reference">
-                        <article class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                          <div class="border-b border-slate-200 bg-white px-4 py-3">
-                            <p class="text-xs font-medium text-slate-500">Appointment Reference</p>
-                            <h4 class="mt-1 text-lg font-bold text-[#2f4b66]" x-text="formatTextValue(record.appointment_reference)"></h4>
-                            <p class="mt-1 text-sm text-slate-500" x-text="formatDate(record.appointment_date)"></p>
-                          </div>
-                          <div class="space-y-4 p-4">
-                            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div><dt class="text-xs font-medium text-slate-500">Reason for Visit</dt><dd class="mt-1 whitespace-pre-line text-sm text-slate-700" x-text="formatTextValue(record.chief_complaint)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Final Diagnosis</dt><dd class="mt-1 whitespace-pre-line text-sm text-slate-700" x-text="formatTextValue(record.diagnosis)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Treatment</dt><dd class="mt-1 whitespace-pre-line text-sm text-slate-700" x-text="formatTextValue(record.treatment_given)"></dd></div>
-                            </dl>
-                            <div x-show="record.vitals" class="border-t border-slate-200 pt-3">
-                              <h5 class="text-sm font-bold text-[#2f4b66]">Recorded Vitals</h5>
-                              <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-                                <div><dt class="text-xs text-slate-500">Weight</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.vitals?.weight_kg ? record.vitals.weight_kg + ' kg' : 'Not provided'"></dd></div>
-                                <div><dt class="text-xs text-slate-500">Temperature</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.vitals?.temperature_c ? record.vitals.temperature_c + ' °C' : 'Not provided'"></dd></div>
-                                <div><dt class="text-xs text-slate-500">Heart Rate</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.vitals?.heart_rate_bpm ? record.vitals.heart_rate_bpm + ' bpm' : 'Not provided'"></dd></div>
-                                <div><dt class="text-xs text-slate-500">Respiratory Rate</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.vitals?.respiratory_rate_bpm ? record.vitals.respiratory_rate_bpm + ' breaths/min' : 'Not provided'"></dd></div>
-                                <div><dt class="text-xs text-slate-500">Body Condition</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.vitals?.body_condition_score ? record.vitals.body_condition_score + ' / 9' : 'Not provided'"></dd></div>
-                              </dl>
-                            </div>
-                            <div x-show="record.follow_up_date || record.follow_up_notes" class="border-t border-slate-200 pt-3">
-                              <h5 class="text-sm font-bold text-[#2f4b66]">Follow-up</h5>
-                              <p class="mt-2 text-sm text-slate-700" x-text="record.follow_up_date ? formatDate(record.follow_up_date) : 'No follow-up date provided'"></p>
-                              <p x-show="record.follow_up_notes" class="mt-1 whitespace-pre-line text-sm text-slate-600" x-text="record.follow_up_notes"></p>
-                            </div>
-                          </div>
-                        </article>
-                      </template>
-                    </div>
-                  </div>
+
+                <section x-show="petModal.activeTab === 'medical' && !detail.record" id="customer-pet-medical-panel" role="tabpanel" aria-labelledby="customer-pet-medical-tab" class="customer-clinical-history" :aria-busy="petHistories.medical?.loading">
+                  <template x-if="petModal.activeTab === 'medical' && petHistories.medical"><div>
+                    <admin-loader x-cloak x-show="petHistories.medical.loading && !petHistories.medical.loaded"></admin-loader>
+                    <div x-show="petHistories.medical.error" role="alert" class="mb-3 text-sm text-red-600"><span x-text="petHistories.medical.error"></span> <button type="button" @click="loadPetHistory('medical', petHistories.medical.retryPage || 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
+                    <div class="overflow-hidden rounded-2xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Clinical records" tabindex="0">
+                      <table class="w-full min-w-[640px] table-fixed text-left text-sm"><caption class="sr-only">Clinical records for this pet</caption>
+                        <thead class="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th scope="col" class="w-[20%] px-4 py-3">Case</th><th scope="col" class="w-[30%] px-4 py-3">Chief Complaint</th><th scope="col" class="w-[35%] px-4 py-3">Working Diagnosis</th><th scope="col" class="w-[15%] px-4 py-3 text-right">View</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100"><template x-for="rec in petHistories.medical.rows" :key="'medical-' + (rec.record_type || 'case') + '-' + rec.id">
+                          <tr tabindex="0" class="cursor-pointer hover:bg-[#f0f7fd] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]" @click="viewPetHistory(rec, $event.currentTarget, 'medical')" @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewPetHistory(rec, $event.currentTarget, 'medical') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewPetHistory(rec, $event.currentTarget, 'medical') }">
+                            <td class="px-4 py-3 font-medium text-slate-700"><span class="block truncate" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></span><span x-show="rec.record_type === 'historical'" class="mt-1 block truncate text-xs font-normal text-slate-500" :title="[rec.treatment?.treatment_name, fmtDate(rec.appointment_date)].filter(Boolean).join(' · ')" x-text="[rec.treatment?.treatment_name, fmtDate(rec.appointment_date)].filter(Boolean).join(' · ')"></span></td>
+                            <td class="truncate px-4 py-3 text-slate-600" :title="rec.chief_complaint" x-text="rec.chief_complaint || '—'"></td>
+                          <td class="truncate px-4 py-3 text-slate-600" :title="rec.working_diagnosis" x-text="rec.working_diagnosis || '—'"></td>
+                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'medical')" :aria-label="'View ' + historyCaseLabel(rec) + (rec.treatment ? ' · ' + rec.treatment.treatment_name + ' · ' + fmtDate(rec.appointment_date) : '')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
+                          </tr>
+                        </template>
+                        <tr x-show="petHistories.medical.loaded && !petHistories.medical.loading && !petHistories.medical.error && !petHistories.medical.rows.length"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No medical records yet.</td></tr>
+                        </tbody>
+                      </table>
+                    </div></div>
+                    <button x-show="petHistories.medical.page < petHistories.medical.lastPage && petHistories.medical.loaded" type="button" @click="loadPetHistory('medical', petHistories.medical.page + 1)" :disabled="petHistories.medical.loading" class="mt-3 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Load more</button>
+                  </div></template>
                 </section>
 
-                <section x-show="petModal.profileLoaded && petModal.activeTab === 'vaccinations'" role="tabpanel" :aria-busy="petModal.profileLoading">
-                  <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div class="mb-4 flex items-start gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#syringe"></use></svg></div>
-                      <div>
-                        <h3 class="text-xl font-bold text-[#2f4b66]">Vaccination History</h3>
-                        <p class="mt-1 text-sm leading-6 text-slate-500">Published vaccination information recorded by the clinic for this pet.</p>
-                      </div>
-                    </div>
-                    <div x-show="petModal.vaccinations.length === 0" class="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center">
-                      <svg class="ph-icon mx-auto h-8 w-8 text-slate-300" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#syringe"></use></svg>
-                      <h4 class="mt-3 font-bold text-slate-700">No published vaccination records</h4>
-                      <p class="mt-1 text-sm text-slate-500">No published vaccination records are available for this pet yet.</p>
-                    </div>
-                    <div x-show="petModal.vaccinations.length > 0" class="space-y-3">
-                      <template x-for="record in petModal.vaccinations" :key="record.vaccine_name + '-' + record.administered_date">
-                        <article class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                          <div class="border-b border-slate-200 bg-white px-4 py-3">
-                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div><p class="text-xs font-medium text-slate-500">Vaccine</p><h4 class="mt-1 break-words text-lg font-bold text-[#2f4b66]" x-text="formatTextValue(record.vaccine_name)"></h4></div>
-                              <span class="w-fit rounded-full border px-3 py-1 text-xs font-bold" :class="vaccinationStatusClasses(record.due_status)" x-text="vaccinationStatusLabel(record.due_status)"></span>
-                            </div>
-                          </div>
-                          <div class="space-y-4 p-4">
-                            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div><dt class="text-xs font-medium text-slate-500">Administration Date</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatDate(record.administered_date)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Next Due Date</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatDate(record.next_due_date)"></dd></div>
-                            </dl>
-                            <dl class="grid grid-cols-1 gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2 xl:grid-cols-3">
-                              <div><dt class="text-xs font-medium text-slate-500">Product Name</dt><dd class="mt-1 text-sm text-slate-700" x-text="formatTextValue(record.product_name)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Manufacturer</dt><dd class="mt-1 text-sm text-slate-700" x-text="formatTextValue(record.manufacturer)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Dose</dt><dd class="mt-1 text-sm text-slate-700" x-text="vaccinationDose(record)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Route</dt><dd class="mt-1 text-sm text-slate-700" x-text="formatLabel(record.route)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Batch Number</dt><dd class="mt-1 text-sm text-slate-700" x-text="formatTextValue(record.batch_number)"></dd></div>
-                              <div><dt class="text-xs font-medium text-slate-500">Administration Site</dt><dd class="mt-1 text-sm text-slate-700" x-text="formatTextValue(record.administration_site)"></dd></div>
-                            </dl>
-                          </div>
-                        </article>
-                      </template>
-                    </div>
-                  </div>
+                <section x-show="petModal.activeTab === 'confinements' && !detail.record" id="customer-pet-confinements-panel" role="tabpanel" aria-labelledby="customer-pet-confinements-tab" class="customer-clinical-history" :aria-busy="petHistories.confinements?.loading">
+                  <template x-if="petModal.activeTab === 'confinements' && petHistories.confinements"><div>
+                    <admin-loader x-cloak x-show="petHistories.confinements.loading && !petHistories.confinements.loaded"></admin-loader>
+                    <div x-show="petHistories.confinements.error" role="alert" class="mb-3 text-sm text-red-600"><span x-text="petHistories.confinements.error"></span> <button type="button" @click="loadPetHistory('confinements', petHistories.confinements.retryPage || 1)" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
+                    <div class="overflow-hidden rounded-2xl border border-slate-200"><div class="overflow-x-auto" role="region" aria-label="Confinements" tabindex="0">
+                      <table class="w-full min-w-[640px] table-fixed text-left text-sm"><caption class="sr-only">Confinements for this pet</caption>
+                        <thead class="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th scope="col" class="w-[20%] px-4 py-3">Case</th><th scope="col" class="w-[35%] px-4 py-3">Confinement / Status</th><th scope="col" class="w-[30%] px-4 py-3">Duration</th><th scope="col" class="w-[15%] px-4 py-3 text-right">View</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100"><template x-for="rec in petHistories.confinements.rows" :key="'confinements-' + (rec.record_type || 'case') + '-' + rec.id">
+                          <tr tabindex="0" class="cursor-pointer hover:bg-[#f0f7fd] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]" @click="viewPetHistory(rec, $event.currentTarget, 'confinement')" @keydown.enter="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewPetHistory(rec, $event.currentTarget, 'confinement') }" @keydown.space="if ($event.target === $event.currentTarget) { $event.preventDefault(); viewPetHistory(rec, $event.currentTarget, 'confinement') }">
+                            <td class="truncate px-4 py-3 font-medium text-slate-700" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td>
+                            <td class="px-4 py-3 text-slate-600"><span class="block truncate" :title="historyService(rec.case_service).name" x-text="historyService(rec.case_service).name || 'Confinement'"></span><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold" :class="rec.discharged_at ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'" x-text="rec.discharged_at ? 'Discharged' : 'Confined'"></span></td>
+                          <td class="truncate px-4 py-3 text-slate-600" :title="historyDuration(rec)" x-text="historyDuration(rec)"></td>
+                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'confinement')" :aria-label="'View ' + historyCaseLabel(rec)" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
+                          </tr>
+                        </template>
+                        <tr x-show="petHistories.confinements.loaded && !petHistories.confinements.loading && !petHistories.confinements.error && !petHistories.confinements.rows.length"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No confinement records yet.</td></tr>
+                        </tbody>
+                      </table>
+                    </div></div>
+                    <button x-show="petHistories.confinements.page < petHistories.confinements.lastPage && petHistories.confinements.loaded" type="button" @click="loadPetHistory('confinements', petHistories.confinements.page + 1)" :disabled="petHistories.confinements.loading" class="mt-3 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50">Load more</button>
+                  </div></template>
                 </section>
+
+                <template x-if="detail.record"><section class="customer-clinical-history" :aria-busy="detail.loading">
+                  <div class="mb-5 border-b border-slate-100 pb-4">
+                    <button type="button" x-ref="petHistoryBack" @click="backToPetHistory()" class="mb-3 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-[#315b7e] hover:bg-[#eef5fb]">
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg><span x-text="detail.kind === 'confinement' ? 'Back to Confinements' : 'Back to Medical Records'"></span>
+                    </button>
+                    <h3 class="text-lg font-bold text-[#2f4b66]" x-text="petHistoryTitle"></h3>
+                    <p class="mt-1 text-sm text-slate-500" x-text="petHistorySubtitle"></p>
+                    <p x-show="petHistoryStatus" class="mt-1 text-xs font-semibold text-slate-600" x-text="petHistoryStatus"></p>
+                  </div>
+                  <admin-loader x-cloak x-show="detail.loading"></admin-loader>
+                  <div x-show="detail.error" role="alert" class="py-4 text-sm text-red-600"><span x-text="detail.error"></span> <button type="button" @click="loadCaseDetail()" class="rounded-lg px-2 py-1 font-semibold">Retry</button></div>
+                  <template x-if="!detail.loading && !detail.error"><clinic-record-sections compact></clinic-record-sections></template>
+                </section></template>
               </div>
 
               <!-- Edit mode -->
@@ -1170,7 +1138,9 @@
 
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="../../scripts/components/admin-customers.js?v=customer-records-20261029&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029"></script>
+    <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
+    <script src="../../scripts/components/clinic-record-presentation.js?v=20261029"></script>
+    <script src="../../scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

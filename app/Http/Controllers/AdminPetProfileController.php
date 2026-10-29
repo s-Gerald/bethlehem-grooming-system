@@ -5,16 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\ClinicAppointment;
 use App\Models\ClinicConfinement;
 use App\Models\Pet;
+use App\Models\VaccinationRecord;
 use App\Services\PetProfileHistoryService;
 use Illuminate\Http\Request;
 
 class AdminPetProfileController extends Controller
 {
-    public function caseDetails(int $petId, int $caseId, PetProfileHistoryService $history, AdminVaccinationController $treatments)
+    public function caseDetails(Request $request, int $petId, int $caseId, PetProfileHistoryService $history, AdminVaccinationController $treatments)
     {
-        $case = ClinicAppointment::query()->where('pet_id', $petId)->with([
+        $request->validate(['view' => 'sometimes|in:history']);
+        $historyView = $request->input('view') === 'history';
+        $case = ($historyView ? $history->eligibleClinicalCases($petId) : ClinicAppointment::query()->where('pet_id', $petId))->with([
             'record.attachments', 'vitals',
             'vaccinationRecords' => fn ($query) => $query->where('pet_id', $petId)
+                ->when($historyView, fn ($query) => $query->published()->notVoided())
                 ->with(AdminVaccinationController::RESPONSE_RELATIONS)->orderByDesc('administered_date')->orderByDesc('id'),
             'caseServices' => fn ($query) => $query->where('status', 'performed')->with('clinicService')
                 ->orderByDesc('performed_at')->orderByDesc('id'),
@@ -34,6 +38,7 @@ class AdminPetProfileController extends Controller
         Request $request,
         int $petId,
         PetProfileHistoryService $history,
+        AdminVaccinationController $treatments,
     ) {
         if (! in_array($request->user()?->role, ['admin', 'staff'], true)) {
             return response()->json([
@@ -52,9 +57,27 @@ class AdminPetProfileController extends Controller
         }
 
         $data = $request->validate([
-            'history' => 'sometimes|in:services,confinement',
+            'history' => 'sometimes|in:services,confinement,grooming,clinical',
+            'view' => 'sometimes|in:history',
             'page' => 'sometimes|integer|min:1',
         ]);
+        if (($data['history'] ?? null) === 'clinical' || ($data['view'] ?? null) === 'history') {
+            abort_unless($request->user()->clinicPermissions()['access'] ?? false, 403);
+        }
+        if (($data['history'] ?? null) === 'grooming') {
+            return response()->json(['success' => true, 'grooming_records' => $history->groomingRecords($pet)]);
+        }
+        if (($data['history'] ?? null) === 'clinical') {
+            $records = $history->clinicalHistory($pet);
+            $historical = VaccinationRecord::query()
+                ->whereIn('id', $records->getCollection()->where('record_type', 'historical')->pluck('id'))
+                ->with(AdminVaccinationController::RESPONSE_RELATIONS)->get()->keyBy('id');
+            $records->through(function ($record) use ($historical, $treatments) {
+                return [...(array) $record, ...($record->record_type === 'historical'
+                    ? ['treatment' => $treatments->formatRecord($historical[$record->id])] : [])];
+            });
+            return response()->json($records);
+        }
         if (($data['history'] ?? null) === 'services') {
             // Round each two-decimal quantity/price pair in cents before summing;
             // SQLite's binary product can otherwise round a half cent down.
@@ -72,7 +95,7 @@ class AdminPetProfileController extends Controller
         if (($data['history'] ?? null) === 'confinement') {
             return response()->json(ClinicConfinement::query()
                 ->whereHas('appointment', fn ($query) => $query->where('pet_id', $petId))
-                ->with(['appointment:id,appointment_reference', 'caseService.clinicService', 'caseService.charge'])
+                ->with(['appointment:id,appointment_reference,appointment_date,status', 'caseService.clinicService', 'caseService.charge'])
                 ->orderByDesc('admitted_at')->orderByDesc('id')->paginate(20));
         }
 

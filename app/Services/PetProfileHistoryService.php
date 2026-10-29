@@ -8,9 +8,38 @@ use App\Models\ClinicAppointment;
 use App\Models\Pet;
 use App\Models\VaccinationRecord;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class PetProfileHistoryService
 {
+    public function eligibleClinicalCases(int $petId)
+    {
+        return ClinicAppointment::query()->where('pet_id', $petId)
+            ->whereIn('status', ['for_payment', 'completed'])
+            ->where(fn ($query) => $query->whereHas('record')
+                ->orWhereHas('vaccinationRecords', fn ($treatments) => $treatments->where('pet_id', $petId)->published()->notVoided())
+                ->orWhereHas('caseServices', fn ($services) => $services->where('status', 'performed')));
+    }
+
+    public function clinicalHistory(Pet $pet)
+    {
+        // Union compact summaries before pagination; never hydrate every case or its attachments.
+        $cases = $this->eligibleClinicalCases($pet->pet_id)
+            ->leftJoin('clinic_records as record', 'record.clinic_appointment_id', '=', 'clinic_appointments.id')
+            ->selectRaw("clinic_appointments.id, clinic_appointments.id as appointment_id,
+                clinic_appointments.appointment_reference, clinic_appointments.appointment_date,
+                COALESCE(record.chief_complaint, clinic_appointments.chief_complaint) as chief_complaint,
+                COALESCE(record.working_diagnosis, record.diagnosis) as working_diagnosis, 'case' as record_type");
+        $historical = VaccinationRecord::query()->where('pet_id', $pet->pet_id)
+            ->whereNull('clinic_appointment_id')->published()->notVoided()
+            ->selectRaw("id, NULL as appointment_id, NULL as appointment_reference,
+                administered_date as appointment_date, NULL as chief_complaint,
+                NULL as working_diagnosis, 'historical' as record_type");
+
+        return DB::query()->fromSub($cases->unionAll($historical), 'history')
+            ->orderByDesc('appointment_date')->orderByDesc('id')->orderBy('record_type')->paginate(20);
+    }
+
     public function groomingRecords(Pet $pet): Collection
     {
         return Booking::query()

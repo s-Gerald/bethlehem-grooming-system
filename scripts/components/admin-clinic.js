@@ -27,14 +27,6 @@ function clinicDoseErrors(amount, unit, required = false) {
   return errors;
 }
 
-function formatClinicFileSize(bytes) {
-  const size = Number(bytes);
-  if (!Number.isFinite(size) || size < 0) return "Size unavailable";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function clinicLocalDate(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1503,11 +1495,11 @@ function adminClinicPage() {
     },
     treatmentSummary: record => clinicTreatmentSummary(record),
     treatmentDetails: record => clinicTreatmentDetails(record),
-    historyService(entry) { return entry?.service_snapshot || entry?.clinic_service || {}; },
-    historyPrice(value) { return value == null ? '—' : this.money(value); },
+    historyService(record) { return clinicHistoryService(record); },
+    historyPrice(value) { return clinicHistoryPrice(value); },
     historyDuration(episode) { return clinicConfinementDuration(episode.admitted_at, episode.discharged_at || this.$store.clinicConfinementClock?.now || Date.now()); },
-    historyTime(value) { return value ? new Date(value).toLocaleString('en-PH', {dateStyle: 'medium', timeStyle: 'short'}) : '—'; },
-    historyCaseId(record) { return record?.appointment_id || record?.clinic_appointment_id || record?.appointment?.id || null; },
+    historyTime(value) { return clinicHistoryTime(value); },
+    historyCaseId(record) { return clinicHistoryCaseId(record); },
     historyCaseReference(record) {
       return record?.appointment_reference || record?.clinic_appointment_reference || record?.appointment?.appointment_reference
         || (this.historyCaseId(record) ? this.profile.records.find(item => String(item.appointment_id) === String(this.historyCaseId(record)))?.appointment_reference : null);
@@ -1533,18 +1525,7 @@ function adminClinicPage() {
         'Published', 'Published By', 'Voided', 'Voided By'].includes(field.label));
     },
     confinementDetailFields(record) {
-      if (!record) return [];
-      return [
-        {label: 'Confinement', value: this.historyService(record.case_service).name},
-        {label: 'Status', value: record.discharged_at ? 'Discharged' : 'Confined'},
-        {label: 'Admitted', value: this.historyTime(record.admitted_at)},
-        ...(record.discharged_at ? [{label: 'Discharged', value: this.historyTime(record.discharged_at)}] : []),
-        {label: 'Duration', value: this.historyDuration(record)},
-        ...(record.attending_veterinarian_name && record.attending_veterinarian_name !== this.detail.medical?.primary_veterinarian_name
-          ? [{label: 'Attending Veterinarian', value: record.attending_veterinarian_name}] : []),
-        {label: 'Reason', value: record.reason}, {label: 'Notes', value: record.notes},
-        {label: 'Discharge Note', value: record.discharge_note},
-      ].filter(field => field.value != null && field.value !== '');
+      return clinicConfinementFields(record, this.detail.medical, this.$store.clinicConfinementClock?.now);
     },
     async loadHistoryObservations(page = 1) {
       const detail = this.detail, request = this._profileRequest, cache = this._caseObservations;
@@ -1620,7 +1601,7 @@ function adminClinicPage() {
       });
     },
 
-    formatFileSize: formatClinicFileSize,
+    formatFileSize(bytes) { return formatClinicFileSize(bytes); },
 
     async downloadDetailAttachment(attachment) {
       this.detailAttachmentBusyId = attachment.id;
@@ -1649,11 +1630,7 @@ function adminClinicPage() {
       return String(name || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
     },
 
-    fmtDate(d) {
-      if (!d) return "—";
-      try { return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
-      catch { return d; }
-    },
+    fmtDate(value) { return clinicHistoryDate(value); },
   };
 }
 

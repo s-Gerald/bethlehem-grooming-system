@@ -10,6 +10,7 @@ const sandbox = {
   API: {}, crypto: require('node:crypto'), setTimeout, clearTimeout,
 };
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-clinic.js'), 'utf8'), sandbox);
 vm.runInContext(`clinicPetWeightToolsReady = Promise.resolve({
   formatSavedWeight: value => value == null ? '' : String(value),

@@ -40,6 +40,7 @@ const sandbox = {console, crypto: webcrypto, Date, setTimeout, clearTimeout, doc
   },
 };
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), sandbox);
 for (const file of ['admin-clinic.js', 'admin-clinic-case-workspace.js', 'admin-clinic-confinement.js'])
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', file), 'utf8'), sandbox);
 function component(permission = true, id = 1) {

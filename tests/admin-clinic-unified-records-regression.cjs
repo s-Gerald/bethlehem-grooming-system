@@ -37,6 +37,7 @@ function setup(access = true) {
   };
   context.window = context;
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), context);
   vm.runInContext(read('scripts/components/admin-clinic.js'), context);
   vm.runInContext(read('scripts/components/admin-clinic-shell.js'), context);
   const state = context.adminClinicCasesSection();
