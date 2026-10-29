@@ -1109,7 +1109,7 @@ function signInPageHarness({ storage = new MemoryStorage(), signIn = async () =>
   }
   const API = { signIn };
   const context = { API, URL, URLSearchParams, sessionStorage: storage,
-    Date: { now: () => wall }, performance: { now: () => elapsed },
+    Date: class extends Date { static now() { return wall; } }, performance: { now: () => elapsed },
     setInterval(f) { const id = ++nextTimer; intervals.set(id, f); return id; }, clearInterval(id) { intervals.delete(id); },
     window: { location: { search: '', replace() {} }, addEventListener(k, f) { lifecycle[k] = f; } },
     document: { getElementById: element, querySelector: () => null,
@@ -1136,7 +1136,7 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
     await page.submit();
     assert.equal(page.element('sharedSignInMessage').textContent, 'Invalid credentials.');
   }
-  for (const code of ['email_rate_limited', 'email_cooldown', 'login_code_locked', 'sign_in_busy', null]) {
+  for (const code of ['login_code_locked', 'sign_in_busy', null]) {
     const page = signInPageHarness({ signIn: async () => { throw { status: 429, code, retryAfter: 43200, message: 'Please try again later.' }; } });
     await page.submit();
     assert.equal(page.intervals.size, 0, `${code} is not a password cooldown`);
@@ -1201,6 +1201,57 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
   await expired.submit(); expired.advance(1000);
   assert.equal(expired.element('sharedSignInMessage').textContent, 'Invalid credentials.', 'An expired suspended timer cannot erase the next response');
   assert.equal(expired.intervals.size, 0);
+}
+
+async function testSignInEmailLimitFeedback() {
+  const cases = [
+    [{next_eligible_at:'2026-10-29T20:31:58Z'}, undefined, 'Oct 30, 2026 at 4:32 AM PHT'],
+    [{next_eligible_at:'2026-10-31T23:59:01+08:00'}, undefined, 'Nov 1, 2026 at 12:00 AM PHT'],
+    [{next_eligible_at:'2026-12-31T16:00:00Z'}, undefined, 'Jan 1, 2027 at 12:00 AM PHT'],
+    [{next_eligible_at:'2026-10-30T04:32:00+08:00'}, undefined, 'Oct 30, 2026 at 4:32 AM PHT'],
+  ];
+  for (const [data, retryAfter, expected] of cases) {
+    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',data,retryAfter};}});
+    await page.submit();
+    assert.equal(page.element('sharedSignInMessage').textContent, `Sign-in email limit reached. Try again ${expected}.`);
+    assert.match(page.element('sharedSignInMessage').className, /border-red-200/);
+    assert.equal(page.element('sharedSignInMessage').attributes.role, 'alert');
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(page.intervals.size, 0);
+    page.edit('another@example.com');
+    assert.equal(page.element('sharedSignInMessage').textContent, '');
+  }
+  for (const timestamp of [undefined, '', 'bad', 123, '2026-02-30T10:00:00Z', '2026-10-30T04:32:00']) {
+    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',data:{next_eligible_at:timestamp,retry_after:7200}};}});
+    await page.submit();
+    assert.equal(page.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 hours.');
+  }
+  for (const seconds of [undefined, null, '', 'bad', Infinity, -1, 0, true]) {
+    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',retryAfter:seconds};}});
+    await page.submit();
+    assert.equal(page.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Please try again later.');
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+  }
+  for (const [seconds, expected] of [[60,'1 minute'],[30,'30 seconds'],[61,'2 minutes']]) {
+    const page = signInPageHarness({signIn:async () => {throw {status:429,code:'email_cooldown',retryAfter:seconds};}});
+    await page.submit();
+    assert.equal(page.element('sharedSignInMessage').textContent, `Please wait ${expected} before requesting another sign-in email.`);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(page.intervals.size, 0);
+  }
+  const shortMissing = signInPageHarness({signIn:async () => {throw {status:429,code:'email_cooldown',retryAfter:NaN};}});
+  await shortMissing.submit();
+  assert.equal(shortMissing.element('sharedSignInMessage').textContent, 'Please wait before requesting another sign-in email.');
+  const headerDuration = signInPageHarness({signIn:async () => {throw {status:429,code:'email_rate_limited',retryAfter:120,data:{retry_after:7200}};}});
+  await headerDuration.submit();
+  assert.equal(headerDuration.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 minutes.');
+  headerDuration.advance(60000);
+  assert.equal(headerDuration.element('sharedSignInMessage').textContent, 'Sign-in email limit reached. Try again in about 2 minutes.', 'Email feedback does not run a second countdown');
+  let reject;
+  const delayed = signInPageHarness({signIn:() => new Promise((_resolve, fail) => {reject=fail;})});
+  const pending=delayed.submit(); delayed.edit('other@example.com');
+  reject({status:429,code:'email_rate_limited',retryAfter:7200}); await pending;
+  assert.equal(delayed.element('sharedSignInMessage').textContent, '');
 }
 
 async function testApiRetryAfterParsingPreservesSecurityLimitClassification() {
@@ -1943,6 +1994,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testLoginDeliveryErrorsAndPrivilegedRedirects();
   await testPasswordResetRecovery();
   await testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses();
+  await testSignInEmailLimitFeedback();
   await testApiRetryAfterParsingPreservesSecurityLimitClassification();
   testStaticAuthContracts();
   console.log("frontend auth/session regression checks passed");

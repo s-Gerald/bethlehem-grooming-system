@@ -91,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let busy = false;
   let lockoutUntil = 0;
   let lockoutIdentifier = null;
+  let emailMessageIdentifier = null;
   const statusBox = document.getElementById('sharedSignInStatus');
   const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
 
@@ -99,6 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try { sessionStorage.removeItem('signInLockoutUntil'); } catch { /* Storage is optional. */ }
   identifierInput.addEventListener('input', () => {
     if (lockoutIdentifier !== null && lockoutIdentifier !== currentIdentifier()) clearCountdown();
+    if (emailMessageIdentifier !== null && emailMessageIdentifier !== currentIdentifier()) showMessage(null, '');
   });
 
   signInForm.addEventListener("submit", async (event) => {
@@ -147,6 +149,11 @@ document.addEventListener("DOMContentLoaded", () => {
             showMessage('lockout', 'Too many attempts. Please try again.');
           }
         }
+      } else if (error.status === 429 && ['email_rate_limited', 'email_cooldown'].includes(error.code)) {
+        if (submittedIdentifier === currentIdentifier()) {
+          showMessage('error', emailLimitMessage(error));
+          emailMessageIdentifier = submittedIdentifier;
+        }
       } else if (error.emailNotVerified) {
         const email = error.email ?? "";
         showMessage(
@@ -182,6 +189,36 @@ document.addEventListener("DOMContentLoaded", () => {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("password_reset");
     history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
+
+  function emailLimitMessage(error) {
+    const seconds = [error.retryAfter, error.data?.retry_after]
+      .filter(value => ['number', 'string'].includes(typeof value) && String(value).trim() !== '')
+      .map(Number).find(value => Number.isFinite(value) && value > 0);
+    const duration = () => {
+      const [unit, divisor] = seconds >= 86400 ? ['day', 86400]
+        : seconds >= 3600 ? ['hour', 3600] : seconds >= 60 ? ['minute', 60] : ['second', 1];
+      const amount = Math.ceil(seconds / divisor);
+      return `${amount} ${unit}${amount === 1 ? '' : 's'}`;
+    };
+    if (error.code === 'email_cooldown') {
+      return seconds ? `Please wait ${duration()} before requesting another sign-in email.`
+        : 'Please wait before requesting another sign-in email.';
+    }
+    const timestamp = error.data?.next_eligible_at;
+    // Require an explicit ISO timezone; Date.parse alone accepts ambiguous dates
+    // and normalizes impossible calendar dates such as February 30.
+    const iso = typeof timestamp === 'string' && timestamp.match(/^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
+    const eligible = iso ? Date.parse(timestamp) : NaN;
+    if (Number.isFinite(eligible) && new Date(`${iso[1]}T00:00:00Z`).toISOString().slice(0, 10) === iso[1]) {
+      // Round up so dropping seconds never suggests retrying before eligibility.
+      const minute = Math.ceil(eligible / 60000) * 60000;
+      const date = new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric'}).format(minute);
+      const time = new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true}).format(minute);
+      return `Sign-in email limit reached. Try again ${date} at ${time} PHT.`;
+    }
+    return seconds ? `Sign-in email limit reached. Try again in about ${duration()}.`
+      : 'Sign-in email limit reached. Please try again later.';
   }
 
   function clearCountdown() {
@@ -237,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showMessage(type, text, prefillEmail = "") {
     if (type && replacementAlert && !replacementAlert.hidden) return;
+    emailMessageIdentifier = null;
     if (statusBox) statusBox.textContent = '';
     messageBox.setAttribute('role', type === 'lockout' ? 'timer' : type === 'error' ? 'alert' : 'status');
     messageBox.setAttribute('aria-live', type === 'lockout' ? 'off' : type === 'error' ? 'assertive' : 'polite');
