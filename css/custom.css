@@ -349,6 +349,72 @@ body.customer-detail-modal-open {
   overflow: hidden;
 }
 
+/* Customer profiles keep identity and actions outside the scrolling body. */
+.customer-profile-dialog { isolation: isolate; }
+.customer-profile-header { flex-shrink: 0; }
+.customer-profile-header h2,
+.customer-profile-header h3 { overflow-wrap: anywhere; }
+.customer-header-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 12px;
+  color: white;
+}
+.customer-header-button:hover { background: rgb(255 255 255 / 15%); }
+.customer-actions-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 224px;
+  max-width: calc(100vw - 48px);
+  padding: 4px;
+  border: 1px solid #d7e3ef;
+  border-radius: 12px;
+  background: #fff;
+  color: #315b7e;
+  box-shadow: 0 8px 24px rgb(31 56 80 / 16%);
+}
+.customer-actions-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+}
+.customer-actions-menu button:hover,
+.customer-actions-menu button:focus-visible { background: #315b7e; color: #fff; }
+.customer-actions-menu .customer-action-divider { border-top: 1px solid #d7e3ef; margin-top: 4px; }
+.customer-profile-dialog button:focus-visible,
+.customer-confirm-button:focus-visible,
+[x-ref="confirmDialog"] button:focus-visible,
+[x-ref="petDiscardDialog"] button:focus-visible,
+[x-data="adminCustomers()"] [aria-pressed]:focus-visible,
+[x-data="adminCustomers()"] [role="button"]:focus-visible {
+  outline: 3px solid #315b7e;
+  outline-offset: 3px;
+}
+.customer-profile-header button:focus-visible { outline-color: #fff; }
+.customer-actions-menu button:focus-visible { outline-color: #315b7e; outline-offset: 1px; }
+.customer-confirm-button { background-color: #315b7e; color: #fff; min-height: 44px; }
+.customer-confirm-button:hover { background-color: #274b69; }
+.customer-confirm-button:disabled,
+[x-ref="confirmDialog"] button:disabled { cursor: not-allowed; opacity: .6; }
+@media (max-width: 639px) {
+  .customer-profile-header > div { gap: 12px; padding: 16px; }
+  .customer-profile-header h2,
+  .customer-profile-header h3 { font-size: 20px; }
+}
+
 .admin-sidebar-menu {
   height: 100vh;
   height: 100dvh;
@@ -601,12 +667,6 @@ body.customer-detail-modal-open {
 .badge-returning { background-color: #d1fae5; color: #047857; }
 .badge-new       { background-color: #e0f2fe; color: #0369a1; }
 
-/* ----- Customer Account Status Actions ----- */
-.btn-deactivate       { border-color: #f2c46d; color: #a16207; background-color: #ffffff; }
-.btn-deactivate:hover { background-color: #fffbeb; }
-.btn-reactivate       { background-color: #2563eb; color: #ffffff; }
-.btn-reactivate:hover { background-color: #1d4ed8; }
-
 /* ----- Confirmation Modal Icons ----- */
 .icon-bg-warn    { background-color: #fef3c7; }
 .icon-bg-reactivate { background-color: #dbeafe; }
@@ -614,14 +674,6 @@ body.customer-detail-modal-open {
 .icon-warn       { color: #b45309; }
 .icon-reactivate { color: #2563eb; }
 .icon-success    { color: #16a34a; }
-
-/* ----- Confirmation Modal Buttons ----- */
-.btn-confirm-deactivate       { background-color: #b45309; color: #ffffff; }
-.btn-confirm-deactivate:hover { background-color: #92400e; }
-.btn-confirm-reactivate       { background-color: #2563eb; color: #ffffff; }
-.btn-confirm-reactivate:hover { background-color: #1d4ed8; }
-.btn-confirm-archive          { background-color: #64748b; color: #ffffff; }
-.btn-confirm-archive:hover    { background-color: #475569; }
 
 /* ----- Availability Intake Confirmation ----- */
 .admin-intake-dialog {

@@ -38,6 +38,7 @@ class User extends Authenticatable
         'customer_tier',
         'is_active',
         'is_archived',
+        'pre_archive_is_active',
         'archived_at',
         'account_deleted_at',
         'email_verified_at',
@@ -68,6 +69,7 @@ class User extends Authenticatable
         'registration_recovery_expires_at' => 'datetime',
         'is_active' => 'boolean',
         'is_archived' => 'boolean',
+        'pre_archive_is_active' => 'boolean',
         'account_deleted_at' => 'datetime',
     ];
 

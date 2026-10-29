@@ -44,6 +44,9 @@ function adminCustomers() {
     tierFilter:   "",          // new | returning | ""
     searchQuery:  "",
     busyId:       null,
+    successMessage: "",
+    ownerActionsOpen: false,
+    petDiscardOpen: false,
 
     addCustomerModal: {
       open:   false,
@@ -66,17 +69,12 @@ function adminCustomers() {
 
     confirmModal: {
       open:         false,
-      action:       "",   // deactivate | reactivate | archive | unarchive
+      action:       "",   // deactivate | reactivate | archive | unarchive | archive_unregistered | restore_unregistered
       customer:     null,
       title:        "",
       message:      "",
       confirmLabel: "",
       error:        "",
-    },
-
-    resetModal: {
-      open:     false,
-      customer: null,
     },
 
     detailModal: {
@@ -309,65 +307,89 @@ function adminCustomers() {
 
     // ── Confirm modal ─────────────────────────────────────
 
+    customerActions(customer) {
+      if (!customer || !["admin", "staff"].includes(API.getUserRole?.())) return [];
+      const manual = customer.recordType === "unregistered";
+      if (!manual && !this.isAdmin) return [];
+      if (customer.isArchived) return [{ action: manual ? "restore_unregistered" : "unarchive", label: "Restore customer", icon: "arrow-counter-clockwise" }];
+      const archive = { action: manual ? "archive_unregistered" : "archive", label: "Archive customer", icon: "archive" };
+      return manual ? [archive] : [
+        { action: customer.isActive ? "deactivate" : "reactivate", label: customer.isActive ? "Deactivate account" : "Reactivate account", icon: customer.isActive ? "prohibit" : "check-circle" },
+        archive,
+      ];
+    },
+
+    toggleOwnerActions() {
+      if (this.ownerActionsOpen) return this.closeOwnerActions();
+      this.ownerActionsOpen = true;
+      this.$nextTick(() => this.$refs.ownerActionsMenu.querySelector('[role="menuitem"]')?.focus());
+    },
+
+    closeOwnerActions(restoreFocus = true) {
+      if (!this.ownerActionsOpen) return;
+      this.ownerActionsOpen = false;
+      if (restoreFocus) this.$refs.ownerActionsButton.focus();
+    },
+
+    navigateOwnerActions(event) {
+      const items = Array.from(this.$refs.ownerActionsMenu.querySelectorAll('[role="menuitem"]'));
+      const current = items.indexOf(document.activeElement);
+      let next;
+      if (event.key === "ArrowDown") next = (current + 1) % items.length;
+      else if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = items.length - 1;
+      else if (event.key === "Tab") { this.closeOwnerActions(false); return; }
+      else return;
+      event.preventDefault();
+      items[next]?.focus();
+    },
+
     confirmAction(action, customer) {
-      const staffAllowedActions = ["archive_unregistered"];
-      if (!this.isAdmin && !staffAllowedActions.includes(action)) return;
-
-      const labels = {
-        deactivate:  { title: "Deactivate Account",  confirmLabel: "Deactivate",  color: "amber"  },
-        reactivate:  { title: "Reactivate Account",  confirmLabel: "Reactivate",  color: "green"  },
-        archive:     { title: "Archive Account",     confirmLabel: "Archive",     color: "slate"  },
-        archive_unregistered: { title: "Archive Customer", confirmLabel: "Archive", color: "slate" },
-        unarchive:   { title: "Unarchive Account",   confirmLabel: "Unarchive",   color: "green"  },
-      };
-
-      const messages = {
-        deactivate: `This will block ${customer.fullName} from logging in. You can reactivate their account at any time.`,
-        reactivate: `This will restore ${customer.fullName}'s access and allow them to log in again.`,
-        archive:    `This will permanently move ${customer.fullName} to the archive. They will not be able to log in.`,
-        archive_unregistered: `This will move ${customer.fullName} and their pet records to the archive.`,
-        unarchive:  `This will restore ${customer.fullName}'s account and reactivate their access.`,
-      };
-
-      const meta = labels[action] || {};
-
-      this.confirmModal = {
-        open:         true,
-        action,
-        customer,
-        title:        meta.title        || action,
-        message:      messages[action]  || "",
-        confirmLabel: meta.confirmLabel || action,
-        error:        "",
-      };
-
+      if (this.busyId !== null || !this.customerActions(customer).some(item => item.action === action)) return;
+      this.closeOwnerActions(false);
+      const restore = ["unarchive", "restore_unregistered"].includes(action);
+      const archive = ["archive", "archive_unregistered"].includes(action);
+      const label = restore ? "Restore customer" : archive ? "Archive customer" : action === "deactivate" ? "Deactivate account" : "Reactivate account";
+      const message = restore
+        ? (customer.recordType === "unregistered"
+          ? "Return this manual customer to current records."
+          : "Return this customer to current records. Their previous account access status will be preserved; unknown previous access stays deactivated.")
+        : archive
+          ? "Move this customer out of daily operations. Pet and transaction history will be preserved."
+          : action === "deactivate" ? "Disable portal login and end existing sessions. You can reactivate the account later."
+          : "Enable this customer's portal login.";
+      this.confirmModal = { open: true, action, customer, title: label + "?", message, confirmLabel: label, error: "" };
+      this.setCustomerDetailScrollLock(true);
+      this.$nextTick(() => this.$refs.confirmCancel.focus());
     },
 
     closeConfirm() {
+      if (this.busyId !== null) return;
       this.confirmModal.open = false;
+      this.setCustomerDetailScrollLock(false);
+      this.$nextTick(() => this.$refs.ownerActionsButton?.focus());
     },
 
     async executeAction() {
       const { action, customer } = this.confirmModal;
-      const staffAllowedActions = ["archive_unregistered"];
-      if (!this.isAdmin && !staffAllowedActions.includes(action)) return;
-      if (!customer) return;
-
-      this.busyId              = customer.id;
-      this.confirmModal.error  = "";
-
+      if (!this.confirmModal.open || this.busyId !== null || !this.customerActions(customer).some(item => item.action === action)) return;
+      this.busyId = customer.id;
+      this.confirmModal.error = "";
       const apiMap = {
         deactivate: () => API.deactivateCustomer(customer.id),
         reactivate: () => API.reactivateCustomer(customer.id),
-        archive:    () => API.archiveCustomer(customer.id),
+        archive: () => API.archiveCustomer(customer.id),
         archive_unregistered: () => API.archiveUnregisteredCustomer(customer.id),
-        unarchive:  () => API.unarchiveCustomer(customer.id),
+        unarchive: () => API.unarchiveCustomer(customer.id),
+        restore_unregistered: () => API.restoreUnregisteredCustomer(customer.id),
       };
-
       try {
-        await apiMap[action]();
+        const data = await apiMap[action]();
+        this.successMessage = data.message || "Customer updated.";
         this.confirmModal.open = false;
         if (this.detailModal.open) this.closeCustomerDetails();
+        this.setCustomerDetailScrollLock(false);
         await this.loadCustomers();
       } catch (err) {
         this.confirmModal.error = err.message || "Action failed. Please try again.";
@@ -376,19 +398,57 @@ function adminCustomers() {
       }
     },
 
-    // ── Reset Password modal ──────────────────────────────
-
-    openResetPassword(customer) {
-      if (!this.isAdmin) return;
-
-      this.resetModal = { open: true, customer };
+    handleCustomerEscape(event) {
+      if (this.petDiscardOpen) this.keepPetEditing();
+      else if (this.petModal.open) this.closePetDetails();
+      else if (this.confirmModal.open) this.closeConfirm();
+      else if (this.ownerActionsOpen) this.closeOwnerActions();
+      else if (this.detailModal.open) this.closeCustomerDetails();
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
     },
 
-    closeReset() {
-      this.resetModal.open = false;
+    trapDialogFocus(event) {
+      const dialog = this.petDiscardOpen ? this.$refs.petDiscardDialog
+        : this.petModal.open ? this.$refs.petDialog
+        : this.confirmModal.open ? this.$refs.confirmDialog
+        : this.detailModal.open ? this.$refs.ownerDialog : null;
+      if (!dialog) return;
+      const items = Array.from(dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]'))
+        .filter(item => !item.disabled && item.tabIndex >= 0 && item.getClientRects().length && !item.closest('[inert]'));
+      const first = items[0], last = items[items.length - 1];
+      if (!items.length) { event.preventDefault(); dialog.focus(); return; }
+      if (!dialog.contains(document.activeElement) || (event.shiftKey && document.activeElement === first)) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    },
+
+    closePetDetails(discard = false) {
+      if (this.petModal.saving) return;
+      if (this.petModal.editing && !discard) {
+        this.petDiscardOpen = true;
+        this.$nextTick(() => this.$refs.petKeepEditing.focus());
+        return;
+      }
+      adminCustomerPetFields?.controls.color.close();
+      this.petModal.open = false;
+      this.petModal.editing = false;
+      this.petDiscardOpen = false;
+      this.setCustomerDetailScrollLock(false);
+      this.$nextTick(() => this._petReturnFocus?.isConnected ? this._petReturnFocus.focus({ preventScroll: true }) : this.$refs.ownerClose?.focus());
+    },
+
+    keepPetEditing() {
+      this.petDiscardOpen = false;
+      this.$nextTick(() => this.$refs.petClose.focus());
     },
 
     async openPetDetail(pet) {
+      this._petReturnFocus = document.activeElement;
+      this.closeOwnerActions(false);
       this.petModal = {
         open: true,
         pet,
@@ -406,6 +466,8 @@ function adminCustomers() {
         medicalRecords: [],
         vaccinations: [],
       };
+      this.setCustomerDetailScrollLock(true);
+      this.$nextTick(() => { this.$refs.petBody.scrollTop = 0; this.$refs.petClose.focus(); });
       await this.loadPetProfile();
     },
 
@@ -442,6 +504,7 @@ function adminCustomers() {
     async openAddPetForCustomer(customer) {
       if (!customer || customer.recordType !== "unregistered" || customer.isArchived) return;
 
+      this._petReturnFocus = document.activeElement;
       this.petModal = {
         open: true,
         pet: null,
@@ -475,6 +538,7 @@ function adminCustomers() {
         },
       };
 
+      this.$nextTick(() => { this.$refs.petBody.scrollTop = 0; this.$refs.petClose.focus(); });
       if (!await this.initializePetFormFields()) {
         this.petModal.saveError = "Pet controls could not be loaded. Please refresh and try again.";
         return;
@@ -685,12 +749,9 @@ function adminCustomers() {
     },
 
     cancelEditPet() {
+      if (this.petModal.saving) return;
       adminCustomerPetFields?.controls.color.close();
-      if (this.petModal.creating) {
-        this.petModal.open = false;
-        this.petModal.editing = false;
-        return;
-      }
+      if (this.petModal.creating) return this.closePetDetails(true);
       this.petModal.editing   = false;
       this.petModal.saveError = "";
     },
@@ -878,6 +939,9 @@ function adminCustomers() {
     },
 
     async openCustomerDetails(customer) {
+      this._ownerReturnFocus = document.activeElement;
+      const request = this._detailRequest = (this._detailRequest || 0) + 1;
+      this.ownerActionsOpen = false;
       this.setCustomerDetailScrollLock(true);
       this.detailModal = {
         open:     true,
@@ -886,6 +950,7 @@ function adminCustomers() {
         error:    "",
       };
 
+      this.$nextTick?.(() => { this.$refs.ownerBody.scrollTop = 0; this.$refs.ownerClose.focus(); });
       try {
         const [data, format] = await Promise.all([
           customer.recordType === "unregistered"
@@ -893,22 +958,28 @@ function adminCustomers() {
             : API.getCustomerDetails(customer.id),
           import("../services/booking-format-service.js?v=pet-weight-format-20261019"),
         ]);
+        if (request !== this._detailRequest || !this.detailModal.open) return;
         adminCustomerFormatWeight = format.formatSavedWeight;
         this.detailModal.customer = data.customer || this.detailModal.customer;
       } catch (err) {
-        this.detailModal.error = err.message || "Failed to load customer details.";
+        if (request === this._detailRequest) this.detailModal.error = err.message || "Failed to load customer details.";
       } finally {
-        this.detailModal.loading = false;
+        if (request === this._detailRequest) this.detailModal.loading = false;
       }
     },
 
     closeCustomerDetails() {
+      if (this.petModal.open || this.confirmModal.open) return;
+      this._detailRequest = (this._detailRequest || 0) + 1;
+      this.ownerActionsOpen = false;
       this.detailModal.open = false;
       this.detailModal.error = "";
       this.setCustomerDetailScrollLock(false);
+      this.$nextTick?.(() => this._ownerReturnFocus?.isConnected && this._ownerReturnFocus.focus({ preventScroll: true }));
     },
 
     setCustomerDetailScrollLock(locked) {
+      locked = locked || this.detailModal.open || this.petModal.open || this.confirmModal.open || this.addCustomerModal.open;
       document.documentElement.classList.toggle("customer-detail-modal-open", locked);
       document.body.classList.toggle("customer-detail-modal-open", locked);
     },
@@ -1061,11 +1132,19 @@ function adminCustomers() {
       return `${record.dose_amount}${record.dose_unit ? ` ${record.dose_unit}` : ""}`;
     },
 
+    categoryLabel(status) {
+      return ({ active: "Portal Accounts", unregistered: "Walk-in / Manual", inactive: "Deactivated", archived: "Archived" })[status] || "Customers";
+    },
+
+    categoryDescription() {
+      return ({ active: "Customers with an enabled online dashboard account.", unregistered: "Customer records created by staff without a portal account.", inactive: "Portal accounts with login access disabled.", archived: "Records retained for history and reference." })[this.statusFilter];
+    },
+
     customerStatusLabel(customer) {
-      if (customer?.isArchived) return "Archived";
-      if (customer?.recordType === "unregistered") return "Unregistered";
-      if (customer?.isActive) return "Active";
-      return "Inactive";
+      const type = customer?.recordType === "unregistered" ? "Manual record" : "Portal account";
+      if (customer?.isArchived) return "Archived \u00b7 " + type;
+      if (customer?.recordType === "unregistered") return type;
+      return type + (customer?.isActive ? " \u00b7 Enabled" : " \u00b7 Deactivated");
     },
   };
 }

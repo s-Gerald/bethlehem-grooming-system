@@ -25,6 +25,9 @@ class AdminUnregisteredCustomerTest extends TestCase
             $table->string('role')->default('customer');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_archived')->default(false);
+            $table->timestamp('archived_at')->nullable();
+            $table->boolean('pre_archive_is_active')->nullable();
+            $table->timestamp('account_deleted_at')->nullable();
         });
 
         Schema::create('unregistered_customers', function (Blueprint $table) {
@@ -37,6 +40,7 @@ class AdminUnregisteredCustomerTest extends TestCase
             $table->unsignedInteger('created_by_user_id')->nullable();
             $table->boolean('is_archived')->default(false);
             $table->timestamp('archived_at')->nullable();
+            $table->timestamp('account_deleted_at')->nullable();
             $table->timestamps();
         });
 
@@ -60,6 +64,26 @@ class AdminUnregisteredCustomerTest extends TestCase
             $table->text('medical_conditions')->nullable();
             $table->boolean('is_archived')->default(false);
             $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('bookings', function (Blueprint $table) {
+            $table->increments('booking_id');
+            $table->unsignedInteger('user_id');
+            $table->string('status');
+        });
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('tokenable');
+            $table->string('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->unsignedInteger('user_id');
         });
 
         DB::table('users')->insert([
@@ -92,11 +116,117 @@ class AdminUnregisteredCustomerTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('sessions');
+        Schema::dropIfExists('personal_access_tokens');
+        Schema::dropIfExists('bookings');
         Schema::dropIfExists('pets');
         Schema::dropIfExists('unregistered_customers');
         Schema::dropIfExists('users');
 
         parent::tearDown();
+    }
+
+    public function test_portal_archive_restore_preserves_enabled_and_deactivated_access_and_history(): void
+    {
+        Sanctum::actingAs(User::findOrFail(1), ['*']);
+        DB::table('pets')->insert(['pet_id' => 77, 'user_id' => 3, 'pet_name' => 'Zeus', 'is_archived' => true]);
+        DB::table('bookings')->insert(['user_id' => 3, 'status' => 'released']);
+        $pets = DB::table('pets')->get()->toJson();
+        $history = DB::table('bookings')->get()->toJson();
+
+        foreach ([true, false] as $enabled) {
+            DB::table('users')->where('user_id', 3)->update(['is_active' => $enabled]);
+            User::findOrFail(3)->createToken('existing-session');
+            DB::table('sessions')->insert(['id' => 'customer-session', 'user_id' => 3]);
+            $this->postJson('/api/admin/customers/3/archive')->assertOk();
+            $this->assertDatabaseHas('users', ['user_id' => 3, 'is_archived' => true, 'is_active' => false, 'pre_archive_is_active' => $enabled]);
+            $this->assertDatabaseCount('personal_access_tokens', 0);
+            $this->assertDatabaseCount('sessions', 0);
+            $this->postJson('/api/admin/customers/3/archive')->assertStatus(422);
+            $this->postJson('/api/admin/customers/3/reactivate')->assertStatus(422);
+            $this->getJson('/api/admin/customers?status=archived')->assertJsonPath('customers.0.id', 3);
+            $this->getJson('/api/admin/customers?status=active')->assertJsonCount(0, 'customers');
+            $this->postJson('/api/admin/customers/3/unarchive')->assertOk();
+            $this->assertDatabaseHas('users', ['user_id' => 3, 'is_archived' => false, 'is_active' => $enabled, 'pre_archive_is_active' => null]);
+            $status = $enabled ? 'active' : 'inactive';
+            $this->getJson('/api/admin/customers?status='.$status)->assertJsonPath('customers.0.id', 3);
+            $this->getJson('/api/admin/customers?status=archived')->assertJsonCount(0, 'customers');
+            $this->postJson('/api/admin/customers/3/unarchive')->assertStatus(422);
+        }
+        $this->assertSame($pets, DB::table('pets')->get()->toJson());
+        $this->assertSame($history, DB::table('bookings')->get()->toJson());
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_deactivation_revokes_access_and_reactivation_requires_an_explicit_admin_action(): void
+    {
+        Sanctum::actingAs(User::findOrFail(1), ['*']);
+        User::findOrFail(3)->createToken('customer');
+        DB::table('sessions')->insert(['id' => 'customer-session', 'user_id' => 3]);
+        $this->postJson('/api/admin/customers/3/deactivate')->assertOk();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertDatabaseCount('sessions', 0);
+        $this->postJson('/api/admin/customers/3/deactivate')->assertStatus(422);
+        $this->assertDatabaseHas('users', ['user_id' => 3, 'is_active' => false, 'is_archived' => false]);
+        $this->postJson('/api/admin/customers/3/reactivate')->assertOk();
+        $this->assertDatabaseHas('users', ['user_id' => 3, 'is_active' => true]);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_legacy_portal_archive_restores_without_granting_access(): void
+    {
+        Sanctum::actingAs(User::findOrFail(1), ['*']);
+        DB::table('users')->where('user_id', 3)->update(['is_archived' => true, 'is_active' => false]);
+        $this->postJson('/api/admin/customers/3/unarchive')->assertOk();
+        $this->assertDatabaseHas('users', ['user_id' => 3, 'is_active' => false, 'is_archived' => false]);
+    }
+
+    public function test_archived_and_deactivated_portal_customers_cannot_use_authenticated_routes(): void
+    {
+        foreach ([['is_active' => false, 'is_archived' => false], ['is_active' => true, 'is_archived' => true]] as $state) {
+            DB::table('users')->where('user_id', 3)->update($state);
+            Sanctum::actingAs(User::findOrFail(3), ['*']);
+            $this->getJson('/api/admin/customers')->assertForbidden()->assertJsonPath('code', 'account_disabled');
+        }
+    }
+
+    public function test_staff_can_restore_manual_customer_in_place_without_changing_pet_archives(): void
+    {
+        Sanctum::actingAs(User::findOrFail(2), ['*']);
+        $id = DB::table('unregistered_customers')->insertGetId(['first_name' => 'Manual', 'last_name' => 'Owner', 'phone' => '09170001111', 'is_archived' => false]);
+        DB::table('pets')->insert(['unregistered_customer_id' => $id, 'pet_name' => 'Zeus', 'is_archived' => true]);
+        $pets = DB::table('pets')->get()->toJson();
+        $this->postJson("/api/admin/customers/unregistered/{$id}/archive")->assertOk();
+        $this->getJson('/api/admin/customers?status=unregistered')->assertJsonCount(0, 'customers');
+        $this->getJson('/api/admin/customers?status=archived')->assertJsonPath('customers.0.recordType', 'unregistered');
+        $this->postJson("/api/admin/customers/unregistered/{$id}/restore")->assertOk();
+        $this->getJson('/api/admin/customers?status=unregistered')->assertJsonPath('customers.0.id', $id);
+        $this->getJson('/api/admin/customers?status=archived')->assertJsonCount(0, 'customers');
+        $this->postJson("/api/admin/customers/unregistered/{$id}/restore")->assertStatus(422);
+        $this->assertDatabaseCount('users', 3);
+        $this->assertDatabaseCount('unregistered_customers', 1);
+        $this->assertSame($pets, DB::table('pets')->get()->toJson());
+    }
+
+    public function test_archive_and_restore_enforce_roles_and_exclude_deleted_records(): void
+    {
+        $id = DB::table('unregistered_customers')->insertGetId(['first_name' => 'Deleted', 'last_name' => 'Owner', 'phone' => '09170001111', 'is_archived' => true, 'account_deleted_at' => now()]);
+        Sanctum::actingAs(User::findOrFail(3), ['*']);
+        foreach (['archive', 'unarchive', 'deactivate', 'reactivate'] as $action) {
+            $this->postJson('/api/admin/customers/3/'.$action)->assertForbidden();
+        }
+        foreach (['archive', 'restore'] as $action) {
+            $this->postJson("/api/admin/customers/unregistered/{$id}/{$action}")->assertForbidden();
+        }
+        Sanctum::actingAs(User::findOrFail(2), ['*']);
+        foreach (['archive', 'unarchive', 'deactivate', 'reactivate'] as $action) {
+            $this->postJson('/api/admin/customers/3/'.$action)->assertForbidden();
+        }
+        Sanctum::actingAs(User::findOrFail(1), ['*']);
+        DB::table('users')->where('user_id', 3)->update(['is_archived' => true, 'is_active' => false, 'account_deleted_at' => now(), 'pre_archive_is_active' => true]);
+        $this->postJson('/api/admin/customers/3/unarchive')->assertNotFound();
+        $this->postJson("/api/admin/customers/unregistered/{$id}/restore")->assertNotFound();
+        $this->getJson('/api/admin/customers?status=archived')->assertJsonCount(0, 'customers');
     }
 
     public function test_admin_can_create_and_list_an_unregistered_customer(): void

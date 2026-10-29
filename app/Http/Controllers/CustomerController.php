@@ -274,7 +274,7 @@ class CustomerController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Unregistered customer added successfully.',
+            'message' => 'Customer record added.',
             'customer' => $this->formatUnregisteredCustomer($customer),
         ], 201);
     }
@@ -286,7 +286,7 @@ class CustomerController extends Controller
         $customer = UnregisteredCustomer::query()->availableCustomer()->with('pets')->find($id);
 
         if (! $customer) {
-            return response()->json(['success' => false, 'message' => 'Unregistered customer not found.'], 404);
+            return response()->json(['success' => false, 'message' => 'Customer record not found.'], 404);
         }
 
         return response()->json([
@@ -405,8 +405,8 @@ class CustomerController extends Controller
 
         $field = $conflict['field'];
         $customerType = $conflict['recordType'] === 'registered'
-            ? 'A registered customer'
-            : 'An unregistered customer';
+            ? 'A portal customer'
+            : 'A manual customer';
 
         throw ValidationException::withMessages([
             $field => $field === 'email' ? 'This email is already in use.' : $customerType.' already uses this phone number.',
@@ -415,19 +415,30 @@ class CustomerController extends Controller
 
     public function archiveUnregistered(Request $request, $id)
     {
+        return $this->changeManualArchiveState($request, $id, true);
+    }
+
+    public function restoreUnregistered(Request $request, $id)
+    {
+        return $this->changeManualArchiveState($request, $id, false);
+    }
+
+    private function changeManualArchiveState(Request $request, $id, bool $archive)
+    {
         $this->requireAdminOrStaff($request);
 
-        $customer = UnregisteredCustomer::query()->availableCustomer()->find($id);
-        if (! $customer) {
-            return response()->json(['success' => false, 'message' => 'Unregistered customer not found.'], 404);
-        }
-        if ($customer->is_archived) {
-            return response()->json(['success' => false, 'message' => 'Customer is already archived.'], 422);
-        }
+        return DB::transaction(function () use ($id, $archive) {
+            $customer = UnregisteredCustomer::query()->availableCustomer()->lockForUpdate()->find($id);
+            if (! $customer) {
+                return response()->json(['success' => false, 'message' => 'Customer record not found.'], 404);
+            }
+            if ($customer->is_archived === $archive) {
+                return response()->json(['success' => false, 'message' => $archive ? 'Customer is already archived.' : 'Customer is not archived.'], 422);
+            }
+            $customer->update(['is_archived' => $archive, 'archived_at' => $archive ? now() : null]);
 
-        $customer->update(['is_archived' => true, 'archived_at' => now()]);
-
-        return response()->json(['success' => true, 'message' => 'Customer archived.']);
+            return response()->json(['success' => true, 'message' => $archive ? 'Customer archived.' : 'Customer restored.']);
+        });
     }
 
     public function walkInSearch(Request $request)
@@ -806,97 +817,66 @@ class CustomerController extends Controller
     // POST /api/admin/customers/{id}/deactivate
     public function deactivate(Request $request, $id)
     {
-        $this->requireAdmin($request);
-
-        $user = User::registeredCustomer()->where('user_id', $id)->first();
-
-        if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
-        }
-
-        if (! $user->is_active) {
-            return response()->json(['success' => false, 'message' => 'Customer is already inactive.'], 422);
-        }
-
-        $user->update(['is_active' => 0]);
-
-        // Revoke all active tokens so they are logged out immediately
-        $user->tokens()->delete();
-
-        return response()->json(['success' => true, 'message' => 'Customer account deactivated.']);
+        return $this->changePortalAccountState($request, $id, 'deactivate');
     }
 
-    // ── REACTIVATE ────────────────────────────────────────
-    // POST /api/admin/customers/{id}/reactivate
     public function reactivate(Request $request, $id)
     {
-        $this->requireAdmin($request);
-
-        $user = User::registeredCustomer()->where('user_id', $id)->first();
-
-        if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
-        }
-
-        if ($user->is_archived) {
-            return response()->json(['success' => false, 'message' => 'Unarchive the account before reactivating.'], 422);
-        }
-
-        $user->update(['is_active' => 1]);
-
-        return response()->json(['success' => true, 'message' => 'Customer account reactivated.']);
+        return $this->changePortalAccountState($request, $id, 'reactivate');
     }
 
-    // ── ARCHIVE ───────────────────────────────────────────
-    // POST /api/admin/customers/{id}/archive
     public function archive(Request $request, $id)
     {
-        $this->requireAdmin($request);
-
-        $user = User::registeredCustomer()->where('user_id', $id)->first();
-
-        if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
-        }
-
-        if ($user->is_archived) {
-            return response()->json(['success' => false, 'message' => 'Customer is already archived.'], 422);
-        }
-
-        $user->update([
-            'is_archived' => 1,
-            'is_active' => 0,
-            'archived_at' => now(),
-        ]);
-
-        // Revoke all active tokens
-        $user->tokens()->delete();
-
-        return response()->json(['success' => true, 'message' => 'Customer account archived.']);
+        return $this->changePortalAccountState($request, $id, 'archive');
     }
 
-    // ── UNARCHIVE ─────────────────────────────────────────
-    // POST /api/admin/customers/{id}/unarchive
     public function unarchive(Request $request, $id)
+    {
+        return $this->changePortalAccountState($request, $id, 'restore');
+    }
+
+    private function changePortalAccountState(Request $request, $id, string $action)
     {
         $this->requireAdmin($request);
 
-        $user = User::registeredCustomer()->where('user_id', $id)->first();
+        return DB::transaction(function () use ($id, $action) {
+            $user = User::registeredCustomer()->lockForUpdate()->find($id);
+            if (! $user) {
+                return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
+            }
 
-        if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
-        }
+            $invalid = match ($action) {
+                'archive' => $user->is_archived ? 'Customer is already archived.' : null,
+                'restore' => ! $user->is_archived ? 'Customer is not archived.' : null,
+                default => $user->is_archived ? 'Restore the customer before changing account access.'
+                    : ($user->is_active === ($action === 'reactivate') ? 'Account access is already in that state.' : null),
+            };
+            if ($invalid) {
+                return response()->json(['success' => false, 'message' => $invalid], 422);
+            }
 
-        if (! $user->is_archived) {
-            return response()->json(['success' => false, 'message' => 'Customer is not archived.'], 422);
-        }
+            $changes = match ($action) {
+                'archive' => ['pre_archive_is_active' => $user->is_active, 'is_archived' => true, 'is_active' => false, 'archived_at' => now()],
+                'restore' => ['is_archived' => false, 'is_active' => $user->pre_archive_is_active === true, 'archived_at' => null, 'pre_archive_is_active' => null],
+                default => ['is_active' => $action === 'reactivate'],
+            };
+            $user->update($changes);
 
-        $user->update([
-            'is_archived' => 0,
-            'is_active' => 1,
-            'archived_at' => null,
-        ]);
+            if (in_array($action, ['archive', 'deactivate'], true)) {
+                $user->tokens()->delete();
+                if (Schema::hasTable('sessions')) {
+                    DB::table('sessions')->where('user_id', $user->getKey())->delete();
+                }
+            }
 
-        return response()->json(['success' => true, 'message' => 'Customer account unarchived and reactivated.']);
+            $message = match ($action) {
+                'archive' => 'Customer archived.',
+                'restore' => 'Customer restored.',
+                'deactivate' => 'Customer account deactivated.',
+                'reactivate' => 'Customer account reactivated.',
+            };
+
+            return response()->json(['success' => true, 'message' => $message]);
+        });
     }
 }

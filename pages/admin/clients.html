@@ -5,12 +5,12 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?email-entry=20261028&names=20261028-v2" />
-    <link rel="stylesheet" href="../../css/custom.css?v=customer-actions-20260927&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="../../css/output.css?customer-records=20261029&email-entry=20261028&names=20261028-v2" />
+    <link rel="stylesheet" href="../../css/custom.css?v=customer-records-20261029&release=20261001&intake=20261019&pet-fields=20261026-v1&grooming=actual-20261026&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
+    <link rel="preload" as="script" href="../../scripts/api.js?customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
   </head>
@@ -124,11 +124,11 @@
         </div>
       </aside>
       <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
+    <script src="../../scripts/api.js?customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027"></script>
 
       <!-- Main Content -->
-      <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
+      <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
 
         <!-- Mobile Header -->
         <header class="sticky top-0 z-30 flex items-center justify-between border-b border-[#d7e3ef] bg-[#f5f8fb]/90 px-4 py-4 backdrop-blur lg:hidden" data-session-surface>
@@ -144,6 +144,8 @@
         <!-- Page Body -->
         <main
           x-data="adminCustomers()"
+          @keydown.escape.window="handleCustomerEscape($event)"
+          @keydown.tab="trapDialogFocus($event)"
           :aria-busy="loading"
           class="flex-1 px-4 py-6 lg:px-6 lg:pt-0"
         >
@@ -219,54 +221,35 @@
             <div class="mt-3">
               <div class="rounded-2xl bg-[#bdd6ec] p-1 lg:rounded-full">
                 <div class="grid grid-cols-2 gap-1 lg:grid-cols-4">
-                  <button type="button" @click="setStatus('active')"
+                  <button type="button" @click="setStatus('active')" :aria-pressed="statusFilter === 'active'"
                     class="rounded-xl px-3 py-2.5 text-sm font-bold transition lg:rounded-full"
                     :class="statusFilter === 'active' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'">
-                    Active
+                    Online Accounts
                   </button>
-                  <button type="button" @click="setStatus('unregistered')"
+                  <button type="button" @click="setStatus('unregistered')" :aria-pressed="statusFilter === 'unregistered'"
                     class="rounded-xl px-3 py-2.5 text-sm font-bold transition lg:rounded-full"
                     :class="statusFilter === 'unregistered' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'">
-                    Unregistered
+                    Walk-in / Manual
                   </button>
-                  <button type="button" @click="setStatus('inactive')"
+                  <button type="button" @click="setStatus('inactive')" :aria-pressed="statusFilter === 'inactive'"
                     class="rounded-xl px-3 py-2.5 text-sm font-bold transition lg:rounded-full"
                     :class="statusFilter === 'inactive' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'">
-                    Inactive
+                    Deactivated
                   </button>
-                  <button type="button" @click="setStatus('archived')"
+                  <button type="button" @click="setStatus('archived')" :aria-pressed="statusFilter === 'archived'"
                     class="rounded-xl px-3 py-2.5 text-sm font-bold transition lg:rounded-full"
                     :class="statusFilter === 'archived' ? 'bg-white text-[#1f3850] shadow-sm' : 'text-[#1f3850]'">
-                    Archive
+                    Archived
                   </button>
                 </div>
               </div>
             </div>
 
             <!-- Tab description -->
-            <div class="mt-3">
-              <div class="rounded-2xl border border-[#d9e6f1] bg-white/80 p-3 text-sm text-slate-600">
-                <template x-if="!isAdmin && statusFilter !== 'unregistered'">
-                  <p>Staff can view owner and pet details. Account deletion requires typing the owner's exact full name.</p>
-                </template>
-                <template x-if="!isAdmin && statusFilter === 'unregistered'">
-                  <p>Select a customer to view their information, add pets, archive the record, or delete its account after exact-name confirmation.</p>
-                </template>
-                <template x-if="isAdmin && statusFilter === 'active'">
-                  <p><strong>Active customers</strong> have an <strong>online account</strong> and access to the <strong>Customer Dashboard</strong>.</p>
-                </template>
-                <template x-if="isAdmin && statusFilter === 'inactive'">
-                  <p>Use <strong>Reactivate</strong> to restore their access, or <strong>Archive</strong> to move them to permanent records.</p>
-                </template>
-                <template x-if="isAdmin && statusFilter === 'archived'">
-                  <p>Archived customers are permanently removed from active operations. Use <strong>Unarchive</strong> to restore their account and reactivate their access.</p>
-                </template>
-                <template x-if="isAdmin && statusFilter === 'unregistered'">
-                  <p><strong>Unregistered customers</strong> are records without an <strong>online account</strong> or access to the <strong>Customer Dashboard</strong>.</p>
-                </template>
-              </div>
-            </div>
+            <p class="mt-3 px-3 text-sm text-slate-600" x-text="categoryDescription()"></p>
           </section>
+
+          <p x-cloak x-show="successMessage" role="status" class="mt-4 rounded-xl bg-[#eaf4fb] px-4 py-3 text-sm font-semibold text-[#315b7e]" x-text="successMessage"></p>
 
           <!-- Loading -->
           <admin-loader x-cloak x-show="loading &amp;&amp; !customersLoaded" page></admin-loader>
@@ -287,7 +270,7 @@
                 <svg x-show="statusFilter === 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                 <svg x-show="statusFilter !== 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
               </div>
-              <p class="mt-4 text-lg font-semibold text-[#2f4b66]" x-text="searchQuery ? 'No customers or pets match your search.' : statusFilter === 'unregistered' ? 'No unregistered customers yet.' : 'No ' + statusFilter + ' customers found.'"></p>
+              <p class="mt-4 text-lg font-semibold text-[#2f4b66]" x-text="searchQuery ? 'No customers or pets match your search.' : statusFilter === 'unregistered' ? 'No Walk-in / Manual customers yet.' : 'No customers in ' + categoryLabel(statusFilter) + '.'"></p>
               <p class="mt-2 text-sm text-slate-500" x-text="searchQuery ? 'Try a different name, phone number, or email address.' : statusFilter === 'unregistered' ? 'Customers added without an online account will appear here.' : 'Try adjusting your search or filter.'"></p>
               <button
                 x-show="statusFilter === 'unregistered' && !searchQuery"
@@ -307,7 +290,7 @@
               <h3 class="text-base font-semibold text-[#1f3850]">Customers</h3>
               <span class="text-sm font-medium text-slate-500" x-text="'(' + customers.length + ')'">(0)</span>
             </div>
-            <template x-for="customer in customers" :key="customer.id">
+            <template x-for="customer in customers" :key="(customer.recordType || 'registered') + ':' + customer.id">
               <article class="rounded-[24px] border-2 bg-white px-4 py-5 shadow-sm transition sm:px-6"
                 :class="{
                   'border-[#7fa2c9]': statusFilter === 'active',
@@ -349,17 +332,17 @@
                           <span x-text="customer.tier === 'returning' ? 'Returning' : 'New'"></span>
                         </span>
 
-                        <span x-show="customer.recordType === 'unregistered'"
+                        <span x-show="customer.recordType === 'unregistered' || statusFilter === 'archived'"
                           class="inline-flex items-center gap-1 rounded-full bg-[#eaf4fb] px-2.5 py-0.5 text-xs font-semibold text-[#315b7e]">
                           <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
-                          Unregistered
+                          <span x-text="customer.recordType === 'unregistered' ? 'Manual record' : 'Portal account'"></span>
                         </span>
 
                         <!-- Status badge -->
                         <span x-show="statusFilter === 'inactive'"
                           class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
                           <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#prohibit"></use></svg>
-                          Inactive
+                          Deactivated
                         </span>
                         <span x-show="statusFilter === 'archived'"
                           class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">
@@ -374,9 +357,9 @@
                           <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#phone"></use></svg>
                           <span x-text="formatMobileNumber(customer.phone)"></span>
                         </span>
-                        <span class="flex items-center gap-1.5">
-                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
-                          <span x-text="formatTextValue(customer.email)"></span>
+                        <span class="flex min-w-0 items-center gap-1.5">
+                          <svg class="ph-icon h-3.5 w-3.5 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
+                          <span class="break-all" x-text="formatTextValue(customer.email)"></span>
                         </span>
                         <span class="flex items-center gap-1.5">
                           <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar"></use></svg>
@@ -461,13 +444,13 @@
             class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 px-4"
             @click.self="closeConfirm()"
           >
-            <div class="w-full max-w-sm rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
+            <div x-ref="confirmDialog" role="dialog" aria-modal="true" aria-labelledby="customerConfirmTitle" aria-describedby="customerConfirmMessage" :aria-busy="busyId !== null" tabindex="-1" class="w-full max-w-sm rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
               <div class="mb-4 flex items-center gap-3">
                 <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
                   :class="{
                     'icon-bg-warn':    confirmModal.action === 'deactivate',
                     'icon-bg-reactivate': confirmModal.action === 'reactivate',
-                    'icon-bg-success': confirmModal.action === 'unarchive',
+                    'icon-bg-success': ['unarchive', 'restore_unregistered'].includes(confirmModal.action),
                     'bg-slate-100':    ['archive', 'archive_unregistered'].includes(confirmModal.action)
                   }">
                   <svg x-show="confirmModal.action === 'deactivate'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 icon-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -483,29 +466,23 @@
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                     <path d="m9 11 3 3L22 4"></path>
                   </svg>
-                  <svg x-show="confirmModal.action === 'unarchive'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 icon-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <svg x-show="['unarchive', 'restore_unregistered'].includes(confirmModal.action)" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 icon-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                     <path d="m9 11 3 3L22 4"></path>
                   </svg>
                 </div>
-                <h3 class="text-lg font-bold text-[#2f4b66]" x-text="confirmModal.title"></h3>
+                <h3 id="customerConfirmTitle" class="text-lg font-bold text-[#2f4b66]" x-text="confirmModal.title"></h3>
               </div>
-              <p class="text-sm text-slate-600" x-text="confirmModal.message"></p>
-              <p x-show="confirmModal.error" class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" x-text="confirmModal.error"></p>
+              <p id="customerConfirmMessage" class="text-sm text-slate-600" x-text="confirmModal.message"></p>
+              <p role="alert" x-show="confirmModal.error" class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" x-text="confirmModal.error"></p>
               <div class="mt-6 flex justify-end gap-3">
-                <button type="button" @click="closeConfirm()"
+                <button type="button" @click="closeConfirm()" x-ref="confirmCancel" :disabled="busyId !== null"
                   class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
                   Cancel
                 </button>
                 <button type="button" @click="executeAction()"
                   :disabled="busyId !== null"
-                  class="rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
-                  :class="{
-                    'btn-confirm-deactivate': confirmModal.action === 'deactivate',
-                    'btn-confirm-reactivate': confirmModal.action === 'reactivate',
-                    'btn-confirm-reopen':     confirmModal.action === 'unarchive',
-                    'btn-confirm-archive':    ['archive', 'archive_unregistered'].includes(confirmModal.action)
-                  }"
+                  class="customer-confirm-button rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#274b69] disabled:cursor-not-allowed disabled:opacity-60"
                   x-text="busyId !== null ? 'Please wait...' : confirmModal.confirmLabel">
                 </button>
               </div>
@@ -694,7 +671,7 @@
                   <div class="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <p class="text-sm font-medium text-slate-800" x-text="customer.fullName"></p>
-                      <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600" x-text="customer.status"></span>
+                      <span class="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600" x-text="categoryLabel(String(customer.status || '').toLowerCase())"></span>
                     </div>
                     <p class="mt-1 text-sm text-slate-600" x-text="formatMobileNumber(customer.phone)"></p>
                   </div>
@@ -721,11 +698,12 @@
             x-transition
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-6 py-6 sm:px-12 md:px-16"
             @click.self="closeCustomerDetails()"
+            :inert="petModal.open || confirmModal.open"
+            :aria-hidden="petModal.open || confirmModal.open"
           >
-            <div class="flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl" style="height:90vh">
-              <div class="overflow-y-auto px-5 py-4 sm:px-6">
+            <div x-ref="ownerDialog" role="dialog" :aria-modal="!petModal.open && !confirmModal.open" aria-labelledby="customerProfileTitle" tabindex="-1" class="customer-profile-dialog flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl" style="height:90vh">
                 <!-- Owner profile header -->
-                <section class="sticky top-0 z-20 mb-4 overflow-hidden rounded-3xl bg-[#315b7e] text-white shadow-sm">
+                <section class="customer-profile-header relative shrink-0 bg-[#315b7e] text-white">
                   <div class="flex items-center justify-between gap-4 px-5 py-4">
                     <div class="flex min-w-0 items-center gap-4">
                       <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
@@ -733,24 +711,37 @@
                       </div>
                       <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
-                          <h3 class="truncate text-2xl font-bold" x-text="detailModal.customer?.fullName || 'Customer Details'"></h3>
-                          <span
-                            x-show="detailModal.customer"
-                            class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white"
-                            x-text="customerStatusLabel(detailModal.customer)"
-                          ></span>
+                          <h3 id="customerProfileTitle" class="break-words text-2xl font-bold" x-text="detailModal.customer?.fullName || 'Customer Details'"></h3>
+
                         </div>
-                        <p class="mt-1 text-sm text-white/80">Owner profile</p>
+                        <p class="mt-1 text-sm text-white/80" x-text="customerStatusLabel(detailModal.customer)"></p>
                       </div>
                     </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <div class="relative" x-show="!detailModal.loading && !detailModal.error && customerActions(detailModal.customer).length" @click.outside="closeOwnerActions(false)" @focusout="if (!$el.contains($event.relatedTarget)) closeOwnerActions(false)">
+                        <button type="button" x-ref="ownerActionsButton" @click="toggleOwnerActions()" @keydown.arrow-down.prevent="if (!ownerActionsOpen) toggleOwnerActions()" @keydown.escape="if (ownerActionsOpen) { $event.preventDefault(); $event.stopPropagation(); closeOwnerActions(); }" :aria-expanded="ownerActionsOpen" aria-haspopup="menu" aria-controls="customerActionsMenu" aria-label="More customer actions" class="customer-header-button">
+                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three"></use></svg>
+                        </button>
+                        <div x-cloak x-show="ownerActionsOpen" x-ref="ownerActionsMenu" id="customerActionsMenu" role="menu" aria-label="Customer actions" class="customer-actions-menu" @keydown="navigateOwnerActions($event)" @keydown.escape.stop.prevent="closeOwnerActions()">
+                          <template x-for="item in customerActions(detailModal.customer)" :key="item.action">
+                            <button type="button" role="menuitem" tabindex="-1" @click="confirmAction(item.action, detailModal.customer)" :disabled="busyId !== null" :class="{ 'customer-action-divider': item.action === 'archive' }">
+                              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + item.icon"></use></svg>
+                              <span x-text="item.label"></span>
+                            </button>
+                          </template>
+                        </div>
+                      </div>
                     <button type="button"
-                      @click="closeCustomerDetails()"
-                      class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60"
+                      @click="closeCustomerDetails()" x-ref="ownerClose"
+                      class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60"
                       aria-label="Close customer details">
                       <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
+                    </div>
                   </div>
                 </section>
+
+              <div x-ref="ownerBody" class="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
 
                 <admin-loader x-cloak x-show="detailModal.loading"></admin-loader>
 
@@ -883,165 +874,7 @@
                     </div>
                   </section>
 
-                  <!-- Account actions below the registered pets -->
-                  <footer x-show="detailModal.customer?.recordType !== 'unregistered'" aria-label="Account actions"
-                    class="rounded-[24px] border border-[#d9e6f1] bg-[#f8fbfd] p-4">
-                    <h4 class="mb-3 text-lg font-semibold text-[#1f3850]">Account actions</h4>
-
-                    <div x-show="isAdmin">
-                    <template x-if="!detailModal.customer?.isArchived && detailModal.customer?.isActive">
-                      <div>
-                        <div class="flex flex-col gap-3 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Archive customer</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Move this customer to archived records.</p>
-                          </div>
-                          <button type="button"
-                            @click="confirmAction('archive', detailModal.customer)"
-                            :disabled="busyId === detailModal.customer?.id"
-                            class="w-full shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto">
-                            Archive
-                          </button>
-                        </div>
-                        <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Deactivate account</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Temporarily disable this customer's account.</p>
-                          </div>
-                          <button type="button"
-                            @click="confirmAction('deactivate', detailModal.customer)"
-                            :disabled="busyId === detailModal.customer?.id"
-                            class="btn-deactivate w-full shrink-0 rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-50 sm:w-auto">
-                            Deactivate
-                          </button>
-                        </div>
-                        <div class="flex flex-col gap-3 py-3 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Reset password</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Help this customer regain access to their account.</p>
-                          </div>
-                          <button type="button"
-                            @click="openResetPassword(detailModal.customer)"
-                            class="w-full shrink-0 rounded-xl border border-[#315b7e] px-4 py-2 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb] sm:w-auto">
-                            Reset Password
-                          </button>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template x-if="!detailModal.customer?.isArchived && !detailModal.customer?.isActive">
-                      <div>
-                        <div class="flex flex-col gap-3 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Reset password</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Help this customer regain access to their account.</p>
-                          </div>
-                          <button type="button"
-                            @click="openResetPassword(detailModal.customer)"
-                            class="w-full shrink-0 rounded-xl border border-[#315b7e] px-4 py-2 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb] sm:w-auto">
-                            Reset Password
-                          </button>
-                        </div>
-                        <div class="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Reactivate account</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Restore this customer's access to their account.</p>
-                          </div>
-                          <button type="button"
-                            @click="confirmAction('reactivate', detailModal.customer)"
-                            :disabled="busyId === detailModal.customer?.id"
-                            class="btn-reactivate w-full shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:opacity-50 sm:w-auto">
-                            Reactivate
-                          </button>
-                        </div>
-                        <div class="flex flex-col gap-3 py-3 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Archive customer</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Move this customer to archived records.</p>
-                          </div>
-                          <button type="button"
-                            @click="confirmAction('archive', detailModal.customer)"
-                            :disabled="busyId === detailModal.customer?.id"
-                            class="w-full shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto">
-                            Archive
-                          </button>
-                        </div>
-                      </div>
-                    </template>
-
-                    <template x-if="detailModal.customer?.isArchived">
-                      <div>
-                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                          <div>
-                            <p class="text-sm font-semibold text-slate-700">Unarchive customer</p>
-                            <p class="mt-1 text-sm leading-5 text-slate-500">Return this customer to the current records list.</p>
-                          </div>
-                          <button type="button"
-                            @click="confirmAction('unarchive', detailModal.customer)"
-                            :disabled="busyId === detailModal.customer?.id"
-                            class="w-full shrink-0 rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#274a67] disabled:opacity-50 sm:w-auto">
-                            Unarchive
-                          </button>
-                        </div>
-                      </div>
-                    </template>
-                    </div>
-
-                  </footer>
-
-                  <footer
-                    x-show="detailModal.customer?.recordType === 'unregistered'"
-                    aria-label="Account actions"
-                    class="rounded-[24px] border border-[#d9e6f1] bg-[#f8fbfd] p-4"
-                  >
-                    <h4 class="mb-3 text-lg font-semibold text-[#1f3850]">Account actions</h4>
-                    <div x-show="!detailModal.customer?.isArchived" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                      <div>
-                        <p class="text-sm font-semibold text-slate-700">Archive customer</p>
-                        <p class="mt-1 text-sm leading-5 text-slate-500">Move this customer and their pet records to the archive.</p>
-                      </div>
-                      <button type="button"
-                        @click="confirmAction('archive_unregistered', detailModal.customer)"
-                        :disabled="busyId === detailModal.customer?.id"
-                        class="w-full shrink-0 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto">
-                        Archive
-                      </button>
-                    </div>
-                  </footer>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            x-cloak
-            x-show="isAdmin && resetModal.open"
-            x-transition
-            class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 px-4"
-            @click.self="closeReset()"
-          >
-            <div class="w-full max-w-sm rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
-              <div class="mb-4 flex items-center gap-3">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eef5fb]">
-                  <svg class="ph-icon h-5 w-5 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#key"></use></svg>
-                </div>
-                <h3 class="text-lg font-bold text-[#2f4b66]">Reset Password</h3>
-              </div>
-              <p class="text-sm text-slate-600">
-                Resetting password for <strong x-text="resetModal.customer?.fullName ?? ''"></strong>.
-              </p>
-
-              <!-- Coming soon notice -->
-              <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                <p class="font-semibold">Feature coming soon</p>
-                <p class="mt-1">Password reset functionality will be available in a future update.</p>
-              </div>
-
-              <div class="mt-6 flex justify-end">
-                <button type="button" @click="closeReset()"
-                  class="rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#274a67]">
-                  Close
-                </button>
               </div>
             </div>
           </div>
@@ -1053,14 +886,12 @@
           x-transition
           style="display:none;z-index:300;background-color:rgba(15,23,42,0.7)"
           class="fixed inset-0 flex items-center justify-center px-6 py-6 sm:px-12 md:px-16"
-          @keydown.escape.window="if (!petModal.saving) { petModal.open = false; petModal.editing = false; }"
+          :inert="petDiscardOpen" :aria-hidden="petDiscardOpen"
         >
-          <div class="flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl" style="height:90vh">
+          <div x-ref="petDialog" role="dialog" :aria-modal="!petDiscardOpen" aria-labelledby="petProfileTitle" tabindex="-1" class="customer-profile-dialog flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl" style="height:90vh">
 
-            <!-- Scrollable body -->
-            <div class="flex-1 overflow-y-auto px-5 py-4 sm:px-6">
               <!-- Pet profile header -->
-              <section class="sticky top-0 z-20 overflow-hidden rounded-3xl bg-[#315b7e] text-white shadow-sm">
+              <section class="customer-profile-header shrink-0 bg-[#315b7e] text-white">
                 <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div class="flex min-w-0 items-center gap-4">
                     <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
@@ -1070,11 +901,12 @@
                     </div>
                     <div class="min-w-0">
                       <div class="flex flex-wrap items-center gap-2">
-                        <h2 class="truncate text-2xl font-bold" x-text="petModal.creating ? 'Add pet' : formatTextValue(petModal.pet?.petName)"></h2>
+                        <h2 id="petProfileTitle" class="break-words text-2xl font-bold" x-text="petModal.creating ? 'Add pet' : formatTextValue(petModal.pet?.petName)"></h2>
                         <span x-show="!petModal.creating" class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold" x-text="petModal.pet?.isArchived ? 'Archived' : 'Active'"></span>
                       </div>
                       <p x-show="petModal.creating" class="mt-1 text-sm text-white/80" x-text="'Add a pet for ' + (petModal.owner?.fullName || 'this customer')"></p>
-                      <p x-show="!petModal.creating" class="mt-1 text-white/80">
+                      <p x-show="!petModal.creating" class="mt-1 text-sm text-white/80" x-text="[petModal.pet?.species, petModal.pet?.breed].filter(Boolean).join(' \u00b7 ')"></p>
+                      <p x-show="!petModal.creating" class="mt-1 text-sm text-white/80">
                         <span class="text-white/70">Owner:</span>
                         <span class="font-medium text-white" x-text="formatTextValue(petModal.owner?.fullName)"></span>
                       </p>
@@ -1092,8 +924,8 @@
                       <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg>
                       <span>Cancel</span>
                     </button>
-                    <button @click="if (!petModal.saving) { petModal.open = false; petModal.editing = false; }" :disabled="petModal.saving" type="button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    <button @click="closePetDetails()" x-ref="petClose" :disabled="petModal.saving" type="button"
+                      class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Close pet details">
                       <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
@@ -1101,6 +933,8 @@
                 </div>
               </section>
 
+            <!-- Scrollable body -->
+            <div x-ref="petBody" class="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
               <!-- Save error -->
               <div x-show="petModal.saveError" class="mt-4" style="display:none">
                 <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -1312,14 +1146,18 @@
 
             </div>
 
-            <!-- Footer -->
-            <div x-show="!petModal.editing" class="border-t border-slate-100 px-6 py-4" style="flex-shrink:0">
-              <button @click="if (!petModal.saving) { petModal.open = false; petModal.editing = false; }" type="button"
-                class="w-full rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-                Close
-              </button>
-            </div>
 
+          </div>
+        </div>
+
+        <div x-cloak x-show="petDiscardOpen" class="fixed inset-0 flex items-center justify-center bg-slate-900/50 px-4" style="z-index:310">
+          <div x-ref="petDiscardDialog" role="alertdialog" aria-modal="true" aria-labelledby="petDiscardTitle" aria-describedby="petDiscardMessage" tabindex="-1" class="w-full max-w-sm rounded-[28px] bg-white p-6 shadow-xl">
+            <h3 id="petDiscardTitle" class="text-lg font-bold text-[#1f3850]">Discard pet changes?</h3>
+            <p id="petDiscardMessage" class="mt-3 text-sm text-slate-600">Your unsaved changes will be lost.</p>
+            <div class="mt-6 flex flex-wrap justify-end gap-3">
+              <button type="button" x-ref="petKeepEditing" @click="keepPetEditing()" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-[#315b7e]">Keep editing</button>
+              <button type="button" @click="closePetDetails(true)" class="customer-confirm-button rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#274b69]">Discard changes</button>
+            </div>
           </div>
         </div>
 
@@ -1332,7 +1170,7 @@
 
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029"></script>
+    <script src="../../scripts/components/admin-customers.js?v=customer-records-20261029&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

@@ -138,6 +138,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/admin/customers/unregistered', [CustomerController::class, 'storeUnregistered']);
     Route::get('/admin/customers/unregistered/{id}', [CustomerController::class, 'showUnregistered']);
     Route::post('/admin/customers/unregistered/{id}/archive', [CustomerController::class, 'archiveUnregistered']);
+    Route::post('/admin/customers/unregistered/{id}/restore', [CustomerController::class, 'restoreUnregistered']);
     Route::get('/admin/walk-in/customers', [CustomerController::class, 'walkInSearch']);
     Route::post('/admin/walk-in/customers/validate-new-owner', [CustomerController::class, 'validateWalkInOwner']);
     Route::post('/admin/customer-pets/{ownerType}/{ownerId}', [PetController::class, 'adminStore']);

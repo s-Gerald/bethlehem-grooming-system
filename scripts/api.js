@@ -2502,6 +2502,10 @@ var API = (() => {
     return request("POST", `/admin/customers/unregistered/${customerId}/archive`, null, getAdminToken());
   }
 
+  async function restoreUnregisteredCustomer(customerId) {
+    return request("POST", `/admin/customers/unregistered/${customerId}/restore`, null, getAdminToken());
+  }
+
   async function searchWalkInCustomers(search = "") {
     const params = new URLSearchParams({ q: phoneSearch(search) });
     return request("GET", `/admin/walk-in/customers?${params.toString()}`, null, getAdminToken());
@@ -3297,6 +3301,7 @@ var API = (() => {
     createUnregisteredCustomer,
     getUnregisteredCustomerDetails,
     archiveUnregisteredCustomer,
+    restoreUnregisteredCustomer,
     searchWalkInCustomers,
     validateWalkInNewOwner,
     deactivateCustomer,
