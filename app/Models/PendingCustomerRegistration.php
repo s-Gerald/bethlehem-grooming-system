@@ -50,7 +50,31 @@ class PendingCustomerRegistration extends Model
 
     public static function retentionCutoff(): \Illuminate\Support\Carbon
     {
-        return now()->subHours(max(1, (int) config('app.pending_registration_retention_hours', 48)));
+        return now()->subHour();
+    }
+
+    public function retentionExpiresAt(): ?\Illuminate\Support\Carbon
+    {
+        return $this->created_at?->copy()->addHour();
+    }
+
+    // Only email-proven review may outlive retention, for at most ten minutes.
+    public function scopeWithActiveReview($query)
+    {
+        return $query->whereNotNull('created_at')->where('created_at', '>', now()->subMinutes(70))
+            ->whereNotNull('registration_recovery_token_hash')->whereNotNull('registration_recovery_expires_at')
+            ->where('registration_recovery_expires_at', '>', now());
+    }
+
+    public function scopeRetained($query)
+    {
+        return $query->where(fn ($query) => $query->unexpired()->orWhere(fn ($query) => $query->withActiveReview()));
+    }
+
+    public function hasActiveReview(): bool
+    {
+        return $this->registration_recovery_token_hash && $this->registration_recovery_expires_at?->isFuture()
+            && $this->retentionExpiresAt()?->addMinutes(10)->isFuture();
     }
 
     public function retentionExpired(): bool
@@ -61,6 +85,7 @@ class PendingCustomerRegistration extends Model
     public static function pruneExpired(): int
     {
         // DELETE acquires the same row locks used by verification and edits.
-        return self::query()->where('created_at', '<=', self::retentionCutoff())->orWhereNull('created_at')->delete();
+        return self::query()->where(fn ($query) => $query->where('created_at', '<=', self::retentionCutoff())
+            ->orWhereNull('created_at'))->whereNot(fn ($query) => $query->withActiveReview())->delete();
     }
 }

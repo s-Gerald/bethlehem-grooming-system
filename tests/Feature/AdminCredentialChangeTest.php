@@ -82,6 +82,7 @@ class AdminCredentialChangeTest extends TestCase
             $table->index(['tokenable_type', 'tokenable_id']);
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
+        (require database_path('migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
         (require database_path('migrations/2026_08_28_000003_create_password_reset_requests_table.php'))->up();
         (require database_path('migrations/2026_09_28_000002_add_code_verification_to_password_reset_requests.php'))->up();
         (require database_path('migrations/2026_10_25_000001_add_session_replacement.php'))->up();

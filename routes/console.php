@@ -31,7 +31,7 @@ Schedule::call(function (): void {
     PendingCustomerRegistration::pruneExpired();
 })
     ->name('pending-customer-registrations:prune')
-    ->daily()
+    ->everyFiveMinutes()
     ->withoutOverlapping();
 
 Schedule::call(function (): void {

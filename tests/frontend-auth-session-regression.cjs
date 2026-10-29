@@ -898,6 +898,31 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
 }
 
 async function testVerificationCredentialsAreScrubbedBeforeUse() {
+  const expiredRegistration = verificationPageHarness({search: '', hash: '#token=expired-token'});
+  expiredRegistration.API.verifyEmail = async () => { throw {status:422, code:'registration_expired', message:'This registration has expired. Start again.'}; };
+  await expiredRegistration.dispatch('verifyLinkSubmit', 'click');
+  assert.equal(expiredRegistration.elements.get('errorMessage').textContent, 'This registration has expired. Start again.');
+  assert.equal(expiredRegistration.elements.get('resendSection').classList.contains('hidden'), true);
+  assert.equal(expiredRegistration.elements.get('verificationBackAction').href, './signup.html');
+  assert.equal(expiredRegistration.elements.get('verificationBackAction').textContent, 'Back to sign up');
+
+  const expiredLink = verificationPageHarness({search:'', hash:'#token=old-token'});
+  expiredLink.API.verifyEmail = async () => { throw {status:422, code:'registration_link_expired', message:'This link has expired. Request a new one.'}; };
+  await expiredLink.dispatch('verifyLinkSubmit', 'click');
+  assert.equal(expiredLink.elements.get('errorMessage').textContent, 'This link has expired. Request a new one.');
+  assert.equal(expiredLink.elements.get('resendSection').classList.contains('hidden'), false);
+  let recoveryRequests = 0;
+  let finishRecovery;
+  expiredLink.elements.get('resendEmail').value = 'customer@gmail.com';
+  expiredLink.API.resendVerification = () => { recoveryRequests++; return new Promise(resolve => {finishRecovery = resolve;}); };
+  const recovering = expiredLink.dispatch('resendForm', 'submit');
+  await expiredLink.dispatch('resendForm', 'submit');
+  assert.equal(recoveryRequests, 1, 'Repeated recovery submissions must share the pending request.');
+  assert.equal(expiredLink.elements.get('resendSubmit').disabled, true);
+  finishRecovery({resend_after:60});
+  await recovering;
+  assert.equal(expiredLink.elements.get('resendSubmit').disabled, false);
+
   const fragmentEvents = verificationPageHarness({
     search: "?token=legacy-token&campaign=welcome",
     hash: "#token=fragment-token",

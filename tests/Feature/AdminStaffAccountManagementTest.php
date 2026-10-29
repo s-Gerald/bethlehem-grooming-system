@@ -120,6 +120,7 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->index(['tokenable_type', 'tokenable_id']);
         });
         (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
+        (require database_path('migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
         (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
         (require base_path('database/migrations/2026_10_25_000002_create_staff_email_changes.php'))->up();
         (require database_path('migrations/2026_10_25_000003_create_staff_email_recoveries.php'))->up();
@@ -1322,13 +1323,31 @@ class AdminStaffAccountManagementTest extends TestCase
         DB::table('pending_customer_registrations')->insert([
             'first_name' => 'Expired', 'last_name' => 'Customer', 'email' => 'corrected@gmail.com',
             'phone' => '09170009999', 'password_hash' => 'unused',
-            'created_at' => now()->subDays(7), 'updated_at' => now()->subDays(7),
+            'created_at' => now()->subHour(), 'updated_at' => now(),
         ]);
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
             'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
         ])->assertOk()->assertJsonPath('staff.setup_link_expired', false);
         $this->postJson('/api/staff/password-setup/verify', ['token' => $oldToken])->assertUnprocessable();
         $this->assertTrue(PasswordResetRequest::query()->sole()->expires_at->between(now()->addHours(23), now()->addHours(25)));
+    }
+
+    public function test_email_proven_registration_review_reserves_email_only_until_its_grant_expires(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        [, $staff] = $this->pendingEmailFixture();
+        DB::table('pending_customer_registrations')->insert([
+            'first_name' => 'Reviewing', 'last_name' => 'Customer', 'email' => 'corrected@gmail.com',
+            'phone' => '09170009999', 'password_hash' => 'unused',
+            'created_at' => now()->subMinutes(61), 'updated_at' => now(),
+            'registration_recovery_token_hash' => hash('sha256', str_repeat('r', 64)),
+            'registration_recovery_expires_at' => now()->addMinutes(8),
+        ]);
+        $payload = ['email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234'];
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->travel(8)->minutes();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", $payload)->assertOk();
     }
 
     public function test_correction_rejects_a_target_cancelled_after_the_details_were_loaded(): void

@@ -38,6 +38,8 @@ class CustomerRegistrationService
 
     public function processPublicRequest(string $email, ?array $details, string $browserHash, int $requestedAt): void
     {
+        // Replayed or delayed public work must never recreate an expired signup.
+        if ($requestedAt <= now()->subHour()->timestamp) return;
         try {
             DB::transaction(function () use ($email, $details, $browserHash, $requestedAt) {
                 if ($details !== null) {
@@ -60,8 +62,12 @@ class CustomerRegistrationService
                     $registrant = $user ? (self::recoverableUser($user) ? $user : null)
                         : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
                     // Retried or out-of-order work must not replace a newer link.
-                    if (! $registrant || $registrant->email_verification_last_sent_at?->timestamp >= $requestedAt) return;
+                    if (! $registrant || $registrant->created_at?->timestamp > $requestedAt
+                        || $registrant->email_verification_last_sent_at?->timestamp >= $requestedAt) return;
                 }
+                if ($registrant instanceof PendingCustomerRegistration
+                    && ($registrant->hasActiveReview()
+                        || $registrant->retentionExpiresAt()->lessThan(now()->addSeconds(RegistrationMagicLinkService::MIN_DELIVERY_SECONDS)))) return;
                 app(RegistrationMagicLinkService::class)->issue($registrant, allowImmediate: false);
             }, 3);
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
@@ -80,10 +86,8 @@ class CustomerRegistrationService
     public static function usableLink(PendingCustomerRegistration $registration): bool
     {
         return ! $registration->retentionExpired() && $registration->email_verification_token
-            && $registration->email_verification_expires_at?->isFuture()
             && $registration->email_verification_last_sent_at
-            && $registration->email_verification_last_sent_at->copy()
-                ->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30)))->isFuture();
+            && RegistrationMagicLinkService::expiresAt($registration)?->isFuture();
     }
 
     public static function browserToken(Request $request): string
@@ -96,7 +100,7 @@ class CustomerRegistrationService
     {
         return Cookie::create(self::BROWSER_COOKIE, $token)->withPath('/api')->withHttpOnly(true)->withSameSite('lax')
             ->withSecure((bool) config('session.secure') || $request->isSecure() || str_starts_with(config('app.url'), 'https://'))
-            ->withExpires(now()->addHours(max(1, (int) config('app.pending_registration_retention_hours', 48))));
+            ->withExpires(now()->addHour());
     }
 
     public static function trustsBrowser(PendingCustomerRegistration $registration, Request $request): bool
@@ -140,7 +144,7 @@ class CustomerRegistrationService
     public function complete(User|PendingCustomerRegistration $registrant, ?array $details = null)
     {
         if ($registrant instanceof PendingCustomerRegistration) {
-            if ($registrant->retentionExpired()) $this->unavailable();
+            if ($registrant->retentionExpired() && (! $details || ! $registrant->hasActiveReview())) $this->unavailable();
             $values = $details ?? $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash']);
             $conflict = User::query()->where(function ($query) use ($values) {
                 $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$values['email']]);

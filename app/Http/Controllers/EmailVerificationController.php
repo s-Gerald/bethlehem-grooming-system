@@ -44,12 +44,11 @@ class EmailVerificationController extends Controller
                 // never replace a legitimate customer's identity or password.
                 if ($user && ($pending || ! CustomerRegistrationService::recoverableUser($user))) return $this->invalidLink();
                 $registrant = $user ?? $pending;
-                if (! $registrant || ($pending && $pending->retentionExpired())) return $this->invalidLink();
+                if (! $registrant) return $this->invalidLink();
+                if ($pending && $pending->retentionExpired()) return $this->expiredRegistration();
                 if (! $registrant->email_verification_last_sent_at && ! $allowLegacy) return $this->invalidLink();
-                $expiry = $registrant->email_verification_expires_at;
-                if (! $expiry || now()->greaterThanOrEqualTo($expiry)
-                    || ($registrant->email_verification_last_sent_at && now()->greaterThanOrEqualTo(
-                        $registrant->email_verification_last_sent_at->copy()->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30)))))) {
+                $expiry = RegistrationMagicLinkService::expiresAt($registrant);
+                if (! $expiry || now()->greaterThanOrEqualTo($expiry)) {
                     return $this->invalidLink(true);
                 }
                 if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)) {
@@ -72,13 +71,21 @@ class EmailVerificationController extends Controller
                 : 'This link is invalid or has already been used.'], 422)->header('Cache-Control', 'no-store');
     }
 
+    private function expiredRegistration()
+    {
+        return response()->json(['success' => false, 'expired' => true, 'code' => 'registration_expired',
+            'message' => 'This registration has expired. Start again.'], 422)->header('Cache-Control', 'no-store');
+    }
+
     public function resend(Request $request)
     {
         $request->merge(['email' => Str::lower(trim((string) $request->input('email')))]);
         $data = $request->validate(['email' => 'required|email|max:150']);
         $credential = $request->input('registration_token');
         $owned = is_string($credential) && strlen($credential) === 64
-            ? PendingCustomerRegistration::query()->unexpired()->where('registration_edit_token_hash', hash('sha256', $credential))->first() : null;
+            ? PendingCustomerRegistration::query()->where('registration_edit_token_hash', hash('sha256', $credential))->first() : null;
+        if ($owned && strcasecmp($owned->email, $data['email']) === 0
+            && CustomerRegistrationService::trustsBrowser($owned, $request) && $owned->retentionExpired()) return $this->expiredRegistration();
         if (! $owned || strcasecmp($owned->email, $data['email']) !== 0 || ! CustomerRegistrationService::canEdit($owned, $request)) {
             return app(CustomerRegistrationService::class)->requestPublic($data['email'], null, '');
         }

@@ -1,6 +1,20 @@
 # Hostinger email authentication
 
-> Current October 28 magic-link, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
+> Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
+
+## One-hour signup release — October 29, 2026
+
+No new migration is required. Pending expiry uses the original server creation time, and old retention-hours/days environment settings are ignored. Remove those obsolete entries; retain `REGISTRATION_MAGIC_LINK_MINUTES=30`. Publish the backend, verification HTML and versioned scripts together. Rebuild configuration with `php artisan config:cache` and restart the existing workers with `php artisan queue:restart`, preserving `APP_KEY`, the database queue, shared rate-limit cache, HTTPS URLs, secure cookies and SMTP configuration.
+
+Alongside the existing queue worker, keep one scheduler cron every minute, using the verified PHP CLI path and real deployed project directory:
+
+```sh
+/usr/bin/php /home/ACCOUNT/domains/DOMAIN/APP/artisan schedule:run
+```
+
+Check existing hPanel jobs before adding this command. `php artisan schedule:list` should show one `pending-customer-registrations:prune` task every five minutes with overlap protection. The existing creation-time index supports cleanup; it never deletes verified accounts. Expiration is enforced by the API and queue guards even if cron is delayed. Only an already email-proven ten-minute review grant can briefly outlive the hour, with an absolute pending age limit of 70 minutes.
+
+Public signup has two queued stages: registration processing and mail delivery. Workers discard public work older than an hour, and skip expired, consumed or superseded mail. They also skip mail with less than 60 seconds of validity remaining. Emails state the actual capped expiration timestamp in Asia/Manila, so queue delays do not promise another 30 minutes. Verify the configured `AUTH_MAIL_QUEUE` is consumed and inspect worker/SMTP acceptance on the actual host. No live Hostinger configuration or production data was changed for this release.
 
 The test deployment is https://darkorchid-horse-104804.hostingersite.com/.
 Keep Laravel notifications, the encrypted database queue, and the existing Brevo

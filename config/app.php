@@ -66,10 +66,8 @@ return [
         10,
     ),
 
-    // The hours setting wins; explicitly configured legacy days remain supported.
-    'pending_registration_retention_hours' => (int) env('PENDING_REGISTRATION_RETENTION_HOURS',
-        env('PENDING_REGISTRATION_RETENTION_DAYS') !== null
-            ? max(1, (int) env('PENDING_REGISTRATION_RETENTION_DAYS')) * 24 : 48),
+    // Old hours/days overrides must not retain unverified signups beyond one hour.
+    'pending_registration_retention_hours' => 1,
 
     'privileged_seed_accounts' => [
         'admin' => [

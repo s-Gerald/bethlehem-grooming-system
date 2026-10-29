@@ -58,7 +58,7 @@ final class AccountEmail
     public static function assertAvailable(string $email, ?User $except = null, bool $lock = false, ?PendingCustomerRegistration $exceptPending = null): void
     {
         $column = self::lookupColumn();
-        $pending = PendingCustomerRegistration::query()->unexpired()->whereRaw($column.' = ?', [$email])
+        $pending = PendingCustomerRegistration::query()->retained()->whereRaw($column.' = ?', [$email])
             ->when($exceptPending, fn ($query) => $query->whereKeyNot($exceptPending->getKey()));
         $users = User::query()->whereRaw($column.' = ?', [$email])
             ->when($except, fn ($query) => $query->whereKeyNot($except->getKey()));

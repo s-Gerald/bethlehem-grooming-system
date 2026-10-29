@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let busy = false;
   let joining = false;
   let state = read("pendingVerificationState");
+  let registrationEnded = state === "expired" || state === "restart_required";
   let until = Number(read("pendingVerificationResendUntil")) || 0;
   let linkUntil = state === "resumed" ? Number(read("pendingVerificationLinkUntil")) || 0 : 0;
   let limited = read("pendingVerificationResendLimited") === "1";
@@ -45,9 +46,24 @@ document.addEventListener("DOMContentLoaded", () => {
     try { editable = !!read("pendingRegistrationEditToken") && JSON.parse(read("pendingSignupDetails") || "null")?.email?.toLowerCase() === email.toLowerCase(); } catch { /* Normal signup remains available. */ }
     const back = document.getElementById("verificationBackAction");
     back.textContent = "Back to sign up";
-    back.setAttribute("href", editable ? "./signup.html?edit=1" : "./signup.html");
+    back.setAttribute("href", editable && !registrationEnded ? "./signup.html?edit=1" : "./signup.html");
+    if (registrationEnded) {
+      title.textContent = state === "expired" ? "Registration expired" : "Registration ending";
+      description.textContent = "";
+      instruction.textContent = "";
+      recovery.classList.add("hidden");
+      announce(state === "expired" ? "This registration has expired. Start again." : "This registration is almost expired. Start again.", true);
+    }
   }
   function tick() {
+    if (registrationEnded) {
+      resend.disabled = true;
+      resend.classList.add("hidden");
+      form.setAttribute("aria-busy", "false");
+      clearInterval(timer);
+      timer = null;
+      return;
+    }
     const seconds = Math.max(0, Math.ceil((until - Date.now()) / 1000));
     resend.disabled = busy || seconds > 0;
     resend.textContent = busy ? "Sending verification email..." : seconds && !limited
@@ -127,6 +143,14 @@ document.addEventListener("DOMContentLoaded", () => {
       cooldown(result);
       delivery(result.email_delivery_token);
     } catch (error) {
+      if (error.code === "registration_expired" || error.code === "registration_restart_required") {
+        registrationEnded = true;
+        state = error.code === "registration_expired" ? "expired" : "restart_required";
+        write("pendingVerificationState", state);
+        stopDelivery();
+        renderEmail();
+        return;
+      }
       if (error.status === 429) cooldown(error);
       announce(window.AuthenticationResend.limited(error)
         ? window.AuthenticationResend.message(window.AuthenticationResend.seconds(error))
@@ -138,7 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("pageshow", event => {
     if (!event.persisted) return;
     startTimer();
-    if (state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
+    if (!registrationEnded && state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
     join();
   });
   window.addEventListener("pagehide", event => {
@@ -150,10 +174,10 @@ document.addEventListener("DOMContentLoaded", () => {
   view.classList.remove("hidden");
   renderEmail();
   startTimer();
-  if (read("pendingVerificationDeliveryFailed") === "1" && !limited) {
+  if (!registrationEnded && read("pendingVerificationDeliveryFailed") === "1" && !limited) {
     title.textContent = "Email not sent";
     description.textContent = "We couldn't send a verification link to:";
     announce("Couldn't send the verification email. Try resending.", true);
   }
-  if (state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
+  if (!registrationEnded && state !== "requested" && state !== "resumed") delivery(API.getEmailDeliveryToken("registration"));
 });

@@ -50,8 +50,7 @@ class AuthController extends Controller
                         'success' => true, 'requires_verification' => true, 'registration_state' => 'resumed',
                         'email_delivery_queued' => false, 'verification_link_available' => $linkAvailable,
                         'verification_link_expires_at' => $linkAvailable
-                            ? $pending->email_verification_expires_at->min($pending->email_verification_last_sent_at->copy()
-                                ->addMinutes(max(1, (int) config('authentication.magic_link_minutes', 30))))->toIso8601String() : null,
+                            ? \App\Services\RegistrationMagicLinkService::expiresAt($pending)->toIso8601String() : null,
                         'email' => $pending->email, 'registration_token' => $request->input('registration_token'),
                         ...app(AuthenticationEmailPolicy::class)->status($pending->email),
                     ], 202)->header('Cache-Control', 'no-store');
@@ -73,7 +72,7 @@ class AuthController extends Controller
                     $hash = hash('sha256', $credential['registration_recovery_token']);
                     $legacy = User::query()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
                     $registrant = $legacy ?? PendingCustomerRegistration::query()
-                        ->unexpired()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
+                        ->withActiveReview()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
                     if (! $registrant || ! $registrant->registration_recovery_expires_at
                         || now()->greaterThanOrEqualTo($registrant->registration_recovery_expires_at)
                         || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {

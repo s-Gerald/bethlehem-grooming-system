@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let resendUntil = 0;
   let verifyUntil = 0;
   let loginBusy = false;
+  let resendBusy = false;
   let resendLimited = false;
   let stopDeliveryCheck = () => {};
 
@@ -135,7 +136,13 @@ document.addEventListener("DOMContentLoaded", () => {
           errorTitle.textContent = "Verification unavailable";
           errorMessage.textContent = error.message || "This link is invalid or has already been used.";
           showState("error");
-          resendSection.classList.remove("hidden");
+          const expiredRegistration = error.code === "registration_expired" || error.code === "registration_restart_required";
+          resendSection.classList.toggle("hidden", expiredRegistration);
+          if (expiredRegistration) {
+            const back = document.getElementById("verificationBackAction");
+            back.textContent = "Back to sign up";
+            back.setAttribute("href", "./signup.html");
+          }
         }
       } finally {
         verifying = false;
@@ -292,6 +299,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   resendForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (resendBusy) return;
     clearResendMessage();
 
     const email = resendEmail.value.trim();
@@ -319,6 +327,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   function setResendBusy(busy) {
+    resendBusy = busy;
     resendSubmit.disabled = busy;
     const label = document.getElementById("resendBtnLabel");
     if (label) label.textContent = busy ? "Sending…" : "Resend Verification Email";

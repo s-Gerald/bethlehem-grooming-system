@@ -365,6 +365,24 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(throttled.element('signupResend').disabled, false);
   assert.equal(throttled.element('signupLinkMessage').textContent, '');
 
+  const expired = page({deliveryFailed:true});
+  let expiredSends = 0;
+  expired.API.resendVerification = async () => { expiredSends++; throw {status:422, code:'registration_expired', message:'This registration has expired. Start again.'}; };
+  await expired.dispatch('signupLinkForm', 'submit');
+  assert.equal(expired.element('signupLinkMessage').textContent, 'This registration has expired. Start again.');
+  assert.equal(expired.element('signupResend').disabled, true);
+  assert.equal(expired.element('verificationBackAction').attributes.href, './signup.html');
+  expired.advance(60000);
+  await expired.dispatch('signupLinkForm', 'submit');
+  assert.equal(expiredSends, 1, 'An expired registration must not offer a resend that revives it.');
+  const restoredExpiry = page({deliveryFailed:true, deliveryStatus:'sent', initialStorage:{pendingVerificationState:'expired'}});
+  restoredExpiry.windowHandlers.pagehide({persisted:true});
+  restoredExpiry.windowHandlers.pageshow({persisted:true});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(restoredExpiry.element('verificationTitle').textContent, 'Registration expired');
+  assert.equal(restoredExpiry.element('signupLinkMessage').textContent, 'This registration has expired. Start again.');
+  assert.equal(restoredExpiry.element('signupResend').disabled, true);
+
   const busy = page({deliveryFailed:true});
   let resolveSend;
   let sends = 0;

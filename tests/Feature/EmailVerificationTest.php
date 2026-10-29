@@ -1759,7 +1759,7 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHours(48)])->save();
+        $pending->forceFill(['created_at' => now()->subHour()])->save();
         $publicResponse = $this->postJson('/api/email/resend', ['email' => 'unknown@gmail.com'])->assertAccepted()->json();
         foreach ([$pending->email, 'unknown@gmail.com'] as $email) {
             $this->travel(901)->seconds();
@@ -1839,7 +1839,7 @@ class EmailVerificationTest extends TestCase
         Notification::fake();
         $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHours(48), 'updated_at' => now()])->save();
+        $pending->forceFill(['created_at' => now()->subHour(), 'updated_at' => now()])->save();
         $oldCode = $this->verificationTokenSentTo($pending);
         $this->travel(61)->seconds();
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $oldCode])->assertUnprocessable();
@@ -1909,7 +1909,7 @@ class EmailVerificationTest extends TestCase
         $this->useDatabaseMailQueue();
         $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHours(48)->addSeconds(70)])->save();
+        $pending->forceFill(['created_at' => now()->subHour()->addSeconds(70)])->save();
         $created = $pending->created_at->timestamp;
         $this->travel(61)->seconds();
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
@@ -2345,6 +2345,244 @@ class EmailVerificationTest extends TestCase
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($receipt));
         $this->assertDatabaseCount('users', 0);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('registrationLinkAges')]
+    public function test_registration_links_are_capped_by_the_original_hour(int $age, int $minutes): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $created = $pending->created_at->copy();
+        $credential = $this->authorizedEditCredential($response);
+        if ($age) {
+            $this->travel($age)->minutes();
+            $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
+        }
+        $pending->refresh();
+        $this->assertTrue($pending->created_at->equalTo($created));
+        $this->assertSame($minutes * 60, $pending->email_verification_expires_at->timestamp - now()->timestamp);
+        $mail = Notification::sent($pending, VerifyEmailNotification::class)->last()->toMail($pending);
+        $this->assertContains('This link expires on '.$pending->email_verification_expires_at->copy()->timezone('Asia/Manila')
+            ->format('F j, Y, g:i:s A').' (Asia/Manila, UTC+08:00).', $mail->outroLines);
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'registration_token' => $credential])
+            ->assertAccepted()->assertJsonPath('verification_link_expires_at', $pending->email_verification_expires_at->toIso8601String());
+    }
+
+    public static function registrationLinkAges(): array
+    {
+        return [[0, 30], [15, 30], [30, 30], [45, 15], [50, 10]];
+    }
+
+    public function test_registration_can_verify_one_second_before_the_hour_but_not_at_the_deadline(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $first = PendingCustomerRegistration::sole();
+        $this->travel(45)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $first->email])->assertAccepted();
+        $first->refresh();
+        $token = $this->verificationTokenSentTo($first);
+        $this->travel(899)->seconds();
+        $this->postJson('/api/email/verify', ['token' => $token])->assertOk();
+        $this->assertDatabaseCount('users', 1);
+
+        $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'second@gmail.com', 'username' => 'second', 'phone' => null])->assertAccepted();
+        $second = PendingCustomerRegistration::sole();
+        $this->travel(45)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $second->email])->assertAccepted();
+        $token = $this->verificationTokenSentTo($second);
+        $this->travel(15)->minutes();
+        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()
+            ->assertJsonPath('code', 'registration_expired')->assertJsonPath('message', 'This registration has expired. Start again.');
+        $this->assertDatabaseCount('users', 1);
+        $this->assertTrue($second->fresh()->retentionExpired());
+    }
+
+    public function test_pending_edit_and_old_stored_link_deadlines_cannot_extend_the_hour(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $credential = $this->authorizedEditCredential($response);
+        $created = $pending->created_at->copy();
+        $this->travel(45)->minutes();
+        $edit = $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Edited',
+            'registration_token' => $credential])->assertCreated();
+        $pending->refresh();
+        $token = $this->verificationTokenSentTo($pending);
+        $this->assertTrue($pending->created_at->equalTo($created));
+        // Simulate an issuance stored under the previous deployment's policy.
+        $pending->update(['email_verification_expires_at' => now()->addMinutes(30)]);
+        $this->postJson('/api/register', [...$this->registrationPayload(), 'registration_token' => $edit->json('registration_token')])
+            ->assertAccepted()->assertJsonPath('verification_link_expires_at', $created->addHour()->toIso8601String());
+        $this->travel(15)->minutes();
+        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_email_proven_review_survives_the_hour_only_until_its_original_grant_expires(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $this->travel(50)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $token = $this->verificationTokenSentTo($pending);
+        $this->travel(8)->minutes();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $review = $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonPath('requires_registration_review', true);
+        $deadline = $pending->fresh()->registration_recovery_expires_at;
+        $this->travel(1)->seconds();
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $this->assertTrue($pending->fresh()->registration_recovery_expires_at?->equalTo($deadline) ?? false,
+            'An unauthenticated resend must not revoke an email-proven review grant.');
+        $this->travel(119)->seconds();
+        $this->assertSame(0, PendingCustomerRegistration::pruneExpired());
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $this->assertTrue($pending->fresh()->registration_recovery_expires_at->equalTo($deadline));
+        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
+            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertOk();
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+    }
+
+    public function test_expired_review_is_pruned_and_cannot_complete_or_reserve_identifiers(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $this->travel(50)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $this->travel(9)->minutes();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        $this->travel(10)->minutes();
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
+            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->assertNotSame($pending->getKey(), PendingCustomerRegistration::sole()->getKey());
+    }
+
+    public function test_delayed_verification_mail_states_the_exact_capped_manila_deadline(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->useDatabaseMailQueue();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $deadline = $pending->created_at->copy()->addHour()->timezone('Asia/Manila')->format('F j, Y, g:i:s A');
+        $this->travel(45)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        // Drop the old issuance, then process the public request, delaying only mail delivery.
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->travel(7)->minutes();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $messages = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $messages);
+        $body = $messages[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringContainsString($deadline.' (Asia/Manila, UTC+08:00)', $body);
+        $this->assertStringNotContainsString('expires in 30 minutes', $body);
+    }
+
+    public function test_nearly_expired_resend_preserves_the_current_link_and_suppresses_late_delivery(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $credential = $this->authorizedEditCredential($response);
+        $pending = PendingCustomerRegistration::sole();
+        $this->travel(50)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
+        $before = $pending->fresh()->getAttributes();
+        $notification = Notification::sent($pending, VerifyEmailNotification::class)->last();
+        $this->travel(541)->seconds();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertUnprocessable()
+            ->assertJsonPath('code', 'registration_restart_required');
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        $this->assertFalse($notification->shouldSend($pending->fresh(), 'mail'));
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+    }
+
+    public function test_replayed_public_work_cannot_recreate_an_expired_registration(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->useDatabaseMailQueue();
+        $this->postJson('/api/register', $this->registrationPayload())->assertAccepted();
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $job = unserialize(app('encrypter')->decrypt($command));
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->travel(60)->minutes();
+        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
+        $job->handle(app(\App\Services\CustomerRegistrationService::class));
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('users', 0);
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_only_the_bound_edit_credential_can_receive_expired_resend_feedback(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $credential = $this->authorizedEditCredential($response);
+        $before = $pending->fresh()->getAttributes();
+        $this->travel(60)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])
+            ->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
+        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('x', 64))->withCredentials();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertAccepted();
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+    }
+
+    public function test_delayed_initial_public_work_is_discarded_at_one_hour(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->useDatabaseMailQueue();
+        $this->postJson('/api/register', $this->registrationPayload())->assertAccepted();
+        $this->travel(60)->minutes();
+        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
+    }
+
+    public function test_cleanup_bounds_existing_review_grants_and_ignores_obsolete_retention_configuration(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $user = User::factory()->create();
+        config()->set('app.pending_registration_retention_hours', 48);
+        $this->travel(50)->minutes();
+        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
+        $this->travel(9)->minutes();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        // An old/malformed stored grant cannot reserve identifiers indefinitely.
+        $pending->update(['registration_recovery_expires_at' => now()->addDay()]);
+        $this->travel(1)->minutes();
+        $this->assertTrue($pending->fresh()->retentionExpired());
+        $this->assertSame(0, PendingCustomerRegistration::pruneExpired());
+        $this->travel(10)->minutes();
+        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
+        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
+            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
+        $this->assertDatabaseCount('users', 1);
+        $this->assertNotNull($user->fresh()->email_verified_at);
     }
 
     // Pre-existing authorized contexts are fixtures, never public API output.

@@ -1,4 +1,4 @@
-# Customer authentication — October 28, 2026
+# Customer authentication — October 29, 2026
 
 ## Current behavior
 
@@ -16,6 +16,14 @@ The original browser is bound through a random, host-only, HttpOnly, SameSite=La
 
 A foreign browser receives a ten-minute email-proven review grant. Only then are saved details disclosed. That operation consumes the magic link and revokes the original edit credential and browser binding. Completing the existing registration-review form requires a newly entered password and confirmation; it never activates an attacker-selected pending password by simply clicking the link. Legacy eligible unverified customers use this same review path, preserving their user ID, pets, bookings and history.
 
+Unverified pending registrations expire exactly **60 minutes after their server `created_at`**, including existing rows at release. Editing, resending, refreshing, leaving the page, closing the browser, switching apps and suspending a phone do not restart or cancel that lifetime. The pending model enforces the hour independently of old configuration caches or hours/days environment overrides. No user row exists until deliberate verification and any required review finish successfully.
+
+Each new link expires at `min(issued_at + 30 minutes, created_at + 60 minutes)`. The configured link duration can shorten the maximum but cannot exceed 30 minutes. Validation, authorized resume guidance and queued delivery also cap older stored issuances by that effective deadline. A resend at minute 45 lasts 15 minutes; one at minute 50 lasts 10. The email gives the exact expiration date/time, including seconds and **Asia/Manila, UTC+08:00**, rather than a relative duration that could overpromise after queue delays. No additional website countdown was added; existing resumed-link guidance uses the server-derived effective expiration.
+
+Issuance and delivery require at least 60 seconds of validity remaining. Rejected near-expiry resends preserve the previous link; authorized callers see a short restart message, while public recovery stays neutral. A correctly matched expired registration link shows “This registration has expired. Start again.” and signup navigation without resend. An expired link for an active registration shows “This link has expired. Request a new one.” with recovery. Once a pending row is physically pruned, an old token cannot identify its former registration; it receives the existing generic invalid-link feedback. Public recovery never discloses whether an address is expired, missing or occupied.
+
+A review grant obtained by proving email ownership before the hour retains its original ten-minute completion window, even across the registration deadline. Public resends cannot revoke or extend an active pending review grant. It cannot extend magic-link validity or permit unverified completion. Cleanup preserves that grant only until its expiry, with an absolute ceiling of `created_at + 70 minutes` for pre-existing or malformed stored grants. Those email-proven details remain reserved during this short window. Other expired pending rows release email, phone and username on the next signup transaction, even when cron is late. Stale public-processing work is discarded one hour after its request timestamp; replay cannot recreate an expired registration.
+
 The original waiting tab responds to focus, back/forward restoration or a credential-free BroadcastChannel hint. There is no speculative initial session check or duplicate initial pageshow check; simultaneous checks are deduplicated. It can restore a session only when `/api/email/registration/session` validates the actual HttpOnly account cookie, customer role, verified email, expected address and existing usable session. A server-recorded acknowledgement controls the verification tab's close-tab wording. Without that acknowledgement, the verified tab offers **Go to Dashboard**. There is no token polling loop or bearer-token cross-tab messaging. Handoff state expires after ten minutes; it cannot create or extend a session.
 
 The centered pending card retains the clinic logo, white surface and existing blue controls. Its only normal navigation actions are **Resend link** and **Back to sign up**. The latter uses the existing edit form only when matching editing context is available. Removed email-change actions and their handlers are gone. Login OTP and emailed-link screens retain their sign-in navigation and **Verify Email Address** action respectively.
@@ -30,9 +38,9 @@ All customer sending policy lives in `config/authentication.php` and `Authentica
 
 | Control | Default |
 | --- | --- |
-| Registration magic link | 30 minutes; single use; replacement revokes the prior link |
-| Registration review grant | 10 minutes; single use |
-| Pending registration retention | Existing configured retention; default 48 hours from creation |
+| Registration magic link | At most 30 minutes, capped by the original pending deadline; single use |
+| Registration review grant | Original 10 minutes after email proof; single use; at most 70 minutes from pending creation |
+| Pending registration retention | Exactly 60 minutes from server creation; old hours/days overrides ignored |
 | Sign-in OTP | 10 minutes from initial issuance; resend does not extend the deadline |
 | Incorrect OTP attempts | 5/challenge and 5/account per 15 minutes; 25/IP per 15 minutes |
 | Minimum email interval | 60 seconds per destination, across relevant auth flows |
@@ -65,8 +73,9 @@ For a Hostinger release, an operator must:
 3. Set production `APP_ENV=production`, `APP_DEBUG=false`, HTTPS `APP_URL` and `FRONTEND_URL`, `SESSION_SECURE_COOKIE=true`, and exact trusted frontend origins. The configured frontend must include any deployment path prefix. Preserve `APP_KEY` so existing encrypted queued work can be decoded. Use `zend.exception_ignore_args=On`; redact verification credentials in proxy/request logging and avoid analytics on verification pages.
 4. Keep `QUEUE_CONNECTION=database`, with the same database connection used for issuance, and a shared persistent `CACHE_STORE=database` or `redis`. Ensure cache and cache-lock tables exist when using the database store. Do not clear the application cache during release, which would erase abuse counters. Rebuild configuration with `php artisan config:cache` and restart workers after code/config changes.
 5. Preserve the verified Brevo/SMTP sender, credentials and bounded transport timeout. Reject logging transports, including logging failovers. Ensure the existing worker/cron processes the database queue and `AUTH_MAIL_QUEUE` when named. Public signup/resend now always depend on this worker, including when `AUTH_MAIL_DELIVERY=immediate`: they have a public-processing stage followed by the mail stage. No post-response SMTP callback is retained by public processing in long-lived workers. Existing immediate behavior for other authorized authentication requests is preserved. Restart workers with `php artisan queue:restart`; no new worker or public processing route is required.
-6. Keep `php artisan schedule:run` running each minute. Existing scheduled jobs prune expired pending registrations and login challenges. Rate histories expire automatically; only hashed destinations/IPs and bounded timestamps are retained.
+6. Keep one `php artisan schedule:run` cron running each minute. The existing `pending-customer-registrations:prune` job now runs every five minutes with `withoutOverlapping()`. It uses the existing `pending_registration_created_idx`; no migration or extra index is needed. The indexed DELETE takes the same row locks as verification, preserves active email-proven review grants and never touches `users`. Server deadlines work even when cron is late. Rate histories expire automatically; only hashed destinations/IPs and bounded timestamps are retained.
 7. Retire old registration codes and old queued registration notifications. They cannot authenticate through the new API. Existing database code columns remain only for safe migration history; the registration-code service, templates, input and handlers were removed. By default pre-cutover links without issuance metadata are rejected. If a deliberate transition is needed, set `REGISTRATION_LEGACY_LINKS_UNTIL` to a fixed near-term ISO timestamp, then remove it and rebuild config after that deadline. Legacy links still require explicit confirmation and password review; they cannot directly issue a session.
+8. Remove obsolete `PENDING_REGISTRATION_RETENTION_HOURS` and `PENDING_REGISTRATION_RETENTION_DAYS` environment entries. Retention is fixed at one hour; `config/app.php` reports `1`, and the pending model enforces it even with a stale cached value. Keep `REGISTRATION_MAGIC_LINK_MINUTES=30` for the maximum. Run `php artisan config:cache`, then `php artisan queue:restart`; do not flush the shared cache or reset abuse counters. Deploy `verify-email.html` with its versioned scripts. No migration or production-data operation is required. Existing pending records use their original creation timestamp and are never granted a fresh hour at deployment.
 
 SMTP transport acceptance is not proof of inbox delivery. A process crash after SMTP acceptance but before recording `sent` can still cause an ordinary queue retry to deliver twice; exactly-once inbox delivery is not claimed. Queue guards prevent superseded, expired or consumed issuances from being sent.
 
@@ -74,7 +83,15 @@ Affected auth and shared phone-verification import URLs have dated cache keys. P
 
 ## Verification and manual acceptance
 
-Final automated results on the local workspace:
+October 29 validation of the one-hour change:
+
+- PHP 8.4: 258 focused authentication, password-reset, independent-session, session-lock, name-update and shared email-policy tests passed, with 2,769 assertions. Existing signup tests were updated in place; coverage includes exact expiry, 45/50-minute resends, delayed mail timestamps, queue replay, bounded review grants, old cached retention, identifier reuse and overlapping verification requests. An isolated SQLite `EXPLAIN QUERY PLAN` of the actual cleanup DELETE used `pending_registration_created_idx` for both the expiry range and null-creation branches, with no table scan.
+- Shared email availability consumers: 156 staff-account/credential-change tests passed (2,341 assertions), plus six privileged credential-security tests. Their fixtures now load the already-existing registration-recovery migration; email reservation tests cover both the exact one-hour release and an active review grant. Across these focused PHP runs, 420 distinct tests passed; the full unrelated application suite was not rerun.
+- The signup/verification, frontend auth/session, email-delivery and shared email regression scripts passed. `npm run build` passed with the existing Browserslist-data advisory. No new dependency or migration was introduced.
+- The current signup page was inspected read-only in the ChatGPT browser at 320, 375, 414 and 768 pixels; no horizontal overflow was observed. Its established card, colors, typography and icons were preserved. Browser navigation, data entry, OTP and password-reset testing remain with the user. Waiting/error states were verified with automated frontend harnesses, without navigating the localhost browser.
+- Hostinger cron/worker configuration, actual SMTP delivery and native production MySQL query plans/concurrency remain operator checks; no production data or hosting settings were changed.
+
+Historical October 28 automated results (before the one-hour change):
 
 - PHP 8.4 / PHPUnit: 1,845 tests, 24,466 assertions; 1,837 passed, 8 MySQL integration cases skipped, no failures or errors. Logs: `storage/logs/auth-feedback-full-phpunit.txt` and `auth-feedback-full-phpunit.xml`. Skips cover six admin-dashboard MySQL fixtures, the grooming MySQL concurrency case, and the phone-verification MySQL timestamp migration case. The final focused authentication suite also passed: 111 tests, 1,171 assertions, after ensuring fixtures retain original credentials rather than restoring revoked ones.
 - Frontend: all 85 regression scripts passed with `npm test`. After the final cache-key update, signup/verification, auth/session, dashboard/phone verification and online-registration selector regressions also passed.
