@@ -4,13 +4,13 @@ window.VerificationCode = {
     const [local, domain] = String(email || "").split("@");
     return local && domain ? `${Array.from(local)[0]}***@${domain}` : "your email address";
   },
-  formatCountdown(seconds) {
+  formatCountdown(seconds, alwaysMinutes = false) {
     const remaining = Math.max(0, Math.ceil(Number(seconds) || 0));
     if (!Number.isFinite(remaining) || !remaining) return "";
     const minutes = Math.floor(remaining / 60);
     const tail = `${String(remaining % 60).padStart(2, "0")}s`;
     if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m ${tail}`;
-    return minutes ? `${minutes}m ${tail}` : `${remaining}s`;
+    return minutes || alwaysMinutes ? `${minutes}m ${tail}` : `${remaining}s`;
   },
   bind(codeInput, codeCells, onChange = () => {}) {
     function updateCodeCells() {

@@ -211,10 +211,20 @@ async function testEveryRoleHonorsTheServerConfirmedCheckbox() {
 }
 
 async function testTemporaryVerificationThrottlingPreservesTheBrowserChallenge() {
-  const browser = createBrowser({session: {pending_login_poll_token: 'pending-challenge'},
-    fetchImpl: async () => jsonResponse(429, {code: 'login_code_busy', retry_after: 1})});
-  await assert.rejects(browser.API.confirmLoginCode('123456'), error => error.status === 429);
-  assert.equal(browser.sessionStorage.getItem('pending_login_poll_token'), 'pending-challenge');
+  for (const code of ['login_code_busy', 'login_code_locked']) {
+    const browser = createBrowser({session: {pending_login_poll_token: 'pending-challenge'},
+      fetchImpl: async () => jsonResponse(429, {code, retry_after: 60})});
+    await assert.rejects(browser.API.confirmLoginCode('123456'), error => error.status === 429);
+    assert.equal(browser.sessionStorage.getItem('pending_login_poll_token'), 'pending-challenge');
+  }
+  const browser = createBrowser({session: {pending_login_poll_token:'resumable'},
+    fetchImpl: async () => jsonResponse(202, {requires_login_confirmation:true,login_poll_token:'resumable',
+      requires_new_code:true,expires_in:40,resend_after:0})});
+  const before = Date.now();
+  await browser.API.signIn('customer', 'password');
+  const deadline = Number(browser.sessionStorage.getItem('pendingLoginExpiresAt'));
+  assert.ok(deadline >= before + 40000 && deadline <= Date.now() + 40000, 'Resume stores the server transaction remainder');
+  assert.equal(browser.sessionStorage.getItem('pendingLoginCodeExhausted'),'1');
 }
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -999,7 +1009,7 @@ function testBackForwardCacheGuard() {
   }
 }
 
-function verificationPageHarness({ search, hash, pendingLogin = false, role = 'customer', deliveryStatus = null }) {
+function verificationPageHarness({ search, hash, pendingLogin = false, role = 'customer', deliveryStatus = null, saved = {} }) {
   const source = fs.readFileSync(
     path.join(projectRoot, "scripts/auth/client/verify-email.js"),
     "utf8",
@@ -1088,7 +1098,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
         events.push({ type: "scrub", target });
       },
     },
-    sessionStorage: new MemoryStorage(),
+    sessionStorage: new MemoryStorage(saved),
     setTimeout(callback) { callback(); },
     setInterval(callback) {
       const id = ++nextIntervalId;
@@ -1100,7 +1110,8 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     window: { location, clearTimeout() {}, setTimeout() {}, addEventListener(name, callback) { windowHandlers[name] = callback; } },
   };
 
-  context.sessionStorage.setItem("pendingLoginResendUntil", String(now + 60000));
+  if (!context.sessionStorage.getItem('pendingLoginResendUntil')) context.sessionStorage.setItem("pendingLoginResendUntil", String(now + 60000));
+  if (!context.sessionStorage.getItem('pendingLoginExpiresAt')) context.sessionStorage.setItem('pendingLoginExpiresAt', String(now + 600000));
   vm.createContext(context);
   const inline = fs.readFileSync(path.join(projectRoot, 'pages/client/verify-email.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInContext(inline, context);
@@ -1232,12 +1243,12 @@ async function testLoginCodeIsEnteredOnTheOriginalTab() {
 }
 
 async function testLoginCodeResendCooldownAndLimit() {
-  const page = verificationPageHarness({
+  let page = verificationPageHarness({
     search: "?mode=login",
     hash: "",
     pendingLogin: true,
   });
-  const resend = page.elements.get("loginCodeResendBtn");
+  let resend = page.elements.get("loginCodeResendBtn");
 
   assert.equal(resend.disabled, true);
   page.windowHandlers.pagehide({persisted:true});
@@ -1286,22 +1297,66 @@ async function testLoginCodeResendCooldownAndLimit() {
   assert.equal(resend.disabled, true);
   page.advanceSeconds(1);
   assert.equal(resend.disabled, false, "Server throttling must not permanently lock resends");
+  page = verificationPageHarness({search:'?mode=login',hash:'',pendingLogin:true});
+  resend = page.elements.get('loginCodeResendBtn');
   page.API.confirmLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
   page.elements.get('loginCode').value = '123456';
   await page.dispatch('loginCodeForm', 'submit');
-  assert.match(page.elements.get('loginCodeMessage').textContent, /1m 05s/);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Request a new code in 1m 05s.');
+  assert.equal(page.elements.get('loginCodeResendLock').classList.contains('hidden'), false);
+  assert.equal(resend.classList.contains('hidden'), false);
+  assert.equal(page.elements.get('loginCodeResendCountdown').classList.contains('hidden'), true);
+  assert.equal(page.elements.get('loginCodeMessage')['aria-live'], 'off');
   assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
   page.advanceSeconds(64);
-  assert.match(page.elements.get('loginCodeMessage').textContent, /1s/);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, 'Too many incorrect codes. Request a new code in 0m 01s.');
   page.advanceSeconds(1);
-  assert.equal(page.elements.get('loginCodeSubmit').disabled, false);
+  assert.equal(page.elements.get('loginCodeSubmit').disabled, true, 'Exhausted code stays disabled after cooldown');
+  assert.equal(page.elements.get('loginCode').disabled, true);
+  assert.equal(resend.disabled, false);
+  assert.equal(page.elements.get('loginCodeResendLock').classList.contains('hidden'), true);
   assert.equal(page.elements.get('loginCodeMessage').textContent, '');
+  assert.equal(page.events.filter(event => event.type === 'resend-login-code').length, 0, 'Timer completion never sends mail');
+  page.API.resendLoginCode = async () => { throw {status:429, code:'email_rate_limited', retryAfter:120, data:{resend_limited:true}}; };
+  await page.dispatch('loginCodeResendBtn', 'click');
+  assert.equal(page.elements.get('loginCode').disabled, true, 'Rejected resend cannot restore an exhausted code');
+  assert.match(page.elements.get('loginCodeMessage').textContent, /Too many requests/);
+  page.advanceSeconds(120);
+  page.API.resendLoginCode = async () => ({resend_after:60});
+  await page.dispatch('loginCodeResendBtn', 'click');
+  assert.equal(page.elements.get('loginCode').value, '');
+  assert.equal(page.elements.get('loginCode').disabled, false);
+  assert.equal(page.elements.get('loginCodeSubmit').disabled, true);
+  assert.equal(page.elements.get('loginCodeMessage').textContent, '');
+  page.advanceSeconds(60);
   page.API.resendLoginCode = async () => { throw {status:429, code:'login_code_locked', retryAfter:65}; };
   await page.dispatch('loginCodeResendBtn', 'click');
   assert.equal(page.elements.get('loginCode').disabled, true, 'An OTP attempt lockout reported by resend also blocks verification');
   assert.match(page.elements.get('loginCodeMessage').textContent, /1m 05s/);
   page.advanceSeconds(65);
-  assert.equal(page.elements.get('loginCode').disabled, false);
+  assert.equal(page.elements.get('loginCode').disabled, true);
+  assert.equal(resend.disabled, false);
+
+  const reload = verificationPageHarness({search:'?mode=login',hash:'',pendingLogin:true,
+    saved:{pendingLoginCodeExhausted:'1',pendingLoginVerifyUntil:'140000'}});
+  assert.equal(reload.elements.get('loginCode').disabled, true);
+  assert.match(reload.elements.get('loginCodeMessage').textContent, /40s/);
+  reload.advanceSeconds(40);
+  assert.equal(reload.elements.get('loginCode').disabled, true);
+  reload.advanceSeconds(20);
+  assert.equal(reload.elements.get('loginCodeResendBtn').disabled, false);
+  reload.advanceSeconds(540);
+  assert.equal(reload.elements.get('stateError').classList.contains('hidden'), false);
+  assert.equal(reload.elements.get('errorMessage').textContent, 'Sign-in expired. Please sign in again.');
+  assert.equal(reload.elements.get('loginCodeResendBtn').disabled, true);
+
+  const busy = verificationPageHarness({search:'?mode=login',hash:'',pendingLogin:true});
+  busy.API.confirmLoginCode = async () => {throw {status:429,code:'login_code_busy',retryAfter:1};};
+  busy.elements.get('loginCode').value='123456';
+  await busy.dispatch('loginCodeForm','submit');
+  busy.advanceSeconds(1);
+  assert.equal(busy.elements.get('loginCode').disabled,false,'Busy response does not exhaust the code');
+  assert.equal(busy.elements.get('loginCodeResendLock').classList.contains('hidden'),true);
 }
 
 async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
@@ -1370,13 +1425,22 @@ async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses(
     await page.submit();
     assert.equal(page.element('sharedSignInMessage').textContent, 'Invalid credentials.');
   }
-  for (const code of ['login_code_locked', 'sign_in_busy', null]) {
+  for (const code of ['login_challenges_limited', 'sign_in_busy', null]) {
     const page = signInPageHarness({ signIn: async () => { throw { status: 429, code, retryAfter: 43200, message: 'Please try again later.' }; } });
     await page.submit();
     assert.equal(page.intervals.size, 0, `${code} is not a password cooldown`);
     assert.equal(page.element('sharedSignInSubmit').disabled, false);
     assert.equal(page.element('sharedSignInMessage').textContent, 'Please try again later.');
   }
+  const otp = signInPageHarness({signIn:async () => {throw {status:429,code:'login_code_locked',retryAfter:40};}});
+  await otp.submit();
+  assert.equal(otp.element('sharedSignInMessage').textContent,'Too many verification attempts. Try again in 40s.');
+  assert.equal(otp.element('sharedSignInSubmit').disabled,true);
+  otp.advance(20000);
+  assert.match(otp.element('sharedSignInMessage').textContent,/20s/);
+  otp.advance(20000);
+  assert.equal(otp.element('sharedSignInSubmit').disabled,false);
+  assert.equal(otp.element('sharedSignInMessage').textContent,'');
   for (const duration of [null, undefined, '', 'bad', Infinity, NaN, -1, 0, 43200]) {
     const page = signInPageHarness({ signIn: async () => { throw { status: 429, code: 'sign_in_password_cooldown', retryAfter: duration }; } });
     await page.submit();

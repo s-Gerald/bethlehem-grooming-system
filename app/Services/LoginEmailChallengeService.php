@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\ConfirmLoginNotification;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
@@ -21,7 +22,6 @@ class LoginEmailChallengeService
     public static function attemptKeys(User $user): array
     {
         return ['login-code-account:'.$user->getKey() => (int) config('authentication.otp_account_attempts', 20),
-            'login-code-source:'.$user->getKey().':'.self::sourceHash() => (int) config('authentication.otp_source_attempts', 5),
             'login-code-ip:'.hash('sha256', (string) request()->ip()) => (int) config('authentication.otp_ip_attempts', 25)];
     }
 
@@ -37,7 +37,7 @@ class LoginEmailChallengeService
 
     public static function attemptBudgetResponse(User $user)
     {
-        $seconds = 0;
+        $seconds = RateLimiter::availableIn(self::sourceKey($user).':cooldown');
         foreach (self::attemptKeys($user) as $key => $limit) {
             // Read-only outside the confirmation lock: do not let issuance
             // clear an expired IP counter while another account starts its window.
@@ -46,8 +46,49 @@ class LoginEmailChallengeService
             }
         }
         return $seconds ? response()->json(['success' => false, 'code' => 'login_code_locked',
-            'message' => 'Too many attempts. Try again later.', 'retry_after' => $seconds], 429)
+            'message' => 'Too many verification attempts. Try again later.', 'retry_after' => $seconds], 429)
             ->header('Retry-After', (string) $seconds)->header('Cache-Control', 'no-store') : null;
+    }
+
+    private static function sourceKey(User $user): string
+    {
+        return 'login-code-source:'.$user->getKey().':'.self::sourceHash();
+    }
+
+    // Called only for a genuine mismatch, under the account row and IP locks.
+    public static function recordIncorrectAttempt(User $user): void
+    {
+        foreach (self::attemptKeys($user) as $key => $limit) {
+            RateLimiter::hit($key, (int) config('authentication.otp_attempt_window', 900));
+        }
+        $key = self::sourceKey($user);
+        $state = Cache::get($key.':history', ['failures' => 0, 'level' => 0]);
+        $state['failures']++;
+        $cooldowns = config('authentication.otp_source_cooldowns', [60, 180, 300]);
+        if ($state['failures'] >= max(1, (int) config('authentication.otp_source_attempts', 5))) {
+            $state['failures'] = 0;
+            $state['level'] = min($state['level'] + 1, count($cooldowns));
+            RateLimiter::hit($key.':cooldown', max(1, (int) $cooldowns[$state['level'] - 1]));
+        }
+        Cache::put($key.':history', $state, max(1, (int) config('authentication.otp_source_reset_seconds', 1800)));
+    }
+
+    public static function clearSourceHistory(User $user): void
+    {
+        Cache::forget(self::sourceKey($user).':history');
+        RateLimiter::clear(self::sourceKey($user).':cooldown');
+    }
+
+    public static function expiredResponse()
+    {
+        return response()->json(['success' => false, 'code' => 'login_transaction_expired', 'expired' => true,
+            'message' => 'Sign-in expired. Please sign in again.'], 422)->header('Cache-Control', 'no-store');
+    }
+
+    public static function challengeState(LoginEmailChallenge $challenge): array
+    {
+        return ['expires_in' => max(0, $challenge->expires_at->timestamp - now()->timestamp),
+            'requires_new_code' => $challenge->failed_attempts >= self::maxAttempts()];
     }
 
     public static function resendAfter(?LoginEmailChallenge $challenge): int
@@ -59,12 +100,14 @@ class LoginEmailChallengeService
     {
         $pollTokenHash = hash('sha256', $plainPollToken);
 
-        $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
-        $recipient = $userId ? User::find($userId) : null;
-        if (! $recipient) throw new HttpResponseException(response()->json(['success' => false, 'expired' => true,
-            'message' => 'This sign-in session has expired. Please sign in again.'], 422));
+        $pending = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->first();
+        if (! $pending || $pending->approved_at || now()->gte($pending->expires_at)) {
+            throw new HttpResponseException(self::expiredResponse());
+        }
+        $recipient = User::find($pending->user_id);
+        if (! $recipient) throw new HttpResponseException(self::expiredResponse());
         self::assertAttemptBudget($recipient);
-        $receipt = app(AuthenticationEmailPolicy::class)->send($recipient->email, fn () => DB::transaction(function () use ($plainPollToken, $pollTokenHash): string {
+        $issuance = app(AuthenticationEmailPolicy::class)->send($recipient->email, fn () => DB::transaction(function () use ($plainPollToken, $pollTokenHash): array {
             $userId = LoginEmailChallenge::where('poll_token_hash', $pollTokenHash)->value('user_id');
             $user = $userId ? User::whereKey($userId)->lockForUpdate()->first() : null;
             $challenge = LoginEmailChallenge::query()
@@ -73,11 +116,7 @@ class LoginEmailChallengeService
                 ->first();
 
             if (! $challenge || $challenge->approved_at || now()->greaterThanOrEqualTo($challenge->expires_at)) {
-                throw new HttpResponseException(response()->json([
-                    'success' => false,
-                    'message' => 'This sign-in session has expired. Please sign in again.',
-                    'expired' => true,
-                ], 422));
+                throw new HttpResponseException(self::expiredResponse());
             }
 
             if (! $user || ! $user->is_active || $user->is_archived || $user->hasEmailRecoveryHold()) {
@@ -89,12 +128,12 @@ class LoginEmailChallengeService
             }
 
             self::assertAttemptBudget($user);
-            $this->assertChallengeBudget($challenge);
             EmailVerificationController::assertMailCanBeDelivered();
 
             if ($remaining = self::resendAfter($challenge)) {
                 throw new HttpResponseException(response()->json([
                     'success' => false,
+                    'code' => 'email_cooldown',
                     'message' => 'Please wait before requesting another code.',
                     'retry_after' => $remaining,
                 ], 429)->header('Retry-After', (string) $remaining));
@@ -108,13 +147,14 @@ class LoginEmailChallengeService
             $challenge->update([
                 'token_hash' => $newTokenHash,
                 'approved_at' => null,
+                'failed_attempts' => 0,
                 'last_sent_at' => now(),
             ]);
             $receipt = AuthenticationMailDelivery::queue($user, new ConfirmLoginNotification($code), $challenge);
             $challenge->update(['delivery_receipt' => $receipt]);
-            return $receipt;
+            return ['email_delivery_token' => $receipt, ...self::challengeState($challenge)];
         }), 'login');
-        return ['email_delivery_token' => $receipt, ...app(AuthenticationEmailPolicy::class)->status($recipient->email, 'login')];
+        return [...$issuance, ...app(AuthenticationEmailPolicy::class)->status($recipient->email, 'login')];
     }
 
     public function send(User $user, bool $rememberMe, ?string $pendingToken = null): array
@@ -126,9 +166,9 @@ class LoginEmailChallengeService
                 $challenge = LoginEmailChallenge::where('user_id', $lockedUser->getKey())
                     ->where('poll_token_hash', hash('sha256', $pendingToken))->lockForUpdate()->first();
                 if (! $challenge || $challenge->approved_at || now()->gte($challenge->expires_at)) return null;
-                $this->assertChallengeBudget($challenge);
                 return ['poll_token' => $pendingToken, 'delivery_token' => $challenge->delivery_receipt,
-                    'email_delivery_queued' => false, ...app(AuthenticationEmailPolicy::class)->status($user->email, 'login')];
+                    'email_delivery_queued' => false, ...self::challengeState($challenge),
+                    ...app(AuthenticationEmailPolicy::class)->status($user->email, 'login')];
             });
             if ($resumed) {
                 app(AccountSecurityService::class)->passwordConfirmed($user);
@@ -141,6 +181,7 @@ class LoginEmailChallengeService
         $pollTokenHash = hash('sha256', $plainPollToken);
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $tokenHash = hash_hmac('sha256', $code, $plainPollToken);
+        $expiresAt = now()->addMinutes(max(1, (int) config('authentication.otp_minutes', 10)));
         self::assertAttemptBudget($user);
         $receipt = app(AuthenticationEmailPolicy::class)->send($user->email, fn () => DB::transaction(function () use (
             $user,
@@ -148,6 +189,7 @@ class LoginEmailChallengeService
             $tokenHash,
             $pollTokenHash,
             $code,
+            $expiresAt,
         ): string {
             $lockedUser = User::query()
                 ->lockForUpdate()
@@ -177,10 +219,7 @@ class LoginEmailChallengeService
                 'token_hash' => $tokenHash,
                 'poll_token_hash' => $pollTokenHash,
                 'remember_me' => $rememberMe,
-                'expires_at' => now()->addMinutes(max(
-                    1,
-                    (int) config('authentication.otp_minutes', 10),
-                )),
+                'expires_at' => $expiresAt,
                 'approved_at' => null,
                 'last_sent_at' => now(),
                 'source_hash' => self::sourceHash(),
@@ -199,16 +238,8 @@ class LoginEmailChallengeService
             'delivery_token' => $receipt,
             'resend_after' => (int) config('authentication.email.cooldown', 60),
             'email_delivery_queued' => true,
+            'expires_in' => max(0, $expiresAt->timestamp - now()->timestamp),
+            'requires_new_code' => false,
         ];
-    }
-
-    private function assertChallengeBudget(LoginEmailChallenge $challenge): void
-    {
-        if ($challenge->failed_attempts < self::maxAttempts()
-            && ! RateLimiter::tooManyAttempts('login-code:'.$challenge->poll_token_hash, self::maxAttempts())) return;
-        $seconds = max(1, $challenge->expires_at->timestamp - now()->timestamp);
-        throw new HttpResponseException(response()->json(['success' => false, 'code' => 'login_code_locked',
-            'message' => 'Too many incorrect codes. Sign in again.', 'retry_after' => $seconds], 429)
-            ->header('Retry-After', (string) $seconds));
     }
 }

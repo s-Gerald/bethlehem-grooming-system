@@ -8,7 +8,6 @@ use App\Services\LoginEmailChallengeService;
 use App\Services\PasswordResetService;
 use App\Services\PrivilegedCredentialChangeService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
 
 class TrackAuthenticationMailDelivery
@@ -59,8 +58,6 @@ class TrackAuthenticationMailDelivery
                 || $current->getAttribute('verification_attempts') >= PasswordResetService::MAX_ATTEMPTS
                 || $current->getAttribute('failed_attempts') >= ($current instanceof \App\Models\LoginEmailChallenge
                     ? LoginEmailChallengeService::maxAttempts() : PrivilegedCredentialChangeService::MAX_CODE_ATTEMPTS)
-                || ($current->getAttribute('poll_token_hash') && RateLimiter::tooManyAttempts(
-                    'login-code:'.$current->getAttribute('poll_token_hash'), LoginEmailChallengeService::maxAttempts()))
                 || ! hash_equals($guard['hash'], (string) $current->getAttribute($guard['hash_column']))
                 || ! $current->getAttribute($guard['expiry_column'])
                 || now()->greaterThanOrEqualTo($current->getAttribute($guard['expiry_column']))) {

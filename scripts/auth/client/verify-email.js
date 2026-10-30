@@ -23,10 +23,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const resendMessage  = document.getElementById("resendMessage");
   const loginCodeResendBtn       = document.getElementById("loginCodeResendBtn");
   const loginCodeResendCountdown = document.getElementById("loginCodeResendCountdown");
+  const loginCodeResendLock = document.getElementById("loginCodeResendLock");
+  const loginCodeResendLabel = document.getElementById("loginCodeResendLabel");
 
   let resendCodeTimer = null;
   let resendUntil = 0;
   let verifyUntil = 0;
+  let codeExhausted = false;
+  let transactionExpiresAt = 0;
+  let transactionExpired = false;
   let loginBusy = false;
   let resendBusy = false;
   let resendLimited = false;
@@ -37,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!receipt) return;
     stopDeliveryCheck = window.AuthenticationEmailDelivery.watch(receipt, (status) => {
       const text = window.AuthenticationEmailDelivery.failureMessage(status);
-      if (text) {
+      if (text && !codeExhausted && !transactionExpired) {
         showLoginCodeMessage(text, false);
       }
     });
@@ -174,28 +179,32 @@ document.addEventListener("DOMContentLoaded", () => {
       try { deadline = Number(sessionStorage.getItem("pendingLoginResendUntil")) || 0; } catch { /* UX only */ }
       try { resendLimited = sessionStorage.getItem("pendingLoginResendLimited") === "1"; } catch { /* UX only */ }
       try { verifyUntil = Number(sessionStorage.getItem("pendingLoginVerifyUntil")) || 0; } catch { /* UX only */ }
+      try { codeExhausted = sessionStorage.getItem("pendingLoginCodeExhausted") === "1"; } catch { /* UX only */ }
+      try { transactionExpiresAt = Number(sessionStorage.getItem("pendingLoginExpiresAt")) || 0; } catch { /* UX only */ }
       startResendCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)), resendLimited);
-      checkDelivery(API.getEmailDeliveryToken("login"));
+      if (!transactionExpired) checkDelivery(API.getEmailDeliveryToken("login"));
     }
   }
 
   const loginOtp = window.VerificationCode.bind(loginCodeInput,
     [...stateLoginCode.querySelectorAll(".verification-code-cell")], () => {
-      loginCodeSubmit.disabled = loginBusy || Date.now() < verifyUntil || loginCodeInput.value.length !== 6;
-      if (Date.now() >= verifyUntil) clearLoginCodeMessage();
+      updateLoginControls();
+      if (!codeExhausted && Date.now() >= verifyUntil) clearLoginCodeMessage();
     });
 
   loginCodeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    clearLoginCodeMessage();
-
     const code = loginCodeInput.value;
-    if (loginBusy || Date.now() < verifyUntil || !/^\d{6}$/.test(code)) return;
+    updateLoginControls();
+    if (loginBusy || transactionExpired || codeExhausted || Date.now() < verifyUntil || !/^\d{6}$/.test(code)) return;
+    clearLoginCodeMessage();
 
     setLoginCodeBusy(true);
 
     try {
       const response = await API.confirmLoginCode(code);
+      transactionExpiresAt = 0;
+      clearInterval(resendCodeTimer);
       stopDeliveryCheck();
       successTitle.textContent = "Sign-in verified";
       successMessage.textContent = "Redirecting to your account…";
@@ -209,16 +218,21 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 750);
     } catch (error) {
       if (error.expired || error.status === 403) {
+        transactionExpired = true;
+        clearInterval(resendCodeTimer);
+        stopDeliveryCheck();
         errorTitle.textContent = "Sign-In Confirmation Failed";
         errorMessage.textContent = error.message
           || "This sign-in request is no longer available. Please sign in again.";
         showState("error");
-      } else if (error.status === 429 && error.retryAfter) {
+      } else if (error.status === 429 && error.code === "login_code_locked" && error.retryAfter) {
         startVerifyLockout(error.retryAfter);
-        startResendCountdown(Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000)), resendLimited);
+        updateLoginControls();
+      } else if (error.code === "login_code_exhausted") {
+        markCodeExhausted(true);
+        showLoginCodeMessage("Request a new code to continue.", false);
       } else {
-        showLoginCodeMessage(error.code === "login_code_locked" ? "Too many attempts. Sign in again."
-          : error.message || "Couldn't verify the code. Try again.");
+        showLoginCodeMessage(error.message || "Couldn't verify the code. Try again.");
       }
     } finally {
       setLoginCodeBusy(false);
@@ -227,7 +241,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startVerifyLockout(seconds) {
     verifyUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+    markCodeExhausted(true);
     try { sessionStorage.setItem("pendingLoginVerifyUntil", String(verifyUntil)); } catch { /* UX only */ }
+  }
+
+  function markCodeExhausted(exhausted) {
+    codeExhausted = exhausted;
+    try { sessionStorage.setItem("pendingLoginCodeExhausted", exhausted ? "1" : "0"); } catch { /* UX only */ }
+  }
+
+  function updateLoginControls() {
+    const remaining = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000));
+    const locked = Math.max(0, Math.ceil((verifyUntil - Date.now()) / 1000));
+    if (transactionExpiresAt && Date.now() >= transactionExpiresAt) {
+      transactionExpired = true;
+      clearInterval(resendCodeTimer);
+      resendCodeTimer = null;
+      stopDeliveryCheck();
+      errorTitle.textContent = "Sign-in expired";
+      errorMessage.textContent = "Sign-in expired. Please sign in again.";
+      showState("error");
+    }
+    loginCodeResendBtn.disabled = remaining > 0 || loginBusy || locked > 0 || transactionExpired;
+    loginCodeInput.disabled = loginBusy || locked > 0 || codeExhausted || transactionExpired;
+    loginCodeSubmit.disabled = loginCodeInput.disabled || loginCodeInput.value.length !== 6;
+    loginCodeResendLock.classList.toggle("hidden", !locked || transactionExpired);
+    loginCodeResendBtn.classList.toggle("hidden", remaining > 0 && !locked);
+    loginCodeResendCountdown.classList.toggle("hidden", remaining === 0 || locked > 0);
+    loginCodeResendCountdown.textContent = locked ? "" : resendLimited
+      ? window.AuthenticationResend.message(remaining)
+      : `Resend code in ${window.VerificationCode.formatCountdown(remaining)}`;
+    if (locked && !transactionExpired) {
+      const time = window.VerificationCode.formatCountdown(locked, true);
+      showLoginCodeMessage(`Too many incorrect codes. Request a new code in ${time}.`);
+    } else if (verifyUntil) {
+      verifyUntil = 0;
+      try { sessionStorage.removeItem("pendingLoginVerifyUntil"); } catch { /* UX only */ }
+      clearLoginCodeMessage();
+    }
   }
 
   function startResendCountdown(seconds = 0, limited = false) {
@@ -236,26 +287,8 @@ document.addEventListener("DOMContentLoaded", () => {
     clearInterval(resendCodeTimer);
     resendUntil = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
     try { sessionStorage.setItem("pendingLoginResendUntil", String(resendUntil)); } catch { /* UX only */ }
-    function tick() {
-      const remaining = Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000));
-      const locked = Math.max(0, Math.ceil((verifyUntil - Date.now()) / 1000));
-      loginCodeResendBtn.disabled = remaining > 0 || loginBusy || locked > 0;
-      loginCodeInput.disabled = loginBusy || locked > 0;
-      loginCodeSubmit.disabled = loginBusy || locked > 0 || loginCodeInput.value.length !== 6;
-      if (locked) showLoginCodeMessage(`Too many attempts. Try again in ${window.VerificationCode.formatCountdown(locked)}.`);
-      else if (verifyUntil) { verifyUntil = 0; clearLoginCodeMessage(); }
-      loginCodeResendBtn.classList.toggle("hidden", remaining > 0);
-      loginCodeResendCountdown.classList.toggle("hidden", remaining === 0);
-      loginCodeResendCountdown.textContent = resendLimited
-        ? window.AuthenticationResend.message(remaining)
-        : `Resend code in ${window.VerificationCode.formatCountdown(remaining)}`;
-      if (!remaining && !locked) {
-        clearInterval(resendCodeTimer);
-        resendCodeTimer = null;
-      }
-    }
-    resendCodeTimer = setInterval(tick, 1000);
-    tick();
+    resendCodeTimer = setInterval(updateLoginControls, 1000);
+    updateLoginControls();
   }
 
   window.addEventListener("pagehide", () => {
@@ -266,32 +299,44 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("pageshow", event => {
     if (!event.persisted || !loginCodeMode || !API.hasPendingLoginConfirmation()) return;
     startResendCountdown(Math.max(0, Math.ceil((resendUntil - Date.now()) / 1000)), resendLimited);
-    checkDelivery(API.getEmailDeliveryToken("login"));
+    if (!transactionExpired) checkDelivery(API.getEmailDeliveryToken("login"));
   });
 
   loginCodeResendBtn.addEventListener("click", async () => {
-    if (loginCodeResendBtn.disabled || loginBusy) return;
+    updateLoginControls();
+    if (loginCodeResendBtn.disabled || loginBusy || transactionExpired) return;
     clearLoginCodeMessage();
     stopDeliveryCheck();
     loginBusy = true;
+    updateLoginControls();
     // Preserve the entered code when a resend is rejected.
-    loginCodeInput.focus();
     loginCodeResendBtn.disabled = true;
-    loginCodeResendBtn.textContent = "Sending...";
+    loginCodeResendLabel.textContent = "Sending...";
     loginCodeSubmit.disabled = true;
+    let issued = false;
     try {
       const result = await API.resendLoginCode();
+      issued = true;
+      markCodeExhausted(false);
+      clearLoginCodeMessage();
       loginOtp.clear();
       startResendCountdown(window.AuthenticationResend.seconds(result), window.AuthenticationResend.limited(result));
       checkDelivery(result?.email_delivery_token);
     } catch (error) {
       if (error.status === 429) {
         const locked = error.code === "login_code_locked";
-        if (locked) startVerifyLockout(window.AuthenticationResend.seconds(error));
-        startResendCountdown(window.AuthenticationResend.seconds(error), window.AuthenticationResend.limited(error));
-        if (!locked) showLoginCodeMessage(window.AuthenticationResend.limited(error)
-          ? window.AuthenticationResend.message(window.AuthenticationResend.seconds(error)) : error.message, false);
+        if (locked) {
+          startVerifyLockout(window.AuthenticationResend.seconds(error));
+          updateLoginControls();
+        } else {
+          startResendCountdown(window.AuthenticationResend.seconds(error), window.AuthenticationResend.limited(error));
+          showLoginCodeMessage(window.AuthenticationResend.limited(error)
+            ? window.AuthenticationResend.message(window.AuthenticationResend.seconds(error)) : error.message, false);
+        }
       } else if (error.expired || error.status === 422 || error.status === 403) {
+        transactionExpired = true;
+        clearInterval(resendCodeTimer);
+        stopDeliveryCheck();
         errorTitle.textContent = "Sign-in expired";
         errorMessage.textContent = error.message || "Please sign in again.";
         showState("error");
@@ -299,8 +344,9 @@ document.addEventListener("DOMContentLoaded", () => {
         showLoginCodeMessage("Couldn't send the code. Try again.", false);
       }
     } finally {
-      loginCodeResendBtn.textContent = "Resend code";
+      loginCodeResendLabel.textContent = "Resend Code";
       setLoginCodeBusy(false);
+      if (issued && !transactionExpired) loginCodeInput.focus();
     }
   });
 
@@ -343,9 +389,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setLoginCodeBusy(busy) {
     loginBusy = busy;
-    loginCodeInput.disabled = busy || Date.now() < verifyUntil;
-    loginCodeResendBtn.disabled = busy || Date.now() < resendUntil || Date.now() < verifyUntil;
-    loginCodeSubmit.disabled = busy || Date.now() < verifyUntil || loginCodeInput.value.length !== 6;
+    updateLoginControls();
     const label = document.getElementById("loginCodeBtnLabel");
     if (label) label.textContent = busy ? "Verifying..." : "Verify and continue";
   }
@@ -353,6 +397,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function showLoginCodeMessage(text, invalid = true) {
     loginCodeMessage.className = "verification-message";
     loginCodeMessage.textContent = text;
+    loginCodeMessage.setAttribute("role", Date.now() < verifyUntil ? "timer" : "alert");
+    loginCodeMessage.setAttribute("aria-live", Date.now() < verifyUntil ? "off" : "polite");
     loginCodeInput.setAttribute("aria-invalid", invalid ? "true" : "false");
   }
 

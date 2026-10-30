@@ -5,6 +5,8 @@ return [
     'otp_minutes' => (int) env('LOGIN_CONFIRMATION_TTL_MINUTES', 10),
     'otp_attempts' => (int) env('AUTH_OTP_ATTEMPTS', 5),
     'otp_source_attempts' => (int) env('AUTH_OTP_SOURCE_ATTEMPTS', 5),
+    'otp_source_cooldowns' => [60, 180, 300],
+    'otp_source_reset_seconds' => (int) env('AUTH_OTP_SOURCE_RESET_SECONDS', 1800),
     'otp_account_attempts' => (int) env('AUTH_OTP_ACCOUNT_ATTEMPTS', 20),
     'otp_ip_attempts' => (int) env('AUTH_OTP_IP_ATTEMPTS', 25),
     'otp_attempt_window' => (int) env('AUTH_OTP_ATTEMPT_WINDOW', 900),

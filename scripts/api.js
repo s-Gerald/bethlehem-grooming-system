@@ -664,6 +664,9 @@ var API = (() => {
     safeStorageRemove(sessionStorage, "pending_login_email_delivery");
     safeStorageRemove(sessionStorage, "pendingLoginResendUntil");
     safeStorageRemove(sessionStorage, "pendingLoginVerifyUntil");
+    safeStorageRemove(sessionStorage, "pendingLoginExpiresAt");
+    safeStorageRemove(sessionStorage, "pendingLoginCodeExhausted");
+    safeStorageRemove(sessionStorage, "pendingLoginResendLimited");
   }
 
   function storePendingLoginConfirmation(pollToken, email = "") {
@@ -2130,6 +2133,8 @@ var API = (() => {
       try {
         sessionStorage.setItem("pendingLoginResendUntil", String(Date.now() + (data.resend_after ?? 60) * 1000));
         sessionStorage.setItem("pendingLoginResendLimited", data.resend_limited ? "1" : "0");
+        sessionStorage.setItem("pendingLoginExpiresAt", String(Date.now() + data.expires_in * 1000));
+        sessionStorage.setItem("pendingLoginCodeExhausted", data.requires_new_code ? "1" : "0");
       } catch { /* Server-side cooldown remains authoritative. */ }
       storeEmailDelivery("login", data.email_delivery_token);
       return data;
@@ -2285,7 +2290,13 @@ var API = (() => {
     if (!pollToken) {
       throw new Error("This browser no longer has a pending sign-in. Please sign in again.");
     }
-    const data = await request("POST", "/email/login/resend", { poll_token: pollToken });
+    let data;
+    try {
+      data = await request("POST", "/email/login/resend", { poll_token: pollToken });
+    } catch (error) {
+      if (pollToken === safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY) && (error.expired || error.status === 403)) clearPendingLoginConfirmation();
+      throw error;
+    }
     storeEmailDelivery("login", data.email_delivery_token);
     return data;
   }
@@ -2348,7 +2359,7 @@ var API = (() => {
       return data;
     } catch (error) {
       if (pollToken === safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY)
-        && (error?.expired || error?.status === 403 || (error?.status === 429 && error.code === 'login_code_locked'))) {
+        && (error?.expired || error?.status === 403)) {
         clearPendingLoginConfirmation();
       }
       throw error;

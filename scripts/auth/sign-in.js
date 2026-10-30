@@ -93,6 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let busy = false;
   let lockoutUntil = 0;
   let lockoutIdentifier = null;
+  let verificationCooldown = false;
   let emailMessageIdentifier = null;
   const statusBox = document.getElementById('sharedSignInStatus');
   const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
@@ -150,6 +151,13 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             showMessage('lockout', 'Too many attempts. Please try again.');
           }
+        }
+      } else if (error.status === 429 && error.code === 'login_code_locked') {
+        if (submittedIdentifier === currentIdentifier()) {
+          const seconds = error.retryAfter;
+          if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && seconds <= 900) {
+            startCountdown(seconds, submittedIdentifier, true);
+          } else showMessage('error', error.message || 'Too many verification attempts. Please try again.');
         }
       } else if (error.status === 429 && ['email_rate_limited', 'email_cooldown'].includes(error.code)) {
         if (submittedIdentifier === currentIdentifier()) {
@@ -240,14 +248,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     submitButton.disabled = true;
-    messageBox.textContent = `Too many attempts. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`;
+    messageBox.textContent = `${verificationCooldown ? 'Too many verification attempts' : 'Too many attempts'}. Try again in ${window.VerificationCode.formatCountdown(remaining)}.`;
   }
 
-  function startCountdown(seconds, identifier) {
+  function startCountdown(seconds, identifier, verification = false) {
     clearInterval(countdownTimer);
     // A monotonic deadline cannot grow when the device clock moves backwards.
     lockoutUntil = performance.now() + seconds * 1000;
     lockoutIdentifier = identifier;
+    verificationCooldown = verification;
     showMessage('lockout', '');
     tickCountdown();
     if (statusBox) statusBox.textContent = messageBox.textContent;

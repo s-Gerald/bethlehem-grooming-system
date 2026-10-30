@@ -47,7 +47,7 @@ class LoginEmailChallengeController extends Controller
             'code' => ['required', 'string', 'regex:/^\d{6}$/'],
         ]);
         $pollTokenHash = hash('sha256', $data['poll_token']);
-        $attemptKey = 'login-code:'.$pollTokenHash;
+        $attemptKey = 'login-code-invalid:'.$pollTokenHash;
 
         if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
             return $this->attemptsExceededResponse($attemptKey);
@@ -104,26 +104,20 @@ class LoginEmailChallengeController extends Controller
 
             LoginEmailChallengeService::assertAttemptBudget($user);
             if ($challenge->failed_attempts >= LoginEmailChallengeService::maxAttempts()) {
-                return $this->attemptsExceededResponse($attemptKey, $challenge);
+                return $this->exhaustedResponse();
             }
             $expectedHash = hash_hmac('sha256', $data['code'], $data['poll_token']);
             if (! hash_equals($challenge->token_hash, $expectedHash)) {
                 $challenge->increment('failed_attempts');
-                foreach (LoginEmailChallengeService::attemptKeys($user) as $key => $limit) {
-                    RateLimiter::hit($key, (int) config('authentication.otp_attempt_window', 900));
-                }
-                RateLimiter::hit($attemptKey, max(
-                    1,
-                    $challenge->expires_at->getTimestamp() - now()->getTimestamp(),
-                ));
+                LoginEmailChallengeService::recordIncorrectAttempt($user);
                 app(\App\Services\AccountSecurityService::class)->failed($user);
 
                 // Return, rather than throwing, so database-backed counters
                 // commit with this failed attempt instead of rolling back.
                 if ($locked = LoginEmailChallengeService::attemptBudgetResponse($user)) return $locked;
 
-                if (RateLimiter::tooManyAttempts($attemptKey, LoginEmailChallengeService::maxAttempts())) {
-                    return $this->attemptsExceededResponse($attemptKey);
+                if ($challenge->failed_attempts >= LoginEmailChallengeService::maxAttempts()) {
+                    return $this->exhaustedResponse();
                 }
 
                 return response()->json([
@@ -142,6 +136,7 @@ class LoginEmailChallengeController extends Controller
             foreach (LoginEmailChallengeService::attemptKeys($user) as $key => $limit) {
                 if (! str_starts_with($key, 'login-code-ip:')) RateLimiter::clear($key);
             }
+            LoginEmailChallengeService::clearSourceHistory($user);
             return $response;
         });
         } finally {
@@ -191,11 +186,7 @@ class LoginEmailChallengeController extends Controller
 
         $challenge->delete();
 
-        return response()->json([
-            'success' => false,
-            'message' => 'Code expired. Request a new one.',
-            'expired' => true,
-        ], 422);
+        return LoginEmailChallengeService::expiredResponse();
     }
 
     private function disabledResponse()
@@ -207,14 +198,20 @@ class LoginEmailChallengeController extends Controller
         ], 403);
     }
 
-    private function attemptsExceededResponse(string $attemptKey, ?LoginEmailChallenge $challenge = null)
+    private function exhaustedResponse()
     {
-        $seconds = max(1, RateLimiter::availableIn($attemptKey), $challenge ? $challenge->expires_at->timestamp - now()->timestamp : 0);
+        return response()->json(['success' => false, 'code' => 'login_code_exhausted',
+            'message' => 'Request a new code to continue.', 'requires_new_code' => true], 422);
+    }
+
+    private function attemptsExceededResponse(string $attemptKey)
+    {
+        $seconds = max(1, RateLimiter::availableIn($attemptKey));
 
         return response()->json([
             'success' => false,
             'code' => 'login_code_locked',
-            'message' => 'Too many incorrect codes. Sign in again.',
+            'message' => 'Too many verification attempts. Try again later.',
             'retry_after' => $seconds,
         ], 429)->header('Retry-After', (string) $seconds);
     }

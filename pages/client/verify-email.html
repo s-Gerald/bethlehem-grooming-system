@@ -20,7 +20,7 @@
     <title>Verify Your Email | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css?auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&grooming=actual-20261026" />
-    <link rel="stylesheet" href="../../css/components/verification-code.css?v=magic-links-20261028" />
+    <link rel="stylesheet" href="../../css/components/verification-code.css?v=magic-links-20261028&otp=progressive-20261030" />
   </head>
   <body class="verification-page">
     <main class="verification-layout">
@@ -101,7 +101,7 @@
             </form>
             <div class="verification-resend">
               <p>Didn't receive the code?</p>
-              <button id="loginCodeResendBtn" type="button" class="verification-link">Resend code</button>
+              <button id="loginCodeResendBtn" type="button" class="verification-link" aria-describedby="loginCodeMessage"><span id="loginCodeResendLabel">Resend Code</span><svg id="loginCodeResendLock" class="hidden verification-resend-lock" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg></button>
               <span id="loginCodeResendCountdown" class="hidden"></span>
             </div>
           </div>
@@ -150,11 +150,11 @@
       </div>
     </main>
 
-    <script src="../../scripts/api.js?v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261030" defer></script>
+    <script src="../../scripts/api.js?v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261030&otp=progressive-20261030" defer></script>
     <script src="../../scripts/auth/email-delivery.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
-    <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018&auth-feedback=20261028-v3" defer></script>
+    <script src="../../scripts/auth/verification-code.js?v=auth-speed-20261018&auth-feedback=20261028-v3&otp=progressive-20261030" defer></script>
     <script src="../../scripts/auth/client/signup-context.js?v=registration-review-20261029" defer></script>
     <script src="../../scripts/auth/client/signup-verification.js?v=registration-review-20261029" defer></script>
-    <script src="../../scripts/auth/client/verify-email.js?v=registration-review-20261029" defer></script>
+    <script src="../../scripts/auth/client/verify-email.js?v=registration-review-20261029&otp=progressive-20261030" defer></script>
   </body>
 </html>

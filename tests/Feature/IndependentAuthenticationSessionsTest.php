@@ -691,22 +691,35 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     public static function overlappingAuthentication(): array
     {
-        return [['otp'], ['restore']];
+        return [['otp'], ['restore'], ['exhausted-otp'], ['resend']];
     }
 
     #[DataProvider('overlappingAuthentication')]
-    public function test_overlapping_authentication_creates_exactly_one_session(string $mode): void
+    public function test_overlapping_authentication_and_replacement_preserve_single_use_and_attempt_limits(string $mode): void
     {
-        if ($mode === 'otp') {
+        if ($mode !== 'restore') {
             $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
             $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
             $payload = ['path' => '/api/email/login/confirm', 'body' => ['poll_token' => $pending->json('login_poll_token'), 'code' => $code], 'cookies' => []];
+            if ($mode === 'exhausted-otp') {
+                $wrong = $code === '000000' ? '111111' : '000000';
+                foreach (range(1, 4) as $attempt) $this->postJson($payload['path'], [...$payload['body'], 'code' => $wrong])->assertUnprocessable();
+                $payload['body']['code'] = $wrong;
+            } elseif ($mode === 'resend') {
+                // Model a cooldown that has ended; the code remains exhausted.
+                DB::table('login_email_challenges')->update(['failed_attempts' => 5, 'last_sent_at' => now()->subMinutes(2)]);
+                $before = DB::table('login_email_challenges')->first();
+                $payload = ['path' => '/api/email/login/resend', 'body' => ['poll_token' => $pending->json('login_poll_token')], 'cookies' => []];
+            }
         } else {
             $old = $this->login('customer', true);
             DB::table('personal_access_tokens')->update(['created_at' => now()->subHours(25)]);
             $payload = ['path' => '/api/session/restore', 'body' => [],
                 'cookies' => ['bethlehem_remembered_device' => $this->rememberCookies[$old]]];
         }
+        $secondPayload = $payload;
+        if ($mode === 'exhausted-otp') $secondPayload['body']['code'] = $code;
+        $secondPayload = json_encode($secondPayload, JSON_THROW_ON_ERROR);
         $payload = json_encode($payload, JSON_THROW_ON_ERROR);
         $directory = sys_get_temp_dir().'/bethlehem-session-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
@@ -725,6 +738,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 }
                 $app = require 'bootstrap/app.php';
                 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                Illuminate\Support\Facades\Notification::fake();
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
@@ -759,6 +773,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                     server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy,
+                    'code' => json_decode($response->getContent(), true)['code'] ?? null,
                     'public_id' => json_decode($response->getContent(), true)['token'] ?? null,
                     'cookies' => array_map(fn ($cookie) => hash('sha256', $cookie->getValue()), $response->headers->getCookies())]);
                 PHP;
@@ -766,7 +781,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
                 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
             $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $payload], base_path(), $environment);
-            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $payload], base_path(), $environment);
+            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $secondPayload], base_path(), $environment);
             $first->setTimeout(15); $second->setTimeout(15);
             $first->start(); $second->start();
             $first->wait(); $second->wait();
@@ -776,6 +791,29 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $two = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
             $this->assertNotSame($one['pid'], $two['pid']);
             $this->assertTrue($two['busy'], 'The second verified login must overlap the first transaction.');
+            $connection = new \PDO('sqlite:'.$database);
+            if ($mode === 'exhausted-otp') {
+                // Each worker has its own array cache, so this isolates the
+                // durable issued-code guard from the shared source restriction.
+                $this->assertSame(422, $one['status']);
+                $this->assertSame('login_code_exhausted', $one['code']);
+                $this->assertSame(422, $two['status']);
+                $this->assertSame('login_code_exhausted', $two['code']);
+                $this->assertSame(5, (int) $connection->query('SELECT failed_attempts FROM login_email_challenges')->fetchColumn());
+                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+                return;
+            }
+            if ($mode === 'resend') {
+                $this->assertSame(200, $one['status']);
+                $this->assertSame(429, $two['status']);
+                $this->assertSame('email_cooldown', $two['code']);
+                $after = $connection->query('SELECT * FROM login_email_challenges')->fetch(\PDO::FETCH_OBJ);
+                $this->assertNotSame($before->token_hash, $after->token_hash);
+                $this->assertSame($before->expires_at, $after->expires_at);
+                $this->assertSame(0, (int) $after->failed_attempts);
+                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+                return;
+            }
             $this->assertSame(200, $one['status']);
             if ($mode === 'otp') {
                 $this->assertSame(422, $two['status']);
@@ -785,7 +823,6 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 $this->assertSame($one['public_id'], $two['public_id']);
                 $this->assertSame($one['cookies'], $two['cookies']);
             }
-            $connection = new \PDO('sqlite:'.$database);
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
             $active = $connection->query('SELECT id FROM personal_access_tokens WHERE replaced_at IS NULL')->fetchAll(\PDO::FETCH_COLUMN);
             $this->assertSame([explode('|', $one['public_id'])[0]], array_map('strval', $active));

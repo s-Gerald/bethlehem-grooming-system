@@ -174,6 +174,15 @@
   font-weight: 600;
 }
 .verification-link:hover { text-decoration: underline; }
+.verification-resend-lock {
+  display: inline-block;
+  width: .875rem;
+  height: .875rem;
+  margin-left: .375rem;
+  vertical-align: -.125rem;
+  fill: currentColor;
+}
+.verification-resend-lock.hidden { display: none; }
 .verification-link:disabled {
   color: #64748b;
   font-weight: 400;
