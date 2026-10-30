@@ -53,6 +53,7 @@ class CustomerNotificationController extends Controller
                     'id' => $n->id,
                     'type' => $n->type,
                     'title' => match ($n->type) {
+                        CustomerNotification::TYPE_PET_INFORMATION_UPDATED => 'Pet Information Updated',
                         CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Online Registration expired',
                         CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Online Registration — No Show',
                         default => null,

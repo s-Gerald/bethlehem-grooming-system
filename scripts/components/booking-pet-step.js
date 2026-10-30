@@ -10,7 +10,7 @@ import {
   addPetToBooking as addStoredPet,
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
-} from "../services/pet-service.js?v=pet-weight-size-20261011-v3";
+} from "../services/pet-service.js?v=pet-weight-size-20261011-v3&pet-fields=20261030-v1";
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
@@ -19,8 +19,8 @@ import {
   requireCustomerSession,
   updateClinicVisitDraft,
 } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
-import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
-import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
+import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
+import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { canSelectAllSavedPets, showPetSelectionSection } from "./pet-selection-tabs.js";
 import { goToGroomingStep, isGroomingSinglePage } from "./grooming-flow-navigation.js";
@@ -688,7 +688,7 @@ async function handleAddPetSubmit(event) {
 
   try {
     elements.savePetBtn.disabled = true;
-    elements.savePetBtn.textContent = "Saving...";
+    elements.savePetBtn.textContent = "Confirming...";
 
     if (IS_CLINIC_VISIT || API.getCustomerToken?.()) {
       const response = await API.addPet({
@@ -733,7 +733,7 @@ async function handleAddPetSubmit(event) {
     showStepError(error.message);
   } finally {
     elements.savePetBtn.disabled = false;
-    elements.savePetBtn.textContent = "Save & Select Pet";
+    elements.savePetBtn.textContent = "Confirm";
   }
 }
 

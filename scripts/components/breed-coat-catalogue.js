@@ -1,6 +1,7 @@
 export const MIXED_BREED = "Mixed Breed / Aspin";
 export const MIXED_BREED_CAT = "Mixed Breed / Puspin";
 export const UNKNOWN_BREED = "Unknown Breed";
+export const UNKNOWN_FUR_TYPE = "Unknown Fur Type";
 export const OTHER_BREED = "Other \u2014 please specify";
 
 const SPECIAL_BREEDS = new Set([MIXED_BREED, MIXED_BREED_CAT, UNKNOWN_BREED]);
@@ -93,18 +94,11 @@ export function getMatchingBreeds(query, petType) {
 
 export function getCoatOptions(breed, petType) {
   const breeds = BREED_COAT_OPTIONS[petType];
-  if (!breeds || !hasLetter(breed) || normalize(breed) === normalize(OTHER_BREED)) {
-    return [];
-  }
+  if (!["Dog", "Cat"].includes(petType)) return [];
 
   const effectiveBreed = petType === "Cat" && normalize(breed) === normalize(MIXED_BREED)
     ? MIXED_BREED_CAT
     : breed;
   const matchingBreed = findMatchingKey(breeds, effectiveBreed);
-  return [...(breeds[matchingBreed] || [])];
-}
-
-export function requiresCoat(breed, petType) {
-  return ![...SPECIAL_BREEDS].some((value) => normalize(value) === normalize(breed))
-    && getCoatOptions(breed, petType).length > 0;
+  return [...(breeds?.[matchingBreed] || []), UNKNOWN_FUR_TYPE];
 }

@@ -39,6 +39,7 @@ class AdminCustomerPetSearchTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id');
             $table->string('pet_name');

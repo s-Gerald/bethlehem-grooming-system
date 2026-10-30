@@ -9,10 +9,10 @@
                       class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]" aria-required="true">
                   </div>
                   <div>
-                    <label for="adminPetSpecies" class="mb-1 block text-sm font-medium text-slate-700">Species <span class="text-slate-400 font-normal">(optional)</span></label>
+                    <label for="adminPetSpecies" class="mb-1 block text-sm font-medium text-slate-700">Species <span class="text-red-500">*</span></label>
                     <div id="adminPetSpeciesCombobox" class="relative">
                       <div class="relative">
-                        <input id="adminPetSpecies" name="species" type="text" placeholder="Select species"
+                        <input id="adminPetSpecies" name="species" type="text" required placeholder="Select species"
                           class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20 read-only:cursor-pointer"
                           role="combobox" aria-autocomplete="none" aria-controls="adminPetSpeciesOptions"
                           aria-expanded="false" aria-invalid="false" autocomplete="off" readonly>

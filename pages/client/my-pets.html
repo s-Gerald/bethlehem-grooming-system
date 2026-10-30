@@ -5,8 +5,8 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Pets | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261026-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="../../css/output.css?pet-fields=20261030-v1&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
@@ -252,16 +252,16 @@
             <div>
               <label for="petName" class="block text-sm font-medium text-portal-text mb-1">
                 Pet Name <span class="text-portal-danger">*</span>
-              </label>
+               <span id="petNameLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <input type="text" id="petName" placeholder="e.g. Buddy"
                 class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active"
                 required aria-required="true" />
             </div>
             <div>
-              <label for="petSpecies" class="block text-sm font-medium text-portal-text mb-1">Species <span class="text-slate-400 font-normal">(optional)</span></label>
+              <label for="petSpecies" class="block text-sm font-medium text-portal-text mb-1">Species <span class="text-red-500">*</span> <span id="petSpeciesLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <div id="petSpeciesCombobox" class="relative">
                 <div class="relative">
-                  <input id="petSpecies" name="species" type="text" placeholder="Select species"
+                  <input id="petSpecies" name="species" type="text" required placeholder="Select species"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer"
                     role="combobox" aria-autocomplete="none" aria-controls="petSpeciesOptions"
                     aria-expanded="false" aria-invalid="false" autocomplete="off" readonly />
@@ -281,7 +281,7 @@
           <!-- Gender + Birthdate -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label for="petGender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span></label>
+              <label for="petGender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span> <span id="petGenderLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <div id="petGenderCombobox" class="relative">
                 <div class="relative">
                   <input id="petGender" name="gender" type="text" placeholder="Select gender"
@@ -300,7 +300,7 @@
               </div>
             </div>
             <div>
-              <label for="petBirthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate <span class="text-slate-400 font-normal">(optional)</span></label>
+              <label for="petBirthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate <span class="text-slate-400 font-normal">(optional)</span> <span id="petBirthdateLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <input type="date" id="petBirthdate"
                 class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active" />
             </div>
@@ -313,7 +313,7 @@
                 Breed <span data-breed-requirement class="text-slate-400 font-normal">(optional)</span>
                 <span id="petBreedVerified"
                   class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-              </label>
+               <span id="petBreedLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <div id="petBreedCombobox" class="relative">
                 <div class="relative">
                   <input id="petBreed" name="breed" type="text" maxlength="100" placeholder="Select breed"
@@ -333,7 +333,7 @@
               <p id="petBreedError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
             </div>
             <div>
-              <label for="petColor" class="block text-sm font-medium text-portal-text mb-1">Color <span class="text-slate-400 font-normal">(optional)</span></label>
+              <label for="petColor" class="block text-sm font-medium text-portal-text mb-1">Color <span class="text-slate-400 font-normal">(optional)</span> <span id="petColorLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <input maxlength="50" type="text" id="petColor" placeholder="Type or select a color"
                 class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active" />
               <div id="petColorOptions" class="color-suggestion-list hidden" role="listbox" aria-label="Color suggestions" popover="manual"></div>
@@ -348,7 +348,7 @@
                 Weight <span class="text-slate-400 font-normal">(optional)</span>
                 <span id="petWeightVerified"
                   class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-              </label>
+               <span id="petWeightLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <div class="relative">
                 <input type="text" id="petWeight" name="weight" inputmode="decimal" placeholder="e.g. 4.25"
                 aria-invalid="false" aria-describedby="petWeightError"
@@ -362,7 +362,7 @@
                 Fur Type <span data-fur-requirement class="text-slate-400 font-normal">(optional)</span>
                 <span id="petFurTypeVerified"
                   class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-              </label>
+               <span id="petFurTypeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
               <div id="petFurTypeCombobox" class="relative">
                 <div class="relative">
                   <input id="petFurType" name="fur_type" type="text" placeholder="Select breed first"
@@ -389,7 +389,7 @@
               <span id="petSizeLabel">Size</span> <span class="text-slate-400 font-normal">(optional)</span>
               <span id="petSizeVerified"
                 class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-            </label>
+             <span id="petSizeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
 
             <div id="petSizeCombobox" class="relative">
               <div class="relative">
@@ -411,18 +411,22 @@
 
           <!-- Allergies and care notes -->
           <div>
-            <label for="petMedical" class="block text-sm font-medium text-portal-text mb-1">Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span></label>
+            <label for="petMedical" class="block text-sm font-medium text-portal-text mb-1">Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span> <span id="petMedicalLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
             <textarea id="petMedical" rows="3" maxlength="1000" placeholder="e.g. sensitive to shampoo, needs gentle handling"
               class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active resize-none"></textarea>
           </div>
 
+          <p id="petSavedDetailsHelp" class="hidden text-xs text-portal-muted">To change saved details, please visit Bethlehem Animal Clinic.</p>
+
           <!-- Error -->
           <div id="petFormError" class="hidden rounded-xl border border-red-200 bg-portal-danger-soft px-4 py-3 text-sm text-portal-danger"></div>
+
+          <p class="text-xs leading-5 text-portal-muted">After confirmation, details entered now can only be changed by clinic staff.</p>
 
           <!-- Submit -->
           <button type="submit" id="petFormSubmit"
             class="portal-button-primary w-full font-semibold disabled:cursor-not-allowed disabled:opacity-60">
-            Save Pet
+            Confirm
           </button>
         </form>
       </div>
@@ -456,8 +460,8 @@
     </div>
 
     <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
-    <script src="../../scripts/components/client-notification-ui.js?v=20260915-client-notifications"></script>
-    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3&modal=static-20261025&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1"></script>
+    <script src="../../scripts/components/client-notification-ui.js?v=20261030-pet-information"></script>
+    <script type="module" src="../../scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261011-v3&modal=static-20261025&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3"></script>
   </body>
 </html>

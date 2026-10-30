@@ -41,18 +41,28 @@
   }
 
   function messageMarkup(notification) {
-    const message = escapeHtml(notification?.display_message || notification?.message || "Notification");
-    const petNames = Array.isArray(notification?.pet_names) ? notification.pet_names : [];
-    let html = message;
-    petNames.forEach((name) => {
-      const escaped = escapeHtml(String(name || "").trim());
-      if (!escaped) return;
-      const quoted = escaped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      html = html.replace(new RegExp(`(^|[^\\p{L}\\p{N}])(${quoted})(?=$|[^\\p{L}\\p{N}])`, "gu"),
-        '$1<strong class="client-notification-emphasis">$2</strong>');
-    });
-    return html.replace(/\b(Started Grooming|Ready for Pickup|Finished)\b/g,
-      '<strong class="client-notification-emphasis">$1</strong>');
+    const message = String(notification?.display_message || notification?.message || "Notification");
+    const phrases = [...(Array.isArray(notification?.pet_names) ? notification.pet_names : []),
+      "Started Grooming", "Ready for Pickup", "Finished"];
+    if (notification?.type === "pet_information_updated") {
+      phrases.push("weight", "size", "breed", "fur type", "color", "species", "gender", "birthdate",
+        "allergies and special care notes", "neutered status", "neutered date", "deceased status", "deceased date");
+      const rename = message.match(/changed your pet's name from (.*?) to (.*?)(?: and updated |\.$)/);
+      if (rename) phrases.push(rename[1], rename[2]);
+      const savedName = message.match(/^Bethlehem Animal Clinic updated (.*)'s /);
+      if (savedName) phrases.push(savedName[1]);
+    }
+    const escapedPhrases = [...new Set(phrases.map(value => String(value || "").trim()).filter(Boolean))]
+      .sort((a, b) => b.length - a.length).map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!escapedPhrases.length) return escapeHtml(message);
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])(${escapedPhrases.join("|")})(?=$|[^\\p{L}\\p{N}])`, "gu");
+    let html = "", offset = 0;
+    for (const match of message.matchAll(pattern)) {
+      html += escapeHtml(message.slice(offset, match.index)) + escapeHtml(match[1])
+        + `<strong class="client-notification-emphasis">${escapeHtml(match[2])}</strong>`;
+      offset = match.index + match[0].length;
+    }
+    return html + escapeHtml(message.slice(offset));
   }
 
   function timeLabel(value, includeDate = false) {
@@ -67,11 +77,13 @@
 
   function row(notification, index, large = false, formatMessage = messageMarkup) {
     const background = notification.is_read ? "bg-white" : "bg-portal-active";
+    const formattedMessage = notification.type === "pet_information_updated"
+      ? messageMarkup(notification) : formatMessage(notification);
     return `<button type="button" data-client-notification-index="${index}" class="flex w-full items-start gap-3 border-b border-portal-border px-4 py-3 text-left transition hover:bg-portal-surface-soft ${background} ${large ? "sm:px-6 sm:py-4" : ""}">
       ${iconMarkup(notification, large)}
       <span class="min-w-0 flex-1">
         ${notification.title ? `<span class="block text-sm font-semibold text-portal-text">${escapeHtml(notification.title)}</span>` : ""}
-        <span class="block text-sm leading-snug text-portal-text">${formatMessage(notification)}</span>
+        <span class="block text-sm leading-snug text-portal-text">${formattedMessage}</span>
         <span class="mt-1 block text-xs text-portal-muted">${escapeHtml(timeLabel(notification.created_at, !large))}</span>
       </span>
       <span class="mt-2 h-2 w-2 shrink-0 rounded-full ${notification.is_read ? "bg-transparent" : "bg-portal-primary"}" aria-hidden="true"></span>

@@ -459,7 +459,7 @@ async function testActualPageLoaders() {
 async function testMyPetsStaticModalsAndWorkflows() {
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const env = environment();
-  const activePet = { ...pets.pets[0], breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"] };
+  const activePet = { ...pets.pets[0], breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color"] };
   const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
   const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
     ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
@@ -484,6 +484,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   el("addPetBtn").focus();
   await el("addPetBtn").dispatch("click");
   el("petName").value = "New pet";
+  el("petSpecies").value = "Dog";
   el("petWeight").value = "-1";
   await el("petForm").dispatch("submit");
   const validation = el("petFormError").textContent;
@@ -508,6 +509,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
 
   await el("addPetBtn").dispatch("click");
   el("petName").value = "New pet";
+  el("petSpecies").value = "Dog";
   el("petWeight").value = "5";
   el("petFormSubmit").focus();
   const pendingSave = deferred();
@@ -524,38 +526,23 @@ async function testMyPetsStaticModalsAndWorkflows() {
 
   el("edit-1").focus();
   await el("edit-1").dispatch("click");
-  el("petName").value = "Edited pet";
-  el("petWeight").value = "6";
+  assert.equal(el("petName").disabled, true);
+  assert.equal(el("petSpecies").disabled, true);
+  assert.equal(el("petWeight").disabled, true);
+  assert.equal(el("petSize").disabled, true);
+  assert.equal(el("petMedical").disabled, false);
+  assert.equal(el("petColor").disabled, true, "Clinic-cleared saved values remain locked");
+  assert.equal(el("petFormSubmit").disabled, true, "Unchanged profiles cannot confirm");
+  const beforeUnchanged = writes().length;
+  await el("petForm").dispatch("submit");
+  assert.equal(writes().length, beforeUnchanged);
+  el("petMedical").value = "Use gentle shampoo";
+  await el("petForm").dispatch("input");
+  assert.equal(el("petFormSubmit").disabled, false);
   await accidentalDismissal(form);
-  el("petFormSubmit").focus();
-  let saving = el("petForm").dispatch("submit");
-  await flush();
-  assert.equal(open(confirmation), true, "Verified edits require the existing confirmation");
-  const beforeCancel = writes().length;
-  await accidentalDismissal(confirmation);
-  assert.equal(form.inert, true, "Only the topmost modal is interactive");
-  el("petName").focus();
-  assert.equal(confirmation.contains(ui.document.activeElement), true);
-  el("confirmPetAction").focus();
-  await confirmation.dispatch("keydown", { key: "Tab" });
-  assert.equal(ui.document.activeElement, el("cancelPetConfirmation"));
-  await confirmation.dispatch("keydown", { key: "Tab", shiftKey: true });
-  assert.equal(ui.document.activeElement, el("confirmPetAction"));
-  await el("cancelPetConfirmation").dispatch("click");
-  await saving;
-  assert.equal(open(confirmation), false);
-  assert.equal(open(form), true);
-  assert.equal(form.inert, false);
-  assert.equal(el("petsPageShell").inert, true);
-  assert.equal(ui.document.activeElement, el("petFormSubmit"));
-  assert.equal(el("petName").value, "Edited pet");
-  assert.equal(el("petWeight").value, "6");
-  assert.equal(writes().length, beforeCancel, "Cancel must resolve without saving");
-  saving = el("petForm").dispatch("submit");
-  await flush();
-  await el("confirmPetAction").dispatch("click");
-  await saving;
-  assert.equal(open(form), false, "Save Changes still completes the update");
+  await el("petForm").dispatch("submit");
+  assert.equal(open(confirmation), false, "Pet completion does not open an override confirmation");
+  assert.equal(open(form), false, "Confirm completes permitted new information");
   assert.equal(writes().at(-1).endpoint, "/pets/1");
 
   for (const [button, endpoint] of [["archive-1", "/pets/1/archive"], ["unarchive-2", "/pets/2/unarchive"]]) {

@@ -47,29 +47,11 @@ class PetInformationVerificationInterfaceTest extends TestCase
         );
     }
 
-    public function test_verified_pet_fields_are_visible_and_protected_by_a_custom_confirmation(): void
+    public function test_saved_pet_fields_keep_verified_indicators_without_an_override_dialog(): void
     {
-        foreach ([
-            'clinic_verified_fields',
-            'breed: "Breed"',
-            'fur_type: "Fur Type"',
-            'weight: "Weight"',
-            'size: "Size"',
-            '>Verified</span>',
-            'Change clinic-verified information?',
-            'Some of the information you’re changing was verified by Bethlehem Animal Clinic.',
-            'Clinic-verified details being changed:',
-            'flex items-center justify-between gap-3',
-            'role="alertdialog"',
-            'aria-modal="true"',
-        ] as $content) {
-            $this->assertStringContainsString(
-                $content,
-                $this->myPetsPage
-                    .$this->myPetsComponent
-                    .$this->petProfileComponent,
-            );
-        }
+        $this->assertStringContainsString('>Verified</span>', $this->myPetsPage);
+        $this->assertStringNotContainsString('Change clinic-verified information?', $this->myPetsComponent);
+        $this->assertStringContainsString('To change saved details, please visit Bethlehem Animal Clinic.', $this->myPetsPage);
     }
 
     public function test_pet_archive_and_restore_use_the_customer_custom_modal(): void

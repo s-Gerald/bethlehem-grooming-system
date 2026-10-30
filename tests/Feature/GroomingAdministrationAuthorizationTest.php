@@ -201,6 +201,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
             $table->unsignedBigInteger('unregistered_customer_id')->nullable();
@@ -564,7 +565,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ];
     }
 
-    public function test_pre_registration_reevaluates_profile_size_from_valid_weight(): void
+    public function test_pre_registration_preserves_verified_profile_size_and_rejects_customer_overrides(): void
     {
         $this->authenticateAs('customer');
         DB::table('time_windows')->insert([
@@ -591,7 +592,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'base_price' => 0,
         ]);
 
-        $this->submitSignedGrooming('/api/booking/store', [
+        $payload = [
             'booking_date' => now()->toDateString(),
             'window_id' => 1,
             'number_of_pets' => 1,
@@ -600,15 +601,22 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'pet_name' => 'Rigby',
                 'species' => 'dog',
                 'weight' => 12,
-                'size' => 'medium',
+                'size' => 'small',
                 'grooming_preference' => 'regular_trim',
                 'services' => ['package' => 'regular_dog_grooming'],
             ]],
-        ])->assertCreated();
+        ];
+        foreach (['weight' => 20, 'size' => 'medium', 'species' => 'cat', 'pet_name' => ['invalid']]  as $field => $value) {
+            $tampered = $payload;
+            $tampered['pets'][0][$field] = $value;
+            $this->submitSignedGrooming('/api/booking/store', $tampered)->assertUnprocessable()->assertJsonValidationErrors('pets.0.'.$field);
+        }
+        $payload['pets'][0] = array_intersect_key($payload['pets'][0], array_flip(['pet_id', 'grooming_preference', 'services']));
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
 
-        $this->assertDatabaseHas('pets', ['pet_id' => 3, 'size' => 'medium', 'weight' => 12]);
-        $this->assertDatabaseHas('booking_pets', ['pet_id' => 3, 'registered_size' => 'medium']);
-        $this->assertDatabaseHas('booking_services', ['service_id' => 3, 'price_at_booking' => 650]);
+        $this->assertDatabaseHas('pets', ['pet_id' => 3, 'size' => 'small', 'weight' => 12]);
+        $this->assertDatabaseHas('booking_pets', ['pet_id' => 3, 'registered_size' => 'small']);
+        $this->assertDatabaseHas('booking_services', ['service_id' => 3, 'price_at_booking' => 550]);
     }
 
     #[DataProvider('decimalPetWeights')]
@@ -736,6 +744,25 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public static function historicalWalkinColors(): array
     {
         return ['unchanged saved color' => ['Brown123'], 'older draft without color' => [null]];
+    }
+
+    public function test_grooming_walkin_profile_changes_notify_once_when_size_is_confirmed_in_the_same_operation(): void
+    {
+        DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Maria', 'last_name' => 'Santos',
+            'phone' => '09171234567', 'role' => 'customer']);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew',
+            'species' => 'Dog', 'weight' => 8, 'size' => 'small', 'is_archived' => false]);
+        DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->authenticateAs('staff');
+        $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
+            'owner_record_type' => 'registered', 'customer_user_id' => 10,
+            'pets' => [['pet_id' => 101, 'pet_name' => 'Andrew', 'species' => 'Dog', 'weight' => 20,
+                'groomer_id' => 1, 'services' => [['service_slug' => 'nail_clipping']]]],
+            'sedation_consent' => false, 'terms_agreed' => true])->assertCreated();
+        $this->assertDatabaseCount('customer_notifications', 1);
+        $this->assertDatabaseHas('customer_notifications', ['user_id' => 10, 'pet_id' => 101,
+            'message' => "Bethlehem Animal Clinic updated Andrew's weight and size."]);
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => 20, 'size' => 'medium']);
     }
 
     public function test_customer_and_walk_in_range_prices_stay_unresolved_until_payment(): void

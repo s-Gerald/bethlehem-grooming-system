@@ -41,6 +41,7 @@ trait CreatesGroomingVisitFixture
             $t->decimal('total_amount', 10, 2)->default(1500);
         });
         Schema::create('pets', function (Blueprint $t) {
+            $t->json('customer_locked_fields')->nullable();
             $t->increments('pet_id');
             $t->string('pet_name');
             $t->string('species')->default('Dog');

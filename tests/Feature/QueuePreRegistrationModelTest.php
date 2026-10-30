@@ -110,6 +110,7 @@ class QueuePreRegistrationModelTest extends TestCase
             $table->string('role')->default('customer');
         });
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->string('pet_name');
             $table->string('species')->default('Dog');

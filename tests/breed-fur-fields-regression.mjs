@@ -12,10 +12,10 @@ globalThis.fetch = async () => {
   catalogueRequests++;
   return { ok: true, json: () => pendingCatalogue };
 };
-const { createBreedCombobox } = await import("../scripts/components/breed-combobox.js?pet-fields=20261026-v1");
-const { createBreedCoatCombobox } = await import("../scripts/components/breed-coat-combobox.js?pet-fields=20261026-v1");
+const { createBreedCombobox } = await import("../scripts/components/breed-combobox.js?pet-fields=20261030-v1");
+const { createBreedCoatCombobox } = await import("../scripts/components/breed-coat-combobox.js?pet-fields=20261030-v1");
 const { breedCoatCatalogueReady, getCoatOptions, OTHER_BREED, UNKNOWN_BREED, getMixedBreed } =
-  await import("../scripts/components/breed-coat-catalogue.js?pet-fields=20261026-v1");
+  await import("../scripts/components/breed-coat-catalogue.js?pet-fields=20261030-v1");
 
 // Minimal DOM boundary, following the existing vanilla component regression tests.
 function element(value = "") {
@@ -133,23 +133,36 @@ loadingReopenedPet.coatControl.update({ preserveValue: true, autoSelect: false }
 releaseCatalogue(catalogue);
 await breedCoatCatalogueReady;
 
+test("Unknown Fur Type is last for all supported breeds, blank breeds and custom entries", () => {
+  for (const [species, breeds] of Object.entries(catalogue)) {
+    for (const breed of [...Object.keys(breeds), "", "My custom breed"]) {
+      const options = getCoatOptions(breed, species);
+      assert.equal(options.at(-1), "Unknown Fur Type");
+      const ui = form({ species, breed });
+      ui.chooseCoat("Unknown Fur Type");
+      assert.equal(ui.coatInput.value, "Unknown Fur Type");
+      assert.equal(ui.coatControl.getValidationMessage(), "");
+    }
+  }
+});
+
 test("catalogue loading preserves saved edits and updates choices already made by the user", () => {
   assert.equal(loadingSavedPet.breedInput.value, "Bengal");
   assert.equal(loadingSavedPet.coatInput.value, "Longhair Coat");
-  assert.equal(loadingNewPet.coatInput.value, "Smooth Short Coat");
-  assert.equal(loadingCustomPet.coatInput.disabled, true);
+  assert.equal(loadingNewPet.coatInput.value, "");
+  assert.equal(loadingCustomPet.coatInput.disabled, false);
   assert.equal(loadingCustomPet.coatInput.value, "");
-  assert.equal(loadingReopenedPet.coatInput.value, "Smooth Short Coat");
+  assert.equal(loadingReopenedPet.coatInput.value, "");
 });
 
-test("no species disables both controls, and species enables only Breed", () => {
+test("no species disables controls, and species enables Breed and optional Unknown Fur Type", () => {
   const ui = form();
   assert.equal(ui.breedInput.disabled, true);
   assert.equal(ui.breedToggle.disabled, true);
   assert.equal(ui.coatInput.disabled, true);
   ui.change(ui.petTypeInput, "Dog");
   assert.equal(ui.breedInput.disabled, false);
-  assert.equal(ui.coatInput.disabled, true);
+  assert.equal(ui.coatInput.disabled, false);
   assert.deepEqual(getCoatOptions("Beagle", ""), []);
 });
 
@@ -157,14 +170,14 @@ for (const [species, single, coat, multi, multiCoat] of [
   ["Dog", "French Bulldog", "Smooth Short Coat", "German Shepherd", "Long Stock Coat"],
   ["Cat", "Persian", "Long Dense Coat", "Bengal", "Longhair Coat"],
 ]) {
-  test(`${species}: known single coats auto-select; multiple coats require a choice`, () => {
+  test(`${species}: known coats remain optional and require an explicit choice`, () => {
     const ui = form({ species });
     ui.chooseBreed(OTHER_BREED);
     assert.equal(ui.breedInput.readOnly, false);
     ui.change(ui.breedInput, single.slice(0, 3), "input");
     assert.ok(ui.breedList.children.some(child => child.dataset.breedValue === single));
     ui.chooseBreed(single);
-    assert.equal(ui.coatInput.value, coat);
+    assert.equal(ui.coatInput.value, "");
     assert.equal(ui.coatInput.disabled, false);
     ui.chooseBreed(multi);
     assert.equal(ui.coatInput.value, "");
@@ -173,7 +186,7 @@ for (const [species, single, coat, multi, multiCoat] of [
     assert.equal(ui.coatControl.getValidationMessage(), "");
   });
 
-  test(`${species}: Mixed and Unknown offer optional fur; custom breeds have no unsupported options`, () => {
+  test(`${species}: Mixed, Unknown and custom breeds offer optional Unknown Fur Type`, () => {
     const ui = form({ species });
     for (const breed of [getMixedBreed(species), UNKNOWN_BREED]) {
       ui.chooseBreed(breed);
@@ -184,13 +197,13 @@ for (const [species, single, coat, multi, multiCoat] of [
     }
     ui.chooseBreed(OTHER_BREED);
     assert.equal(ui.breedInput.value, "");
-    assert.equal(ui.coatInput.disabled, true);
+    assert.equal(ui.coatInput.disabled, false);
     ui.change(ui.breedInput, "My custom breed", "input");
-    assert.equal(ui.coatInput.disabled, true);
-    assert.equal(ui.coatToggle.disabled, true);
+    assert.equal(ui.coatInput.disabled, false);
+    assert.equal(ui.coatToggle.disabled, false);
     assert.equal(ui.coatInput.value, "");
     assert.equal(ui.coatControl.getValidationMessage(), "");
-    assert.deepEqual(getCoatOptions("My custom breed", species), []);
+    assert.deepEqual(getCoatOptions("My custom breed", species), ["Unknown Fur Type"]);
     ui.change(ui.breedInput, "123", "input");
     assert.ok(ui.breedControl.getValidationMessage());
   });
@@ -204,11 +217,11 @@ for (const [species, single, coat, multi, multiCoat] of [
     ui.change(ui.breedInput, multi);
     assert.equal(ui.coatInput.value, multiCoat);
     ui.chooseBreed(single);
-    assert.equal(ui.coatInput.value, coat);
+    assert.equal(ui.coatInput.value, "");
     ui.change(ui.petTypeInput, species === "Dog" ? "Cat" : "Dog");
     assert.equal(ui.breedInput.value, "");
     assert.equal(ui.coatInput.value, "");
-    assert.equal(ui.coatInput.disabled, true);
+    assert.equal(ui.coatInput.disabled, false);
     ui.change(ui.petTypeInput, "");
     assert.equal(ui.breedInput.disabled, true);
   });
@@ -217,7 +230,7 @@ for (const [species, single, coat, multi, multiCoat] of [
     const ui = form({ species });
     ui.chooseBreed(OTHER_BREED);
     ui.change(ui.breedInput, ` ${single.toLowerCase()} `, "input");
-    assert.equal(ui.coatInput.value, coat);
+    assert.equal(ui.coatInput.value, "");
     ui.change(ui.breedInput, multi, "input");
     assert.equal(ui.coatInput.value, "");
     ui.chooseCoat(multiCoat);
@@ -267,10 +280,10 @@ test("editable keyboard navigation retains focus, scrolls options into view, and
 
 test("fur requirement comes from saved breed and errors clear after correction", () => {
   const ui = form({ species: "Dog", breed: "golden retriever" });
-  assert.equal(ui.coatInput.getAttribute("aria-required"), "true");
+  assert.equal(ui.coatInput.getAttribute("aria-required"), "false");
   assert.equal(ui.coatInput.getAttribute("aria-invalid"), "false");
-  assert.equal(ui.coatControl.showValidation(), false);
-  assert.equal(ui.coatControl.getValidationMessage(), "Select a fur type.");
+  assert.equal(ui.coatControl.showValidation(), true);
+  assert.equal(ui.coatControl.getValidationMessage(), "");
   ui.chooseCoat("Wavy Coat");
   assert.equal(ui.coatInput.getAttribute("aria-invalid"), "false");
   ui.chooseBreed("My custom breed");
@@ -293,24 +306,24 @@ test("search ranks prefix matches first and pointer selection retains input focu
   assert.equal(document.activeElement, ui.breedInput);
   assert.equal(ui.breedInput.value, "Shih Tzu");
   assert.equal(ui.breedInput.getAttribute("aria-expanded"), "false");
-  assert.equal(ui.coatControl.getValidationMessage(), "Select a fur type.");
+  assert.equal(ui.coatControl.getValidationMessage(), "");
 });
 
-test("restoring incomplete single-coat profiles fills the determined coat; unsupported stored custom coats clear", async () => {
+test("restoring incomplete profiles leaves fur blank and preserves legacy saved coats", async () => {
   const single = form({ species: "Dog", breed: "Beagle" });
   const custom = form({ species: "Cat", breed: "Custom cat", coat: "Shorthair Coat" });
   await Promise.resolve();
-  assert.equal(single.coatInput.value, "Smooth Short Coat");
+  assert.equal(single.coatInput.value, "");
   assert.equal(single.coatControl.getValidationMessage(), "");
-  assert.equal(custom.coatInput.value, "");
-  assert.equal(custom.coatInput.disabled, true);
+  assert.equal(custom.coatInput.value, "Shorthair Coat");
+  assert.equal(custom.coatInput.disabled, false);
   assert.equal(custom.coatControl.getValidationMessage(), "");
 });
 
-test("Beagle auto-selects and Dachshund leaves its multiple fur types unselected", () => {
+test("Beagle and Dachshund leave fur unselected", () => {
   const ui = form({ species: "Dog" });
   ui.chooseBreed("Beagle");
-  assert.equal(ui.coatInput.value, "Smooth Short Coat");
+  assert.equal(ui.coatInput.value, "");
   ui.chooseBreed("Dachshund");
   assert.equal(ui.coatInput.value, "");
   ui.chooseCoat("Wirehaired Coat");
@@ -338,12 +351,12 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
     ui.change(ui.petTypeInput, "Dog");
     assert.equal(ui.breedInput.disabled, false);
     ui.chooseBreed("Beagle");
-    assert.equal(ui.coatInput.value, "Smooth Short Coat");
+    assert.equal(ui.coatInput.value, "");
     ui.change(ui.petTypeInput, "Cat");
     assert.equal(ui.breedInput.value, "");
     assert.equal(ui.coatInput.value, "");
     ui.chooseBreed("Persian");
-    assert.equal(ui.coatInput.value, "Long Dense Coat");
+    assert.equal(ui.coatInput.value, "");
   });
 
   for (const [species, breed, coat] of [
@@ -367,7 +380,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
       if (integration === "my-pets") {
         const handler = ui.source.slice(ui.source.indexOf("async function openEditModal("), ui.source.indexOf("  function showModal()"));
         const open = vm.runInNewContext(`(${handler.trim()})`, {
-          ...shared, allPets: [{ pet_id: 1, species, breed, fur_type: coat }], editingPet: null,
+          ...shared, syncEditFieldLocks: () => {}, allPets: [{ pet_id: 1, species, breed, fur_type: coat }], editingPet: null,
           syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: element(), petWeight: element(),
           normalizeSpecies: value => value, hideFormError: noop, showModal: noop,
         });

@@ -21,3 +21,12 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   border-color: #fca5a5;
   --tw-ring-color: #fee2e2;
 }
+
+/* Saved pet details remain readable while their controls are locked. */
+#petForm [data-profile-locked="true"] {
+  background-color: var(--portal-surface-soft, #f1f5f9);
+  color: var(--portal-text, #243746);
+  border-color: var(--portal-border, #d4dee7);
+  opacity: 1;
+  cursor: default;
+}

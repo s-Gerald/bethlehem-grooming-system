@@ -39,7 +39,6 @@ class CustomerPageLoadingPerformanceInterfaceTest extends TestCase
             'loadPetCollection(!showingArchived)',
             'function invalidatePetCollections()',
             'if (showingArchived !== archived) return;',
-            'await Promise.allSettled([',
             'let notificationsLoaded = false;',
         ] as $optimization) {
             $this->assertStringContainsString($optimization, $myPets);

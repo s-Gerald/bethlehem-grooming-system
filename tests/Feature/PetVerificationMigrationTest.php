@@ -93,4 +93,17 @@ class PetVerificationMigrationTest extends TestCase
             Schema::hasColumn('customer_notifications', 'pet_id'),
         );
     }
+
+    public function test_customer_lock_migration_preserves_legacy_information_and_rolls_back_only_its_column(): void
+    {
+        DB::table('pets')->insert(['pet_id' => 10, 'fur_type' => 'short',
+            'clinic_verified_fields' => json_encode(['size'])]);
+        $migration = require base_path('database/migrations/2026_10_30_000001_add_customer_locked_fields_to_pets.php');
+        $migration->up();
+        $this->assertTrue(Schema::hasColumn('pets', 'customer_locked_fields'));
+        $this->assertDatabaseHas('pets', ['pet_id' => 10, 'fur_type' => 'short', 'customer_locked_fields' => null]);
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('pets', 'customer_locked_fields'));
+        $this->assertDatabaseHas('pets', ['pet_id' => 10, 'fur_type' => 'short', 'clinic_verified_fields' => json_encode(['size'])]);
+    }
 }

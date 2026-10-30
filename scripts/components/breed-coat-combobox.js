@@ -1,8 +1,7 @@
 import {
   breedCoatCatalogueReady,
   getCoatOptions,
-  requiresCoat,
-} from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
+} from "./breed-coat-catalogue.js?pet-fields=20261030-v1";
 
 export function createBreedCoatCombobox({
   root,
@@ -21,8 +20,8 @@ export function createBreedCoatCombobox({
   let shouldShowValidation = false;
   let previousBreed = breedInput.value;
   let previousPetType = petTypeInput.value;
-  let recalculateOnCatalogueLoad = false;
-  let catalogueLoaded = false;
+  let isDisabled = false;
+  let preservedValue = input.value;
   const requirementIndicator = input.labels?.[0]?.querySelector("[data-fur-requirement]");
   if (errorElement?.id) input.setAttribute("aria-describedby", errorElement.id);
 
@@ -34,9 +33,10 @@ export function createBreedCoatCombobox({
     const selectedCoat = input.value;
 
     if (!selectedCoat) {
-      return requiresCoat(breedInput.value, petTypeInput.value) ? "Select a fur type." : "";
+      return "";
     }
 
+    if (selectedCoat === preservedValue) return "";
     if (!getOptions().includes(selectedCoat)) {
       return `Selected fur type is not available for ${breedInput.value || "this breed"}.`;
     }
@@ -94,7 +94,7 @@ export function createBreedCoatCombobox({
   }
 
   function setOpen(nextOpen) {
-    isOpen = Boolean(nextOpen && !input.disabled && getOptions().length > 0);
+    isOpen = Boolean(nextOpen && !isDisabled && !input.disabled && getOptions().length > 0);
     listbox.classList.toggle("hidden", !isOpen);
     input.setAttribute("aria-expanded", String(isOpen));
     toggleButton.setAttribute("aria-expanded", String(isOpen));
@@ -109,7 +109,7 @@ export function createBreedCoatCombobox({
   }
 
   function selectValue(coat) {
-    if (!getOptions().includes(coat)) {
+    if (isDisabled || !getOptions().includes(coat)) {
       return;
     }
 
@@ -120,36 +120,35 @@ export function createBreedCoatCombobox({
     notifyValueChange();
   }
 
-  function update({ preserveValue = false, autoSelect = true } = {}) {
-    const previousValue = input.value;
-    const breed = breedInput.value.trim();
-    const options = getOptions();
-    const speciesChanged = petTypeInput.value !== previousPetType;
-    const isRequired = requiresCoat(breed, petTypeInput.value);
-    input.required = isRequired;
-    input.setAttribute("aria-required", String(isRequired));
-    if (requirementIndicator) {
-      requirementIndicator.textContent = isRequired ? "*" : "(optional)";
-      requirementIndicator.classList.toggle("text-red-500", isRequired);
-      requirementIndicator.classList.toggle("text-slate-400", !isRequired);
-    }
-
-    previousBreed = breedInput.value;
-    previousPetType = petTypeInput.value;
-    recalculateOnCatalogueLoad = !preserveValue && autoSelect;
-    if (!preserveValue || catalogueLoaded) {
-      input.value = !speciesChanged && options.includes(previousValue) ? previousValue
-        : (autoSelect || preserveValue) && options.length === 1 ? options[0] : "";
-    }
-    input.placeholder = !breed
-      ? "Select breed first"
-      : options.length > 0
-        ? "Select fur / coat type"
-        : "No coat options for this breed";
-    input.disabled = options.length === 0;
-    toggleButton.disabled = options.length === 0;
+  function setDisabled(disabled) {
+    isDisabled = Boolean(disabled);
+    input.disabled = isDisabled || getOptions().length === 0;
+    toggleButton.disabled = input.disabled;
     input.setAttribute("aria-disabled", String(input.disabled));
     toggleButton.setAttribute("aria-disabled", String(toggleButton.disabled));
+    if (input.disabled) setOpen(false);
+  }
+
+  function update({ preserveValue = false } = {}) {
+    const previousValue = input.value;
+    const options = getOptions();
+    const speciesChanged = petTypeInput.value !== previousPetType;
+    input.required = false;
+    input.setAttribute("aria-required", "false");
+    if (requirementIndicator) {
+      requirementIndicator.textContent = "(optional)";
+      requirementIndicator.classList.remove("text-red-500");
+      requirementIndicator.classList.add("text-slate-400");
+    }
+    if (preserveValue) preservedValue = previousValue;
+    if (!preserveValue && !isDisabled) {
+      preservedValue = "";
+      input.value = !speciesChanged && options.includes(previousValue) ? previousValue : "";
+    }
+    previousBreed = breedInput.value;
+    previousPetType = petTypeInput.value;
+    input.placeholder = petTypeInput.value ? "Select fur / coat type" : "Select species first";
+    setDisabled(isDisabled);
 
     if (options.length === 0) {
       setOpen(false);
@@ -251,15 +250,15 @@ export function createBreedCoatCombobox({
   petTypeInput.addEventListener("input", handleDependencyChange);
   petTypeInput.addEventListener("change", handleDependencyChange);
   input.form?.addEventListener("reset", () => window.setTimeout(reset));
-  breedCoatCatalogueReady.then((catalogue) => {
-    catalogueLoaded = Object.keys(catalogue).length > 0;
-    update({ preserveValue: !recalculateOnCatalogueLoad, autoSelect: recalculateOnCatalogueLoad });
+  breedCoatCatalogueReady.then(() => {
+    update({ preserveValue: true });
   });
 
   update({ preserveValue: true, autoSelect: false });
 
   return {
     getValidationMessage,
+    setDisabled,
     reset,
     showValidation,
     update,

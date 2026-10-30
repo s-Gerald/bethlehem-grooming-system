@@ -6,7 +6,7 @@ import {
   getMatchingBreeds,
   hasLetter,
   isMixedBreed,
-} from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
+} from "./breed-coat-catalogue.js?pet-fields=20261030-v1";
 
 export function createBreedCombobox({
   root,
@@ -73,11 +73,11 @@ export function createBreedCombobox({
   }
 
   function updateRequirement() {
-    input.setAttribute("aria-required", String(isCustomEntry));
+    input.setAttribute("aria-required", "false");
     if (requirementIndicator) {
-      requirementIndicator.textContent = isCustomEntry ? "*" : "(optional)";
-      requirementIndicator.classList.toggle("text-red-500", isCustomEntry);
-      requirementIndicator.classList.toggle("text-slate-400", !isCustomEntry);
+      requirementIndicator.textContent = "(optional)";
+      requirementIndicator.classList.remove("text-red-500");
+      requirementIndicator.classList.add("text-slate-400");
     }
   }
 
@@ -129,7 +129,7 @@ export function createBreedCombobox({
   }
 
   function setOpen(nextOpen) {
-    isOpen = Boolean(nextOpen && !isDisabled);
+    isOpen = Boolean(nextOpen && !isDisabled && !input.disabled);
     listbox.classList.toggle("hidden", !isOpen);
     input.setAttribute("aria-expanded", String(isOpen));
     toggleButton.setAttribute("aria-expanded", String(isOpen));
@@ -144,7 +144,7 @@ export function createBreedCombobox({
   }
 
   function selectValue(value) {
-    if (isDisabled) return;
+    if (isDisabled || input.disabled) return;
     if (value === OTHER_BREED) {
       isCustomEntry = true;
       input.readOnly = false;
@@ -224,7 +224,7 @@ export function createBreedCombobox({
   });
 
   root.addEventListener("click", (event) => {
-    if (isDisabled) return;
+    if (isDisabled || input.disabled) return;
     const option = event.target.closest("[data-breed-value]");
 
     if (option) {

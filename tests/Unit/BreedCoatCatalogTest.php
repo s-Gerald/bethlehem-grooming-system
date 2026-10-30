@@ -17,11 +17,10 @@ class BreedCoatCatalogTest extends TestCase
         $pet->fur_type = 'Wavy Coat';
         $this->assertSame('Wavy Coat', ValidBreedCoat::validatedCoat(['breed' => 'Shih Tzu'], $pet));
         $this->assertNull(ValidBreedCoat::validatedCoat(['breed' => 'Custom dog', 'fur_type' => null], $pet));
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
-        ValidBreedCoat::validatedCoat(['pet_id' => 1, 'breed' => 'Beagle'], $pet);
+        $this->assertNull(ValidBreedCoat::validatedCoat(['pet_id' => 1, 'breed' => 'Beagle'], $pet));
     }
 
-    public function test_named_breeds_require_coats_even_when_missing_null_or_empty(): void
+    public function test_named_breeds_allow_missing_null_or_empty_coats(): void
     {
         foreach ([['Dog', 'Golden Retriever'], ['Cat', 'Bengal'], ['dog', ' beagle '], ['cat', ' PERSIAN ']] as [$species, $breed]) {
             foreach ([[], ['fur_type' => null], ['fur_type' => '']] as $coat) {
@@ -30,8 +29,7 @@ class BreedCoatCatalogTest extends TestCase
                     $validator = Validator::make($nested ? ['pets' => [$pet]] : $pet, [
                         $nested ? 'pets.*.fur_type' : 'fur_type' => ['nullable', 'string', new ValidBreedCoat],
                     ]);
-                    $this->assertTrue($validator->fails(), "$species / $breed must require fur");
-                    $this->assertSame('Select a fur type.', $validator->errors()->first());
+                    $this->assertFalse($validator->fails(), "$species / $breed allows blank fur");
                 }
             }
         }
@@ -47,8 +45,7 @@ class BreedCoatCatalogTest extends TestCase
                 $pet = ['species' => $species, 'breed' => $breed];
                 $data = $nested ? ['pets' => [$pet, [...$pet, 'pet_id' => 101]]] : $pet;
                 $validator = Validator::make($data, $rules);
-                $this->assertTrue($validator->fails());
-                $this->assertSame('Select a fur type.', $validator->errors()->first($nested ? 'pets.0.fur_type' : 'fur_type'));
+                $this->assertFalse($validator->fails());
                 if ($nested) {
                     $this->assertFalse($validator->errors()->has('pets.1.fur_type'));
                 }
@@ -56,10 +53,9 @@ class BreedCoatCatalogTest extends TestCase
         }
     }
 
-    public function test_claimed_existing_id_does_not_exempt_a_new_profile_after_resolution(): void
+    public function test_new_profile_without_fur_remains_optional_after_resolution(): void
     {
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
-        ValidBreedCoat::validatedCoat(['pet_id' => 123, 'breed' => 'Golden Retriever', 'species' => 'Dog']);
+        $this->assertNull(ValidBreedCoat::validatedCoat(['pet_id' => 123, 'breed' => 'Golden Retriever', 'species' => 'Dog']));
     }
 
     public function test_custom_and_generic_breeds_remain_optional_but_supplied_coats_are_validated(): void
@@ -71,8 +67,20 @@ class BreedCoatCatalogTest extends TestCase
             $this->assertFalse(Validator::make([...$pet, 'fur_type' => null], $rules)->fails());
             $this->assertTrue(Validator::make([...$pet, 'fur_type' => 'Unsupported'], $rules)->fails());
         }
-        $this->assertSame([], BreedCoatCatalog::optionsFor('Custom dog', 'Dog'));
-        $this->assertSame([], BreedCoatCatalog::optionsFor('Persian', 'Dog'));
+        $this->assertSame(['Unknown Fur Type'], BreedCoatCatalog::optionsFor('Custom dog', 'Dog'));
+        $this->assertSame(['Unknown Fur Type'], BreedCoatCatalog::optionsFor('Persian', 'Dog'));
+    }
+
+    public function test_unknown_fur_is_last_and_valid_for_every_catalogue_breed_and_blank_or_custom_breeds(): void
+    {
+        foreach (BreedCoatCatalog::all() as $species => $breeds) {
+            foreach ([...array_keys($breeds), '', 'Custom pet'] as $breed) {
+                $options = BreedCoatCatalog::optionsFor($breed, $species);
+                $this->assertSame('Unknown Fur Type', end($options));
+                $this->assertFalse(Validator::make(['species' => $species, 'breed' => $breed, 'fur_type' => 'Unknown Fur Type'],
+                    ['fur_type' => ['nullable', 'string', new ValidBreedCoat]])->fails());
+            }
+        }
     }
 
     public function test_every_catalogue_breed_has_direct_coat_options(): void
@@ -97,7 +105,7 @@ class BreedCoatCatalogTest extends TestCase
     public function test_siberian_husky_exposes_only_direct_requested_coats(): void
     {
         $this->assertSame(
-            ['Standard Coat', 'Wooly Coat'],
+            ['Standard Coat', 'Wooly Coat', 'Unknown Fur Type'],
             BreedCoatCatalog::optionsFor('Siberian Husky', 'Dog'),
         );
         $this->assertNotContains(

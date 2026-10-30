@@ -24,6 +24,7 @@ class ActivityLogTest extends TestCase
             $table->boolean('is_active')->default(true); $table->boolean('is_archived')->default(false);
         });
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id'); $table->string('pet_name');
         });
     }

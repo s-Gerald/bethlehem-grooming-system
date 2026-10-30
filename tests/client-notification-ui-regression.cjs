@@ -36,3 +36,18 @@ ui.render(page, notifications, "all", false);
 assert.match(page.innerHTML, /data-client-notification-index="0"/);
 assert.match(page.innerHTML, /data-client-notification-index="1"/);
 console.log("Client notification UI regression checks passed.");
+
+const updates = { innerHTML: "" };
+ui.render(updates, [{ type: "pet_information_updated", pet_names: ["Andy"],
+  message: "Bethlehem Animal Clinic updated Andrew's breed, fur type, and color.", is_read: false }], "all", true, () => "Legacy dashboard formatter");
+for (const text of ["Andrew", "breed", "fur type", "color"]) {
+  assert.ok(updates.innerHTML.includes(`<strong class="client-notification-emphasis">${text}</strong>`));
+}
+assert.ok(!updates.innerHTML.includes('<strong class="client-notification-emphasis">Bethlehem'));
+ui.render(updates, [{ type: "pet_information_updated", pet_names: ["<img src=x onerror=alert(1)>"],
+  message: "Bethlehem Animal Clinic updated <img src=x onerror=alert(1)>'s weight.", is_read: false }]);
+assert.doesNotMatch(updates.innerHTML, /<img|<script/);
+assert.match(updates.innerHTML, /&lt;img/);
+ui.render(updates, [{ type: "pet_information_updated", pet_names: ["Andy"],
+  message: "Bethlehem Animal Clinic changed your pet's name from Andrew to Andy.", is_read: false }]);
+assert.match(updates.innerHTML, /<strong class="client-notification-emphasis">Andrew<\/strong> to <strong class="client-notification-emphasis">Andy<\/strong>/);

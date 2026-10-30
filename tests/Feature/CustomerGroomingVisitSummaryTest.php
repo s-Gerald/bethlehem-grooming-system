@@ -32,6 +32,7 @@ class CustomerGroomingVisitSummaryTest extends TestCase
         });
         Schema::create('time_windows', function (Blueprint $t) { $t->increments('window_id'); });
         Schema::create('pets', function (Blueprint $t) {
+            $t->json('customer_locked_fields')->nullable();
             $t->increments('pet_id');
             $t->string('pet_name');
         });

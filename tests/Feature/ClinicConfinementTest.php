@@ -29,6 +29,7 @@ class ClinicConfinementTest extends TestCase
             $table->string('last_name')->nullable(); $table->boolean('is_active')->default(true);
         });
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id'); $table->string('pet_name'); $table->string('species');
             $table->decimal('weight', 5, 2)->nullable(); $table->string('size')->nullable();
         });

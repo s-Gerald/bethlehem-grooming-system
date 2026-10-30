@@ -16,6 +16,7 @@ class ClientPetMedicalRecordsTest extends TestCase
         parent::setUp();
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
             $table->string('pet_name');

@@ -51,11 +51,6 @@ class WalkinController extends Controller
                 }
                 $data['pets'] = app(\App\Services\PetGroomerSelection::class)->validate($data['pets'], true);
                 app(\App\Services\OperationalCapacity::class)->assertCanAccept('grooming', count($data['pets']));
-                $data['pets'] = array_map(
-                    fn (array $pet) => PetWeightSize::withComputedSize($pet),
-                    $data['pets'],
-                );
-
                 [$user, $unregisteredCustomer, $owner] = $this->resolveOwner($data);
 
                 $resolvedPets = $this->resolveAllPets($data['pets'], $user, $unregisteredCustomer);
@@ -300,9 +295,7 @@ class WalkinController extends Controller
     {
         return array_map(function (array $petData, int|string $index) use ($user, $unregisteredCustomer) {
             $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $petData);
-            $size = $pet->hasClinicVerifiedSize()
-                ? $pet->size
-                : ($petData['size'] ?? $pet->groomingSize());
+            $size = $pet->groomingSize();
             if ($size && PetWeightSize::isValidSize($pet->species, $size)) {
                 $pet->confirmClinicSize($size);
             }
@@ -389,6 +382,8 @@ class WalkinController extends Controller
             }
         }
 
+        $petData = PetWeightSize::withComputedSize($petData);
+
         return Pet::create([
             'user_id' => $user?->user_id,
             ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
@@ -407,12 +402,12 @@ class WalkinController extends Controller
     private function updateWalkInPetDetails(Pet $pet, array $petData): Pet
     {
         $petData['color'] ??= $pet->color;
+        $petData = PetWeightSize::withComputedSizeForUpdate([...$petData, 'species' => $pet->species], $pet);
         $pet->update([
             'breed' => $petData['breed'] ?? $pet->breed,
             'fur_type' => ValidBreedCoat::validatedCoat($petData, $pet),
             'weight' => $petData['weight'] ?? $pet->weight,
-            'size' => PetWeightSize::sizeFor($pet->species, $petData['weight'] ?? $pet->weight)
-                ?? $petData['size'] ?? $pet->size,
+            'size' => $petData['size'] ?? $pet->size,
             'color' => ValidPetColor::validatedColor($petData, $pet),
             'medical_conditions' => $petData['medical_conditions'] ?? $pet->medical_conditions,
         ]);

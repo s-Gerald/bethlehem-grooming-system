@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Pet;
+
 final class PetWeightSize
 {
     private const MAX_WEIGHT_KG = 155.6;
@@ -78,6 +80,19 @@ final class PetWeightSize
         }
 
         return $pet;
+    }
+
+    public static function withComputedSizeForUpdate(array $data, Pet $pet): array
+    {
+        $species = $data['species'] ?? $pet->species;
+        $weight = $data['weight'] ?? $pet->weight;
+        if (PetInformation::meaningful($pet->size)
+            && PetInformation::matches('weight', $pet->weight, $weight)
+            && PetInformation::matches('species', $pet->species, $species)) {
+            return $data;
+        }
+
+        return self::withComputedSize([...$data, 'species' => $species, 'weight' => $weight]);
     }
 
     public static function isValidSize(mixed $species, mixed $size): bool

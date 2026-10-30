@@ -63,6 +63,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
             $table->unsignedBigInteger('unregistered_customer_id')->nullable();
@@ -278,6 +279,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('customer_notifications');
         Carbon::setTestNow();
 
         Schema::dropIfExists('booking_services');
@@ -987,6 +989,36 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('pets', ['pet_name' => 'Coat color', 'color' => 'Brown/White', 'medical_conditions' => 'Sensitive skin']);
     }
 
+    #[DataProvider('clinicProfileUpdateCases')]
+    public function test_clinic_walkin_profile_and_size_updates_create_one_owner_notification(int $weight, string $size, int $notifications): void
+    {
+        Schema::create('customer_notifications', function (Blueprint $table) {
+            $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('pet_id')->nullable();
+            $table->string('type'); $table->text('message'); $table->boolean('is_read')->default(false);
+            $table->timestamp('created_at')->nullable();
+        });
+        DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Maria', 'last_name' => 'Santos',
+            'phone' => '09171234567', 'role' => 'customer']);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew',
+            'species' => 'Dog', 'weight' => 12, 'size' => 'small', 'clinic_verified_fields' => json_encode(['size']), 'is_archived' => false]);
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
+            'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
+            'owner_record_type' => 'registered', 'customer_user_id' => 10,
+            'pet_id' => 101, 'pet_name' => 'Andrew', 'species' => 'Dog', 'weight' => $weight, 'terms_agreed' => true])->assertCreated();
+        $this->assertDatabaseCount('customer_notifications', $notifications);
+        if ($notifications) {
+        $this->assertDatabaseHas('customer_notifications', ['user_id' => 10, 'pet_id' => 101,
+            'message' => "Bethlehem Animal Clinic updated Andrew's weight and size."]);
+        }
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => $weight, 'size' => $size]);
+    }
+
+    public static function clinicProfileUpdateCases(): array
+    {
+        return ['changed measurements' => [20, 'medium', 1], 'unchanged verified size' => [12, 'small', 0]];
+    }
+
     public function test_clinic_walkin_rejects_invalid_weight_text_for_admin_and_staff(): void
     {
         $invalid = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true)['invalid_weights'];
@@ -1238,7 +1270,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('pet.clinic_verified_fields', null);
     }
 
-    public function test_valid_weight_replaces_a_contradictory_verified_profile_size(): void
+    public function test_customer_weight_cannot_replace_a_verified_profile_size(): void
     {
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert([
@@ -1257,10 +1289,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'weight' => 20,
             'size' => 'medium',
         ])
-            ->assertOk()
-            ->assertJsonPath('pet.size', 'medium');
+            ->assertUnprocessable()->assertJsonValidationErrors(['weight', 'size']);
 
-        $this->assertNull(DB::table('pets')->where('pet_id', 502)->value('clinic_verified_fields'));
+        $this->assertDatabaseHas('pets', ['pet_id' => 502, 'weight' => 8, 'size' => 'small']);
+        $this->assertSame(['size'], json_decode(DB::table('pets')->where('pet_id', 502)->value('clinic_verified_fields'), true));
     }
 
     public function test_walk_in_requires_valid_distinct_common_concerns(): void

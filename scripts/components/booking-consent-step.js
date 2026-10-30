@@ -55,15 +55,16 @@ export function initBookingConsentStep() {
       const serviceSelection = step3Selections.find((s) => s.petId === pet.id) || {};
 
       return {
-        pet_id: isNaN(Number(pet.id)) ? undefined : Number(pet.id),  // only send if it's a real DB id
-        pet_name: pet.petName,
-        species: pet.petType,
-        breed: pet.breed || null,
-        birthdate: pet.birthdate || null,
-        size: normalizeSizeForApi(pet.size),
-        fur_type: pet.furType?.trim() || null,
-        ...getPetWeightSubmission(pet),
-        medical_conditions: pet.medicalNotes || null,
+        ...(/^[1-9]\d*$/.test(String(pet.id)) ? { pet_id: Number(pet.id) } : {
+          pet_name: pet.petName,
+          species: pet.petType,
+          breed: pet.breed || null,
+          birthdate: pet.birthdate || null,
+          size: normalizeSizeForApi(pet.size),
+          fur_type: pet.furType?.trim() || null,
+          ...getPetWeightSubmission(pet),
+          medical_conditions: pet.medicalNotes || null,
+        }),
         special_instructions: reviewPet?.specialInstructions || null,
         grooming_preference: serviceSelection.groomingPreference || null,
         haircut_requested: serviceSelection.haircutRequested === true,

@@ -11,12 +11,9 @@ use Illuminate\Validation\ValidationException;
 
 class ValidBreedCoat implements DataAwareRule, ValidationRule
 {
-    // Run for missing and nullable values as well as supplied coat choices.
-    public bool $implicit = true;
-
     private array $data = [];
 
-    public function __construct(private bool $allowExistingPetSelection = false) {}
+    public function __construct(private bool $allowExistingPetSelection = false, private ?Pet $existingPet = null) {}
 
     /** Validate against the already-loaded profile, without querying inside pet loops. */
     public static function validatedCoat(array $data, ?Pet $pet = null, string $attribute = 'fur_type'): ?string
@@ -27,7 +24,7 @@ class ValidBreedCoat implements DataAwareRule, ValidationRule
         $breedChanged = $pet && $normalize($breed) !== $normalize($pet->breed);
         $coat = $data['fur_type'] ?? $pet?->fur_type;
 
-        if ($pet && ! $breedChanged && empty($data['fur_type'])) {
+        if ($pet && ! $breedChanged && (! array_key_exists('fur_type', $data) || $data['fur_type'] === $pet->fur_type)) {
             return $pet->fur_type;
         }
 
@@ -53,15 +50,16 @@ class ValidBreedCoat implements DataAwareRule, ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         [$breed, $species] = $this->relatedBreedAndSpecies($attribute);
+        $selection = preg_match('/^pets\.(\d+)\.fur_type$/', $attribute, $matches)
+            ? ($this->data['pets'][(int) $matches[1]] ?? []) : $this->data;
+        // Selection is resolved and validated against the owner/profile by the controller.
+        if ($this->allowExistingPetSelection && ! empty($selection['pet_id'])) return;
+        if ($this->existingPet && $value === $this->existingPet->fur_type
+            && $breed === $this->existingPet->breed
+            && \App\Support\PetInformation::matches('species', $species, $this->existingPet->species)) return;
+
 
         if ($value === null || (is_string($value) && trim($value) === '')) {
-            // Registration can select an existing profile without editing it.
-            $pet = preg_match('/^pets\.(\d+)\.fur_type$/', $attribute, $matches)
-                ? ($this->data['pets'][(int) $matches[1]] ?? []) : $this->data;
-            if ((! $this->allowExistingPetSelection || empty($pet['pet_id'])) && BreedCoatCatalog::requiresCoat($breed, $species)) {
-                $fail('Select a fur type.');
-            }
-
             return;
         }
 

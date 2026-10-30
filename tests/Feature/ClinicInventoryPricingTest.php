@@ -24,6 +24,7 @@ class ClinicInventoryPricingTest extends TestCase
             $table->string('staff_subrole')->nullable(); $table->boolean('is_active')->default(true);
         });
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id'); $table->string('pet_name'); $table->decimal('weight', 8, 2)->nullable();
         });
         Schema::create('walkins', fn (Blueprint $table) => $table->id());

@@ -1638,7 +1638,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261026-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029';
+    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

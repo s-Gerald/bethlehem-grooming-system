@@ -30,6 +30,7 @@ class ClinicCaseServiceBillingTest extends TestCase
             $table->boolean('is_active')->default(true);
         });
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->string('species');
             $table->string('size')->nullable();

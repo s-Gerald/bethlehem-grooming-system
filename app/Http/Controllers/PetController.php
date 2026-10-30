@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CustomerNotification;
 use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
@@ -11,6 +10,7 @@ use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\PetWeightSize;
+use App\Support\PetInformation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -60,10 +60,9 @@ class PetController extends Controller
     // POST /api/pets
     public function store(Request $request)
     {
-        $request->merge(['species' => $request->input('species') ?? 'Dog']);
         $data = $request->validate([
             'pet_name' => 'required|string|max:100',
-            'species' => 'nullable|string|max:50',
+            'species' => ['required', 'string', 'regex:/^(dog|cat)$/i'],
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
             'birthdate' => 'nullable|date',
@@ -83,7 +82,7 @@ class PetController extends Controller
         $pet = Pet::create([
             'user_id' => $request->user()->user_id,
             'pet_name' => $data['pet_name'],
-            'species' => $data['species'] ?? 'Dog',
+            'species' => $data['species'],
             'breed' => $data['breed'] ?? null,
             'gender' => $data['gender'] ?? null,
             'birthdate' => $data['birthdate'] ?? null,
@@ -106,16 +105,14 @@ class PetController extends Controller
     // PUT /api/pets/{id}
     public function update(Request $request, $id)
     {
-        $pet = Pet::where('pet_id', $id)
-            ->where('user_id', $request->user()->user_id)
-            ->first();
-
+        $pet = Pet::where('pet_id', $id)->where('user_id', $request->user()->user_id)->first();
         if (! $pet) {
             return response()->json(['success' => false, 'message' => 'Pet not found.'], 404);
         }
-
-        $request->merge(['species' => $request->input('species') ?? $pet->species]);
-        $data = $request->validate([
+        $attributes = PetInformation::customerAttributes($pet,
+            $request->only(array_keys(PetInformation::CUSTOMER_FIELDS)));
+        $effective = [...$pet->only(array_keys(PetInformation::FIELDS)), ...$attributes];
+        $rules = [
             'pet_name' => 'required|string|max:100',
             'species' => 'nullable|string|max:50',
             'breed' => 'nullable|string|max:100',
@@ -126,54 +123,19 @@ class PetController extends Controller
             'weight' => ['nullable', new ValidPetWeight],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
-        ]);
-        $data['pet_name'] = $this->normalizePetName($data['pet_name']);
-        $this->ensureOwnerPetNameIsUnique(
-            $request->user()->user_id,
-            $data['pet_name'],
-            $pet->pet_id,
-        );
-        $data = PetWeightSize::withComputedSize($data);
-
-        $attributes = [
-            'pet_name' => $data['pet_name'],
-            'species' => $data['species'] ?? 'Dog',
-            'breed' => $data['breed'] ?? null,
-            'gender' => $data['gender'] ?? null,
-            'birthdate' => $data['birthdate'] ?? null,
-            'size' => $data['size'] ?? null,
-            'fur_type' => $data['fur_type'] ?? null,
-            'weight' => $data['weight'] ?? null,
-            'color' => ValidPetColor::validatedColor($data, $pet),
-            'medical_conditions' => array_key_exists('medical_conditions', $data) ? $data['medical_conditions'] : $pet->medical_conditions,
         ];
-
-        $changedVerifiedFields = array_intersect(
-            $this->changedClinicVerifiableFields($pet, $attributes),
-            $this->clinicVerifiedFields($pet),
-        );
-
-        $pet->fill($attributes);
-
-        if ($changedVerifiedFields !== []) {
-            $remainingVerifiedFields = array_values(array_diff(
-                $this->clinicVerifiedFields($pet),
-                $changedVerifiedFields,
-            ));
-            $pet->clinic_verified_fields = $remainingVerifiedFields ?: null;
+        // Historical saved values are immutable, not new entries needing catalogue validation.
+        foreach ($rules as $field => $rule) {
+            if (PetInformation::matches($field, $pet->$field, $effective[$field] ?? null)) unset($rules[$field]);
         }
-
+        $validated = \Illuminate\Support\Facades\Validator::make($effective, $rules)->validate();
+        $attributes = array_replace($attributes, array_intersect_key($validated, $attributes));
+        $pet->fill($attributes);
         $pet->save();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Pet updated successfully.',
-            'pet' => $pet->fresh(),
-        ]);
+        return response()->json(['success' => true, 'message' => 'Pet updated successfully.', 'pet' => $pet]);
     }
 
-    // ── ADMIN UPDATE ──────────────────────────────────────
-    // PUT /api/admin/pets/{id}  (admin/staff — can update any customer's pet)
     public function adminUpdate(Request $request, $id)
     {
         $actor = $request->user();
@@ -200,7 +162,7 @@ class PetController extends Controller
             'is_deceased' => 'nullable|boolean',
             'deceased_date' => 'nullable|date',
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
-            'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
+            'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(existingPet: $pet)],
             'weight' => ['nullable', new ValidPetWeight],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
@@ -214,7 +176,7 @@ class PetController extends Controller
                 $pet->unregistered_customer_id,
             );
         }
-        $data = PetWeightSize::withComputedSize($data);
+        $data = PetWeightSize::withComputedSizeForUpdate($data, $pet);
 
         $attributes = [
             'pet_name' => $data['pet_name'],
@@ -259,17 +221,6 @@ class PetController extends Controller
 
             $pet->save();
 
-            if ($pet->user_id) {
-                CustomerNotification::create([
-                    'user_id' => $pet->user_id,
-                    'pet_id' => $pet->pet_id,
-                    'type' => CustomerNotification::TYPE_PET_INFORMATION_UPDATED,
-                    'message' => "Information for {$pet->pet_name} has been updated by Bethlehem Animal Clinic.",
-                    'is_read' => false,
-                    'created_at' => now(),
-                ]);
-            }
-
             return $pet->fresh();
         });
 
@@ -302,10 +253,9 @@ class PetController extends Controller
             return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
         }
 
-        $request->merge(['species' => $request->input('species') ?? 'Dog']);
         $data = $request->validate([
             'pet_name' => 'required|string|max:100',
-            'species' => 'nullable|string|max:50',
+            'species' => ['required', 'string', 'regex:/^(dog|cat)$/i'],
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
             'birthdate' => 'nullable|date',
@@ -332,7 +282,7 @@ class PetController extends Controller
             'user_id' => $user?->user_id,
             'unregistered_customer_id' => $unregisteredCustomer?->id,
             'pet_name' => $data['pet_name'],
-            'species' => $data['species'] ?? 'Dog',
+            'species' => $data['species'],
             'breed' => $data['breed'] ?? null,
             'gender' => $data['gender'] ?? null,
             'birthdate' => $data['birthdate'] ?? null,
@@ -447,7 +397,7 @@ class PetController extends Controller
                     return false;
                 }
 
-                return ! $this->clinicFieldValuesMatch(
+                return ! PetInformation::matches(
                     $field,
                     $pet->getOriginal($field),
                     $attributes[$field],
@@ -456,27 +406,4 @@ class PetController extends Controller
         ));
     }
 
-    private function clinicFieldValuesMatch(
-        string $field,
-        mixed $original,
-        mixed $updated,
-    ): bool {
-        if ($field === 'weight') {
-            if (($original === null || $original === '')
-                && ($updated === null || $updated === '')) {
-                return true;
-            }
-
-            return is_numeric($original)
-                && is_numeric($updated)
-                && abs((float) $original - (float) $updated) < 0.001;
-        }
-
-        $normalize = static fn (mixed $value): ?string => $value === null
-            || trim((string) $value) === ''
-                ? null
-                : trim((string) $value);
-
-        return $normalize($original) === $normalize($updated);
-    }
 }

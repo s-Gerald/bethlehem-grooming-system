@@ -3,11 +3,67 @@
 namespace App\Models;
 
 use App\Support\PetWeightSize;
+use App\Support\PetInformation;
 use Illuminate\Database\Eloquent\Model;
 
 class Pet extends Model
 {
-    use \App\Models\Concerns\RecordsActivityAtomically;
+    use \App\Models\Concerns\RecordsActivityAtomically {
+        save as private saveWithActivity;
+    }
+
+    public function save(array $options = [])
+    {
+        if (! $this->exists) {
+            $this->customer_locked_fields = PetInformation::lockedFields($this);
+            return $this->saveWithActivity($options);
+        }
+        if (array_intersect_key($this->getDirty(), PetInformation::FIELDS) === []
+            && ! $this->isDirty('clinic_verified_fields')) {
+            return $this->saveWithActivity($options);
+        }
+        $save = function () use ($options) {
+            $actor = auth()->user();
+            $changes = $this->getDirty();
+            if ($this->exists) {
+                $current = static::whereKey($this->getKey())->lockForUpdate()->firstOrFail();
+                $verified = $this->clinic_verified_fields ?? [];
+                if ($actor?->role === 'customer') {
+                    abort_unless((int) $current->user_id === (int) $actor->user_id, 403);
+                    $changes = PetInformation::customerAttributes($current, $changes);
+                }
+                $this->setRawAttributes($current->getAttributes(), true);
+                $this->setRawAttributes([...$current->getAttributes(), ...$changes]);
+                if (array_key_exists('clinic_verified_fields', $changes)) {
+                    $this->clinic_verified_fields = array_values(array_unique([
+                        ...($current->clinic_verified_fields ?? []), ...$verified,
+                    ]));
+                }
+                $this->customer_locked_fields = array_values(array_unique([
+                    ...PetInformation::lockedFields($current), ...PetInformation::lockedFields($this),
+                ]));
+            }
+            $fields = array_values(array_filter(array_keys(PetInformation::FIELDS),
+                fn ($field) => $this->isDirty($field)
+                    && ! PetInformation::matches($field, $this->getOriginal($field), $this->$field)));
+            $oldName = $this->getOriginal('pet_name');
+            $notify = $this->exists && $this->user_id && $fields !== []
+                && in_array($actor?->role, ['admin', 'staff'], true);
+            $saved = $this->saveWithActivity($options);
+            if ($saved && $notify) {
+                CustomerNotification::create([
+                    'user_id' => $this->user_id, 'pet_id' => $this->pet_id,
+                    'type' => CustomerNotification::TYPE_PET_INFORMATION_UPDATED,
+                    'message' => PetInformation::changeMessage($this, $fields, $oldName),
+                    'is_read' => false, 'created_at' => now(),
+                ]);
+            }
+
+            return $saved;
+        };
+
+        return $this->getConnection()->transactionLevel() ? $save() : $this->getConnection()->transaction($save);
+    }
 
     public const CLINIC_VERIFIABLE_FIELDS = [
         'breed',
@@ -46,6 +102,7 @@ class Pet extends Model
     protected $casts = [
         'weight' => 'float',
         'clinic_verified_fields' => 'array',
+        'customer_locked_fields' => 'array',
     ];
 
     public function hasClinicVerifiedSize(): bool
@@ -62,23 +119,11 @@ class Pet extends Model
 
     public function confirmClinicSize(string $size): void
     {
-        $sizeChanged = $this->size !== $size;
         $this->size = $size;
         $this->clinic_verified_fields = array_values(array_unique([
             ...($this->clinic_verified_fields ?? []), 'size',
         ]));
         $this->save();
-
-        if ($sizeChanged && $this->user_id) {
-            CustomerNotification::create([
-                'user_id' => $this->user_id,
-                'pet_id' => $this->pet_id,
-                'type' => CustomerNotification::TYPE_PET_INFORMATION_UPDATED,
-                'message' => "Information for {$this->pet_name} has been updated by Bethlehem Animal Clinic.",
-                'is_read' => false,
-                'created_at' => now(),
-            ]);
-        }
     }
 
     public static function normalizeName(mixed $name): string

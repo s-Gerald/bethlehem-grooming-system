@@ -15,6 +15,7 @@ class BreedCoatMigrationTest extends TestCase
 
         Schema::dropIfExists('pets');
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->string('species');
             $table->string('breed')->nullable();

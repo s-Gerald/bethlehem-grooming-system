@@ -2,9 +2,9 @@ let adminCustomerPetFieldModulesReady;
 function loadAdminCustomerPetFields() {
   return adminCustomerPetFieldModulesReady ??= Promise.all([
   import("../services/booking-draft-service.js?registration=fcfs-20261027-v1"),
-  import("./breed-combobox.js?pet-fields=20261026-v1"),
-  import("./breed-coat-catalogue.js?pet-fields=20261026-v1"),
-  import("./breed-coat-combobox.js?pet-fields=20261026-v1"),
+  import("./breed-combobox.js?pet-fields=20261030-v1"),
+  import("./breed-coat-catalogue.js?pet-fields=20261030-v1"),
+  import("./breed-coat-combobox.js?pet-fields=20261030-v1"),
   import("./fixed-option-combobox.js"),
   import("./color-combobox.js?pet-care=20261027-v1"),
   import("./pet-weight-size.js?v=pet-weight-size-20261011-v3"),
@@ -767,7 +767,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261026-v1&pet-care=20261027-v1');
+            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -913,7 +913,7 @@ function adminCustomers() {
       tools.initializeWeightField(elements.weight);
       elements.weight.value = tools.formatSavedWeight(p.weight);
       this.syncPetWeightAndSize({ clearManualSize: true });
-      if (!tools.getSizeForWeight(species, elements.weight.value)) this.setStoredPetSize(p.size);
+      if (p.sizeVerified || !tools.getSizeForWeight(species, elements.weight.value)) this.setStoredPetSize(p.size);
 
       await tools.breedCoatCatalogueReady;
       controls.furType.update({ preserveValue: true, autoSelect: false });
@@ -1057,6 +1057,7 @@ function adminCustomers() {
     validatePetEditPayload(payload) {
       const { tools, elements, controls } = adminCustomerPetFields;
       if (!payload.pet_name) return "Pet name is required.";
+      if (this.petModal.creating && !payload.species) return "Species is required.";
 
       const colorMessage = controls.color.getValidationMessage();
       if (colorMessage) return colorMessage;
@@ -1083,7 +1084,7 @@ function adminCustomers() {
     },
 
     normalizePetSpecies(value) {
-      return String(value || "").trim().toLowerCase() === "cat" ? "Cat" : "Dog";
+      return ({ dog: "Dog", cat: "Cat" })[String(value || "").trim().toLowerCase()] || "";
     },
 
     setStoredPetSize(storedSize) {

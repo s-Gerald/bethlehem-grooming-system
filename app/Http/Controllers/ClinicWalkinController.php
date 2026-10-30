@@ -192,7 +192,6 @@ class ClinicWalkinController extends Controller
         return app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($request, $clinicSequence) {
             app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
             $data = $request->validated();
-            $data = PetWeightSize::withComputedSize($data);
 
             [$user, $unregisteredCustomer, $owner] = $this->resolveWalkInOwner($data);
 
@@ -379,6 +378,8 @@ class ClinicWalkinController extends Controller
             }
         }
 
+        $data = PetWeightSize::withComputedSize($data);
+
         return Pet::create([
             'user_id' => $user?->user_id,
             ...($unregisteredCustomer ? ['unregistered_customer_id' => $unregisteredCustomer->id] : []),
@@ -404,7 +405,7 @@ class ClinicWalkinController extends Controller
     private function updateWalkInPetDetails(Pet $pet, array $data): Pet
     {
         $data['color'] ??= $pet->color;
-        $data = PetWeightSize::withComputedSize([...$data, 'species' => $pet->species, 'weight' => $data['weight'] ?? $pet->weight]);
+        $data = PetWeightSize::withComputedSizeForUpdate([...$data, 'species' => $pet->species], $pet);
         $pet->update([
             'breed' => $data['breed'] ?? $pet->breed,
             'gender' => $data['gender'] ?? $pet->gender,
@@ -415,13 +416,13 @@ class ClinicWalkinController extends Controller
                 : $pet->neutered_date,
             'fur_type' => ValidBreedCoat::validatedCoat($data, $pet),
             'weight' => $data['weight'] ?? $pet->weight,
+            'size' => $data['size'] ?? $pet->size,
+            'clinic_verified_fields' => ! empty($data['size'])
+                ? array_values(array_unique([...($pet->clinic_verified_fields ?? []), 'size']))
+                : $pet->clinic_verified_fields,
             'color' => ValidPetColor::validatedColor($data, $pet),
             'medical_conditions' => $data['medical_conditions'] ?? $pet->medical_conditions,
         ]);
-
-        if (! empty($data['size'])) {
-            $pet->confirmClinicSize($data['size']);
-        }
 
         return $pet;
     }

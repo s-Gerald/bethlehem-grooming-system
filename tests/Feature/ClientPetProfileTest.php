@@ -31,6 +31,15 @@ class ClientPetProfileTest extends TestCase
                 $id = $this->postJson($url, [...$payload, 'color' => '  White   and  Brown  '])->assertCreated()
                     ->assertJsonPath('pet.color', 'White and Brown')->json('pet.pet_id');
                 $edit = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
+                if ($role === 'customer') {
+                    $this->putJson($edit, $payload)->assertOk()->assertJsonPath('pet.color', 'White and Brown');
+                    $this->putJson($edit, [...$payload, 'color' => 'Brown/White'])->assertUnprocessable()->assertJsonValidationErrors('color');
+                    DB::table('pets')->where('pet_id', $id)->update(['color' => 'Brown123']);
+                    $this->putJson($edit, [...$payload, 'color' => 'Brown123'])->assertOk()->assertJsonPath('pet.color', 'Brown123');
+                    $this->putJson($edit, [...$payload, 'color' => null, 'medical_conditions' => null])
+                        ->assertUnprocessable()->assertJsonValidationErrors(['color', 'medical_conditions']);
+                    continue;
+                }
                 $this->putJson($edit, ['pet_name' => "$role renamed", 'species' => 'Dog'])->assertOk()
                     ->assertJsonPath('pet.color', 'White and Brown')
                     ->assertJsonPath('pet.medical_conditions', 'Legacy heart condition; shampoo allergy');
@@ -47,11 +56,10 @@ class ClientPetProfileTest extends TestCase
             Schema::drop('users');
         }
     }
-    public function test_customer_admin_and_staff_create_and_edit_enforce_conditional_fur(): void
+    public function test_customer_admin_and_staff_allow_optional_fur_and_validate_explicit_choices(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->increments('user_id');
-            $table->string('role');
+            $table->increments('user_id'); $table->string('role');
         });
         DB::table('users')->insert(['user_id' => 10, 'role' => 'customer']);
         try {
@@ -60,25 +68,21 @@ class ClientPetProfileTest extends TestCase
                 $createUrl = $role === 'customer' ? '/api/pets' : '/api/admin/customer-pets/registered/10';
                 foreach ([['Dog', ' golden   retriever ', 'Wavy Coat'], ['Cat', 'Bengal', 'Longhair Coat'], ['Dog', 'Beagle', 'Smooth Short Coat']] as $index => [$species, $breed, $coat]) {
                     $payload = ['pet_name' => "$role named $index", 'species' => $species, 'breed' => $breed];
-                    foreach ([[], ['fur_type' => null], ['fur_type' => 'Unsupported'], ['pet_id' => 999]] as $invalid) {
-                        $this->postJson($createUrl, [...$payload, ...$invalid])->assertUnprocessable()->assertJsonValidationErrors('fur_type');
-                    }
-                    $id = $this->postJson($createUrl, [...$payload, 'fur_type' => $coat])->assertCreated()->json('pet.pet_id');
+                    $this->postJson($createUrl, [...$payload, 'fur_type' => 'Unsupported'])->assertUnprocessable()->assertJsonValidationErrors('fur_type');
+                    $id = $this->postJson($createUrl, $payload)->assertCreated()->assertJsonPath('pet.fur_type', null)->json('pet.pet_id');
                     $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
-                    $this->putJson($editUrl, $payload)->assertUnprocessable()->assertJsonPath('errors.fur_type.0', 'Select a fur type.');
-                    $this->assertDatabaseHas('pets', ['pet_id' => $id, 'fur_type' => $coat]);
                     $this->putJson($editUrl, [...$payload, 'fur_type' => $coat])->assertOk()->assertJsonPath('pet.fur_type', $coat);
-                    $this->putJson($editUrl, [...$payload, 'breed' => 'My custom breed', 'fur_type' => null])
-                        ->assertOk()->assertJsonPath('pet.fur_type', null);
+                    $change = $this->putJson($editUrl, [...$payload, 'breed' => 'My custom breed', 'fur_type' => null]);
+                    if ($role === 'customer') $change->assertUnprocessable()->assertJsonValidationErrors(['breed', 'fur_type']);
+                    else $change->assertOk()->assertJsonPath('pet.fur_type', null);
                 }
-                foreach (['My custom breed', 'Mixed Breed / Aspin', 'Unknown Breed'] as $index => $breed) {
-                    $this->postJson($createUrl, ['pet_name' => "$role optional $index", 'species' => 'Dog', 'breed' => $breed])
-                        ->assertCreated()->assertJsonPath('pet.fur_type', null);
+                foreach (['My custom breed', 'Mixed Breed / Aspin', 'Unknown Breed', null] as $index => $breed) {
+                    $this->postJson($createUrl, ['pet_name' => "$role optional $index", 'species' => 'Dog', 'breed' => $breed, 'fur_type' => 'Unknown Fur Type'])
+                        ->assertCreated()->assertJsonPath('pet.fur_type', 'Unknown Fur Type');
                 }
+                $this->postJson($createUrl, ['pet_name' => "$role no species"])->assertUnprocessable()->assertJsonValidationErrors('species');
             }
-        } finally {
-            Schema::drop('users');
-        }
+        } finally { Schema::drop('users'); }
     }
 
     protected function setUp(): void
@@ -87,8 +91,9 @@ class ClientPetProfileTest extends TestCase
         $this->createRegistrationAvailability();
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
-            $table->unsignedInteger('user_id');
+            $table->unsignedInteger('user_id')->nullable();
             $table->unsignedBigInteger('unregistered_customer_id')->nullable();
             $table->string('pet_name');
             $table->string('species')->nullable();
@@ -196,7 +201,7 @@ class ClientPetProfileTest extends TestCase
                     'weight' => $weight, 'size' => $size === 'small' ? 'medium' : 'small'];
                 $id = $this->postJson($createUrl, $payload)->assertCreated()->assertJsonPath('pet.size', $size)->json('pet.pet_id');
                 $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
-                $this->putJson($editUrl, $payload)->assertOk()->assertJsonPath('pet.size', $size);
+                $this->putJson($editUrl, [...$payload, 'size' => $size])->assertOk()->assertJsonPath('pet.size', $size);
                 $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => $weight, 'size' => $size]);
             }
             foreach ($cases['invalid_weights'] as $index => $weight) {
@@ -212,9 +217,10 @@ class ClientPetProfileTest extends TestCase
                 ->assertOk()->assertJsonPath('pet.size', 'large');
             $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
             $this->putJson($editUrl, [...$unknown, 'weight' => 4.25])
-                ->assertOk()->assertJsonPath('pet.size', 'small');
-            $this->putJson($editUrl, $unknown)->assertOk()
-                ->assertJsonPath('pet.weight', null)->assertJsonPath('pet.size', 'large');
+                ->assertOk()->assertJsonPath('pet.size', $role === 'customer' ? 'large' : 'small');
+            $clear = $this->putJson($editUrl, $unknown);
+            if ($role === 'customer') $clear->assertUnprocessable()->assertJsonValidationErrors('weight');
+            else $clear->assertOk()->assertJsonPath('pet.weight', null)->assertJsonPath('pet.size', 'large');
         }
         Schema::drop('users');
     }
@@ -372,43 +378,47 @@ class ClientPetProfileTest extends TestCase
         ]);
     }
 
-    public function test_customer_can_edit_gender_birthdate_and_connected_pet_fields(): void
+    public function test_customer_completes_blank_fields_once_and_cannot_replace_or_clear_them(): void
     {
         $this->authenticateCustomer(10);
+        $id = $this->postJson('/api/pets', ['pet_name' => 'Andrew', 'species' => 'Dog'])
+            ->assertCreated()->json('pet.pet_id');
+        $this->putJson("/api/pets/$id", ['breed' => 'Golden Retriever'])
+            ->assertOk()->assertJsonPath('pet.pet_name', 'Andrew')->assertJsonPath('pet.fur_type', null);
+        $this->putJson("/api/pets/$id", ['fur_type' => 'Unknown Fur Type', 'weight' => 12, 'color' => 'White',
+            'gender' => 'male', 'birthdate' => '2020-01-01', 'medical_conditions' => 'Shampoo allergy'])
+            ->assertOk()->assertJsonPath('pet.size', 'medium');
+        foreach (['pet_name' => 'Andy', 'species' => 'Cat', 'breed' => 'Beagle', 'fur_type' => null,
+            'weight' => 14, 'size' => 'large', 'gender' => 'female', 'birthdate' => null,
+            'color' => null, 'medical_conditions' => null] as $field => $value) {
+            $this->putJson("/api/pets/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'breed' => 'Golden Retriever', 'fur_type' => 'Unknown Fur Type', 'weight' => 12]);
+        $this->assertDatabaseCount('customer_notifications', 0);
+    }
 
-        DB::table('pets')->insert([
-            'pet_id' => 101,
-            'user_id' => 10,
-            'pet_name' => 'Mochi',
-            'species' => 'Dog',
-            'breed' => 'Beagle',
-            'fur_type' => 'Smooth Short Coat',
-            'weight' => 8.5,
-            'size' => 'small',
-        ]);
+    public function test_new_pets_require_explicit_species(): void
+    {
+        $this->authenticateCustomer(10);
+        foreach ([[], ['species' => null], ['species' => '']] as $data) {
+            $this->postJson('/api/pets', ['pet_name' => 'Andrew', ...$data])->assertUnprocessable()->assertJsonValidationErrors('species');
+        }
+    }
 
-        $this->putJson('/api/pets/101', [
-            'pet_name' => 'mochi',
-            'species' => 'Cat',
-            'breed' => 'Persian',
-            'gender' => 'female',
-            'birthdate' => '2022-03-14',
-            'fur_type' => 'Long Dense Coat',
-            'weight' => 6,
-        ])
-            ->assertOk()
-            ->assertJsonPath('pet.pet_name', 'Mochi')
-            ->assertJsonPath('pet.gender', 'female')
-            ->assertJsonPath('pet.birthdate', '2022-03-14')
-            ->assertJsonPath('pet.fur_type', 'Long Dense Coat')
-            ->assertJsonPath('pet.size', 'medium');
-
-        $this->assertDatabaseHas('pets', [
-            'pet_id' => 101,
-            'gender' => 'female',
-            'birthdate' => '2022-03-14',
-            'size' => 'medium',
-        ]);
+    public function test_stale_customer_model_cannot_replace_a_concurrently_completed_field(): void
+    {
+        $this->authenticateCustomer(10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog']);
+        $first = \App\Models\Pet::find(101);
+        $stale = \App\Models\Pet::find(101);
+        $first->update(['breed' => 'Beagle']);
+        try {
+            $stale->update(['breed' => 'Persian']);
+            $this->fail('A stale submission must not replace saved information.');
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            $this->assertArrayHasKey('breed', $error->errors());
+        }
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'breed' => 'Beagle']);
     }
 
     public function test_staff_pet_edit_uses_the_customer_connected_field_rules(): void
@@ -481,7 +491,7 @@ class ClientPetProfileTest extends TestCase
             'user_id' => 10,
             'pet_id' => 101,
             'type' => 'pet_information_updated',
-            'message' => 'Information for Mochi has been updated by Bethlehem Animal Clinic.',
+             'message' => "Bethlehem Animal Clinic updated Mochi's species, breed, fur type, gender, birthdate, weight, size, neutered status, and neutered date.",
             'is_read' => false,
         ]);
 
@@ -498,86 +508,103 @@ class ClientPetProfileTest extends TestCase
             );
     }
 
-    public function test_customer_edit_clears_only_changed_clinic_verifications(): void
+    public function test_either_verified_measurement_protects_both_fields_even_when_blank(): void
     {
         $this->authenticateCustomer(10);
-
-        DB::table('pets')->insert([
-            'pet_id' => 101,
-            'user_id' => 10,
-            'pet_name' => 'Mochi',
-            'species' => 'Dog',
-            'breed' => 'Beagle',
-            'fur_type' => 'Smooth Short Coat',
-            'weight' => 8.5,
-            'size' => 'small',
-            'clinic_verified_fields' => json_encode([
-                'breed',
-                'fur_type',
-                'weight',
-                'size',
-            ], JSON_THROW_ON_ERROR),
-        ]);
-
-        $this->putJson('/api/pets/101', [
-            'pet_name' => 'Mochi',
-            'species' => 'Dog',
-            'breed' => 'Pug',
-            'fur_type' => 'Smooth Short Coat',
-            'weight' => 8.5,
-            'size' => 'small',
-        ])
-            ->assertOk()
-            ->assertJsonPath('pet.breed', 'Pug')
-            ->assertJsonPath('pet.clinic_verified_fields', [
-                'fur_type',
-                'weight',
-                'size',
-            ]);
-
-        $this->assertSame(
-            ['fur_type', 'weight', 'size'],
-            json_decode(
-                DB::table('pets')
-                    ->where('pet_id', 101)
-                    ->value('clinic_verified_fields'),
-                true,
-                512,
-                JSON_THROW_ON_ERROR,
-            ),
-        );
+        foreach (['weight', 'size'] as $index => $verified) {
+            $id = 101 + $index;
+            DB::table('pets')->insert(['pet_id' => $id, 'user_id' => 10, 'pet_name' => "Pet $id", 'species' => 'Dog',
+                'clinic_verified_fields' => json_encode([$verified])]);
+            foreach (['weight' => 12, 'size' => 'medium'] as $field => $value) {
+                $this->putJson("/api/pets/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
+            }
+            $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => null, 'size' => null]);
+        }
     }
 
-    public function test_weight_change_derives_size_and_clears_changed_verification(): void
+    public function test_staff_changes_notify_once_and_unchanged_or_rolled_back_updates_do_not_notify(): void
+    {
+        $this->authenticateUser(20, 'staff');
+        $pet = \App\Models\Pet::create(['user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog']);
+        $this->assertDatabaseCount('customer_notifications', 0);
+        $pet->update(['weight' => 12, 'size' => 'medium']);
+        $this->assertDatabaseHas('customer_notifications', ['message' => "Bethlehem Animal Clinic updated Andrew's weight and size."]);
+        $pet->update(['weight' => 12, 'size' => 'medium']);
+        $pet->update(['is_archived' => true]);
+        $this->assertDatabaseCount('customer_notifications', 1);
+        $pet->update(['pet_name' => 'Andy']);
+        $this->assertDatabaseHas('customer_notifications', ['message' => "Bethlehem Animal Clinic changed your pet's name from Andrew to Andy."]);
+        DB::beginTransaction();
+        $pet->update(['color' => 'White']);
+        DB::rollBack();
+        $this->assertDatabaseCount('customer_notifications', 2);
+        $this->assertDatabaseHas('pets', ['pet_id' => $pet->pet_id, 'color' => null]);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('clearedProfileCases')]
+    public function test_customer_cannot_reenter_a_field_after_staff_clears_its_saved_value(bool $legacy): void
     {
         $this->authenticateCustomer(10);
+        if ($legacy) {
+            DB::table('pets')->insert(['pet_id' => 201, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog', 'color' => 'White']);
+            $id = 201;
+        } else {
+            $id = $this->postJson('/api/pets', ['pet_name' => 'Andrew', 'species' => 'Dog', 'color' => 'White'])
+                ->assertCreated()->json('pet.pet_id');
+        }
+        $this->authenticateUser(20, 'staff');
+        $this->putJson("/api/admin/pets/$id", ['pet_name' => 'Andrew', 'species' => 'Dog', 'color' => null])->assertOk();
+        $this->authenticateCustomer(10);
+        $this->putJson("/api/pets/$id", ['color' => 'Black'])->assertUnprocessable()->assertJsonValidationErrors('color');
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'color' => null]);
+        $this->putJson("/api/pets/$id", ['medical_conditions' => 'Gentle handling'])->assertOk();
+    }
 
-        DB::table('pets')->insert([
-            'pet_id' => 101,
-            'user_id' => 10,
-            'pet_name' => 'Rigby',
-            'species' => 'Dog',
-            'weight' => 8,
-            'size' => 'small',
-            'clinic_verified_fields' => json_encode(['size'], JSON_THROW_ON_ERROR),
-        ]);
+    public static function clearedProfileCases(): array
+    {
+        return ['new pet' => [false], 'legacy profile without lock metadata' => [true]];
+    }
 
-        $this->putJson('/api/pets/101', [
-            'pet_name' => 'Rigby',
-            'species' => 'Dog',
-            'weight' => 12,
-        ])->assertOk()
-            ->assertJsonPath('pet.size', 'medium')
-            ->assertJsonPath('pet.clinic_verified_fields', null);
+    public function test_staff_unchanged_verified_size_is_preserved_without_a_notification(): void
+    {
+        $this->authenticateUser(20, 'staff');
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog',
+            'weight' => 12, 'size' => 'small', 'clinic_verified_fields' => json_encode(['size'])]);
+        $this->putJson('/api/admin/pets/101', ['pet_name' => 'Andrew', 'species' => 'Dog', 'weight' => 12, 'size' => 'small'])
+            ->assertOk()->assertJsonPath('pet.size', 'small');
+        $this->assertDatabaseCount('customer_notifications', 0);
+    }
 
-        $this->putJson('/api/pets/101', [
-            'pet_name' => 'Rigby',
-            'species' => 'Dog',
-            'weight' => 12,
-            'size' => 'medium',
-        ])->assertOk()
-            ->assertJsonPath('pet.size', 'medium')
-            ->assertJsonPath('pet.clinic_verified_fields', null);
+    public function test_stale_staff_update_preserves_a_concurrent_clinic_verification(): void
+    {
+        $this->authenticateUser(20, 'staff');
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog', 'weight' => 12, 'size' => 'small']);
+        $stale = \App\Models\Pet::find(101);
+        $staleVerification = \App\Models\Pet::find(101);
+        \App\Models\Pet::find(101)->confirmClinicSize('small');
+        $stale->breed = 'Beagle';
+        $stale->clinic_verified_fields = ['breed'];
+        $stale->save();
+        $this->assertSame(['size', 'breed'], \App\Models\Pet::find(101)->clinic_verified_fields);
+        $staleVerification->clinic_verified_fields = ['fur_type'];
+        $staleVerification->save();
+        $this->assertSame(['size', 'breed', 'fur_type'], \App\Models\Pet::find(101)->clinic_verified_fields);
+        $this->assertDatabaseCount('customer_notifications', 1);
+    }
+
+    public function test_staff_multi_field_and_name_corrections_use_one_notification_and_skip_unregistered_pets(): void
+    {
+        $this->authenticateUser(20, 'staff');
+        $pet = \App\Models\Pet::create(['user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog']);
+        $pet->update(['breed' => 'Beagle', 'fur_type' => 'Unknown Fur Type', 'color' => 'White']);
+        $this->assertDatabaseCount('customer_notifications', 1);
+        $this->assertDatabaseHas('customer_notifications', ['message' => "Bethlehem Animal Clinic updated Andrew's breed, fur type, and color."]);
+        $pet->update(['pet_name' => 'Andy', 'weight' => 8, 'size' => 'small']);
+        $this->assertDatabaseCount('customer_notifications', 2);
+        $this->assertDatabaseHas('customer_notifications', ['message' => "Bethlehem Animal Clinic changed your pet's name from Andrew to Andy and updated weight and size."]);
+        $offline = \App\Models\Pet::create(['pet_name' => 'Offline pet', 'species' => 'Dog']);
+        $offline->update(['color' => 'Black']);
+        $this->assertDatabaseCount('customer_notifications', 2);
     }
 
     public function test_pet_filtered_history_excludes_sibling_pets_and_their_services(): void

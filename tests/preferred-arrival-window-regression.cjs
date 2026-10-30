@@ -93,6 +93,10 @@ async function main() {
   assert.equal(groomingPayload.booking_date, undefined);
   assert.equal(groomingPayload.window_id, undefined);
   assert.equal(groomingPayload.pets[0].special_instructions, 'Keep these notes');
+  assert.equal(groomingPayload.pets[0].pet_id, 101);
+  for (const field of ['pet_name', 'species', 'breed', 'fur_type', 'weight', 'size', 'birthdate', 'medical_conditions']) {
+    assert.equal(field in groomingPayload.pets[0], false, 'Saved selections only submit a profile reference');
+  }
   assert.equal(groomingPayload.pets[0].services.package, 'cat_full_grooming');
   assert.equal(JSON.parse(grooming.storage.get('bookingConfirmation')).submitted_at, '2026-10-26T09:00:00+08:00');
   grooming.storage.delete('bookingConfirmation');

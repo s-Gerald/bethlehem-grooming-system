@@ -54,7 +54,7 @@ class BookingController extends Controller
         GroomingServicePriceResolver $servicePrices,
         CustomerPreRegistrationAccessService $preRegistrationAccess,
     ) {
-        $validated = $request->validate([
+        $rules = [
             'service_day' => 'nullable|date_format:Y-m-d',
             'number_of_pets' => 'required|integer|min:1|max:'.self::MAX_PETS_PER_BOOKING,
             'special_notes' => 'nullable|string',
@@ -62,7 +62,7 @@ class BookingController extends Controller
             'pets' => 'required|array|min:1|max:'.self::MAX_PETS_PER_BOOKING,
             'pets.*.pet_id' => 'nullable|integer|exists:pets,pet_id',
             'pets.*.pet_name' => 'required|string|max:100',
-            'pets.*.species' => 'nullable|string|max:50',
+            'pets.*.species' => ['required_without:pets.*.pet_id', 'string', 'regex:/^(dog|cat)$/i'],
             'pets.*.breed' => 'nullable|string|max:100',
             'pets.*.birthdate' => 'nullable|date',
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
@@ -78,10 +78,22 @@ class BookingController extends Controller
             'pets.*.services.package' => 'nullable|string',
             'pets.*.services.ala_carte' => 'nullable|array',
             'pets.*.services.ala_carte.*' => 'nullable|string',
-        ]);
+        ];
+        // Saved pets are references. Validate supplied profile differences after ownership resolution,
+        // without rejecting unchanged legacy values against today's creation rules.
+        foreach ((array) $request->input('pets', []) as $index => $petData) {
+            if (is_array($petData) && ! empty($petData['pet_id'])) {
+                foreach (array_keys(\App\Support\PetInformation::FIELDS) as $field) {
+                    $type = in_array($field, ['is_neutered', 'is_deceased'], true) ? 'boolean'
+                        : ($field === 'weight' ? 'numeric' : 'string');
+                    $rules["pets.{$index}.{$field}"] = ['nullable', $type];
+                }
+            }
+        }
+        $validated = $request->validate($rules);
 
         $validated['pets'] = array_map(
-            fn (array $pet) => PetWeightSize::withComputedSize($pet),
+            fn (array $pet) => empty($pet['pet_id']) ? PetWeightSize::withComputedSize($pet) : $pet,
             $validated['pets'],
         );
         $request->merge(['pets' => $validated['pets']]);
@@ -110,9 +122,18 @@ class BookingController extends Controller
             $date = $days->assertReviewedDay('grooming', $request->input('service_day'));
             $savedPets = Pet::where('user_id', $user->user_id)
                 ->whereIn('pet_id', array_column($request->pets, 'pet_id'))
-                ->get()->keyBy('pet_id');
+                ->where('is_archived', false)->lockForUpdate()->get()->keyBy('pet_id');
             foreach ($request->pets as $index => $petData) {
                 $savedPet = $savedPets->get($petData['pet_id'] ?? null);
+                if (! empty($petData['pet_id']) && ! $savedPet) {
+                    throw ValidationException::withMessages(["pets.{$index}.pet_id" => 'The selected pet is unavailable.']);
+                }
+                if ($savedPet) {
+                    $profile = array_filter(array_intersect_key($petData, \App\Support\PetInformation::FIELDS),
+                        fn ($value) => \App\Support\PetInformation::meaningful($value));
+                    if (isset($profile['pet_name'])) $profile['pet_name'] = Pet::normalizeName($profile['pet_name']);
+                    \App\Support\PetInformation::customerAttributes($savedPet, $profile, "pets.{$index}.");
+                }
                 $birthdate = $savedPet ? $savedPet->birthdate : ($petData['birthdate'] ?? null);
                 if ($birthdate && Carbon::parse($birthdate)->startOfDay()->addMonthsNoOverflow(6)->isAfter(Carbon::today())) {
                     throw ValidationException::withMessages([
@@ -175,32 +196,19 @@ class BookingController extends Controller
             // ── Save pets ─────────────────────────────────────
             foreach ($request->pets as $index => $petData) {
                 $pet = $savedPets->get($petData['pet_id'] ?? null);
-                $coat = ValidBreedCoat::validatedCoat($petData, $pet, "pets.{$index}.fur_type");
-                $color = ValidPetColor::validatedColor($petData, $pet, "pets.{$index}.color");
-
-                if ($pet) {
-                    $pet->update([
-                        'breed' => $petData['breed'] ?? $pet->breed,
-                        'fur_type' => $coat,
-                        'weight' => $petData['weight'] ?? $pet->weight,
-                        'size' => PetWeightSize::sizeFor($pet->species, $petData['weight'] ?? $pet->weight)
-                            ?? $petData['size'] ?? $pet->size,
-                    ]);
-                }
-
                 // Create a new pet record if none was found
                 if (! $pet) {
                     $pet = Pet::create([
                         'user_id' => $user->user_id,
                         'pet_name' => $petData['pet_name'],
-                        'species' => $petData['species'] ?? 'Dog',
+                        'species' => $petData['species'],
                         'breed' => $petData['breed'] ?? null,
                         'birthdate' => $petData['birthdate'] ?? null,
                         'weight' => $petData['weight'] ?? null,
-                        'color' => $color,
-                        'size' => PetWeightSize::sizeFor($petData['species'] ?? 'Dog', $petData['weight'] ?? null)
+                        'color' => ValidPetColor::validatedColor($petData),
+                        'size' => PetWeightSize::sizeFor($petData['species'], $petData['weight'] ?? null)
                             ?? $petData['size'] ?? null,
-                        'fur_type' => $coat,
+                        'fur_type' => ValidBreedCoat::validatedCoat($petData),
                         'medical_conditions' => $petData['medical_conditions'] ?? null,
                     ]);
                 }

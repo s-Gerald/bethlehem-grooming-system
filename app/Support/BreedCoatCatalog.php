@@ -8,14 +8,6 @@ final class BreedCoatCatalog
 {
     private static ?array $catalogue = null;
 
-    public static function requiresCoat(?string $breed, ?string $species): bool
-    {
-        $normalized = strtolower(preg_replace('/\s+/', ' ', trim((string) $breed)));
-
-        return ! in_array($normalized, ['mixed breed / aspin', 'mixed breed / puspin', 'unknown breed'], true)
-            && self::optionsFor($breed, $species) !== [];
-    }
-
     public static function all(): array
     {
         if (self::$catalogue !== null) {
@@ -42,10 +34,6 @@ final class BreedCoatCatalog
     {
         $breed = preg_replace('/\s+/', ' ', trim((string) $breed));
 
-        if ($breed === '') {
-            return [];
-        }
-
         $catalogue = self::all();
         $normalizedSpecies = strtolower(trim((string) $species));
         $speciesKey = match ($normalizedSpecies) {
@@ -63,10 +51,10 @@ final class BreedCoatCatalog
 
         foreach ($catalogue[$speciesKey] ?? [] as $catalogueBreed => $options) {
             if (strcasecmp($catalogueBreed, $breed) === 0) {
-                return array_values($options);
+                return [...array_values($options), 'Unknown Fur Type'];
             }
         }
 
-        return [];
+        return ['Unknown Fur Type'];
     }
 }

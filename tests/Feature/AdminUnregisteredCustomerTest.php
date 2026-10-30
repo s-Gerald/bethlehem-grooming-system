@@ -45,6 +45,7 @@ class AdminUnregisteredCustomerTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
             $table->unsignedBigInteger('unregistered_customer_id')->nullable();

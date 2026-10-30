@@ -1,8 +1,8 @@
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261026-v1";
-import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20261026-v1";
-import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261026-v1";
+import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
+import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20261030-v1";
+import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import {
   formatSavedWeight,
@@ -43,13 +43,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let petModalReturnFocus = null;
   let confirmationResolver = null;
   let confirmationReturnFocus = null;
-
-  const clinicVerifiedFieldLabels = {
-    breed: "Breed",
-    fur_type: "Fur Type",
-    weight: "Weight",
-    size: "Size",
-  };
 
   // ── DOM refs ─────────────────────────────────────────
   const petsGrid         = document.getElementById("petsGrid");
@@ -157,6 +150,63 @@ document.addEventListener("DOMContentLoaded", () => {
     options: [],
     displaySelectedLabel: false,
   });
+
+  const profileInputs = {
+    pet_name: document.getElementById("petName"), species: petSpecies, breed: petBreed,
+    fur_type: petFurType, gender: petGender, birthdate: petBirthdate, weight: petWeight,
+    size: petSize, color: document.getElementById("petColor"), medical_conditions: document.getElementById("petMedical"),
+  };
+  function fieldLocked(field) {
+    if (!editingPet) return false;
+    const saved = editingPet[field];
+    return ["pet_name", "species"].includes(field)
+      || (saved !== null && saved !== undefined && String(saved).trim() !== "")
+      || editingPet.customer_locked_fields?.includes(field)
+      || isClinicVerified(editingPet, field)
+      || (["weight", "size"].includes(field)
+        && ["weight", "size"].some(key => isClinicVerified(editingPet, key)));
+  }
+  function syncEditFieldLocks() {
+    Object.entries(profileInputs).forEach(([field, input]) => {
+      const locked = fieldLocked(field);
+      input.disabled = locked;
+      input.setAttribute("data-profile-locked", String(locked));
+      document.getElementById(`${input.id}Lock`)?.classList.toggle("hidden", !locked);
+    });
+    petTypeCombobox.setDisabled(fieldLocked("species"));
+    genderCombobox.setDisabled(fieldLocked("gender"));
+    breedCombobox.setDisabled(fieldLocked("breed") || !petSpecies.value);
+    breedCoatCombobox.setDisabled(fieldLocked("fur_type"));
+    sizeCombobox.setDisabled(fieldLocked("size") || !petSpecies.value
+      || (!fieldLocked("weight") && Boolean(getSizeForWeight(petSpecies.value, petWeight.value))));
+    document.getElementById("petSavedDetailsHelp")?.classList.toggle("hidden", !editingPet);
+    syncConfirmState();
+  }
+  function permittedChanges(payload) {
+    return Object.fromEntries(Object.entries(payload).filter(([field, value]) =>
+      !fieldLocked(field) && !petFieldValuesMatch(field, editingPet?.[field] ?? null, value)));
+  }
+  function syncConfirmState() {
+    if (!editingPet) { petFormSubmit.disabled = false; return; }
+    const changed = Object.entries(profileInputs).some(([field, input]) =>
+      !fieldLocked(field) && input.value.trim() !== "");
+    petFormSubmit.disabled = !changed || Boolean(validatePetForm(readPetPayload()));
+  }
+  function readPetPayload() {
+    const payload = {
+      pet_name: profileInputs.pet_name.value.trim(), species: petSpecies.value,
+      breed: petBreed.value.trim() || null, gender: genderCombobox.getValue() || null,
+      birthdate: petBirthdate.value || null, color: colorCombobox.getValue() || null,
+      size: normalizePetSize(sizeCombobox.getValue()) || null, fur_type: petFurType.value || null,
+      weight: getEnteredWeight(petWeight) || null, medical_conditions: profileInputs.medical_conditions.value.trim() || null,
+    };
+    if (editingPet) Object.keys(payload).forEach(field => {
+      if (fieldLocked(field)) payload[field] = editingPet[field] ?? null;
+    });
+    return payload;
+  }
+  petForm.addEventListener("input", syncConfirmState);
+  petForm.addEventListener("change", syncConfirmState);
 
   // ── Icons ─────────────────────────────────────────────
   // Phosphor sprite icons render directly without JavaScript hydration.
@@ -563,7 +613,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
             <div class="min-w-0 [overflow-wrap:anywhere]">
               <p class="font-bold text-portal-text text-base leading-tight">${escHtml(pet.pet_name)}</p>
-              <p class="text-xs text-portal-muted mt-0.5">${escHtml(pet.species || "Dog")}</p>
+              <p class="text-xs text-portal-muted mt-0.5">${escHtml(pet.species || "Pet")}</p>
             </div>
           </div>
           ${pet.is_archived ? `<span class="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-portal-muted">Archived</span>` : ""}
@@ -595,7 +645,9 @@ document.addEventListener("DOMContentLoaded", () => {
     editingPet = null;
     syncEditVerifiedIndicators(null);
     petModalTitle.textContent = "Add Pet";
+    syncEditFieldLocks();
     resetPetForm();
+    syncEditFieldLocks();
     hideFormError();
     showModal();
   }
@@ -604,6 +656,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const pet = allPets.find((p) => p.pet_id === id);
     if (!pet) return;
 
+    editingPet = null;
+    syncEditFieldLocks();
     editingPet = pet;
     syncEditVerifiedIndicators(pet);
     petModalTitle.textContent = "Edit Pet";
@@ -621,11 +675,12 @@ document.addEventListener("DOMContentLoaded", () => {
     initializeWeightField(petWeight);
     petWeight.value = formatSavedWeight(pet.weight);
     syncWeightAndSize({ clearManualSize: true });
-    if (!getSizeForWeight(petSpecies.value, petWeight.value)) setStoredSize(pet.size);
+    setStoredSize(pet.size);
 
     await breedCoatCatalogueReady;
     breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
 
+    syncEditFieldLocks();
     hideFormError();
     showModal();
   }
@@ -694,25 +749,9 @@ document.addEventListener("DOMContentLoaded", () => {
   petForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     hideFormError();
-    await Promise.allSettled([
-      loadPetCollection(false, { force: true }),
-      loadPetCollection(true, { force: true }),
-    ]);
-
     const id = document.getElementById("petId").value;
     const weight = getEnteredWeight(petWeight);
-    const payload = {
-      pet_name:           document.getElementById("petName").value.trim(),
-      species:            petSpecies.value,
-      breed:              petBreed.value.trim() || null,
-      gender:             genderCombobox.getValue() || null,
-      birthdate:          petBirthdate.value || null,
-      color:              colorCombobox.getValue() || null,
-      size:               normalizePetSize(sizeCombobox.getValue()) || null,
-      fur_type:           petFurType.value || null,
-      weight:             weight || null,
-      medical_conditions: document.getElementById("petMedical").value.trim() || null,
-    };
+    const payload = readPetPayload();
 
     const validationMessage = validatePetForm(payload);
     if (validationMessage) {
@@ -736,33 +775,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (id && editingPet) {
-      const changedVerifiedFields = getChangedVerifiedFieldLabels(
-        editingPet,
-        payload,
-      );
-
-      if (changedVerifiedFields.length > 0) {
-        const confirmed = await openPetConfirmation({
-          title: "Change clinic-verified information?",
-          message: "Some of the information you’re changing was verified by Bethlehem Animal Clinic. Are you sure you want to continue?",
-          details: `Clinic-verified details being changed: ${formatFieldList(changedVerifiedFields)}.`,
-          confirmLabel: "Save changes",
-        });
-
-        if (!confirmed) return;
-      }
-    }
+    const changes = id ? permittedChanges(payload) : payload;
+    if (id && Object.keys(changes).length === 0) { syncConfirmState(); return; }
 
     petFormSubmit.disabled = true;
-    petFormSubmit.textContent = "Saving...";
+    petFormSubmit.textContent = "Confirming...";
     if (document.activeElement === petFormSubmit) {
       closePetModal.focus({ preventScroll: true });
     }
 
     try {
       if (id) {
-        await API.updatePet(id, payload);
+        await API.updatePet(id, changes);
       } else {
         await API.addPet(payload);
       }
@@ -786,7 +810,8 @@ document.addEventListener("DOMContentLoaded", () => {
         : (err.message || "Something went wrong."));
     } finally {
       petFormSubmit.disabled = false;
-      petFormSubmit.textContent = "Save Pet";
+      petFormSubmit.textContent = "Confirm";
+      syncConfirmState();
     }
   });
 
@@ -889,13 +914,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function getChangedVerifiedFieldLabels(pet, payload) {
-    return Object.entries(clinicVerifiedFieldLabels)
-      .filter(([field]) => isClinicVerified(pet, field))
-      .filter(([field]) => !petFieldValuesMatch(field, pet[field], payload[field]))
-      .map(([, label]) => label);
-  }
-
   function petFieldValuesMatch(field, original, updated) {
     if (field === "weight") {
       if ((original === null || original === "")
@@ -918,15 +936,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return normalize(original) === normalize(updated);
   }
 
-  function formatFieldList(fields) {
-    if (fields.length <= 1) return fields[0] || "";
-    if (fields.length === 2) return `${fields[0]} and ${fields[1]}`;
-
-    return `${fields.slice(0, -1).join(", ")}, and ${fields.at(-1)}`;
-  }
-
   function normalizeSpecies(value) {
-    return String(value || "").trim().toLowerCase() === "cat" ? "Cat" : "Dog";
+    return ({ dog: "Dog", cat: "Cat" })[String(value || "").trim().toLowerCase()] || String(value || "");
   }
 
   function resetPetForm() {
@@ -936,7 +947,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("petMedical").value = "";
     petBirthdate.value = "";
 
-    petTypeCombobox.setValue("Dog");
+    petTypeCombobox.setValue("");
     genderCombobox.reset();
     breedCombobox.reset();
     breedCoatCombobox.reset();
@@ -955,7 +966,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function syncWeightAndSize({ clearManualSize = false } = {}) {
     const previousMessage = getWeightFieldValidationMessage(petWeight);
-    syncWeightSizeFields(petWeight, petSpecies.value, sizeCombobox, { clearManualSize });
+    if (editingPet && (fieldLocked("weight") || fieldLocked("size"))) {
+      sizeCombobox.setOptions(getSizeOptions(petSpecies.value));
+      if (fieldLocked("size")) setStoredSize(editingPet.size);
+      if (!fieldLocked("weight")) showWeightValidationInField(petWeight, getWeightValidationMessage(petSpecies.value, getEnteredWeight(petWeight)));
+      syncEditFieldLocks();
+    } else {
+      syncWeightSizeFields(petWeight, petSpecies.value, sizeCombobox, { clearManualSize });
+    }
     if (previousMessage && petFormError.textContent === previousMessage) hideFormError();
   }
 
@@ -969,6 +987,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function validatePetForm(payload) {
+    if (!editingPet && !payload.pet_name) return "Pet name is required.";
+    if (!editingPet && !payload.species) return "Species is required.";
     const normalizedPetName = normalizePetNameForComparison(payload.pet_name);
     const duplicatePetName = allKnownPets.some((pet) => (
       String(pet.pet_id) !== String(editingPet?.pet_id ?? "")
@@ -983,18 +1003,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (colorMessage) return colorMessage;
     if ((payload.medical_conditions || "").length > 1000) return "Care notes must be 1,000 characters or fewer.";
 
-    const breedValidationMessage = breedCombobox.getValidationMessage();
+    const breedValidationMessage = fieldLocked("breed") ? "" : breedCombobox.getValidationMessage();
     if (breedValidationMessage) {
       return breedValidationMessage;
     }
 
-    const furTypeValidationMessage = breedCoatCombobox.getValidationMessage();
+    const furTypeValidationMessage = fieldLocked("fur_type") ? "" : breedCoatCombobox.getValidationMessage();
     if (furTypeValidationMessage) {
       return furTypeValidationMessage;
     }
 
-    const weightValidationMessage = getWeightFieldValidationMessage(petWeight)
-      || getWeightValidationMessage(payload.species, payload.weight);
+    const weightValidationMessage = fieldLocked("weight") ? "" : (getWeightFieldValidationMessage(petWeight)
+      || getWeightValidationMessage(payload.species, payload.weight));
     if (weightValidationMessage) {
       return weightValidationMessage;
     }
@@ -1002,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const allowedSizes = getSizeOptions(payload.species).map(
       ({ value }) => normalizePetSize(value),
     );
-    if (payload.size && !allowedSizes.includes(payload.size)) {
+    if (!fieldLocked("size") && payload.size && !allowedSizes.includes(payload.size)) {
       return "Select a size available for this pet type.";
     }
 

@@ -48,7 +48,7 @@ export async function loadPetsFromApi() {
       return {
         id: String(p.pet_id),
         petName: p.pet_name || "",
-        petType: p.species || "Dog",
+        petType: p.species || "",
         gender: p.gender || "",
         birthdate: p.birthdate || "",
         breed: p.breed || "",
