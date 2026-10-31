@@ -997,12 +997,31 @@ var API = (() => {
     return withAuthTransition(retryPendingLogoutUnlocked);
   }
 
+  function isTerminalLogoutError(error, pending) {
+    return /^\d+\|cookie$/.test(pending?.token || '') && error.status === 401
+      && ['session_changed', 'session_replaced'].includes(error.code);
+  }
+
   async function retryPendingLogoutUnlocked() {
     const pending = pendingLogout();
     if (!pending) return;
-    const data = await networkRequest('POST', '/logout', null, pending.token, {suppressAuthRedirect: true});
-    if (data.success !== true) throw new Error('Unable to confirm sign-out. Try again.');
-    clearPendingLogout(pending);
+    // A saved retry must identify its original session. Ambient cookies may
+    // belong to a newer login; retiring a retry never lifts the restoration block.
+    if (!/^\d+\|cookie$/.test(pending.token || '')
+      || (getAuthSession() && getAuthSession().token !== pending.token)) {
+      clearPendingLogout(pending);
+      return;
+    }
+    try {
+      const data = await networkRequest('POST', '/logout', null, pending.token, {suppressAuthRedirect: true});
+      if (data.success !== true) throw new Error('Unable to confirm sign-out. Try again.');
+      clearPendingLogout(pending);
+    } catch (error) {
+      // These ownership rejections cannot be repaired by replaying this request.
+      // Network errors, other 401s and server failures still require revocation.
+      if (!isTerminalLogoutError(error, pending)) throw error;
+      clearPendingLogout(pending);
+    }
   }
 
   function restorationIsBlocked() {
@@ -2110,12 +2129,7 @@ var API = (() => {
     // correct public-reference key based on role. The backend owns cookie
     // persistence and every inactivity/absolute deadline.
     if (pendingLogout()) {
-      try { await retryPendingLogout(); }
-      catch (error) {
-        // Lost/replaced cookies cannot prove revocation. Require the complete
-        // password/OTP flow; restoration remains blocked until it succeeds.
-        if (error.status !== 401) throw error;
-      }
+      await retryPendingLogout();
     }
     const normalized = normalizePhoneLikeIdentifier(identifier);
     const resolvedIdentifier = normalized || identifier;
@@ -2402,6 +2416,7 @@ var API = (() => {
       clearPendingLogout(pendingMarker);
       return data;
     } catch (error) {
+      if (isTerminalLogoutError(error, pendingMarker)) clearPendingLogout(pendingMarker);
       if (logoutRevision === sessionRevision && !getAuthSession() && (isProtectedClientPage() || isAdminPage())) {
         sessionLocked = false;
         sessionChecking = true;

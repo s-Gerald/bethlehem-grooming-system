@@ -412,6 +412,144 @@ async function testLogoutRequiresAnExplicitServerRevocationAcknowledgement() {
   assert.ok(browser.localStorage.getItem('bethlehem.auth.signed_out'));
 }
 
+async function testPendingLogoutLifecycle() {
+  const pendingKey = 'bethlehem.auth.logout_pending', blockedKey = 'bethlehem.auth.signed_out';
+  const marker = JSON.stringify({id: 'old-logout', token: '901|cookie', role: 'customer', at: 1});
+  for (const code of ['session_changed', 'session_replaced']) {
+    let requests = 0;
+    const local = new MemoryStorage({[pendingKey]: marker, [blockedKey]: '1'});
+    const session = new MemoryStorage({[pendingKey]: marker, [blockedKey]: '1'});
+    const browser = createBrowser({local, session, fetchImpl: async (_url, options) => {
+      requests++;
+      assert.equal(options.headers.Authorization, 'Bearer 901|cookie');
+      return jsonResponse(401, {success: false, code});
+    }});
+    await browser.API.retryPendingLogout();
+    assert.equal(local.getItem(pendingKey), null, 'Terminal session rejection retires the retry');
+    assert.equal(session.getItem(pendingKey), null);
+    assert.equal(local.getItem(blockedKey), '1', 'Retiring a retry does not authorize restoration');
+    assert.equal(session.getItem('bethlehem.auth.signout_reason'), null, 'Cleanup is not a new session replacement');
+    for (let refresh = 0; refresh < 3; refresh++) {
+      await createBrowser({local, session, fetchImpl: async () => { requests++; return jsonResponse(200, {}); }}).API.retryPendingLogout();
+    }
+    assert.equal(requests, 1);
+  }
+
+  for (const failure of [null, {status: 500, code: 'server_error'}, {status: 401, code: 'unauthenticated'},
+    {status: 403, code: 'session_changed'}]) {
+    const local = new MemoryStorage({[pendingKey]: marker, [blockedKey]: '1'});
+    const browser = createBrowser({local, fetchImpl: async () => {
+      if (!failure) throw new Error('offline');
+      return jsonResponse(failure.status, {code: failure.code});
+    }});
+    await assert.rejects(browser.API.retryPendingLogout());
+    assert.equal(local.getItem(pendingKey), marker, 'Unconfirmed revocation remains pending');
+    assert.equal(local.getItem(blockedKey), '1');
+  }
+
+  const browser = createBrowser({local: {[pendingKey]: marker, [blockedKey]: '1'},
+    fetchImpl: async () => jsonResponse(200, {success: true})});
+  await browser.API.retryPendingLogout();
+  assert.equal(browser.localStorage.getItem(pendingKey), null);
+  assert.equal(browser.localStorage.getItem(blockedKey), '1');
+}
+
+async function testUnsafePendingLogoutCannotUseNewerCookies() {
+  const pendingKey = 'bethlehem.auth.logout_pending', blockedKey = 'bethlehem.auth.signed_out';
+  for (const token of [null, '901|cookie']) {
+    let requests = 0;
+    const browser = createBrowser({local: {
+      [pendingKey]: JSON.stringify({id: 'old', token, role: 'customer'}), [blockedKey]: '1',
+      ...(token ? {customer_token: '902|cookie', user_role: 'customer'} : {}),
+    }, fetchImpl: async () => { requests++; return jsonResponse(200, {success: true}); }});
+    await browser.API.retryPendingLogout();
+    assert.equal(requests, 0, 'An unscoped or superseded retry must not revoke ambient cookies');
+    assert.equal(browser.localStorage.getItem(pendingKey), null);
+    assert.equal(browser.localStorage.getItem(blockedKey), '1');
+    if (token) assert.equal(browser.API.getCustomerToken(), '902|cookie');
+  }
+}
+
+async function testPendingLogoutDoesNotEraseANewerLogoutMarker() {
+  const key = 'bethlehem.auth.logout_pending';
+  let finish;
+  const browser = createBrowser({local: {[key]: JSON.stringify({id: 'old', token: '901|cookie'})},
+    fetchImpl: async () => new Promise(resolve => { finish = resolve; })});
+  const retry = browser.API.retryPendingLogout();
+  const newer = JSON.stringify({id: 'new', token: '902|cookie'});
+  browser.localStorage.setItem(key, newer);
+  finish(jsonResponse(401, {code: 'session_changed'}));
+  await retry;
+  assert.equal(browser.localStorage.getItem(key), newer);
+}
+
+async function testPendingLogoutCannotInterfereWithNewerAuthentication() {
+  for (const queued of [false, true]) {
+    for (const status of [200, 401]) {
+      let release, requests = 0;
+      const locks = queued ? {request(_name, action) {
+        return new Promise(resolve => { release = () => resolve(action()); });
+      }} : null;
+      const browser = createBrowser({locks, local: {
+        'bethlehem.auth.logout_pending': JSON.stringify({id: 'old', token: '901|cookie'}),
+        'bethlehem.auth.signed_out': '1',
+      }, fetchImpl: async () => {
+        requests++;
+        return new Promise(resolve => { release = () => resolve(jsonResponse(status,
+          status === 200 ? {success: true} : {code: 'session_changed'})); });
+      }});
+      const retry = browser.API.retryPendingLogout();
+      browser.API.setCustomerToken('902|cookie', true);
+      release();
+      await retry;
+      assert.equal(requests, queued ? 0 : 1);
+      assert.equal(browser.API.getCustomerToken(), '902|cookie');
+      assert.equal(browser.localStorage.getItem('bethlehem.auth.signed_out'), null);
+      assert.equal(browser.localStorage.getItem('bethlehem.auth.logout_pending'), null);
+    }
+  }
+}
+
+async function testUnknownLogout401CannotProceedToSignIn() {
+  let signIns = 0;
+  const browser = createBrowser({local: {'bethlehem.auth.logout_pending': JSON.stringify({id: 'old', token: '901|cookie'}),
+    'bethlehem.auth.signed_out': '1'}, fetchImpl: async url => {
+      if (url.endsWith('/sign-in')) signIns++;
+      return jsonResponse(401, {code: 'unauthenticated'});
+    }});
+  await assert.rejects(browser.API.signIn('customer@example.test', 'password'), error => error.status === 401);
+  assert.equal(signIns, 0, 'Only a classified terminal logout rejection allows recovery');
+}
+
+async function testExplicitLoginReconcilesAnObsoleteLogoutForEveryRole() {
+  for (const role of ['customer', 'staff', 'admin']) {
+    for (const remember of [false, true]) {
+      let logouts = 0;
+      const browser = createBrowser({local: {
+        'bethlehem.auth.logout_pending': JSON.stringify({id: 'old', token: '901|cookie'}),
+        'bethlehem.auth.signed_out': '1',
+      }, fetchImpl: async url => {
+        if (url.endsWith('/logout')) { logouts++; return jsonResponse(401, {code: 'session_changed'}); }
+        if (url.endsWith('/sign-in')) return jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'new-login'});
+        if (url.endsWith('/email/login/confirm')) return jsonResponse(200, {
+          token: '902|cookie', remember_me: remember, user: {role, user_id: 9},
+        });
+        return jsonResponse(200, {success: true});
+      }});
+      await browser.API.signIn('user@example.test', 'password', remember);
+      assert.equal(browser.API.getUserRole(), null);
+      assert.equal(browser.localStorage.getItem('bethlehem.auth.signed_out'), '1');
+      await browser.API.confirmLoginCode('012345');
+      const key = role === 'customer' ? 'customer_token' : 'admin_token';
+      assert.equal(browser[remember ? 'localStorage' : 'sessionStorage'].getItem(key), '902|cookie');
+      assert.equal(browser.localStorage.getItem('bethlehem.auth.signed_out'), null);
+      assert.equal(browser.localStorage.getItem('bethlehem.auth.logout_pending'), null);
+      await browser.API.retryPendingLogout();
+      assert.equal(logouts, 1);
+    }
+  }
+}
+
 async function testMixedCrossTabAccountSwitchHidesOnlyTheObsoleteTabState() {
   const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
     session: {customer_token: '904|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '9',
@@ -1381,7 +1519,7 @@ async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
   }
 }
 
-function signInPageHarness({ storage = new MemoryStorage(), signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; } } = {}) {
+function signInPageHarness({ storage = new MemoryStorage(), api = {}, signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; } } = {}) {
   let elapsed = 0, wall = 100000, nextTimer = 0;
   const intervals = new Map(), lifecycle = {}, events = {}, elements = new Map();
   function element(id) {
@@ -1396,7 +1534,7 @@ function signInPageHarness({ storage = new MemoryStorage(), signIn = async () =>
     }
     return elements.get(id);
   }
-  const API = { signIn };
+  const API = { signIn, ...api };
   const context = { API, URL, URLSearchParams, sessionStorage: storage,
     Date: class extends Date { static now() { return wall; } }, performance: { now: () => elapsed },
     setInterval(f) { const id = ++nextTimer; intervals.set(id, f); return id; }, clearInterval(id) { intervals.delete(id); },
@@ -1413,6 +1551,28 @@ function signInPageHarness({ storage = new MemoryStorage(), signIn = async () =>
     advance(ms, { tick = true, wallDelta = ms } = {}) { elapsed += ms; wall += wallDelta; if (tick) for (const f of [...intervals.values()]) f(); },
     visible() { events.visibilitychange?.(); },
   };
+}
+
+async function testSignInInitializationNeverAttemptsLogout() {
+  let requests = 0;
+  for (const pending of [false, true]) {
+    const browser = createBrowser({local: pending ? {
+      'bethlehem.auth.logout_pending': JSON.stringify({id: 'old', token: '901|cookie'}),
+      'bethlehem.auth.signed_out': '1',
+    } : {}, fetchImpl: async () => { requests++; throw new Error('offline'); }});
+    for (let refresh = 0; refresh < 3; refresh++) {
+      const page = signInPageHarness({api: browser.API});
+      await turn();
+      assert.equal(page.element('sharedSignInMessage').textContent, '');
+      assert.equal(page.element('sessionReplacedAlert').hidden, true);
+    }
+  }
+  assert.equal(requests, 0);
+  const replaced = signInPageHarness({storage: new MemoryStorage({'bethlehem.auth.signout_reason': 'session_replaced'})});
+  assert.equal(replaced.element('sessionReplacedAlert').hidden, false);
+  const invalid = signInPageHarness();
+  await invalid.submit();
+  assert.match(invalid.element('sharedSignInMessage').textContent, /Invalid credentials/);
 }
 
 async function testSignInCountdownOnlyUsesApplicableServerPasswordOrIpResponses() {
@@ -2250,6 +2410,13 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
 }
 
 (async () => {
+  await testSignInInitializationNeverAttemptsLogout();
+  await testPendingLogoutLifecycle();
+  await testUnsafePendingLogoutCannotUseNewerCookies();
+  await testPendingLogoutDoesNotEraseANewerLogoutMarker();
+  await testPendingLogoutCannotInterfereWithNewerAuthentication();
+  await testUnknownLogout401CannotProceedToSignIn();
+  await testExplicitLoginReconcilesAnObsoleteLogoutForEveryRole();
   await testEveryRoleHonorsTheServerConfirmedCheckbox();
   await testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads();
   await testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalidity();
