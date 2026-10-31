@@ -6,6 +6,14 @@ const vm = require('node:vm');
 const context = { window: {}, console, Date, Intl };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-dashboard.js'), 'utf8'), context);
 const ui = context.adminDashboard();
+ui.openActionConfirmModal({action:'cancel', booking:{id:901}, title:'Cancel', message:'', confirmLabel:'Confirm cancellation'});
+assert.equal(ui.actionConfirmModal.conflictBlocked, false, 'Cancellation must start with an explicit nonblocking state');
+ui.actionConfirmModal.conflictBlocked = true;
+ui.openActionConfirmModal({action:'cancelPet', booking:{id:902}, title:'Cancel pet', message:''});
+assert.equal(ui.actionConfirmModal.conflictBlocked, false, 'Check-in conflict state cannot leak into pet cancellation');
+ui.closeActionConfirmModal();
+assert.equal(ui.actionConfirmModal.conflictBlocked, false);
+
 ui.$nextTick = () => {};
 ui.dispatchDashboardEvent = () => {};
 assert.equal(ui.sedationConsentStatusLabel({ sedationConsent: true }), 'Sedation authorized');
@@ -161,6 +169,18 @@ ui.openGroomingMenu(record, event);
 ui.setTab('for-payment');
 assert.equal(ui.groomingMenuBookingId, null, 'Changing stages dismisses any secondary menu');
 async function startGroomingConfirmation() {
+  const cancellation = context.adminDashboard();
+  const calls = [];
+  cancellation.cancelBooking = async (booking, reason) => calls.push([booking.id, reason]);
+  cancellation.openActionConfirmModal({action:'cancel', booking:{id:901}});
+  await cancellation.executeConfirmedBookingAction();
+  assert.equal(calls.length,0,'Blank cancellation reason remains blocked');
+  assert.equal(cancellation.actionConfirmModal.error,'Enter a cancellation reason.');
+  cancellation.actionConfirmModal.cancellationReason = 'Customer requested cancellation';
+  await cancellation.executeConfirmedBookingAction();
+  assert.deepEqual(calls,[[901,'Customer requested cancellation']]);
+  assert.equal(cancellation.actionConfirmModal.open,false);
+
   const intake = context.adminDashboard();
   let intakePayload;
   intake.runBookingAction = async (action, record, payload) => { intakePayload = { action, record, payload }; };

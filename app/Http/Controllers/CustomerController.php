@@ -351,7 +351,7 @@ class CustomerController extends Controller
         $visit($payload);
         if (!$ids) return $response;
         app(\App\Services\PreRegistrationExpiry::class)->expire();
-        $availability = app(\App\Services\PetServiceSessionPolicy::class)->availability(array_unique($ids));
+        $availability = app(\App\Services\PetServiceSessionPolicy::class)->staffAvailability(array_unique($ids));
         $decorate = function (&$node) use (&$decorate, $availability) {
             if (!is_array($node)) return;
             if (isset($node['id'], $node['petName'], $node['species'])) $node['sessionAvailability'] = $availability[$node['id']] ?? [];

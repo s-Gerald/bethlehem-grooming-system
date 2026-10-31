@@ -304,6 +304,14 @@ function normalizeExistingPet(pet) {
   };
 }
 
+function savedPetUnavailable(pet) {
+  return state.existingPetsLoading || state.petAvailabilityFailed || !pet
+    || Boolean(pet.sessionAvailability?.[getOwnerAppointmentType()] && !pet.sessionAvailability[getOwnerAppointmentType()].replaceable);
+}
+function invalidSavedSelection() {
+  return state.pets.some(pet => pet.petId && savedPetUnavailable(state.existingPets.find(saved => String(saved.petId) === String(pet.petId))));
+}
+
 function renderExistingPets() {
   if (!isExistingCustomer()) return;
 
@@ -326,6 +334,7 @@ function renderExistingPets() {
 
   elements.existingPetCards.innerHTML = state.existingPets.map((pet, index) => {
     const conflict = pet.sessionAvailability?.[getOwnerAppointmentType()];
+    const unavailable = savedPetUnavailable(pet);
     const selected = state.pets.some((selectedPet) => selectedPet.petId === pet.petId);
     return `
       <article class="rounded-2xl border border-slate-200 bg-[#f8fbfd] p-4">
@@ -338,11 +347,11 @@ function renderExistingPets() {
           <button
             type="button"
             data-select-existing-pet="${index}"
-            ${selected || (conflict && !conflict.replaceable) ? "disabled" : ""}
-            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${selected || (conflict && !conflict.replaceable) ? "cursor-not-allowed bg-green-100 text-green-700" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
-          >${conflict && !conflict.replaceable ? (getOwnerAppointmentType() === "clinic" ? "In Grooming" : "In Clinic") : selected ? "Selected" : "Select"}</button>
+            ${selected || unavailable ? "disabled" : ""}
+            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${selected || unavailable ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
+          >${unavailable ? (state.existingPetsLoading ? "Loading" : state.petAvailabilityFailed ? "Unavailable" : escapeHtml(conflict?.label || "Unavailable")) : selected ? "Selected" : "Select"}</button>
         </div>
-        ${conflict ? `<p class="mt-3 text-xs text-amber-800">${conflict.replaceable ? `Pending ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} registration will be cancelled at check-in.` : `Resolve the active ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} visit before intake.`}</p>` : ''}
+        ${conflict?.replaceable ? `<p class="mt-3 text-xs text-amber-800">${conflict.replaceable ? `Pending ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} registration will be cancelled at check-in.` : `Resolve the active ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} visit before intake.`}</p>` : ''}
       </article>
     `;
   }).join("");
@@ -364,19 +373,27 @@ function loadExistingOwnerPets() {
 async function refreshExistingOwnerPets() {
   if (!isExistingCustomer()) return;
 
+  state.existingPetsLoading = true;
+  state.petAvailabilityFailed = false;
   try {
     const response = state.owner.ownerRecordType === "registered"
       ? await API.getCustomerDetails(state.owner.customerUserId)
       : await API.getUnregisteredCustomerDetails(state.owner.unregisteredCustomerId);
+    if (!Array.isArray(response.customer?.pets)) throw new Error("Unable to verify pet availability.");
     if (Array.isArray(response.customer?.pets)) {
       state.existingPets = response.customer.pets
         .filter((pet) => !pet.isArchived)
         .map(normalizeExistingPet);
     }
   } catch {
-    // Keep the pet list passed from Step 1 if refreshing it fails.
+    state.petAvailabilityFailed = true;
+    showStepError("Unable to verify pet availability. Please try again.");
   } finally {
     state.existingPetsLoading = false;
+    state.pets = state.pets.filter(pet => !pet.petId || !savedPetUnavailable(state.existingPets.find(saved => String(saved.petId) === String(pet.petId))));
+    autoSelectClinicPet();
+    savePetStepDraft();
+    renderSelectedPets();
     renderExistingPets();
   }
 }
@@ -385,7 +402,7 @@ function renderSelectedPets() {
   elements.selectedPetCards.innerHTML = "";
   elements.selectedPetCount.textContent = `${state.pets.length} / ${MAX_PETS_PER_BOOKING} selected`;
 
-  const hasPets = state.pets.length > 0;
+  const hasPets = state.pets.length > 0 && !invalidSavedSelection();
   elements.selectedPetsEmptyState.classList.toggle("hidden", hasPets);
   elements.nextBtn.disabled = !hasPets;
   elements.nextBtn.classList.toggle("opacity-50", !hasPets);
@@ -566,6 +583,7 @@ function getOwnerAppointmentType() {
 }
 
 function handleNext() {
+  if (invalidSavedSelection()) { showStepError("Verify the selected pets before continuing."); return; }
   const weightMessage = state.pets.map(getPetWeightSubmissionValidationMessage).find(Boolean);
   if (weightMessage) {
     showStepError(weightMessage);
@@ -643,7 +661,7 @@ function bindEvents() {
     const button = event.target.closest("[data-select-existing-pet]");
     if (!button || button.disabled || state.pets.length >= MAX_PETS_PER_BOOKING) return;
     const pet = state.existingPets[Number(button.dataset.selectExistingPet)];
-    if (pet?.sessionAvailability?.[getOwnerAppointmentType()] && !pet.sessionAvailability[getOwnerAppointmentType()].replaceable) return;
+    if (savedPetUnavailable(pet)) return;
     if (!pet || state.pets.some((selectedPet) => selectedPet.petId === pet.petId)) return;
     state.pets = [...state.pets, { ...pet }];
     renderSelectedPets();
@@ -681,12 +699,12 @@ function bindEvents() {
 
 function autoSelectClinicPet() {
   const rawId = sessionStorage.getItem("clinicPreselectedPetId");
-  if (!rawId) return;
+  if (!rawId || state.existingPetsLoading) return;
   sessionStorage.removeItem("clinicPreselectedPetId");
 
   const petId = Number(rawId);
   const pet = state.existingPets.find(p => p.petId === petId);
-  if (!pet) return;
+  if (savedPetUnavailable(pet)) return;
   if (state.pets.some(p => p.petId === pet.petId)) return;
 
   state.pets = [...state.pets, { ...pet }];

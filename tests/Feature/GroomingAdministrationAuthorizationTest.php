@@ -1245,6 +1245,24 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'groomer_id' => 1, 'services' => [['service_slug' => 'partial_grooming']]]]];
     }
 
+    public function test_same_pet_cannot_create_another_same_service_walk_in(): void
+    {
+        $this->authenticateAs('admin');
+        $payload = $this->returningWalkinPayload();
+        $id = $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated()->json('booking_id');
+        foreach (['waiting_to_arrive', 'checked_in', 'in_progress', 'for_payment', 'for_pickup', 'released'] as $status) {
+            DB::table('bookings')->where('booking_id', $id)->update(['status' => $status]);
+            $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertConflict()->assertJsonPath('code', 'same_service_pet_conflict');
+            $this->assertDatabaseCount('bookings', 1);
+            $this->assertDatabaseCount('customer_notifications', 0);
+            $petId = DB::table('booking_pets')->where('booking_id', $id)->value('pet_id');
+            $availability = app(\App\Services\PetServiceSessionPolicy::class)->staffAvailability([$petId]);
+            $this->assertFalse($availability[$petId]['grooming']['replaceable']);
+        }
+        DB::table('booking_pets')->where('booking_id', $id)->update(['grooming_state' => 'cancelled']);
+        $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated();
+    }
+
     public function test_walk_in_cannot_return_to_incoming_by_either_persisted_origin(): void
     {
         $this->authenticateAs('admin');
@@ -3770,11 +3788,15 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $walkin = array_replace($this->groomingConsentFixture(), $this->returningWalkinPayload('unregistered'));
             $walkin['submission_key'] = '6dccf04c-599d-4bf4-9460-14f0542f49a1';
             $other = [...$walkin, 'submission_key' => '519738ab-78b2-436b-8a3f-e4a6cad1c027'];
+            $other['pets'][0]['pet_name'] = 'Another pet';
+            unset($other['pets'][0]['pet_id']);
             [$a, $b] = $run([101, 102], [$walkin, $other], 'grooming-walk-in');
             $this->assertSame([201, 201], [$a['status'], $b['status']]);
             $this->assertNotSame($a['body']['booking_reference'], $b['body']['booking_reference']);
             $this->assertSame($a['body']['queue_number'] + 1, $b['body']['queue_number']);
             $this->assertSame($a['body']['pets'][0]['pet_queue_number'] + 1, $b['body']['pets'][0]['pet_queue_number']);
+            $walkin['pets'][0]['pet_name'] = 'Retry pet';
+            unset($walkin['pets'][0]['pet_id']);
             $walkin['submission_key'] = '209aa467-eaa7-4611-bda0-69161d938f2d';
             $before = DB::table('bookings')->count();
             [$a, $b] = $run([101, 101], [$walkin, $walkin], 'grooming-walk-in');
@@ -3782,6 +3804,13 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $this->assertSame($a['body'], $b['body']);
             $this->assertDatabaseCount('bookings', $before + 1);
             $this->assertSame(3, DB::table('bookings')->where('booking_type', 'walk_in')->distinct()->count('booking_reference'));
+            $walkin['pets'][0]['pet_name'] = 'Concurrent pet';
+            unset($walkin['submission_key']);
+            $before = DB::table('bookings')->count();
+            [$a, $b] = $run([101, 101], [$walkin, $walkin], 'grooming-walk-in');
+            $this->assertSame([201, 409], [$a['status'], $b['status']]);
+            $this->assertSame('same_service_pet_conflict', $b['body']['code']);
+            $this->assertDatabaseCount('bookings', $before + 1);
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
                 'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,

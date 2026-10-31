@@ -56,6 +56,30 @@ class PetServiceSessionPolicy
         foreach ($conflicts as $record) $this->cancelPending($record, $service);
     }
 
+    public function assertNoSameService(array $petIds, string $service): void
+    {
+        $existing = $this->conflicts($petIds, $service === 'grooming' ? 'clinic' : 'grooming')->first();
+        if ($existing) throw new HttpResponseException(response()->json([
+            'success' => false, 'code' => 'same_service_pet_conflict', 'pet_id' => $existing->pet_id,
+            'message' => 'This pet already has a pending or active '.ucfirst($service).' visit. Use the existing visit for check-in.',
+        ], 409));
+    }
+
+    /** Staff walk-ins also block their own service; customer availability stays unchanged. */
+    public function staffAvailability(array $petIds): array
+    {
+        $opposite = $this->availability($petIds);
+        $result = $opposite;
+        foreach ($opposite as $petId => $services) {
+            foreach (['grooming' => 'clinic', 'clinic' => 'grooming'] as $service => $other) {
+                if (isset($services[$other])) $result[$petId][$service] = [
+                    'allowed' => false, 'replaceable' => false, 'label' => $services[$other]['label'],
+                ];
+            }
+        }
+        return $result;
+    }
+
     private function cancelPending($record, string $service): void
     {
         $to = $service === 'grooming' ? 'Grooming' : 'Clinic';

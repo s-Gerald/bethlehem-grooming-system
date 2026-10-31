@@ -55,6 +55,7 @@ class WalkinController extends Controller
 
                 $resolvedPets = $this->resolveAllPets($data['pets'], $user, $unregisteredCustomer);
                 app(\App\Services\PreRegistrationExpiry::class)->expire();
+                app(\App\Services\PetServiceSessionPolicy::class)->assertNoSameService(array_map(fn ($item) => $item['pet']->pet_id, $resolvedPets), 'grooming');
                 app(\App\Services\PetServiceSessionPolicy::class)->enforce(array_map(fn ($item) => $item['pet']->pet_id, $resolvedPets), 'grooming', true);
 
                 $totalAmount = array_sum(array_map(

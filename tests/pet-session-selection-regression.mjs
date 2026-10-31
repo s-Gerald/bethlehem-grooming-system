@@ -26,3 +26,19 @@ for (const clinic of [false, true]) {
   assert.equal(context.petAvailabilityFailed,true);
 }
 console.log('Pet session selection: service-specific restrictions, refreshed drafts and fail-closed errors passed.');
+
+const staffSource = fs.readFileSync('scripts/components/walk-in-pet-step.js', 'utf8');
+const guards = staffSource.slice(staffSource.indexOf('function savedPetUnavailable('), staffSource.indexOf('function renderExistingPets('));
+for (const service of ['grooming', 'clinic']) {
+  const pet = {petId:101, sessionAvailability:{[service]:{replaceable:false,label:'Pending'}}};
+  const state = {pets:[pet], existingPets:[pet], existingPetsLoading:true};
+  const context = vm.createContext({state, getOwnerAppointmentType:()=>service});
+  vm.runInContext(guards,context);
+  assert.equal(context.savedPetUnavailable(pet),true);
+  state.existingPetsLoading=false;
+  assert.equal(context.invalidSavedSelection(),true);
+  pet.sessionAvailability[service].replaceable=true;
+  assert.equal(context.savedPetUnavailable(pet),false,'Opposite-service pending remains selectable');
+  state.petAvailabilityFailed=true;
+  assert.equal(context.invalidSavedSelection(),true,'Failed refresh prevents draft continuation');
+}
