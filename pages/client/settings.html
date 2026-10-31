@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="../../css/custom.css?ui=20260915-password-reveal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
 
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
     <div class="min-h-screen flex">
@@ -37,7 +37,7 @@
       <!-- Backend note: active page state can be set dynamically -->
       <!-- ===================================================== -->
       <aside
-        id="clientSidebar"
+        id="clientSidebar" data-customer-session-shell inert
         class="fixed left-0 top-0 z-40 flex h-screen supports-[height:100dvh]:h-dvh w-64 flex-col justify-between overflow-y-auto border-r border-portal-border bg-portal-sidebar text-portal-text shadow-none transition-[transform,box-shadow] duration-[240ms] ease-[ease] max-[1180px]:w-[min(288px,calc(100vw-40px))] max-[1180px]:-translate-x-[110%] max-[1180px]:z-[100] max-[1180px]:group-[.client-sidebar-open]/portal:translate-x-0 max-[1180px]:group-[.client-sidebar-open]/portal:shadow-[0_24px_48px_rgba(15,23,42,0.22)]"
       >
         <div>
@@ -131,13 +131,13 @@
             class="transition mb-2 flex items-center gap-3 rounded-[15px] border border-portal-border bg-portal-surface-soft p-[13px] text-portal-text hover:bg-portal-active"
           >
             <div
-              id="clientProfileInitials"
+              id="clientProfileInitials" data-session-private
               class="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-portal-primary font-bold text-white"
             >
               --
             </div>
             <div class="min-w-0 [overflow-wrap:anywhere]">
-              <p id="clientProfileName" class="font-semibold text-[14px]">Loading...</p>
+              <p id="clientProfileName" data-session-private class="font-semibold text-[14px]">Loading...</p>
               <p class="text-sm text-portal-muted">Pet Owner</p>
             </div>
           </a>
@@ -157,7 +157,7 @@
       <!-- MAIN CONTENT -->
       <!-- ===================================================== -->
       <main class="ml-64 min-w-0 flex-1 min-h-screen transition-[margin-left] duration-[240ms] ease-[ease] max-[1180px]:!ml-0 max-[1180px]:w-full">
-        <header class="sticky top-0 z-30 backdrop-blur border-b border-portal-border bg-white/[0.96]">
+        <header data-customer-session-shell inert class="sticky top-0 z-30 backdrop-blur border-b border-portal-border bg-white/[0.96]">
           <div class="flex flex-col gap-5 px-6 py-5 min-[1181px]:flex-row min-[1181px]:items-center min-[1181px]:justify-between min-[1181px]:max-[1420px]:flex-wrap max-[1180px]:pl-20 max-[639px]:gap-[18px] max-[639px]:px-4 max-[639px]:py-[18px]">
             <div class="min-w-0 max-[639px]:pl-[62px]">
               <h2 class="text-3xl font-bold text-portal-text max-[639px]:text-[26px]">Settings</h2>
@@ -175,10 +175,10 @@
                   class="relative flex h-[46px] w-[46px] items-center justify-center rounded-2xl border border-portal-border bg-portal-surface-soft text-portal-primary-hover transition hover:bg-portal-active"
                   aria-controls="notifDropdown" aria-expanded="false">
                   <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#bell"></use></svg>
-                  <span id="notifBadge" class="absolute -right-1 -top-1 hidden min-h-5 min-w-5 items-center justify-center rounded-full bg-portal-danger px-1 text-[10px] font-bold text-white"></span>
+                  <span id="notifBadge" data-session-private class="absolute -right-1 -top-1 hidden min-h-5 min-w-5 items-center justify-center rounded-full bg-portal-danger px-1 text-[10px] font-bold text-white"></span>
                 </button>
 
-                <div id="notifDropdown" class="notif-client-dropdown !rounded-2xl !border-portal-border !shadow-portal-dropdown" style="display:none">
+                <div id="notifDropdown" data-session-private class="notif-client-dropdown !rounded-2xl !border-portal-border !shadow-portal-dropdown" style="display:none">
                   <div class="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
                     <span class="text-sm font-semibold text-portal-text">Notifications</span>
                     <button type="button" id="notifMarkAllRead" class="text-xs text-portal-primary hover:underline">Mark all as read</button>
@@ -515,7 +515,7 @@
     </div>
 
     <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
+    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030&customer-ux=20261031-v1"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20261030-pet-information"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>

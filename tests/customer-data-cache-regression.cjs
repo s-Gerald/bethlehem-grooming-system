@@ -378,6 +378,9 @@ function mountPage(env, page) {
     const dashboard = fs.readFileSync(path.join(root, "scripts/components/client-dashboard.js"), "utf8");
     script = dashboard.slice(dashboard.indexOf("(function () {", dashboard.indexOf("Appointments, Grooming Tracker & History")));
   }
+  if (page === "my-pets.html") {
+    vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/pet-save-confirmation.js"), "utf8").replace("export function", "function"), context);
+  }
   vm.runInContext(script, context);
   ready.forEach((callback) => callback());
   return { element, idle, intervals, API: browser.API, document: context.document };
@@ -483,10 +486,13 @@ async function testMyPetsStaticModalsAndWorkflows() {
 
   el("addPetBtn").focus();
   await el("addPetBtn").dispatch("click");
+  assert.equal(el("petFormSubmit").textContent.trim(), "Save Pet");
+  assert.equal(el("petSaveWarning").hidden, true);
   el("petName").value = "New pet";
   el("petSpecies").value = "Dog";
   el("petWeight").value = "-1";
   await el("petForm").dispatch("submit");
+  assert.equal(el("petSaveWarning").hidden, true, "Invalid submissions never request confirmation");
   const validation = el("petFormError").textContent;
   assert.match(validation, /greater than 0/);
   form.scrollTop = 120;
@@ -503,6 +509,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   await form.dispatch("keydown", { key: "Tab" });
   assert.equal(ui.document.activeElement, el("closePetModal"));
   await el("closePetModal").dispatch("click");
+  assert.equal(el("petSaveWarning").hidden, true);
   assert.equal(open(form), false);
   assert.equal(el("petsPageShell").inert, false);
   assert.equal(ui.document.activeElement, el("addPetBtn"));
@@ -511,10 +518,47 @@ async function testMyPetsStaticModalsAndWorkflows() {
   el("petName").value = "New pet";
   el("petSpecies").value = "Dog";
   el("petWeight").value = "5";
+  await el("petForm").dispatch("submit");
+  assert.equal(el("petSaveWarning").hidden, false);
+  await el("closePetModal").dispatch("click");
+  await el("addPetBtn").dispatch("click");
+  assert.equal(el("petSaveWarning").hidden, true, "Reopening clears pending acknowledgment");
+  assert.equal(el("petFormSubmit").textContent, "Save Pet");
+  el("petName").value = "New pet";
+  el("petSpecies").value = "Dog";
+  el("petWeight").value = "5";
   el("petFormSubmit").focus();
   const pendingSave = deferred();
   env.respond((endpoint, options) => endpoint === "/pets" && options.method === "POST" ? pendingSave.promise : petResponse(endpoint));
+  const beforeSave = writes().length;
+  await el("petForm").dispatch("submit");
+  assert.equal(writes().length, beforeSave, "First valid Save must not write");
+  assert.equal(el("petFormSubmit").textContent, "Confirm");
+  assert.equal(el("petSaveWarning").hidden, false);
+  el("petMedical").value = "Gentle handling";
+  await el("petForm").dispatch("input");
+  assert.equal(el("petSaveWarning").hidden, true);
+  assert.equal(el("petFormSubmit").textContent, "Save Pet");
+  await el("petForm").dispatch("submit");
+  el("petMedical").value = "Updated silently";
+  await el("petForm").dispatch("submit");
+  assert.equal(writes().length, beforeSave, "Programmatic changes require a fresh confirmation");
+  env.respond((endpoint, options) => endpoint === "/pets" && options.method === "POST"
+    ? response({ message: "Please retry." }, 500) : petResponse(endpoint));
+  await el("petForm").dispatch("submit");
+  assert.equal(open(form), true, "A failed save preserves the modal");
+  assert.equal(el("petMedical").value, "Updated silently");
+  assert.equal(el("petFormError").textContent, "Please retry.");
+  assert.equal(el("petSaveWarning").hidden, true);
+  assert.equal(el("petFormSubmit").textContent, "Save Pet");
+  env.respond((endpoint, options) => endpoint === "/pets" && options.method === "POST" ? pendingSave.promise : petResponse(endpoint));
+  await el("petForm").dispatch("submit");
+  assert.equal(writes().length, beforeSave + 1, "Retry starts with a fresh acknowledgment");
   const creating = el("petForm").dispatch("submit");
+  await el("petForm").dispatch("input");
+  assert.equal(el("petFormSubmit").disabled, true, "Editing during saving cannot enable duplicate submissions");
+  await el("petForm").dispatch("submit");
+  assert.equal(writes().length, beforeSave + 2, "Concurrent submissions save exactly once");
   await flush();
   assert.equal(form.contains(ui.document.activeElement) && !ui.document.activeElement.disabled, true,
     "Saving must keep focus on an enabled control inside the form");
@@ -542,6 +586,9 @@ async function testMyPetsStaticModalsAndWorkflows() {
   await accidentalDismissal(form);
   await el("petForm").dispatch("submit");
   assert.equal(open(confirmation), false, "Pet completion does not open an override confirmation");
+  assert.equal(open(form), true, "Save keeps edit form open for acknowledgment");
+  assert.equal(el("petFormSubmit").textContent, "Confirm");
+  await el("petForm").dispatch("submit");
   assert.equal(open(form), false, "Confirm completes permitted new information");
   assert.equal(writes().at(-1).endpoint, "/pets/1");
 

@@ -9,6 +9,13 @@ html[data-session-gate] body > :where(:not(#bethlehem-session-lock):not(script):
 html[data-session-gate="checking"] :is([data-session-surface], [data-session-public], [data-session-public] *) {
   visibility: visible !important;
 }
+/* Only static customer chrome is visible while authorization is pending. */
+html[data-session-gate="checking"] :is([data-customer-session-shell], [data-customer-session-shell] *) {
+  visibility: visible !important;
+}
+html[data-session-gate="checking"] :is([data-session-private], [data-session-private] *) {
+  visibility: hidden !important;
+}
 .session-lock[hidden], .session-lock [hidden] { display: none; }
 .session-lock {
   position: fixed;

@@ -106,6 +106,7 @@ function createIdleBrowser(role, fixture = {}) {
   }
   for (const id of ["session-password", "session-unlock", "session-error", "session-password-toggle", "session-other-account", "session-lock-form", "session-lock-heading", "session-lock-description", "session-retry"]) elements.set(id, element());
   const dashboard = element();
+  const customerShell = element();
   const root = element();
   const body = {
     appendChild(element) {
@@ -118,7 +119,7 @@ function createIdleBrowser(role, fixture = {}) {
     documentElement: root,
     activeElement: dashboard,
     head: {appendChild() {}},
-    querySelectorAll: () => [dashboard],
+    querySelectorAll: selector => selector === "[data-customer-session-shell]" ? [customerShell] : [dashboard],
     visibilityState: "visible",
     querySelector: selector => selector === '[data-admin-shell]' && options.shell !== false ? dashboard : null,
     getElementById(id) {
@@ -213,6 +214,7 @@ function createIdleBrowser(role, fixture = {}) {
     sleep(minutes) { now += minutes * 60000; },
     root,
     dashboard,
+    customerShell,
     document,
     elements,
     get unlockRequests() { return unlockedRequests; },
@@ -235,6 +237,30 @@ function createIdleBrowser(role, fixture = {}) {
       for (const handler of documentListeners.get(name) || []) handler({ type: name, isTrusted: true });
     },
   };
+}
+
+async function testCustomerShellAuthorization() {
+  const fixture = { pauseStatus: true };
+  const browser = createIdleBrowser("customer", fixture);
+  assert.equal(browser.customerShell.inert, true, "Visible checking shell cannot expose interactive actions");
+  const read = browser.API.getMe("customer");
+  await browser.settle();
+  assert.equal(browser.requests.some(request => request.url.endsWith("/me")), false);
+  fixture.releaseStatus();
+  await browser.settle();
+  await read;
+  assert.equal(browser.customerShell.inert, false, "Verified shell is interactive during ordinary data loading");
+  browser.dispatchWindow("pageshow", { persisted: true });
+  assert.equal(browser.customerShell.inert, true, "Restored shells wait for fresh authorization");
+  await browser.settle();
+  fixture.releaseStatus();
+  await browser.settle();
+  fixture.pauseStatus = false;
+  fixture.statusFailure = 0;
+  browser.dispatchWindow("pageshow", { persisted: true });
+  await browser.settle();
+  assert.equal(browser.root.attributes["data-session-gate"], "unavailable");
+  assert.equal(browser.customerShell.inert, true, "Unavailable sessions keep shell controls inaccessible");
 }
 
 async function testInitialPageShowDoesNotRestartVerification() {
@@ -734,6 +760,7 @@ async function testReplacementDetectionReusesTheSessionLifecycle() {
   await testDelayedVerificationCannotExtendDeadlines();
   await testCrossTabVerificationPreservesActivePresentation();
   await testResumeExpirationAndCustomerPolicy();
+  await testCustomerShellAuthorization();
   await testInitialPageShowDoesNotRestartVerification();
   await testPrivilegedLockAndUnlock("admin");
   await testPrivilegedLockAndUnlock("staff");

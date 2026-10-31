@@ -3906,6 +3906,12 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   cursor: default;
 }
 
+/* Keep the inline acknowledgment hidden even with the flex utility. */
+
+#petSaveWarning[hidden] {
+  display: none;
+}
+
 .placeholder\:text-portal-muted::-moz-placeholder {
   color: var(--portal-muted);
 }

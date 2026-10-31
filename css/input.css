@@ -30,3 +30,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   opacity: 1;
   cursor: default;
 }
+
+/* Keep the inline acknowledgment hidden even with the flex utility. */
+#petSaveWarning[hidden] { display: none; }

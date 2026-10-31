@@ -5,10 +5,10 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pet Information</title>
-    <link rel="stylesheet" href="../../css/output.css?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&availability=20261027&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/output.css?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&pet-care=20261027-v1" />
 
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
 
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
@@ -410,14 +410,17 @@
                 </div>
               </div>
 
-              <p class="mb-3 text-xs leading-5 text-portal-muted">After confirmation, details entered now can only be changed by clinic staff.</p>
+              <p id="petSaveWarning" hidden role="status" aria-live="polite" class="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>
+                <span>Once confirmed, the details you entered can only be changed by clinic staff.</span>
+              </p>
               <div class="flex justify-end">
                 <button
                   id="savePetBtn"
                   type="submit"
                   class="rounded-2xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274864]"
                 >
-                  Confirm
+                  Save &amp; Select Pet
                 </button>
               </div>
             </form>
@@ -484,10 +487,10 @@
       </section>
     </main>
 
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
+    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030&customer-ux=20261031-v1"></script>
     <script
       type="module"
-      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&remember=20261029"
+      src="../../scripts/components/booking-pet-step.js?v=pet-weight-size-20261011-v3&nav=clinic-home-20261025&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&remember=20261029&customer-ux=20261031-v1"
     ></script>
   </body>
 </html>

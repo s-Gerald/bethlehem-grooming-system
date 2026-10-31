@@ -1,3 +1,4 @@
+import { createPetSaveConfirmation } from "../scripts/components/pet-save-confirmation.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
@@ -44,7 +45,7 @@ function element() {
       toggle: (name, on) => on ? classes.add(name) : classes.delete(name),
       contains: name => classes.has(name),
     },
-    setAttribute() {}, addEventListener(name, handler) { this.listeners[name] = handler; },
+    setAttribute() {}, removeAttribute() {}, addEventListener(name, handler) { this.listeners[name] = handler; },
     appendChild(child) { this.children.push(child); },
   };
 }
@@ -78,7 +79,7 @@ function petStep(clinic = false) {
   button.dataset.petId = underage.id;
   let navigated;
   const context = vm.createContext({
-    ...petService, ...tabs, ...weight, ...age, GROOMING_MAX_PETS: 10,
+    ...petService, ...tabs, ...weight, ...age, createPetSaveConfirmation, GROOMING_MAX_PETS: 10,
     getStoredBookingPets: petService.getBookingPets, saveStoredBookingPets: petService.saveBookingPets,
     getGroomingSchedule: petService.getBookingSchedule, addStoredPet: petService.addPetToBooking,
     removeStoredPet: petService.removePetFromBooking, syncWeightSizeFields: weight.syncPetWeightAndSize,
@@ -143,6 +144,8 @@ ui.context.API = { getCustomerToken: () => true, addPet: async payload => { subm
 ui.context.normalizeApiPet = pet => pet;
 ui.get("petType").value = "Dog";
 ui.get("petName").value = "New Pet";
+await ui.context.handleAddPetSubmit({ preventDefault() {} });
+assert.equal(submitted, undefined, "Save only requests acknowledgment");
 await ui.context.handleAddPetSubmit({ preventDefault() {} });
 assert.equal(submitted.birthdate, null);
 assert.ok(petService.getBookingPets().some(pet => pet.id === "unknown"));

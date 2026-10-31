@@ -1,3 +1,4 @@
+import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3";
 import {
@@ -128,6 +129,11 @@ const elements = {
   nextBtn: document.getElementById("nextBtn"),
 };
 
+const petSaveConfirmation = createPetSaveConfirmation({
+  form: elements.addPetForm, button: elements.savePetBtn,
+  warning: document.getElementById("petSaveWarning"), initialLabel: "Save & Select Pet",
+});
+
 const petTypeCombobox = createFixedOptionCombobox({
   root: document.getElementById("petTypeCombobox"),
   input: elements.petType,
@@ -249,6 +255,7 @@ function saveStepTwoDraft() {
 }
 
 function showExistingPetSection() {
+  petSaveConfirmation.reset();
   activePetSection = "existing";
   showPetSelectionSection({
     existingButton: elements.showExistingPetBtn,
@@ -261,6 +268,7 @@ function showExistingPetSection() {
 }
 
 function showAddPetSection() {
+  petSaveConfirmation.reset();
   activePetSection = "add";
   showPetSelectionSection({
     existingButton: elements.showExistingPetBtn,
@@ -656,11 +664,13 @@ function resetAddPetForm() {
 
 async function handleAddPetSubmit(event) {
   event.preventDefault();
+  if (petSaveConfirmation.saving) return;
 
   const formValues = getFormValues(elements.addPetForm);
   const validationMessage = validatePetForm(formValues);
 
   if (validationMessage) {
+    petSaveConfirmation.reset();
     colorCombobox.showValidation();
     breedCombobox.showValidation();
     breedCoatCombobox.showValidation();
@@ -684,11 +694,11 @@ async function handleAddPetSubmit(event) {
     return;
   }
 
+  if (!petSaveConfirmation.confirm(formValues)) { clearStepError(); return; }
   let newPet = null;
 
   try {
-    elements.savePetBtn.disabled = true;
-    elements.savePetBtn.textContent = "Confirming...";
+    petSaveConfirmation.setSaving(true);
 
     if (IS_CLINIC_VISIT || API.getCustomerToken?.()) {
       const response = await API.addPet({
@@ -732,8 +742,7 @@ async function handleAddPetSubmit(event) {
     if (error.errors?.weight?.[0]) showWeightValidationInField(elements.weight, error.errors.weight[0]);
     showStepError(error.message);
   } finally {
-    elements.savePetBtn.disabled = false;
-    elements.savePetBtn.textContent = "Confirm";
+    petSaveConfirmation.setSaving(false);
   }
 }
 

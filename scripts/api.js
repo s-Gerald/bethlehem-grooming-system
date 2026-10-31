@@ -1338,6 +1338,9 @@ var API = (() => {
     document.querySelectorAll?.('.admin-sidebar-menu [data-admin-navigation]').forEach(region => {
       region.inert = Boolean(state);
     });
+    document.querySelectorAll?.('[data-customer-session-shell]').forEach(region => {
+      region.inert = Boolean(state);
+    });
     const card = document.getElementById("bethlehem-session-lock");
     if (!card) return;
     card.hidden = state !== "locked" && state !== "unavailable";

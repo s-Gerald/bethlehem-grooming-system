@@ -70,7 +70,7 @@ class PetInformationVerificationInterfaceTest extends TestCase
             );
         }
 
-        $this->assertStringNotContainsString('confirm(', $this->myPetsComponent);
+        $this->assertDoesNotMatchRegularExpression('/(?<![.\w])(?:window\.)?confirm\s*\(/', $this->myPetsComponent);
     }
 
     public function test_my_pets_modal_dialogs_have_accessible_names_and_internal_dismissal_controls(): void

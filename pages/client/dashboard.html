@@ -7,12 +7,12 @@
     <title>Client Dashboard | Bethlehem Animal Clinic</title>
 
     <!-- Tailwind output -->
-    <link rel="stylesheet" href="../../css/output.css?v=visit-details-20261029&notif=20260915-client-notifications&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/output.css?v=visit-details-20261029&notif=20260915-client-notifications&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="../../css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261017&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="../../css/components/grooming-visit-summary.css?v=visit-details-20261029&registration-ui=20261027-v3" />
 
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
   <body class="portal-theme customer-dashboard group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
     <div class="min-h-screen flex">
@@ -40,7 +40,7 @@
       <!-- Backend note: active page state can be set dynamically -->
       <!-- ===================================================== -->
       <aside
-        id="clientSidebar"
+        id="clientSidebar" data-customer-session-shell inert
         class="fixed left-0 top-0 z-40 flex h-screen supports-[height:100dvh]:h-dvh w-64 flex-col justify-between overflow-y-auto border-r border-portal-border bg-portal-sidebar text-portal-text shadow-none transition-[transform,box-shadow] duration-[240ms] ease-[ease] max-[1180px]:w-[min(288px,calc(100vw-40px))] max-[1180px]:-translate-x-[110%] max-[1180px]:z-[100] max-[1180px]:group-[.client-sidebar-open]/portal:translate-x-0 max-[1180px]:group-[.client-sidebar-open]/portal:shadow-[0_24px_48px_rgba(15,23,42,0.22)]"
       >
         <div>
@@ -134,13 +134,13 @@
             class="transition mb-2 flex items-center gap-3 rounded-[15px] border border-portal-border bg-portal-surface-soft p-[13px] text-portal-text hover:bg-portal-active"
           >
             <div
-              id="clientProfileInitials"
+              id="clientProfileInitials" data-session-private
               class="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-portal-primary font-bold text-white"
             >
               --
             </div>
             <div class="min-w-0 [overflow-wrap:anywhere]">
-              <p id="clientProfileName" class="font-semibold text-[14px]">Loading...</p>
+              <p id="clientProfileName" data-session-private class="font-semibold text-[14px]">Loading...</p>
               <p class="text-sm text-portal-muted">Pet Owner</p>
             </div>
           </a>
@@ -163,14 +163,14 @@
       <main class="ml-64 min-w-0 flex-1 min-h-screen transition-[margin-left] duration-[240ms] ease-[ease] max-[1180px]:!ml-0 max-[1180px]:w-full">
         <!-- Top Header -->
         <!-- Customer greeting and existing portal actions -->
-        <header
+        <header data-customer-session-shell inert
           class="sticky top-0 z-30 backdrop-blur border-b border-portal-border bg-white/[0.96]"
         >
           <div
             class="flex flex-col gap-5 px-6 py-5 min-[1181px]:flex-row min-[1181px]:items-center lg:justify-between min-[1181px]:max-[1420px]:flex-wrap max-[1180px]:pl-20 max-[639px]:gap-[18px] max-[639px]:px-4 max-[639px]:py-[18px]"
           >
             <div class="min-w-0 max-[639px]:pl-[62px]">
-              <h2 id="dashboardGreeting" class="text-3xl font-bold text-portal-text [overflow-wrap:anywhere] max-[639px]:text-[26px]">Welcome</h2>
+              <h2 id="dashboardGreeting" data-session-private class="text-3xl font-bold text-portal-text [overflow-wrap:anywhere] max-[639px]:text-[26px]">Welcome</h2>
               <p class="text-portal-muted mt-1 text-[14px] max-[639px]:leading-[1.5]">
                 Here’s what’s happening with your pets today.
               </p>
@@ -187,13 +187,13 @@
                 >
                   <svg class="ph-icon w-5 h-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#bell"></use></svg>
                   <span
-                    id="notifBadge"
+                    id="notifBadge" data-session-private
                     class="absolute -right-1 -top-1 hidden min-h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white bg-portal-danger"
                   ></span>
                 </button>
 
                 <!-- Dropdown — shown/hidden and positioned via JS inline styles -->
-                <div id="notifDropdown" class="notif-client-dropdown !border-portal-border !rounded-2xl !shadow-portal-dropdown" style="display:none">
+                <div id="notifDropdown" data-session-private class="notif-client-dropdown !border-portal-border !rounded-2xl !shadow-portal-dropdown" style="display:none">
                   <!-- Header -->
                   <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 shrink-0">
                     <span class="text-sm font-semibold text-portal-text">Notifications</span>
@@ -235,18 +235,18 @@
                 </div>
                 <div id="groomingTrackerMetadata" class="ml-auto text-right text-xs text-portal-muted"></div>
               </div>
-              <div id="groomingTracker" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
+              <div id="groomingTracker" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" data-session-public role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
             </section>
 
             <section id="upcomingSection" class="portal-card order-2 flex flex-col xl:col-span-2 max-[639px]:p-5" aria-labelledby="upcomingHeading">
               <h3 id="upcomingHeading" class="mb-5 flex items-center gap-3 text-[22px] font-bold leading-[1.3]"><svg class="ph-icon h-6 w-6 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#calendar-check"></use></svg>Upcoming Visits</h3>
-              <div id="appointmentsList" class="upcoming-visit-grid"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
+              <div id="appointmentsList" class="upcoming-visit-grid"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" data-session-public role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
             </section>
 
             <section id="queueSection" class="portal-card order-3 flex min-h-[264px] flex-col xl:col-start-2 xl:row-start-1 max-[639px]:p-5" aria-labelledby="queueHeading">
               <h3 id="queueHeading" class="text-[22px] font-bold leading-[1.3]">Grooming Queue Today</h3>
               <div class="mt-5 flex min-h-[160px] flex-1 flex-col">
-                <div id="groomingQueueLoading" class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div>
+                <div id="groomingQueueLoading" class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" data-session-public role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div>
                 <div id="groomingQueueDetails" class="hidden flex-1 flex-col">
                   <span id="groomingCapacityBadge" class="inline-flex self-start rounded-full bg-portal-active px-3 py-1 text-xs font-semibold text-portal-primary"></span>
                   <div class="mt-auto pt-5">
@@ -259,7 +259,7 @@
               </div>
             </section>
           </div>
-          <p id="groomingStatusAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+          <p id="groomingStatusAnnouncement" class="sr-only" data-session-public role="status" aria-live="polite" aria-atomic="true"></p>
 
           <div class="mt-[22px] grid grid-cols-1 items-stretch gap-[22px] lg:grid-cols-2 max-[639px]:mt-4 max-[639px]:gap-4">
             <section class="portal-card flex flex-col max-[639px]:p-5" aria-labelledby="myPetsHeading">
@@ -267,12 +267,12 @@
                 <h3 id="myPetsHeading" class="text-[22px] font-bold leading-[1.3]">My Pets</h3>
                 <a href="./my-pets.html" class="whitespace-nowrap text-sm font-semibold text-portal-primary hover:underline">Manage Pets</a>
               </div>
-              <div id="myPetsPreview" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
+              <div id="myPetsPreview" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" data-session-public role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
               <a href="./my-pets.html?add=1" class="portal-button-secondary mt-5 w-full whitespace-nowrap"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#plus"></use></svg>Add Pet</a>
             </section>
             <section class="portal-card flex flex-col max-[639px]:p-5" aria-labelledby="recentGroomingHeading">
               <h3 id="recentGroomingHeading" class="mb-5 text-[22px] font-bold leading-[1.3]">Recent Grooming</h3>
-              <div id="groomingHistory" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
+              <div id="groomingHistory" class="flex min-h-[160px] flex-1 flex-col"><div class="flex min-h-[160px] flex-1 flex-col items-center justify-center py-6 text-center" data-session-public role="status" aria-live="polite"><svg class="ph-icon h-9 w-9 animate-spin text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg><p class="mt-3 text-sm text-portal-muted">Loading...</p></div></div>
               <a href="./grooming-history.html" class="portal-button-secondary mt-5 w-full whitespace-nowrap max-[374px]:px-3"><svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#caret-right"></use></svg>View History</a>
             </section>
           </div>
@@ -344,7 +344,7 @@
       </div>
     </div>
 
-    <script src="../../scripts/api.js?grooming-summary=visit-details-20261029&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
+    <script src="../../scripts/api.js?grooming-summary=visit-details-20261029&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030&customer-ux=20261031-v1"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20261030-pet-information" defer></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3"></script>
     <script src="../../scripts/components/client-dashboard.js?v=visit-details-20261029&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&registration-rollover=20261027-v3&names=20261028-v2&mobile-format=20261029" defer></script>

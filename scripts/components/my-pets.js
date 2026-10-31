@@ -1,3 +1,4 @@
+import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
@@ -60,6 +61,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const petModalTitle    = document.getElementById("petModalTitle");
   const petFormError     = document.getElementById("petFormError");
   const petFormSubmit    = document.getElementById("petFormSubmit");
+  const petSaveConfirmation = createPetSaveConfirmation({
+    form: petForm, button: petFormSubmit,
+    warning: document.getElementById("petSaveWarning"), initialLabel: "Save Pet",
+  });
   const petSpecies       = document.getElementById("petSpecies");
   const petBreed         = document.getElementById("petBreed");
   const petGender        = document.getElementById("petGender");
@@ -187,6 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
       !fieldLocked(field) && !petFieldValuesMatch(field, editingPet?.[field] ?? null, value)));
   }
   function syncConfirmState() {
+    if (petSaveConfirmation.saving) { petFormSubmit.disabled = true; return; }
     if (!editingPet) { petFormSubmit.disabled = false; return; }
     const changed = Object.entries(profileInputs).some(([field, input]) =>
       !fieldLocked(field) && input.value.trim() !== "");
@@ -686,6 +692,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showModal() {
+    petSaveConfirmation.reset();
     petModalReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -696,6 +703,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeModal() {
+    if (petSaveConfirmation.saving) return;
+    petSaveConfirmation.reset();
     colorCombobox.close();
     petModal.classList.add("hidden");
     petModal.classList.remove("flex");
@@ -748,6 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Form submit ───────────────────────────────────────
   petForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (petSaveConfirmation.saving) return;
     hideFormError();
     const id = document.getElementById("petId").value;
     const weight = getEnteredWeight(petWeight);
@@ -755,6 +765,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const validationMessage = validatePetForm(payload);
     if (validationMessage) {
+      petSaveConfirmation.reset();
       colorCombobox.showValidation();
       breedCombobox.showValidation();
       breedCoatCombobox.showValidation();
@@ -776,10 +787,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const changes = id ? permittedChanges(payload) : payload;
-    if (id && Object.keys(changes).length === 0) { syncConfirmState(); return; }
+    if (id && Object.keys(changes).length === 0) { petSaveConfirmation.reset(); syncConfirmState(); return; }
 
-    petFormSubmit.disabled = true;
-    petFormSubmit.textContent = "Confirming...";
+    if (!petSaveConfirmation.confirm(payload)) return;
+    petSaveConfirmation.setSaving(true);
     if (document.activeElement === petFormSubmit) {
       closePetModal.focus({ preventScroll: true });
     }
@@ -790,6 +801,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         await API.addPet(payload);
       }
+      petSaveConfirmation.setSaving(false);
       closeModal();
       invalidatePetCollections();
       await loadPets();
@@ -809,8 +821,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ? Object.values(err.errors).flat()[0]
         : (err.message || "Something went wrong."));
     } finally {
-      petFormSubmit.disabled = false;
-      petFormSubmit.textContent = "Confirm";
+      petSaveConfirmation.setSaving(false);
       syncConfirmState();
     }
   });
