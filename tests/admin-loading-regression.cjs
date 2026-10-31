@@ -61,23 +61,44 @@ async function mutationRace() {
   assert.equal((await e.API.getAdminBookings('2026-10-18')).version, 2, 'Old reads cannot repopulate invalidated data');
 }
 async function lazySecurity() {
-  let calls = 0;
+  let accountCalls = 0, activityCalls = 0;
   const c = vm.createContext({ URLSearchParams, document: {}, window: { location: { search: '' } },
     API: { getUserRole: () => 'admin', getAvailabilitySettings: async () => ({}),
-      getAdminSecurityAccounts: async () => { calls++; return { admin: {}, staff: [] }; } } });
+      getSecurityActivity: async () => { activityCalls++; return { incidents: [] }; },
+      getAdminSecurityAccounts: async () => { accountCalls++; return { admin: {}, staff: [
+        { user_id: 7, first_name: 'Local', last_name: 'Staff', is_active: true },
+      ] }; } } });
   vm.runInContext(read('scripts/components/admin-settings.js'), c);
   const ui = c.adminSettings(); ui.$nextTick = fn => fn();
-  await ui.init(); assert.equal(calls, 0, 'General settings must not load Staff Accounts');
-  await ui.selectSettingsTab('security'); assert.equal(calls, 1);
-  await ui.selectSettingsTab('general'); await ui.selectSettingsTab('security');
-  assert.equal(calls, 1, 'Previously loaded Security data is retained between tabs');
+  await ui.init();
+  await ui.selectSettingsTab('general');
+  assert.equal(accountCalls, 0, 'General settings must not load Staff Accounts');
+  assert.equal(activityCalls, 0, 'General settings must not load Security activity');
+  await ui.selectSettingsTab('security');
+  assert.equal(accountCalls, 1, 'Opening Security loads Staff Accounts once');
+  assert.equal(activityCalls, 1, 'Opening Security loads activity once');
+  const existingStaff = ui.staffAccounts;
+  assert.equal(existingStaff[0].fullName, 'Local Staff');
+  await ui.selectSettingsTab('general');
+  assert.equal(accountCalls, 1, 'Returning to General does not fetch Staff Accounts');
+  assert.equal(activityCalls, 1, 'Returning to General does not fetch Security activity');
+  await ui.selectSettingsTab('security');
+  assert.equal(accountCalls, 1, 'Previously loaded Security data is retained between tabs');
+  assert.equal(activityCalls, 1, 'Previously loaded Security activity is retained between tabs');
+  assert.strictEqual(ui.staffAccounts, existingStaff, 'Tab switching retains loaded staff rows');
   const pending = deferred(); let refreshCalls = 0;
   c.API.getAdminSecurityAccounts = () => { refreshCalls++; return pending.promise; };
   const refresh = ui.loadSecurityAccounts();
   const duplicate = ui.loadSecurityAccounts();
   assert.equal(refreshCalls, 1, 'Overlapping Security refreshes share a request');
   assert.equal(ui.staffLoading, false, 'Background refresh retains staff rows');
+  assert.strictEqual(ui.staffAccounts, existingStaff, 'Pending refreshes preserve existing staff rows');
+  assert.equal(ui.staffAccounts[0].fullName, 'Local Staff');
   pending.resolve({ admin: {}, staff: [] }); await Promise.all([refresh, duplicate]);
+  assert.equal(refreshCalls, 1, 'Both refresh callers complete from one request');
+  assert.equal(ui.staffAccounts.length, 0, 'Successful refresh applies the new staff rows');
+  assert.equal(ui.staffLoading, false, 'Background refresh finishes without a loading state');
+  assert.equal(activityCalls, 1, 'Staff Accounts refreshes do not refetch Security activity');
 }
 async function boardRaces() {
   let epoch = 0;
