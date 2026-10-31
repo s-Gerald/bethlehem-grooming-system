@@ -2004,17 +2004,50 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 102, 'user_id' => 10, 'pet_name' => 'Bella', 'species' => 'cat', 'is_archived' => false]);
         DB::table('booking_pets')->insert(['booking_id' => DB::table('bookings')->value('booking_id'), 'pet_id' => $samePet ? 101 : 102]);
 
-        $this->postJson('/api/clinic/pre-register', [
+        $response = $this->postJson('/api/clinic/pre-register', [
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
             'appointment_date' => now()->addDay()->toDateString(),
             'window_id' => 1,
             'pet_id' => 101,
             'chief_complaint' => 'Routine wellness consultation',
-        ])
-            ->assertCreated();
+        ]);
+        if ($samePet) $response->assertConflict()->assertJsonPath('code', 'pet_service_conflict');
+        else $response->assertCreated();
 
-        $this->assertDatabaseCount('clinic_appointments', 1);
+        $this->assertDatabaseCount('clinic_appointments', $samePet ? 0 : 1);
+    }
+
+    public function test_clinic_case_creation_replaces_only_the_conflicting_pending_grooming_pet(): void
+    {
+        $this->authenticateAs('customer', 10);
+        Schema::table('bookings', function (Blueprint $table) {
+            $table->string('booking_type')->default('online');
+            $table->timestamp('cancelled_at')->nullable(); $table->unsignedInteger('cancelled_by')->nullable();
+            $table->string('cancellation_reason')->nullable();
+        });
+        Schema::table('booking_pets', function (Blueprint $table) {
+            $table->timestamp('cancelled_at')->nullable(); $table->unsignedInteger('cancelled_by')->nullable();
+            $table->string('cancellation_reason')->nullable();
+        });
+        Schema::create('customer_notifications', function (Blueprint $table) {
+            $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedInteger('pet_id')->nullable(); $table->string('type'); $table->text('message');
+            $table->boolean('is_read'); $table->timestamp('created_at')->nullable();
+        });
+        foreach ([101, 102] as $petId) DB::table('pets')->insert(['pet_id' => $petId, 'user_id' => 10, 'pet_name' => "Pet {$petId}", 'species' => 'cat', 'is_archived' => false]);
+        DB::table('bookings')->insert(['booking_id' => 1, 'booking_reference' => 'OR-PENDING', 'user_id' => 10,
+            'booking_date' => now()->toDateString(), 'status' => 'waiting_to_arrive', 'number_of_pets' => 2]);
+        foreach ([101, 102] as $petId) DB::table('booking_pets')->insert(['booking_id' => 1, 'pet_id' => $petId]);
+        $this->authenticateAs('staff', subrole: 'clinic_receptionist');
+        $this->postJson('/api/admin/clinic-cases', ['pet_id' => 101, 'case_type' => 'consultation'])->assertCreated();
+        $this->assertDatabaseHas('booking_pets', ['pet_id' => 101, 'grooming_state' => 'cancelled']);
+        $this->assertDatabaseHas('booking_pets', ['pet_id' => 102, 'grooming_state' => 'not_started']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseHas('clinic_appointments', ['pet_id' => 101, 'status' => 'checked_in']);
+        $this->assertDatabaseHas('customer_notifications', ['user_id' => 10, 'pet_id' => 101, 'booking_id' => 1]);
+        $this->postJson('/api/admin/clinic-cases', ['pet_id' => 101, 'case_type' => 'consultation'])->assertConflict();
+        $this->assertDatabaseCount('customer_notifications', 1);
     }
 
     public static function crossServicePetChoices(): array

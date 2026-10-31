@@ -141,6 +141,8 @@ class BookingController extends Controller
                     ]);
                 }
             }
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce($savedPets->keys()->all(), 'grooming');
+
             $sedationConsent = $request->boolean('sedation_consent');
             $request->merge(['pets' => app(\App\Services\PetGroomerSelection::class)->validate($request->pets, false)]);
 

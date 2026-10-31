@@ -29,6 +29,12 @@ class PetController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        if ($request->boolean('session_availability')) {
+            app(\App\Services\PreRegistrationExpiry::class)->expire((int) $request->user()->user_id);
+            $availability = app(\App\Services\PetServiceSessionPolicy::class)->availability($pets->modelKeys());
+            $pets->each(fn ($pet) => $pet->setAttribute('session_availability', $availability[$pet->pet_id] ?? []));
+        }
+
         return response()->json([
             'success' => true,
             'pets' => $pets,

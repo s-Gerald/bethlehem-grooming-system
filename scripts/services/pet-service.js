@@ -37,16 +37,20 @@ export function saveSavedPets(pets) {
  * Backend pets take precedence — they are the source of truth.
  * Any locally-added pets that don't exist in the DB yet are kept.
  */
-export async function loadPetsFromApi() {
+export async function loadPetsFromApi(options = {}) {
   try {
-    const { pets: apiPets } = await API.getUserPets();
+    const { pets: apiPets } = await API.getUserPets(options);
 
+    if (options.sessionAvailability && apiPets.some(pet => pet.session_availability === undefined)) {
+      throw new Error("Unable to verify pet availability.");
+    }
     // Convert backend field names to frontend format
     const mappedPets = apiPets.map((p) => {
       const sizeVerified = Array.isArray(p.clinic_verified_fields)
         && p.clinic_verified_fields.includes("size");
       return {
         id: String(p.pet_id),
+        sessionAvailability: p.session_availability,
         petName: p.pet_name || "",
         petType: p.species || "",
         gender: p.gender || "",
@@ -67,7 +71,8 @@ export async function loadPetsFromApi() {
     // Never merge with existing localStorage data because it may contain
     // pets from a previously logged-in user on the same browser.
     saveSavedPets(mappedPets);
-  } catch {
+  } catch (error) {
+    if (options.sessionAvailability) throw error;
     // Network failure or not logged in — keep whatever is in localStorage
   }
 }

@@ -169,7 +169,7 @@ async function main() {
   const handlers = petSource.slice(petSource.indexOf('function handleBack()'), petSource.indexOf('function setFieldError('));
   let target, saved = false, error;
   const petContext = vm.createContext({ IS_CLINIC_VISIT: false, isGroomingSinglePage: () => true,
-    ...groomingAge, savedPetsLoading: false,
+    ...groomingAge, savedPetsLoading: false, petAvailabilityFailed: false, petSessionRestriction: () => "",
     getBookingSchedule: () => null, getBookingPets: () => [pet], getPetWeightSubmissionValidationMessage: () => '',
     showStepError: (message) => { error = message; }, clearStepError() {},
     saveStepTwoDraft: () => { saved = true; }, goToGroomingStep: (step) => { target = step; }, window: { location: {} },

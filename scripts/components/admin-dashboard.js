@@ -980,6 +980,10 @@ function adminDashboard() {
         icon: "checkIn",
         variant: "primary",
       });
+      const conflicts = (booking?.pets || []).filter(pet => this.petGroomingState(pet) !== 'cancelled').map(pet => pet.sessionConflict).filter(Boolean);
+      this.actionConfirmModal.conflictBlocked = conflicts.some(conflict => !conflict.replaceable);
+      if (conflicts.length) this.actionConfirmModal.message = this.actionConfirmModal.conflictBlocked
+        ? 'Resolve the active Clinic visit before Grooming check-in.' : 'Pending Clinic registration will be cancelled at check-in.';
       this.actionConfirmModal.petSizes = (booking?.pets || []).filter((pet) => this.petGroomingState(pet) !== "cancelled").map((pet) => ({
         bookingPetId: pet.bookingPetId ?? pet.booking_pet_id ?? pet.id,
         name: pet.petName ?? pet.pet_name ?? pet.name ?? "Pet",
@@ -1324,6 +1328,7 @@ function adminDashboard() {
 
       try {
         if (action === "checkIn") {
+          if (this.actionConfirmModal.conflictBlocked) return;
           await this.checkInBooking(booking, this.actionConfirmModal.petSizes, this.actionConfirmModal.internalStaffNote);
         } else if (action === "startGrooming") {
           await this.startGroomingBooking(booking);

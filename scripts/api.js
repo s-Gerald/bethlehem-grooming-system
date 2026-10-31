@@ -2548,11 +2548,11 @@ var API = (() => {
     return request("GET", `/clinic/timeslots?date=${encodeURIComponent(date)}`);
   }
 
-  async function getUserPets({ archived = 0, force = false } = {}) {
+  async function getUserPets({ archived = 0, force = false, sessionAvailability = false } = {}) {
     // GET /api/pets?archived=0|1  (protected)
     // archived=0 → active pets (booking form default)
     // archived=1 → archived pets (My Pets page toggle)
-    return request("GET", `/pets?archived=${archived}`, null, getCustomerToken(), { force });
+    return request("GET", `/pets?archived=${archived}${sessionAvailability ? "&session_availability=1" : ""}`, null, getCustomerToken(), { force });
   }
 
   async function getPet(petId) {

@@ -8,14 +8,6 @@ use Illuminate\Support\Facades\Schema;
 
 class CustomerPreRegistrationAccessService
 {
-    private const TERMINAL_GROOMING_STATUSES = [
-        'archived',
-        'completed',
-        'cancelled',
-        'no_show',
-        'expired',
-    ];
-
     /** Return account-level eligibility independently for each service. */
     public function forUser(int $userId): array
     {
@@ -23,7 +15,7 @@ class CustomerPreRegistrationAccessService
         $grooming = Schema::hasTable('bookings')
             ? Booking::query()
                 ->where('user_id', $userId)
-                ->whereNotIn('status', self::TERMINAL_GROOMING_STATUSES)
+                ->whereNotIn('status', PetServiceSessionPolicy::TERMINAL_GROOMING_STATUSES)
                 ->orderByDesc('booking_id')
                 ->first(['booking_id', 'booking_reference', 'status'])
             : null;

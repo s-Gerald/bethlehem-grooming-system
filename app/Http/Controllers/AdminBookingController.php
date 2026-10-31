@@ -178,6 +178,13 @@ class AdminBookingController extends Controller
             ->get()
             ->map(fn ($b) => $this->formatBooking($b));
 
+        $petAvailability = app(\App\Services\PetServiceSessionPolicy::class)->availability(
+            $incoming->flatMap(fn ($booking) => collect($booking['pets'])->pluck('petId'))->filter()->unique()->all());
+        $incoming = $incoming->map(function ($booking) use ($petAvailability) {
+            $booking['pets'] = collect($booking['pets'])->map(fn ($pet) => $pet + ['sessionConflict' => $petAvailability[$pet['petId']]['grooming'] ?? null])->all();
+            return $booking;
+        });
+
         return response()->json([
             'success' => true,
             'incomingList' => $incoming->values(),
@@ -430,6 +437,8 @@ class AdminBookingController extends Controller
                     return ['error' => ['message' => "Select a valid size for {$pet->pet_name}.", 'status' => 422]];
                 }
             }
+
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce($booking->bookingPets->pluck('pet_id')->all(), 'grooming', true);
 
             foreach ($booking->bookingPets as $bookingPet) {
                 $pet = $bookingPet->pet;
@@ -1213,10 +1222,7 @@ class AdminBookingController extends Controller
 
     private function cancelGroomingBooking(Booking $booking, array $audit): void
     {
-        $booking->update($audit + ['status' => 'cancelled', 'cancel_count' => ($booking->cancel_count ?? 0) + 1]);
-        Notification::create(['type' => 'cancelled', 'booking_id' => $booking->booking_id,
-            'message' => "Grooming visit {$booking->booking_reference} was cancelled by clinic staff.",
-            'is_read' => false, 'created_at' => now()]);
+        $booking->cancelWithAudit($audit);
     }
 
     private function notifyCancellation(Booking $booking, string $reason, ?BookingPet $pet = null, bool $othersActive = false): bool

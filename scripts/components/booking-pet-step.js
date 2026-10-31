@@ -11,7 +11,7 @@ import {
   addPetToBooking as addStoredPet,
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
-} from "../services/pet-service.js?v=pet-weight-size-20261011-v3&pet-fields=20261030-v1";
+} from "../services/pet-service.js?v=pet-weight-size-20261011-v3&pet-fields=20261030-v1&pet-sessions=20261031-v1";
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
@@ -66,6 +66,12 @@ const SELECTED_PETS_STORAGE_KEY = IS_CLINIC_VISIT
   : undefined;
 const MAX_PETS_PER_BOOKING = IS_CLINIC_VISIT ? 1 : GROOMING_MAX_PETS;
 let savedPetsLoading = false;
+let petAvailabilityFailed = false;
+function petSessionRestriction(pet) {
+  if (petAvailabilityFailed) return "Availability unavailable";
+  return pet.sessionAvailability?.[IS_CLINIC_VISIT ? 'clinic' : 'grooming']?.label || '';
+}
+
 
 function getBookingPets() {
   return getStoredBookingPets(SELECTED_PETS_STORAGE_KEY);
@@ -76,6 +82,7 @@ function saveBookingPets(pets) {
 }
 
 function addPetToBooking(pet) {
+  if (petSessionRestriction(pet)) throw new Error(petSessionRestriction(pet));
   if (!IS_CLINIC_VISIT && !isEligibleForGrooming(pet)) {
     throw new Error(GROOMING_MINIMUM_AGE_MESSAGE);
   }
@@ -342,6 +349,7 @@ function renderExistingPets() {
       (selectedPet) => selectedPet.id === pet.id,
     );
     const bookingIsFull = bookingPets.length >= MAX_PETS_PER_BOOKING;
+    const restriction = petSessionRestriction(pet);
     const underage = !IS_CLINIC_VISIT && !isEligibleForGrooming(pet);
 
     const wrapper = document.createElement("article");
@@ -359,15 +367,15 @@ function renderExistingPets() {
           type="button"
           data-pet-id="${escapeHtml(pet.id)}"
           class="select-existing-pet-btn rounded-xl px-4 py-2 text-xs font-semibold transition ${underage ? "whitespace-nowrap" : ""} ${
-            underage || isSelected
+            restriction || underage || isSelected
               ? "cursor-not-allowed bg-slate-300 text-slate-500"
               : bookingIsFull
                 ? "cursor-not-allowed bg-slate-300 text-slate-500"
                 : "bg-[#315b7e] text-white hover:bg-[#274864]"
           }"
-          ${underage || isSelected || bookingIsFull ? "disabled" : ""}
+          ${restriction || underage || isSelected || bookingIsFull ? "disabled" : ""}
         >
-          ${underage ? "Not eligible" : isSelected ? "Already Selected" : bookingIsFull ? "Limit Reached" : "Select Pet"}
+          ${restriction ? escapeHtml(restriction) : underage ? "Not eligible" : isSelected ? "Already Selected" : bookingIsFull ? "Limit Reached" : "Select Pet"}
         </button>
       </div>
 
@@ -386,7 +394,7 @@ function syncSelectAllButtonState(
   savedPets = getSavedPets(),
   bookingPets = getBookingPets(),
 ) {
-  const eligiblePets = IS_CLINIC_VISIT ? savedPets : savedPets.filter((pet) => isEligibleForGrooming(pet));
+  const eligiblePets = savedPets.filter(pet => !petSessionRestriction(pet) && (IS_CLINIC_VISIT || isEligibleForGrooming(pet)));
   const canSelectAll = !IS_CLINIC_VISIT
     && canSelectAllSavedPets(eligiblePets, bookingPets, MAX_PETS_PER_BOOKING);
   elements.selectAllExistingPetsBtn.textContent = eligiblePets.length < savedPets.length
@@ -423,7 +431,7 @@ function bindExistingPetButtons() {
 
 function handleSelectAllExistingPets() {
   const savedPets = getSavedPets();
-  const eligiblePets = savedPets.filter((pet) => IS_CLINIC_VISIT || isEligibleForGrooming(pet));
+  const eligiblePets = savedPets.filter((pet) => !petSessionRestriction(pet) && (IS_CLINIC_VISIT || isEligibleForGrooming(pet)));
   const bookingPets = getBookingPets();
   const remainingSlots = MAX_PETS_PER_BOOKING - bookingPets.length;
 
@@ -482,7 +490,7 @@ function renderSelectedPets() {
   }
 
   elements.selectedPetsEmptyState.classList.add("hidden");
-  const blocked = !IS_CLINIC_VISIT && (savedPetsLoading || bookingPets.some((pet) => !isEligibleForGrooming(pet)));
+  const blocked = petAvailabilityFailed || savedPetsLoading || bookingPets.some(pet => petSessionRestriction(pet)) || (!IS_CLINIC_VISIT && bookingPets.some((pet) => !isEligibleForGrooming(pet)));
   elements.nextBtn.disabled = blocked;
   elements.nextBtn.classList.toggle("opacity-50", blocked);
   elements.nextBtn.classList.toggle("cursor-not-allowed", blocked);
@@ -757,13 +765,13 @@ function handleBack() {
 }
 
 function handleNext() {
+  if (savedPetsLoading || petAvailabilityFailed || getBookingPets().some(pet => petSessionRestriction(pet))) return;
   const bookingPets = getBookingPets();
 
   if (!IS_CLINIC_VISIT && bookingPets.some((pet) => !isEligibleForGrooming(pet))) {
     showStepError(GROOMING_MINIMUM_AGE_MESSAGE);
     return;
   }
-  if (!IS_CLINIC_VISIT && savedPetsLoading) return;
 
   const weightMessage = bookingPets.map(getPetWeightSubmissionValidationMessage).find(Boolean);
   if (weightMessage) {
@@ -863,16 +871,18 @@ async function initStepState() {
 }
 
 async function syncSavedPets() {
-  await loadPetsFromApi();
+  petAvailabilityFailed = false;
+  try { await loadPetsFromApi({ sessionAvailability: true, force: true }); }
+  catch { petAvailabilityFailed = true; showStepError("Unable to verify pet availability. Please try again."); }
   savedPetsLoading = false;
   const savedPetsById = new Map(getSavedPets().map((pet) => [pet.id, pet]));
   const currentPets = getBookingPets();
   const refreshedPets = currentPets.map((pet) => savedPetsById.get(pet.id) || pet);
-  const eligiblePets = IS_CLINIC_VISIT ? refreshedPets : refreshedPets.filter((pet) => isEligibleForGrooming(pet));
+  const eligiblePets = refreshedPets.filter(pet => !petSessionRestriction(pet) && (IS_CLINIC_VISIT || isEligibleForGrooming(pet)));
   if (eligiblePets.length !== currentPets.length || eligiblePets.some((pet, index) => pet !== currentPets[index])) {
     saveBookingPets(eligiblePets);
   }
-  if (eligiblePets.length < refreshedPets.length) showStepError(GROOMING_MINIMUM_AGE_MESSAGE);
+  if (!petAvailabilityFailed && eligiblePets.length < refreshedPets.length) showStepError("An unavailable pet was removed from your selection.");
   renderSelectedPets();
 
   renderExistingPets();
@@ -917,3 +927,5 @@ if (!isGroomingSinglePage()) {
     initBookingPetStep();
   }
 }
+
+window.addEventListener('pageshow', event => { if (event.persisted) void refreshBookingPetStep(); });

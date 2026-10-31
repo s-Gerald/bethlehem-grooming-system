@@ -1,5 +1,7 @@
 # Independent Grooming and Clinic online registration
 
+The same-pet allowance described by this historical release is superseded by [pet-session exclusivity](pet-session-exclusivity-deployment.md). Different owned pets retain independent service access.
+
 Implemented on local `gerald-frontend` at base revision `71a8232`. The remote lookup returned no `origin/gerald-frontend` ref. No commit, push or deployment was performed.
 
 ## Behavior

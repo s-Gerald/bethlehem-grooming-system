@@ -80,6 +80,14 @@ class Booking extends Model
         return $query;
     }
 
+    public function cancelWithAudit(array $audit): void
+    {
+        $this->update($audit + ['status' => 'cancelled', 'cancel_count' => ($this->cancel_count ?? 0) + 1]);
+        Notification::create(['type' => 'cancelled', 'booking_id' => $this->booking_id,
+            'message' => "Grooming visit {$this->booking_reference} was cancelled by clinic staff.",
+            'is_read' => false, 'created_at' => now()]);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id', 'user_id');

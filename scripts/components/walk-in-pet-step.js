@@ -288,6 +288,7 @@ function normalizeExistingPet(pet) {
   return {
     id: `saved-pet-${pet.id}`,
     petId: pet.id,
+    sessionAvailability: pet.sessionAvailability,
     petType: pet.species || "",
     petName: pet.petName || "",
     breed: pet.breed || "",
@@ -324,6 +325,7 @@ function renderExistingPets() {
   }
 
   elements.existingPetCards.innerHTML = state.existingPets.map((pet, index) => {
+    const conflict = pet.sessionAvailability?.[getOwnerAppointmentType()];
     const selected = state.pets.some((selectedPet) => selectedPet.petId === pet.petId);
     return `
       <article class="rounded-2xl border border-slate-200 bg-[#f8fbfd] p-4">
@@ -336,10 +338,11 @@ function renderExistingPets() {
           <button
             type="button"
             data-select-existing-pet="${index}"
-            ${selected ? "disabled" : ""}
-            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${selected ? "cursor-not-allowed bg-green-100 text-green-700" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
-          >${selected ? "Selected" : "Select"}</button>
+            ${selected || (conflict && !conflict.replaceable) ? "disabled" : ""}
+            class="rounded-xl px-3 py-2 text-xs font-semibold transition ${selected || (conflict && !conflict.replaceable) ? "cursor-not-allowed bg-green-100 text-green-700" : "bg-[#315b7e] text-white hover:bg-[#274864]"}"
+          >${conflict && !conflict.replaceable ? (getOwnerAppointmentType() === "clinic" ? "In Grooming" : "In Clinic") : selected ? "Selected" : "Select"}</button>
         </div>
+        ${conflict ? `<p class="mt-3 text-xs text-amber-800">${conflict.replaceable ? `Pending ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} registration will be cancelled at check-in.` : `Resolve the active ${getOwnerAppointmentType() === 'clinic' ? 'Grooming' : 'Clinic'} visit before intake.`}</p>` : ''}
       </article>
     `;
   }).join("");
@@ -640,6 +643,7 @@ function bindEvents() {
     const button = event.target.closest("[data-select-existing-pet]");
     if (!button || button.disabled || state.pets.length >= MAX_PETS_PER_BOOKING) return;
     const pet = state.existingPets[Number(button.dataset.selectExistingPet)];
+    if (pet?.sessionAvailability?.[getOwnerAppointmentType()] && !pet.sessionAvailability[getOwnerAppointmentType()].replaceable) return;
     if (!pet || state.pets.some((selectedPet) => selectedPet.petId === pet.petId)) return;
     state.pets = [...state.pets, { ...pet }];
     renderSelectedPets();

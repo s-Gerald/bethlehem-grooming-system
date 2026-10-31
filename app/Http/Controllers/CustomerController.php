@@ -286,10 +286,10 @@ class CustomerController extends Controller
         $customer = UnregisteredCustomer::query()->availableCustomer()->with('pets')->find($id);
 
         if (! $customer) {
-            return response()->json(['success' => false, 'message' => 'Customer record not found.'], 404);
+            return $this->petSessionResponse(['success' => false, 'message' => 'Customer record not found.'], 404);
         }
 
-        return response()->json([
+        return $this->petSessionResponse([
             'success' => true,
             'customer' => $this->formatUnregisteredCustomer($customer),
         ]);
@@ -336,6 +336,29 @@ class CustomerController extends Controller
             $displayMiddleName,
             $customer->last_name,
         ])));
+    }
+
+    private function petSessionResponse($data, int $status = 200)
+    {
+        $response = response()->json($data, $status);
+        $payload = $response->getData(true);
+        $ids = [];
+        $visit = function ($node) use (&$visit, &$ids) {
+            if (!is_array($node)) return;
+            if (isset($node['id'], $node['petName'], $node['species'])) $ids[] = $node['id'];
+            foreach ($node as $value) if (is_array($value)) $visit($value);
+        };
+        $visit($payload);
+        if (!$ids) return $response;
+        app(\App\Services\PreRegistrationExpiry::class)->expire();
+        $availability = app(\App\Services\PetServiceSessionPolicy::class)->availability(array_unique($ids));
+        $decorate = function (&$node) use (&$decorate, $availability) {
+            if (!is_array($node)) return;
+            if (isset($node['id'], $node['petName'], $node['species'])) $node['sessionAvailability'] = $availability[$node['id']] ?? [];
+            foreach ($node as &$value) if (is_array($value)) $decorate($value);
+        };
+        $decorate($payload);
+        return $response->setData($payload);
     }
 
     private function formatPet(Pet $pet): array
@@ -492,7 +515,7 @@ class CustomerController extends Controller
                     'pets'       => $customer->pets->map(fn (Pet $pet) => $this->formatPet($pet))->values(),
                 ]);
 
-            return response()->json([
+            return $this->petSessionResponse([
                 'success'   => true,
                 'customers' => $registered->concat($unregistered)
                     ->sortBy('fullName', SORT_NATURAL | SORT_FLAG_CASE)
@@ -502,7 +525,7 @@ class CustomerController extends Controller
         }
 
         if (mb_strlen($search) < 2) {
-            return response()->json([
+            return $this->petSessionResponse([
                 'success' => true,
                 'customers' => [],
                 'pets' => [],
@@ -598,7 +621,7 @@ class CustomerController extends Controller
                 ];
             });
 
-        return response()->json([
+        return $this->petSessionResponse([
             'success' => true,
             'customers' => $registered->concat($unregistered)
                 ->sortBy('fullName', SORT_NATURAL | SORT_FLAG_CASE)
@@ -752,7 +775,7 @@ class CustomerController extends Controller
         $user = User::registeredCustomer()->where('user_id', $id)->first();
 
         if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Customer not found.'], 404);
+            return $this->petSessionResponse(['success' => false, 'message' => 'Customer not found.'], 404);
         }
 
         $bookingCount = Booking::where('user_id', $user->user_id)
@@ -788,7 +811,7 @@ class CustomerController extends Controller
                 'createdAt' => $pet->created_at ?? null,
             ]);
 
-        return response()->json([
+        return $this->petSessionResponse([
             'success' => true,
             'customer' => [
                 'id' => $user->user_id,

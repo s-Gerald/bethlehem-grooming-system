@@ -3103,16 +3103,115 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         Sanctum::actingAs(User::findOrFail(101));
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 101, 'pet_name' => 'Coco', 'species' => 'dog', 'weight' => 15, 'size' => 'large']);
         DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-ACTIVE', 'user_id' => 101, 'pet_id' => 101, 'status' => 'in_consultation']);
+        $this->getJson('/api/pets?session_availability=1')->assertOk()
+            ->assertJsonPath('pets.0.session_availability.grooming.allowed', false)
+            ->assertJsonPath('pets.0.session_availability.grooming.label', 'In Clinic');
         $payload['pets'][0]['pet_id'] = 101;
-        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
-        $this->assertDatabaseHas('booking_pets', ['booking_id' => $id, 'pet_id' => 101]);
-        DB::table('bookings')->where('booking_id', $id)->update(['status' => 'completed']);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertConflict()->assertJsonPath('code', 'pet_service_conflict');
         unset($payload['pets'][0]['pet_id']);
         $payload['pets'][0]['pet_name'] = 'Bella';
         $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
-        $this->assertDatabaseCount('bookings', 2);
+        $this->assertDatabaseCount('bookings', 1);
         $this->assertDatabaseCount('pets', 2);
         $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('allowed', false);
+    }
+
+    public function test_clinic_transfer_cancels_only_the_selected_grooming_pet_and_notifies_once(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        $payload['number_of_pets'] = 2;
+        $payload['pets'][] = [...$payload['pets'][0], 'pet_name' => 'Bella'];
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $pets = \App\Models\BookingPet::where('booking_id', $id)->orderBy('booking_pet_id')->get();
+        $policy = app(\App\Services\PetServiceSessionPolicy::class);
+        $queue = app(\App\Services\DailyPetQueue::class);
+        $queue->runForDate(now()->toDateString(), fn () => $policy->enforce([$pets[0]->pet_id], 'clinic', true));
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => $pets[0]->booking_pet_id, 'grooming_state' => 'cancelled']);
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => $pets[1]->booking_pet_id, 'grooming_state' => 'not_started']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseHas('customer_notifications', ['pet_id' => $pets[0]->pet_id, 'booking_id' => $id,
+            'message' => "Coco's Grooming online registration was cancelled because Coco was checked in for Clinic."]);
+        $this->getJson('/api/customer/notifications')->assertOk()
+            ->assertJsonPath('notifications.0.pet_names', ['Coco'])
+            ->assertJsonPath('notifications.0.title', 'Grooming Online Registration Cancelled');
+        $queue->runForDate(now()->toDateString(), fn () => $policy->enforce([$pets[0]->pet_id], 'clinic', true));
+        $this->assertDatabaseCount('customer_notifications', 1);
+        $queue->runForDate(now()->toDateString(), fn () => $policy->enforce([$pets[1]->pet_id], 'clinic', true));
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'cancelled', 'cancel_count' => 1]);
+        $this->assertDatabaseCount('customer_notifications', 2);
+    }
+
+    public function test_multi_pet_transfer_checks_all_conflicts_before_cancelling_any_pet(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        $payload['number_of_pets'] = 2;
+        $payload['pets'][] = [...$payload['pets'][0], 'pet_name' => 'Bella'];
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $pets = \App\Models\BookingPet::where('booking_id', $id)->orderBy('booking_pet_id')->get();
+        $pets[1]->update(['grooming_state' => 'in_progress', 'grooming_start_time' => now()]);
+        try {
+            app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(),
+                fn () => app(\App\Services\PetServiceSessionPolicy::class)->enforce($pets->pluck('pet_id')->all(), 'clinic', true));
+            $this->fail('An operational pet must block the entire transfer');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) { $this->assertSame(409, $e->getResponse()->getStatusCode()); }
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => $pets[0]->booking_pet_id, 'grooming_state' => 'not_started']);
+        $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => $pets[1]->booking_pet_id, 'grooming_state' => 'in_progress']);
+        $this->assertDatabaseCount('customer_notifications', 0);
+    }
+
+    #[DataProvider('transferFailureModes')]
+    public function test_failed_transfer_rolls_back_cancellation_and_notification(bool $notificationFailure): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $petId = \App\Models\BookingPet::where('booking_id', $id)->value('pet_id');
+        $dispatcher = \App\Models\CustomerNotification::getEventDispatcher();
+        if ($notificationFailure) {
+            \App\Models\CustomerNotification::setEventDispatcher(clone $dispatcher);
+            \App\Models\CustomerNotification::creating(fn () => throw new \RuntimeException('Notification failed'));
+        }
+        try {
+            app(\App\Services\DailyPetQueue::class)->runForDate(now()->toDateString(), function () use ($petId) {
+                app(\App\Services\PetServiceSessionPolicy::class)->enforce([$petId], 'clinic', true);
+                throw new \RuntimeException('Intake failed');
+            });
+            $this->fail('Intake must roll back');
+        } catch (\RuntimeException $e) { $this->assertSame($notificationFailure ? 'Notification failed' : 'Intake failed', $e->getMessage()); }
+        finally { \App\Models\CustomerNotification::setEventDispatcher($dispatcher); }
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseHas('booking_pets', ['booking_id' => $id, 'grooming_state' => 'not_started']);
+        $this->assertDatabaseCount('customer_notifications', 0);
+    }
+
+    public static function transferFailureModes(): array
+    {
+        return ['intake write fails' => [false], 'customer notification fails' => [true]];
+    }
+
+    public function test_grooming_check_in_replaces_pending_clinic_but_rejects_operational_clinic(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $petId = \App\Models\BookingPet::where('booking_id', $id)->value('pet_id');
+        Schema::table('clinic_appointments', function (Blueprint $table) {
+            $table->string('appointment_type')->nullable(); $table->timestamps();
+        });
+        Schema::table('customer_notifications', fn (Blueprint $table) => $table->unsignedBigInteger('clinic_appointment_id')->nullable());
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-PENDING', 'pet_id' => $petId, 'user_id' => 101,
+            'status' => 'checked_in', 'appointment_type' => 'pre_registered']);
+        $this->authenticateAs('staff');
+        $this->postJson("/api/admin/bookings/{$id}/check-in")->assertConflict()->assertJsonPath('code', 'pet_service_conflict');
+        DB::table('clinic_appointments')->update(['status' => 'waiting_to_arrive']);
+        $this->postJson("/api/admin/bookings/{$id}/check-in")->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['status' => 'cancelled']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'checked_in']);
+        $this->assertDatabaseHas('customer_notifications', ['clinic_appointment_id' => 1, 'pet_id' => $petId]);
+        $this->postJson("/api/admin/bookings/{$id}/check-in")->assertOk();
+        $this->assertDatabaseCount('customer_notifications', 1);
     }
 
     public function test_active_grooming_blocks_another_pet_and_date_but_terminal_records_release_it(): void
@@ -3537,6 +3636,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->unsignedInteger('queue_number')->nullable(); $table->dateTime('checked_in_at')->nullable();
             $table->json('common_concerns')->nullable(); $table->timestamps();
         });
+        Schema::table('customer_notifications', fn (Blueprint $table) => $table->unsignedBigInteger('clinic_appointment_id')->nullable());
         foreach (['clinic_vitals', 'clinic_records'] as $table) {
             Schema::create($table, function (Blueprint $columns) { $columns->id(); $columns->unsignedBigInteger('clinic_appointment_id'); });
         }
@@ -3647,9 +3747,21 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $sharedPayload['pets'][0]['pet_id'] = 107;
             $sharedPayload['pets'][0]['pet_name'] = 'Shared pet';
             [$a, $b] = $run([107, 107], [$sharedPayload, [...$clinicPayload, 'pet_id' => 107]], ['grooming-submit', 'clinic-submit']);
-            $this->assertSame([201, 201], [$a['status'], $b['status']]);
+            $this->assertSame([201, 409], [$a['status'], $b['status']]);
             $this->assertSame(1, DB::table('bookings')->where('user_id', 107)->count());
-            $this->assertSame(1, DB::table('clinic_appointments')->where('user_id', 107)->count());
+            $this->assertSame(0, DB::table('clinic_appointments')->where('user_id', 107)->count());
+            $this->assertSame('pet_service_conflict', $b['body']['code']);
+            \App\Models\ClinicSetting::current()->update(['grooming_cage_capacity' => 20]);
+            // Two legacy pending registrations for one pet: only one physical admission may win.
+            $groomingId = $a['body']['booking']['booking_id'];
+            $clinicId = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CL-LEGACY-107',
+                'user_id' => 107, 'pet_id' => 107, 'appointment_type' => 'pre_registered', 'case_type' => 'online_request',
+                'status' => 'waiting_to_arrive', 'appointment_date' => now()->toDateString()]);
+            [$a, $b] = $run([107, 107], [['id' => $groomingId], ['id' => $clinicId]], ['grooming-check-in', 'clinic-check-in']);
+            $this->assertSame([200, 422], [$a['status'], $b['status']]);
+            $this->assertSame('cancelled', DB::table('clinic_appointments')->where('id', $clinicId)->value('status'));
+            $this->assertSame(1, DB::table('customer_notifications')->where('clinic_appointment_id', $clinicId)->count());
+
             [$a, $b] = $run([101, 102], [['service' => 'clinic'], ['service' => 'clinic']], 'intake-stop');
             $this->assertSame([200, 200], [$a['status'], $b['status']]);
             $this->assertSame(1, DB::table('clinic_closures')->where('is_active', true)->where('service', 'clinic')->count());
@@ -3673,7 +3785,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
                 'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,
-                'same_service_duplicates_blocked' => true, 'same_pet_cross_service_submissions_allowed' => true,
+                'same_service_duplicates_blocked' => true, 'same_pet_cross_service_submissions_blocked' => true, 'physical_transfer_race_has_one_winner' => true,
                 'grooming_check_in_numbers' => [1, 2], 'clinic_check_in_numbers' => [1, 2],
                 'premature_queue_numbers' => 0, 'retries_preserved_records' => true,
                 'walkin_unique_references' => 3, 'overlapping_walkin_retry_created_one_visit' => true,

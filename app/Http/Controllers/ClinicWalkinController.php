@@ -110,6 +110,8 @@ class ClinicWalkinController extends Controller
                 ->where('is_archived', false)
                 ->firstOrFail();
 
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic');
+
             $sequence = $clinicSequence->reserve($appointmentDate, false);
             $reference = $sequence['appointment_reference'];
 
@@ -205,6 +207,8 @@ class ClinicWalkinController extends Controller
                     'message' => "{$pet->pet_name} already has an ongoing clinic visit. Check the current case before registering another visit.",
                 ], 409));
             }
+
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic', true);
 
             $sequence = $clinicSequence->reserve(now()->toDateString(), true);
             $reference = $sequence['appointment_reference'];

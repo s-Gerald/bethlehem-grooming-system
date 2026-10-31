@@ -181,7 +181,8 @@ class AdminClinicController extends Controller
         $isArrival = $case?->status === 'waiting_to_arrive';
         $formatted = $case ? $this->formatAppointment($case) : null;
 
-        return response()->json(['case' => $isArrival ? null : $formatted, 'arrival' => $isArrival ? $formatted : null]);
+        return response()->json(['case' => $isArrival ? null : $formatted, 'arrival' => $isArrival ? $formatted : null,
+            'pet_conflict' => app(\App\Services\PetServiceSessionPolicy::class)->availability([$petId])[$petId]['clinic'] ?? null]);
     }
 
     public function createCase(Request $request, ClinicAppointmentSequence $sequence)
@@ -222,6 +223,7 @@ class AdminClinicController extends Controller
             }
 
             app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic', true);
             $reserved = $sequence->reserve(now()->toDateString(), true);
             $case = ClinicAppointment::create([
                 'appointment_reference' => $reserved['appointment_reference'],
@@ -364,6 +366,8 @@ class AdminClinicController extends Controller
                 throw \Illuminate\Validation\ValidationException::withMessages(['check_in' => 'Check-in is only allowed on the visit day.']);
             }
             app(\App\Services\OperationalCapacity::class)->assertCanAccept('clinic', 1);
+
+            app(\App\Services\PetServiceSessionPolicy::class)->enforce([$appointment->pet_id], 'clinic', true);
 
             $queueNumber = $appointment->queue_number;
 

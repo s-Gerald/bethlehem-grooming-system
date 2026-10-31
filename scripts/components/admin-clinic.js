@@ -1344,6 +1344,7 @@ function adminClinicPage() {
         const response = await API.getCurrentPetClinicCase(petId);
         if (request !== this._profileRequest) return false;
         this.profileVisit = response.case || response.arrival || null;
+        this.profilePetConflict = response.pet_conflict || null;
         this.profileVisitLoaded = true;
         this.profileActionError = '';
         return true;
@@ -1356,13 +1357,14 @@ function adminClinicPage() {
       }
     },
     get profileActionLabel() {
-      if (!this.profileVisitLoaded || this.profile.loading || this.profile.error) return '';
+      if (!this.profileVisitLoaded || this.profile.loading || this.profile.error || (this.profilePetConflict && !this.profilePetConflict.replaceable)) return '';
       const visit = this.currentClinicVisit;
       if (!visit || visit.status === 'waiting_to_arrive') return this.permissions.intake && (!visit || this.canCheckInArrival(visit)) ? 'Check In Patient' : '';
       if (visit.status === 'for_payment') return this.permissions.clinical ? 'Open Case' : '';
       return this.caseActionLabel(visit);
     },
     get profileStatusLabel() {
+      if (this.profilePetConflict) return this.profilePetConflict.replaceable ? 'Pending Grooming registration will be cancelled at check-in.' : 'Resolve the active Grooming visit before intake.';
       return !this.profileActionLabel && this.profileVisitLoaded && this.currentClinicVisit ? this.caseStatus(this.currentClinicVisit) : '';
     },
     runProfileAction() {
@@ -1381,6 +1383,7 @@ function adminClinicPage() {
       this.$nextTick?.(() => { trigger?.focus(); this.openCase(visit); });
     },
     async checkInPatient() {
+      if (this.profilePetConflict && !this.profilePetConflict.replaceable) return;
       if (!this.permissions.intake || !this.profile.pet?.id || this.profileBusy || !this.profileVisitLoaded || this.profile.loading || this.profile.error) return;
       if (this.currentClinicVisit?.status !== 'waiting_to_arrive' && this.currentClinicVisit) return;
       if (this.currentClinicVisit && !this.canCheckInArrival(this.currentClinicVisit)) return;

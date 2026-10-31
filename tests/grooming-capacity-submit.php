@@ -77,6 +77,8 @@ try {
     } elseif ($action === 'intake-stop') {
         $response = app(\App\Http\Controllers\ClinicClosureController::class)->stopToday($request);
     } else throw new RuntimeException('Unsupported isolated test operation.');
+} catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+    $response = $exception->getResponse();
 } catch (ValidationException $exception) {
     $response = $exception->response ?? response()->json(['errors' => $exception->errors()], 422);
 }

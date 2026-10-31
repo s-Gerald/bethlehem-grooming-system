@@ -56,6 +56,8 @@ class CustomerNotificationController extends Controller
                         CustomerNotification::TYPE_PET_INFORMATION_UPDATED => 'Pet Information Updated',
                         CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Online Registration expired',
                         CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Online Registration — No Show',
+                        CustomerNotification::TYPE_BOOKING_CANCELLED => $n->pet_id
+                            ? ($n->clinic_appointment_id ? 'Clinic Online Registration Cancelled' : 'Grooming Online Registration Cancelled') : null,
                         default => null,
                     },
                     'message' => $this->formatNotificationMessage($n->message),
@@ -66,8 +68,8 @@ class CustomerNotificationController extends Controller
                     'created_at' => $n->created_at?->toDateTimeString(),
                     'booking_id' => $n->booking_id,
                     'clinic_appointment_id' => $n->clinic_appointment_id,
-                    'pet_id' => $updatedPet?->pet_id,
-                    'pet_name' => $updatedPet?->pet_name,
+                    'pet_id' => $updatedPet?->pet_id ?? ($n->type === CustomerNotification::TYPE_BOOKING_CANCELLED ? $n->pet_id : null),
+                    'pet_name' => $updatedPet?->pet_name ?? ($n->type === CustomerNotification::TYPE_BOOKING_CANCELLED ? $n->pet?->pet_name : null),
                     'destination' => $destination,
                 ];
             });
@@ -131,6 +133,7 @@ class CustomerNotificationController extends Controller
 
     private function notificationPetNames(CustomerNotification $notification): array
     {
+        if ($notification->type === CustomerNotification::TYPE_BOOKING_CANCELLED && $notification->pet) return [$notification->pet->pet_name];
         if (str_starts_with($notification->type, 'clinic_reminder_')) {
             return array_filter([$notification->clinicAppointment?->pet?->pet_name]);
         }
@@ -164,6 +167,7 @@ class CustomerNotificationController extends Controller
 
     private function notificationPetTypes(CustomerNotification $notification, array $petNames): array
     {
+        if ($notification->type === CustomerNotification::TYPE_BOOKING_CANCELLED && $notification->pet) return [strtolower((string) $notification->pet->species)];
         if (str_starts_with($notification->type, 'clinic_reminder_')) {
             return array_filter([strtolower((string) $notification->clinicAppointment?->pet?->species)]);
         }
