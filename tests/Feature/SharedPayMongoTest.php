@@ -160,6 +160,7 @@ class SharedPayMongoTest extends TestCase
         });
         $migration = database_path('migrations/2026_10_18_000001_extend_shared_gateway_payments.php');
         (require $migration)->up();
+        (require database_path('migrations/2026_10_31_000001_add_pos_service_references.php'))->up();
         DB::table('clinic_appointments')->insert(['id' => 1, 'appointment_reference' => 'CLINIC-TEST', 'status' => 'for_payment', 'total_amount' => 1]);
         DB::table('clinic_charges')->insert(['clinic_appointment_id' => 1, 'kind' => 'service', 'description' => 'Consultation', 'quantity' => 1, 'unit_price' => 500, 'amount' => 500]);
         DB::table('inventory_items')->insert(['item_id' => 10, 'item_name' => 'Dog Treats', 'category' => 'pet_shop', 'unit' => 'pack', 'quantity_on_hand' => 3, 'selling_price' => 80]);
@@ -168,7 +169,7 @@ class SharedPayMongoTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
+        foreach (['pos_sale_sequences', 'gateway_stock_reservations', 'clinic_charges', 'clinic_appointments', 'pos_transaction_items', 'pos_transactions', 'gateway_payments', 'grooming_payment_products', 'inventory_transactions', 'inventory_items',
             'notifications', 'payments', 'booking_services', 'services', 'booking_pets', 'pets', 'bookings', 'users'] as $table) {
             Schema::dropIfExists($table);
         }
@@ -680,6 +681,148 @@ class SharedPayMongoTest extends TestCase
         $this->fakeProvider('expired');
         $this->deleteJson('/api/pos/online-payment/1')->assertOk()->assertJsonPath('online_payment.status', 'cancelled');
         $this->assertDatabaseCount('gateway_stock_reservations', 0);
+    }
+
+    public function test_concurrent_cash_and_webhook_sales_share_the_daily_sequence(): void
+    {
+        $this->posCheckout()->assertOk();
+        DB::table('users')->insert(['user_id' => 8, 'role' => 'admin']);
+        $event = $this->event(16000);
+        $directory = sys_get_temp_dir().'/bethlehem-pos-'.bin2hex(random_bytes(6));
+        $this->assertTrue(mkdir($directory, 0700));
+        $database = $directory.'/sales.sqlite';
+        $processes = [];
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            $worker = <<<'PHP'
+                require 'tests/bootstrap.php';
+                $database = $argv[1]; $role = $argv[2]; $directory = realpath(dirname($database));
+                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                    || !preg_match('/\Abethlehem-pos-[a-f0-9]{12}\z/', basename($directory))
+                    || basename($database) !== 'sales.sqlite' || !is_file($database)) throw new RuntimeException('Disposable POS database required.');
+                $app = require 'bootstrap/app.php';
+                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
+                    'services.paymongo.webhook_secret' => 'whsec_fixture', 'services.paymongo.livemode' => false]);
+                Illuminate\Support\Facades\DB::purge('sqlite');
+                $connection = Illuminate\Support\Facades\DB::connection();
+                if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) throw new RuntimeException('Unexpected database.');
+                $wait = function ($file) {
+                    $deadline = microtime(true) + 5;
+                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                    if (!is_file($file)) throw new RuntimeException('POS barrier timed out.');
+                };
+                $contended = false;
+                $connection->beforeStartingTransaction(function () use ($role, $directory, $database, $wait, &$contended) {
+                    if ($role !== 'webhook') return;
+                    $wait($directory.'/locked');
+                    $probe = new PDO('sqlite:'.$database); $probe->exec('PRAGMA busy_timeout=0');
+                    try { $probe->exec('BEGIN IMMEDIATE'); $probe->exec('ROLLBACK'); throw new RuntimeException('Expected Cash lock.'); }
+                    catch (PDOException $error) { if (($error->errorInfo[1] ?? null) !== 5) throw $error; $contended = true; }
+                    file_put_contents($directory.'/attempted', '1');
+                });
+                $connection->listen(function ($query) use ($role, $directory, $wait) {
+                    if ($role === 'cash' && str_starts_with(strtolower($query->sql), 'insert into "pos_transactions"')) {
+                        file_put_contents($directory.'/locked', '1'); $wait($directory.'/attempted');
+                    }
+                });
+                $headers = ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'];
+                if ($role === 'cash') {
+                    Laravel\Sanctum\Sanctum::actingAs(App\Models\User::findOrFail(8));
+                    $url = '/api/pos/transactions'; $body = json_encode(['items' => [['item_id' => 10, 'quantity' => 1]], 'amount_tendered' => 80]);
+                } else {
+                    $url = '/api/paymongo/webhook'; $body = $argv[3]; $timestamp = time();
+                    $headers['HTTP_PAYMONGO_SIGNATURE'] = 't='.$timestamp.',te='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_fixture');
+                }
+                $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle(Illuminate\Http\Request::create($url, 'POST', [], [], [], $headers, $body));
+                echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'contended' => $contended]);
+                PHP;
+            foreach (['cash', 'webhook'] as $role) {
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $role, json_encode($event)], base_path(), [
+                    'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => base_path('storage/framework/testing-config-unused.php'),
+                    'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                    'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+                ]);
+                $process->setTimeout(15); $process->start(); $processes[] = $process;
+            }
+            foreach ($processes as $index => $process) {
+                $process->wait();
+                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+                $result = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+                $this->assertSame($index === 0 ? 201 : 200, $result['status'], json_encode($result['body']));
+                if ($index === 1) $this->assertTrue($result['contended']);
+            }
+            $pdo = new \PDO('sqlite:'.$database);
+            $references = $pdo->query('SELECT reference FROM pos_transactions ORDER BY pos_id')->fetchAll(\PDO::FETCH_COLUMN);
+            $date = now('Asia/Manila')->format('Ymd');
+            $this->assertSame(['POS-'.$date.'-001', 'POS-'.$date.'-002'], $references);
+            $this->assertEquals(0, $pdo->query('SELECT quantity_on_hand FROM inventory_items WHERE item_id = 10')->fetchColumn());
+            $this->assertEquals(0, $pdo->query('SELECT COUNT(*) FROM gateway_stock_reservations')->fetchColumn());
+            $this->assertSame('pay_fixture', $pdo->query('SELECT provider_payment_id FROM gateway_payments')->fetchColumn());
+            $pdo = null;
+        } finally {
+            foreach ($processes as $process) if ($process->isRunning()) $process->stop();
+            foreach (glob($directory.'/*') ?: [] as $file) unlink($file);
+            rmdir($directory);
+        }
+    }
+
+    public static function paymentContexts(): array
+    {
+        return [['grooming', 85000], ['clinic', 50000], ['pos', 16000]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('paymentContexts')]
+    public function test_verified_provider_id_matches_status_receipt_and_search(string $context, int $amount): void
+    {
+        Schema::create('walkins', function (Blueprint $table) {
+            $table->id(); $table->string('fname'); $table->string('lname');
+        });
+        Schema::create('unregistered_customers', function (Blueprint $table) {
+            $table->id(); $table->string('first_name'); $table->string('last_name');
+        });
+        Schema::table('clinic_appointments', function (Blueprint $table) {
+            $table->unsignedInteger('user_id')->nullable(); $table->unsignedInteger('pet_id')->nullable(); $table->unsignedBigInteger('walkin_id')->nullable();
+        });
+        Schema::table('pets', fn (Blueprint $table) => $table->unsignedInteger('unregistered_customer_id')->nullable());
+        Schema::table('bookings', fn (Blueprint $table) => $table->unsignedInteger('user_id')->nullable());
+        if ($context === 'clinic') $this->clinicCheckout();
+        elseif ($context === 'pos') $this->posCheckout()->assertOk();
+        else $this->postJson('/api/admin/bookings/1/online-payment', [
+            'flow' => 'final', 'payment_method' => 'online',
+            'service_prices' => [['booking_service_id' => 3, 'amount' => 850]],
+            'pet_sizes' => [['booking_pet_id' => 2, 'size' => 'large']],
+        ])->assertOk();
+
+        $url = match ($context) {
+            'clinic' => '/api/admin/clinic-appointments/1/online-payment',
+            'pos' => '/api/pos/online-payment/1',
+            default => '/api/admin/bookings/1/online-payment',
+        };
+        $this->getJson($url)->assertOk()->assertJsonPath('online_payment.provider_payment_id', null);
+        $this->webhook($this->event($amount))->assertOk();
+        $this->assertDatabaseHas('gateway_payments', ['provider_payment_id' => 'pay_fixture', 'status' => 'paid']);
+        $field = match ($context) { 'clinic' => 'appointment', 'pos' => 'receipt', default => 'payment' };
+        $this->getJson($url)->assertOk()->assertJsonPath('online_payment.provider_payment_id', 'pay_fixture')
+            ->assertJsonPath($field.'.provider_payment_id', 'pay_fixture');
+        $this->getJson('/api/admin/transactions?search=pay_fixture')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('transactions.0.providerPaymentId', 'pay_fixture');
+        GatewayPayment::first()->update(['provider_payment_id' => null]);
+        $this->getJson('/api/admin/transactions')->assertOk()->assertJsonPath('transactions.0.providerPaymentId', null);
+        $this->getJson('/api/admin/transactions?search=pay_fixture')->assertOk()->assertJsonPath('total', 0);
+    }
+
+    public function test_unsettled_provider_ids_are_not_exposed_as_confirmed(): void
+    {
+        $this->clinicCheckout();
+        $attempt = GatewayPayment::first();
+        foreach (['pending', 'failed', 'cancelled', 'expired', 'paid'] as $status) {
+            $attempt->update(['status' => $status, 'provider_payment_id' => 'pay_unsettled', 'reconciliation_reason' => 'needs_review']);
+            $response = app(\App\Services\OnlinePaymentService::class)->response($attempt);
+            $this->assertNull($response['online_payment']['provider_payment_id'] ?? null);
+        }
     }
 
     private function clinicCheckout(): void

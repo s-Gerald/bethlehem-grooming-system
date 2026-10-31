@@ -957,6 +957,7 @@ function adminClinicPage() {
       window.OnlinePayment?.clear('clinic');
       this.receiptModal = {
         isTest: recorded.is_test === true,
+        providerPaymentId: window.PaymentInvoice.paymentId(recorded.provider_payment_id, recorded.payment_method),
         caseReference: recorded.appointment_reference,
         ownerName: recorded.ownerName,
         contactNumber: recorded.contactNumber === '—' ? '' : recorded.contactNumber,

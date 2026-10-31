@@ -164,6 +164,7 @@ class OnlinePaymentService
             'id' => $attempt->id, 'context' => $attempt->context, 'payable_id' => $attempt->payable_id,
             'status' => $attempt->status, 'amount' => $attempt->amount, 'checkout_url' => $attempt->checkout_url,
             'flow' => $attempt->flow, 'is_test' => ! $attempt->livemode,
+            'provider_payment_id' => $attempt->confirmedPaymentId(),
             'reconciliation_reason' => $attempt->reconciliation_reason,
         ]];
     }

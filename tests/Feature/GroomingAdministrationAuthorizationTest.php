@@ -3290,6 +3290,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $service = \App\Models\Service::where('slug', 'partial_grooming')->firstOrFail();
         $response = $this->postJson($walkIn ? '/api/admin/walk-in' : '/api/booking/store', $payload)->assertCreated();
         $id = $response->json($walkIn ? 'booking_id' : 'booking.booking_id');
+        $this->assertMatchesRegularExpression($walkIn ? '/^WI-\d{8}-\d{3,}$/' : '/^OR-\d{8}-\d{4,}$/',
+            DB::table('bookings')->where('booking_id', $id)->value('booking_reference'));
         $this->assertDatabaseHas('booking_services', ['booking_id' => $id,
             'service_name_snapshot' => $service->service_name, 'service_kind_snapshot' => $service->kind]);
     }

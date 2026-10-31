@@ -99,10 +99,12 @@ class InventorySecurityRegressionTest extends TestCase
             $table->decimal('price_at_sale', 10, 2);
             $table->decimal('subtotal', 10, 2);
         });
+        (require database_path('migrations/2026_10_31_000001_add_pos_service_references.php'))->up();
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('pos_sale_sequences');
         Schema::dropIfExists('pos_transaction_items');
         Schema::dropIfExists('pos_transactions');
         Schema::dropIfExists('inventory_transactions');
@@ -1761,8 +1763,32 @@ class InventorySecurityRegressionTest extends TestCase
         $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 8]);
     }
 
+    public function test_pos_references_roll_over_and_do_not_reuse_deleted_history(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000042'));
+        $id = $this->createInventoryItem('Retail', 10, 80);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $payload = ['items' => [['item_id' => $id, 'quantity' => 1]], 'amount_tendered' => 80];
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-31 23:59:00', 'Asia/Manila'));
+        $this->postJson('/api/pos/transactions', $payload)->assertCreated()->assertJsonPath('data.reference', 'POS-20261031-001');
+        DB::table('pos_transaction_items')->delete();
+        DB::table('pos_transactions')->delete();
+        $this->postJson('/api/pos/transactions', $payload)->assertCreated()->assertJsonPath('data.reference', 'POS-20261031-002');
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01 00:01:00', 'Asia/Manila'));
+        $sale = $this->postJson('/api/pos/transactions', $payload)->assertCreated()->assertJsonPath('data.reference', 'POS-20261101-001');
+        DB::table('pos_sale_sequences')->where('service_date', '2026-11-01')->update(['last_number' => 999]);
+        $this->postJson('/api/pos/transactions', $payload)->assertCreated()->assertJsonPath('data.reference', 'POS-20261101-1000');
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-02 10:00:00', 'Asia/Manila'));
+        $this->getJson('/api/pos/transactions/'.$sale->json('data.pos_id'))->assertOk()->assertJsonPath('data.reference', 'POS-20261101-001');
+        $model = \App\Models\PosTransaction::findOrFail($sale->json('data.pos_id'));
+        $model->reference = 'POS-20261102-001';
+        $this->expectException(\LogicException::class);
+        $model->save();
+    }
+
     public function test_pos_consolidates_lines_tracks_the_authenticated_actor_and_preserves_invoice_snapshot(): void
     {
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-31 10:00:00', 'Asia/Manila'));
         $actor = $this->createUser('staff', '09170000042');
         Sanctum::actingAs($actor);
         $id = $this->createInventoryItem('Original Retail Name', 5, 125.50);
@@ -1770,7 +1796,7 @@ class InventorySecurityRegressionTest extends TestCase
         $sale = $this->postJson('/api/pos/transactions', [
             'items' => [['item_id' => $id, 'quantity' => 1], ['item_id' => $id, 'quantity' => 2]],
             'amount_tendered' => 500, 'cashier_id' => 999, 'customer_id' => 999,
-        ])->assertCreated()->assertJsonPath('data.reference', 'POS-000001')
+        ])->assertCreated()->assertJsonPath('data.reference', 'POS-20261031-001')
             ->assertJsonPath('data.cashier_id', $actor->user_id)->assertJsonPath('data.cashier_name', 'Staff Inventory Tester')
             ->assertJsonPath('data.total_amount', '376.50')->assertJsonPath('data.change_amount', '123.50')
             ->assertJsonCount(1, 'data.items');
@@ -1780,7 +1806,7 @@ class InventorySecurityRegressionTest extends TestCase
         $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 2]);
         $this->assertDatabaseHas('inventory_transactions', ['item_id' => $id, 'type' => 'stock_out', 'reason' => 'sold',
             'quantity' => 3, 'reference_type' => 'pos', 'reference_id' => 1, 'performed_by' => $actor->user_id]);
-        $this->getJson('/api/inventory/transactions')->assertOk()->assertJsonPath('data.0.source_label', 'POS-000001');
+        $this->getJson('/api/inventory/transactions')->assertOk()->assertJsonPath('data.0.source_label', 'POS-20261031-001');
         DB::table('inventory_items')->where('item_id', $id)->update(['item_name' => 'Renamed Retail Product', 'selling_price' => 900, 'is_active' => false]);
         $this->getJson('/api/pos/transactions/1')->assertOk()
             ->assertJsonPath('data.items.0.item_name', 'Original Retail Name')
@@ -1821,6 +1847,7 @@ class InventorySecurityRegressionTest extends TestCase
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->assertDatabaseCount('pos_transaction_items', 0);
         $this->assertDatabaseCount('inventory_transactions', 0);
+        $this->assertDatabaseCount('pos_sale_sequences', 0);
         foreach ($lines as $line) {
             $this->assertDatabaseHas('inventory_items', ['item_id' => $line['item_id'], 'quantity_on_hand' => 3]);
         }

@@ -8,8 +8,8 @@
     <link rel="stylesheet" href="../../css/components/product-search-dropdown.css?v=20261029-v2" />
     <link rel="stylesheet" href="../../css/output.css?clinical-history=20261029&clinical-validation=20261027-v1&v=clinic-merge-20261007&clinic-products=20261010&treatments=20261012&medical-record=20261012&clinic-services=20261014-provided&case-flow=20261014-payment-filters&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261014-case-details-v3&clinic-payment=20261015-v2&clinic-navigation=20261020&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
-    <link rel="stylesheet" href="../../css/components/print-information.css?v=clinic-invoice-20261015&pet-care=20261027-v1&invoice-products=20261029" />
+    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1&references=20261031" />
+    <link rel="stylesheet" href="../../css/components/print-information.css?v=clinic-invoice-20261015&pet-care=20261027-v1&invoice-products=20261029&references=20261031" />
     <link rel="stylesheet" href="../../css/components/toast.css?v=semantic-toast-20261015" />
     <style>
       :is([x-data="adminClinicCasesSection()"], [aria-labelledby="patient-record-title"]) :is(button, input, select, textarea, [tabindex="0"]):focus-visible {
@@ -417,6 +417,8 @@
                   <section class="receipt-success-section">
                     <h5>Payment Details</h5>
                     <dl class="receipt-success-details">
+                      <div><dt>Clinic reference</dt><dd x-text="receiptModal.caseReference"></dd></div>
+                      <template x-if="receiptModal.providerPaymentId"><div class="payment-provider-id"><dt>Payment ID</dt><dd><span x-text="receiptModal.providerPaymentId"></span><button type="button" class="payment-id-copy" aria-label="Copy Payment ID" title="Copy Payment ID" @click="window.PaymentInvoice.copyPaymentId(receiptModal.providerPaymentId)"><svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=service-references-20261031#copy"></use></svg></button></dd></div></template>
                       <div><dt>Pet owner</dt><dd x-text="receiptModal.ownerName"></dd></div>
                       <div><dt>Patient</dt><dd x-text="receiptModal.patientName"></dd></div>
                       <div><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
@@ -1547,13 +1549,13 @@
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024&mobile-format=20261029&invoice-products=20261029"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-invoice-20261015&payments=20261018-shared&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
 
 
     <script src="../../scripts/components/clinic-feedback.js?v=services-20261017"></script>
     <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="../../scripts/components/clinic-record-presentation.js?v=20261029"></script>
-    <script src="../../scripts/components/admin-clinic.js?clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029"></script>
+    <script src="../../scripts/components/admin-clinic.js?clinical-history=20261029&clinical-validation=20261027-v1&services=20261017&toast=semantic-20261015&attachments=shared-20261015&v=clinic-merge-20261007&roles=20261010-4&clinic-products=inventory-weight-catalog-20261011-v4&pet-weight=pet-weight-size-20261011-v3&treatments=20261012&medical-record=20261015-imaging-v2&clinic-services=20261013-confinement&case-flow=20261013-v5&unified-cases=20261014&patient-profile=20261017-treatment-types&patient-flow=20261015-number-labels-v4&clinic-payment=20261015-v2&chief-complaint=20261015&walk-in=entry-context-20261015&case-lifecycle=20261017&case-status=20261018&payments=20261018-shared&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&gateway=20261023-combined&clinic-roles=20261024&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&references=20261031"></script>
     <script src="../../scripts/components/admin-clinic-case-workspace.js?v=20261015-imaging-v2&case-flow=20261013-v5"></script>
     <script src="../../scripts/components/admin-clinic-confinement.js?clinical-history=20261029&v=20261015-confinement-weight-v1"></script>
     <script src="../../scripts/components/admin-vaccinations.js?clinical-history=20261029&clinical-validation=20261027-v1&v=20261014-billing-v1&roles=20261010-4&clinic-products=20261010&treatments=working-visit-20261014&icons=20261018&admin-perf=20261019&product-dropdown=20261029-v3"></script>

@@ -92,7 +92,7 @@ function page() {
   assert.equal(zero.canConfirmPayment, false);
 
   const clinic = context.window.PaymentInvoice.clinicTemplate;
-  for (const label of ['Case reference', 'Patient', 'Clinic Charges', 'Processed by', 'Invoice total', 'Balance due']) assert.ok(clinic.includes(label));
+  for (const label of ['Clinic reference', 'Patient', 'Clinic Charges', 'Processed by', 'Invoice total', 'Balance due']) assert.ok(clinic.includes(label));
   for (const term of ['Grooming', 'Product Add-ons', 'bookingReference', 'pet_sizes', 'service_prices']) assert.ok(!clinic.includes(term), term);
   assert.ok(context.window.PaymentInvoice.template.includes('Grooming Services'));
   assert.ok(context.window.PaymentInvoice.template.includes('Product Add-ons'));

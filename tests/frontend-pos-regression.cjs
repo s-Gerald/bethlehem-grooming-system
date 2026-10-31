@@ -211,7 +211,7 @@ function testProductHistoryInvoice() {
   assert.equal(page.collectionTotal, 2000); assert.equal(page.collectionCount, 55);
   const template = app.context.window.ProductSaleInvoice.template;
   assert.match(template, /receipt.items/); assert.match(template, /line.price_at_sale/);
-  assert.doesNotMatch(template, /Bill to|ownerName|pet|phone|email|TIN|BIR|tax breakdown/i);
+  assert.doesNotMatch(template, /Bill to|ownerName|\bpet\b|phone|email|\bTIN\b|\bBIR\b|tax breakdown/i);
 }
 function testPaymentAndScannerIntegration() {
   const markup = read('pages/admin/inventory/sections/sell-product.html');

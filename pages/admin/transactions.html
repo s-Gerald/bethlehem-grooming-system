@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Transactions | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="../../css/output.css?auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026" />
-    <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023" />
-    <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029" />
+    <link rel="stylesheet" href="../../css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026&references=20261031" />
+    <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023&references=20261031" />
+    <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029&references=20261031" />
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
@@ -414,6 +414,7 @@
                   <section class="transaction-detail-section" aria-labelledby="transaction-payment-title">
                     <h3 id="transaction-payment-title">Payment Details</h3>
                     <dl class="transaction-line-items transaction-payment">
+                      <template x-if="selectedTransaction.paymentMethod !== 'cash' && !isLegacyQrPayment(selectedTransaction) && (selectedTransaction.paymentMethod === 'online' || selectedTransaction.paymentProvider === 'paymongo' || selectedTransaction.paymentMethodLabel === 'Online Payment')"><div class="payment-provider-id"><dt>Payment ID</dt><dd><span x-text="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod) || 'Unavailable'"></span><button x-show="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod)" type="button" class="payment-id-copy" aria-label="Copy Payment ID" title="Copy Payment ID" @click="window.PaymentInvoice.copyPaymentId(selectedTransaction.providerPaymentId)"><svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=service-references-20261031#copy"></use></svg></button></dd></div></template>
                       <div><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment"><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
@@ -471,9 +472,9 @@
 
 
     <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029"></script>
-    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
+    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024&references=20261031"></script>
+    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026&references=20261031"></script>
     <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
   </body>

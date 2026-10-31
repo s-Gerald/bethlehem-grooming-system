@@ -290,6 +290,12 @@
     break-inside: avoid;
   }
 
+  body.payment-invoice-printing .payment-provider-id dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   body.payment-invoice-printing .payment-invoice-details dl > div {
     display: grid;
     grid-template-columns: 35mm minmax(0, 1fr);

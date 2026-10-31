@@ -983,6 +983,26 @@ body.customer-detail-modal-open {
   overflow-wrap: anywhere;
 }
 
+.payment-provider-id dd {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow-wrap: anywhere;
+}
+
+.payment-id-copy {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+  padding: 0.25rem;
+  color: #315d7d;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.payment-id-copy:hover { background: #e2ecf4; }
+.payment-id-copy:focus-visible { outline: 2px solid #315d7d; outline-offset: 2px; }
+.payment-id-copy svg { width: 1rem; height: 1rem; }
+
 .receipt-success-service strong,
 .receipt-success-subtotal strong {
   flex-shrink: 0;

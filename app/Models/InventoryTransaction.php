@@ -82,4 +82,9 @@ class InventoryTransaction extends Model
     {
         return $this->belongsTo(ClinicAppointment::class, 'reference_id', 'id');
     }
+
+    public function posTransaction()
+    {
+        return $this->belongsTo(PosTransaction::class, 'reference_id', 'pos_id');
+    }
 }

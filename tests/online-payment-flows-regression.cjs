@@ -16,7 +16,7 @@ const context = {URL, URLSearchParams, Date, Intl, console, setTimeout: () => 1,
     onlinePaymentStatus: async () => ({online_payment: {id: 3, flow: 'online', status: 'pending', amount: '160.00'}}),
     processSale: async () => {cashCalls++;}},
 };
-for (const name of ['cash-payment', 'online-payment', 'admin-clinic', 'admin-pos']) vm.runInNewContext(fs.readFileSync(`scripts/components/${name}.js`, 'utf8'), context);
+for (const name of ['cash-payment', 'online-payment', 'payment-invoice', 'admin-clinic', 'admin-pos']) vm.runInNewContext(fs.readFileSync(`scripts/components/${name}.js`, 'utf8'), context);
 (async () => {
   const clinic = context.adminClinicPage();
   clinic.$store = {clinicAccess: {permissions: {payment: true}}}; clinic.$nextTick = fn => fn();
@@ -25,8 +25,9 @@ for (const name of ['cash-payment', 'online-payment', 'admin-clinic', 'admin-pos
   await clinic.recordPayment();
   assert.equal(onlineCalls, 1); assert.equal(cashCalls, 0); assert.equal(opened, 'https://checkout.paymongo.com/cs_clinic');
   assert.equal(clinic.payment.recorded, false);
-  await clinic.applyClinicOnlineStatus({online_payment: {id: 2, status: 'paid'}, appointment: {id: 1, total_amount: 500, payment_method: 'online', payment_method_label: 'Online Payment', paid: true, status: 'completed'}});
+  await clinic.applyClinicOnlineStatus({online_payment: {id: 2, status: 'paid'}, appointment: {id: 1, total_amount: 500, provider_payment_id: 'pay_clinic_confirmed', payment_method: 'online', payment_method_label: 'Online Payment', paid: true, status: 'completed'}});
   assert.equal(clinic.payment.recorded, true); assert.equal(clinic.receiptModal.paymentMethod, 'Online Payment');
+  assert.equal(clinic.receiptModal.providerPaymentId, 'pay_clinic_confirmed');
   const pos = context.adminPos(); pos.$nextTick = fn => fn(); pos.$refs = {};
   pos.cart = [{item_id: 1, item_name: 'Treats', unit: 'pack', price: 80, stock: 3, quantity: 2, subtotal: 160}]; pos.paymentMethod = 'online';
   assert.equal(pos.canProcess, true);

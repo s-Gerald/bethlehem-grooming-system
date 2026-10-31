@@ -15,6 +15,22 @@ use Tests\TestCase;
 
 class PaymentSchemaCompatibilityTest extends TestCase
 {
+    public function test_pos_reference_migration_preserves_legacy_rows_and_enforces_uniqueness(): void
+    {
+        Schema::create('users', function (Blueprint $table) { $table->increments('user_id'); });
+        DB::table('users')->insert(['user_id' => 1]);
+        (require database_path('migrations/2026_07_05_100002_create_pos_transactions_table.php'))->up();
+        $legacy = ['cashier_id' => 1, 'total_amount' => 50, 'amount_tendered' => 50, 'change_amount' => 0, 'created_at' => '2026-10-01 10:00:00'];
+        DB::table('pos_transactions')->insert(['pos_id' => 1, ...$legacy]);
+        (require database_path('migrations/2026_10_31_000001_add_pos_service_references.php'))->up();
+        $this->assertNull(DB::table('pos_transactions')->where('pos_id', 1)->value('reference'));
+        $this->assertSame('POS-000001', \App\Models\PosTransaction::findOrFail(1)->reference);
+        $this->assertDatabaseHas('pos_transactions', ['pos_id' => 1, ...$legacy]);
+        DB::table('pos_transactions')->insert(['reference' => 'POS-20261031-001', ...$legacy]);
+        $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
+        DB::table('pos_transactions')->insert(['reference' => 'POS-20261031-001', ...$legacy]);
+    }
+
     protected function tearDown(): void
     {
         Schema::dropIfExists('payments');

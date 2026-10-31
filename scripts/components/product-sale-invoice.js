@@ -18,7 +18,7 @@ window.ProductSaleInvoice = {
       <div class="payment-invoice-heading"><h1>INVOICE</h1><span class="payment-invoice-status" x-text="receipt.is_test ? 'Paid · Test' : 'Paid'"></span></div>
     </header>
     <dl class="payment-invoice-meta">
-      <div><dt>Transaction reference</dt><dd x-text="receipt.reference"></dd></div>
+      <div><dt>POS reference</dt><dd x-text="receipt.reference"></dd></div>
       <div><dt>Invoice date</dt><dd x-text="window.ProductSaleInvoice.formatDate(receipt.created_at)"></dd></div>
     </dl>
     <section class="payment-invoice-section payment-invoice-products">
@@ -41,6 +41,7 @@ window.ProductSaleInvoice = {
       <div class="payment-invoice-details-summary">
         <h2>Payment Details</h2>
         <dl>
+          <div x-show="window.PaymentInvoice.paymentId(receipt.provider_payment_id, receipt.payment_method)" class="payment-provider-id"><dt>Payment ID</dt><dd x-text="window.PaymentInvoice.paymentId(receipt.provider_payment_id, receipt.payment_method)"></dd></div>
           <div><dt>Payment Method</dt><dd x-text="receipt.payment_method_label || 'Cash'"></dd></div>
           <div x-show="(receipt.payment_method || 'cash') === 'cash'"><dt>Cash Received</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.amount_tendered)"></dd></div>
           <div x-show="(receipt.payment_method || 'cash') === 'cash'"><dt>Change</dt><dd x-text="window.ProductSaleInvoice.formatPeso(receipt.change_amount)"></dd></div>

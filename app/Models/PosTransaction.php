@@ -15,6 +15,7 @@ class PosTransaction extends Model
     public $timestamps = false;
 
     protected $fillable = [
+        'reference',
         'cashier_id',
         'total_amount',
         'amount_tendered',
@@ -35,6 +36,11 @@ class PosTransaction extends Model
     {
         static::creating(function (self $model) {
             $model->created_at = now();
+        });
+        static::updating(function (self $model) {
+            if ($model->isDirty('reference')) {
+                throw new \LogicException('POS service references cannot be changed.');
+            }
         });
     }
 
@@ -58,11 +64,17 @@ class PosTransaction extends Model
         return 'POS-'.str_pad((string) $id, 6, '0', STR_PAD_LEFT);
     }
 
+    public function getReferenceAttribute(): string
+    {
+        return $this->attributes['reference'] ?? self::referenceFor($this->pos_id);
+    }
+
     public function receiptSnapshot(): array
     {
         return [
             'pos_id' => $this->pos_id,
-            'reference' => self::referenceFor($this->pos_id),
+            'reference' => $this->reference,
+            'provider_payment_id' => $this->payment_method === 'cash' ? null : $this->gatewayPayment?->confirmedPaymentId(),
             'transaction_type' => 'product_sale',
             'payment_method' => $this->payment_method ?? 'cash',
             'payment_method_label' => $this->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($this->payment_method ?? 'cash'),

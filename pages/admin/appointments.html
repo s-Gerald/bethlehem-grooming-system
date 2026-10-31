@@ -9,10 +9,10 @@
     <link rel="stylesheet" href="../../css/components/product-search-dropdown.css?v=20261029-v2" />
     <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2" />
-    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3&references=20261031" />
     <link
       rel="stylesheet"
-      href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029"
+      href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029&references=20261031"
     />
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=checkin-layout-20261009-2&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
@@ -1137,6 +1137,8 @@
                 <section class="receipt-success-section">
                   <h5>Payment Details</h5>
                   <dl class="receipt-success-details">
+                    <div><dt>Grooming reference</dt><dd x-text="receiptModal.bookingReference"></dd></div>
+                    <template x-if="receiptModal.providerPaymentId"><div class="payment-provider-id"><dt>Payment ID</dt><dd><span x-text="receiptModal.providerPaymentId"></span><button type="button" class="payment-id-copy" aria-label="Copy Payment ID" title="Copy Payment ID" @click="window.PaymentInvoice.copyPaymentId(receiptModal.providerPaymentId)"><svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=service-references-20261031#copy"></use></svg></button></dd></div></template>
                     <div><dt>Pet owner</dt><dd x-text="receiptModal.ownerName"></dd></div>
                     <div><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
                     <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Cash received</dt><dd x-text="formatPeso(receiptModal.amountPaid)"></dd></div>
@@ -1570,9 +1572,9 @@
 
     <!-- Shared dashboard content script -->
     <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029"></script>
+    <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031"></script>
   </body>
 </html>

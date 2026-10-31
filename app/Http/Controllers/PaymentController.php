@@ -540,6 +540,7 @@ class PaymentController extends Controller
             $response['payment'] = [
                 'final_price' => $attempt->amount, 'amount_paid' => null, 'change' => null, 'is_test' => ! $attempt->livemode,
                 'payment_method' => 'online', 'payment_method_label' => 'Online Payment',
+                'provider_payment_id' => $attempt->confirmedPaymentId(),
                 'paid_at' => $attempt->paid_at?->format('M j, Y g:i A'), 'booking_status' => $booking->status,
                 'all_pets_finished' => $booking->status === 'released', 'payment_summary' => $attempt->snapshot['summary'],
                 'notes' => $attempt->snapshot['notes'],
@@ -589,6 +590,12 @@ class PaymentController extends Controller
         // Preserve opt-in legacy history without QR table checks/queries in ordinary listings.
         $hasQrPayments = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments');
         $search = trim((string) $request->query('search', ''));
+        // Exact provider ID lookup uses its existing unique index.
+        $gatewaySearch = str_starts_with($search, 'pay_') && Schema::hasTable('gateway_payments')
+            ? fn ($gateway) => $gateway->where('provider', 'paymongo')->where('status', 'paid')
+                ->whereNull('reconciliation_reason')->where('provider_payment_id', $search)
+            : null;
+        $hasPosReferences = $search !== '' && Schema::hasColumn('pos_transactions', 'reference');
         $period = (string) $request->query('period', 'day');
         $date = (string) $request->query('date', '');
         $week = (string) $request->query('week', '');
@@ -627,7 +634,7 @@ class PaymentController extends Controller
         if ($search !== '') {
             $search = mb_strtolower($search);
             $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
-            $query->where(function ($query) use ($search, $nameTerms, $hasQrPayments) {
+            $query->where(function ($query) use ($search, $nameTerms, $hasQrPayments, $gatewaySearch) {
                 $query->whereHas('booking.user', function ($userQuery) use ($search, $nameTerms) {
                     $userQuery->where(function ($nameQuery) use ($search, $nameTerms) {
                         $nameQuery->whereRaw('LOWER(first_name) LIKE ?', ["%{$search}%"])
@@ -645,6 +652,7 @@ class PaymentController extends Controller
                 )->orWhereHas('booking', fn ($bookingQuery) => $bookingQuery->whereRaw(
                     'LOWER(booking_reference) LIKE ?', ["%{$search}%"],
                 ))->orWhereHas('products', fn ($products) => $products->whereRaw('LOWER(item_name) LIKE ?', ["%{$search}%"]));
+                if ($gatewaySearch) $query->orWhereHas('gatewayPayment', $gatewaySearch);
                 if ($hasQrPayments) {
                     $reference = strtolower(QrPaymentVerificationService::normalizeReference($search) ?? '');
                     if ($reference !== '') $query->orWhereHas('qrPayment', fn ($qr) => $qr->whereRaw('LOWER(external_reference) LIKE ?', ["%{$reference}%"]));
@@ -655,8 +663,10 @@ class PaymentController extends Controller
         $posQuery = PosTransaction::query();
         $this->applyPeriodFilter($posQuery, $period, $date, $week, $month, $year, 'created_at');
         if ($search !== '') {
-            $posQuery->where(function ($query) use ($search) {
+            $posQuery->where(function ($query) use ($search, $gatewaySearch, $hasPosReferences) {
                 $query->whereHas('items', fn ($lines) => $lines->whereRaw('LOWER(item_name) LIKE ?', ["%{$search}%"]));
+                if ($hasPosReferences) $query->orWhere('reference', 'like', strtoupper($search).'%');
+                if ($gatewaySearch) $query->orWhereHas('gatewayPayment', $gatewaySearch);
                 if (preg_match('/^(?:pos[-\s#]*)?(\d+)$/i', $search, $matches)) {
                     $query->orWhere('pos_id', (int) $matches[1]);
                 }
@@ -667,9 +677,10 @@ class PaymentController extends Controller
         $this->applyPeriodFilter($clinicQuery, $period, $date, $week, $month, $year);
         if ($search !== '') {
             $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
-            $clinicQuery->where(function ($query) use ($search, $nameTerms) {
+            $clinicQuery->where(function ($query) use ($search, $nameTerms, $gatewaySearch) {
                 $query->whereRaw('LOWER(appointment_reference) LIKE ?', ["%{$search}%"])
                     ->orWhereHas('pet', fn ($pet) => $pet->whereRaw('LOWER(pet_name) LIKE ?', ["%{$search}%"]));
+                if ($gatewaySearch) $query->orWhereHas('gatewayPayment', $gatewaySearch);
                 foreach (['user' => ['first_name', 'last_name'], 'walkin' => ['fname', 'lname'],
                     'pet.unregisteredCustomer' => ['first_name', 'last_name']] as $relation => $columns) {
                     $query->orWhereHas($relation, function ($owner) use ($nameTerms, $columns) {
@@ -821,6 +832,7 @@ class PaymentController extends Controller
             'changeGiven' => $gateway ? null : (float) $payment->change_amount,
             'paymentMethod' => $payment->payment_method,
             'paymentProvider' => $payment->payment_provider,
+            'providerPaymentId' => $payment->payment_method === 'cash' ? null : $gateway?->confirmedPaymentId(),
             'providerMethod' => $payment->provider_method,
             'isTest' => $gateway ? ! $gateway->livemode : false,
             'reconciliationReason' => $gateway?->reconciliation_reason,
@@ -860,6 +872,7 @@ class PaymentController extends Controller
             'changeGiven' => $appointment->cash_received !== null
                 ? round((float) $appointment->cash_received - (float) $appointment->total_amount, 2) : null,
             'paymentMethod' => $appointment->payment_method,
+            'providerPaymentId' => $appointment->payment_method === 'cash' ? null : $appointment->gatewayPayment?->confirmedPaymentId(),
             'isTest' => $appointment->gatewayPayment ? ! $appointment->gatewayPayment->livemode : false,
             'paymentMethodLabel' => $appointment->gatewayPayment?->methodLabel() ?? GatewayPayment::labelFor($appointment->payment_method),
             'processedBy' => $appointment->paid_by_user_id,
@@ -889,6 +902,7 @@ class PaymentController extends Controller
             'amountPaid' => $pos->gatewayPayment ? null : (float) $pos->amount_tendered,
             'changeGiven' => $pos->gatewayPayment ? null : (float) $pos->change_amount,
             'paymentMethod' => $receipt['payment_method'],
+            'providerPaymentId' => $receipt['provider_payment_id'],
             'paymentMethodLabel' => $receipt['payment_method_label'],
             'isTest' => $receipt['is_test'],
             'paidAt' => $receipt['created_at'],

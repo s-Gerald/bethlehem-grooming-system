@@ -4017,6 +4017,7 @@ function adminDashboard() {
         change:        paymentMethod === 'online' ? null : res.change ?? (ap - fp),
         paymentMethod: res.payment_method_label ?? (res.payment_method === "cash" ? "Cash" : res.payment_method ?? paymentMethod),
         qrPayment: res.qr_payment || null,
+        providerPaymentId: window.PaymentInvoice.paymentId(res.provider_payment_id, res.payment_method ?? paymentMethod),
         notes:         res.notes ?? notes ?? "",
         paidAt:        res.paid_at ?? (res.qr_payment ? "" : new Date().toLocaleString("en-PH")),
         isEarlyPayment,

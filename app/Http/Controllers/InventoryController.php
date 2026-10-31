@@ -183,7 +183,7 @@ class InventoryController extends Controller
                 'clinic' => $t->reference_id === null
                     ? 'Clinic'
                     : 'Clinic · '.($t->clinicAppointment?->appointment_reference ?? $t->reference_id),
-                'pos' => $t->reference_id ? PosTransaction::referenceFor($t->reference_id) : 'POS',
+                'pos' => $t->reference_id ? ($t->posTransaction?->reference ?? PosTransaction::referenceFor($t->reference_id)) : 'POS',
                 default => null,
             },
             'notes'                 => $t->notes,
@@ -209,6 +209,7 @@ class InventoryController extends Controller
         // matching source so a POS movement never queries grooming/clinic data.
         if (! $this->requireAuth()->isVeterinarian()) {
             $transactions->where('reference_type', 'grooming')->load('groomingBooking');
+            $transactions->where('reference_type', 'pos')->load('posTransaction');
         }
         $transactions->where('reference_type', 'clinic')->load('clinicAppointment');
         return $transactions->map(fn ($transaction) => $this->formatTransaction($transaction));

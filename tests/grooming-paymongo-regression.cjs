@@ -40,7 +40,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(`${__dirname}/../scripts/api.js`, 'utf8'), context);
-for (const file of ['cash-payment.js', 'online-payment.js', 'admin-dashboard.js']) {
+for (const file of ['cash-payment.js', 'online-payment.js', 'payment-invoice.js', 'admin-dashboard.js']) {
   vm.runInContext(fs.readFileSync(`${__dirname}/../scripts/components/${file}`, 'utf8'), context, {
     importModuleDynamically: async specifier => {
       assert.match(specifier, /^\.\.\/services\/grooming-service\.js/, 'Opening payments only imports the existing pricing catalogue');
@@ -213,6 +213,7 @@ async function main() {
   await ui.submitPayment();
   status = { online_payment: { ...status.online_payment, status: 'paid' }, payment: {
     final_price: '500.00', amount_paid: null, change: null, payment_method: 'online', payment_method_label: 'Online Payment',
+    provider_payment_id: 'pay_grooming_confirmed',
     product_addons: [], paid_at: 'Oct 16, 2026 1:00 PM', booking_status: 'checked_in',
   } };
   const callback = [...timers.values()][0];
@@ -221,6 +222,7 @@ async function main() {
   assert.equal(ui.paymentModal.open, false);
   assert.equal(ui.receiptModal.open, true);
   assert.equal(ui.receiptModal.paymentMethod, 'Online Payment');
+  assert.equal(ui.receiptModal.providerPaymentId, 'pay_grooming_confirmed');
   assert.equal(ui.receiptModal.amountPaid, null);
   assert.equal(ui.receiptModal.change, null);
   assert.equal(timers.size, 0, 'Paid webhook status stops polling');

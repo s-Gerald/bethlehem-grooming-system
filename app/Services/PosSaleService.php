@@ -6,6 +6,7 @@ use App\Models\InventoryItem;
 use App\Models\PosTransaction;
 use App\Models\PosTransactionItem;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class PosSaleService
 {
@@ -144,7 +145,15 @@ class PosSaleService
 
     public function settle(User $actor, array $preparedLines, float $computedTotal, float $amountTendered, ?string $notes, ?\App\Models\GatewayPayment $gateway = null): PosTransaction
     {
+        // Both Cash checkout and webhook settlement hold their sale transaction.
+        // The date's primary key serializes first-use as well as subsequent sales.
+        $date = now('Asia/Manila')->toDateString();
+        DB::table('pos_sale_sequences')->insertOrIgnore(['service_date' => $date, 'last_number' => 0]);
+        $sequence = DB::table('pos_sale_sequences')->where('service_date', $date)->lockForUpdate()->first();
+        $number = (int) $sequence->last_number + 1;
+        DB::table('pos_sale_sequences')->where('service_date', $date)->update(['last_number' => $number]);
         $pos = PosTransaction::create([
+            'reference' => 'POS-'.str_replace('-', '', $date).'-'.str_pad((string) $number, 3, '0', STR_PAD_LEFT),
             'cashier_id' => $actor->user_id,
             'total_amount' => $computedTotal,
             'amount_tendered' => $amountTendered,

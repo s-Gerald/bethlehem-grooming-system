@@ -81,6 +81,13 @@ class GatewayPayment extends Model
         return 'Online Payment';
     }
 
+    public function confirmedPaymentId(): ?string
+    {
+        return $this->provider === 'paymongo' && $this->status === 'paid'
+            && ! $this->reconciliation_reason && str_starts_with($this->provider_payment_id ?? '', 'pay_')
+            ? $this->provider_payment_id : null;
+    }
+
     /** Call while holding the booking row lock, also used by existing correction actions. */
     public static function assertGroomingUnlocked(Booking $booking): void
     {

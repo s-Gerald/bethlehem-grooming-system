@@ -9,6 +9,14 @@ window.PaymentInvoice = (() => {
   const formatPeso = (amount) => currency.format(Number(amount || 0));
   return {
     formatPeso,
+    paymentId(value, method) {
+      return String(method ?? '').toLowerCase() !== 'cash' && /^pay_\S+$/.test(value ?? '') ? value : null;
+    },
+    async copyPaymentId(value) {
+      if (!this.paymentId(value)) return false;
+      try { await navigator.clipboard.writeText(value); return true; }
+      catch { return false; }
+    },
     formatDate(value) {
       const recordedValue = String(value ?? "").trim();
       const date = new Date(recordedValue);
@@ -71,7 +79,7 @@ window.PaymentInvoice = (() => {
   </header>
 
   <dl class="payment-invoice-meta">
-    <div><dt>${clinic ? 'Case reference' : 'Grooming reference'}</dt><dd x-text="receiptModal.${clinic ? 'caseReference' : 'bookingReference'}"></dd></div>
+    <div><dt>${clinic ? 'Clinic reference' : 'Grooming reference'}</dt><dd x-text="receiptModal.${clinic ? 'caseReference' : 'bookingReference'}"></dd></div>
     <div><dt>Invoice date</dt><dd x-text="formatInvoiceDate(receiptModal.paidAt)"></dd></div>
   </dl>
 
@@ -167,6 +175,7 @@ window.PaymentInvoice = (() => {
     <div class="payment-invoice-details-summary">
       <h2>Payment Details</h2>
       <dl>
+        <div x-show="receiptModal.providerPaymentId" class="payment-provider-id"><dt>Payment ID</dt><dd x-text="receiptModal.providerPaymentId"></dd></div>
         <div><dt>Payment method</dt><dd x-text="receiptModal.paymentMethod"></dd></div>
         <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Cash received</dt><dd x-text="${clinic ? "receiptModal.amountPaid == null ? '—' : " : ''}formatInvoicePeso(receiptModal.amountPaid)"></dd></div>
         <div x-show="receiptModal.paymentMethod?.toLowerCase() === 'cash'"><dt>Change</dt><dd x-text="${clinic ? "receiptModal.change == null ? '—' : " : ''}formatInvoicePeso(receiptModal.change)"></dd></div>

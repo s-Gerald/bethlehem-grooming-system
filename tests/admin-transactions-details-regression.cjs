@@ -83,11 +83,13 @@ ui.closeDetails();
 const historicalOnline = {...tx, paymentMethod: 'qrph', paymentMethodLabel: 'Online Payment', paymentProvider: 'paymongo'};
 ui.openDetails(historicalOnline, {focus() {}});
 assert.equal(ui.receiptModal.finalPrice, 2010, 'Historical PayMongo QR Ph still supports invoices');
+assert.equal(ui.receiptModal.providerPaymentId, null, 'Historical receipts without a stored provider ID stay printable');
 ui.closeDetails();
 const noProducts = { ...tx, id: 2, reference: "BAC-20261002-0002", dateKey: "2026-10-02", productAddons: [], finalPrice: 700 };
 const onlineTransaction = {...tx, paymentMethod: 'online', paymentMethodLabel: 'Online Payment',
-  paymentProvider: 'paymongo', providerMethod: 'qrph', isTest: true, amountPaid: null, changeGiven: null};
+  paymentProvider: 'paymongo', providerPaymentId: 'pay_recorded_history', providerMethod: 'qrph', isTest: true, amountPaid: null, changeGiven: null};
 ui.openDetails(onlineTransaction, {focus() {}});
+assert.equal(ui.receiptModal.providerPaymentId, 'pay_recorded_history');
 assert.equal(ui.receiptModal.paymentMethod, 'Online Payment');
 assert.equal(ui.receiptModal.isTest, true);
 assert.equal(ui.receiptModal.amountPaid, null);
@@ -205,6 +207,15 @@ assert.ok(!html.split('<!-- Transactions Content -->')[1].includes('data-lucide'
   const groomingLink = createPage('?payment=2&reference=CL-20261003-002');
   await groomingLink.init();
   assert.equal(groomingLink.selectedTransaction, null, 'A clinic appointment cannot substitute for a grooming payment');
+  const copied = [];
+  context.navigator = {clipboard: {writeText: async value => copied.push(value)}};
+  for (const value of ['BTH-internal', 'cs_checkout', 'evt_webhook', null]) {
+    assert.equal(await context.window.PaymentInvoice.copyPaymentId(value), false);
+  }
+  assert.equal(copied.length, 0);
+  assert.equal(await context.window.PaymentInvoice.copyPaymentId('pay_recorded_history'), true);
+  assert.deepEqual(copied, ['pay_recorded_history']);
+  assert.equal(context.window.PaymentInvoice.paymentId('pay_recorded_history', 'cash'), null);
   await proofChecks();
   console.log('Admin transaction details regression tests passed.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

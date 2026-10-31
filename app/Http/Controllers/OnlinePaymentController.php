@@ -158,13 +158,14 @@ class OnlinePaymentController extends Controller
         if ($attempt->context === 'pos') {
             $response['notes'] = $attempt->snapshot['notes'] ?? null;
             $response['cart'] = $attempt->snapshot['products'];
-            if ($attempt->status === 'paid') $response['receipt'] = PosTransaction::with(['items.item', 'cashier', 'gatewayPayment'])
+            if ($attempt->status === 'paid' && ! $attempt->reconciliation_reason) $response['receipt'] = PosTransaction::with(['items.item', 'cashier', 'gatewayPayment'])
                 ->where('gateway_payment_id', $attempt->id)->first()?->receiptSnapshot();
         }
         if ($attempt->context === 'clinic') {
             $case = ClinicAppointment::with(['charges', 'paidBy'])->findOrFail($attempt->payable_id);
             $response['appointment'] = [
                 ...app(AdminClinicController::class)->formatAppointment($case),
+                'provider_payment_id' => $attempt->confirmedPaymentId(),
                 'is_test' => ! $attempt->livemode, 'charges' => in_array($attempt->status, ['pending', 'paid'], true) ? $attempt->snapshot['charges'] : $case->charges->toArray(), 'payment_method_label' => $attempt->methodLabel(),
             ];
         }

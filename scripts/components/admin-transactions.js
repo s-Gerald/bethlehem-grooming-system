@@ -226,6 +226,7 @@ function adminTransactions() {
       // Build the invoice once from the transaction being inspected.
       this.receiptModal = this.isProductSale(tx) || this.isLegacyQrPayment(tx) ? null : {
         isTest: tx.isTest === true,
+        providerPaymentId: window.PaymentInvoice.paymentId(tx.providerPaymentId, tx.paymentMethod),
         bookingReference: tx.reference,
         ownerName: tx.ownerName,
         pets: (tx.paymentSummary?.pets || []).map((pet, index) => ({
@@ -252,6 +253,7 @@ function adminTransactions() {
       if (this.isClinicPayment(tx)) {
         this.receiptModal = {
           isTest: tx.isTest === true,
+          providerPaymentId: window.PaymentInvoice.paymentId(tx.providerPaymentId, tx.paymentMethod),
           caseReference: tx.reference,
           ownerName: tx.ownerName,
           patientName: tx.petName,

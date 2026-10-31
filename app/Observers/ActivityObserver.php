@@ -98,7 +98,7 @@ class ActivityObserver
                 $this->payment($model, $area, 'payment', $context, $model->gateway_payment_id ? null : $model->processed_by, null);
             } elseif (! $created && $model->wasChanged('payment_status')) $action = 'payment_status_updated';
         } elseif ($model instanceof PosTransaction) {
-            if ($created) $this->payment($model, 'shared', 'product_sale', PosTransaction::referenceFor($model->getKey()),
+            if ($created) $this->payment($model, 'shared', 'product_sale', $model->reference,
                 $model->gateway_payment_id ? null : $model->cashier_id, null);
         } elseif ($model instanceof InventoryItem) {
             $action = $created ? 'inventory_created' : ($model->wasChanged('quantity_on_hand') ? 'inventory_stock_adjusted'

@@ -192,6 +192,24 @@ class TransactionHistorySearchTest extends TestCase
         $this->assertSame(0, $this->search(['transaction_type' => 'product_sale', 'date' => '2026-10-04'])['total']);
     }
 
+    public function test_dated_pos_and_online_registration_references_preserve_legacy_search(): void
+    {
+        (require database_path('migrations/2026_10_31_000001_add_pos_service_references.php'))->up();
+        DB::table('bookings')->where('booking_id', 2)->update(['booking_reference' => 'OR-20261002-0001']);
+        foreach ([1 => null, 2 => 'POS-20261003-001'] as $id => $reference) {
+            DB::table('pos_transactions')->insert(['pos_id' => $id, 'reference' => $reference,
+                'cashier_id' => 1, 'total_amount' => 50, 'amount_tendered' => 50, 'change_amount' => 0,
+                'created_at' => '2026-10-03 13:00:00']);
+        }
+        foreach (['BAC-1', 'or-20261002-0001', 'POS-000001', 'pos-20261003-001'] as $reference) {
+            $result = $this->search(['search' => $reference]);
+            $this->assertSame(1, $result['total'], $reference);
+            $this->assertSame(strtoupper($reference), $result['transactions'][0]['reference']);
+        }
+        $this->assertSame('POS-20261003-001', $this->search(['search' => 'POS-000002'])['transactions'][0]['reference'], 'Numeric POS deep links keep resolving new sales.');
+        $this->assertNull($this->search(['search' => 'POS-000001'])['transactions'][0]['providerPaymentId']);
+    }
+
     public function test_collection_and_daily_totals_cover_the_full_filtered_history_across_pages(): void
     {
         foreach (range(1, 55) as $id) {
