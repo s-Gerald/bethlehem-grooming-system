@@ -17,6 +17,26 @@ const pages = [
   ['reports', 'reports.html', 'report'], ['settings', 'settings.html', 'staffLoaded'],
   ['notifications', 'notifications.html', 'loaded'],
 ].filter(([name]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(name));
+async function customersBeforeAlpine(page, url) {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const holdAlpine = async route => { await held; await route.continue(); };
+  await page.route('**/alpinejs@*/**', holdAlpine);
+  const requested = page.waitForRequest('**/alpinejs@*/**');
+  const navigation = page.goto(url, { waitUntil: 'domcontentloaded' });
+  try {
+    await requested;
+    await page.locator('main > section[x-show]').first().waitFor({ state: 'attached' });
+    const states = await page.locator('main > section[x-show]').evaluateAll(elements =>
+      elements.map(el => ({ condition: el.getAttribute('x-show'), display: getComputedStyle(el).display })));
+    assert.equal(states.length, 4, 'Inspect error, empty, customer, and pet result states');
+    for (const state of states) assert.equal(state.display, 'none', `Before Alpine: ${state.condition}`);
+  } finally {
+    release();
+    await navigation;
+    await page.unroute('**/alpinejs@*/**', holdAlpine);
+  }
+}
 async function ready(page, name, property) {
   await page.waitForFunction(({ name, property }) => {
     const el = name === 'clinic' ? document.querySelector('[x-data="adminClinicCasesSection()"]') : document.querySelector('main');
@@ -55,7 +75,8 @@ async function ready(page, name, property) {
         if (key === 'staff' && ['clinic', 'services'].includes(name)) continue;
         if (key === 'clinic' && ['dashboard', 'grooming'].includes(name)) continue;
         requests.length = 0;
-        await page.goto(origin + '/pages/admin/' + file, { waitUntil: 'domcontentloaded' });
+        if (name === 'customers') await customersBeforeAlpine(page, origin + '/pages/admin/' + file);
+        else await page.goto(origin + '/pages/admin/' + file, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
         assert.equal(await page.locator('aside nav').isVisible(), true, name + ' navigation visible before data');
         if (session.role === 'staff') assert.equal(await page.locator('aside nav a[href$="reports.html"]').isVisible(), false);

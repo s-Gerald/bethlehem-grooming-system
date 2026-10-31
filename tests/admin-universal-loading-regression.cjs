@@ -17,6 +17,9 @@ function component(file, factory, API = {}, extra = {}) {
 async function customerRefresh() {
   let result = { customers: [{ id: 7, first_name: 'Local' }], total: 1 };
   const { ui, context } = component('admin-customers.js', 'adminCustomers', { getCustomers: async () => result });
+  assert.equal(ui.loading, true);
+  assert.equal(ui.customersLoaded, false);
+  assert.equal(ui.errorMessage, '');
   await ui.loadCustomers();
   const next = deferred(); context.API.getCustomers = () => next.promise;
   const refresh = ui.loadCustomers();
@@ -27,6 +30,26 @@ async function customerRefresh() {
   assert.equal(ui.totalCount, 0);
   context.API.getCustomers = async () => { throw new Error('offline'); };
   await ui.loadCustomers(); assert.equal(ui.customersLoaded, true); assert.equal(ui.totalCount, 0);
+  assert.equal(ui.loading, false);
+  assert.equal(ui.errorMessage, 'offline', 'A genuine failure remains available to the error state');
+  const retry = deferred(); context.API.getCustomers = () => retry.promise;
+  const retrying = ui.loadCustomers();
+  assert.equal(ui.errorMessage, '', 'Retry clears the previous error');
+  retry.resolve(result); await retrying;
+  assert.equal(ui.customers[0].id, 7);
+  assert.equal(ui.loading, false);
+  assert.equal(ui.errorMessage, '');
+  context.API.getCustomers = async params => {
+    assert.equal(params.status, 'unregistered');
+    assert.equal(params.tier, 'new');
+    assert.equal(params.search, 'Local');
+    return { customers: [], pets: [{ id: 9, name: 'Local' }], total: 0 };
+  };
+  ui.statusFilter = 'unregistered'; ui.tierFilter = 'new'; ui.searchQuery = ' Local ';
+  await ui.loadCustomers();
+  assert.equal(ui.customersLoaded, true);
+  assert.equal(ui.customers.length, 0);
+  assert.equal(ui.petSearchResults[0].id, 9, 'Pet matches remain available when no customer matches');
 }
 async function reportRefresh() {
   const report = { success: true, overview: {}, period: {}, performance: [], services: [], customers: {}, outcomes: {} };
