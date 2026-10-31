@@ -274,7 +274,7 @@ function mountPage(env, page) {
   const elements = new Map(), idle = [], ready = [], intervals = [];
   function element(id) {
     if (elements.has(id)) return elements.get(id);
-    const hidden = ["petsContent", "historyContent", "settingsContent", "petModal", "petConfirmationModal"].includes(id);
+    const hidden = ["petsContent", "historyContent", "settingsContent", "dashboardContent", "petModal", "petConfirmationModal"].includes(id);
     const classes = new Set(hidden ? ["hidden"] : []);
     const attributes = new Map(hidden && !["petModal", "petConfirmationModal"].includes(id) ? [["inert", ""], ["aria-hidden", "true"]] : []);
     const events = new Map();
@@ -441,7 +441,12 @@ async function testActualPageLoaders() {
   await seed(dashboardEnv);
   const dashboard = mountPage(dashboardEnv, "dashboard.html");
   assert.match(dashboard.element("myPetsPreview").innerHTML, /Mochi/);
+  assert.equal(dashboard.element("dashboardContent").hasAttribute("inert"), true);
   await flush();
+  assert.equal(dashboard.element("dashboardLoadingScreen").classList.contains("hidden"), true);
+  assert.equal(dashboard.element("dashboardContent").hasAttribute("inert"), false);
+  assert.equal(dashboardEnv.calls.filter(call => call.endpoint === "/pets?archived=0").length, 1,
+    "Initial dashboard loading reuses the existing pet cache without a duplicate fetch");
   const beforePoll = dashboardEnv.calls.length;
   dashboard.intervals[0]();
   await flush();
@@ -451,6 +456,8 @@ async function testActualPageLoaders() {
   dashboard.intervals[0]();
   await flush();
   assert.equal(dashboard.element("groomingTracker").innerHTML, previousMarkup);
+  assert.equal(dashboard.element("dashboardLoadingScreen").classList.contains("hidden"), true);
+  assert.equal(dashboard.element("dashboardContent").hasAttribute("inert"), false);
   dashboardEnv.respond(() => ({
     bookings: [{ booking_id: 9, booking_reference: "TEST-9", status: "waiting_to_arrive", booking_date: "2026-10-06", pets: [{ pet_id: 1, pet_name: "Updated appointment" }] }], history: [],
   }));

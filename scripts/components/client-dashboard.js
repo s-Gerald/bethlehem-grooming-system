@@ -537,12 +537,8 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
 // ── Appointments, Grooming Tracker & History ─────────────────────────────────
 (function () {
-  const scheduleDashboardDataIdle = typeof scheduleCustomerDashboardIdleTask === "function"
-    ? scheduleCustomerDashboardIdleTask
-    : (task) => setTimeout(task, 0);
-  const scheduleDashboardDataAfterPaint = typeof scheduleCustomerDashboardAfterPaint === "function"
-    ? scheduleCustomerDashboardAfterPaint
-    : scheduleDashboardDataIdle;
+  const dashboardLoadingScreen = document.getElementById("dashboardLoadingScreen");
+  const dashboardContent = document.getElementById("dashboardContent");
   const appointmentsList         = document.getElementById("appointmentsList");
   const groomingTrackerEl        = document.getElementById("groomingTracker");
   const groomingTrackerMetadataEl = document.getElementById("groomingTrackerMetadata");
@@ -550,7 +546,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const myPetsPreviewEl = document.getElementById("myPetsPreview");
   const trackerSection = document.getElementById("trackerSection");
   const upcomingSection = document.getElementById("upcomingSection");
-  const groomingQueueLoadingEl = document.getElementById("groomingQueueLoading");
   const groomingQueueDetailsEl = document.getElementById("groomingQueueDetails");
   const groomingQueueSummaryEl = document.getElementById("groomingQueueSummary");
   const groomingCapacityBadgeEl = document.getElementById("groomingCapacityBadge");
@@ -584,18 +579,18 @@ function scheduleCustomerDashboardAfterPaint(task) {
   let visitSummaryOpenRequest = 0;
   const UPCOMING_APPOINTMENT_STATUSES = new Set(["waiting_to_arrive", "waiting"]);
 
-  document.addEventListener("DOMContentLoaded", () => {
-
-    void loadAppointments();
-    if (API.readCustomerCache("/pets?archived=0")) void loadDashboardPets();
-
-    scheduleDashboardDataAfterPaint(async () => {
-      await loadDashboardPets();
-      scheduleDashboardDataIdle(async () => {
-        await loadGroomingCapacity();
-
-      });
-    });
+  document.addEventListener("DOMContentLoaded", async () => {
+    // Only primary data participates in the initial reveal; each loader keeps its own fallback.
+    await Promise.allSettled([
+      loadAppointments(),
+      loadDashboardPets(),
+      loadGroomingCapacity(),
+    ]);
+    dashboardLoadingScreen.classList.add("hidden");
+    dashboardContent.classList.remove("hidden");
+    dashboardContent.inert = false;
+    dashboardContent.setAttribute("aria-hidden", "false");
+    dashboardContent.setAttribute("aria-busy", "false");
   });
 
   // ── Load & route data ──────────────────────────────────────────────────────
@@ -878,7 +873,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   trackerSection.addEventListener("click", openVisitSummary);
 
   function renderGroomingCapacity(data) {
-    groomingQueueLoadingEl?.classList.add("hidden");
     groomingQueueDetailsEl?.classList.remove("hidden");
     groomingQueueDetailsEl?.classList.add("flex");
     const capacity = data?.capacity || {};

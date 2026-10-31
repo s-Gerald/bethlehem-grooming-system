@@ -23,10 +23,10 @@ function createElementStore() {
 
   function element(id) {
     if (!elements.has(id)) {
-      const classes = new Set();
+      const classes = new Set(id === "dashboardContent" ? ["hidden"] : []);
       elements.set(id, {
         id,
-        innerHTML: "<initial>Loading...</initial>",
+        innerHTML: "",
         textContent: "",
         value: "",
         min: "",
@@ -70,21 +70,22 @@ function createElementStore() {
   return { element, state };
 }
 
-async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}) {
+async function runDashboard(getBookingHistory, { pets = [], capacity = {}, getUserPets = async () => ({ pets }), getGroomingCapacity = async () => capacity } = {}) {
   const { element, state } = createElementStore();
   const consoleErrors = [];
+  const intervals = [];
   const context = {
     API: {
-      readCustomerCache: () => null,
       loadCustomerData: (endpoint, load, render) => load().then(render),
-      getUserPets: async () => ({ pets }),
-      getGroomingCapacity: async () => capacity,
+      getUserPets,
+      getGroomingCapacity,
       getBookingHistory,
     },
     console: {
       error(...args) { consoleErrors.push(args); },
     },
     document: {
+      visibilityState: "visible",
       getElementById: element,
       get activeElement() { return state.activeElement; },
       body: element('body'),
@@ -92,7 +93,7 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
         if (type === "DOMContentLoaded") callback();
       },
     },
-    setInterval: () => 0,
+    setInterval: callback => intervals.push(callback),
     setTimeout: (callback) => {
       callback();
       return 0;
@@ -104,7 +105,7 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {} } = {}
   vm.runInContext(dashboardComponent, context, { filename: dashboardPath, importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   await new Promise((resolve) => setImmediate(resolve));
 
-  return { element, consoleErrors, context, refresh: context.window._refreshAppointments };
+  return { element, consoleErrors, context, intervals, refresh: context.window._refreshAppointments };
 }
 
 function testPhilippineDateRollover() {
@@ -136,7 +137,6 @@ async function testCompletedHistoryDoesNotBreakEmptySchedule() {
   assert.equal(element("upcomingSection").classList.contains("hidden"), true);
   assert.doesNotMatch(schedule, /Failed to load schedule/);
   assert.match(history, /Peter/);
-  assert.doesNotMatch(history, /<initial>Loading/);
   assert.equal(consoleErrors.length, 0, "Rendering emitted an unexpected error.");
 }
 
@@ -149,14 +149,9 @@ async function testApiFailureSettlesEveryDashboardPanel() {
   assert.match(element("groomingTracker").innerHTML, /Failed to load grooming status/);
   assert.match(element("groomingHistory").innerHTML, /Failed to load grooming history/);
 
-  for (const id of ["appointmentsList", "groomingTracker", "groomingHistory"]) {
-    assert.doesNotMatch(
-      element(id).innerHTML,
-      /<initial>Loading/,
-      `${id} remained in its loading state.`,
-    );
-  }
   assert.equal(element("groomingTrackerMetadata").innerHTML, "");
+  assert.equal(element("dashboardLoadingScreen").classList.contains("hidden"), true, "Failed history cannot strand the dashboard loader");
+  assert.equal(element("dashboardContent").classList.contains("hidden"), false);
 }
 
 async function testTrackerPaymentMetadata() {
@@ -299,7 +294,7 @@ async function testQueueStates() {
       capacity: { capacity: { max: 20, used, remaining: 20 - used, percent: used * 5, is_full: used >= 20 }, queue: { active: 1 } },
     });
     assert.equal(element("groomingCapacityBadge").textContent, label);
-    assert.equal(element("groomingQueueLoading").classList.contains("hidden"), true);
+    assert.equal(element("dashboardLoadingScreen").classList.contains("hidden"), true);
     assert.equal(element("groomingQueueDetails").classList.contains("flex"), true);
     assert.equal(element("groomingQueueSummary").textContent, "1 pet currently in the grooming queue");
     assert.match(element("groomingCapacityText").textContent, /Grooming pets on-site|Grooming capacity/);
@@ -1022,16 +1017,63 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
   } finally { Object.assign(global, originalGlobals); }
 }
 
+async function testInitialLoadingWaitsForAllPrimaryData() {
+  for (const failed of [null, 'pets', 'capacity']) {
+    const pending = {};
+    const calls = [];
+    const request = name => { calls.push(name); return new Promise((resolve, reject) => { pending[name] = { resolve, reject }; }); };
+    const dashboard = await runDashboard(() => request('history'), {
+      getUserPets: () => request('pets'), getGroomingCapacity: () => request('capacity'),
+    });
+    assert.deepEqual(calls, ['history', 'pets', 'capacity'], 'Independent primary requests start together exactly once');
+    const loading = () => !dashboard.element('dashboardLoadingScreen').classList.contains('hidden');
+    const concealed = () => dashboard.element('dashboardContent').classList.contains('hidden');
+    assert.equal(loading(), true);
+    assert.equal(concealed(), true);
+    dashboard.intervals.forEach(poll => poll());
+    assert.equal(calls.length, 3, 'Polling during initial loading does not duplicate primary requests');
+    pending.history.resolve({ bookings: [], history: [] });
+    pending.pets[failed === 'pets' ? 'reject' : 'resolve'](failed === 'pets' ? new Error('Pets unavailable') : { pets: [{ pet_id: 1, pet_name: 'Milo', species: 'Dog' }] });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loading(), true, 'Settling two operations does not reveal partially loaded cards');
+    assert.equal(concealed(), true);
+    pending.capacity[failed === 'capacity' ? 'reject' : 'resolve'](failed === 'capacity' ? new Error('Capacity unavailable') : {});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loading(), false);
+    assert.equal(concealed(), false);
+    assert.equal(dashboard.element('dashboardContent').inert, false);
+    assert.equal(dashboard.element('dashboardContent').attrs['aria-hidden'], 'false');
+    if (failed === 'pets') assert.match(dashboard.element('myPetsPreview').innerHTML, /Failed to load pets/);
+    else assert.match(dashboard.element('myPetsPreview').innerHTML, /Milo/);
+    if (failed === 'capacity') assert.equal(dashboard.element('groomingCapacityBadge').textContent, 'Unavailable');
+    dashboard.context.API.getBookingHistory = async () => ({ bookings: [], history: [] });
+    await dashboard.refresh();
+    assert.equal(loading(), false, 'Background refresh never restores the initial loader');
+    assert.equal(concealed(), false);
+    const capacitySummary = dashboard.element('groomingQueueSummary').textContent;
+    dashboard.context.API.getGroomingCapacity = async () => { throw Object.assign(new Error('Offline'), {status: 503}); };
+    dashboard.intervals[1]();
+    assert.equal(loading(), false, 'Capacity polling keeps the cards visible while pending');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(loading(), false);
+    assert.equal(concealed(), false);
+    assert.equal(dashboard.element('groomingQueueSummary').textContent, capacitySummary);
+  }
+}
+
 async function testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty() {
   let resolveHistory;
   let reads = 0;
   const dashboard = await runDashboard(() => { reads++; return new Promise(resolve => { resolveHistory = resolve; }); });
-  assert.match(dashboard.element('appointmentsList').innerHTML,/Loading/);
+  assert.equal(dashboard.element('dashboardLoadingScreen').classList.contains('hidden'), false);
+  assert.equal(dashboard.element('dashboardContent').classList.contains('hidden'), true);
   assert.equal(dashboard.element('upcomingSection').classList.contains('hidden'),false);
   await dashboard.refresh();
   assert.equal(reads,1,'Overlapping refreshes share the pending dashboard load');
   resolveHistory({bookings:[{booking_id:9,status:'waiting_to_arrive',pets:[{pet_name:'Luna'}]}]});
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(dashboard.element('dashboardLoadingScreen').classList.contains('hidden'), true);
+  assert.equal(dashboard.element('dashboardContent').classList.contains('hidden'), false);
   const markup = dashboard.element('appointmentsList').innerHTML;
   dashboard.context.API.getBookingHistory = async () => { throw Object.assign(new Error('Temporary outage'), {status:503}); };
   await dashboard.refresh();
@@ -1058,6 +1100,7 @@ async function testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty() {
   await testApiFailureSettlesEveryDashboardPanel();
   await testTrackerPaymentMetadata();
   await testWholeCardRoutingAndExistingCancellationFlow();
+  await testInitialLoadingWaitsForAllPrimaryData();
   await testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty();
   console.log("Customer dashboard history regression tests passed.");
 })().catch((error) => {

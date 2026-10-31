@@ -6,15 +6,12 @@ use Tests\TestCase;
 
 class CustomerPageLoadingPerformanceInterfaceTest extends TestCase
 {
-    public function test_dashboard_prioritizes_visible_content_and_guards_background_refreshes(): void
+    public function test_dashboard_defers_nonessential_work_and_guards_background_refreshes(): void
     {
         $dashboard = file_get_contents(base_path('scripts/components/client-dashboard.js'));
 
         foreach ([
             'function scheduleCustomerDashboardIdleTask(task)',
-            'void loadAppointments();',
-            'await loadDashboardPets();',
-            'await loadGroomingCapacity();',
             'let notificationsLoading = false;',
             'let appointmentsLoading = false;',
             'let groomingCapacityLoading = false;',
