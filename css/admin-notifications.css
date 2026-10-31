@@ -39,7 +39,7 @@ admin-notification-row { display: block; }
 .admin-notification-notice { padding: 12px 24px; color: #475569; font-size: 14px; }
 [data-notification-mobile], .admin-notification-header-actions { display: flex; align-items: center; gap: 12px; }
 .admin-notification-header-actions { flex-shrink: 0; }
-.admin-inventory-submenu a.is-context-selected { background: #eaf4fb; color: #315b7e; font-weight: 700; }
+.admin-inventory-submenu[data-notification-context] a.is-context-selected { background: #eaf4fb; color: #315b7e; font-weight: 700; }
 .admin-notification-preview button:disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 639px) {
   .admin-notification-filters { align-items: stretch; }

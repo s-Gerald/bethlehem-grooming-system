@@ -509,21 +509,27 @@ async function invalidCaches(browser) {
   console.log('cold/malformed/expired/other-account caches: safe shell and independent account hydration passed');
 }
 // Assert computed paint as well as semantics: the original bug had correct
-// aria-current values while the first destination kept its white background.
-async function inventoryHighlight(page, section, inside = true) {
+// aria-current values while the first destination kept its selected background.
+async function inventoryHighlight(page, section, inside = true, contextual = false) {
   assert.equal(await page.locator('#inventory-submenu').isVisible(), true, 'Inventory submenu is expanded');
   await page.mouse.move(900, 10);
   const links = await page.locator('#inventory-submenu a').evaluateAll(elements => elements.map(el => ({
     section: new URL(el.href).hash.slice(1), current: el.getAttribute('aria-current'),
     background: getComputedStyle(el).backgroundColor, weight: getComputedStyle(el).fontWeight,
+    color: getComputedStyle(el).color, contextual: el.classList.contains('is-context-selected'),
   })));
   const expected = ['overview', 'products', 'sell-product', 'history'].includes(section) ? [section] : [];
-  assert.deepEqual(links.filter(el => el.current === 'page').map(el => el.section), expected);
-  assert.deepEqual(links.filter(el => el.background === 'rgba(255, 255, 255, 0.65)').map(el => el.section), expected,
-    `Only ${section || 'no subtab'} receives the white active highlight`);
+  assert.deepEqual(links.filter(el => el.current === 'page').map(el => el.section), contextual ? [] : expected);
+  const selectedBackground = contextual ? 'rgb(234, 244, 251)' : 'rgba(255, 255, 255, 0.65)';
+  assert.deepEqual(links.filter(el => el.background === selectedBackground).map(el => el.section), expected,
+    `Only ${section || 'no subtab'} receives the ${contextual ? 'context' : 'active'} highlight`);
   for (const link of links) {
-    assert.equal(link.current, expected.includes(link.section) ? 'page' : null);
-    assert.equal(link.weight, expected.includes(link.section) ? '800' : '600');
+    const selected = expected.includes(link.section);
+    assert.equal(link.background, selected ? selectedBackground : 'rgba(0, 0, 0, 0)', `${link.section}: no stale selected background`);
+    assert.equal(link.color, selected ? contextual ? 'rgb(49, 91, 126)' : 'rgb(31, 56, 80)' : 'rgb(47, 75, 102)');
+    assert.equal(link.contextual, contextual && selected, 'Context class belongs only to the Notifications origin');
+    assert.equal(link.current, selected && !contextual ? 'page' : null);
+    assert.equal(link.weight, selected ? contextual ? '700' : '800' : '600');
   }
   assert.equal(await page.locator('[aria-controls="inventory-submenu"]').evaluate(el => getComputedStyle(el).backgroundColor === 'rgb(49, 91, 126)'), inside);
 }
@@ -547,13 +553,16 @@ async function inventoryNavigation(browser) {
     throw error;
   });
   const choose = async section => {
-    await f.page.locator(`#inventory-submenu a[href$="#${section}"]`).click();
+    const link = f.page.locator(`#inventory-submenu a[href$="#${section}"]`);
+    if (!new URL(f.page.url()).pathname.endsWith('/inventory.html')) {
+      await Promise.all([f.page.waitForEvent('domcontentloaded', { timeout: 30000 }), link.click()]);
+    } else await link.click();
     await loaded(section); await inventoryHighlight(f.page, section);
   };
   const entries = ['overview', 'products', 'sell-product', 'history'];
   try {
-    for (const entry of entries) {
-      await visit(f.page, 'dashboard.html'); await ready(f.page);
+    for (const [source, entry] of ['dashboard.html', 'clinic.html'].flatMap(source => entries.map(entry => [source, entry]))) {
+      await visit(f.page, source); await ready(f.page);
       await f.page.getByRole('button', { name: 'Inventory' }).click();
       await inventoryHighlight(f.page, '', false);
       await choose(entry); await ready(f.page);
@@ -574,12 +583,13 @@ async function inventoryNavigation(browser) {
       assert.equal(await listenerCount(), 2, 'Navigation does not register duplicate hash listeners');
       await f.page.goBack(); await loaded('sell-product'); await inventoryHighlight(f.page, 'sell-product');
       await f.page.goForward(); await loaded('history'); await inventoryHighlight(f.page, 'history');
-      console.log(`Inventory entry ${entry}: exclusive paint, cached navigation, history passed (${before} total API requests)`);
+      console.log(`Inventory entry ${entry} from ${source}: exclusive paint, cached navigation, history passed (${before} total API requests)`);
     }
-    for (const [hash, section] of [['products?filter=low-stock', 'products'], ['stock-in', 'stock-in'], ['stock-out', 'stock-out'], ['invalid', 'overview']]) {
+    for (const [hash, section] of [...entries.map(section => [section, section]), ['products?filter=low-stock', 'products'], ['stock-in', 'stock-in'], ['stock-out', 'stock-out'], ['invalid', 'overview']]) {
       await f.page.goto('about:blank');
-      await visit(f.page, `inventory/inventory.html#${hash}`); await ready(f.page); await loaded(section);
+      await visit(f.page, `inventory/inventory.html?source=sidebar#${hash}`); await ready(f.page); await loaded(section);
       await inventoryHighlight(f.page, section);
+      assert.equal(new URL(f.page.url()).search, '?source=sidebar');
       assert.deepEqual(await f.page.locator('[data-inventory-section]').evaluateAll(els => els.map(el => el.dataset.inventorySection)), [section]);
       for (const hard of [false, true]) {
         if (hard) {
@@ -587,6 +597,7 @@ async function inventoryNavigation(browser) {
           await cdp.send('Page.reload', { ignoreCache: true }); await reloaded;
         } else await f.page.reload({ waitUntil: 'domcontentloaded' });
         await ready(f.page); await loaded(section); await inventoryHighlight(f.page, section);
+        assert.equal(new URL(f.page.url()).search, '?source=sidebar');
       }
     }
     await f.page.getByRole('link', { name: 'Clinic', exact: true }).click(); await ready(f.page);
@@ -594,7 +605,7 @@ async function inventoryNavigation(browser) {
     await f.page.getByRole('button', { name: 'Inventory' }).click(); await inventoryHighlight(f.page, '', false);
     await choose('overview');
     if (process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/inventory-sidebar-desktop.png` });
-    for (const width of [375, 768]) {
+    for (const width of [320, 375, 414, 768]) {
       await f.page.setViewportSize({ width, height: 844 });
       for (const section of entries) {
         await f.page.getByRole('button', { name: 'Open navigation', exact: true }).click();
@@ -616,7 +627,13 @@ async function cachedBeforeAlpine(browser) {
   const f = await fixture(browser, 'vet');
   try {
     await visit(f.page, 'dashboard.html'); await ready(f.page);
-    for (const file of ['settings.html', ...['overview', 'products?filter=expiry', 'sell-product', 'history', 'stock-in', 'stock-out', 'invalid'].map(hash => `inventory/inventory.html#${hash}`)]) {
+    const hashes = ['overview', 'products?filter=expiry', 'sell-product', 'history', 'stock-in', 'stock-out', 'invalid'];
+    const cases = [
+      ['settings.html'],
+      ...hashes.map(hash => [`inventory/inventory.html#${hash}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0]]),
+      ...hashes.map(hash => [`notifications.html?return_to=${encodeURIComponent(`/pages/admin/inventory/inventory.html?source=sidebar#${hash}`)}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0], true]),
+    ];
+    for (const [file, section, contextual = false] of cases) {
       const alpine = deferred();
       const hold = async route => { await alpine.promise; await route.fallback(); };
       await f.context.route('**/alpinejs@*/**', hold);
@@ -633,10 +650,8 @@ async function cachedBeforeAlpine(browser) {
         assert.equal(await f.page.locator('aside a[href$="appointments.html"]').isVisible(), false);
         assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), false);
         assert.equal(f.state.requests.filter(p => p === '/api/me').length, 1);
-        const hash = file.split('#')[1]?.split('?')[0];
-        const section = hash === 'invalid' ? 'overview' : hash;
-        if (hash) await inventoryHighlight(f.page, section);
-        if (hash === 'overview') {
+        if (section) await inventoryHighlight(f.page, section, true, contextual);
+        if (section === 'overview' && !contextual) {
           await f.page.evaluate(() => { location.hash = '#products?filter=low-stock'; renderCachedAdminSidebar(); });
           await inventoryHighlight(f.page, 'products');
           await f.page.evaluate(() => { location.hash = '#overview'; renderCachedAdminSidebar(); });
@@ -644,10 +659,24 @@ async function cachedBeforeAlpine(browser) {
         }
         alpine.resolve(); await ready(f.page);
         await f.page.waitForFunction(() => !!document.querySelector('[data-admin-shell]')._x_dataStack);
-        if (hash) await inventoryHighlight(f.page, section);
+        if (section) {
+          await inventoryHighlight(f.page, section, true, contextual);
+          if (contextual) {
+            const returnTo = await f.page.evaluate(() => getAdminNotificationOrigin().href);
+            assert.equal(returnTo, new URLSearchParams(file.split('?')[1]).get('return_to'), 'Notifications preserves the full return URL');
+            await f.page.goto(`${origin}${returnTo}`, { waitUntil: 'domcontentloaded' });
+            await ready(f.page); await inventoryHighlight(f.page, section);
+            const actualReturnTo = await f.page.evaluate(() => new URL(getAdminNotificationsHref(), location.origin).searchParams.get('return_to'));
+            assert.equal(actualReturnTo, await f.page.evaluate(() => location.pathname + location.search + location.hash));
+          }
+          const next = section === 'products' ? 'history' : 'products';
+          await f.page.evaluate(next => location.hash = next, next);
+          await f.page.waitForFunction(next => document.querySelector('#inventory-submenu a[aria-current="page"]')?.hash === `#${next}`, next);
+          await inventoryHighlight(f.page, next);
+        }
       } finally { alpine.resolve(); await f.context.unroute('**/alpinejs@*/**', hold); }
     }
-    console.log('cached identity and permissions render before Alpine, including nested Inventory');
+    console.log('Cached identity, permissions, Inventory and Notifications context paint before Alpine; hydration, return URLs and subsequent switching passed');
   } finally { await f.context.close(); }
 }
 async function servicesMobileBackdrop(browser) {

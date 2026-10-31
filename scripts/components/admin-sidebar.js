@@ -118,6 +118,8 @@ function installAdminInventoryNavigation() {
   submenu.setAttribute("x-show", "inventoryExpanded");
   submenu.setAttribute("x-cloak", "");
   submenu.className = "admin-inventory-submenu";
+  const notificationContext = window.location.pathname.endsWith('/notifications.html');
+  if (notificationContext) submenu.setAttribute('data-notification-context', '');
   for (const [section, label] of Object.entries(adminInventoryLinks)) {
     const child = document.createElement("a");
     child.href = `${url.pathname}#${section}`;
@@ -127,8 +129,9 @@ function installAdminInventoryNavigation() {
       child.style.display = 'none';
     }
     child.textContent = label;
-    child.setAttribute(":class", `activePage === 'inventory' && inventorySection === '${section}' ? 'is-context-selected' : ''`);
-    child.setAttribute(":aria-current", window.location.pathname.endsWith('/notifications.html') ? 'null' : `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
+    // Inventory uses aria-current; only Notifications needs an origin context class.
+    if (notificationContext) child.setAttribute(":class", `{'is-context-selected': activePage === 'inventory' && inventorySection === '${section}'}`);
+    child.setAttribute(":aria-current", notificationContext ? 'null' : `activePage === 'inventory' && inventorySection === '${section}' ? 'page' : null`);
     child.setAttribute("@click", "sidebarOpen = false");
     submenu.appendChild(child);
   }
@@ -242,7 +245,7 @@ function renderCachedAdminSidebar() {
     submenu?.style.removeProperty('display');
     submenu?.querySelectorAll('a').forEach(link => {
       const selected = new URL(link.href).hash === `#${section}`;
-      link.classList.toggle('is-context-selected', selected);
+      if (window.location.pathname.endsWith('/notifications.html')) link.classList.toggle('is-context-selected', selected);
       if (selected && !window.location.pathname.endsWith('/notifications.html')) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     });
