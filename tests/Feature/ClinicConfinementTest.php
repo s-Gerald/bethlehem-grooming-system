@@ -360,6 +360,153 @@ class ClinicConfinementTest extends TestCase
         $this->assertDatabaseCount('clinic_confinements', 0);
     }
 
+    private function configureIvInsertionPolicy(): void
+    {
+        (require database_path('migrations/2026_10_31_000002_make_iv_insertion_an_additional_confinement_charge.php'))->up();
+    }
+
+    public function test_iv_insertion_is_optional_and_manual_charges_retry_remove_and_discharge_correctly(): void
+    {
+        $professional = $this->service(['name' => 'Professional Fee', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 475, 'billing_unit' => null]);
+        $iv = $this->service(['name' => 'IV Insertion', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 985, 'billing_unit' => null]);
+        $this->configureIvInsertionPolicy();
+        $this->assertSame('additional_charge', $iv->fresh()->charge_behavior);
+        $this->assertSame('service', $iv->fresh()->billing_unit);
+        $payload = $this->admit();
+        $this->postJson('/api/admin/clinic-cases/1/confinement', $payload)->assertOk();
+        $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk()
+            ->assertJsonCount(1, 'data.confinement_charges')
+            ->assertJsonPath('data.confinement_charges.0.charge_behavior', 'admission_charge')
+            ->assertJsonPath('data.confinement_charges.0.case_service.clinic_service_id', $professional->id);
+        $this->assertDatabaseMissing('clinic_case_services', ['clinic_service_id' => $iv->id]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'total_amount' => 475]);
+        $this->getJson('/api/admin/clinic-confinement-service-options')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $iv->id)
+            ->assertJsonPath('data.0.price', '985.00')->assertJsonPath('data.0.billing_unit', 'service');
+
+        $url = '/api/admin/clinic-cases/1/confinement/charges';
+        $add = ['clinic_service_id' => $iv->id, 'request_key' => (string) Str::uuid()];
+        $id = $this->postJson($url, $add)->assertCreated()
+            ->assertJsonPath('data.charge_behavior', 'additional_charge')
+            ->assertJsonPath('data.case_service.charge.amount', '985.00')->json('data.id');
+        $this->postJson($url, $add)->assertOk()->assertJsonPath('data.id', $id);
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'total_amount' => 1460]);
+        $this->signIn('clinic_receptionist');
+        $this->deleteJson($url.'/'.$id)->assertForbidden();
+        $this->signIn();
+        $this->deleteJson($url.'/'.$id)->assertOk();
+        $this->deleteJson($url.'/'.$id)->assertOk();
+        $this->postJson($url, $add)->assertOk();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'total_amount' => 475]);
+        $this->assertDatabaseCount('clinic_charges', 1);
+        $this->assertDatabaseHas('clinic_case_services', ['request_key' => $add['request_key'], 'status' => 'cancelled']);
+
+        $this->postJson($url, [...$add, 'request_key' => (string) Str::uuid()])->assertCreated();
+        Carbon::setTestNow(now()->addDay()->addMinute());
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 3);
+        $this->assertDatabaseHas('clinic_charges', ['unit_price' => 500, 'quantity' => 2, 'amount' => 1000]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'total_amount' => 2460]);
+    }
+
+    public function test_iv_policy_migration_preserves_catalogue_prices_and_active_and_completed_charges(): void
+    {
+        $iv = $this->service(['name' => 'IV Insertion', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 970, 'billing_unit' => null]);
+        $this->service(['name' => 'Other admission fee', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 200]);
+        $this->service(['name' => 'IV Insertion', 'category_id' => ClinicServiceCategory::where('name', 'Laboratory')->value('id')]);
+        $payload = $this->admit();
+        $catalogue = DB::table('clinic_services')->orderBy('id')->get()->keyBy('id');
+        $tables = ['clinic_confinements', 'clinic_confinement_charges', 'clinic_case_services', 'clinic_charges', 'clinic_appointments'];
+        $before = [];
+        foreach ($tables as $table) $before[$table] = DB::table($table)->orderBy('id')->get()->toArray();
+        $this->configureIvInsertionPolicy();
+        $this->configureIvInsertionPolicy();
+        $this->assertSame('additional_charge', $iv->fresh()->charge_behavior);
+        $this->assertSame('service', $iv->fresh()->billing_unit);
+        foreach ($catalogue as $id => $row) {
+            $expected = clone $row;
+            if ($id === $iv->id) { $expected->charge_behavior = 'additional_charge'; $expected->billing_unit = 'service'; }
+            $this->assertEquals($expected, DB::table('clinic_services')->find($id));
+        }
+        foreach ($tables as $table) $this->assertEquals($before[$table], DB::table($table)->orderBy('id')->get()->toArray(), $table);
+        $this->postJson('/api/admin/clinic-cases/1/confinement', $payload)->assertOk();
+        $this->assertDatabaseCount('clinic_confinement_charges', 2);
+        $historicalIv = DB::table('clinic_confinement_charges')->whereIn('clinic_case_service_id',
+            ClinicCaseService::where('clinic_service_id', $iv->id)->select('id'))->first();
+        $this->assertSame('admission_charge', $historicalIv->charge_behavior);
+        $this->deleteJson('/api/admin/clinic-cases/1/confinement/charges/'.$historicalIv->id)->assertUnprocessable();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        ClinicAppointment::findOrFail(1)->update(['paid' => true, 'status' => 'completed']);
+        $completed = [];
+        foreach ($tables as $table) $completed[$table] = DB::table($table)->orderBy('id')->get()->toArray();
+        $this->configureIvInsertionPolicy();
+        foreach ($tables as $table) $this->assertEquals($completed[$table], DB::table($table)->orderBy('id')->get()->toArray(), $table);
+    }
+
+    public function test_iv_policy_migration_does_not_create_a_missing_service(): void
+    {
+        $this->configureIvInsertionPolicy();
+        $this->assertDatabaseCount('clinic_services', 0);
+    }
+
+    public function test_discharge_without_manually_adding_iv_insertion_bills_only_base_and_professional_fee(): void
+    {
+        $this->service(['name' => 'Professional Fee', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 460, 'billing_unit' => null]);
+        $iv = $this->service(['name' => 'IV Insertion', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'fixed', 'price' => 990, 'billing_unit' => null]);
+        $this->configureIvInsertionPolicy();
+        $this->admit();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseMissing('clinic_case_services', ['clinic_service_id' => $iv->id]);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'total_amount' => 960]);
+    }
+
+    public function test_iv_policy_migration_preserves_variable_pricing_and_inactive_status(): void
+    {
+        $iv = $this->service(['name' => 'IV Insertion', 'charge_behavior' => 'admission_charge',
+            'pricing_method' => 'range', 'min_price' => 800, 'max_price' => 1200, 'billing_unit' => null, 'is_active' => false]);
+        $before = $iv->fresh()->getAttributes();
+        $this->configureIvInsertionPolicy();
+        $this->assertEquals(array_replace($before, ['charge_behavior' => 'additional_charge', 'billing_unit' => 'service']), $iv->fresh()->getAttributes());
+    }
+
+    public function test_iv_policy_migration_rejects_unexpected_configuration_without_changing_it(): void
+    {
+        $iv = $this->service(['name' => 'IV Insertion']);
+        $before = $iv->fresh()->getAttributes();
+        try {
+            $this->configureIvInsertionPolicy();
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('Unexpected Confinement IV Insertion', $error->getMessage());
+            $this->assertEquals($before, $iv->fresh()->getAttributes());
+            return;
+        }
+        $this->fail('Unexpected IV Insertion configuration must require administrator review.');
+    }
+
+    public function test_iv_policy_migration_rejects_ambiguous_records_without_changing_them(): void
+    {
+        $this->service(['name' => 'IV Insertion', 'charge_behavior' => 'admission_charge']);
+        $this->service(['name' => '  iv   insertion ', 'charge_behavior' => 'admission_charge', 'is_active' => false]);
+        $before = DB::table('clinic_services')->get()->toArray();
+        try {
+            $this->configureIvInsertionPolicy();
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('IV Insertion', $error->getMessage());
+            $this->assertEquals($before, DB::table('clinic_services')->get()->toArray());
+            return;
+        }
+        $this->fail('Ambiguous IV Insertion identities must require administrator review.');
+    }
+
     public function test_admission_extras_and_retry_protection_preserve_other_case_charges(): void
     {
         $this->service(['name' => 'Automatic A', 'charge_behavior' => 'admission_charge', 'pricing_method' => 'fixed', 'price' => 450, 'billing_unit' => null]);

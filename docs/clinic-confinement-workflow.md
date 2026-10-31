@@ -6,6 +6,8 @@ Confinement is an episode, not another appointment status. `admitted_at` with no
 
 ## Admission and care
 
+The intended catalogue policy is Professional Fee as the sole active Admission Charge and IV Insertion as an optional Additional Charge with the Per service unit. Prices and pricing methods remain catalogue settings; neither service name is special-cased by runtime billing or selection.
+
 Clinic Services is the pricing source of truth. Confinement services have a structured `charge_behavior`: `base_confinement`, `admission_charge`, or `additional_charge`. Existing rows are not classified by editable names; an admin must configure their behavior. The catalogue enforces one active Base Confinement and automatically sets Tiered / Weight / Day. Small, Medium and Large each require a positive, increasing `max_weight_kg`; Extra Large has no upper limit. All four prices are required. Cutoffs are inclusive: each next tier starts strictly above the previous cutoff, without gaps or overlaps. No clinic cutoffs or prices are supplied by default.
 
 Admission requires clinical permission, an ongoing unpaid/unarchived case and the saved Medical Record's Primary Attending Veterinarian. Staff enter only a reason and optional notes. The server selects the single active Base Confinement, validates its tiers, and resolves saved case Vitals weight through `ClinicServicePriceResolver` / `ConfinementWeightPricing`, independently of species and grooming size rules. Missing/ambiguous configuration or invalid weight blocks admission with an actionable message. The UI previews Medical Record edits and saves the admission prerequisites before admitting.
@@ -56,3 +58,20 @@ Read endpoints require Clinic access; write endpoints require existing clinical 
 Apply `2026_10_14_000002_configure_confinement_charges.php` before serving the updated workspace. It adds nullable catalogue behavior and confinement-charge links without classifying services by name or changing historical bills. Configure existing Confinement catalogue entries explicitly; no prices are embedded in the workflow.
 
 Apply `2026_10_15_000001_snapshot_active_confinement_rates.php` before editing existing Base Confinement pricing. Legacy active episodes lack an admission snapshot; this migration freezes their currently available rate and weight once, using their existing legacy rules. It cannot recover an unstored original admission rate. Invalid legacy pricing or weight fails the migration for correction instead of guessing. Existing snapshots and finalized bills are retained, including on rollback. Configure clinic cutoffs before any new admissions.
+
+## IV Insertion policy deployment (2026-10-31)
+
+The local catalogue audit found Professional Fee and IV Insertion as the only active admission charges. Professional Fee was already configured correctly. This audit does not establish the production catalogue state.
+
+1. Before resuming admissions, review the actual production Clinic Services / Confinement catalogue. Keep Professional Fee active with Admission Charge behavior and its existing pricing. Identify any other active Admission Charge entries besides Professional Fee and IV Insertion; resolve their intended behavior explicitly with the clinic administrator. This release does not silently reclassify unrelated services.
+2. Through the established Hostinger release process, run the reviewed data migration with the hosting PHP CLI from the release directory:
+
+   ```sh
+   php artisan migrate --force --path=database/migrations/2026_10_31_000002_make_iv_insertion_an_additional_confinement_charge.php
+   ```
+
+   Earlier schema migrations must already be applied. The migration matches the normalized name IV Insertion only within Confinement, including inactive rows when checking uniqueness. It changes only the existing record's behavior to `additional_charge` and billing unit to `service`; it preserves prices, pricing method, activation, timestamps and all transaction tables. Repeated execution has the same result. Missing records are left absent and produce a Laravel log warning. Ambiguous matches, unexpected behavior or a unit other than None/Per service stop the migration for administrator review without changing any records. Correct or positively identify the actual existing record in Clinic Services before rerunning; do not guess IDs or create a duplicate. If the service was renamed or is absent, the administrator must configure the intended actual record separately. Deployment alone cannot fix such a missing match.
+3. Verify the production catalogue: Professional Fee is the only active Admission Charge; IV Insertion is active, Additional Charge, Per service, with its previous pricing method and price. Refresh an already-open workspace's cached options by reopening Patient Record after the release. No frontend rebuild or new environment setting is needed for this change.
+4. In the clinic's authorized verification workflow, admit a new patient: only Professional Fee appears under Admission Charges. Check IV Insertion in the existing Add Charge dropdown, add it once, and verify it appears under Additional Confinement Charges at the configured price. Verify removal and discharge totals (base daily amount + Professional Fee + retained manual charges). The automated suite covers request retries, removal permissions, totals and migration preservation; staff perform manual production verification.
+
+Existing active episodes retain their originally recorded IV Insertion admission charges and snapshots. Retrying admission returns that episode without adding charges. Do not add IV Insertion again merely to move its historical entry to the new section. Completed/paid bills and payments are untouched. The migration's rollback intentionally retains the manual-charge catalogue policy; any future policy reversal requires an explicit catalogue decision and must preserve existing charges.
