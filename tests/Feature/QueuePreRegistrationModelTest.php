@@ -163,27 +163,32 @@ class QueuePreRegistrationModelTest extends TestCase
         ]);
     }
 
-    public function test_registration_day_uses_hours_breaks_and_closures_without_a_window(): void
+    public function test_registration_day_uses_hours_and_closures_without_a_window(): void
     {
         $days = app(\App\Services\RegistrationServiceDay::class);
         foreach (['clinic', 'grooming'] as $service) {
             foreach (['06:00:00', '07:00:00', '08:00:00', '10:00:00', '12:30:00', '16:59:00'] as $time) {
                 Carbon::setTestNow("2026-10-09 {$time}");
                 $this->assertSame('2026-10-09', $days->resolve($service));
+                $this->assertSame($time >= '08:00:00', $days->acceptingCheckIns($service));
             }
             Carbon::setTestNow('2026-10-09 17:00:00');
             $this->assertSame('2026-10-10', $days->resolve($service));
+            $this->assertFalse($days->acceptingCheckIns($service));
         }
         DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'start_date' => '2026-10-10', 'end_date' => '2026-10-15']);
         $this->assertFalse($days->availability('clinic')['registration_available']);
         Carbon::setTestNow('2026-10-09 12:30:00');
-        $this->assertFalse($days->acceptingCheckIns('grooming'));
+        $this->assertTrue($days->acceptingCheckIns('grooming'));
         Carbon::setTestNow('2026-10-09 13:00:00');
         $this->assertTrue($days->acceptingCheckIns('grooming'));
         DB::table('clinic_closures')->insert(['type' => 'stop_today', 'start_date' => '2026-10-09', 'end_date' => '2026-10-09']);
+        Carbon::setTestNow('2026-10-09 12:30:00');
+        foreach (['clinic', 'grooming'] as $service) {
+            $this->assertFalse($days->acceptingCheckIns($service));
+        }
         $this->expectException(ValidationException::class);
         $days->resolve('grooming');
-        $this->assertFalse($days->acceptingCheckIns('clinic'));
     }
 
     public function test_registration_never_skips_beyond_tomorrow_and_services_are_independent(): void

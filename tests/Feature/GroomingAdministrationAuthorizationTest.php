@@ -2994,12 +2994,24 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('windows.1.end_time', '16:00:00')->assertJsonPath('windows.1.is_past', false);
     }
 
-    public function test_near_closing_walkin_and_check_in_ignore_retired_factor_inputs(): void
+    public static function physicalIntakeTimesAndRoles(): array
+    {
+        $cases = [];
+        foreach (['staff', 'admin'] as $role) {
+            foreach (['12:00:00', '12:12:00', '12:30:00', '12:59:00', '16:59:00'] as $time) {
+                $cases["{$role} at {$time}"] = [$role, $time];
+            }
+        }
+        return $cases;
+    }
+
+    #[DataProvider('physicalIntakeTimesAndRoles')]
+    public function test_walkin_and_check_in_during_operating_hours_ignore_retired_factor_inputs(string $role, string $time): void
     {
         $this->seedMultiPetBooking();
-        Carbon::setTestNow('2026-07-24 16:59:00');
+        Carbon::setTestNow("2026-07-24 {$time}");
         DB::table('bookings')->where('booking_id', 1)->update(['status' => 'waiting_to_arrive']);
-        $this->authenticateAs('staff');
+        $this->authenticateAs($role);
         $this->postJson('/api/admin/bookings/1/check-in', ['pet_sizes' => [
             ['booking_pet_id' => 1, 'size' => 'small', 'estimate_factors' => ['obsolete-factor']],
             ['booking_pet_id' => 2, 'size' => 'small'],

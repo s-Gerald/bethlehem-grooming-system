@@ -88,7 +88,6 @@ class RegistrationServiceDay
     private function withinCheckInHours(array $hours, Carbon $now): bool
     {
         $time = $now->format('H:i');
-        return $time >= $hours['open_time'] && $time < $hours['close_time']
-            && ! ($time >= '12:00' && $time < '13:00');
+        return $time >= $hours['open_time'] && $time < $hours['close_time'];
     }
 }

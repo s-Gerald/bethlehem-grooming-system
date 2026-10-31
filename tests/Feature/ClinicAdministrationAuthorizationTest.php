@@ -437,13 +437,23 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
     }
 
-    public function test_both_clinic_subroles_and_admin_can_check_in_and_view_the_shared_queue(): void
+    public static function physicalCheckInTimes(): array
     {
+        return [['10:00:00'], ['12:00:00'], ['12:12:00'], ['12:30:00'], ['12:59:00']];
+    }
+
+    #[DataProvider('physicalCheckInTimes')]
+    public function test_both_clinic_subroles_and_admin_can_check_in_and_view_the_shared_queue(string $time): void
+    {
+        Carbon::setTestNow(now()->setTimeFromTimeString($time));
         foreach (['veterinarian', 'clinic_receptionist', 'grooming_receptionist', 'admin'] as $index => $subrole) {
             $this->authenticateAs($subrole === 'admin' ? 'admin' : 'staff', subrole: $subrole);
             $this->insertClinicAppointment('waiting_to_arrive', id: $index + 1);
             $this->postJson('/api/admin/clinic-appointments/'.($index + 1).'/check-in')
                 ->assertOk()->assertJsonPath('appointment.status', 'checked_in');
+            $this->assertDatabaseHas('clinic_appointments', [
+                'id' => $index + 1, 'status' => 'checked_in', 'checked_in_at' => now()->toDateTimeString(),
+            ]);
             $this->getJson('/api/admin/clinic-cases')->assertOk();
             $this->getJson('/api/admin/clinic-records')->assertOk();
         }
