@@ -1634,6 +1634,7 @@ function adminDashboard() {
         this.activeGroomers = nextPayload.activeGroomers;
       }
       if ("groomingPreferences" in nextPayload) this.groomingPreferences = nextPayload.groomingPreferences;
+      if ("groomingForecast" in nextPayload) this.groomingForecast = nextPayload.groomingForecast;
 
       if ("activeGroomingPets" in nextPayload) {
         this.activeGroomingPets = nextPayload.activeGroomingPets;
@@ -2703,11 +2704,11 @@ function adminDashboard() {
       return globalThis.GroomingForecastPresentation?.text(pet?.groomingForecast) || "";
     },
 
-    get queueForecastText() {
+    get lastEstimatedFinish() {
       const forecast = this.groomingForecast;
-      if (!forecast || !Object.keys(forecast.pets || {}).length) return "";
-      if (!forecast.completion_at) return `Queue times uncertain${forecast.closing_risk ? " · May extend past closing" : ""}`;
-      return `Queue estimated to finish ${globalThis.GroomingForecastPresentation?.time(forecast.completion_at) || ""}${forecast.closing_risk ? " · May extend past closing" : ""}`;
+      if (!forecast || !Object.keys(forecast.pets || {}).length) return "—";
+      if (!forecast.completion_at || ["delayed", "uncertain", "unavailable"].includes(forecast.status)) return "Uncertain";
+      return globalThis.GroomingForecastPresentation?.time(forecast.completion_at, forecast.generated_at) || "Uncertain";
     },
 
     getIncomingPets(booking) {

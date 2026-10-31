@@ -1,12 +1,36 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { createGroomingEstimateFlow, confirmClosingWarning } from '../scripts/components/grooming-estimates.js';
+import { createGroomingEstimateFlow, confirmClosingWarning, groomingDurationValue } from '../scripts/components/grooming-estimates.js';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1';
+import { renderPetServiceCard } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };
 const pet = { id: 'coco', petType: 'dog', size: 'small' };
 const selection = { petId: 'coco', servicePackage: 'partial_grooming', alaCarteServices: [], groomerId: 1 };
-const late = { closing_risk: true, start_at: '2026-10-31T15:15:00+08:00', completion_at: '2026-10-31T18:15:00+08:00', closing_at: '2026-10-31T17:00:00+08:00', pets: [{}] };
+const late = { closing_risk: true, service_day:'2026-10-31',generated_at:'2026-10-31T15:00:00+08:00', start_at: '2026-10-31T15:15:00+08:00', completion_at: '2026-10-31T18:15:00+08:00', closing_at: '2026-10-31T17:00:00+08:00', pets: [{}] };
+const presentation=globalThis.GroomingForecastPresentation;
+assert.equal(presentation.time('2026-10-31T17:19:00Z','2026-10-31T23:00:00+08:00'),'1:19 AM tomorrow');
+assert.match(presentation.time('2026-11-02T01:19:00+08:00','2026-10-31T23:00:00+08:00'),/1:19 AM.*Nov 2, 2026/);
+assert.equal(presentation.time('2026-10-31T23:30:00-07:00','2026-11-01T14:00:00+08:00'),'2:30 PM','Calendar comparisons use Manila rather than the timestamp offset');
+assert.equal(presentation.text({...late,status:'estimated'},late.generated_at),'Est. ready: 6:15 PM · May extend past closing');
+assert.match(presentation.text({...late,status:'estimated',provisional:true},late.generated_at),/^Provisional · Est\. ready:/);
+assert.doesNotMatch(presentation.text({...late,status:'uncertain'},late.generated_at),/6:15/,'An uncertain state cannot expose a stale completion time');
+
+const fixture=JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json',import.meta.url),'utf8'));
+grooming.applyGroomingCatalogue(fixture.data,fixture.groomingPreferences);
+assert.equal(groomingDurationValue({servicePackage:'',alaCarteServices:[]}),'Select a service');
+assert.equal(groomingDurationValue({...selection,servicePackage:'regular_dog_grooming',groomingPreference:''}),'Select a grooming preference');
+assert.equal(groomingDurationValue(selection,{min_minutes:105,max_minutes:120}),'1 hr 45 min–2 hrs');
+assert.equal(groomingDurationValue(selection,null),'Unavailable');
+for(const walkIn of [false,true]){
+  const card=renderPetServiceCard(pet,{...selection,specialInstructions:''},0,walkIn);
+  assert.match(card,/Estimated grooming time/);assert.doesNotMatch(card,/Actual grooming time may vary/);
+  const estimate=card.indexOf('data-grooming-duration=');
+  assert.ok(estimate>card.indexOf('aria-label="Select Services"'));
+  assert.ok(estimate<card.indexOf('data-role="instructions-label"'));
+  assert.match(card.slice(card.lastIndexOf('</section>',estimate),estimate),/<\/section>\s*<div\s+$/,'The duration block is outside and immediately after Select Services');
+}
 {
   let submitted;
   const flow = createGroomingEstimateFlow({getPets:()=>[{...pet,id:'42',petType:'Dog',size:'Extra Large'}],
@@ -73,15 +97,15 @@ for (const risk of [false,true]) {
 }
 {
   const first=deferred(),second=deferred();let calls=0,selections=[selection];
-  const node={hidden:true,textContent:''};globalThis.CSS={escape:String};
+  const value={textContent:''};const node={hidden:false,querySelector:()=>value};globalThis.CSS={escape:String};
   const flow=createGroomingEstimateFlow({getPets:()=>[pet],getSelections:()=>selections,container:{querySelector:()=>node},
     requestForecast:payload=>{assert.equal(payload.durations_only,true);return ++calls===1?first.promise:second.promise;},onContinue:()=>{}});
   flow.selectionChanged();await new Promise(resolve=>setTimeout(resolve,300));
   selections=[{...selection,servicePackage:'bath_and_go'}];flow.selectionChanged();await new Promise(resolve=>setTimeout(resolve,300));
   second.resolve({pets:[{duration:{min_minutes:90,max_minutes:120}}]});await new Promise(resolve=>setImmediate(resolve));
-  assert.match(node.textContent,/1 hr 30 min–2 hrs/);assert.equal(node.hidden,false);
+  assert.match(value.textContent,/1 hr 30 min–2 hrs/);assert.equal(node.hidden,false);
   first.resolve({pets:[{duration:{min_minutes:45,max_minutes:60}}]});await new Promise(resolve=>setImmediate(resolve));
-  assert.match(node.textContent,/1 hr 30 min–2 hrs/,'Old duration responses cannot replace newer selections');
+  assert.match(value.textContent,/1 hr 30 min–2 hrs/,'Old duration responses cannot replace newer selections');
   flow.reset();
 }
 
@@ -103,8 +127,45 @@ for(const action of ['review','continue','escape']){
   const pending=confirmClosingWarning(late);
   assert.equal(dialog.open,true);
   assert.match(dialog.innerHTML,/6:15 PM/);assert.match(dialog.innerHTML,/5:00 PM/);
+  assert.doesNotMatch(dialog.innerHTML,/Estimated start/);
+  assert.match(dialog.innerHTML,/if your pet checked in now/);
   if(action==='escape')dialog.close();else dialog.children[action==='continue'?'[data-continue-review]':'[data-review-services]'].emit('click');
   assert.equal(await pending,action==='continue');assert.equal(trigger.focused,true);assert.equal(dialog.removed,true);
+}
+for(const staff of [false,true]){
+  const trigger=new Element(),dialog=new Element();
+  dialog.children={'[data-review-services]':new Element(),'[data-continue-review]':new Element()};
+  globalThis.document={activeElement:trigger,createElement:()=>dialog,body:{append(){}}};
+  const pending=confirmClosingWarning({...late,generated_at:'2026-10-31T23:55:00+08:00',
+    completion_at:'2026-11-01T01:19:00+08:00',closing_at:'2026-10-31T23:59:00+08:00',pets:[{},{}]},staff);
+  assert.match(dialog.innerHTML,/1:19 AM tomorrow/);assert.doesNotMatch(dialog.innerHTML,/Estimated start/);
+  assert.match(dialog.innerHTML,staff?/this visit may finish after grooming closes/:/if your pets checked in now/);
+  if(staff)assert.doesNotMatch(dialog.innerHTML,/provisional|before check-in|online registration/);
+  dialog.close();await pending;
+}
+{
+  const dialog=new Element();dialog.children={'[data-review-services]':new Element(),'[data-continue-review]':new Element()};
+  globalThis.document={activeElement:new Element(),createElement:()=>dialog,body:{append(){}}};
+  const pending=confirmClosingWarning({...late,status:'uncertain',completion_at:null});
+  assert.match(dialog.innerHTML,/Uncertain/);assert.doesNotMatch(dialog.innerHTML,/6:15 PM|Estimated start/);
+  dialog.close();await pending;
+}
+for(const walkIn of [false,true]){
+  let selected={...selection,servicePackage:'',alaCarteServices:[]};const value={textContent:''};
+  const flow=createGroomingEstimateFlow({walkIn,getPets:()=>[pet],getSelections:()=>[selected],
+    container:{querySelector:()=>({querySelector:()=>value})},requestForecast:async()=>({pets:[{duration:{min_minutes:105,max_minutes:120}}]}),onContinue:()=>{}});
+  flow.selectionChanged();assert.equal(value.textContent,'Select a service');
+  selected={...selected,servicePackage:'regular_dog_grooming',groomingPreference:''};
+  flow.selectionChanged();assert.equal(value.textContent,'Select a grooming preference');
+  selected.groomingPreference='regular_trim';flow.selectionChanged();assert.equal(value.textContent,'Calculating…');
+  await new Promise(resolve=>setTimeout(resolve,300));assert.equal(value.textContent,'1 hr 45 min–2 hrs');flow.reset();
+}
+{
+  let warnings=0,navigations=0;
+  const flow=createGroomingEstimateFlow({getPets:()=>[pet],getSelections:()=>[selection],
+    requestForecast:async()=>({service_day:'2026-11-01',closing_risk:false,pets:[{duration:{min_minutes:45,max_minutes:60},completion_at:null}]}),
+    confirmWarning:async()=>{warnings++;return true;},onContinue:()=>{navigations++;}});
+  await flow.next();assert.equal(warnings,0,'Next-day availability returned by the fresh request bypasses the warning');assert.equal(navigations,1);
 }
 console.log('Grooming forecast navigation, stale/failure handling and dialog actions passed.');
 

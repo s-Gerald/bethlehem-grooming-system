@@ -7,7 +7,7 @@
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
     <link rel="stylesheet" href="../../css/components/product-search-dropdown.css?v=20261029-v2" />
-    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030&estimate-ui=20261031-v2" />
     <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="../../css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3&references=20261031" />
     <link
@@ -416,7 +416,6 @@
           <div x-cloak x-show="bookingsLoaded" :aria-busy="bookingsLoading">
 
           <!-- Summary cards -->
-          <p x-cloak x-show="queueForecastText" x-text="queueForecastText" class="mt-4 text-sm text-slate-600" aria-live="polite"></p>
           <section class="mt-6">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <article data-session-surface
@@ -462,6 +461,11 @@
           </section>
 
           <!-- Operational summary -->
+          <div data-grooming-summary class="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 sm:gap-4 sm:text-sm" aria-live="polite">
+            <p class="min-w-0">Last est. finish: <span class="font-semibold text-[#2f4b66]" x-text="lastEstimatedFinish"></span></p>
+            <span class="h-4 w-px shrink-0 bg-slate-200" aria-hidden="true"></span>
+            <p class="shrink-0" x-text="activeGroomers + (activeGroomers === 1 ? ' groomer' : ' groomers')"></p>
+          </div>
 
           <!-- Flow tabs -->
           <section class="mt-6">
@@ -1577,7 +1581,7 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/services/grooming-forecast-presentation.js?v=20261031"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031"></script>
+    <script src="../../scripts/services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2"></script>
   </body>
 </html>

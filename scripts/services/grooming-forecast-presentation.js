@@ -8,15 +8,24 @@ globalThis.GroomingForecastPresentation = {
     };
     return value.min_minutes === value.max_minutes ? minutes(value.min_minutes) : `${minutes(value.min_minutes)}–${minutes(value.max_minutes)}`;
   },
-  time(value) {
+  time(value, reference = new Date()) {
     if (!value || !Number.isFinite(Date.parse(value))) return "";
-    return new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(value));
+    const date = new Date(value);
+    const clock = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", hour12: true }).format(date);
+    const calendar = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" });
+    const day = calendar.format(date), today = calendar.format(new Date(reference));
+    if (day === today) return clock;
+    const tomorrow = new Date(`${today}T00:00:00Z`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    if (day === tomorrow.toISOString().slice(0, 10)) return `${clock} tomorrow`;
+    return `${clock} on ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(date)}`;
   },
-  text(forecast) {
+  text(forecast, reference = forecast?.generated_at ?? new Date()) {
     if (!forecast) return "";
     const prefix = forecast.provisional ? "Provisional · " : "";
-    if (forecast.completion_at) return `${prefix}Est. ${this.time(forecast.start_at)}–${this.time(forecast.completion_at)}${forecast.closing_risk ? " · May extend past closing" : ""}`;
-    if (["delayed", "uncertain"].includes(forecast.status)) return `${prefix}${forecast.status === "delayed" ? "Grooming delayed; completion uncertain" : "Queue times uncertain"}${forecast.closing_risk ? " · May extend past closing" : ""}`;
-    return `${prefix}Estimated grooming time: ${this.duration(forecast.duration)}`;
+    const risk = forecast.closing_risk ? " · May extend past closing" : "";
+    if (["delayed", "uncertain"].includes(forecast.status)) return `${prefix}${forecast.status === "delayed" ? "Grooming delayed; completion uncertain" : "Queue times uncertain"}${risk}`;
+    if (forecast.status !== "unavailable" && forecast.completion_at) return `${prefix}Est. ready: ${this.time(forecast.completion_at, reference)}${risk}`;
+    return `${prefix}Estimate unavailable${risk}`;
   },
 };

@@ -1,5 +1,6 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
+import { groomingDurationValue } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
@@ -161,7 +162,10 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
 
       </section>
 
-      <p data-grooming-duration="${escapeHtml(pet.id)}" class="mt-3 text-sm text-slate-600" aria-live="polite" hidden></p>
+      <div data-grooming-duration="${escapeHtml(pet.id)}" class="mt-3" aria-live="polite" aria-atomic="true">
+        <p class="text-xs text-slate-500">Estimated grooming time</p>
+        <p data-grooming-duration-value class="mt-1 text-sm font-semibold text-[#2f4b66]">${escapeHtml(groomingDurationValue(selection, null, true))}</p>
+      </div>
 
       <section class="mt-8 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] md:items-stretch">
         ${renderSpecialInstructions(pet, selection, walkIn ? 1000 : 500)}

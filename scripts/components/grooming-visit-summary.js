@@ -1,4 +1,4 @@
-import "../services/grooming-forecast-presentation.js?v=20261031";
+import "../services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { formatBookingDate } from "../services/booking-format-service.js";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";

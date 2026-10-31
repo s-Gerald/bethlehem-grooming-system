@@ -12,6 +12,16 @@ Both services steps debounce duration requests, validate existing selection/inst
 
 The Grooming board adds one operational line and per-pet forecast text. Customer pet cards and visit details label pre-check-in forecasts provisional. The existing three tracker stages and completed history's actual grooming durations are preserved.
 
+## UI refinement
+
+Active pet forecasts show `Est. ready: [completion]` without the projected start. The compact `Last est. finish | groomers` summary sits between the statistic cards and flow tabs, using the existing physical-workload snapshot and current on-duty count. The normalized forecast is now applied to Alpine state on every existing data refresh. Empty workload shows a dash; unreliable completion shows `Uncertain`.
+
+Both services forms share a visible two-line duration block immediately below Select Services: select a service, select a required grooming preference, or the returned duration. Pending and unavailable estimates have concise values. The closing dialog retains completion and closing time, uses customer/staff-specific copy, and preserves native dialog actions and focus behavior. Manila calendar comparisons label next-day completions `tomorrow` and later dates explicitly.
+
+No duration or forecast calculations changed in this refinement. Existing authoritative service-day resolution was verified before, at, and after configured 5:00 PM, 7:00 PM, and 11:59 PM closing boundaries. Online forecasts after closing return tomorrow's service day, duration only, and no closing risk even when today's physical queue remains unfinished. Existing closure, capacity, and intake restrictions remain enforced.
+
+Refinement verification: **90/90 frontend regression scripts**, **339 PHP tests passed** (one MySQL-only skip, 4,377 assertions), and production build passed. The current single admin Grooming tab was inspected; the summary's location and absence of overflow were checked at 320, 375, 414, and 768 px, with the original viewport restored afterward. No console warnings/errors were captured. Customer/walk-in navigation and data entry remain with the user. Updated `estimate-ui=20261031-v2` URLs refresh the affected standalone asset chains.
+
 ## Verification and deployment
 
 - Automated Node regression suite: **90/90 scripts passed**. Focused PHP 8.4 duration/queue/admission/catalogue/consent/cancellation/history/migration suites: **418 passed, 1 MySQL-only test skipped, 5,245 assertions**. `npm run build` passed (with the existing outdated Browserslist data notice). Logs are in `storage/grooming-estimates-{frontend,phpunit,build}.log`.

@@ -3883,6 +3883,39 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->postJson('/api/admin/grooming/forecast', $payload)->assertOk()->assertJsonPath('pets.0.duration.min_minutes', 45);
     }
 
+    #[DataProvider('forecastClosingBoundaries')]
+    public function test_online_forecast_rechecks_configured_closing_boundary_without_using_todays_queue_for_tomorrow(string $closes, string $before, string $boundary, string $after): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-31 '.$before, 'Asia/Manila'));
+        $this->setPetGroomersOnDuty(1);
+        $this->seedMultiPetBooking();
+        DB::table('clinic_settings')->update(['grooming_close_time' => $closes]);
+        DB::table('booking_services')->update(['service_id' => 90]);
+        DB::table('booking_pets')->update(['confirmed_size' => 'small', 'groomer_id' => 1]);
+        $this->authenticateAs('customer');
+        $payload = ['pets' => [['species' => 'dog', 'size' => 'small', 'services' => ['package' => 'partial_grooming']]]];
+        $this->postJson('/api/grooming/forecast', $payload)->assertOk()
+            ->assertJsonPath('service_day', '2026-10-31')->assertJsonPath('closing_risk', true);
+        foreach ([$boundary, $after] as $time) {
+            Carbon::setTestNow(Carbon::parse('2026-10-31 '.$time, 'Asia/Manila'));
+            $this->postJson('/api/grooming/forecast', $payload)->assertOk()
+                ->assertJsonPath('service_day', '2026-11-01')->assertJsonPath('closing_risk', false)
+                ->assertJsonPath('pets.0.start_at', null)->assertJsonPath('pets.0.completion_at', null)
+                ->assertJsonPath('pets.0.duration.max_minutes', 60);
+        }
+        $this->assertDatabaseCount('booking_pets', 2);
+        $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'status' => 'checked_in']);
+    }
+
+    public static function forecastClosingBoundaries(): array
+    {
+        return [
+            'normal hours' => ['17:00:00', '16:55:00', '17:00:00', '17:05:00'],
+            'configured evening hours' => ['19:00:00', '18:55:00', '19:00:00', '19:05:00'],
+            'late closing' => ['23:59:00', '23:55:00', '23:59:00', '23:59:30'],
+        ];
+    }
+
     public function test_multi_pet_forecast_follows_dog_then_cat_intake_and_never_initializes_settings(): void
     {
         Carbon::setTestNow('2026-10-31 13:00:00');

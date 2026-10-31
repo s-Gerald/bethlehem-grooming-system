@@ -1,8 +1,14 @@
-import "../services/grooming-forecast-presentation.js?v=20261031";
+import "../services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { hasRequiredGroomingPreference } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 
 const presentation = globalThis.GroomingForecastPresentation;
+
+export function groomingDurationValue(selection, duration = null, pending = false) {
+  if (!selection?.servicePackage && !selection?.alaCarteServices?.length) return "Select a service";
+  if (!hasRequiredGroomingPreference(selection)) return "Select a grooming preference";
+  return pending ? "Calculating…" : presentation.duration(duration);
+}
 
 export function confirmClosingWarning(forecast, staff = false, trigger = document.activeElement) {
   const dialog = document.createElement("dialog");
@@ -10,18 +16,17 @@ export function confirmClosingWarning(forecast, staff = false, trigger = documen
   dialog.setAttribute("aria-describedby", "groomingClosingMessage");
   dialog.className = "w-[calc(100%_-_2rem)] max-w-lg rounded-2xl border border-amber-300 bg-white p-5 text-slate-800 shadow-xl backdrop:bg-slate-900/40 sm:p-6";
   dialog.style.margin = "auto";
-  const times = forecast.start_at && forecast.completion_at
-    ? `<div class="flex flex-wrap justify-between gap-2"><dt>Estimated start</dt><dd class="font-semibold">${presentation.time(forecast.start_at)}</dd></div>
-       <div class="flex flex-wrap justify-between gap-2"><dt>Estimated completion</dt><dd class="font-semibold">${presentation.time(forecast.completion_at)}</dd></div>`
-    : '<div><dt class="sr-only">Forecast status</dt><dd>The queue is delayed or uncertain. Exact start and completion times are unavailable.</dd></div>';
+  const completion = forecast.completion_at && !["delayed", "uncertain", "unavailable"].includes(forecast.status)
+    ? presentation.time(forecast.completion_at, forecast.generated_at) : "Uncertain";
   dialog.innerHTML = `<h3 id="groomingClosingTitle" class="flex items-start gap-2 text-lg font-semibold text-amber-900">
       <svg class="ph-icon mt-1 h-5 w-5 shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>Grooming May Extend Past Closing</h3>
     <p id="groomingClosingMessage" class="mt-3 text-sm leading-6 text-slate-700">${staff
-      ? "The current queue is projected to finish after grooming hours. You can continue with this walk-in."
-      : `Based on the current queue, your ${forecast.pets.length > 1 ? "pets may" : "pet may"} not finish before grooming closes.`}</p>
-    <dl class="mt-4 space-y-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">${times}
-      <div class="flex flex-wrap justify-between gap-2"><dt>Grooming closes</dt><dd class="font-semibold">${presentation.time(forecast.closing_at)}</dd></div></dl>
-    <p class="mt-3 text-xs leading-5 text-slate-500">Times are provisional until check-in and may change. Grooming may not be able to start today.</p>
+      ? "Based on the current queue, this visit may finish after grooming closes."
+      : `Based on the current queue, if your ${forecast.pets.length > 1 ? "pets checked" : "pet checked"} in now, grooming may finish after closing. This estimate may change before check-in.`}</p>
+    <dl class="mt-4 space-y-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+      <div class="flex flex-wrap justify-between gap-2"><dt>Estimated completion</dt><dd class="font-semibold">${completion}</dd></div>
+      <div class="flex flex-wrap justify-between gap-2"><dt>Grooming closes</dt><dd class="font-semibold">${presentation.time(forecast.closing_at, forecast.generated_at)}</dd></div></dl>
+    <p class="mt-3 text-xs leading-5 text-slate-500">Grooming may not be able to start today.</p>
     <div class="mt-5 flex flex-col gap-3">
       <button type="button" data-review-services autofocus class="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Review Services</button>
       <button type="button" data-continue-review class="rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white hover:bg-[#274a67] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Continue to Review</button>
@@ -60,14 +65,12 @@ export function createGroomingEstimateFlow({ getPets, getSelections, container, 
     }),
   });
   const signature = () => JSON.stringify(payload());
-  function display(forecast) {
+  function display(forecast, pending = false) {
     getPets().forEach((pet, index) => {
       const node = getContainer()?.querySelector(`[data-grooming-duration="${CSS.escape(String(pet.id))}"]`);
       const selected = getSelections().find(item => String(item.petId) === String(pet.id));
       if (!node) return;
-      const hasSelection = Boolean(selected?.servicePackage || selected?.alaCarteServices?.length) && hasRequiredGroomingPreference(selected);
-      node.hidden = !hasSelection;
-      node.textContent = hasSelection ? `Estimated grooming time: ${presentation.duration(forecast?.pets?.[index]?.duration)}. Actual grooming time may vary.` : "";
+      node.querySelector('[data-grooming-duration-value]').textContent = groomingDurationValue(selected, forecast?.pets?.[index]?.duration, pending);
     });
   }
   return {
@@ -76,7 +79,7 @@ export function createGroomingEstimateFlow({ getPets, getSelections, container, 
     selectionChanged() {
       const revision = ++generation, key = signature();
       clearTimeout(timer);
-      display(null);
+      display(null, true);
       timer = setTimeout(async () => {
         try {
           const forecast = await requestForecast(payload(true));

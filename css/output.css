@@ -4880,6 +4880,10 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     gap: 0.75rem;
   }
 
+  .sm\:gap-4 {
+    gap: 1rem;
+  }
+
   .sm\:gap-6 {
     gap: 1.5rem;
   }

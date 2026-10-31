@@ -4,6 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const context = { window: {}, console, Date, Intl };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/services/grooming-forecast-presentation.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-dashboard.js'), 'utf8'), context);
 const ui = context.adminDashboard();
 ui.openActionConfirmModal({action:'cancel', booking:{id:901}, title:'Cancel', message:'', confirmLabel:'Confirm cancellation'});
@@ -16,6 +17,19 @@ assert.equal(ui.actionConfirmModal.conflictBlocked, false);
 
 ui.$nextTick = () => {};
 ui.dispatchDashboardEvent = () => {};
+const physicalForecast = {pets:{1:{},2:{}},completion_at:'2026-10-31T21:41:00+08:00',generated_at:'2026-10-31T20:00:00+08:00',status:'estimated'};
+ui.applyDashboardData({groomingForecast:physicalForecast,groomerCapacity:{groomers_on_duty:2}});
+assert.equal(ui.groomingForecast,physicalForecast,'Normalized forecasts must be applied into Alpine state');
+assert.equal(ui.lastEstimatedFinish,'9:41 PM');
+assert.equal(ui.activeGroomers,2);
+ui.applyDashboardData({groomingForecast:{...physicalForecast,completion_at:null,status:'uncertain'},groomerCapacity:{groomers_on_duty:3}});
+assert.equal(ui.lastEstimatedFinish,'Uncertain');assert.equal(ui.activeGroomers,3);
+ui.applyDashboardData({incomingList:[{id:999,status:'incoming'}],groomingForecast:{pets:{},completion_at:null}});
+assert.equal(ui.lastEstimatedFinish,'—','Unarrived incoming visits never create a physical finish time');
+ui.applyDashboardData({groomingForecast:physicalForecast});
+ui.applyDashboardData({todayCount:5});
+assert.equal(ui.lastEstimatedFinish,'9:41 PM','Partial updates preserve the last loaded physical forecast');
+assert.equal(ui.petForecastText({groomingForecast:{completion_at:'2026-10-31T21:34:00+08:00',start_at:'2026-10-31T20:19:00+08:00',generated_at:'2026-10-31T20:00:00+08:00',status:'estimated'}}),'Est. ready: 9:34 PM');
 assert.equal(ui.sedationConsentStatusLabel({ sedationConsent: true }), 'Sedation authorized');
 assert.equal(ui.sedationConsentStatusLabel({ sedationConsent: false, sedationConsentRecorded: true }), 'Sedation not authorized');
 assert.equal(ui.sedationConsentStatusLabel({ sedationConsent: false }), 'Sedation not recorded');
