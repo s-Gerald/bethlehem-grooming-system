@@ -479,6 +479,10 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   let expectedGeneration = 'generation-one';
   let recovery = null, stateCalls = 0, pendingState = null;
   let eligible = true;
+  let activeServices = [];
+  const registrationAccess = () => ({ allowed: eligible && activeServices.length < 2,
+    services: Object.fromEntries(['grooming', 'clinic'].map(service => [service, { allowed: eligible && !activeServices.includes(service), ongoing: null, message: null }])),
+    sms_verification: flags });
   function element(id) {
     if (elements.has(id)) return elements.get(id);
     const attributes = new Map(id === 'phoneVerificationSpinner' ? [['hidden', '']] : []);
@@ -541,8 +545,8 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
   };
   global.API = {
     async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery, allowed_prefixes: ['0917', '0895', '0896', '0897', '0898', '0991'] }; },
-    readCustomerCache: () => ({ fresh: true, data: { allowed: true, sms_verification: flags } }),
-    async getPreRegistrationAccess() { calls.access++; return { allowed: eligible, sms_verification: flags }; },
+    readCustomerCache: () => ({ fresh: true, data: registrationAccess() }),
+    async getPreRegistrationAccess() { calls.access++; return registrationAccess(); },
     async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
     async sendPhoneVerification(phone, password) {
       calls.sends++;
@@ -868,10 +872,16 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await trigger.dispatch('click');
     assert.equal(dialog.open, false);
     assert.equal(calls.navigation.length, 3, 'An unavailable enforced flow has no navigation fallback.');
+    for (const active of [[], ['grooming'], ['clinic'], ['grooming', 'clinic']]) {
+      activeServices = active;
+      await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
+      assert.equal(trigger.getAttribute('aria-disabled'), String(active.length === 2), 'Register Online remains accessible if either service is eligible');
+    }
+    activeServices = [];
     eligible = false;
     await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
     await trigger.dispatch('click'); assert.equal(dialog.open, false, 'Ongoing registrations still block entry.');
-    assert.equal(calls.access, 3, 'Modal actions add no eligibility polling.');
+    assert.equal(calls.access, 7, 'Modal actions add no eligibility polling.');
   } finally {
     Date.now = originalNow;
     Object.assign(global, previous);
@@ -936,6 +946,12 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
   ];
   const savedBookings = new Map(bookings.map(booking => [booking.booking_id,booking]));
   const dashboard = await runDashboard(async () => ({bookings, clinic_visits: [{id:101, pet_name:'Clinic pet', status:'waiting_to_arrive'}]}));
+  const cards = dashboard.element('appointmentsList').innerHTML;
+  assert.match(cards, /data-visit-summary="101"/);
+  assert.match(cards, /data-clinic-summary="101"/);
+  assert.match(cards, /Pending A/);
+  assert.match(cards, /Clinic pet/);
+  assert.doesNotMatch(dashboard.element('groomingTracker').innerHTML, /Clinic pet|in_consultation/);
   const {element, context} = dashboard;
   const reads = [];
   context.API.getBooking = async id => {

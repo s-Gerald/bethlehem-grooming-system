@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Online Registration | Bethlehem</title>
-    <link rel="stylesheet" href="../../css/output.css?registration=skeleton-20261027-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="../../css/output.css?service-access=20261031-v1&registration=skeleton-20261027-v2&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
   </head>
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
@@ -79,7 +79,10 @@
               <dd id="serviceStatus" role="status" aria-live="polite" class="text-right font-medium text-[#315b7e]"></dd>
             </dl>
             <p id="serviceNote" class="mt-4 text-sm leading-6 text-slate-500">Queue numbers are assigned at check-in. Online registration does not reserve a queue position or grooming cage.</p>
-            <p id="serviceAccessMessage" role="status" class="mt-4 text-sm font-medium text-amber-800" hidden></p>
+            <p id="serviceAccessMessage" role="status" class="mt-4 text-sm font-medium text-amber-800" hidden>
+              <svg class="mr-1 inline h-4 w-4 align-text-bottom" fill="currentColor" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>
+              <span id="serviceAccessText"></span>
+            </p>
             <a id="serviceContinue" href="./grooming-pre-registration.html" aria-disabled="true" aria-describedby="serviceStatus serviceAccessMessage" tabindex="-1"
               class="mt-6 flex min-h-12 w-full items-center justify-center whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#2f4b66] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] motion-reduce:transition-none pointer-events-none cursor-not-allowed opacity-60">Continue to Grooming</a>
             <button id="retryAvailability" type="button" class="mx-auto mt-4 rounded-lg px-3 py-2 text-sm font-semibold text-[#315b7e] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]" hidden>Try again</button>
@@ -90,6 +93,6 @@
     </main>
 
     <script src="../../scripts/api.js?phone=20261025-sms&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261030"></script>
-    <script type="module" src="../../scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029"></script>
+    <script type="module" src="../../scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029&service-access=20261031-v1"></script>
   </body>
 </html>

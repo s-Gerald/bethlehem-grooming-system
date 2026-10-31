@@ -16,10 +16,7 @@ class CustomerPreRegistrationAccessService
         'expired',
     ];
 
-    /**
-     * A customer may start either flow only when neither service has an
-     * ongoing registration. Historical visit counts are intentionally ignored.
-     */
+    /** Return account-level eligibility independently for each service. */
     public function forUser(int $userId): array
     {
         app(PreRegistrationExpiry::class)->expire($userId);
@@ -31,15 +28,6 @@ class CustomerPreRegistrationAccessService
                 ->first(['booking_id', 'booking_reference', 'status'])
             : null;
 
-        if ($grooming) {
-            return $this->blockedResult(
-                'grooming',
-                'Grooming',
-                $grooming->booking_reference,
-                $grooming->status,
-            );
-        }
-
         $clinic = Schema::hasTable('clinic_appointments')
             ? ClinicAppointment::query()
                 ->where('user_id', $userId)
@@ -48,20 +36,18 @@ class CustomerPreRegistrationAccessService
                 ->first(['id', 'appointment_reference', 'status'])
             : null;
 
-        if ($clinic) {
-            return $this->blockedResult(
-                'clinic',
-                'Clinic',
-                $clinic->appointment_reference,
-                $clinic->status,
-            );
-        }
+        $services = [
+            'grooming' => $grooming
+                ? $this->blockedResult('grooming', 'Grooming', $grooming->booking_reference, $grooming->status)
+                : ['allowed' => true, 'ongoing' => null, 'message' => null],
+            'clinic' => $clinic
+                ? $this->blockedResult('clinic', 'Clinic', $clinic->appointment_reference, $clinic->status)
+                : ['allowed' => true, 'ongoing' => null, 'message' => null],
+        ];
 
         return [
-            'allowed' => true,
-            'has_ongoing_registration' => false,
-            'ongoing' => null,
-            'message' => null,
+            'allowed' => $services['grooming']['allowed'] || $services['clinic']['allowed'],
+            'services' => $services,
         ];
     }
 
@@ -73,14 +59,13 @@ class CustomerPreRegistrationAccessService
     ): array {
         return [
             'allowed' => false,
-            'has_ongoing_registration' => true,
             'ongoing' => [
                 'type' => $type,
                 'label' => $label,
                 'reference' => $reference,
                 'status' => $status,
             ],
-            'message' => 'You already have an ongoing registration.',
+            'message' => "You already have an active {$label} registration.",
         ];
     }
 }

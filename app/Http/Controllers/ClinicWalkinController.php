@@ -92,7 +92,7 @@ class ClinicWalkinController extends Controller
             $lockedUser = User::query()->whereKey($user->user_id)->lockForUpdate()->first();
             \App\Services\CustomerPhoneVerificationService::assertPreRegistration($lockedUser);
 
-            $access = $preRegistrationAccess->forUser((int) $user->user_id);
+            $access = $preRegistrationAccess->forUser((int) $user->user_id)['services']['clinic'];
             if (! $access['allowed']) {
                 return response()->json([
                     'success' => false,
@@ -109,20 +109,6 @@ class ClinicWalkinController extends Controller
                 ->where('user_id', $user->user_id)
                 ->where('is_archived', false)
                 ->firstOrFail();
-
-            $duplicate = ClinicAppointment::query()
-                ->whereDate('appointment_date', $appointmentDate)
-                ->where('user_id', $user->user_id)
-                ->where('pet_id', $pet->pet_id)
-                ->whereNotIn('status', ['cancelled', 'no_show', 'expired'])
-                ->exists();
-
-            if ($duplicate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "{$pet->pet_name} already has a clinic visit registered on this date.",
-                ], 422);
-            }
 
             $sequence = $clinicSequence->reserve($appointmentDate, false);
             $reference = $sequence['appointment_reference'];

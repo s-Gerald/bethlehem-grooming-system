@@ -26,13 +26,14 @@ export async function enforceBookingFormAccessGuard(options = {}) {
 
   // Entry decisions require a server check even when a recent header result exists.
   const access = await API.getPreRegistrationAccess({ force: true });
+  const serviceAccess = access.services?.[options.service || "grooming"];
   const phoneRequired = access.sms_verification?.enforced && access.phone_verification_required;
-  if (access.allowed && !phoneRequired) {
+  if (serviceAccess?.allowed && !phoneRequired) {
     return false;
   }
 
   try {
-    sessionStorage.setItem(ACCESS_MESSAGE_KEY, access.message || (phoneRequired ? "Open Online Registration to verify your phone number." : ""));
+    sessionStorage.setItem(ACCESS_MESSAGE_KEY, serviceAccess?.message || (phoneRequired ? "Open Online Registration to verify your phone number." : ""));
   } catch (error) {
     console.error("Failed to save the pre-registration access message:", error);
   }
@@ -46,7 +47,7 @@ export async function initBookingFormAccessGuard(options = {}) {
   let blockedNow = false;
 
   try {
-    blockedNow = await enforceBookingFormAccessGuard({ dashboardPath });
+    blockedNow = await enforceBookingFormAccessGuard({ ...options, dashboardPath });
   } catch (error) {
     console.error("Failed to check pre-registration access:", error);
     window.location.replace(dashboardPath);
@@ -56,7 +57,7 @@ export async function initBookingFormAccessGuard(options = {}) {
   window.addEventListener("pageshow", async (event) => {
     if (event.persisted) {
       try {
-        await enforceBookingFormAccessGuard({ dashboardPath });
+        await enforceBookingFormAccessGuard({ ...options, dashboardPath });
       } catch (error) {
         console.error("Failed to recheck pre-registration access:", error);
         window.location.replace(dashboardPath);

@@ -1,6 +1,6 @@
 import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1";
 import {
   MAX_PETS_PER_BOOKING as GROOMING_MAX_PETS,
   getSavedPets,
@@ -893,7 +893,7 @@ function configurePageForFlow() {
 }
 
 export async function initBookingPetStep() {
-  if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ dashboardPath: "./dashboard.html" })) return;
+  if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ service: "clinic", dashboardPath: "./dashboard.html" })) return;
   if (IS_CLINIC_VISIT && !await requireCustomerSession("./sign-in.html")) {
     return;
   }

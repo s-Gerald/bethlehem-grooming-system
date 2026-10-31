@@ -1,5 +1,5 @@
 import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
-import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3";
+import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1";
 import { loadRegistrationAvailability } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3";
@@ -89,15 +89,16 @@ export async function initPreRegistrationOptions() {
     get("serviceVisitDay").textContent = data?.visit_day_label || "Unavailable";
     get("serviceOpening").textContent = data?.check_in_starts || "Unavailable";
     get("serviceStatus").textContent = data?.message || "Unable to check availability. Try again.";
+    const serviceAccess = access?.services?.[selected];
     const phoneRequired = access?.sms_verification?.enforced && access?.phone_verification_required;
     const message = accessFailed ? "Unable to check availability. Try again."
-      : access && !access.allowed ? access.message
+      : serviceAccess && !serviceAccess.allowed ? serviceAccess.message
       : phoneRequired ? "Phone verification required to continue." : "";
-    get("serviceAccessMessage").textContent = message;
+    get("serviceAccessText").textContent = message;
     get("serviceAccessMessage").hidden = !message;
     button.href = service.href;
     button.textContent = `Continue to ${service.title}`;
-    setPreRegistrationLinkAccess(button, !loading && !!access?.allowed && !!data?.registration_available, message || data?.message);
+    setPreRegistrationLinkAccess(button, !loading && !!serviceAccess?.allowed && !!data?.registration_available, message || data?.message);
     retry.hidden = loading || (!accessFailed && !!data);
     if (wasHidden && !showSkeleton && data && access) animateCard();
   }

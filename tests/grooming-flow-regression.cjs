@@ -20,12 +20,30 @@ async function main() {
   ]) {
     let redirected = false;
     const guard = vm.createContext({ URLSearchParams, sessionStorage: storage, console,
-      API: { getPreRegistrationAccess: async () => ({ allowed, phone_verification_required: required, sms_verification: { enforced } }) },
+      API: { getPreRegistrationAccess: async () => ({ allowed, services: { grooming: { allowed }, clinic: { allowed } }, phone_verification_required: required, sms_verification: { enforced } }) },
       window: { location: { search: '', replace() { redirected = true; } } },
     });
     vm.runInContext(script('scripts/services/booking-form-access-guard.js'), guard);
     assert.equal(await guard.enforceBookingFormAccessGuard(), blocked);
     assert.equal(redirected, blocked);
+  }
+  for (const active of [[], ['grooming'], ['clinic'], ['grooming', 'clinic']]) {
+    for (const service of ['grooming', 'clinic']) {
+      let redirected = false, restore;
+      const guard = vm.createContext({ sessionStorage: storage, console,
+        API: { getPreRegistrationAccess: async options => {
+          assert.equal(options.force, true);
+          return { allowed: active.length < 2, services: Object.fromEntries(['grooming', 'clinic'].map(name => [name, { allowed: !active.includes(name), message: `${name} blocked` }])) };
+        } },
+        window: { location: { replace() { redirected = true; } }, addEventListener(name, handler) { if (name === 'pageshow') restore = handler; } },
+      });
+      vm.runInContext(script('scripts/services/booking-form-access-guard.js'), guard);
+      assert.equal(await guard.initBookingFormAccessGuard({ service }), active.includes(service));
+      assert.equal(redirected, active.includes(service));
+      redirected = false;
+      await restore({ persisted: true });
+      assert.equal(redirected, active.includes(service), 'Restoration preserves the selected service context');
+    }
   }
   global.sessionStorage = storage;
   const draft = await import('../scripts/services/booking-draft-service.js');

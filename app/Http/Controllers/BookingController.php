@@ -108,7 +108,7 @@ class BookingController extends Controller
             $lockedUser = User::query()->whereKey($user->user_id)->lockForUpdate()->first();
             \App\Services\CustomerPhoneVerificationService::assertPreRegistration($lockedUser);
 
-            $access = $preRegistrationAccess->forUser((int) $user->user_id);
+            $access = $preRegistrationAccess->forUser((int) $user->user_id)['services']['grooming'];
             if (! $access['allowed']) {
                 return response()->json([
                     'success' => false,
@@ -143,22 +143,6 @@ class BookingController extends Controller
             }
             $sedationConsent = $request->boolean('sedation_consent');
             $request->merge(['pets' => app(\App\Services\PetGroomerSelection::class)->validate($request->pets, false)]);
-
-            $duplicate = Booking::where('user_id', $user->user_id)
-                ->where('booking_date', $date)
-                ->whereNotIn('status', ['cancelled', 'archived', 'no_show', 'expired'])
-                ->first();
-
-            if ($duplicate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You already have a visit on this date.',
-                    'errors' => [
-                        'existing_booking_id' => $duplicate->booking_id,
-                        'existing_booking_ref' => $duplicate->booking_reference,
-                    ],
-                ], 422);
-            }
 
             // ── Generate booking reference ────────────────────
             $dateStr = Carbon::parse($date)->format('Ymd');

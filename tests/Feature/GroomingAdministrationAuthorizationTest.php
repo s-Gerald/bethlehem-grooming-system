@@ -3085,6 +3085,43 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'pets' => [['pet_name' => 'Coco', 'species' => 'dog', 'size' => 'large', 'services' => ['package' => 'partial_grooming']]]];
     }
 
+    public function test_active_clinic_allows_grooming_for_the_same_or_another_owned_pet(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 101, 'pet_name' => 'Coco', 'species' => 'dog', 'weight' => 15, 'size' => 'large']);
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-ACTIVE', 'user_id' => 101, 'pet_id' => 101, 'status' => 'in_consultation']);
+        $payload['pets'][0]['pet_id'] = 101;
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $this->assertDatabaseHas('booking_pets', ['booking_id' => $id, 'pet_id' => 101]);
+        DB::table('bookings')->where('booking_id', $id)->update(['status' => 'completed']);
+        unset($payload['pets'][0]['pet_id']);
+        $payload['pets'][0]['pet_name'] = 'Bella';
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
+        $this->assertDatabaseCount('bookings', 2);
+        $this->assertDatabaseCount('pets', 2);
+        $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('allowed', false);
+    }
+
+    public function test_active_grooming_blocks_another_pet_and_date_but_terminal_records_release_it(): void
+    {
+        $payload = $this->prepareRegistrationDay();
+        Sanctum::actingAs(User::findOrFail(101));
+        $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        $payload['pets'][0]['pet_name'] = 'Bella';
+        foreach (['2026-10-16', '2026-10-17'] as $day) {
+            $this->submitSignedGrooming('/api/booking/store', [...$payload, 'service_day' => $day])
+                ->assertConflict()->assertJsonPath('ongoing.type', 'grooming');
+        }
+        $this->assertDatabaseCount('bookings', 1);
+        $this->assertDatabaseCount('pets', 1);
+        foreach (['completed', 'cancelled', 'no_show', 'expired', 'archived'] as $status) {
+            DB::table('bookings')->where('booking_id', $id)->update(['status' => $status]);
+            $id = $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated()->json('booking.booking_id');
+        }
+        $this->assertDatabaseCount('bookings', 6);
+    }
+
     public function test_online_order_does_not_control_check_in_order_and_multi_pet_retries_are_safe(): void
     {
         $payload = $this->prepareRegistrationDay();
@@ -3582,6 +3619,25 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             [$a, $b] = $run([101, 102], [['maximum' => 2], ['id' => $pending[1]]], ['capacity-update', 'grooming-check-in']);
             $this->assertSame([200, 422], [$a['status'], $b['status']]);
             $this->assertSame(2, app(\App\Services\OperationalCapacity::class)->snapshot()['used']);
+            // The same customer is serialized before either service eligibility read.
+            DB::table('users')->insert([['user_id' => 105, 'role' => 'customer'], ['user_id' => 106, 'role' => 'customer'], ['user_id' => 107, 'role' => 'customer']]);
+            DB::table('pets')->insert([['pet_id' => 106, 'user_id' => 106, 'pet_name' => 'Clinic duplicate', 'species' => 'cat', 'size' => 'small', 'weight' => 4], ['pet_id' => 107, 'user_id' => 107, 'pet_name' => 'Shared pet', 'species' => 'dog', 'size' => 'large', 'weight' => 15]]);
+            [$a, $b] = $run([105, 105], [$payload, $payload], 'grooming-submit');
+            $this->assertSame([201, 409], [$a['status'], $b['status']]);
+            $this->assertSame('grooming', $b['body']['ongoing']['type']);
+            $this->assertSame(1, DB::table('bookings')->where('user_id', 105)->count());
+            $clinicPayload = ['service_day' => now()->toDateString(), 'pet_id' => 106, 'common_concerns' => ['Routine check-up']];
+            [$a, $b] = $run([106, 106], [$clinicPayload, $clinicPayload], 'clinic-submit');
+            $this->assertSame([201, 409], [$a['status'], $b['status']]);
+            $this->assertSame('clinic', $b['body']['ongoing']['type']);
+            $this->assertSame(1, DB::table('clinic_appointments')->where('user_id', 106)->count());
+            $sharedPayload = $payload;
+            $sharedPayload['pets'][0]['pet_id'] = 107;
+            $sharedPayload['pets'][0]['pet_name'] = 'Shared pet';
+            [$a, $b] = $run([107, 107], [$sharedPayload, [...$clinicPayload, 'pet_id' => 107]], ['grooming-submit', 'clinic-submit']);
+            $this->assertSame([201, 201], [$a['status'], $b['status']]);
+            $this->assertSame(1, DB::table('bookings')->where('user_id', 107)->count());
+            $this->assertSame(1, DB::table('clinic_appointments')->where('user_id', 107)->count());
             [$a, $b] = $run([101, 102], [['service' => 'clinic'], ['service' => 'clinic']], 'intake-stop');
             $this->assertSame([200, 200], [$a['status'], $b['status']]);
             $this->assertSame(1, DB::table('clinic_closures')->where('is_active', true)->where('service', 'clinic')->count());
@@ -3605,6 +3661,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             file_put_contents($directory.'/verification.json', json_encode([
                 'driver' => DB::getDriverName(), 'database' => DB::connection()->getDatabaseName(),
                 'overlap_observed' => true, 'grooming_submissions' => 2, 'clinic_submissions' => 2,
+                'same_service_duplicates_blocked' => true, 'same_pet_cross_service_submissions_allowed' => true,
                 'grooming_check_in_numbers' => [1, 2], 'clinic_check_in_numbers' => [1, 2],
                 'premature_queue_numbers' => 0, 'retries_preserved_records' => true,
                 'walkin_unique_references' => 3, 'overlapping_walkin_retry_created_one_visit' => true,

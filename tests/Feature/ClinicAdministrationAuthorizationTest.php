@@ -1971,7 +1971,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('appointment.chief_complaint', 'Routine check-up, Vaccination');
     }
 
-    public function test_ongoing_grooming_blocks_a_new_clinic_pre_registration(): void
+    #[DataProvider('crossServicePetChoices')]
+    public function test_ongoing_grooming_allows_a_new_clinic_pre_registration(bool $samePet): void
     {
         $this->authenticateAs('customer', 10);
         DB::table('pets')->insert([
@@ -1990,6 +1991,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'status' => 'waiting_to_arrive',
         ]);
 
+        DB::table('pets')->insert(['pet_id' => 102, 'user_id' => 10, 'pet_name' => 'Bella', 'species' => 'cat', 'is_archived' => false]);
+        DB::table('booking_pets')->insert(['booking_id' => DB::table('bookings')->value('booking_id'), 'pet_id' => $samePet ? 101 : 102]);
+
         $this->postJson('/api/clinic/pre-register', [
             'service_day' => now('Asia/Manila')->toDateString(),
             'common_concerns' => ['Routine check-up'],
@@ -1998,51 +2002,35 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'pet_id' => 101,
             'chief_complaint' => 'Routine wellness consultation',
         ])
-            ->assertStatus(409)
-            ->assertJsonPath('code', 'ongoing_pre_registration')
-            ->assertJsonPath('ongoing.type', 'grooming');
+            ->assertCreated();
 
-        $this->assertDatabaseCount('clinic_appointments', 0);
+        $this->assertDatabaseCount('clinic_appointments', 1);
     }
 
-    public function test_ongoing_clinic_visit_blocks_a_new_grooming_pre_registration(): void
+    public static function crossServicePetChoices(): array
+    {
+        return ['same pet' => [true], 'different owned pet' => [false]];
+    }
+
+    public function test_active_clinic_blocks_another_pet_and_date_but_terminal_records_release_it(): void
     {
         $this->authenticateAs('customer', 10);
-        DB::table('pets')->insert([
-            'pet_id' => 101,
-            'user_id' => 10,
-            'pet_name' => 'Mochi',
-            'species' => 'cat',
-            'is_archived' => false,
-        ]);
-        DB::table('clinic_appointments')->insert([
-            'appointment_reference' => 'CL-ONGOING-1',
-            'appointment_type' => 'pre_registered',
-            'status' => 'waiting_to_arrive',
-            'appointment_date' => now()->addDay()->toDateString(),
-            'window_id' => 1,
-            'user_id' => 10,
-            'pet_id' => 101,
-            'paid' => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $this->submitSignedGrooming('/api/booking/store', [
-            'booking_date' => now()->addDay()->toDateString(),
-            'window_id' => 1,
-            'number_of_pets' => 1,
-            'pets' => [[
-                'pet_id' => 101,
-                'pet_name' => 'Mochi',
-                'species' => 'cat',
-            ]],
-        ])
-            ->assertStatus(409)
-            ->assertJsonPath('code', 'ongoing_pre_registration')
-            ->assertJsonPath('ongoing.type', 'clinic');
-
-        $this->assertDatabaseCount('bookings', 0);
+        foreach ([101, 102] as $id) {
+            DB::table('pets')->insert(['pet_id' => $id, 'user_id' => 10, 'pet_name' => "Pet {$id}", 'species' => 'cat', 'is_archived' => false]);
+        }
+        $payload = ['service_day' => now('Asia/Manila')->toDateString(), 'pet_id' => 101, 'common_concerns' => ['Routine check-up']];
+        $id = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->json('appointment.appointment_id');
+        $payload['pet_id'] = 102;
+        foreach ([now()->toDateString(), now()->addDay()->toDateString()] as $day) {
+            $this->postJson('/api/clinic/pre-register', [...$payload, 'service_day' => $day])
+                ->assertConflict()->assertJsonPath('ongoing.type', 'clinic');
+        }
+        $this->assertDatabaseCount('clinic_appointments', 1);
+        foreach (['completed', 'cancelled', 'no_show', 'expired', 'archived'] as $status) {
+            DB::table('clinic_appointments')->where('id', $id)->update(['status' => $status]);
+            $id = $this->postJson('/api/clinic/pre-register', $payload)->assertCreated()->json('appointment.appointment_id');
+        }
+        $this->assertDatabaseCount('clinic_appointments', 6);
     }
 
     public function test_customer_cannot_pre_register_another_customers_pet(): void

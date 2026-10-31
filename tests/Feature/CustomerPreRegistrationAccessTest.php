@@ -75,11 +75,11 @@ class CustomerPreRegistrationAccessTest extends TestCase
         $this->getJson('/api/pre-registration/access')
             ->assertOk()
             ->assertJsonPath('allowed', true)
-            ->assertJsonPath('has_ongoing_registration', false)
-            ->assertJsonPath('ongoing', null);
+            ->assertJsonPath('services.grooming.allowed', true)
+            ->assertJsonPath('services.clinic.allowed', true);
     }
 
-    public function test_ongoing_grooming_blocks_both_pre_registration_choices(): void
+    public function test_ongoing_grooming_only_blocks_grooming(): void
     {
         DB::table('bookings')->insert([
             'booking_reference' => 'BAC-ONGOING-1',
@@ -89,13 +89,13 @@ class CustomerPreRegistrationAccessTest extends TestCase
 
         $this->getJson('/api/pre-registration/access')
             ->assertOk()
-            ->assertJsonPath('allowed', false)
-            ->assertJsonPath('has_ongoing_registration', true)
-            ->assertJsonPath('ongoing.type', 'grooming')
-            ->assertJsonPath('ongoing.reference', 'BAC-ONGOING-1');
+            ->assertJsonPath('allowed', true)
+            ->assertJsonPath('services.grooming.allowed', false)
+            ->assertJsonPath('services.clinic.allowed', true)
+            ->assertJsonPath('services.grooming.ongoing.reference', 'BAC-ONGOING-1');
     }
 
-    public function test_ongoing_clinic_visit_blocks_both_pre_registration_choices(): void
+    public function test_ongoing_clinic_only_blocks_clinic(): void
     {
         DB::table('bookings')->insert([
             'booking_reference' => 'BAC-COMPLETE-1',
@@ -112,9 +112,37 @@ class CustomerPreRegistrationAccessTest extends TestCase
 
         $this->getJson('/api/pre-registration/access')
             ->assertOk()
+            ->assertJsonPath('allowed', true)
+            ->assertJsonPath('services.clinic.allowed', false)
+            ->assertJsonPath('services.grooming.allowed', true)
+            ->assertJsonPath('services.clinic.ongoing.reference', 'CL-ONGOING-1');
+    }
+
+    public function test_both_active_services_block_entry_and_return_both_references(): void
+    {
+        DB::table('bookings')->insert(['booking_reference' => 'OR-BOTH', 'user_id' => 22, 'status' => 'checked_in']);
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-BOTH', 'user_id' => 22, 'status' => 'in_consultation']);
+        $this->getJson('/api/pre-registration/access')->assertOk()
             ->assertJsonPath('allowed', false)
-            ->assertJsonPath('has_ongoing_registration', true)
-            ->assertJsonPath('ongoing.type', 'clinic')
-            ->assertJsonPath('ongoing.reference', 'CL-ONGOING-1');
+            ->assertJsonPath('services.grooming.allowed', false)
+            ->assertJsonPath('services.clinic.allowed', false)
+            ->assertJsonPath('services.grooming.ongoing.reference', 'OR-BOTH')
+            ->assertJsonPath('services.clinic.ongoing.reference', 'CL-BOTH');
+    }
+
+    public function test_all_terminal_statuses_release_both_services_and_other_accounts_do_not_block(): void
+    {
+        foreach (['completed', 'cancelled', 'expired', 'no_show', 'archived'] as $status) {
+            DB::table('bookings')->insert(['booking_reference' => "OR-{$status}", 'user_id' => 22, 'status' => $status]);
+            DB::table('clinic_appointments')->insert(['appointment_reference' => "CL-{$status}", 'user_id' => 22, 'status' => $status]);
+        }
+        DB::table('bookings')->insert(['booking_reference' => 'OR-OTHER', 'user_id' => 23, 'status' => 'checked_in']);
+        DB::table('clinic_appointments')->insert(['appointment_reference' => 'CL-OTHER', 'user_id' => 23, 'status' => 'in_consultation']);
+        $this->getJson('/api/pre-registration/access')->assertOk()
+            ->assertJsonPath('allowed', true)
+            ->assertJsonPath('services.grooming.allowed', true)
+            ->assertJsonPath('services.grooming.ongoing', null)
+            ->assertJsonPath('services.clinic.allowed', true)
+            ->assertJsonPath('services.clinic.ongoing', null);
     }
 }

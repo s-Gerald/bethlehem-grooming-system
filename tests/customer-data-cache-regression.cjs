@@ -159,6 +159,48 @@ async function seed(env) {
   ]);
 }
 
+async function testServiceEligibilityCacheAfterMutationsAndExpiry() {
+  const env = environment();
+  const active = { grooming: false, clinic: false };
+  env.respond((endpoint, options) => {
+    if (options.method === 'POST') {
+      if (endpoint === '/booking/store') active.grooming = true;
+      if (endpoint === '/clinic/pre-register') active.clinic = true;
+      if (endpoint === '/booking/cancel') active.grooming = false;
+      return { success: true };
+    }
+    assert.equal(endpoint, '/pre-registration/access');
+    return { allowed: !active.grooming || !active.clinic,
+      services: Object.fromEntries(['grooming', 'clinic'].map(service => [service, {
+        allowed: !active[service], ongoing: active[service] ? { reference: `${service}-active`, status: 'waiting_to_arrive' } : null,
+        message: active[service] ? `${service} active` : null,
+      }])) };
+  });
+  assert.equal((await env.API.getPreRegistrationAccess()).allowed, true);
+  await env.API.storeBooking({});
+  let access = await env.API.getPreRegistrationAccess();
+  assert.equal(access.services.grooming.allowed, false);
+  assert.equal(access.services.clinic.allowed, true);
+  assert.equal(access.allowed, true);
+  const reads = env.calls.length;
+  await env.API.getPreRegistrationAccess();
+  assert.equal(env.calls.length, reads, 'Both decisions share one cached response');
+  await env.API.submitClinicPreRegistration({});
+  access = await env.API.getPreRegistrationAccess();
+  assert.equal(access.allowed, false);
+  assert.equal(access.services.grooming.allowed, false);
+  assert.equal(access.services.clinic.allowed, false);
+  await env.API.cancelBooking(1);
+  access = await env.API.getPreRegistrationAccess();
+  assert.equal(access.services.grooming.allowed, true);
+  assert.equal(access.services.clinic.allowed, false);
+  active.clinic = false;
+  env.advance(5001);
+  access = await env.API.getPreRegistrationAccess();
+  assert.equal(access.services.grooming.allowed, true);
+  assert.equal(access.services.clinic.allowed, true, 'Expiry or completion is rechecked after the existing access freshness period');
+}
+
 async function testInvalidation() {
   const env = environment();
   for (const mutate of [
@@ -661,7 +703,7 @@ async function main() {
   healthRecordTools = await import('../scripts/components/customer-health-records.js');
   petWeightTools = await import('../scripts/components/pet-weight-size.js');
   ({ normalizePetSize } = await import('../scripts/services/booking-draft-service.js'));
-  for (const test of [testCrossDocumentFlowAndColdMiss, testRevalidationAndFailure, testDeduplicationAndRaces, testInvalidation, testSessionIsolationAndFreshness, testExcludedDataAndStorageFailure, testActualPageLoaders, testMyPetsStaticModalsAndWorkflows]) {
+  for (const test of [testCrossDocumentFlowAndColdMiss, testRevalidationAndFailure, testDeduplicationAndRaces, testServiceEligibilityCacheAfterMutationsAndExpiry, testInvalidation, testSessionIsolationAndFreshness, testExcludedDataAndStorageFailure, testActualPageLoaders, testMyPetsStaticModalsAndWorkflows]) {
     let timeout;
     try {
       await Promise.race([test(), new Promise((_, reject) => {

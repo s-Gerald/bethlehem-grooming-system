@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { clearGroomingDraft } from '../scripts/services/booking-draft-service.js';
 
-async function harness({ allowed = true, failure = false, phoneRequired = false, unavailable = [], deferAccess = false } = {}) {
+async function harness({ allowed = true, active = [], failure = false, phoneRequired = false, unavailable = [], deferAccess = false } = {}) {
   const timers = new Map(), windowListeners = {};
   let timerId = 0;
   const nodes = new Map(), drafts = new Map([['bookingPets', 'saved grooming draft'], ['clinicVisitDraft', 'saved clinic draft']]);
@@ -42,7 +42,8 @@ async function harness({ allowed = true, failure = false, phoneRequired = false,
     bindPreRegistrationButton: button => { guarded = button; }, setPhoneVerificationAccess() {},
     setPreRegistrationLinkAccess: (button, enabled) => button.setAttribute('aria-disabled', !enabled),
     getPreRegistrationAccess: () => {
-      const data = { allowed, phone_verification_required: phoneRequired, sms_verification: { enforced: true }, message: allowed ? null : 'You already have an ongoing registration.' };
+      const services = Object.fromEntries(['grooming', 'clinic'].map(service => [service, { allowed: allowed && !active.includes(service), ongoing: null, message: allowed && !active.includes(service) ? null : `You already have an active ${service === 'grooming' ? 'Grooming' : 'Clinic'} registration.` }]));
+      const data = { allowed: Object.values(services).some(service => service.allowed), services, phone_verification_required: phoneRequired, sms_verification: { enforced: true } };
       return deferAccess ? new Promise(resolve => accessPending.push(() => resolve(data))) : Promise.resolve(data);
     },
     loadRegistrationAvailability: service => { requests++; return new Promise((resolve, reject) => {
@@ -111,7 +112,7 @@ await blockedReady;
 blocked.get('clinicTab').listeners.click();
 assert.equal(blocked.get('serviceContinue').attributes['aria-disabled'], 'true');
 assert.equal(blocked.get('clinicTab').attributes['aria-selected'], 'true');
-assert.match(blocked.get('serviceAccessMessage').textContent, /ongoing registration/);
+assert.match(blocked.get('serviceAccessText').textContent, /active Clinic registration/);
 
 const offline = await harness({ failure: true });
 const offlineReady = offline.context.initPreRegistrationOptions();
@@ -130,7 +131,7 @@ const phone = await harness({ phoneRequired: true });
 const phoneReady = phone.context.initPreRegistrationOptions();
 phone.pending.forEach(resolve => resolve());
 await phoneReady;
-assert.match(phone.get('serviceAccessMessage').textContent, /Phone verification/);
+assert.match(phone.get('serviceAccessText').textContent, /Phone verification/);
 assert.equal(phone.get('serviceContinue').attributes['aria-disabled'], 'false', 'Continue must remain available to open phone verification');
 const unavailable = await harness({ unavailable: ['grooming'] });
 const unavailableReady = unavailable.context.initPreRegistrationOptions();
@@ -202,3 +203,18 @@ await partialRetry;
 assert.equal(partial.get('serviceTitle').textContent, 'Clinic Visit');
 assert.equal(partial.get('serviceSkeleton').hidden, true);
 console.log('Full-card skeleton, fast completion, independent service readiness, retry, timer cleanup and reduced motion passed.');
+
+for (const active of [[], ['grooming'], ['clinic'], ['grooming', 'clinic']]) {
+  const h = await harness({ active });
+  const ready = h.context.initPreRegistrationOptions();
+  h.pending.forEach(resolve => resolve());
+  await ready;
+  for (const service of ['grooming', 'clinic']) {
+    h.get(`${service}Tab`).listeners.click();
+    assert.equal(h.get('serviceContinue').attributes['aria-disabled'], String(active.includes(service)), `${active}: ${service} eligibility`);
+    assert.equal(h.get('serviceAccessMessage').hidden, !active.includes(service));
+    assert.equal(h.get('serviceAccessText').textContent, active.includes(service)
+      ? `You already have an active ${service === 'grooming' ? 'Grooming' : 'Clinic'} registration.` : '', 'Only the selected service restriction is displayed');
+  }
+  assert.equal(h.requests, 2, 'Eligibility changes add no availability requests');
+}
