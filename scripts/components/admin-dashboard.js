@@ -406,6 +406,7 @@ function adminDashboard() {
     activeGroomingPets: 0,
     groomingPreferences: {},
     groomingForecast: null,
+    forecastClock: Date.now(),
     groomerCapacityBusy: false,
     groomerCapacityError: "",
     pickupModal: { open: false, booking: null, busy: false },
@@ -652,6 +653,7 @@ function adminDashboard() {
 
     startContentPolling() {
       if (this._destroyed || this._bookingInterval) return;
+      this.syncForecastClock();
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
         if (this.pageMode === 'dashboard') {
@@ -660,8 +662,12 @@ function adminDashboard() {
         } else void this.loadAdminBookings();
       };
       this._bookingInterval = setInterval(refresh, 30000);
-      this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
+      this._visibilityListener = () => { this.syncForecastClock(); if (document.visibilityState !== 'hidden') refresh(); };
       document.addEventListener('visibilitychange', this._visibilityListener);
+      this._forecastPageHide = () => { clearTimeout(this._forecastTimer); this._forecastTimer = null; };
+      this._forecastPageShow = () => this.syncForecastClock();
+      window.addEventListener('pagehide', this._forecastPageHide);
+      window.addEventListener('pageshow', this._forecastPageShow);
       this._sessionResumeListener = () => {
         if (!this.bookingsLoaded && !this.summaryLoaded && !this.activityLoaded) return;
         Promise.allSettled([this._bookingRequest, this._summaryRequest, this._activityRequest]).then(refresh);
@@ -689,16 +695,27 @@ function adminDashboard() {
       }
     },
 
+    syncForecastClock() {
+      clearTimeout(this._forecastTimer);
+      this._forecastTimer = null;
+      if (this._destroyed || this.pageMode !== 'grooming' || document.visibilityState === 'hidden') return;
+      this.forecastClock = Date.now();
+      this._forecastTimer = setTimeout(() => this.syncForecastClock(), 60000 - Date.now() % 60000);
+    },
+
     destroy() {
       this.productDropdown?.close();
       this.syncGroomingModalFocus(null);
       this._destroyed = true;
+      clearTimeout(this._forecastTimer);
       this.stopOnlinePaymentPoll();
       this._bookingRevision++;
       clearInterval(this._bookingInterval);
       this._bookingInterval = null;
       clearTimeout(this._paymentProductSearchTimer);
       document.removeEventListener('visibilitychange', this._visibilityListener);
+      window.removeEventListener('pagehide', this._forecastPageHide);
+      window.removeEventListener('pageshow', this._forecastPageShow);
       window.removeEventListener('admin-session:unlocked', this._sessionResumeListener);
       window.removeEventListener('admin-navigation:invalidated', this._dashboardAccessInvalidated);
       window.removeEventListener('admin-navigation:updated', this._dashboardIdentityUpdated);
@@ -2701,12 +2718,25 @@ function adminDashboard() {
     },
 
     petForecastText(pet) {
-      return globalThis.GroomingForecastPresentation?.text(pet?.groomingForecast) || "";
+      return globalThis.GroomingForecastPresentation?.text(pet?.groomingForecast, this.forecastClock, this.forecastClock) || "";
+    },
+
+    petOverdueStatus(pet) {
+      const presentation = globalThis.GroomingForecastPresentation;
+      return presentation?.ready(pet?.groomingForecast, this.forecastClock)?.lower
+        ? presentation.overdueStatus(pet?.groomingForecast, this.forecastClock) : "";
     },
 
     get lastEstimatedFinish() {
       const forecast = this.groomingForecast;
       if (!forecast || !Object.keys(forecast.pets || {}).length) return "—";
+      const values = Object.values(forecast.pets);
+      if (values.some(pet => pet.rolling_from_at)) {
+        const bounds = values.map(pet => globalThis.GroomingForecastPresentation?.ready(pet, this.forecastClock));
+        if (bounds.some(bound => !bound)) return 'Uncertain';
+        const latest = bounds.map(bound => bound.at).sort().at(-1);
+        return globalThis.GroomingForecastPresentation.time(latest, this.forecastClock) + (bounds.some(bound => bound.lower) ? ' or later' : '');
+      }
       if (!forecast.completion_at || ["delayed", "uncertain", "unavailable"].includes(forecast.status)) return "Uncertain";
       return globalThis.GroomingForecastPresentation?.time(forecast.completion_at, forecast.generated_at) || "Uncertain";
     },

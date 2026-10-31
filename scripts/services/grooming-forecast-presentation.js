@@ -20,11 +20,27 @@ globalThis.GroomingForecastPresentation = {
     if (day === tomorrow.toISOString().slice(0, 10)) return `${clock} tomorrow`;
     return `${clock} on ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" }).format(date)}`;
   },
-  text(forecast, reference = forecast?.generated_at ?? new Date()) {
+  ready(forecast, now) {
+    if (!forecast) return null;
+    const clock = new Date(now).getTime();
+    if (forecast.rolling_from_at && clock >= Date.parse(forecast.rolling_from_at)) {
+      const bound = Math.max(clock + forecast.rolling_offset_minutes * 60000, Date.parse(forecast.earliest_completion_at) || 0);
+      return { at: new Date(bound).toISOString(), lower: true };
+    }
+    return forecast.completion_at && !['uncertain','unavailable','delayed'].includes(forecast.status)
+      ? {at:forecast.completion_at,lower:false} : null;
+  },
+  overdueStatus(forecast, now) {
+    return forecast?.is_active && (forecast.status === 'delayed' || (forecast.rolling_from_at && new Date(now).getTime() >= Date.parse(forecast.rolling_from_at)))
+      ? 'Taking longer than expected' : '';
+  },
+  text(forecast, reference = forecast?.generated_at ?? new Date(), now = null) {
     if (!forecast) return "";
     const prefix = forecast.provisional ? "Provisional · " : "";
     const risk = forecast.closing_risk ? " · May extend past closing" : "";
-    if (["delayed", "uncertain"].includes(forecast.status)) return `${prefix}${forecast.status === "delayed" ? "Grooming delayed; completion uncertain" : "Queue times uncertain"}${risk}`;
+    const ready = now === null ? null : this.ready(forecast, now);
+    if (ready) return `${prefix}Est. ready: ${this.time(ready.at, reference)}${ready.lower ? ' or later' : ''}${risk}`;
+    if (["delayed", "uncertain"].includes(forecast.status)) return `${prefix}${forecast.status === "delayed" ? "Taking longer than expected" : "Queue times uncertain"}${risk}`;
     if (forecast.status !== "unavailable" && forecast.completion_at) return `${prefix}Est. ready: ${this.time(forecast.completion_at, reference)}${risk}`;
     return `${prefix}Estimate unavailable${risk}`;
   },

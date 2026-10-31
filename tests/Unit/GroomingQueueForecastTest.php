@@ -52,6 +52,10 @@ class GroomingQueueForecastTest extends TestCase
         $this->assertNull($result['pets']['A']['completion_at']);
         $this->assertNull($result['pets']['B']['start_at']);
         $this->assertNull($result['pets']['C']['completion_at']);
+        $this->assertSame('2026-10-31T15:00:00+08:00', $result['pets']['A']['earliest_completion_at']);
+        $this->assertSame('2026-10-31T15:45:00+08:00', $result['pets']['B']['earliest_completion_at']);
+        $this->assertSame('2026-10-31T18:45:00+08:00', $result['earliest_completion_at']);
+        $this->assertSame(45, $result['pets']['B']['rolling_offset_minutes']);
         $this->assertTrue($result['pets']['C']['closing_risk']);
     }
 
@@ -91,5 +95,27 @@ class GroomingQueueForecastTest extends TestCase
         $result = $this->project([$earlier, $unknown], time: '15:00');
         $this->assertNull($result['pets']['B']['completion_at']);
         $this->assertTrue($result['pets']['B']['closing_risk']);
+    }
+
+    public function test_overdue_bounds_advance_only_on_the_affected_valid_lane(): void
+    {
+        $jobs = [$this->job('A',75,1,1,'2026-10-31T20:19:00+08:00'), $this->job('B',45,2,1), $this->job('C',30,3,2)];
+        foreach (['21:35' => '22:20', '21:45' => '22:30'] as $now => $end) {
+            $result = $this->project($jobs,[1,2],$now);
+            $this->assertSame('2026-10-31T'.$end.':00+08:00', $result['pets']['B']['earliest_completion_at']);
+            $this->assertNotNull($result['pets']['C']['completion_at']);
+            $this->assertNull($result['pets']['C']['rolling_from_at']);
+        }
+        $jobs[1]['duration'] = null;
+        $result = $this->project($jobs,[1,2],'21:45');
+        $this->assertNull($result['pets']['B']['earliest_completion_at']);
+        $this->assertNull($result['earliest_completion_at']);
+    }
+
+    public function test_running_overdue_work_keeps_current_time_bound_across_midnight(): void
+    {
+        $result = $this->project([$this->job('A',60,1,1,'2026-10-30T23:00:00+08:00'),$this->job('B',45,2)],time:'00:05');
+        $this->assertSame('2026-10-31T00:05:00+08:00',$result['pets']['A']['earliest_completion_at']);
+        $this->assertSame('2026-10-31T00:50:00+08:00',$result['pets']['B']['earliest_completion_at']);
     }
 }

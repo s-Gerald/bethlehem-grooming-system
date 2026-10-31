@@ -139,7 +139,7 @@ class GroomingQueueForecast
     {
         $base = $now->max($opens)->copy();
         $lanes = [];
-        foreach ($groomers as $id) $lanes[$id] = ['upper' => $base->copy(), 'lower' => $base->copy()];
+        foreach ($groomers as $id) $lanes[$id] = ['upper' => $base->copy(), 'lower' => $base->copy(), 'bound_known' => true, 'rolling_from' => null, 'offset' => 0];
         usort($jobs, fn ($a, $b) => (! empty($b['started_at']) <=> ! empty($a['started_at']))
             ?: strcmp(str_pad((string) $a['queue_number'], 24, '0', STR_PAD_LEFT), str_pad((string) $b['queue_number'], 24, '0', STR_PAD_LEFT)));
         $pets = [];
@@ -169,8 +169,12 @@ class GroomingQueueForecast
             $end = $start && $duration ? $start->copy()->addMinutes($duration['max_minutes']) : null;
             $delayed = $active && $end && $end->lte($now);
             if ($delayed) $end = null;
+            $rollingFrom = $active ? ($duration ? $start->copy()->addMinutes($duration['max_minutes'])->toIso8601String() : null) : ($lane['rolling_from'] ?? null);
+            $offset = $active ? 0 : ($lane['offset'] ?? 0) + ($duration['min_minutes'] ?? 0);
+            $boundKnown = $lane && $duration && $lane['bound_known'] && ! $uncertainRoster;
             $lowerStart = $active ? $start : ($lane['lower'] ?? $base);
-            $lowerEnd = $duration ? $lowerStart->copy()->addMinutes($duration['min_minutes'])->max($base)->copy() : $lowerStart->copy();
+            $lowerEnd = $duration ? $lowerStart->copy()->addMinutes($duration['min_minutes']) : $lowerStart->copy();
+            if ($active) $lowerEnd = $lowerEnd->max($now)->copy();
             $risk = ($start && $start->gt($closes))
                 || ($end ? $end->gt($closes) : ($lane !== null && $lowerEnd->gt($closes)));
             $pets[$job['key']] = [
@@ -178,17 +182,23 @@ class GroomingQueueForecast
                 'status' => $delayed ? 'delayed' : ($end ? 'estimated' : ($lane && $duration ? 'uncertain' : 'unavailable')),
                 'start_at' => $active || $end ? $start?->toIso8601String() : null,
                 'completion_at' => $end?->toIso8601String(),
+                'earliest_completion_at' => ! $end && $rollingFrom && $boundKnown ? $lowerEnd->toIso8601String() : null,
+                'rolling_from_at' => $boundKnown ? $rollingFrom : null,
+                'rolling_offset_minutes' => $offset,
+                'is_active' => $active,
                 'closing_risk' => $risk,
                 'projected_groomer_id' => $groomer,
             ];
             if ($lane !== null) {
-                $lanes[$groomer] = ['upper' => $end, 'lower' => $lowerEnd];
+                $lanes[$groomer] = ['upper' => $end, 'lower' => $lowerEnd, 'bound_known' => (bool) $boundKnown, 'rolling_from' => $rollingFrom, 'offset' => $offset];
             }
         }
         $knownEnds = collect($pets)->pluck('completion_at')->filter()->sort()->values();
         $uncertain = collect($pets)->contains(fn ($pet) => $pet['completion_at'] === null);
+        $bounds = collect($pets)->map(fn ($pet) => $pet['completion_at'] ?? $pet['earliest_completion_at']);
         return ['pets' => $pets, 'closing_at' => $closes->toIso8601String(),
             'completion_at' => $uncertain ? null : $knownEnds->last(),
+            'earliest_completion_at' => $uncertain && $bounds->every(fn ($bound) => $bound !== null) ? $bounds->sort()->last() : null,
             'closing_risk' => collect($pets)->contains('closing_risk', true),
             'status' => $uncertain ? 'uncertain' : 'estimated', 'generated_at' => $now->toIso8601String()];
     }

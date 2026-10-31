@@ -124,10 +124,11 @@ async function boardRaces() {
   assert.equal(ui.todayCount, 5);
 }
 async function visiblePolling() {
-  const intervals = new Map(), listeners = new Map(), windowListeners = new Map(); let calls = 0;
+  const intervals = new Map(), listeners = new Map(), windowListeners = new Map(), timers = new Map(); let calls = 0;
   const document = { visibilityState: 'visible', addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const c = vm.createContext({ Date, Intl, URLSearchParams, console: { error() {}, warn() {} }, document,
-    setInterval: fn => { intervals.set(1, fn); return 1; }, clearInterval: id => intervals.delete(id), clearTimeout() {},
+    setInterval: fn => { intervals.set(1, fn); return 1; }, clearInterval: id => intervals.delete(id),
+    setTimeout: fn => { timers.set(1,fn); return 1; }, clearTimeout: id => timers.delete(id),
     window: { addEventListener: (name, fn) => windowListeners.set(name, fn), removeEventListener: name => windowListeners.delete(name) }, API: { loadAdminData: (key, load, render) => load().then(render), getAdminBookings: async () => { calls++; throw new Error('offline'); }, getNotifications: async () => ({}) } });
   vm.runInContext(read('scripts/components/admin-dashboard.js'), c);
   const ui = c.adminDashboard(); ui.bookingsLoaded = true; ui.startContentPolling();
@@ -139,6 +140,7 @@ async function visiblePolling() {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls, 4, 'Verified session unlock must immediately refresh existing content');
   ui.destroy(); assert.equal(intervals.size, 0); assert.equal(listeners.size, 0); assert.equal(windowListeners.size, 0);
+  assert.equal(timers.size,0,'Destroy also clears the local forecast clock');
 }
 (async () => { for (const test of [sharedReads, mutationRace, lazySecurity, boardRaces, visiblePolling]) { await test(); console.log(test.name + ' passed'); } })()
   .catch(error => { console.error(error); process.exitCode = 1; });
