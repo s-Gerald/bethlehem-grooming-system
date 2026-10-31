@@ -10,6 +10,26 @@ use Illuminate\Support\Facades\Validator;
 
 class GroomingPricingController extends Controller
 {
+    public function publicPackages(GroomingServicePriceResolver $resolver)
+    {
+        $slugs = ['partial_grooming', 'bath_and_go', 'regular_dog_grooming', 'deluxe_dog_grooming', 'cat_full_grooming'];
+        $packages = Service::where('kind', 'package')->where('is_active', true)
+            ->whereIn('slug', $slugs)->get()->sortBy(fn ($service) => array_search($service->slug, $slugs, true));
+        $catalogue = $packages->map(function (Service $service) use ($resolver) {
+            // Never advertise configuration defaults for a missing persisted size price.
+            $sizes = array_values(array_filter($service->pricingSizes(), fn ($size) =>
+                is_numeric($service->{'price_'.$size}) && (float) $service->{'price_'.$size} > 0));
+            $options = array_values(array_filter($this->priceOptions($service, $resolver, $sizes), fn ($option) =>
+                $option['minAmount'] > 0 && ($option['maxAmount'] === null || $option['maxAmount'] >= $option['minAmount'])));
+
+            return ['id' => $service->slug, 'name' => $service->service_name,
+                'petType' => $service->pet_type, 'descriptionItems' => $service->description_items ?? [],
+                'priceOptions' => $options];
+        })->filter(fn ($package) => count($package['priceOptions']) > 0)->values();
+
+        return response()->json(['data' => $catalogue])->header('Cache-Control', 'no-store');
+    }
+
     public function index(Request $request, GroomingServicePriceResolver $resolver)
     {
         $billing = $request->boolean('include_inactive') && in_array($request->user()?->role, ['admin', 'staff'], true);
@@ -219,9 +239,9 @@ class GroomingPricingController extends Controller
                 ? $this->priceOptions(new Service(['slug' => $service->slug]), $resolver) : []];
     }
 
-    private function priceOptions(Service $service, GroomingServicePriceResolver $resolver): array
+    private function priceOptions(Service $service, GroomingServicePriceResolver $resolver, ?array $sizes = null): array
     {
-        $sizes = $service->kind === 'package' ? $service->pricingSizes() : [''];
+        $sizes ??= $service->kind === 'package' ? $service->pricingSizes() : [''];
         $labels = ['small' => 'Small', 'medium' => 'Medium', 'large' => 'Large', 'extra_large' => 'Extra Large', '' => 'Standard'];
         return array_map(function ($size) use ($service, $resolver, $labels) {
             $bounds = $resolver->bookingPriceBounds($service, $size);

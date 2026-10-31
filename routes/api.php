@@ -70,6 +70,7 @@ Route::post('/email/login/resend', [LoginEmailChallengeController::class, 'resen
     ->middleware('throttle:30,1,login-send');
 
 // ── PUBLIC ROUTES ─────────────────────────────────────
+Route::get('/public/grooming/packages', [GroomingPricingController::class, 'publicPackages'])->middleware('throttle:60,1');
 Route::get('/timeslots', [BookingController::class, 'getTimeslots']);
 Route::get('/clinic/status', [ClinicClosureController::class, 'status']);
 Route::get('/clinic/timeslots', [ClinicWalkinController::class, 'timeslots']);

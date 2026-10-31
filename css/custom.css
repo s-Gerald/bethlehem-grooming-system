@@ -111,20 +111,6 @@
   --admin-record-emphasis-weight: 700;
 }
 
-/* ----- Site Navigation ----- */
-.site-nav {
-  z-index: 30;
-  gap: 1.25rem;
-}
-
-.site-nav-login {
-  background: #124a78;
-}
-
-.site-nav-login:hover {
-  background: #0d3b62;
-}
-
 /* ----- Brand Lockup ----- */
 .brand-lockup {
   display: inline-flex;
@@ -602,36 +588,8 @@ body.customer-detail-modal-open {
   }
 }
 
-/* ----- Landing Page Responsive ----- */
-
-/* Tablet (640px – 1023px) */
-@media (min-width: 640px) and (max-width: 1023px) {
-  .site-nav {
-    padding: 0.9rem 1.5rem;
-  }
-}
-
-/* Phone (< 640px) */
-
 /* ----- Mobile Navigation And Sidebar ----- */
 @media (max-width: 640px) {
-  /* Scale down the About Us nav link on mobile */
-  .site-nav-actions a:not(.site-nav-login) {
-    font-size: 0.95rem !important;
-    min-height: auto;
-    padding: 0.4rem 0.6rem !important;
-  }
-
-  .site-nav {
-    padding: 0.9rem 1rem !important;
-    flex-wrap: wrap;
-  }
-
-  .site-nav-actions {
-    gap: 0.75rem !important;
-    margin-left: auto;
-  }
-
   .brand-lockup__mark {
     width: 2.25rem;
   }

@@ -57,6 +57,64 @@ class GroomingPricingCatalogueTest extends TestCase
         return $this->patchJson("/api/admin/grooming/services/$id/pricing", $payload);
     }
 
+    public function test_public_packages_are_anonymous_minimal_active_and_in_the_requested_order(): void
+    {
+        Service::where('slug', 'partial_grooming')->update(['service_name' => 'Updated coat care']);
+        Service::create(['slug' => 'unrelated_package', 'service_name' => 'Other', 'kind' => 'package',
+            'pet_type' => 'dog', 'price_small' => 100, 'is_active' => true, 'starting_price_sizes' => []]);
+        $this->app['auth']->forgetGuards();
+        DB::enableQueryLog();
+        $response = $this->getJson('/api/public/grooming/packages?include_inactive=1')->assertOk();
+        $queries = array_filter(DB::getQueryLog(), fn ($query) => str_contains($query['query'], 'from "services"'));
+        DB::disableQueryLog();
+        $this->assertCount(1, $queries);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertSame(['data'], array_keys($response->json()));
+        $this->assertSame(['partial_grooming', 'bath_and_go', 'regular_dog_grooming', 'deluxe_dog_grooming', 'cat_full_grooming'],
+            array_column($response->json('data'), 'id'));
+        $response->assertJsonPath('data.0.name', 'Updated coat care');
+        foreach ($response->json('data') as $package) {
+            $this->assertEqualsCanonicalizing(['id', 'name', 'petType', 'descriptionItems', 'priceOptions'], array_keys($package));
+        }
+        Service::where('slug', 'partial_grooming')->update(['is_active' => false]);
+        $this->getJson('/api/public/grooming/packages?include_inactive=1')->assertOk()->assertJsonCount(4, 'data');
+        $this->getJson('/api/grooming/services')->assertUnauthorized();
+        $this->getJson('/api/admin/grooming/services')->assertUnauthorized();
+        $this->postJson('/api/public/grooming/packages', [])->assertStatus(405);
+    }
+
+    public function test_public_prices_reflect_admin_updates_without_exposing_defaults_or_unsupported_sizes(): void
+    {
+        $this->updatePrice('cat_full_grooming', ['sizes' => [
+            'small' => ['pricing_type' => 'range', 'amount' => '723.50', 'maximum' => '823.75'],
+            'medium' => ['pricing_type' => 'starting_at', 'amount' => '900'],
+        ]])->assertOk();
+        $this->app['auth']->forgetGuards();
+        $cat = collect($this->getJson('/api/public/grooming/packages')->assertOk()->json('data'))->firstWhere('id', 'cat_full_grooming');
+        $this->assertSame(['small', 'medium'], array_column($cat['priceOptions'], 'sizeKey'));
+        $this->assertSame(['range', 'starting_at'], array_column($cat['priceOptions'], 'pricingType'));
+        $this->assertEquals(723.50, $cat['priceOptions'][0]['minAmount']);
+        $this->assertEquals(823.75, $cat['priceOptions'][0]['maxAmount']);
+        $this->assertNull($cat['priceOptions'][1]['maxAmount']);
+        $this->asRole('admin');
+        $this->updatePrice('cat_full_grooming', ['sizes' => [
+            'small' => ['pricing_type' => 'fixed', 'amount' => '751.25'],
+            'medium' => ['pricing_type' => 'fixed', 'amount' => '951.50'],
+        ]])->assertOk();
+        $this->app['auth']->forgetGuards();
+        $cat = collect($this->getJson('/api/public/grooming/packages')->assertOk()->json('data'))->firstWhere('id', 'cat_full_grooming');
+        $this->assertSame('fixed', $cat['priceOptions'][0]['pricingType']);
+        $this->assertEquals(751.25, $cat['priceOptions'][0]['minAmount']);
+        Service::where('kind', 'package')->update(['price_large' => null, 'price_extra_large' => null]);
+        Service::where('slug', 'partial_grooming')->update(['price_small' => 0, 'price_medium' => null]);
+        $packages = $this->getJson('/api/public/grooming/packages')->assertOk()->json('data');
+        $this->assertNotContains('partial_grooming', array_column($packages, 'id'));
+        foreach ($packages as $package) {
+            $this->assertNotContains('large', array_column($package['priceOptions'], 'sizeKey'));
+            $this->assertNotContains('extra_large', array_column($package['priceOptions'], 'sizeKey'));
+        }
+    }
+
     #[DataProvider('receptionistRoles')]
     public function test_receptionists_read_active_and_inactive_grooming_services_without_management_access(string $subrole, string $type): void
     {

@@ -1,0 +1,192 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4
+ * Bethlehem's existing blue/white system · catalogue-led services with split hero.
+ * Audience: local pet owners · action: online registration · tone: calm, professional.
+ */
+:root {
+  --landing-canvas: #f4f8fb;
+  --landing-surface: #ffffff;
+  --landing-soft: #e9f2fa;
+  --landing-header: #b6d4ee;
+  --landing-ink: #2a3b4c;
+  --landing-muted: #526576;
+  --landing-primary: #124a78;
+  --landing-hover: #0d3b62;
+  --landing-border: #cadded;
+  --landing-focus: #155286;
+  --landing-transparent: transparent;
+  --landing-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --landing-shadow: 0 8px 24px rgb(18 74 120 / 5%);
+  --landing-header-offset: 6.75rem;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset); overflow-x: clip; }
+.landing-page { margin: 0; color: var(--landing-ink); background: var(--landing-canvas); font-family: var(--landing-font); font-size: 16px; line-height: 1.65; overflow-x: clip; }
+.landing-page [hidden] { display: none !important; }
+.landing-page h1, .landing-page h2, .landing-page h3, .landing-page h4, .landing-page p { margin: 0; }
+.landing-page h1, .landing-page h2, .landing-page h3, .landing-page h4 { font-style: normal; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+.landing-page h2 { font-size: clamp(1.9rem, 3vw, 2.6rem); letter-spacing: -0.035em; font-weight: 750; }
+.landing-page h3 { font-size: clamp(1.25rem, 2vw, 1.65rem); font-weight: 700; }
+.landing-page a { color: inherit; text-decoration: none; }
+.landing-page button { font: inherit; cursor: pointer; }
+.landing-page :is(a, button, [tabindex]):focus-visible { outline: 3px solid var(--landing-focus); outline-offset: 5px; }
+.landing-container { width: min(1120px, calc(100% - 2.5rem)); margin-inline: auto; }
+.landing-section { padding-block: clamp(3.5rem, 6vw, 5.5rem); }
+.landing-icon { width: 24px; height: 24px; flex: 0 0 auto; fill: currentColor; }
+.skip-link { position: fixed; top: 0.5rem; left: 1rem; z-index: 50; padding: 0.65rem 1rem; background: var(--landing-surface); transform: translateY(-160%); }
+.skip-link:focus { transform: translateY(0); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+.landing-header { position: sticky; top: 0; z-index: 30; background: var(--landing-header); border-bottom: 1px solid var(--landing-border); }
+.nav-layout { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; min-height: 88px; padding-block: 12px; }
+.landing-header .brand-lockup__mark { width: 2.7rem; }
+.landing-header .brand-lockup__divider { height: 2.65rem; }
+.landing-header .brand-lockup__name { font-size: 0.88rem; letter-spacing: 0.17rem; }
+.landing-header .brand-lockup__service { font-size: 1.08rem; letter-spacing: 0.04rem; }
+.menu-toggle { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--landing-primary); border-radius: 10px; background: var(--landing-transparent); color: var(--landing-primary); }
+.menu-close-icon, .menu-open .menu-open-icon { display: none; }
+.menu-open .menu-close-icon { display: block; }
+.section-links { display: none; flex-basis: 100%; padding-block: 0.25rem; }
+.menu-open .section-links { display: flex; flex-direction: column; }
+.section-links a { display: flex; align-items: center; min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.95rem; font-weight: 650; border-radius: 8px; white-space: nowrap; transition: background-color 150ms ease; }
+.section-links a:hover { background: var(--landing-soft); }
+
+.hero { padding-block: clamp(2.75rem, 6vw, 5.25rem); }
+.hero-layout { display: grid; align-items: center; gap: 2.5rem; }
+.hero h1 { max-width: 12ch; font-size: clamp(2.25rem, 4.3vw, 3.65rem); font-weight: 750; letter-spacing: -0.045em; line-height: 1.08; }
+.hero h1 span { color: var(--landing-primary); }
+.hero-copy > p { max-width: 47ch; margin-top: 1.5rem; color: var(--landing-muted); font-size: clamp(1rem, 1.4vw, 1.125rem); line-height: 1.75; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; }
+.landing-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.65rem; min-height: 48px; padding: 0.75rem 1.25rem; border: 1px solid var(--landing-primary); border-radius: 10px; background: var(--landing-primary); color: var(--landing-surface) !important; font-weight: 650; font-size: 0.95rem; line-height: 1.4; white-space: nowrap; transition: background-color 150ms ease; }
+.landing-button:hover { background: var(--landing-hover); }
+.landing-button:active { background: var(--landing-hover); }
+.landing-button--secondary { color: var(--landing-primary) !important; background: var(--landing-transparent); }
+.landing-button--secondary:hover { background: var(--landing-soft); }
+.landing-button:disabled { cursor: wait; opacity: 0.65; }
+.landing-button .landing-icon { width: 18px; height: 18px; }
+.hero-image { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 819; object-fit: cover; border-radius: 24px; }
+
+.services { background: var(--landing-surface); border-top: 1px solid var(--landing-border); }
+.section-heading { max-width: 680px; margin: 0 auto 2rem; text-align: center; }
+.section-heading h3 { margin-top: 1.15rem; }
+.section-heading p { margin-top: 0.75rem; color: var(--landing-muted); }
+.pricing-shell { max-width: 920px; margin-inline: auto; min-height: 180px; }
+.pricing-status { color: var(--landing-muted); text-align: center; }
+.pricing-status:empty { display: none; }
+.pricing-status:not(:empty) { padding: 1.25rem; }
+#pricing-retry { display: flex; margin: 0.5rem auto; }
+.package-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
+.package-card { min-width: 0; border: 1px solid var(--landing-border); border-radius: 16px; background: var(--landing-soft); transition: border-color 150ms ease; }
+.package-card:hover { border-color: var(--landing-primary); }
+.package-card.is-expanded { background: var(--landing-surface); border-color: var(--landing-primary); box-shadow: var(--landing-shadow); }
+.package-trigger { display: flex; align-items: center; gap: 1rem; width: 100%; min-height: 112px; padding: 1.4rem; border: 0; border-radius: 16px; background: var(--landing-transparent); color: var(--landing-primary); text-align: left; }
+.package-trigger > .landing-icon:first-child { width: 36px; height: 36px; }
+.package-summary { display: grid; gap: 0.45rem; min-width: 0; flex: 1; }
+.package-name { color: var(--landing-ink); font-size: 1.08rem; font-weight: 700; line-height: 1.35; }
+.package-price { font-size: 0.95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.expand-indicator { width: 20px; height: 20px; transition: transform 160ms ease; }
+[aria-expanded="true"] > .expand-indicator { transform: rotate(45deg); }
+.package-detail { padding: 0 1.4rem 1.4rem; color: var(--landing-muted); font-size: 0.95rem; }
+.package-detail ul { margin: 0; padding-left: 1.15rem; }
+.package-detail li + li { margin-top: 0.35rem; }
+.pricing-tables { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; margin-top: 2.5rem; }
+.table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid var(--landing-border); border-radius: 14px; }
+.price-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+.price-table caption { text-align: left; padding: 1.05rem 1.25rem; font-weight: 700; font-size: 1.15rem; color: var(--landing-primary); background: var(--landing-canvas); }
+.price-table th, .price-table td { padding: 1rem 1.25rem; border-top: 1px solid var(--landing-border); white-space: nowrap; }
+.price-table thead { color: var(--landing-muted); background: var(--landing-canvas); }
+.price-table thead th { font-weight: 600; }
+.price-table tbody th { font-weight: 600; }
+.price-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.price-table thead th:not(:first-child) { text-align: right; }
+.pricing-note { margin-top: 1rem !important; color: var(--landing-muted); font-size: 0.8rem; line-height: 1.6; }
+
+.clinic-services { padding-top: 3.5rem; margin-top: 3rem; border-top: 1px solid var(--landing-border); }
+.clinic-services > h3 { margin-bottom: 1.5rem; text-align: center; }
+.clinic-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.9rem; align-items: start; }
+.clinic-card { min-width: 0; background: var(--landing-primary); color: var(--landing-surface); border-radius: 14px; }
+.clinic-card h4 button { position: relative; display: flex; width: 100%; min-height: 108px; justify-content: center; align-items: center; padding: 1.5rem 2.75rem 1.5rem 1rem; border: 0; border-radius: 14px; background: var(--landing-transparent); color: inherit; font-size: 1.05rem; font-weight: 650; line-height: 1.35; text-align: center; transition: background-color 150ms ease; }
+.clinic-card h4 button:hover { background: var(--landing-hover); }
+.clinic-card .expand-indicator { position: absolute; right: 1rem; }
+.clinic-card :focus-visible { outline-color: var(--landing-header); outline-offset: -6px; }
+.clinic-detail { padding: 0 1.5rem 1.5rem; font-size: 0.95rem; line-height: 1.7; }
+
+.visit { background: var(--landing-soft); }
+.visit-layout { display: grid; gap: 2.5rem; align-items: center; }
+.visit-copy h3 { margin-top: 1.25rem; max-width: 27ch; font-size: 1.3rem; line-height: 1.4; }
+.visit-copy address { margin-block: 1.5rem; font-style: normal; color: var(--landing-muted); font-size: 0.95rem; }
+.contact-row { display: flex; align-items: flex-start; gap: 0.9rem; margin-block: 1.1rem; }
+.contact-row > .landing-icon { width: 22px; height: 22px; margin-top: 0.15rem; color: var(--landing-primary); }
+.contact-row a:hover, .visit-map a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.phone-links { display: flex; flex-wrap: wrap; column-gap: 1.5rem; row-gap: 0.35rem; }
+.phone-links a { white-space: nowrap; }
+.visit-map { min-width: 0; }
+.visit-map iframe { display: block; width: 100%; height: 360px; border: 1px solid var(--landing-border); border-radius: 20px; background: var(--landing-surface); }
+.visit-map p { margin-top: 0.7rem; font-size: 0.8rem; color: var(--landing-muted); }
+.visit-map a { color: var(--landing-primary); text-decoration: underline; text-underline-offset: 3px; }
+
+.about { background: var(--landing-surface); }
+.about-layout, .faq-layout { display: grid; gap: 1.75rem; }
+.about-copy { max-width: 72ch; color: var(--landing-muted); }
+.about-copy p + p { margin-top: 1.15rem; }
+.faq { border-top: 1px solid var(--landing-border); }
+.faq-list { display: grid; gap: 0.8rem; min-width: 0; align-content: start; }
+.faq-item { background: var(--landing-surface); border: 1px solid var(--landing-border); border-radius: 14px; }
+.faq-item h3 button { display: flex; gap: 1rem; align-items: center; justify-content: space-between; width: 100%; min-height: 76px; padding: 1.25rem; border: 0; border-radius: 14px; color: var(--landing-ink); background: var(--landing-transparent); text-align: left; font-size: 1rem; font-weight: 650; line-height: 1.5; transition: background-color 150ms ease; }
+.faq-item h3 button:hover { background: var(--landing-soft); }
+.faq-answer { padding: 0 1.25rem 1.25rem; color: var(--landing-muted); font-size: 0.95rem; }
+.faq-symbol { display: grid; place-items: center; width: 20px; flex: 0 0 20px; font-size: 1.5rem; line-height: 1; font-weight: 400; color: var(--landing-primary); }
+.faq-symbol::before { content: "+"; }
+[aria-expanded="true"] .faq-symbol::before { content: "−"; }
+.package-detail:not([hidden]), .clinic-detail:not([hidden]), .faq-answer:not([hidden]) { animation: landing-reveal 160ms ease-out; }
+@keyframes landing-reveal { from { opacity: 0; } to { opacity: 1; } }
+
+.landing-footer { padding-block: 2rem; background: var(--landing-primary); color: var(--landing-surface); }
+.footer-layout { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; text-align: center; }
+.footer-logo { display: block; width: 56px; height: 72px; padding: 4px; object-fit: contain; background: var(--landing-surface); border-radius: 10px; }
+.footer-layout p { font-size: 0.8rem; }
+.footer-social { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--landing-header); border-radius: 10px; }
+.landing-footer a:focus-visible { outline-color: var(--landing-header); }
+
+@media (min-width: 40rem) {
+  .landing-container { width: min(1120px, calc(100% - 4rem)); }
+  .package-grid, .clinic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .package-card--cat { grid-column: 1 / -1; width: calc((100% - 1rem) / 2); justify-self: center; }
+  .clinic-card.is-expanded { grid-column: span 2; }
+  .clinic-card.is-expanded h4 button { min-height: 80px; }
+}
+@media (min-width: 48rem) {
+  .nav-layout { flex-wrap: nowrap; }
+  .menu-toggle { display: none; }
+  .section-links, .menu-open .section-links { display: flex; flex-direction: row; flex-basis: auto; gap: 0.3rem; }
+  .hero-layout { grid-template-columns: 1.05fr minmax(0, 1fr); gap: 2.5rem; }
+  .hero-image { border-radius: 28px; }
+  .footer-layout { display: grid; grid-template-columns: 56px minmax(0, 1fr) 44px; text-align: center; }
+}
+@media (min-width: 64rem) {
+  .hero-layout { gap: 4rem; }
+  .section-links { gap: 1.1rem; }
+  .clinic-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .visit-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 4.5rem; }
+  .visit-map iframe { height: 420px; }
+  .about-layout, .faq-layout { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr); gap: 5rem; }
+  .faq-layout h2 { max-width: 12ch; }
+}
+@media (max-width: 23rem) {
+  .landing-header .brand-lockup__mark { width: 2.1rem; }
+  .landing-header .brand-lockup__divider { height: 2.1rem; }
+  .landing-header .brand-lockup__name { font-size: 0.68rem; letter-spacing: 0.12rem; }
+  .landing-header .brand-lockup__service { font-size: 0.82rem; }
+  .hero-actions { flex-direction: column; align-items: stretch; }
+  .package-trigger { gap: 0.75rem; padding: 1.1rem; }
+  .package-trigger > .landing-icon:first-child { width: 28px; height: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .landing-page *, .landing-page *::before, .landing-page *::after { transition: none !important; animation: none !important; }
+}
+@media print {
+  .landing-header { position: static; }
+  .menu-toggle, .hero-actions, .visit-map, .footer-social { display: none; }
+  .landing-section { padding-block: 1.5rem; }
+  .landing-footer, .clinic-card { color: var(--landing-ink); background: var(--landing-surface); }
+}

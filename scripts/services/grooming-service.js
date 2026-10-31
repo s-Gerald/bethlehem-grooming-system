@@ -3,6 +3,8 @@ import {
   normalizePetSize,
   normalizePetType,
 } from "./booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
+import { formatPhpAmount, formatPriceOption } from "./grooming-price-format.js?v=20261101";
+export { formatPhpAmount, formatPriceOption };
 
 export const GROOMING_PACKAGES = [];
 export const ALA_CARTE_SERVICES = [];
@@ -47,26 +49,6 @@ export function selectedPricingSignature(draft, selections) {
   return JSON.stringify(buildBookingReviewPayload(draft, selections).items.map((item) =>
     item.pricing.lineItems.map((line) => ({ id: line.serviceId, size: item.pet.size,
       options: line.pricing.selectedPriceOption || line.pricing.availablePriceOptions }))));
-}
-
-export function formatPhpAmount(amount) {
-  return `₱${Number(amount || 0).toLocaleString("en-PH")}`;
-}
-
-export function formatPriceOption(priceOption) {
-  if (!priceOption) {
-    return "";
-  }
-
-  if (priceOption.pricingType === "plus") {
-    return `${formatPhpAmount(priceOption.minAmount)}+`;
-  }
-
-  if (priceOption.pricingType === "range") {
-    return `${formatPhpAmount(priceOption.minAmount)}–${formatPhpAmount(priceOption.maxAmount)}`;
-  }
-
-  return formatPhpAmount(priceOption.minAmount);
 }
 
 export function formatAmountRange(summary) {

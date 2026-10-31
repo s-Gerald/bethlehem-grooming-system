@@ -1,204 +1,182 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="/favicon.ico?v=bethlehem-logo-2" sizes="16x16 32x32 48x48 64x64 128x128 256x256" />
+    <meta name="description" content="Explore dog and cat grooming packages, veterinary services, and online registration at Bethlehem Animal Clinic &amp; Grooming in Taytay, Rizal." />
+    <link rel="icon" href="favicon.ico?v=bethlehem-logo-2" sizes="16x16 32x32 48x48 64x64 128x128 256x256" />
     <title>Bethlehem Animal Clinic &amp; Grooming</title>
-
-    <!-- Compiled Tailwind CSS-->
-    <link rel="stylesheet" href="css/output.css?auth-hardening=20261030" />
-    <link rel="stylesheet" href="css/custom.css?v=site-assets-20261001&release=20261001" />
-
-    <!-- Icons -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <link rel="stylesheet" href="css/custom.css?v=landing-20261101" />
+    <link rel="stylesheet" href="css/landing.css?v=20261101" />
+    <script type="module" src="scripts/landing.js?v=20261101"></script>
   </head>
-  <body>
-    <!-- NAVBAR -->
-    <nav
-      class="site-nav bg-[#b6d4ee] w-full px-12 py-5 flex justify-between items-center sticky top-0 z-10"
-    >
-      <div class="flex items-center">
-        <a
-          href="index.html"
-          class="brand-lockup"
-          aria-label="Bethlehem Animal Clinic home"
-        >
-          <img
-            src="./assets/images/clinic/Bethlehem_Logo-256.png"
-            alt="Bethlehem Animal Clinic Logo"
-            width="256"
-            height="341"
-            decoding="async"
-            class="brand-lockup__mark"
-          />
+  <body id="top" class="landing-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header id="landing-header" class="landing-header">
+      <div class="landing-container nav-layout">
+        <a href="#top" class="brand-lockup" aria-label="Bethlehem Animal Clinic home">
+          <img src="assets/images/clinic/Bethlehem_Logo-256.png" alt="" width="256" height="341" decoding="async" class="brand-lockup__mark" />
           <span class="brand-lockup__divider" aria-hidden="true"></span>
           <span class="brand-lockup__text" aria-hidden="true">
             <span class="brand-lockup__name">BETHLEHEM</span>
             <span class="brand-lockup__service">ANIMAL CLINIC</span>
           </span>
         </a>
+        <button id="menu-toggle" class="menu-toggle" type="button" aria-expanded="false" aria-controls="section-links" aria-label="Open navigation">
+          <svg class="landing-icon menu-open-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#list"></use></svg>
+          <svg class="landing-icon menu-close-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#x"></use></svg>
+        </button>
+        <nav id="section-links" class="section-links" aria-label="Main navigation">
+          <a href="#services">Services</a>
+          <a href="#visit">Visit Us</a>
+          <a href="#about">About Us</a>
+          <a href="#faq">FAQ</a>
+        </nav>
       </div>
+    </header>
 
-      <div class="site-nav-actions flex items-center gap-10">
-        <!-- TODO: About Us page not yet built. href="#" is a placeholder.
-             Wire this to a dedicated About Us page or an anchor section when ready. -->
-        <a
-          href="#"
-          class="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-lg px-5 py-2.5 text-xl font-semibold leading-none text-gray-800 transition-colors hover:bg-white/40"
-        >
-          About Us
-        </a>
-
-        <!-- TODO: Auth-aware redirect not implemented on the home page.
-             If a customer_token or admin_token already exists in localStorage,
-             these links should redirect straight to the appropriate dashboard
-             instead of going to sign-in. Add a small inline script in <head>
-             that checks the token and redirects before the page renders. -->
-        <a
-          href="./pages/client/sign-in.html"
-          class="site-nav-login text-white px-12 py-3 rounded-lg font-medium text-base transition-colors shadow-sm"
-        >
-          Sign In
-        </a>
-      </div>
-    </nav>
-
-    <!--UPPER BODY CONTENT-->
-
-    <section class="bg-[#f4f8fb] w-full py-10 sm:py-14 lg:py-24 px-4 sm:px-6 lg:px-12">
-      <div
-        class="w-full mx-auto flex flex-col md:flex-row items-center justify-between gap-8 sm:gap-10 md:gap-12 lg:gap-20"
-      >
-        <div
-          class="w-full md:w-1/2 flex flex-col items-start text-left space-y-4 sm:space-y-6"
-        >
-          <h1
-            class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-[#2a3b4c] leading-tight"
-          >
-            Professional Care for Your Beloved Pets
-          </h1>
-
-          <p class="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-600 max-w-xl leading-relaxed">
-            Plan your pet's visit online with ease.
-            Our expert team is dedicated to keeping your pets clean,
-            happy, and looking their best.
-          </p>
-        </div>
-
-        <div class="w-full md:w-1/2 flex justify-center md:justify-end">
-          <div
-            class="w-full aspect-4/3 rounded-4xl sm:rounded-[2.5rem] overflow-hidden shadow-sm"
-          >
-            <img
-              src="assets/images/clinic/cute-pet-collage-isolated-1200.jpg"
-              alt="Dog and Cat"
-              width="1200"
-              height="819"
-              decoding="async"
-              fetchpriority="high"
-              class="w-full h-full object-cover object-center"
-            />
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="landing-container hero-layout">
+          <div class="hero-copy">
+            <h1 id="hero-title">Professional Care for Your <span>Beloved Pets</span></h1>
+            <p>From refreshing baths and expert grooming to trusted veterinary care, Bethlehem is here to help your pets look their best and feel their best.</p>
+            <div class="hero-actions">
+              <a class="landing-button" href="pages/client/sign-in.html">Online Registration <svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#arrow-right"></use></svg></a>
+              <a class="landing-button landing-button--secondary" href="pages/client/sign-in.html">Sign In</a>
+            </div>
           </div>
+          <img class="hero-image" src="assets/images/clinic/cute-pet-collage-isolated-1200.jpg" alt="A beagle and a Siamese cat sitting together" width="1200" height="819" fetchpriority="high" decoding="async" />
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- OUR SERVICES -->
-    <section class="bg-[#f4f8fb] w-full py-10 sm:py-14 lg:py-16 px-4 sm:px-6 lg:px-12">
-      <div class="max-w-6xl mx-auto">
-        <!-- Title -->
-        <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-[#2a3b4c] text-center mb-6 sm:mb-8 md:mb-10">
-          Our Services
-        </h2>
-
-        <!-- Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 md:gap-8 lg:gap-10 items-stretch">
-          <!-- Card 1: Pet Grooming -->
-          <div
-            class="bg-[#dce9f5] rounded-2xl p-5 sm:p-6 md:p-8 flex flex-col items-center text-center justify-between"
-          >
-            <h3
-              class="font-semibold text-[#2a3b4c] text-xl sm:text-2xl md:text-3xl text-center w-full flex items-center justify-center mb-3 sm:mb-4 md:mb-6"
-            >
-              Pet Grooming
-            </h3>
-            <p class="text-sm sm:text-base lg:text-lg text-gray-600 leading-relaxed text-center">
-              Full grooming packages for dogs and cats — bath, blow dry,
-              nail clipping, ear cleaning, haircuts, and à la carte
-              add-ons tailored to your pet's needs.
-            </p>
-            <div class="w-full flex justify-center mt-6 md:mt-10">
-              <i data-lucide="scissors" class="w-7 h-7 sm:w-8 sm:h-8 text-[#2a3b4c] mt-2"></i>
+      <section id="services" class="services landing-section" aria-labelledby="services-title">
+        <div class="landing-container">
+          <div class="section-heading">
+            <h2 id="services-title">Our Services</h2>
+            <h3>Grooming Packages &amp; Pricing</h3>
+            <p>Grooming services for dogs and cats, with prices based on your pet's size and selected package.</p>
+          </div>
+          <div class="pricing-shell">
+            <p id="pricing-status" class="pricing-status" role="status" aria-live="polite" aria-atomic="true">Loading grooming packages and prices…</p>
+            <button id="pricing-retry" class="landing-button landing-button--secondary" type="button" hidden>Retry</button>
+            <noscript><p>Enable JavaScript to view current grooming prices. Please call the clinic for package information.</p></noscript>
+            <div id="pricing-content" hidden>
+              <div id="package-grid" class="package-grid" data-accordion-group aria-busy="true"></div>
+              <div class="pricing-tables">
+                <div id="dog-pricing"></div>
+                <div id="cat-pricing"></div>
+              </div>
+              <p class="pricing-note">All prices are in Philippine pesos. Ranges and starting prices depend on your pet's needs; the final price is confirmed at the clinic.</p>
             </div>
           </div>
 
-          <!-- Card 2: Clinic Care -->
-          <div
-            class="bg-[#dce9f5] rounded-2xl p-5 sm:p-6 md:p-8 flex flex-col items-center text-center justify-between"
-          >
-            <h3
-              class="font-semibold text-[#2a3b4c] text-xl sm:text-2xl md:text-3xl text-center w-full flex items-center justify-center mb-3 sm:mb-4 md:mb-6"
-            >
-              Clinic Care
-            </h3>
-            <p class="text-sm sm:text-base lg:text-lg text-gray-600 leading-relaxed text-center">
-              Walk-in and scheduled consultations with our in-house
-              veterinarian for check-ups, treatment, and expert
-              health advice for your beloved pet.
-            </p>
-            <div class="w-full flex justify-center mt-6 md:mt-10">
-              <i data-lucide="stethoscope" class="w-7 h-7 sm:w-8 sm:h-8 text-[#2a3b4c] mt-2"></i>
-            </div>
-          </div>
-
-          <!-- Card 3: Vaccinations -->
-          <div
-            class="bg-[#dce9f5] rounded-2xl p-5 sm:p-6 md:p-8 flex flex-col items-center text-center justify-between"
-          >
-            <h3
-              class="font-semibold text-[#2a3b4c] text-xl sm:text-2xl md:text-3xl text-center w-full flex items-center justify-center mb-3 sm:mb-4 md:mb-6"
-            >
-              Vaccinations
-            </h3>
-            <p class="text-sm sm:text-base lg:text-lg text-gray-600 leading-relaxed text-center">
-              Keep your pet protected with core and non-core vaccines
-              administered by our licensed veterinarian, with records
-              tracked in their health profile.
-            </p>
-            <div class="w-full flex justify-center mt-6 md:mt-10">
-              <i data-lucide="syringe" class="w-7 h-7 sm:w-8 sm:h-8 text-[#2a3b4c] mt-2"></i>
+          <div class="clinic-services">
+            <h3>Veterinary Clinic Services</h3>
+            <div class="clinic-grid" data-accordion-group>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-surgery" id="surgery-trigger">Surgery <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-surgery" class="clinic-detail" aria-labelledby="surgery-trigger" hidden><p>Surgical procedures based on a veterinary assessment of your pet's condition.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-treatment" id="treatment-trigger">Treatment <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-treatment" class="clinic-detail" aria-labelledby="treatment-trigger" hidden><p>Care for illnesses, injuries, and ongoing health concerns.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-vaccination" id="vaccination-trigger">Vaccination <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-vaccination" class="clinic-detail" aria-labelledby="vaccination-trigger" hidden><p>Preventive vaccinations to help protect your pet.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-confinement" id="confinement-trigger">Confinement <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-confinement" class="clinic-detail" aria-labelledby="confinement-trigger" hidden><p>Monitoring and care for pets requiring closer observation.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-xray" id="xray-trigger">X-Ray Imaging <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-xray" class="clinic-detail" aria-labelledby="xray-trigger" hidden><p>Diagnostic imaging to examine bones and internal structures.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-consultation" id="consultation-trigger">Consultation <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-consultation" class="clinic-detail" aria-labelledby="consultation-trigger" hidden><p>Veterinary assessments and recommendations for your pet's health.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-laboratory" id="laboratory-trigger">Laboratory Test <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-laboratory" class="clinic-detail" aria-labelledby="laboratory-trigger" hidden><p>Diagnostic testing to support treatment decisions.</p></div>
+              </article>
+              <article class="clinic-card" data-accordion-item>
+                <h4><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="clinic-ultrasound" id="ultrasound-trigger">Ultrasonography <svg class="landing-icon expand-indicator" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#plus"></use></svg></button></h4>
+                <div id="clinic-ultrasound" class="clinic-detail" aria-labelledby="ultrasound-trigger" hidden><p>Ultrasound imaging to assess your pet's internal organs.</p></div>
+              </article>
             </div>
           </div>
         </div>
+      </section>
+
+      <section id="visit" class="visit landing-section" aria-labelledby="visit-title">
+        <div class="landing-container visit-layout">
+          <div class="visit-copy">
+            <h2 id="visit-title">Visit Us</h2>
+            <h3>Bethlehem Animal Clinic &amp; Grooming</h3>
+            <address>
+              <div class="contact-row">
+                <svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#map-pin"></use></svg>
+                <a href="https://www.bing.com/maps/search?v=2&amp;pc=FACEBK&amp;mid=8100&amp;name=K20+Ortigas+Avenue+Extension%2C+Pearl+Ave.+St.%2C+Ortigas%2C+Greenheights+Subd.%2C+Brgy.+San+Isidro%2C+++Taytay%2C+Rizal%2C+Taytay%2C+Philippines%2C+1920&amp;mkt=en-US&amp;FORM=FBKPL1&amp;q=14.57937%2C+121.13774&amp;cp=14.579154%7E121.137903&amp;lvl=18.8&amp;style=r" target="_blank" rel="noopener noreferrer">K20 Ortigas Avenue Extension, Pearl Ave. St., Ortigas, Greenheights Subd., Brgy. San Isidro, Taytay, Rizal, Taytay, Philippines, 1920</a>
+              </div>
+              <div class="contact-row">
+                <svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#phone"></use></svg>
+                <div class="phone-links"><a href="tel:70073122">7007-3122</a><a href="tel:+639171131941">0917 113 1941</a></div>
+              </div>
+              <div class="contact-row">
+                <svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#facebook-logo"></use></svg>
+                <a href="https://www.facebook.com/2022BethlehemAC" target="_blank" rel="noopener noreferrer">Bethlehem on Facebook</a>
+              </div>
+            </address>
+            <a class="landing-button" href="https://www.bing.com/maps/search?v=2&amp;pc=FACEBK&amp;mid=8100&amp;name=K20+Ortigas+Avenue+Extension%2C+Pearl+Ave.+St.%2C+Ortigas%2C+Greenheights+Subd.%2C+Brgy.+San+Isidro%2C+++Taytay%2C+Rizal%2C+Taytay%2C+Philippines%2C+1920&amp;mkt=en-US&amp;FORM=FBKPL1&amp;q=14.57937%2C+121.13774&amp;cp=14.579154%7E121.137903&amp;lvl=18.8&amp;style=r" target="_blank" rel="noopener noreferrer">Get Directions <svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#arrow-right"></use></svg></a>
+          </div>
+          <div class="visit-map">
+            <iframe title="Map of Bethlehem Animal Clinic &amp; Grooming, Taytay, Rizal" src="https://www.openstreetmap.org/export/embed.html?bbox=121.13274%2C14.57637%2C121.14274%2C14.58237&amp;layer=mapnik&amp;marker=14.57937%2C121.13774" width="600" height="420" loading="lazy" referrerpolicy="no-referrer"></iframe>
+            <p>Map not loading? <a href="https://www.bing.com/maps/search?q=14.57937%2C121.13774" target="_blank" rel="noopener noreferrer">Open the clinic location</a></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="about" class="about landing-section" aria-labelledby="about-title">
+        <div class="landing-container about-layout">
+          <h2 id="about-title">About Bethlehem</h2>
+          <div class="about-copy">
+            <p>At Bethlehem Animal Clinic &amp; Grooming, we provide veterinary and pet grooming services for pet owners in Taytay, Rizal, and nearby communities. Our goal is to help pets stay healthy, comfortable, and well cared for through attentive service and clear communication with their owners.</p>
+            <p>Our grooming services include bathing, trimming, and complete grooming packages for dogs and cats. We also offer veterinary consultations, vaccinations, treatments, surgery, diagnostic imaging, laboratory testing, and confinement services to support different pet care needs.</p>
+            <p>For added convenience, pet owners can register online for grooming or clinic services and access information about their pets through our customer portal. Whether your pet needs a refreshing grooming session or veterinary attention, Bethlehem is here to support their care.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" class="faq landing-section" aria-labelledby="faq-title">
+        <div class="landing-container faq-layout">
+          <h2 id="faq-title">Frequently Asked Questions</h2>
+          <div class="faq-list" data-accordion-group>
+            <article class="faq-item" data-accordion-item>
+              <h3><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="faq-registration" id="faq-registration-trigger">How can I register my pet online? <span class="faq-symbol" aria-hidden="true"></span></button></h3>
+              <div id="faq-registration" class="faq-answer" aria-labelledby="faq-registration-trigger" hidden><p>Sign in or create a Bethlehem customer account, then select the grooming or clinic registration flow. Follow the steps to provide your pet's details and choose from the options available.</p></div>
+            </article>
+            <article class="faq-item" data-accordion-item>
+              <h3><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="faq-both" id="faq-both-trigger">Can I register my pet for both grooming and clinic services? <span class="faq-symbol" aria-hidden="true"></span></button></h3>
+              <div id="faq-both" class="faq-answer" aria-labelledby="faq-both-trigger" hidden><p>Yes. You can register for grooming and clinic services separately. A pet must complete or resolve its pending or active visit before registering for another service, and duplicate active registrations for the same service are not allowed.</p></div>
+            </article>
+            <article class="faq-item" data-accordion-item>
+              <h3><button type="button" data-accordion-trigger aria-expanded="false" aria-controls="faq-progress" id="faq-progress-trigger">How can I check my pet's grooming progress? <span class="faq-symbol" aria-hidden="true"></span></button></h3>
+              <div id="faq-progress" class="faq-answer" aria-labelledby="faq-progress-trigger" hidden><p>Sign in to your customer account to access the Grooming Tracker when your pet has an active grooming session. You can view its progress and estimated completion time, which may change during grooming.</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="landing-footer">
+      <div class="landing-container footer-layout">
+        <img class="footer-logo" src="assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" width="256" height="341" loading="lazy" decoding="async" />
+        <p>©2026 Bethlehem Animal Clinic &amp; Grooming. All rights reserved.</p>
+        <a class="footer-social" href="https://www.facebook.com/2022BethlehemAC" target="_blank" rel="noopener noreferrer" aria-label="Bethlehem on Facebook"><svg class="landing-icon" aria-hidden="true"><use href="assets/icons/phosphor.svg?v=20261101#facebook-logo"></use></svg></a>
       </div>
-    </section>
-
-    <!-- READY TO BOOK -->
-
-    <section class="bg-[#7a9dbc] w-full py-12 sm:py-16 px-4 sm:px-6 text-center">
-      <h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-3">
-        Schedule Your Visit Now
-      </h2>
-      <p class="text-white text-sm sm:text-base md:text-lg mb-10 sm:mb-14 md:mb-20">
-        Give your pet the care they deserve. Plan your visit online today!
-      </p>
-      <a
-        href="./pages/client/sign-in.html"
-        class="bg-white text-[#2a3b4c] px-8 sm:px-12 md:px-16 py-3 sm:py-4 rounded-2xl font-medium text-base sm:text-lg md:text-xl hover:bg-gray-100 transition-colors shadow-sm"
-      >
-        SignUp Now
-      </a>
-    </section>
-
-    <!-- FOOTER -->
-
-    <footer class="bg-[#2a3b4c] py-5 text-center">
-      <p class="text-white text-base">
-        ©2026 Bethlehem Animal Clinic & Grooming. All rights reserved.
-      </p>
     </footer>
-
-    <script src="scripts/api.js?v=site-assets-20261001&release=20261001&session=lock-20261018&auth-races=20261024&security=single-session-20261025&auth-hardening=20261101"></script>
   </body>
 </html>

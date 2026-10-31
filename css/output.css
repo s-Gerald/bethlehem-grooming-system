@@ -1057,10 +1057,6 @@ video {
   margin-bottom: 0.375rem;
 }
 
-.mb-10 {
-  margin-bottom: 2.5rem;
-}
-
 .mb-2 {
   margin-bottom: 0.5rem;
 }
@@ -1875,10 +1871,6 @@ video {
   gap: 0.375rem;
 }
 
-.gap-10 {
-  gap: 2.5rem;
-}
-
 .gap-2 {
   gap: 0.5rem;
 }
@@ -1901,10 +1893,6 @@ video {
 
 .gap-6 {
   gap: 1.5rem;
-}
-
-.gap-8 {
-  gap: 2rem;
 }
 
 .gap-\[22px\] {
@@ -2466,11 +2454,6 @@ video {
   border-color: rgb(255 255 255 / 0.7);
 }
 
-.bg-\[\#2a3b4c\] {
-  --tw-bg-opacity: 1;
-  background-color: rgb(42 59 76 / var(--tw-bg-opacity, 1));
-}
-
 .bg-\[\#315b7e\] {
   --tw-bg-opacity: 1;
   background-color: rgb(49 91 126 / var(--tw-bg-opacity, 1));
@@ -2479,11 +2462,6 @@ video {
 .bg-\[\#355c84\] {
   --tw-bg-opacity: 1;
   background-color: rgb(53 92 132 / var(--tw-bg-opacity, 1));
-}
-
-.bg-\[\#7a9dbc\] {
-  --tw-bg-opacity: 1;
-  background-color: rgb(122 157 188 / var(--tw-bg-opacity, 1));
 }
 
 .bg-\[\#86efac\] {
@@ -2506,11 +2484,6 @@ video {
   background-color: rgb(169 191 214 / var(--tw-bg-opacity, 1));
 }
 
-.bg-\[\#b6d4ee\] {
-  --tw-bg-opacity: 1;
-  background-color: rgb(182 212 238 / var(--tw-bg-opacity, 1));
-}
-
 .bg-\[\#bdd6ec\] {
   --tw-bg-opacity: 1;
   background-color: rgb(189 214 236 / var(--tw-bg-opacity, 1));
@@ -2524,11 +2497,6 @@ video {
 .bg-\[\#d9e8f4\] {
   --tw-bg-opacity: 1;
   background-color: rgb(217 232 244 / var(--tw-bg-opacity, 1));
-}
-
-.bg-\[\#dce9f5\] {
-  --tw-bg-opacity: 1;
-  background-color: rgb(220 233 245 / var(--tw-bg-opacity, 1));
 }
 
 .bg-\[\#dceaf5\] {
@@ -2564,11 +2532,6 @@ video {
 .bg-\[\#eef7ff\] {
   --tw-bg-opacity: 1;
   background-color: rgb(238 247 255 / var(--tw-bg-opacity, 1));
-}
-
-.bg-\[\#f4f8fb\] {
-  --tw-bg-opacity: 1;
-  background-color: rgb(244 248 251 / var(--tw-bg-opacity, 1));
 }
 
 .bg-\[\#f4f8fc\] {
@@ -2880,16 +2843,6 @@ video {
      object-fit: contain;
 }
 
-.object-cover {
-  -o-object-fit: cover;
-     object-fit: cover;
-}
-
-.object-center {
-  -o-object-position: center;
-     object-position: center;
-}
-
 .p-0 {
   padding: 0px;
 }
@@ -2960,11 +2913,6 @@ video {
 .px-11 {
   padding-left: 2.75rem;
   padding-right: 2.75rem;
-}
-
-.px-12 {
-  padding-left: 3rem;
-  padding-right: 3rem;
 }
 
 .px-2 {
@@ -3416,11 +3364,6 @@ video {
 .text-\[\#244764\] {
   --tw-text-opacity: 1;
   color: rgb(36 71 100 / var(--tw-text-opacity, 1));
-}
-
-.text-\[\#2a3b4c\] {
-  --tw-text-opacity: 1;
-  color: rgb(42 59 76 / var(--tw-text-opacity, 1));
 }
 
 .text-\[\#2f4b66\] {
@@ -4113,11 +4056,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-gray-100:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(243 244 246 / var(--tw-bg-opacity, 1));
-}
-
 .hover\:bg-green-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(240 253 244 / var(--tw-bg-opacity, 1));
@@ -4749,18 +4687,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     grid-column: span 2 / span 2;
   }
 
-  .sm\:mb-14 {
-    margin-bottom: 3.5rem;
-  }
-
-  .sm\:mb-4 {
-    margin-bottom: 1rem;
-  }
-
-  .sm\:mb-8 {
-    margin-bottom: 2rem;
-  }
-
   .sm\:ml-auto {
     margin-left: auto;
   }
@@ -4785,16 +4711,8 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     height: 3.5rem;
   }
 
-  .sm\:h-8 {
-    height: 2rem;
-  }
-
   .sm\:w-12 {
     width: 3rem;
-  }
-
-  .sm\:w-8 {
-    width: 2rem;
   }
 
   .sm\:w-\[240px\] {
@@ -4877,20 +4795,12 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     justify-content: space-between;
   }
 
-  .sm\:gap-10 {
-    gap: 2.5rem;
-  }
-
   .sm\:gap-3 {
     gap: 0.75rem;
   }
 
   .sm\:gap-4 {
     gap: 1rem;
-  }
-
-  .sm\:gap-6 {
-    gap: 1.5rem;
   }
 
   .sm\:gap-8 {
@@ -4902,18 +4812,8 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
          column-gap: 2rem;
   }
 
-  .sm\:space-y-6 > :not([hidden]) ~ :not([hidden]) {
-    --tw-space-y-reverse: 0;
-    margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
-    margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
-  }
-
   .sm\:self-auto {
     align-self: auto;
-  }
-
-  .sm\:rounded-\[2\.5rem\] {
-    border-radius: 2.5rem;
   }
 
   .sm\:border-l {
@@ -4966,16 +4866,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     padding-bottom: 2.5rem;
   }
 
-  .sm\:py-14 {
-    padding-top: 3.5rem;
-    padding-bottom: 3.5rem;
-  }
-
-  .sm\:py-16 {
-    padding-top: 4rem;
-    padding-bottom: 4rem;
-  }
-
   .sm\:py-4 {
     padding-top: 1rem;
     padding-bottom: 1rem;
@@ -4994,29 +4884,9 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     text-align: right;
   }
 
-  .sm\:text-2xl {
-    font-size: 1.5rem;
-    line-height: 2rem;
-  }
-
   .sm\:text-3xl {
     font-size: 1.875rem;
     line-height: 2.25rem;
-  }
-
-  .sm\:text-4xl {
-    font-size: 2.25rem;
-    line-height: 2.5rem;
-  }
-
-  .sm\:text-base {
-    font-size: 1rem;
-    line-height: 1.5rem;
-  }
-
-  .sm\:text-lg {
-    font-size: 1.125rem;
-    line-height: 1.75rem;
   }
 
   .sm\:text-sm {
@@ -5030,36 +4900,12 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     grid-column: span 2 / span 2;
   }
 
-  .md\:mb-10 {
-    margin-bottom: 2.5rem;
-  }
-
-  .md\:mb-20 {
-    margin-bottom: 5rem;
-  }
-
-  .md\:mb-6 {
-    margin-bottom: 1.5rem;
-  }
-
-  .md\:mt-10 {
-    margin-top: 2.5rem;
-  }
-
   .md\:table-cell {
     display: table-cell;
   }
 
-  .md\:w-1\/2 {
-    width: 50%;
-  }
-
   .md\:grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .md\:grid-cols-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .md\:grid-cols-\[minmax\(0\2c 1fr\)_minmax\(0\2c 1\.15fr\)_auto\] {
@@ -5090,20 +4936,8 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     align-items: stretch;
   }
 
-  .md\:justify-end {
-    justify-content: flex-end;
-  }
-
   .md\:justify-between {
     justify-content: space-between;
-  }
-
-  .md\:gap-12 {
-    gap: 3rem;
-  }
-
-  .md\:gap-8 {
-    gap: 2rem;
   }
 
   .md\:p-10 {
@@ -5130,31 +4964,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   .md\:px-6 {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
-  }
-
-  .md\:text-3xl {
-    font-size: 1.875rem;
-    line-height: 2.25rem;
-  }
-
-  .md\:text-4xl {
-    font-size: 2.25rem;
-    line-height: 2.5rem;
-  }
-
-  .md\:text-5xl {
-    font-size: 3rem;
-    line-height: 1;
-  }
-
-  .md\:text-lg {
-    font-size: 1.125rem;
-    line-height: 1.75rem;
-  }
-
-  .md\:text-xl {
-    font-size: 1.25rem;
-    line-height: 1.75rem;
   }
 }
 
@@ -5237,14 +5046,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     justify-content: space-between;
   }
 
-  .lg\:gap-10 {
-    gap: 2.5rem;
-  }
-
-  .lg\:gap-20 {
-    gap: 5rem;
-  }
-
   .lg\:rounded-full {
     border-radius: 9999px;
   }
@@ -5265,11 +5066,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     padding: 1.5rem;
   }
 
-  .lg\:px-12 {
-    padding-left: 3rem;
-    padding-right: 3rem;
-  }
-
   .lg\:px-6 {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
@@ -5278,16 +5074,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   .lg\:px-8 {
     padding-left: 2rem;
     padding-right: 2rem;
-  }
-
-  .lg\:py-16 {
-    padding-top: 4rem;
-    padding-bottom: 4rem;
-  }
-
-  .lg\:py-24 {
-    padding-top: 6rem;
-    padding-bottom: 6rem;
   }
 
   .lg\:py-3 {
@@ -5313,11 +5099,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
     padding-top: 0.75rem;
   }
 
-  .lg\:text-2xl {
-    font-size: 1.5rem;
-    line-height: 2rem;
-  }
-
   .lg\:text-3xl {
     font-size: 1.875rem;
     line-height: 2.25rem;
@@ -5326,16 +5107,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   .lg\:text-4xl {
     font-size: 2.25rem;
     line-height: 2.5rem;
-  }
-
-  .lg\:text-6xl {
-    font-size: 3.75rem;
-    line-height: 1;
-  }
-
-  .lg\:text-lg {
-    font-size: 1.125rem;
-    line-height: 1.75rem;
   }
 
   .lg\:text-sm {
