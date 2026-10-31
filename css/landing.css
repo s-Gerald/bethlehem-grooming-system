@@ -29,7 +29,7 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .landing-page a { color: inherit; text-decoration: none; }
 .landing-page button { font: inherit; cursor: pointer; }
 .landing-page :is(a, button, [tabindex]):focus-visible { outline: 3px solid var(--landing-focus); outline-offset: 5px; }
-.landing-container { width: min(1120px, calc(100% - 2.5rem)); margin-inline: auto; }
+.landing-container { width: min(1440px, calc(100% - 2.5rem)); margin-inline: auto; }
 .landing-section { padding-block: clamp(3.5rem, 6vw, 5.5rem); }
 .landing-icon { width: 24px; height: 24px; flex: 0 0 auto; fill: currentColor; }
 .skip-link { position: fixed; top: 0.5rem; left: 1rem; z-index: 50; padding: 0.65rem 1rem; background: var(--landing-surface); transform: translateY(-160%); }
@@ -37,15 +37,16 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .landing-header { position: sticky; top: 0; z-index: 30; background: var(--landing-header); border-bottom: 1px solid var(--landing-border); }
-.nav-layout { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; min-height: 88px; padding-block: 12px; }
-.landing-header .brand-lockup__mark { width: 2.7rem; }
-.landing-header .brand-lockup__divider { height: 2.65rem; }
-.landing-header .brand-lockup__name { font-size: 0.88rem; letter-spacing: 0.17rem; }
-.landing-header .brand-lockup__service { font-size: 1.08rem; letter-spacing: 0.04rem; }
-.menu-toggle { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--landing-primary); border-radius: 10px; background: var(--landing-transparent); color: var(--landing-primary); }
+.nav-layout { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-height: 88px; padding-block: 12px; }
+.landing-header .brand-lockup { flex-shrink: 0; gap: 0.3rem; }
+.landing-header .brand-lockup__mark { width: 2.2rem; }
+.landing-header .brand-lockup__divider { height: 2.1rem; }
+.landing-header .brand-lockup__name { font-size: 0.68rem; letter-spacing: 0.12rem; }
+.landing-header .brand-lockup__service { font-size: 0.8rem; letter-spacing: 0.025rem; }
+.menu-toggle { display: grid; order: 2; flex-shrink: 0; margin-left: auto; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--landing-primary); border-radius: 10px; background: var(--landing-transparent); color: var(--landing-primary); }
 .menu-close-icon, .menu-open .menu-open-icon { display: none; }
 .menu-open .menu-close-icon { display: block; }
-.section-links { display: none; flex-basis: 100%; padding-block: 0.25rem; }
+.section-links { display: none; order: 4; flex-basis: 100%; padding-block: 0.25rem; }
 .menu-open .section-links { display: flex; flex-direction: column; }
 .section-links a { display: flex; align-items: center; min-height: 44px; padding: 0.5rem 0.8rem; font-size: 0.95rem; font-weight: 650; border-radius: 8px; white-space: nowrap; transition: background-color 150ms ease; }
 .section-links a:hover { background: var(--landing-soft); }
@@ -63,13 +64,14 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .landing-button--secondary:hover { background: var(--landing-soft); }
 .landing-button:disabled { cursor: wait; opacity: 0.65; }
 .landing-button .landing-icon { width: 18px; height: 18px; }
+.header-sign-in { order: 3; flex-shrink: 0; min-height: 44px; padding: 0.65rem 0.9rem; }
 .hero-image { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 819; object-fit: cover; border-radius: 24px; }
 
 .services { background: var(--landing-surface); border-top: 1px solid var(--landing-border); }
 .section-heading { max-width: 680px; margin: 0 auto 2rem; text-align: center; }
 .section-heading h3 { margin-top: 1.15rem; }
 .section-heading p { margin-top: 0.75rem; color: var(--landing-muted); }
-.pricing-shell { max-width: 920px; margin-inline: auto; min-height: 180px; }
+.pricing-shell { max-width: 1200px; margin-inline: auto; min-height: 180px; }
 .pricing-status { color: var(--landing-muted); text-align: center; }
 .pricing-status:empty { display: none; }
 .pricing-status:not(:empty) { padding: 1.25rem; }
@@ -111,7 +113,7 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .clinic-detail { padding: 0 1.5rem 1.5rem; font-size: 0.95rem; line-height: 1.7; }
 
 .visit { background: var(--landing-soft); }
-.visit-layout { display: grid; gap: 2.5rem; align-items: center; }
+.visit-layout { display: grid; max-width: 1360px; gap: 2.5rem; align-items: center; }
 .visit-copy h3 { margin-top: 1.25rem; max-width: 27ch; font-size: 1.3rem; line-height: 1.4; }
 .visit-copy address { margin-block: 1.5rem; font-style: normal; color: var(--landing-muted); font-size: 0.95rem; }
 .contact-row { display: flex; align-items: flex-start; gap: 0.9rem; margin-block: 1.1rem; }
@@ -125,7 +127,7 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .visit-map a { color: var(--landing-primary); text-decoration: underline; text-underline-offset: 3px; }
 
 .about { background: var(--landing-surface); }
-.about-layout, .faq-layout { display: grid; gap: 1.75rem; }
+.about-layout, .faq-layout { display: grid; max-width: 1200px; gap: 1.75rem; }
 .about-copy { max-width: 72ch; color: var(--landing-muted); }
 .about-copy p + p { margin-top: 1.15rem; }
 .faq { border-top: 1px solid var(--landing-border); }
@@ -148,22 +150,30 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .landing-footer a:focus-visible { outline-color: var(--landing-header); }
 
 @media (min-width: 40rem) {
-  .landing-container { width: min(1120px, calc(100% - 4rem)); }
+  .landing-container { width: min(1440px, calc(100% - 4rem)); }
   .package-grid, .clinic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .package-card--cat { grid-column: 1 / -1; width: calc((100% - 1rem) / 2); justify-self: center; }
   .clinic-card.is-expanded { grid-column: span 2; }
   .clinic-card.is-expanded h4 button { min-height: 80px; }
 }
 @media (min-width: 48rem) {
-  .nav-layout { flex-wrap: nowrap; }
-  .menu-toggle { display: none; }
-  .section-links, .menu-open .section-links { display: flex; flex-direction: row; flex-basis: auto; gap: 0.3rem; }
   .hero-layout { grid-template-columns: 1.05fr minmax(0, 1fr); gap: 2.5rem; }
   .hero-image { border-radius: 28px; }
   .footer-layout { display: grid; grid-template-columns: 56px minmax(0, 1fr) 44px; text-align: center; }
 }
+@media (min-width: 56rem) {
+  .nav-layout { flex-wrap: nowrap; gap: 1.5rem; }
+  .landing-header .brand-lockup { gap: 0.56rem; }
+  .landing-header .brand-lockup__mark { width: 2.7rem; }
+  .landing-header .brand-lockup__divider { height: 2.65rem; }
+  .landing-header .brand-lockup__name { font-size: 0.88rem; letter-spacing: 0.17rem; }
+  .landing-header .brand-lockup__service { font-size: 1.08rem; letter-spacing: 0.04rem; }
+  .menu-toggle { display: none; }
+  .section-links, .menu-open .section-links { display: flex; order: 2; flex-direction: row; flex-basis: auto; gap: 0.3rem; margin-left: auto; }
+}
 @media (min-width: 64rem) {
   .hero-layout { gap: 4rem; }
+  .hero h1 { max-width: 18ch; }
   .section-links { gap: 1.1rem; }
   .clinic-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .visit-layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 4.5rem; }
@@ -173,9 +183,8 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 }
 @media (max-width: 23rem) {
   .landing-header .brand-lockup__mark { width: 2.1rem; }
-  .landing-header .brand-lockup__divider { height: 2.1rem; }
-  .landing-header .brand-lockup__name { font-size: 0.68rem; letter-spacing: 0.12rem; }
-  .landing-header .brand-lockup__service { font-size: 0.82rem; }
+  .landing-header .brand-lockup__divider, .landing-header .brand-lockup__text { display: none; }
+  .header-sign-in { padding-inline: 0.75rem; }
   .hero-actions { flex-direction: column; align-items: stretch; }
   .package-trigger { gap: 0.75rem; padding: 1.1rem; }
   .package-trigger > .landing-icon:first-child { width: 28px; height: 28px; }

@@ -26,7 +26,7 @@ document.addEventListener('keydown', event => {
 header.addEventListener('focusout', event => {
   if (!header.contains(event.relatedTarget)) closeMenu();
 });
-window.matchMedia('(min-width: 48rem)').addEventListener('change', () => closeMenu());
+window.matchMedia('(min-width: 56rem)').addEventListener('change', () => closeMenu());
 
 // Native buttons supply Enter/Space behavior; each group maintains its own open item.
 document.addEventListener('click', event => {
