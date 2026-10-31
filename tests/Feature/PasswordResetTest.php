@@ -459,7 +459,7 @@ class PasswordResetTest extends TestCase
         $this->assertCount(1, $messages);
         preg_match('/\b[0-9]{6}\b/', $messages[0]->getOriginalMessage()->getTextBody(), $matches);
         $this->assertNotEmpty($matches);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
         $this->assertDatabaseCount('jobs', 0);
         $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $matches[0]])
@@ -473,10 +473,10 @@ class PasswordResetTest extends TestCase
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         $this->travel(61)->seconds();
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         PasswordResetRequest::query()->update(['token_hash' => Hash::make('already-consumed')]);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->assertDatabaseCount('jobs', 0);
     }
@@ -509,9 +509,9 @@ class PasswordResetTest extends TestCase
         $service->resendStaffSetupLink($user);
         $this->travel(61)->seconds();
         $service->resendStaffSetupLink($user);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
         preg_match('/set-up-password\.html#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
@@ -520,7 +520,7 @@ class PasswordResetTest extends TestCase
         $this->travel(61)->seconds();
         $service->resendStaffSetupLink($user);
         $this->travel(25)->hours();
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
     }
 
@@ -600,7 +600,7 @@ class PasswordResetTest extends TestCase
         $user = $this->createUser('customer');
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
         PasswordResetRequest::query()->update(['verification_attempts' => 5]);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
@@ -672,7 +672,7 @@ class PasswordResetTest extends TestCase
         $this->assertStringNotContainsString('PasswordChangedNotification', $payload['data']['command']);
         $queued = unserialize(app('encrypter')->decrypt($payload['data']['command']));
         $this->assertInstanceOf(PasswordChangedNotification::class, $queued->notification);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
         $body = $messages[0]->getOriginalMessage()->getTextBody();

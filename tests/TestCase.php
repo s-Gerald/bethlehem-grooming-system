@@ -3,10 +3,18 @@
 namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Testing\PendingCommand;
 
 abstract class TestCase extends BaseTestCase
 {
     protected $defaultHeaders = ['X-Requested-With' => 'XMLHttpRequest'];
+
+    protected function workQueue(array $options): PendingCommand|int
+    {
+        // In-process workers inherit the suite's allocations. Match phpunit.xml's
+        // finite 512 MB budget; callers can still exercise stricter worker limits.
+        return $this->artisan('queue:work', ['--memory' => 512, ...$options]);
+    }
 
     protected function withAccountSession(\Illuminate\Testing\TestResponse $response): static
     {

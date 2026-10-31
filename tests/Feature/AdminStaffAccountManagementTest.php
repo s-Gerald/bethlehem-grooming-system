@@ -1404,7 +1404,7 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->assertDatabaseCount('jobs', 2);
         $payload = json_decode(DB::table('jobs')->value('payload'), true);
         $this->assertStringNotContainsString('SetUpStaffPasswordNotification', $payload['data']['command']);
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
         $email = $messages[0]->getOriginalMessage();

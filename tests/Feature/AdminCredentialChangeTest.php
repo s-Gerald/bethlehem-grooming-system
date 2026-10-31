@@ -400,16 +400,16 @@ class AdminCredentialChangeTest extends TestCase
         $hash = $change->fresh()->code_hash;
         $this->assertSame('cooldown', $service->resend($admin, $change)['status']);
         $this->assertSame($hash, $change->fresh()->code_hash, 'A stale challenge instance cannot bypass resend locking or cooldown.');
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($payload['email_delivery_token']));
         $change->update(['confirmed_at' => now(), 'code_hash' => null]);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $this->travel(61)->seconds();
         $service->request($admin, $admin, 'AnotherAdmin', null);
         $this->travel(11)->minutes();
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
@@ -440,7 +440,7 @@ class AdminCredentialChangeTest extends TestCase
         $admin = $this->createUser('admin', 'admin@gmail.com', '09170001999', 'Admin');
         app(\App\Services\PrivilegedCredentialChangeService::class)->request($admin, $admin, 'ChangedAdmin', null);
         PrivilegedCredentialChange::query()->update(['failed_attempts' => 5]);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
@@ -458,7 +458,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame('sent', \App\Services\AuthenticationMailDelivery::status($receipt));
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
         $this->assertDatabaseCount('jobs', 1);
-        $this->artisan('queue:work', ['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
         $this->assertDatabaseCount('jobs', 0);
     }
@@ -883,7 +883,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->deleteJson("/api/settings/security/email-change/{$id}")->assertOk();
         $this->travel(61)->seconds();
         $id = $this->startEmailChange()['id'];
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages, 'Cancelled and superseded codes must not be delivered.');
         $mail = $messages[0]->getOriginalMessage();
@@ -895,7 +895,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame($currentState, \App\Models\StaffEmailChange::findOrFail($id)->getAttributes());
         \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_transition_email_job');
         $this->postJson("/api/settings/security/email-change/{$id}/confirm", ['stage' => 'current', 'code' => $digits[0]])->assertOk();
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(2, $messages);
         $mail = $messages[1]->getOriginalMessage();
@@ -1490,7 +1490,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertFalse($staff->fresh()->hasEmailRecoveryHold());
         \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_recovery_job');
         $request = $this->startRecovery($staff);
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertSame('admin@gmail.com', $messages[0]->getOriginalMessage()->getTo()[0]->getAddress());
         preg_match('/\b[0-9]{6}\b/', $messages[0]->getOriginalMessage()->getTextBody(), $digits);
@@ -1510,7 +1510,7 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame($before, \App\Models\StaffEmailRecovery::find($request['id'])->getAttributes());
         \Illuminate\Support\Facades\DB::statement('DROP TRIGGER reject_recovery_job');
         $this->postJson($url.'/resend', ['current_password' => 'CurrentAdmin!234'])->assertOk();
-        $this->artisan('queue:work', ['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0, '--queue' => 'recovery-test'])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $newMailbox = collect($messages)->filter(fn ($mail) => $mail->getOriginalMessage()->getTo()[0]->getAddress() === 'new@gmail.com');
         $this->assertCount(1, $newMailbox, 'Superseded recovery links must not be delivered.');

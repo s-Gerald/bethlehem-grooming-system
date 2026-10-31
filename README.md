@@ -31,6 +31,14 @@ It also sets the full-suite memory budget to 512 MB, matching the previous XAMPP
 test budget. This is a PHPUnit-only limit; the portable runtime defaults to
 128 MB, and Artisan does not forward a parent `-d memory_limit` to PHPUnit.
 Tests retain strict stock/ledger assertions and use `PHP_BINARY` for their workers.
+For in-process queue workers, use `Tests\TestCase::workQueue()` instead of calling
+`artisan('queue:work', ...)` directly. It gives the worker the same finite 512 MB
+budget as PHPUnit: Laravel's default 128 MB threshold also counts memory allocated
+by earlier tests. Keep execution options and exit-code assertions explicit, e.g.
+`$this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0)`.
+Use `--once` for a single job and pass `--queue` for named queues. Explicit
+`--memory` overrides remain available for testing memory-limit failures. Keep the
+helper's default and `phpunit.xml`'s budget aligned; production workers are unaffected.
 The stock-in fixture proves an overlapping SQLite writer lock instead of relying
 on the configured transaction mode as evidence. PHP 8.2 uses a deferred transaction
 in the installed Laravel SQLite implementation; PHP 8.4 honors `IMMEDIATE`.
