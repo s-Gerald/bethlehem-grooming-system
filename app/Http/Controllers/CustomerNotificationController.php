@@ -56,11 +56,10 @@ class CustomerNotificationController extends Controller
                         CustomerNotification::TYPE_PET_INFORMATION_UPDATED => 'Pet Information Updated',
                         CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Online Registration expired',
                         CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Online Registration — No Show',
-                        CustomerNotification::TYPE_BOOKING_CANCELLED => $n->pet_id
-                            ? ($n->clinic_appointment_id ? 'Clinic Online Registration Cancelled' : 'Grooming Online Registration Cancelled') : null,
+                        CustomerNotification::TYPE_BOOKING_CANCELLED => $this->cancellationContent($n)['title'],
                         default => null,
                     },
-                    'message' => $this->formatNotificationMessage($n->message),
+                    'message' => $n->type === CustomerNotification::TYPE_BOOKING_CANCELLED ? $this->cancellationContent($n)['body'] : $this->formatNotificationMessage($n->message),
                     'display_message' => $this->formatCustomerNotificationMessage($n, $petNames),
                     'pet_names' => $petNames,
                     'pet_types' => $petTypes,
@@ -156,6 +155,10 @@ class CustomerNotificationController extends Controller
             ->values()
             ->all();
 
+        if ($notification->type === CustomerNotification::TYPE_BOOKING_CANCELLED && str_contains($notification->message, "'s grooming was cancelled")) {
+            return $this->petNamesMentionedInMessage($notification->message, $petNames) ?: $petNames;
+        }
+
         if (! in_array($notification->type, ['grooming_started', 'grooming_finished'], true)) {
             return $petNames;
         }
@@ -204,8 +207,17 @@ class CustomerNotificationController extends Controller
             ->all();
     }
 
+    private function cancellationContent(CustomerNotification $notification): array
+    {
+        return \App\Services\CancellationNotificationContent::forVisit(
+            $notification->clinicAppointment ?? $notification->booking,
+            $notification->clinic_appointment_id ? 'Clinic' : 'Grooming', $notification->message,
+            $notification->pet?->pet_name);
+    }
+
     private function formatCustomerNotificationMessage(CustomerNotification $notification, array $petNames): string
     {
+        if ($notification->type === CustomerNotification::TYPE_BOOKING_CANCELLED) return $this->cancellationContent($notification)['body'];
         if (empty($petNames)) {
             return match ($notification->type) {
                 'grooming_started' => "Great news! Your pet has Started Grooming. We'll let you know as soon as they're ready for pickup!",

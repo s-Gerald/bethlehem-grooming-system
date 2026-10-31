@@ -285,26 +285,8 @@ class NotificationController extends Controller
 
     private function groomingCancelledContent(?Booking $booking, string $fallback): array
     {
-        $reference = $booking?->booking_reference;
-        $owner = $this->bookingOwnerName($booking);
-        $cancelledByClinic = Str::contains(Str::lower($fallback), 'clinic staff');
-        $actor = $cancelledByClinic ? 'clinic staff' : $owner;
-        $message = $reference
-            ? "Online Registration cancelled: {$reference}"
-                .($actor ? " by {$actor}." : '.')
-            : $fallback;
-        $reason = trim((string) $booking?->cancellation_reason);
-
-        if ($reason === '' || Str::lower($reason) === 'cancelled by clinic staff.') {
-            $reason = null;
-        }
-
-        return $this->content(
-            'Grooming online registration cancelled',
-            $message,
-            $reason ? "Reason: {$reason}" : null,
-            [$reference, $actor],
-        );
+        $text = \App\Services\CancellationNotificationContent::forVisit($booking, 'Grooming', $fallback);
+        return $this->content($text['title'], $text['admin'], $text['context'], [$booking?->booking_reference]);
     }
 
     private function groomingPaymentContent(?Booking $booking, string $fallback): array
@@ -423,21 +405,8 @@ class NotificationController extends Controller
 
     private function clinicCancelledContent(?ClinicAppointment $appointment, string $fallback): array
     {
-        $reference = $appointment?->appointment_reference;
-        $owner = $this->clinicOwnerName($appointment);
-        $pet = trim((string) $appointment?->pet?->pet_name);
-        $message = $reference
-            ? "Clinic visit cancelled: {$reference}"
-                .($owner ? " for {$owner}" : '')
-                .($pet ? " and {$pet}" : '').' by clinic staff.'
-            : $fallback;
-
-        return $this->content(
-            'Clinic visit cancelled',
-            $message,
-            null,
-            [$reference, $owner, $pet],
-        );
+        $text = \App\Services\CancellationNotificationContent::forVisit($appointment, 'Clinic', $fallback);
+        return $this->content($text['title'], $text['admin'], $text['context'], [$appointment?->appointment_reference]);
     }
 
     /**

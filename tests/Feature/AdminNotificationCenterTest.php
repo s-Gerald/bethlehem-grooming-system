@@ -71,9 +71,27 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertDatabaseHas('notifications', ['notification_id' => $grooming, 'is_read' => false]);
     }
 
+    public function test_cancellation_wording_uses_origin_and_keeps_customer_text_concise(): void
+    {
+        foreach (['walk_in' => ['Grooming Walk-in Cancelled', 'Your visit REF was cancelled by staff.'],
+            'online' => ['Grooming Online Registration Cancelled', 'Your registration REF was cancelled by staff.'],
+            '' => ['Grooming Visit Cancelled', 'Your visit REF was cancelled by staff.']] as $origin => $expected) {
+            $booking = new \App\Models\Booking(['booking_type' => $origin, 'booking_reference' => 'REF']);
+            $content = \App\Services\CancellationNotificationContent::forVisit($booking, 'Grooming', 'Cancelled by clinic staff.');
+            $this->assertSame($expected[0], $content['title']);
+            $this->assertSame($expected[1], $content['body']);
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
+        Schema::create('customer_notifications', function (Blueprint $table) {
+            $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedInteger('pet_id')->nullable(); $table->unsignedBigInteger('clinic_appointment_id')->nullable();
+            $table->string('type'); $table->text('message'); $table->boolean('is_read'); $table->timestamp('created_at')->nullable();
+        });
+
 
         Carbon::setTestNow('2026-08-21 12:30:00');
 
@@ -177,6 +195,7 @@ class AdminNotificationCenterTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('customer_notifications');
         Carbon::setTestNow();
 
         Schema::dropIfExists('notifications');
@@ -374,7 +393,7 @@ class AdminNotificationCenterTest extends TestCase
         ]);
 
         $this->assertCount(1, $cancellations['notifications']);
-        $this->assertSame('Clinic visit cancelled', $cancellations['notifications'][0]['title']);
+        $this->assertSame('Clinic Visit Cancelled', $cancellations['notifications'][0]['title']);
     }
 
     public function test_service_and_activity_filters_are_independent_and_combinable(): void

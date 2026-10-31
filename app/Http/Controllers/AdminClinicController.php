@@ -503,6 +503,13 @@ class AdminClinicController extends Controller
                 "Clinic appointment {$appointment->appointment_reference} was cancelled by clinic staff.",
             );
 
+            if ($appointment->user_id) \App\Models\CustomerNotification::create([
+                'user_id' => $appointment->user_id, 'clinic_appointment_id' => $appointment->id,
+                'pet_id' => $appointment->pet_id, 'type' => \App\Models\CustomerNotification::TYPE_BOOKING_CANCELLED,
+                'message' => "Your visit {$appointment->appointment_reference} was cancelled by staff.",
+                'is_read' => false, 'created_at' => now(),
+            ]);
+
             return $appointment;
         });
 

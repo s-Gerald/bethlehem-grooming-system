@@ -2476,13 +2476,13 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('unread_count', 2)
             ->assertJsonFragment([
                 'type' => 'booking_cancelled',
-                'message' => $customMessage,
-                'display_message' => $customMessage,
+                'message' => 'Your registration CANCEL-CUSTOM-50 was cancelled by staff. Reason: Owner requested a different date.',
+                'display_message' => 'Your registration CANCEL-CUSTOM-50 was cancelled by staff. Reason: Owner requested a different date.',
             ])
             ->assertJsonFragment([
                 'type' => 'booking_cancelled',
-                'message' => $defaultMessage,
-                'display_message' => $defaultMessage,
+                'message' => 'Your registration CANCEL-DEFAULT-51 was cancelled by staff. Reason: Clinic unavailable.',
+                'display_message' => 'Your registration CANCEL-DEFAULT-51 was cancelled by staff. Reason: Clinic unavailable.',
             ]);
     }
 
@@ -3152,7 +3152,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'message' => "Coco's Grooming online registration was cancelled because Coco was checked in for Clinic."]);
         $this->getJson('/api/customer/notifications')->assertOk()
             ->assertJsonPath('notifications.0.pet_names', ['Coco'])
-            ->assertJsonPath('notifications.0.title', 'Grooming Online Registration Cancelled');
+            ->assertJsonPath('notifications.0.title', 'Grooming Cancellation');
         $queue->runForDate(now()->toDateString(), fn () => $policy->enforce([$pets[0]->pet_id], 'clinic', true));
         $this->assertDatabaseCount('customer_notifications', 1);
         $queue->runForDate(now()->toDateString(), fn () => $policy->enforce([$pets[1]->pet_id], 'clinic', true));

@@ -31,6 +31,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Schema::create('customer_notifications', function (Blueprint $table) {
+            $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedInteger('pet_id')->nullable(); $table->unsignedBigInteger('clinic_appointment_id')->nullable();
+            $table->string('type'); $table->text('message'); $table->boolean('is_read'); $table->timestamp('created_at')->nullable();
+        });
         $this->createPetGroomers();
         Carbon::setTestNow(now()->setTime(10, 0));
 
@@ -1002,6 +1007,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     #[DataProvider('clinicProfileUpdateCases')]
     public function test_clinic_walkin_profile_and_size_updates_create_one_owner_notification(int $weight, string $size, int $notifications): void
     {
+        Schema::dropIfExists('customer_notifications');
         Schema::create('customer_notifications', function (Blueprint $table) {
             $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('pet_id')->nullable();
             $table->string('type'); $table->text('message'); $table->boolean('is_read')->default(false);
@@ -2030,6 +2036,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->timestamp('cancelled_at')->nullable(); $table->unsignedInteger('cancelled_by')->nullable();
             $table->string('cancellation_reason')->nullable();
         });
+        Schema::dropIfExists('customer_notifications');
         Schema::create('customer_notifications', function (Blueprint $table) {
             $table->id(); $table->unsignedInteger('user_id'); $table->unsignedInteger('booking_id')->nullable();
             $table->unsignedInteger('pet_id')->nullable(); $table->string('type'); $table->text('message');
@@ -3409,6 +3416,49 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         DB::table('users')->updateOrInsert(['user_id' => $userId], $user->getAttributes());
 
         Sanctum::actingAs($user, ['*']);
+    }
+
+    public function test_registered_clinic_cancellation_notifies_once_and_unregistered_does_not(): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'cat']);
+        $this->authenticateAs('admin');
+        foreach (['walk_in', 'pre_registered'] as $index => $origin) {
+            $id = $index + 1;
+            $this->insertClinicAppointment('checked_in', $id);
+            DB::table('clinic_appointments')->where('id', $id)->update(['user_id' => 10, 'pet_id' => 101, 'appointment_type' => $origin]);
+            $this->postJson("/api/admin/clinic-appointments/{$id}/cancel")->assertOk();
+            $this->postJson("/api/admin/clinic-appointments/{$id}/cancel")->assertUnprocessable();
+            $this->assertSame(1, DB::table('customer_notifications')->where('clinic_appointment_id', $id)->count());
+        }
+        $this->insertClinicAppointment('checked_in', 3);
+        $this->postJson('/api/admin/clinic-appointments/3/cancel')->assertOk();
+        $this->assertDatabaseCount('customer_notifications', 2);
+        $this->authenticateAs('customer', 10);
+        $items = $this->getJson('/api/customer/notifications')->assertOk()->json('notifications');
+        $this->assertSame(['Clinic Online Registration Cancelled', 'Clinic Walk-in Cancelled'], array_column($items, 'title'));
+        $this->assertStringStartsWith('Your registration ', $items[0]['display_message']);
+        $this->assertStringStartsWith('Your visit ', $items[1]['display_message']);
+    }
+
+    public function test_clinic_cancellation_rolls_back_when_customer_notification_fails(): void
+    {
+        $this->authenticateAs('customer', 10);
+        $this->authenticateAs('admin');
+        $this->insertClinicAppointment('checked_in');
+        DB::table('clinic_appointments')->where('id', 1)->update(['user_id' => 10]);
+        $dispatcher = \App\Models\CustomerNotification::getEventDispatcher();
+        \App\Models\CustomerNotification::setEventDispatcher(clone $dispatcher);
+        \App\Models\CustomerNotification::creating(fn () => throw new \RuntimeException('Notification write failed'));
+        $this->withoutExceptionHandling();
+        try {
+            $this->postJson('/api/admin/clinic-appointments/1/cancel');
+            $this->fail('Cancellation must fail atomically');
+        } catch (\RuntimeException $error) { $this->assertSame('Notification write failed', $error->getMessage()); }
+        finally { \App\Models\CustomerNotification::setEventDispatcher($dispatcher); }
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'checked_in']);
+        $this->assertDatabaseCount('customer_notifications', 0);
+        $this->assertDatabaseCount('notifications', 0);
     }
 
     private function insertClinicAppointment(

@@ -1235,7 +1235,7 @@ class AdminBookingController extends Controller
             : "Your {$subject} {$booking->booking_reference} has been cancelled by the clinic. Reason: {$reason}";
         if ($pet) $message .= $othersActive ? ' Other pets remain active.' : ' The visit is now cancelled.';
         CustomerNotification::create(['user_id' => $booking->user_id, 'booking_id' => $booking->booking_id,
-            'type' => CustomerNotification::TYPE_BOOKING_CANCELLED, 'message' => $message, 'is_read' => false, 'created_at' => now()]);
+            'pet_id' => $pet?->pet_id, 'type' => CustomerNotification::TYPE_BOOKING_CANCELLED, 'message' => $message, 'is_read' => false, 'created_at' => now()]);
         return true;
     }
 
