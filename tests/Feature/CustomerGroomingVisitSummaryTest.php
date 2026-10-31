@@ -18,9 +18,11 @@ class CustomerGroomingVisitSummaryTest extends TestCase
     {
         parent::setUp();
         $this->createPetGroomers();
+        Schema::create('clinic_settings', function (Blueprint $t) { $t->id(); });
         Schema::create('bookings', function (Blueprint $t) {
             $t->increments('booking_id');
             $t->integer('user_id');
+            $t->date('booking_date')->nullable();
             $t->string('booking_reference');
             $t->string('status')->default('waiting_to_arrive');
             $t->integer('window_id')->nullable();
@@ -41,6 +43,8 @@ class CustomerGroomingVisitSummaryTest extends TestCase
             $t->integer('booking_id');
             $t->integer('pet_id');
             $t->integer('groomer_id')->nullable();
+            $t->date('pet_queue_date')->nullable();
+            $t->integer('pet_queue_number')->nullable();
             $t->text('special_instructions')->nullable();
             $t->string('grooming_preference')->nullable();
             $t->string('grooming_state')->default('not_started');

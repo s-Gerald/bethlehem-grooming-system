@@ -16,6 +16,13 @@ const booking = {
 // Any accidental read of the original confirmation must fail this feature.
 globalThis.sessionStorage = { getItem() { throw new Error('Session confirmation must not be read'); } };
 const view = groomingVisitPresentation(booking, 'Waiting to arrive');
+const provisional = structuredClone(booking);
+provisional.booking_pets[0].grooming_end_time = null;
+provisional.booking_pets[0].grooming_forecast = {provisional:true,duration:{min_minutes:90,max_minutes:120},
+  start_at:'2026-10-17T15:15:00+08:00',completion_at:'2026-10-17T17:15:00+08:00',closing_risk:true,status:'estimated'};
+assert.match(groomingVisitPresentation(provisional,'Waiting to arrive').html,/Provisional/);
+provisional.booking_pets[0].grooming_end_time = booking.booking_pets[0].grooming_end_time;
+assert.doesNotMatch(groomingVisitPresentation(provisional,'Grooming finished').html,/Grooming estimate|Provisional/);
 assert.match(view.html, /Coco &lt;3/);
 assert.match(view.html, /Grooming package[\s\S]*Regular Dog Grooming/);
 assert.match(view.html, /A la Carte[\s\S]*Medicated Bath/);

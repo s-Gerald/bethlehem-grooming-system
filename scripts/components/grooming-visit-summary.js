@@ -1,3 +1,4 @@
+import "../services/grooming-forecast-presentation.js?v=20261031";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { formatBookingDate } from "../services/booking-format-service.js";
 import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
@@ -51,6 +52,7 @@ export function groomingVisitPresentation(booking, statusLabel) {
         ...(item.grooming_start_time ? [["Started", formatConfirmationTimestamp(item.grooming_start_time)]] : []),
         ...(item.grooming_end_time ? [["Finished", formatConfirmationTimestamp(item.grooming_end_time)]] : []),
         ...(duration ? [["Actual Grooming Duration", duration]] : []),
+        ...(!item.grooming_end_time && item.grooming_forecast ? [["Grooming estimate", globalThis.GroomingForecastPresentation.text(item.grooming_forecast)]] : []),
         ...(item.special_instructions?.trim() ? [["Special instructions", item.special_instructions.trim(), null, true]] : []),
       ])}
     </section>`;

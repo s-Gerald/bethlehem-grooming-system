@@ -1,5 +1,7 @@
 # Grooming estimation removal — 2026-10-26
 
+Historical release record: simplified advisory durations and physical queue forecasting were subsequently restored on October 31. See [the current estimate implementation](grooming-queue-estimates.md). The retired schema, factors, arrival-window forecasts, and admission rejection remain removed.
+
 The duration estimator, workload/reservation forecaster, their API routes and middleware, factor inputs, duration snapshots, ETA warnings, and forecast requests are removed. Haircut choices now live in `config/grooming_services.php` and travel through the existing catalogue/admin responses. Pricing estimates remain unchanged.
 
 Actual session start/finish and undo behavior, per-pet queue ordering, 20-pet on-site admission, groomer concurrency and assignment, Today's Intake, operating hours, closures, expiry, consent, permissions, payments, notifications and clinic workflows remain. The customer tracker retains its original three circles, connecting lines, accessible states and multi-pet aggregation. Visit details derive each completed pet's actual duration from its timestamps; missing timestamps produce no duration.

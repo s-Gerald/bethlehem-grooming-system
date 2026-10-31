@@ -3824,6 +3824,93 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         }
     }
 
+    public function test_advisory_forecast_uses_physical_queue_without_writes_or_private_records(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-31 13:00', 'Asia/Manila'));
+        $this->setPetGroomersOnDuty(1);
+        $this->seedMultiPetBooking();
+        DB::table('services')->insert(['service_id' => 91, 'slug' => 'bath_and_go', 'service_name' => 'Bath and Go', 'base_price' => 450]);
+        DB::table('services')->insert(['service_id' => 92, 'slug' => 'deluxe_dog_grooming', 'service_name' => 'Deluxe', 'base_price' => 650]);
+        DB::table('booking_services')->update(['service_id' => 91]);
+        DB::table('booking_pets')->where('booking_pet_id', 1)->update(['confirmed_size' => 'extra_large', 'groomer_id' => 1,
+            'grooming_start_time' => now(), 'grooming_state' => 'in_progress']);
+        DB::table('booking_pets')->where('booking_pet_id', 2)->update(['confirmed_size' => 'small', 'groomer_id' => 1]);
+        $this->authenticateAs('customer');
+        $payload = ['pets' => [['species' => 'dog', 'size' => 'extra_large', 'grooming_preference' => 'puppy_cut',
+            'services' => ['package' => 'deluxe_dog_grooming']]]];
+        DB::enableQueryLog();
+        $result = $this->postJson('/api/grooming/forecast', $payload)->assertOk()
+            ->assertJsonPath('pets.0.provisional', true)
+            ->assertJsonPath('pets.0.start_at', '2026-10-31T15:15:00+08:00')
+            ->assertJsonPath('pets.0.completion_at', '2026-10-31T18:15:00+08:00')
+            ->assertJsonPath('closing_risk', true);
+        $writes = collect(DB::getQueryLog())->filter(fn ($query) => preg_match('/^\s*(insert|update|delete|replace)\b/i', $query['query']));
+        DB::disableQueryLog();
+        $this->assertCount(0, $writes);
+        $this->assertStringNotContainsString('Zeus', $result->getContent());
+        $this->assertStringNotContainsString('MULTI-PET-SECURITY', $result->getContent());
+        $this->assertDatabaseCount('booking_pets', 2);
+        $this->assertDatabaseCount('grooming_intake_sequences', 0);
+        $this->authenticateAs('staff');
+        $this->getJson('/api/admin/bookings')->assertOk()
+            ->assertJsonPath('inProgressList.0.pets.1.groomingForecast.start_at', '2026-10-31T14:30:00+08:00')
+            ->assertJsonPath('inProgressList.0.pets.1.groomingForecast.provisional', false);
+        DB::table('booking_pets')->where('booking_pet_id', 1)->update(['grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        $this->getJson('/api/admin/bookings')->assertOk()
+            ->assertJsonPath('inProgressList.0.pets.1.groomingForecast.start_at', '2026-10-31T13:00:00+08:00');
+        $this->authenticateAs('customer');
+        DB::table('bookings')->update(['status' => 'waiting_to_arrive']);
+        $this->postJson('/api/grooming/forecast', $payload)->assertOk()
+            ->assertJsonPath('pets.0.start_at', '2026-10-31T13:00:00+08:00');
+        Carbon::setTestNow(Carbon::parse('2026-10-31 18:00', 'Asia/Manila'));
+        $this->postJson('/api/grooming/forecast', $payload)->assertOk()
+            ->assertJsonPath('service_day', '2026-11-01')->assertJsonPath('pets.0.start_at', null)
+            ->assertJsonPath('pets.0.duration.max_minutes', 180)->assertJsonPath('closing_risk', false);
+    }
+
+    public function test_forecast_endpoints_preserve_role_permissions_and_support_duration_only(): void
+    {
+        $payload = ['durations_only' => true, 'pets' => [['species' => 'dog', 'size' => 'small', 'services' => ['package' => 'partial_grooming']]]];
+        $this->postJson('/api/grooming/forecast', $payload)->assertUnauthorized();
+        $this->authenticateAs('customer');
+        $this->postJson('/api/admin/grooming/forecast', $payload)->assertForbidden();
+        $this->postJson('/api/grooming/forecast', $payload)->assertOk()->assertJsonPath('pets.0.duration.max_minutes', 60);
+        $this->authenticateAs('staff', 'clinic_receptionist');
+        $this->postJson('/api/admin/grooming/forecast', $payload)->assertOk();
+        $this->authenticateAs('staff', 'veterinarian');
+        $this->postJson('/api/admin/grooming/forecast', $payload)->assertForbidden();
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/grooming/forecast', $payload)->assertOk()->assertJsonPath('pets.0.duration.min_minutes', 45);
+    }
+
+    public function test_multi_pet_forecast_follows_dog_then_cat_intake_and_never_initializes_settings(): void
+    {
+        Carbon::setTestNow('2026-10-31 13:00:00');
+        $this->setPetGroomersOnDuty(1);
+        DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        DB::table('clinic_settings')->delete();
+        $this->authenticateAs('customer');
+        $this->postJson('/api/grooming/forecast', ['pets' => [
+            ['species' => 'cat', 'size' => 'small', 'services' => ['package' => 'cat_full_grooming']],
+            ['species' => 'dog', 'size' => 'small', 'services' => ['package' => 'partial_grooming']],
+        ]])->assertOk()->assertJsonPath('pets.1.start_at', '2026-10-31T13:00:00+08:00')
+            ->assertJsonPath('pets.0.start_at', '2026-10-31T14:00:00+08:00')
+            ->assertJsonPath('completion_at', '2026-10-31T15:30:00+08:00');
+        $this->assertDatabaseCount('clinic_settings', 0);
+    }
+
+    #[DataProvider('reportSnapshotFlows')]
+    public function test_late_completion_warning_does_not_block_valid_intake(bool $walkIn): void
+    {
+        Carbon::setTestNow('2026-10-31 16:30:00');
+        $this->authenticateAs($walkIn ? 'staff' : 'customer');
+        $this->postJson($walkIn ? '/api/admin/grooming/forecast' : '/api/grooming/forecast', [
+            'pets' => [['species' => 'dog', 'size' => 'small', 'groomer_id' => 1, 'services' => ['package' => 'partial_grooming']]],
+        ])->assertOk()->assertJsonPath('closing_risk', true);
+        $this->postJson($walkIn ? '/api/admin/walk-in' : '/api/booking/store', $this->signedGroomingPayload($walkIn))->assertCreated();
+        $this->assertDatabaseHas('bookings', ['status' => $walkIn ? 'checked_in' : 'waiting_to_arrive']);
+    }
+
     private function authenticateAs(string $role, string $subrole = 'grooming_receptionist'): void
     {
         $user = new User;

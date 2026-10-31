@@ -83,6 +83,7 @@ class AdminBookingController extends Controller
     public function index(Request $request)
     {
         app(\App\Services\PreRegistrationExpiry::class)->expire();
+        $estimates = app(\App\Services\GroomingQueueForecast::class);
         $today = Carbon::today();
         $selectedDate = $request->query('date', $today->toDateString());
         $includeFuture = $request->boolean('include_future', false);
@@ -115,6 +116,7 @@ class AdminBookingController extends Controller
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('created_at')->orderBy('booking_id')
             ->get()
+            ->tap(fn ($bookings) => $estimates->forBookings($bookings))
             ->map(fn ($b) => $this->formatBooking($b));
 
         // DATE GUARD TEMPORARILY DISABLED FOR TESTING
@@ -131,6 +133,7 @@ class AdminBookingController extends Controller
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
+            ->tap(fn ($bookings) => $estimates->forBookings($bookings))
             ->map(fn ($b) => $this->formatBooking($b));
 
         $inProgressQuery = Booking::where(function ($query) {
@@ -153,6 +156,7 @@ class AdminBookingController extends Controller
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
+            ->tap(fn ($bookings) => $estimates->forBookings($bookings))
             ->map(function ($booking) {
                 $formatted = $this->formatBooking($booking);
                 // A partially started booking remains checked_in in storage, but
@@ -168,6 +172,7 @@ class AdminBookingController extends Controller
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
+            ->tap(fn ($bookings) => $estimates->forBookings($bookings))
             ->map(fn ($b) => $this->formatBooking($b));
 
         $released = Booking::where('status', 'released')
@@ -176,6 +181,7 @@ class AdminBookingController extends Controller
                 'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
             ->orderBy('queue_number', 'asc')
             ->get()
+            ->tap(fn ($bookings) => $estimates->forBookings($bookings))
             ->map(fn ($b) => $this->formatBooking($b));
 
         $petAvailability = app(\App\Services\PetServiceSessionPolicy::class)->availability(
@@ -199,6 +205,7 @@ class AdminBookingController extends Controller
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
             'groomingPreferences' => config('grooming_services.preferences'),
             'groomerCapacity' => $this->groomerCapacitySnapshot(),
+            'groomingForecast' => $estimates->snapshot(),
         ])->header('Cache-Control', 'no-store, private');
     }
 
@@ -1514,6 +1521,7 @@ class AdminBookingController extends Controller
                     'groomerId' => $bp->groomer_id,
                     'petGroomerName' => $bp->groomer?->first_name,
                     'petQueueNumber' => $bp->pet_queue_number,
+                    'groomingForecast' => $bp->grooming_forecast,
                     'groomingStartedAt' => $bp->grooming_start_time
                         ? Carbon::parse($bp->grooming_start_time)->format('g:i A')
                         : null,

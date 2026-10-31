@@ -1,6 +1,6 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -101,7 +101,7 @@ export async function refreshBookingReviewStep() {
   renderReviewNotice();
   if (previousSignature && previousSignature !== latestSignature) {
     elements.reviewNotice.classList.remove("hidden");
-    elements.reviewNotice.textContent = "A grooming price was updated. Please review the latest pricing before confirming.";
+    elements.reviewNotice.textContent += " A grooming price was updated. Please review the latest pricing before confirming.";
   }
   renderReviewSelections();
   renderTotalPricing();
@@ -143,9 +143,11 @@ function renderReviewNotice() {
 
   const price = getGroomingPricePresentation(state.reviewPayload.totalPricing);
 
+  const estimateNotice = sessionStorage.getItem("groomingForecastNotice");
+  sessionStorage.removeItem("groomingForecastNotice");
   elements.reviewNotice.className =
-    `${price.isEstimate ? "mb-6" : "hidden"} rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600`;
-  elements.reviewNotice.textContent = price.disclaimer;
+    `${price.isEstimate || estimateNotice ? "mb-6" : "hidden"} rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600`;
+  elements.reviewNotice.textContent = [price.disclaimer, estimateNotice].filter(Boolean).join(" ");
 }
 
 function renderReviewSelections() {

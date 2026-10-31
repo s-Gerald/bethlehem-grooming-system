@@ -855,7 +855,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029");
+      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029&estimates=20261031");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);
@@ -1077,6 +1077,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       <p class="mt-1 text-xs text-portal-muted">${pet.pet_queue_number != null ? `Queue #${escapeDashboardHtml(pet.pet_queue_number)}` : "Queue not assigned"}</p>
       ${showStatus ? `<p class="mt-1 text-xs font-semibold ${config.textClass}">${escapeDashboardHtml(config.label)}</p>` : ""}
       ${showStatus && context ? `<p class="mt-2 text-portal-muted">${escapeDashboardHtml(context)}</p>` : ""}
+      ${pet.grooming_forecast ? `<p class="mt-2 text-xs text-portal-muted">${escapeDashboardHtml(globalThis.GroomingForecastPresentation?.text(pet.grooming_forecast) || "")}</p>` : ""}
     </div>`;
   }
 

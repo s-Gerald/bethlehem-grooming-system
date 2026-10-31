@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { createGroomingEstimateFlow } from "../scripts/components/grooming-estimates.js?v=20261031";
 import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
 import * as draft from "../scripts/services/booking-draft-service.js";
 import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
@@ -40,7 +41,7 @@ function createRenderer(file) {
     if (!elements.has(id)) elements.set(id, { classList: classList(), addEventListener() {} });
     return elements.get(id);
   } };
-  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, ...serviceSelection, document, sessionStorage: { setItem() {} }, window: {} });
+  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, ...serviceSelection, createGroomingEstimateFlow, document, sessionStorage: { getItem() { return null; }, removeItem() {}, setItem() {} }, window: {} });
   const source = fs.readFileSync(new URL(`../scripts/components/${file}.js`, import.meta.url), "utf8")
     .replace(/import[\s\S]*?from\s+"[^"]+";\s*/g, "")
     .replace(/export\s+(?=(?:async\s+)?function)/g, "");

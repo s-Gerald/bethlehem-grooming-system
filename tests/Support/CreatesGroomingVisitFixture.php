@@ -87,10 +87,11 @@ trait CreatesGroomingVisitFixture
             $t->timestamp('created_at')->nullable();
         });
         foreach (['notifications', 'customer_notifications'] as $name) {
-            Schema::create($name, function (Blueprint $t) {
+            Schema::create($name, function (Blueprint $t) use ($name) {
                 $t->id();
                 $t->unsignedInteger('booking_id');
                 $t->unsignedInteger('user_id')->nullable();
+                if ($name === 'customer_notifications') $t->unsignedInteger('pet_id')->nullable();
                 $t->string('type');
                 $t->text('message');
                 $t->boolean('is_read');

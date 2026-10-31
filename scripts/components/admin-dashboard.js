@@ -405,6 +405,7 @@ function adminDashboard() {
     activeGroomers: 2,
     activeGroomingPets: 0,
     groomingPreferences: {},
+    groomingForecast: null,
     groomerCapacityBusy: false,
     groomerCapacityError: "",
     pickupModal: { open: false, booking: null, busy: false },
@@ -1696,6 +1697,7 @@ function adminDashboard() {
       const groomerCapacity = payload.groomerCapacity || payload.groomer_capacity || {};
 
       const nextPayload = {};
+      if ("groomingForecast" in payload) nextPayload.groomingForecast = payload.groomingForecast;
       if ("completedToday" in payload || "completedToday" in summary) {
         nextPayload.completedToday = payload.completedToday ?? summary.completedToday;
       }
@@ -2695,6 +2697,17 @@ function adminDashboard() {
         .filter(Boolean);
 
       return names.length > 0 ? names.join(", ") : "No selected services recorded";
+    },
+
+    petForecastText(pet) {
+      return globalThis.GroomingForecastPresentation?.text(pet?.groomingForecast) || "";
+    },
+
+    get queueForecastText() {
+      const forecast = this.groomingForecast;
+      if (!forecast || !Object.keys(forecast.pets || {}).length) return "";
+      if (!forecast.completion_at) return `Queue times uncertain${forecast.closing_risk ? " · May extend past closing" : ""}`;
+      return `Queue estimated to finish ${globalThis.GroomingForecastPresentation?.time(forecast.completion_at) || ""}${forecast.closing_risk ? " · May extend past closing" : ""}`;
     },
 
     getIncomingPets(booking) {

@@ -232,7 +232,7 @@ const reviewDocument = {
 };
 global.document = reviewDocument;
 global.window = {};
-global.sessionStorage = { getItem: () => null, setItem() {} };
+global.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 let verifications = 0, capacityReads = 0;
 global.API.waitForSessionVerification = async () => { verifications++; return true; };
 global.API.previewWalkInCapacity = async () => { capacityReads++; return { capacity: { fits: true } }; };

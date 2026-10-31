@@ -1,4 +1,4 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -7,6 +7,7 @@ import {
   readSessionJson,
 } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=20261031";
 import {
   buildStepThreeDraftPayload,
   hasCompletedRequiredServiceSelection,
@@ -35,7 +36,16 @@ const state = {
   catalogueReady: false,
 };
 
+const estimateFlow = createGroomingEstimateFlow({
+  getPets: () => state.bookingDraft?.pets || [], getSelections: () => state.petSelections,
+  container: elements.petServiceSelections,
+  isCurrent: () => elements.form?.closest?.('[data-grooming-step]')?.hidden !== true,
+  onBusy: () => updateServiceNotice(),
+  onContinue: () => { saveCurrentStepDraft(); goToGroomingStep("review"); },
+});
+
 export async function refreshBookingServicesStep() {
+  estimateFlow.reset();
   state.bookingDraft = getBookingDraft();
 
   populateHiddenInputs(state.bookingDraft);
@@ -132,6 +142,7 @@ function renderMissingPetState() {
 
 function renderPetServiceSelections(petId = null) {
   renderServiceSelections(elements.petServiceSelections, state.bookingDraft?.pets || [], state.petSelections, false, petId);
+  estimateFlow.selectionChanged();
 }
 
 function getSelectionByPetId(petId) {
@@ -158,6 +169,7 @@ function updateServiceNotice(validationMessage = "") {
 }
 
 function syncNextButtonState(isEnabled) {
+  isEnabled = isEnabled && state.catalogueReady && !estimateFlow.busy;
   if (!elements.nextButton) {
     return;
   }
@@ -220,6 +232,7 @@ function handleSelectionChange(event) {
   const card = elements.petServiceSelections.querySelector(`[data-pet-card="${CSS.escape(petId)}"]`);
   if (["grooming-preference", "haircut-requested", "pet-groomer"].includes(target.dataset.role)) {
     updateSpecialInstructions(card, { id: petId }, selection);
+    estimateFlow.selectionChanged();
   } else renderPetServiceSelections(petId);
   if (guideToInstructions) focusSpecialInstructions(card);
   updateServiceNotice();
@@ -253,7 +266,7 @@ function handleSelectionInput(event) {
 
 function handleSubmit(event) {
   event.preventDefault();
-  if (!state.catalogueReady) return;
+  if (!state.catalogueReady || estimateFlow.busy) return;
   if (!validateSpecialInstructions(elements.petServiceSelections, state.bookingDraft.pets, state.petSelections)) return;
   if (state.petSelections.some((selection) => !hasPetGroomerSelection(selection))) {
     updateServiceNotice("Select an available Pet Groomer for each pet.");
@@ -278,8 +291,7 @@ function handleSubmit(event) {
     return;
   }
 
-  saveCurrentStepDraft();
-  goToGroomingStep("review");
+  return estimateFlow.next();
 }
 
 function saveCurrentStepDraft() {

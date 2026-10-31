@@ -1,4 +1,5 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=20261031";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   hasCompletedRequiredServiceSelection,
@@ -7,7 +8,7 @@ import {
   normalizeStepThreeDraft,
   createEmptyPetServiceSelection,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031";
 
 const state = {
   pets: [],
@@ -16,6 +17,13 @@ const state = {
 };
 
 let elements = {};
+const estimateFlow = createGroomingEstimateFlow({
+  getPets: () => state.pets, getSelections: () => state.petSelections,
+  getContainer: () => elements.petServiceSelections, walkIn: true,
+  isCurrent: () => elements.form?.isConnected !== false,
+  onBusy: () => { if (elements.nextButton) updateServiceNotice(); },
+  onContinue: continueToReview,
+});
 
 function getServicesMainMarkup() {
   return `
@@ -160,6 +168,7 @@ function renderMissingPetState() {
 
 function renderPetServiceSelections(petId = null) {
   renderServiceSelections(elements.petServiceSelections, state.pets, state.petSelections, true, petId);
+  estimateFlow.selectionChanged();
 }
 
 function getSelectionByPetId(petId) {
@@ -185,6 +194,7 @@ function updateServiceNotice(validationMessage = "") {
 }
 
 function syncNextButtonState(isEnabled) {
+  isEnabled = isEnabled && state.catalogueReady && !estimateFlow.busy;
   if (!elements.nextButton) {
     return;
   }
@@ -246,6 +256,7 @@ function handleSelectionChange(event) {
   const card = elements.petServiceSelections.querySelector(`[data-pet-card="${CSS.escape(petId)}"]`);
   if (["grooming-preference", "haircut-requested", "pet-groomer"].includes(target.dataset.role)) {
     updateSpecialInstructions(card, { id: petId }, selection);
+    estimateFlow.selectionChanged();
   } else renderPetServiceSelections(petId);
   if (guideToInstructions) focusSpecialInstructions(card);
   updateServiceNotice();
@@ -277,7 +288,7 @@ function handleSelectionInput(event) {
 
 function handleSubmit(event) {
   event.preventDefault();
-  if (!state.catalogueReady) return;
+  if (!state.catalogueReady || estimateFlow.busy) return;
   if (!validateSpecialInstructions(elements.petServiceSelections, state.pets, state.petSelections)) return;
 
   if (state.petSelections.some((selection) => !hasPetGroomerSelection(selection, true))) {
@@ -294,6 +305,10 @@ function handleSubmit(event) {
     return;
   }
 
+  return estimateFlow.next();
+}
+
+function continueToReview() {
   window.history.pushState(null, "", "./walk-in-booking-review.html");
   renderWalkInReviewStep({
     pets: state.pets,
@@ -320,6 +335,7 @@ function initServicesState(pets, petSelections = []) {
 }
 
 export async function renderWalkInServicesStep({ pets = [], petSelections = [] } = {}) {
+  estimateFlow.reset();
   if (!await API.waitForSessionVerification()) return;
   document.title = "Walk-in - Grooming Services";
   document.body.className = "min-h-screen bg-slate-50 text-slate-800";

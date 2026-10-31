@@ -1,4 +1,4 @@
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031";
 import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   escapeHtml,
@@ -202,9 +202,11 @@ function renderEmptyState(message) {
 function renderReviewNotice() {
   const price = getGroomingPricePresentation(state.reviewPayload.totalPricing);
 
+  const estimateNotice = sessionStorage.getItem("groomingForecastNotice");
+  sessionStorage.removeItem("groomingForecastNotice");
   elements.reviewNotice.className =
-    `${price.isEstimate ? "mb-6" : "hidden"} rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600`;
-  elements.reviewNotice.textContent = price.disclaimer;
+    `${price.isEstimate || estimateNotice ? "mb-6" : "hidden"} rounded-2xl border border-[#9bb9d3] bg-white px-4 py-3 text-sm text-slate-600`;
+  elements.reviewNotice.textContent = [price.disclaimer, estimateNotice].filter(Boolean).join(" ");
 }
 
 function renderReviewSelections() {

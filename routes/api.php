@@ -88,6 +88,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/session/unlock', [\App\Http\Controllers\SessionController::class, 'unlock'])
         ->middleware(['role:admin,staff', 'throttle:10,1'])->name('session.unlock');
     Route::get('/grooming/services', [GroomingPricingController::class, 'index']);
+    Route::post('/grooming/forecast', [\App\Http\Controllers\GroomingForecastController::class, 'customer'])->middleware('role:customer');
     Route::get('/admin/grooming/services', [GroomingPricingController::class, 'managedIndex'])->middleware('role:admin');
     Route::get('/admin/grooming/services/catalogue', [GroomingPricingController::class, 'staffIndex'])->middleware(['role:admin,staff', 'staff:grooming_services_view']);
     Route::post('/admin/grooming/services', [GroomingPricingController::class, 'store'])->middleware('role:admin');
@@ -205,6 +206,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
         Route::get('/admin/dashboard/summary', [AdminBookingController::class, 'dashboardSummary'])->middleware('staff:dashboard');
         Route::get('/admin/dashboard/activity', [AdminBookingController::class, 'dashboardActivity'])->middleware('staff:dashboard');
         Route::middleware('grooming')->group(function () {
+            Route::post('/admin/grooming/forecast', [\App\Http\Controllers\GroomingForecastController::class, 'staff']);
             Route::get('/admin/grooming/activity', [AdminBookingController::class, 'activityIndicator']);
             Route::get('/admin/bookings', [AdminBookingController::class, 'index']);
             Route::get('/admin/bookings/archived', [AdminBookingController::class, 'archivedIndex']);

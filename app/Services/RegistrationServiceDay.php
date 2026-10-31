@@ -19,10 +19,10 @@ class RegistrationServiceDay
         return $availability['service_day'];
     }
 
-    public function availability(string $service): array
+    public function availability(string $service, ?ClinicSetting $settings = null): array
     {
         $now = Carbon::now('Asia/Manila');
-        $hours = ClinicSetting::current()->serviceAvailability($service);
+        $hours = ($settings ?? ClinicSetting::current())->serviceAvailability($service);
         $today = $now->toDateString();
         $tomorrow = $now->copy()->addDay()->toDateString();
         $closures = ClinicClosure::query()->forService($service)->where('is_active', true)

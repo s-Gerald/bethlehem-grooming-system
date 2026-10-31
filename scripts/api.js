@@ -3321,6 +3321,11 @@ var API = (() => {
       getAdminToken() || getCustomerToken(), { force: true, cache: "no-store" });
   }
 
+  function getGroomingForecast(payload, staff = false) {
+    return request("POST", staff ? "/admin/grooming/forecast" : "/grooming/forecast", payload,
+      staff ? getAdminToken() : getCustomerToken(), { force: true, cache: "no-store" });
+  }
+
   async function updateGroomingPricing(serviceId, payload) {
     return request("PATCH", `/admin/grooming/services/${encodeURIComponent(serviceId)}/pricing`,
       payload, getAdminToken());
@@ -3750,6 +3755,7 @@ var API = (() => {
     getClinicPerformanceReport,
     // Walk-in
     getGroomingCatalogue,
+    getGroomingForecast,
     updateGroomingPricing,
     submitWalkIn,
     submitClinicWalkIn,

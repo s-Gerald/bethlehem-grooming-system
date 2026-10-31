@@ -393,6 +393,8 @@ class BookingController extends Controller
             ? collect()
             : $historyQuery->get();
 
+        app(\App\Services\GroomingQueueForecast::class)->forBookings($active);
+
         $format = function ($b) use ($petId) {
             $bookingPets = $b->bookingPets ?? collect();
             $showGroomingTracker = true;
@@ -433,6 +435,7 @@ class BookingController extends Controller
                     'pet_id' => $bp->pet_id,
                     'booking_pet_id' => $bp->booking_pet_id,
                     'pet_queue_number' => $bp->pet_queue_number,
+                    'grooming_forecast' => $bp->grooming_forecast,
                     'pet_queue_date' => $bp->pet_queue_date?->toDateString(),
                     'groomer_id' => $bp->groomer_id,
                     'pet_groomer' => $bp->groomer,
@@ -623,6 +626,7 @@ class BookingController extends Controller
             ], 404);
         }
 
+        app(\App\Services\GroomingQueueForecast::class)->forBookings(collect([$booking]));
         $booking->setRelation('timeWindow', $booking->preferredArrivalWindow());
         $booking->bookingServices->each(function ($item) {
             if ($item->service) {

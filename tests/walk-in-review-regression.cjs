@@ -43,7 +43,7 @@ function setup(preview) {
   const context = vm.createContext({
     document: { body, addEventListener() {}, getElementById: get, querySelector: () => main },
     window: { history: { pushState(a, b, url) { navigation.push(url); } }, location: {} },
-    sessionStorage: { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value) },
+    sessionStorage: { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
     API: { waitForSessionVerification: async () => true, previewWalkInCapacity: (data) => { calls.push(data); return preview(data); } },
     buildWalkInPets: consent.buildWalkInPets,
     buildBookingReviewPayload: () => payload,
@@ -96,7 +96,7 @@ async function main() {
     setBusy(value) { this.valid = !value; } };
   const submission = vm.createContext({
     document: { addEventListener() {} }, window: { location: {} }, crypto: require('node:crypto').webcrypto,
-    sessionStorage: { getItem: key => draft.get(key), setItem: (key, value) => draft.set(key, value) },
+    sessionStorage: { getItem: key => draft.get(key), setItem: (key, value) => draft.set(key, value), removeItem: key => draft.delete(key) },
     getPetWeightSubmission: pet => ({ weight: pet.weight }), getPetWeightSubmissionValidationMessage: () => '',
     API: { submitWalkIn(payload) { sent.push(payload); return new Promise((_, reject) => { rejectRequest = reject; }); } },
   });

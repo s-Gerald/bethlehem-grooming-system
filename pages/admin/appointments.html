@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="../../scripts/components/product-search-dropdown.js?v=20261029-v2"></script>
     <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261030" />
+    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261030&estimates=20261031" />
     <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
@@ -220,7 +220,7 @@
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261030"></script>
+      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261030&estimates=20261031"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
       <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031"></script>
 
@@ -416,6 +416,7 @@
           <div x-cloak x-show="bookingsLoaded" :aria-busy="bookingsLoading">
 
           <!-- Summary cards -->
+          <p x-cloak x-show="queueForecastText" x-text="queueForecastText" class="mt-4 text-sm text-slate-600" aria-live="polite"></p>
           <section class="mt-6">
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <article data-session-surface
@@ -704,6 +705,7 @@
                                 <p class="admin-queued-pet-services" x-text="formatPetCardServiceLabel(pet, booking)"></p>
                                 <span x-show="!isPetGroomingFinished(pet) && petGroomingState(pet) !== 'cancelled' && pet.groomingPreferenceLabel" class="grooming-selection-chip grooming-selection-chip--compact" x-text="pet.groomingPreferenceLabel"></span>
                               </div>
+                              <p x-show="petForecastText(pet)" x-text="petForecastText(pet)" class="mt-2 text-xs text-slate-500"></p>
                               <div x-show="pet.medicalConditions || pet.specialInstructions || isPetGroomingFinished(pet)" class="grooming-pet-flags">
                                 <span x-show="pet.medicalConditions" class="grooming-note-flag">Medical note</span>
                                 <span x-show="pet.specialInstructions" class="grooming-note-flag">Customer note</span>
@@ -1575,6 +1577,7 @@
     <script src="../../scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
     <script src="../../scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="../../scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
-    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1"></script>
+    <script src="../../scripts/services/grooming-forecast-presentation.js?v=20261031"></script>
+    <script src="../../scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031"></script>
   </body>
 </html>

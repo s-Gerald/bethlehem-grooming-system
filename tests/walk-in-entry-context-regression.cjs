@@ -63,6 +63,7 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
 }
 
 async function checkStepNavigation(file, markupFunction, topId, bottomId, previousPage) {
+  const { createGroomingEstimateFlow } = await import('../scripts/components/grooming-estimates.js?v=20261031');
   const nodes = new Map();
   const get = id => {
     if (!nodes.has(id)) nodes.set(id, element());
@@ -75,6 +76,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     window: { location: { href: "" } },
     sessionStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key) },
     API: { waitForSessionVerification: async () => true },
+    createGroomingEstimateFlow,
     mountClinicVisitReasonFields: () => ({}), getClinicVisitSummaryMarkup: () => "", formatClinicVisitReason: () => "",
   });
   const source = read(`scripts/components/${file}.js`).replace(/^import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "").replace(/^export /gm, "");

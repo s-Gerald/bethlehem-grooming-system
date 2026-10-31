@@ -59,7 +59,7 @@ function mount(clinic) {
     createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
     sessionStorage, URLSearchParams,
     isGroomingSinglePage: () => true,
-    window: { location: { search: clinic ? "?flow=clinic" : "" } },
+    window: { addEventListener() {}, location: { search: clinic ? "?flow=clinic" : "" } },
     document: { getElementById: get, querySelectorAll: () => [], createElement: node },
     API: { getCustomerToken: () => "fixture", addPet: payload => { writes++; return save(payload); } },
   });

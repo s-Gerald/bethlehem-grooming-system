@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 class GroomingReviewAndConsentInterfaceTest extends TestCase
 {
-    public function test_review_pages_share_the_price_presentation_and_only_show_notices_for_estimates(): void
+    public function test_review_pages_share_price_presentation_and_allow_nonblocking_forecast_feedback(): void
     {
         $customerPage = file_get_contents(base_path('pages/client/grooming-pre-registration.html'));
         $walkInPage = file_get_contents(base_path('pages/admin/walk-in-booking-review.html'));
@@ -25,8 +25,8 @@ class GroomingReviewAndConsentInterfaceTest extends TestCase
 
         foreach ([$customerReview, $walkInReview] as $review) {
             $this->assertStringContainsString('getGroomingPricePresentation(state.reviewPayload.totalPricing)', $review);
-            $this->assertStringContainsString('elements.reviewNotice.textContent = price.disclaimer;', $review);
-            $this->assertStringContainsString('${price.isEstimate ? "mb-6" : "hidden"}', $review);
+            $this->assertStringContainsString('elements.reviewNotice.textContent = [price.disclaimer, estimateNotice].filter(Boolean).join(" ");', $review);
+            $this->assertStringContainsString('${price.isEstimate || estimateNotice ? "mb-6" : "hidden"}', $review);
         }
 
         $this->assertStringContainsString('const hasDisplayedPlusPrice = items.some', $pricing);

@@ -161,6 +161,8 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
 
       </section>
 
+      <p data-grooming-duration="${escapeHtml(pet.id)}" class="mt-3 text-sm text-slate-600" aria-live="polite" hidden></p>
+
       <section class="mt-8 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] md:items-stretch">
         ${renderSpecialInstructions(pet, selection, walkIn ? 1000 : 500)}
 
