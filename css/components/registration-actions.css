@@ -1,0 +1,88 @@
+/* Bethlehem registration: restrained fixed actions, existing navy buttons and form widths. */
+:root {
+  --registration-actions-space: calc(7rem + env(safe-area-inset-bottom, 0px));
+  --registration-actions-surface: #fff;
+  --registration-actions-border: #dbe5ed;
+  --registration-actions-shadow: 0 -3px 14px rgb(47 75 102 / 7%);
+}
+
+.registration-step {
+  --registration-content-width: 72rem;
+  --registration-gutter: 1rem;
+  padding-bottom: calc(var(--registration-actions-space) + 2rem);
+}
+
+.registration-step.max-w-5xl {
+  --registration-content-width: 64rem;
+}
+
+html:has(.registration-step) {
+  scroll-padding-bottom: var(--registration-actions-space);
+}
+
+.registration-step :is(input, textarea, select, [tabindex], [role="alert"]) {
+  scroll-margin-block: 1.5rem;
+}
+
+.registration-step .registration-actions {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  border-top: 1px solid var(--registration-actions-border);
+  background: var(--registration-actions-surface);
+  padding-block: 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--registration-gutter), env(safe-area-inset-left, 0px), calc((100% - var(--registration-content-width)) / 2 + var(--registration-gutter)));
+  padding-right: max(var(--registration-gutter), env(safe-area-inset-right, 0px), calc((100% - var(--registration-content-width)) / 2 + var(--registration-gutter)));
+  box-shadow: var(--registration-actions-shadow);
+}
+
+.registration-actions > :is(a, button) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.registration-actions > :last-child {
+  margin-left: auto;
+}
+
+/* Keep the existing warning's review/continue controls above the fixed actions. */
+#similarOwnerWarning {
+  bottom: calc(var(--registration-actions-space) + 1rem);
+  max-height: calc(100vh - var(--registration-actions-space) - 2rem);
+  max-height: calc(100dvh - var(--registration-actions-space) - 2rem);
+  overflow-y: auto;
+}
+
+@media (min-width: 768px) {
+  .registration-step { --registration-gutter: 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  .registration-step { --registration-gutter: 2rem; }
+}
+
+@media (max-width: 479px) {
+  :root {
+    --registration-actions-space: calc(11rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .registration-actions > :is(a, button) {
+    padding-inline: 0.75rem;
+  }
+}
+
+@media print {
+  .registration-step { padding-bottom: 2rem; }
+  .registration-step .registration-actions,
+  #similarOwnerWarning { display: none; }
+}

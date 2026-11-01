@@ -14,7 +14,7 @@ import {
   formatPriceOption,
   getPackageById,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1&intake-reliability=20261029";
+import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1&intake-reliability=20261029&registration-actions=20261101-v1";
 
 const state = {
   bookingDraft: null,
@@ -36,7 +36,7 @@ let elements = {};
 
 function getReviewMainMarkup() {
   return `
-    <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="walkInReviewBackTopBtn"
         href="./dashboard.html"
@@ -100,7 +100,7 @@ function getReviewMainMarkup() {
           </p>
         </section>
 
-        <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="registration-actions">
           <button
             id="walkInReviewBackBtn"
             type="button"

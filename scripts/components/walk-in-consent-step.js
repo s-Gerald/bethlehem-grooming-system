@@ -17,7 +17,7 @@ let elements = {};
 
 function getConsentMainMarkup() {
   return `
-    <main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="walkInConsentBackTopBtn"
         href="./dashboard.html"
@@ -64,7 +64,7 @@ function getConsentMainMarkup() {
         <form id="walkInConsentForm" class="space-y-6" novalidate>
           <div id="groomingConsentFields" class="space-y-6"></div>
 
-          <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="registration-actions">
             <button
               id="walkInConsentBackBtn"
               type="button"

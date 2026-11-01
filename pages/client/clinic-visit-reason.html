@@ -3,13 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Clinic Visit - Reason for Visit</title>
     <link rel="stylesheet" href="../../css/output.css?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&availability=20261027&auth-hardening=20261030" />
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="../../css/components/registration-actions.css?v=20261101-v2" />
   </head>
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
-    <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section class="mb-6">
         <a
           href="./dashboard.html"
@@ -37,7 +38,7 @@
             <form id="clinicVisitReasonForm" class="space-y-5" novalidate>
               <div id="clinicVisitReasonFields"></div>
 
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="registration-actions">
                 <a
                   href="./booking-pet-details.html?flow=clinic"
                   class="inline-flex items-center justify-center rounded-2xl border border-[#315b7e] px-5 py-3 text-sm font-semibold text-[#315b7e] transition hover:bg-[#edf5fc]"

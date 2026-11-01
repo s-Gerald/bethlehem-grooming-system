@@ -8,7 +8,7 @@ import {
   normalizeStepThreeDraft,
   createEmptyPetServiceSelection,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1";
 
 const state = {
   pets: [],
@@ -27,7 +27,7 @@ const estimateFlow = createGroomingEstimateFlow({
 
 function getServicesMainMarkup() {
   return `
-    <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section data-session-public>
         <a
           id="walkInServicesBackTopBtn"
@@ -67,7 +67,7 @@ function getServicesMainMarkup() {
             <div id="petServiceSelections" class="space-y-6"></div>
           </section>
 
-          <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="registration-actions">
             <button
               id="walkInServicesBackBtn"
               type="button"

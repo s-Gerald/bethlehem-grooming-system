@@ -1,4 +1,4 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1";
 import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
@@ -7,7 +7,7 @@ let state = { pet: null, fields: null };
 
 function getMarkup() {
   return `
-    <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section data-session-public class="mb-6">
         <a id="clinicComplaintBackTopBtn" href="./dashboard.html"
           class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700">
@@ -28,7 +28,7 @@ function getMarkup() {
           <section class="rounded-3xl bg-white/90 p-5 shadow-sm md:p-6">
             <form id="clinicComplaintForm" class="space-y-5" novalidate>
               <div id="clinicComplaintFields"></div>
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="registration-actions">
                 <button id="clinicComplaintBackBtn" type="button"
                   class="inline-flex items-center justify-center rounded-2xl border border-[#315b7e] px-5 py-3 text-sm font-semibold text-[#315b7e] transition hover:bg-[#edf5fc]">Back</button>
                 <button type="submit"

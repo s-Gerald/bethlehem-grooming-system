@@ -16,7 +16,7 @@ let elements = {};
 
 function getMarkup(pet, commonConcerns, chiefComplaint) {
   return `
-    <main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="clinicConsentBackTopBtn"
         href="./dashboard.html"
@@ -83,7 +83,7 @@ function getMarkup(pet, commonConcerns, chiefComplaint) {
             </label>
           </section>
 
-          <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="registration-actions">
             <button
               id="clinicConsentBackBtn"
               type="button"

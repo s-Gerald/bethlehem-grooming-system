@@ -3,17 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Grooming Online Registration</title>
     <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
     <link rel="stylesheet" href="../../css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
     <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261010&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="../../css/components/registration-actions.css?v=20261101-v2" />
   </head>
   <body data-grooming-flow="single-page" class="min-h-screen bg-[#f6fafd] text-slate-800">
     <div data-grooming-step="pets" class="hidden" hidden>
-<main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+<main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <!-- ENTER YOUR PET INFORMATION -->
       <section class="mb-6">
         <a
@@ -458,7 +459,7 @@
           </section>
 
           <!-- Footer buttons -->
-          <div class="mt-8 flex items-center justify-between gap-4">
+          <div class="registration-actions">
             <button
               id="backBtn"
               type="button"
@@ -481,7 +482,7 @@
     </main>
     </div>
     <div data-grooming-step="services" class="hidden" hidden>
-<main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+<main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <!-- Back to Home -->
       <a
         href="./dashboard.html"
@@ -523,7 +524,7 @@
           <section>
             <div id="petServiceSelections" class="space-y-6"></div>
           </section>
-          <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="registration-actions">
             <a href="./grooming-pre-registration.html?step=pets" data-grooming-target="pets" class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white">Back</a>
             <button id="reviewBookingBtn" type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274a67]">Next Step</button>
           </div>
@@ -532,7 +533,7 @@
     </main>
     </div>
     <div data-grooming-step="review" class="hidden" hidden>
-<main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+<main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <a
         href="./dashboard.html"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
@@ -592,7 +593,7 @@
         <section id="groomingQueueInformation" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5" aria-live="polite"></section>
 
         <div
-          class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          class="registration-actions"
         >
           <a
             href="./grooming-pre-registration.html?step=services" data-grooming-target="services"
@@ -613,7 +614,7 @@
     </main>
     </div>
     <div data-grooming-step="consent" class="hidden" hidden>
-<main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
+<main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <!-- Back to Home -->
       <a
         href="./dashboard.html"
@@ -652,7 +653,7 @@
 
           <!-- Buttons -->
           <div
-            class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between"
+            class="registration-actions"
           >
             <a
               href="./grooming-pre-registration.html?step=review" data-grooming-target="review"

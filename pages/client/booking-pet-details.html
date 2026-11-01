@@ -3,12 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Pet Information</title>
     <link rel="stylesheet" href="../../css/output.css?registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&pet-care=20261027-v1" />
 
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="../../css/components/registration-actions.css?v=20261101-v2" />
   </head>
 
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
@@ -20,7 +21,7 @@
       create any newly added pet record, and attach the final pet IDs to the same
       active booking draft.
     -->
-    <main class="mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
+    <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <!-- Page Header -->
       <section class="mb-6">
         <a
@@ -465,7 +466,7 @@
           </section>
 
           <!-- Footer buttons -->
-          <div class="mt-8 flex items-center justify-between gap-4">
+          <div class="registration-actions">
             <button
               id="backBtn"
               type="button"
