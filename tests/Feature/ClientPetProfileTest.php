@@ -13,6 +13,46 @@ class ClientPetProfileTest extends TestCase
 {
     use \Tests\Support\CreatesRegistrationAvailability;
 
+    public function test_customer_cannot_read_update_archive_or_restore_another_owners_pet(): void
+    {
+        DB::table('pets')->insert([
+            ['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Own pet', 'species' => 'Dog'],
+            ['pet_id' => 202, 'user_id' => 20, 'pet_name' => 'Private pet', 'species' => 'Cat'],
+        ]);
+        $this->authenticateCustomer(10);
+        $this->getJson('/api/pets')->assertOk()->assertJsonCount(1, 'pets')
+            ->assertJsonMissing(['pet_name' => 'Private pet']);
+        $this->getJson('/api/pets/202')->assertNotFound();
+        $this->putJson('/api/pets/202', ['user_id' => 10, 'pet_name' => 'Stolen pet'])->assertNotFound();
+        $this->postJson('/api/pets/202/archive')->assertNotFound();
+        $this->postJson('/api/pets/202/unarchive')->assertNotFound();
+        $this->assertDatabaseHas('pets', ['pet_id' => 202, 'user_id' => 20, 'pet_name' => 'Private pet', 'is_archived' => false]);
+        $this->getJson('/api/pets/101')->assertOk()->assertJsonPath('pet.pet_name', 'Own pet');
+    }
+
+    public function test_customer_pet_writes_ignore_submitted_ownership_and_verification_properties(): void
+    {
+        $this->authenticateCustomer(10);
+        $protected = ['user_id' => 20, 'unregistered_customer_id' => 42, 'is_archived' => true,
+            'clinic_verified_fields' => ['weight'], 'is_deceased' => true];
+        $id = $this->postJson('/api/pets', [...$protected, 'pet_name' => 'Mochi', 'species' => 'Dog'])
+            ->assertCreated()->json('pet.pet_id');
+        $this->putJson('/api/pets/'.$id, [...$protected, 'color' => 'Brown'])->assertOk();
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'user_id' => 10, 'unregistered_customer_id' => null,
+            'is_archived' => false, 'is_deceased' => false, 'clinic_verified_fields' => null, 'color' => 'Brown']);
+    }
+
+    public function test_customer_cannot_mark_another_owners_notification_read(): void
+    {
+        $id = DB::table('customer_notifications')->insertGetId([
+            'user_id' => 20, 'type' => 'reminder_24h', 'message' => 'Private notification', 'is_read' => false,
+        ]);
+        $this->authenticateCustomer(10);
+        $this->patchJson('/api/customer/notifications/'.$id.'/read', ['user_id' => 20])->assertNotFound();
+        $this->patchJson('/api/customer/notifications/read-all', ['user_id' => 20])->assertOk();
+        $this->assertDatabaseHas('customer_notifications', ['id' => $id, 'user_id' => 20, 'is_read' => false]);
+    }
+
     public function test_color_validation_normalization_and_legacy_preservation_for_customer_admin_and_staff(): void
     {
         Schema::create('users', function (Blueprint $table) {

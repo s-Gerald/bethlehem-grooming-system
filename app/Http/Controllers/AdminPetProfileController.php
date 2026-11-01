@@ -61,8 +61,10 @@ class AdminPetProfileController extends Controller
             'view' => 'sometimes|in:history',
             'page' => 'sometimes|integer|min:1',
         ]);
-        if (($data['history'] ?? null) === 'clinical' || ($data['view'] ?? null) === 'history') {
-            abort_unless($request->user()->clinicPermissions()['access'] ?? false, 403);
+        $canViewClinic = $request->user()->clinicPermissions()['access'] ?? false;
+        if (in_array($data['history'] ?? null, ['clinical', 'services', 'confinement'], true)
+            || ($data['view'] ?? null) === 'history') {
+            abort_unless($canViewClinic, 403);
         }
         if (($data['history'] ?? null) === 'grooming') {
             return response()->json(['success' => true, 'grooming_records' => $history->groomingRecords($pet)]);
@@ -102,8 +104,8 @@ class AdminPetProfileController extends Controller
         return response()->json([
             'success' => true,
             'grooming_records' => $history->groomingRecords($pet),
-            'medical_records' => $history->medicalRecords($pet),
-            'vaccinations' => $history->vaccinationRecords($pet),
+            'medical_records' => $canViewClinic ? $history->medicalRecords($pet) : [],
+            'vaccinations' => $canViewClinic ? $history->vaccinationRecords($pet) : [],
         ]);
     }
 }

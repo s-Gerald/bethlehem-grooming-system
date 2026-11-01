@@ -2711,13 +2711,15 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'private clinic document',
         );
 
-        $response = $this->get("/api/admin/clinic-appointments/1/attachments/{$attachmentId}/download");
+        $response = $this->withHeader('Authorization', 'Bearer fixture-session')
+            ->get("/api/admin/clinic-appointments/1/attachments/{$attachmentId}/download");
 
         $response
             ->assertOk()
             ->assertDownload('scoped-document.pdf')
             ->assertHeader('content-type', 'application/pdf')
             ->assertHeader('x-content-type-options', 'nosniff');
+        $this->assertTrue($response->headers->hasCacheControlDirective('no-store'));
         $this->assertSame('private clinic document', $response->streamedContent());
         $this->assertStringNotContainsString('clinic/attachments/1', (string) $response->headers->get('content-disposition'));
     }

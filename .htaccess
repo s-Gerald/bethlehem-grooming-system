@@ -1,3 +1,5 @@
+Options -Indexes
+
 <IfModule mod_headers.c>
     <Files "sign-in.html">
         Header always set Cache-Control "no-store, private, max-age=0, must-revalidate"
@@ -7,8 +9,16 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # This deployment may use the repository itself as its document root.
+    # Deny private files before Apache's existing-file shortcut bypasses Laravel.
+    RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L,NC]
+    RewriteRule ^(?:app|bootstrap|config|database|docs|node_modules|resources|routes|storage|tests|vendor)(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:artisan|AGENTS\.md|README\.md|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit(?:\.[^/]*)?\.xml|vite\.config\.js|tailwind\.config\.js)$ - [F,L,NC]
+    RewriteRule \.(?:sql|sqlite3?|db|log|ini|bak|backup|old|orig|env)(?:$|/) - [F,L,NC]
+    RewriteRule ^(?!public/index\.php$).*\.php(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:public/)?storage/(?:clinic|payment-proofs)(?:/|$) - [F,L,NC]
+
     RewriteRule ^pages/admin/(activity-log|availability)\.html$ public/index.php [L]
-    RewriteRule ^resources/views/admin/(activity-log|availability)\.html$ - [F,L]
 
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f

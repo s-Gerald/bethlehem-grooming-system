@@ -14,6 +14,41 @@ use Tests\TestCase;
 
 class SharedPayMongoTest extends TestCase
 {
+    public function test_a_paid_clinic_payment_or_event_identifier_cannot_settle_a_pos_checkout(): void
+    {
+        $this->clinicCheckout();
+        $this->webhook($this->event())->assertOk();
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::preventStrayRequests();
+        Http::fake(['api.paymongo.com/*' => Http::response(['data' => [
+            'id' => 'cs_second', 'type' => 'checkout_session',
+            'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_second', 'livemode' => false],
+        ]])]);
+        $this->posCheckout()->assertOk();
+        $attempt = GatewayPayment::where('context', 'pos')->sole();
+        $event = $this->event(16000);
+        $session = &$event['data']['attributes']['data'];
+        $session['id'] = 'cs_second';
+        $session['attributes']['reference_number'] = $attempt->reference;
+        $session['attributes']['metadata'] = app(\App\Services\OnlinePaymentService::class)->metadata($attempt);
+        foreach (['payment', 'event'] as $reused) {
+            $event['data']['id'] = $reused === 'event' ? 'evt_fixture' : 'evt_second';
+            $session['attributes']['payments'][0]['id'] = $reused === 'payment' ? 'pay_fixture' : 'pay_second';
+            $this->webhook($event)->assertUnprocessable();
+            $this->assertDatabaseHas('gateway_payments', ['id' => $attempt->id, 'status' => 'pending']);
+            $this->assertDatabaseCount('pos_transactions', 0);
+            $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
+            $this->assertDatabaseHas('gateway_stock_reservations', ['gateway_payment_id' => $attempt->id, 'quantity' => 2]);
+        }
+        $event['data']['id'] = 'evt_second';
+        $session['attributes']['payments'][0]['id'] = 'pay_second';
+        $this->webhook($event)->assertOk();
+        $this->webhook($event)->assertOk();
+        $this->assertDatabaseCount('pos_transactions', 1);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 1]);
+        $this->assertDatabaseCount('gateway_stock_reservations', 0);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

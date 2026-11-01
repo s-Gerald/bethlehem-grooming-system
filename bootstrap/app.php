@@ -44,7 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->respond(function ($response) {
-            if (\App\Http\Middleware\UseAccountSessionCookie::isAuthenticationRequest(request())) {
+            if (\App\Http\Middleware\UseAccountSessionCookie::isPrivateRequest(request())) {
                 $response->headers->set('Cache-Control', 'no-store');
             }
             if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*') && $response->getStatusCode() >= 500) {

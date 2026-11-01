@@ -11,6 +11,42 @@ use Tests\TestCase;
 
 class AdminPetProfileTest extends TestCase
 {
+    public function test_staff_without_clinic_access_receive_no_clinical_profile_data(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->authenticate(20, 'staff', null);
+        DB::table('clinic_appointments')->insert([
+            'id' => 701, 'appointment_reference' => 'CL-701', 'appointment_date' => '2026-08-02',
+            'status' => 'completed', 'pet_id' => 101,
+        ]);
+        DB::table('clinic_records')->insert(['clinic_appointment_id' => 701, 'diagnosis' => 'Private diagnosis']);
+        DB::table('vaccination_records')->insert([
+            'pet_id' => 101, 'vaccine_name' => 'Private vaccination', 'administered_date' => '2026-08-02',
+            'published_at' => '2026-08-02 12:00:00',
+        ]);
+
+        $this->getJson('/api/admin/pets/101/profile')->assertOk()
+            ->assertJsonCount(0, 'medical_records')->assertJsonCount(0, 'vaccinations')
+            ->assertJsonMissing(['diagnosis' => 'Private diagnosis'])
+            ->assertJsonMissing(['vaccine_name' => 'Private vaccination']);
+        $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk();
+        foreach (['history=clinical', 'history=services', 'history=confinement', 'view=history'] as $query) {
+            $this->getJson('/api/admin/pets/101/profile?'.$query)->assertForbidden();
+        }
+    }
+
+    public function test_authenticated_pet_responses_cannot_be_stored_by_http_caches(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->authenticate(20, 'staff', 'clinic_receptionist');
+        $this->withHeader('Authorization', 'Bearer test-session');
+        foreach (['/api/admin/pets/101/profile', '/api/admin/pets/999/profile', '/api/admin/pets/999/cases/1/details'] as $url) {
+            $response = $this->getJson($url);
+            $response->assertStatus(str_contains($url, '/999/') ? 404 : 200);
+            $this->assertTrue($response->headers->hasCacheControlDirective('no-store'), $url);
+        }
+    }
+
     public function test_staff_can_view_legacy_named_breed_without_fur(): void
     {
         Schema::table('pets', function (Blueprint $table) {
@@ -19,7 +55,7 @@ class AdminPetProfileTest extends TestCase
         });
         $this->insertPet(101, 'Legacy pet');
         DB::table('pets')->where('pet_id', 101)->update(['breed' => 'Golden Retriever']);
-        $this->authenticate(20, 'staff');
+        $this->authenticate(20, 'staff', 'clinic_receptionist');
         $this->getJson('/api/admin/pets/101/profile')->assertOk();
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'breed' => 'Golden Retriever', 'fur_type' => null]);
     }
@@ -177,7 +213,7 @@ class AdminPetProfileTest extends TestCase
     {
         $this->insertPet(101, 'Mochi');
         $this->insertPet(202, 'Other Pet');
-        $this->authenticate(20, 'staff');
+        $this->authenticate(20, 'staff', 'clinic_receptionist');
 
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '8:00 AM - 10:00 AM']);
         DB::table('bookings')->insert([
@@ -267,7 +303,7 @@ class AdminPetProfileTest extends TestCase
     public function test_finalized_medical_history_is_available_before_payment_and_excludes_unfinished_visits(): void
     {
         $this->insertPet(101, 'Mochi');
-        $this->authenticate(20, 'staff');
+        $this->authenticate(20, 'staff', 'clinic_receptionist');
         foreach (['in_consultation', 'for_payment', 'completed'] as $index => $status) {
             $id = 700 + $index;
             DB::table('clinic_appointments')->insert(['id' => $id, 'appointment_reference' => 'CL-'.$id,
@@ -283,7 +319,7 @@ class AdminPetProfileTest extends TestCase
     {
         $this->insertPet(101, 'Mochi');
         $this->insertPet(202, 'Other Pet');
-        $this->authenticate(20, 'staff');
+        $this->authenticate(20, 'staff', 'clinic_receptionist');
         $this->createCaseHistoryTables();
         DB::table('clinic_services')->insert(['id' => 1, 'name' => 'Renamed catalogue service']);
         foreach (range(1, 23) as $id) {

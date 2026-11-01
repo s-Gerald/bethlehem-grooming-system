@@ -20,6 +20,12 @@ class UseAccountSessionCookie
             'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*');
     }
 
+    public static function isPrivateRequest(Request $request): bool
+    {
+        return self::isAuthenticationRequest($request)
+            || $request->hasHeader('Authorization') || $request->hasCookie(self::NAME);
+    }
+
     public static function cookie(Request $request, string $name, string $value, $expires = 0): Cookie
     {
         $prefix = rtrim((string) parse_url(config('app.url'), PHP_URL_PATH), '/');
@@ -82,7 +88,7 @@ class UseAccountSessionCookie
             }
         }
 
-        if (self::isAuthenticationRequest($request)) {
+        if (self::isPrivateRequest($request)) {
             $response->headers->set('Cache-Control', 'no-store');
         }
         return $response;
