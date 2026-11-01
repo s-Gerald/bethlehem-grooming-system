@@ -12,6 +12,7 @@ Options -Indexes
     # This deployment may use the repository itself as its document root.
     # Deny private files before Apache's existing-file shortcut bypasses Laravel.
     RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L,NC]
+    RewriteRule (^|/)(?:auth\.json|Homestead\.(?:json|yaml))~?$ - [F,L,NC]
     RewriteRule ^(?:app|bootstrap|config|database|docs|node_modules|resources|routes|storage|tests|vendor)(?:/|$) - [F,L,NC]
     RewriteRule ^(?:artisan|AGENTS\.md|README\.md|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit(?:\.[^/]*)?\.xml|vite\.config\.js|tailwind\.config\.js)$ - [F,L,NC]
     RewriteRule \.(?:sql|sqlite3?|db|log|ini|bak|backup|old|orig|env)(?:$|/) - [F,L,NC]

@@ -27,8 +27,11 @@ async function checkDeployment(layout) {
   await once(probe, 'listening');
   const port = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
-  const safeFiles = ['index.html', 'assets/logo.svg', 'css/output.css', 'scripts/api.js', 'pages/client/sign-in.html'];
-  const privateFiles = layout === 'repository' ? [
+  const safeFiles = ['index.html', 'assets/logo.svg', 'assets/catalogue.json', 'css/output.css', 'scripts/api.js',
+    'pages/client/sign-in.html', 'pages/client/signup.html', 'pages/client/dashboard.html', 'pages/admin/clinic.html'];
+  const credentialFiles = ['auth.json', 'Auth.JSON', 'auth.json~', 'Homestead.json', 'Homestead.yaml',
+    'Homestead.yaml~', 'assets/auth.json', 'assets/Homestead.yaml', 'public/auth.json'];
+  const privateFiles = [...credentialFiles, ...(layout === 'repository' ? [
     '.env', '.env.backup', '.git/config', 'composer.json', 'composer.lock', 'package.json', 'artisan',
     'app/Models/User.php', 'bootstrap/cache/config.php', 'config/services.php', 'routes/api.php',
     'database/database.sqlite', 'storage/logs/laravel.log', 'storage/app/private/payment-proofs/proof.png',
@@ -36,7 +39,7 @@ async function checkDeployment(layout) {
     'tests/fixture.php', 'vendor/autoload.php', 'node_modules/fixture.js', 'docs/private.md',
     'public/storage/clinic/attachments/1/scan.png', 'public/storage/payment-proofs/proof.png',
     'backup.sql', 'database.sqlite',
-  ] : ['.env', '.git/config', 'storage/clinic/attachments/1/scan.png', 'storage/payment-proofs/proof.png'];
+  ] : ['.env', '.git/config', 'storage/clinic/attachments/1/scan.png', 'storage/payment-proofs/proof.png'])];
   for (const name of safeFiles) write(root, name, 'public-fixture');
   for (const name of privateFiles) write(root, name);
   write(root, '.well-known/acme-challenge/fixture', 'acme-fixture');
@@ -88,7 +91,10 @@ DocumentRoot "${normalized}"
       assert.ok(!(await response.text()).includes('private-fixture'), name);
     }
     for (const name of [...safeFiles, '.well-known/acme-challenge/fixture']) {
-      assert.equal((await fetch(`${base}/${name}`)).status, 200, `${layout}: /${name} remains public`);
+      const response = await fetch(`${base}/${name}`);
+      assert.equal(response.status, 200, `${layout}: /${name} remains public`);
+      assert.equal(await response.text(), name.startsWith('.well-known/') ? 'acme-fixture' : 'public-fixture',
+        `${layout}: /${name} must serve the requested public file`);
     }
     for (const name of ['api/me', 'pages/admin/availability.html', 'pages/admin/activity-log.html']) {
       if (name.startsWith('pages/')) fs.rmSync(path.join(root, name), { force: true });
