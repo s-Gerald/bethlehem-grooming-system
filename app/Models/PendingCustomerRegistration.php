@@ -25,6 +25,8 @@ class PendingCustomerRegistration extends Model
         'registration_browser_token_hash',
         'registration_recovery_token_hash',
         'registration_recovery_expires_at',
+        'terms_accepted_version',
+        'terms_accepted_at',
     ];
 
     protected $hidden = [
@@ -41,6 +43,7 @@ class PendingCustomerRegistration extends Model
         'email_verification_last_sent_at' => 'datetime',
         'email_verification_attempts' => 'integer',
         'registration_recovery_expires_at' => 'datetime',
+        'terms_accepted_at' => 'datetime',
     ];
 
     public function scopeUnexpired($query)

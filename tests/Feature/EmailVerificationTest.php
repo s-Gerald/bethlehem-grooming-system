@@ -19,6 +19,76 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_registration_requires_affirmative_terms_acceptance_before_queuing_work(): void
+    {
+        foreach ([null, false, 'no'] as $acceptance) {
+            $payload = $this->registrationPayload();
+            unset($payload['terms_accepted']);
+            if ($acceptance !== null) $payload['terms_accepted'] = $acceptance;
+            $this->postJson('/api/register', $payload)->assertUnprocessable()
+                ->assertJsonValidationErrors('terms_accepted');
+        }
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_terms_evidence_is_server_controlled_and_survives_email_verification(): void
+    {
+        Notification::fake();
+        $this->travelTo(now()->startOfSecond());
+        $acceptedAt = now()->copy();
+        $this->registerInBrowser([...$this->registrationPayload(), 'terms_accepted' => true,
+            'terms_accepted_version' => 'forged', 'terms_accepted_at' => '2000-01-01 00:00:00'])->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $this->assertSame('2026-11-01', $pending->terms_accepted_version);
+        $this->assertTrue($acceptedAt->equalTo($pending->terms_accepted_at));
+        $this->travel(61)->seconds();
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])
+            ->assertOk()->assertJsonStructure(['token']);
+        $user = User::sole();
+        $this->assertSame('2026-11-01', $user->terms_accepted_version);
+        $this->assertTrue($acceptedAt->equalTo($user->terms_accepted_at));
+    }
+
+    public function test_pre_policy_pending_registration_can_continue_but_requires_acceptance_on_review(): void
+    {
+        Notification::fake();
+        $registration = $this->registerInBrowser([...$this->registrationPayload(), 'terms_accepted' => true])->assertAccepted();
+        $credential = $this->authorizedEditCredential($registration);
+        $pending = PendingCustomerRegistration::sole();
+        DB::table('pending_customer_registrations')->where('id', $pending->id)
+            ->update(['terms_accepted_version' => null, 'terms_accepted_at' => null]);
+        $this->postJson('/api/register', ['email' => $pending->email, 'registration_token' => $credential])
+            ->assertAccepted()->assertJsonPath('registration_state', 'resumed');
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])
+            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
+        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
+        unset($payload['terms_accepted']);
+        $this->putJson('/api/register/pending', $payload)->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
+        $this->assertDatabaseCount('users', 0);
+        $this->putJson('/api/register/pending', [...$payload, 'terms_accepted' => true])->assertOk();
+        $this->assertSame('2026-11-01', User::sole()->terms_accepted_version);
+        $this->assertNotNull(User::sole()->terms_accepted_at);
+    }
+
+    public function test_legacy_recovery_requires_acceptance_and_preserves_the_existing_account(): void
+    {
+        $plain = str_repeat('k', 64);
+        $user = User::factory()->unverified()->create(['email' => 'new.customer@gmail.com',
+            'email_verification_token' => hash('sha256', $plain),
+            'email_verification_last_sent_at' => now(), 'email_verification_expires_at' => now()->addMinutes(30)]);
+        $review = $this->postJson('/api/email/verify', ['token' => $plain])->assertOk()
+            ->assertJsonPath('requires_registration_review', true);
+        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
+        unset($payload['terms_accepted']);
+        $this->putJson('/api/register/pending', $payload)->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
+        $this->assertNull($user->fresh()->email_verified_at);
+        $this->putJson('/api/register/pending', [...$payload, 'terms_accepted' => true])->assertOk();
+        $this->assertSame($user->getKey(), User::sole()->getKey());
+        $this->assertSame('2026-11-01', $user->fresh()->terms_accepted_version);
+        $this->assertNotNull($user->fresh()->terms_accepted_at);
+    }
+
     public function test_in_process_worker_drains_its_named_queue_above_laravels_default_memory_threshold(): void
     {
         $this->useDatabaseMailQueue();
@@ -640,6 +710,7 @@ class EmailVerificationTest extends TestCase
         (require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php'))->up();
         (require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
         (require base_path('database/migrations/2026_10_28_000002_add_registration_browser_binding.php'))->up();
+        (require base_path('database/migrations/2026_11_01_000001_add_customer_terms_acceptance.php'))->up();
     }
 
     protected function tearDown(): void
@@ -3378,6 +3449,7 @@ class EmailVerificationTest extends TestCase
             'email' => 'new.customer@GMAIL.COM',
             'password' => 'strong-password',
             'password_confirmation' => 'strong-password',
+            'terms_accepted' => true,
         ];
     }
 

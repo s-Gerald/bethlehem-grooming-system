@@ -15,6 +15,12 @@ use Symfony\Component\HttpFoundation\Cookie;
 class CustomerRegistrationService
 {
     public const BROWSER_COOKIE = 'bethlehem_registration_browser';
+    public const TERMS_VERSION = '2026-11-01';
+
+    public static function hasCurrentTerms(User|PendingCustomerRegistration $registrant): bool
+    {
+        return $registrant->terms_accepted_version === self::TERMS_VERSION && $registrant->terms_accepted_at !== null;
+    }
 
     // Presentation intent only: never authorizes access to saved details.
     public static function reviewIntentKey(string $browserHash, string $email): string
@@ -165,9 +171,14 @@ class CustomerRegistrationService
     // Caller holds the registrant row lock and transaction, including session creation.
     public function complete(User|PendingCustomerRegistration $registrant, ?array $details = null)
     {
+        $acceptance = $details ?? $registrant->only(['terms_accepted_version', 'terms_accepted_at']);
+        if (($acceptance['terms_accepted_version'] ?? null) !== self::TERMS_VERSION || empty($acceptance['terms_accepted_at'])) {
+            throw ValidationException::withMessages(['terms_accepted' => 'Please agree to the Terms and Conditions.']);
+        }
         if ($registrant instanceof PendingCustomerRegistration) {
             if ($registrant->retentionExpired() && (! $details || ! $registrant->hasActiveReview())) $this->unavailable();
-            $values = $details ?? $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash']);
+            $values = $details ?? $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash',
+                'terms_accepted_version', 'terms_accepted_at']);
             $conflict = User::query()->where(function ($query) use ($values) {
                 $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$values['email']]);
                 if ($values['phone'] ?? null) $query->orWhere('phone', $values['phone']);

@@ -46,6 +46,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         },
         getAttribute(name) { return this.attributes[name] || ''; },
         append(...children) { this.children = children; },
+        appendChild(child) { elements.set(child.id, child); },
         parentElement: {appendChild(child) { elements.set(child.id, child); }},
         insertAdjacentElement(_where, el) { this.adjacent = el; },
         dispatchEvent(event) { handlers[event.type]?.call(this, event); },
@@ -99,6 +100,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     },
   });
   if (signup) {
+    element('terms').checked = true;
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
   for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
@@ -118,6 +120,27 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const noTerms = page({signup:true});
+  noTerms.element('terms').checked = false;
+  await noTerms.dispatch('signupForm', 'submit');
+  assert.equal(noTerms.calls.length, 0, 'Unchecked terms must block API submission');
+  assert.equal(noTerms.activeElement()?.id, 'terms');
+  assert.equal(noTerms.element('terms').attributes['aria-invalid'], 'true');
+  assert.match(noTerms.element('termsServerError').textContent, /agree.*Terms and Conditions/i);
+  noTerms.element('terms').checked = true;
+  await noTerms.dispatch('terms', 'input');
+  assert.equal(noTerms.element('termsServerError').textContent, '');
+  await noTerms.dispatch('signupForm', 'submit');
+  assert.equal(noTerms.calls[0][1].terms_accepted, true);
+
+  const rejectedTerms = page({signup:true, reviewing:true, search:'?review=1'});
+  rejectedTerms.element('password').value = 'strong-password';
+  rejectedTerms.element('confirmPassword').value = 'strong-password';
+  rejectedTerms.API.updatePendingRegistration = async () => { throw {errors:{terms_accepted:['Please agree to the Terms and Conditions.']}}; };
+  await rejectedTerms.dispatch('signupForm', 'submit');
+  assert.equal(rejectedTerms.activeElement()?.id, 'terms');
+  assert.equal(rejectedTerms.element('termsServerError').textContent, 'Please agree to the Terms and Conditions.');
+
   const returning = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
   assert.equal(returning.element('signupContinuation').classList.contains('hidden'), false);
   await returning.dispatch('signupForm', 'submit');

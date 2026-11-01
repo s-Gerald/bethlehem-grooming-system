@@ -50,6 +50,8 @@ class User extends Authenticatable
         'registration_recovery_token_hash',
         'registration_recovery_expires_at',
         'phone_verified_at',
+        'terms_accepted_version',
+        'terms_accepted_at',
     ];
 
     protected $hidden = [
@@ -63,6 +65,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'phone_verified_at' => 'datetime',
+        'terms_accepted_at' => 'datetime',
         'email_verification_last_sent_at' => 'datetime',
         'email_verification_attempts' => 'integer',
         'email_verification_expires_at' => 'datetime',

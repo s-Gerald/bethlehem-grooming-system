@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const emailInput          = document.getElementById("email");
   const passwordInput       = document.getElementById("password");
   const confirmPasswordInput = document.getElementById("confirmPassword");
+  const termsInput          = document.getElementById("terms");
 
   if (!signupForm || !phoneInput || !emailInput) return;
 
@@ -92,15 +93,16 @@ document.addEventListener("DOMContentLoaded", () => {
   renderContinuation();
 
   const fieldIds = {first_name: "firstName", last_name: "lastName", email: "email", username: "username",
-    phone: "phone", password: "password", password_confirmation: "confirmPassword"};
+    phone: "phone", password: "password", password_confirmation: "confirmPassword", terms_accepted: "terms"};
   const fieldErrors = new Map();
-  for (const id of ["username", "phone", "password", "confirmPassword"]) {
+  for (const id of ["username", "phone", "password", "confirmPassword", "terms"]) {
     const input = document.getElementById(id);
     const feedback = document.createElement("p");
     feedback.id = `${id}ServerError`;
     feedback.className = "hidden mt-2 text-sm text-red-700";
     feedback.setAttribute("role", "alert");
-    input.parentElement.appendChild(feedback);
+    const feedbackContainer = id === "terms" ? document.getElementById("termsAgreement") : input.parentElement;
+    feedbackContainer.appendChild(feedback);
     fieldErrors.set(id, feedback);
     const described = input.getAttribute("aria-describedby") || "";
     input.setAttribute("aria-describedby", `${described} ${feedback.id}`.trim());
@@ -161,6 +163,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (busy) return;
     if (renderContinuation()) { continuation.focus(); return; }
 
+    if (!termsInput.checked) {
+      const feedback = fieldErrors.get("terms");
+      feedback.textContent = "Please agree to the Terms and Conditions.";
+      feedback.classList.remove("hidden");
+      termsInput.setAttribute("aria-invalid", "true");
+      termsInput.focus();
+      return;
+    }
+
     const nameInputs = ['firstName', 'lastName'].map(id => document.getElementById(id));
     const validNames = nameInputs.map(input => HumanName.finish(input));
     if (validNames.includes(false)) { nameInputs[validNames.indexOf(false)].focus(); return; }
@@ -209,6 +220,7 @@ document.addEventListener("DOMContentLoaded", () => {
         phone:                 phone || null,
         password,
         password_confirmation: confirmPassword,
+        terms_accepted:         termsInput.checked,
       };
       const data = recoveryToken
         ? await API.updatePendingRegistration(payload, recoveryToken)

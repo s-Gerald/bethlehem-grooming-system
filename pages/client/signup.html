@@ -232,22 +232,17 @@
                   type="checkbox"
                   id="terms"
                   name="terms"
-                  class="mt-1 h-4 w-4 rounded border-gray-300 text-[#315b7e] focus:ring-[#315b7e]"
+                  aria-labelledby="termsLabel"
+                  class="mt-1 h-4 w-4 rounded border-gray-300 text-[#315b7e] focus:ring-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]"
                   required
                 />
-                <label
-                  for="terms"
-                  class="text-sm text-gray-600 leading-relaxed"
-                >
-                  I agree to the
-                  <a href="#" class="font-medium text-[#315b7e] hover:underline"
-                    >Terms and Conditions</a
-                  >
-                  and
-                  <a href="#" class="font-medium text-[#315b7e] hover:underline"
-                    >Privacy Policy</a
-                  >. <span class="text-red-500">*</span>
-                </label>
+                <div id="termsAgreement" class="text-sm text-gray-600 leading-relaxed">
+                  <span id="termsLabel">I agree to the
+                    <a href="../legal/terms-and-conditions.html" target="_blank" rel="noopener noreferrer" class="font-medium text-[#315b7e] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Terms and Conditions</a>
+                    and acknowledge the
+                    <a href="../legal/privacy-policy.html" target="_blank" rel="noopener noreferrer" class="font-medium text-[#315b7e] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]">Privacy Policy</a>.</span>
+                  <span class="text-red-500" aria-hidden="true">*</span>
+                </div>
               </div>
 
               <!-- Button -->
@@ -287,6 +282,6 @@
     <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="../../scripts/auth/client/signup-context.js?v=registration-review-20261029" defer></script>
-    <script src="../../scripts/auth/client/signup.js?v=registration-review-20261029" defer></script>
+    <script src="../../scripts/auth/client/signup.js?v=terms-20261101" defer></script>
   </body>
 </html>

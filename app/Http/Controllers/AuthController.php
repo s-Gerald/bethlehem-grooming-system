@@ -122,7 +122,12 @@ class AuthController extends Controller
                     ? ['required', 'email', 'max:150'] : AccountEmail::rules()),
             ],
             'password' => 'required|string|min:8|max:100|confirmed',
-        ]);
+            'terms_accepted' => ['required', 'accepted'],
+        ], ['terms_accepted.required' => 'Please agree to the Terms and Conditions.',
+            'terms_accepted.accepted' => 'Please agree to the Terms and Conditions.']);
+        unset($data['terms_accepted']);
+        $data['terms_accepted_version'] = CustomerRegistrationService::TERMS_VERSION;
+        $data['terms_accepted_at'] = now()->toDateTimeString();
         foreach (['first_name', 'last_name'] as $field) {
             $data[$field] = $existing && $data[$field] === $existing->$field ? $data[$field] : User::normalizeName($data[$field]);
         }

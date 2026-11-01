@@ -52,6 +52,7 @@ class EmailVerificationController extends Controller
                     return $this->invalidLink(true);
                 }
                 if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)
+                    && CustomerRegistrationService::hasCurrentTerms($pending)
                     && ! $request->boolean('review') && ! CustomerRegistrationService::wantsReview($pending, $request)) {
                     return app(CustomerRegistrationService::class)->complete($pending);
                 }

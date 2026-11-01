@@ -145,6 +145,10 @@ html { scroll-behavior: smooth; scroll-padding-top: var(--landing-header-offset)
 .footer-layout { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; text-align: center; }
 .footer-logo { display: block; width: 56px; height: 72px; object-fit: contain; }
 .footer-layout p { font-size: 0.8rem; }
+.footer-information { min-width: 0; }
+.footer-legal { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.5rem; margin-top: 0.5rem; font-size: 0.8rem; }
+.footer-legal a { text-underline-offset: 0.2em; }
+.footer-legal a:hover { text-decoration: underline; }
 .footer-social { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--landing-header); border-radius: 10px; }
 .landing-footer a:focus-visible { outline-color: var(--landing-header); }
 
