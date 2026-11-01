@@ -7,18 +7,31 @@ class Element {
   constructor(tag = 'div', id = '') {
     this.tagName = tag; this.id = id; this.children = []; this.attributes = {};
     this.listeners = {}; this.hidden = false; this.disabled = false; this.textContent = '';
-    this.classList = { toggle() {}, add() {}, remove() {} };
+    const classes = new Set();
+    this.classList = {
+      contains: name => classes.has(name),
+      toggle(name, force = !classes.has(name)) { force ? classes.add(name) : classes.delete(name); },
+      add: name => classes.add(name), remove: name => classes.delete(name),
+    };
+    this.style = {};
   }
   append(...nodes) { nodes.forEach(node => { node.parent = this; this.children.push(node); }); }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  insertBefore(node, reference) {
+    if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1);
+    this.children.splice(this.children.indexOf(reference), 0, node);
+    node.parent = this;
+    if (node.contains(this.document?.activeElement)) this.document.activeElement = null;
+  }
   setAttribute(key, value) { this.attributes[key] = String(value); }
   getAttribute(key) { return this.attributes[key] ?? null; }
   hasAttribute(key) { return key in this.attributes; }
   addEventListener(name, fn) { this.listeners[name] = fn; }
   contains(node) { return node === this || this.children.some(child => child.contains?.(node)); }
   closest(selector) { return (selector.startsWith('[') ? this.hasAttribute(selector.slice(1, -1)) : this.tagName === selector) ? this : this.parent?.closest(selector) ?? null; }
-  querySelectorAll(selector) { return walk(this).filter(node => node !== this && node.hasAttribute(selector.slice(1, -1))); }
-  focus() { this.focused = true; }
+  querySelectorAll(selector) { return walk(this).filter(node => node !== this && (selector.startsWith('.') ? node.classList.contains(selector.slice(1)) : node.hasAttribute(selector.slice(1, -1)))); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  focus() { this.focused = true; if (this.document) this.document.activeElement = this; }
 }
 const walk = node => [node, ...node.children.flatMap(walk)];
 const content = node => [node.textContent, ...node.children.map(content)].join(' ');
@@ -42,6 +55,24 @@ function harness(fetcher = async () => ({ok: true, json: async () => ({data: pac
   const ids = new Map(['landing-header', 'menu-toggle', 'section-links', 'pricing-status', 'pricing-retry',
     'pricing-content', 'package-grid', 'dog-pricing', 'cat-pricing'].map(id => [id, new Element('div', id)]));
   const doc = new Element('document');
+  const clinic = new Element();
+  clinic.classList.add('clinic-grid');
+  clinic.setAttribute('data-accordion-group', '');
+  clinic.document = doc;
+  for (const id of ['surgery', 'treatment', 'vaccination', 'confinement', 'xray', 'consultation', 'laboratory', 'ultrasound']) {
+    const card = new Element('article', id);
+    card.setAttribute('data-accordion-item', '');
+    const button = new Element('button', `${id}-trigger`);
+    button.document = doc;
+    button.setAttribute('data-accordion-trigger', '');
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-controls', `clinic-${id}`);
+    const detail = new Element('div', `clinic-${id}`);
+    detail.hidden = true;
+    card.append(button, detail);
+    clinic.append(card);
+  }
+  doc.append(clinic);
   doc.baseURI = 'https://clinic.example/subdirectory/index.html';
   doc.getElementById = id => ids.get(id) || walk(doc).find(node => node.id === id);
   doc.createElement = tag => new Element(tag);
@@ -51,10 +82,12 @@ function harness(fetcher = async () => ({ok: true, json: async () => ({data: pac
   ids.get('landing-header').append(ids.get('menu-toggle'), ids.get('section-links'));
   doc.append(ids.get('landing-header'), ...[...ids.values()].filter(node => !doc.contains(node)));
   const media = { matches: false, addEventListener(name, fn) { this.listener = fn; } };
+  const tablet = { ...media, matches: true };
+  const desktop = { ...media, matches: true };
   let requests = 0;
-  vm.runInNewContext(`${formatters}\n${source}`, { document: doc, window: {matchMedia: () => media},
+  vm.runInNewContext(`${formatters}\n${source}`, { document: doc, window: {matchMedia: query => query.includes('40rem') ? tablet : query.includes('64rem') ? desktop : media},
     fetch: (...args) => { requests++; return fetcher(...args); }, URL, console });
-  return {doc, ids, media, requests: () => requests};
+  return {doc, ids, media, tablet, desktop, clinic, requests: () => requests};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -134,6 +167,38 @@ assert.equal(triggers[0].getAttribute('aria-expanded'), 'true');
 assert.equal(faqButtons[0].getAttribute('aria-expanded'), 'false');
 assert.equal(page.doc.getElementById('faq-one').hidden, true);
 assert.equal(page.doc.getElementById('faq-two').hidden, false);
+
+// A last-column card moves before its neighbor in reading order, then restores on collapse.
+const clinicButtons = page.clinic.querySelectorAll('[data-accordion-trigger]');
+const originalOrder = ['surgery', 'treatment', 'vaccination', 'confinement', 'xray', 'consultation', 'laboratory', 'ultrasound'];
+const clinicOrder = () => page.clinic.children.map(card => card.id);
+clinicButtons[3].focus();
+click(clinicButtons[3]);
+assert.deepEqual(clinicOrder(), ['surgery', 'treatment', 'confinement', 'vaccination', 'xray', 'consultation', 'laboratory', 'ultrasound']);
+assert.equal(page.doc.activeElement, clinicButtons[3], 'Reordering preserves selected-button focus');
+assert.equal(page.doc.getElementById('clinic-confinement').hidden, false);
+clinicButtons[7].focus();
+click(clinicButtons[7]);
+assert.deepEqual(clinicOrder(), ['surgery', 'treatment', 'vaccination', 'confinement', 'xray', 'consultation', 'ultrasound', 'laboratory']);
+assert.equal(clinicButtons[3].getAttribute('aria-expanded'), 'false');
+assert.equal(page.doc.activeElement, clinicButtons[7]);
+click(clinicButtons[7]);
+assert.deepEqual(clinicOrder(), originalOrder);
+for (const index of [0, 1, 2, 4, 5, 6]) {
+  click(clinicButtons[index]);
+  assert.deepEqual(clinicOrder(), originalOrder);
+  click(clinicButtons[index]);
+}
+click(clinicButtons[1]);
+page.desktop.matches = false;
+page.desktop.listener();
+assert.deepEqual(clinicOrder(), ['treatment', 'surgery', 'vaccination', 'confinement', 'xray', 'consultation', 'laboratory', 'ultrasound']);
+page.tablet.matches = false;
+page.tablet.listener();
+assert.deepEqual(clinicOrder(), originalOrder, 'Mobile restores natural reading order while keeping the detail open');
+assert.equal(page.doc.getElementById('clinic-treatment').hidden, false);
+click(clinicButtons[1]);
+assert.equal(page.doc.getElementById('clinic-treatment').hidden, true);
 
 let resolveFetch;
 let attempt = 0;

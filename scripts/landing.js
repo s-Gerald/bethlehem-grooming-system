@@ -28,6 +28,38 @@ header.addEventListener('focusout', event => {
 });
 window.matchMedia('(min-width: 56rem)').addEventListener('change', () => closeMenu());
 
+const clinicGrid = document.querySelector('.clinic-grid');
+// Keep the collapsed order as the anchor, even after a last-column card moves left.
+const clinicCards = Array.from(clinicGrid.children);
+const clinicTablet = window.matchMedia('(min-width: 40rem)');
+const clinicDesktop = window.matchMedia('(min-width: 64rem)');
+
+function layoutClinicCards() {
+  const columns = clinicDesktop.matches ? 4 : clinicTablet.matches ? 2 : 1;
+  const index = clinicCards.findIndex(card => card.classList.contains('is-expanded'));
+  const order = [...clinicCards];
+  clinicCards.forEach(card => {
+    card.style.gridColumn = '';
+    card.style.gridRow = '';
+  });
+  if (index !== -1 && columns > 1) {
+    const column = index % columns;
+    const expanded = clinicCards[index];
+    expanded.style.gridColumn = `${Math.min(column, columns - 2) + 1} / span 2`;
+    expanded.style.gridRow = String(Math.floor(index / columns) + 1);
+    // Match DOM, screen-reader and keyboard order to the displayed leftward expansion.
+    if (column === columns - 1) order.splice(index - 1, 2, expanded, clinicCards[index - 1]);
+  }
+  const focused = document.activeElement;
+  order.forEach((card, position) => {
+    if (clinicGrid.children[position] !== card) clinicGrid.insertBefore(card, clinicGrid.children[position]);
+  });
+  if (focused && document.activeElement !== focused) focused.focus({preventScroll: true});
+}
+
+clinicTablet.addEventListener('change', layoutClinicCards);
+clinicDesktop.addEventListener('change', layoutClinicCards);
+
 // Native buttons supply Enter/Space behavior; each group maintains its own open item.
 document.addEventListener('click', event => {
   if (!header.contains(event.target)) closeMenu();
@@ -41,6 +73,7 @@ document.addEventListener('click', event => {
     document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
     button.closest('[data-accordion-item]').classList.toggle('is-expanded', expanded);
   });
+  if (group === clinicGrid) layoutClinicCards();
 });
 
 const status = document.getElementById('pricing-status');
