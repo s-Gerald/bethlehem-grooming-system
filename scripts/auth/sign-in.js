@@ -39,12 +39,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const replacementAlert = document.getElementById('sessionReplacedAlert');
   const signoutReasonKey = 'bethlehem.auth.signout_reason';
-  try {
-    if (sessionStorage.getItem(signoutReasonKey) === 'session_replaced' && replacementAlert) {
-      replacementAlert.hidden = false;
-      messageBox?.classList.add('hidden');
-    }
-  } catch { /* The form remains available when storage is blocked. */ }
+  function showReplacementAlert() {
+    try {
+      if (sessionStorage.getItem(signoutReasonKey) === 'session_replaced' && replacementAlert) {
+        replacementAlert.hidden = false;
+        messageBox?.classList.add('hidden');
+      }
+    } catch { /* The form remains available when storage is blocked. */ }
+  }
+  showReplacementAlert();
   function dismissReplacementAlert() {
     if (replacementAlert) replacementAlert.hidden = true;
     try { sessionStorage.removeItem(signoutReasonKey); } catch { /* Optional UI state. */ }
@@ -95,6 +98,17 @@ document.addEventListener("DOMContentLoaded", () => {
   let emailMessageIdentifier = null;
   const statusBox = document.getElementById('sharedSignInStatus');
   const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
+  let checkingSession = false;
+  function cancelSessionCheck() {
+    API.cancelRememberedCustomerSessionCheck?.();
+    if (!checkingSession) return;
+    checkingSession = false;
+    setBusyState(busy);
+    if (statusBox) statusBox.textContent = '';
+  }
+  ['pointerdown', 'keydown', 'input', 'change'].forEach(type => {
+    signInForm.addEventListener(type, cancelSessionCheck);
+  });
 
   // Old versions persisted any 429, including day-long email quotas. Storage
   // cannot establish a password restriction; only a new server response can.
@@ -106,6 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   signInForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    cancelSessionCheck();
     if (lockoutUntil && performance.now() >= lockoutUntil) clearCountdown();
     if (busy || performance.now() < lockoutUntil) return;
     dismissReplacementAlert();
@@ -199,6 +214,22 @@ document.addEventListener("DOMContentLoaded", () => {
     history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
   }
 
+  const sessionCheck = !identifierInput.value && !passwordInput.value
+    ? API.checkRememberedCustomerSession?.() : null;
+  if (sessionCheck) {
+    checkingSession = true;
+    const label = document.getElementById('signInBtnLabel');
+    if (label) label.textContent = 'Checking your session...';
+    if (statusBox) statusBox.textContent = 'Checking your session...';
+    sessionCheck.then(verified => {
+      if (checkingSession && verified) window.location.replace('./dashboard.html');
+    }).catch(() => { /* An optional check must leave manual sign-in available. */ }).finally(() => {
+      if (!checkingSession) return;
+      cancelSessionCheck();
+      showReplacementAlert();
+    });
+  }
+
   function emailLimitMessage(error) {
     const seconds = [error.retryAfter, error.data?.retry_after]
       .filter(value => ['number', 'string'].includes(typeof value) && String(value).trim() !== '')
@@ -269,6 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   window.addEventListener('pagehide', () => {
+    cancelSessionCheck();
     clearInterval(countdownTimer);
     countdownTimer = null;
   });

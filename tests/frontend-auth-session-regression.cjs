@@ -1519,7 +1519,7 @@ async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
   }
 }
 
-function signInPageHarness({ storage = new MemoryStorage(), api = {}, signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; } } = {}) {
+function signInPageHarness({ storage = new MemoryStorage(), api = {}, location = { search: '', replace() {} }, localStorage = new MemoryStorage(), prefilled = false, signIn = async () => { throw { status: 401, message: 'Invalid credentials.' }; } } = {}) {
   let elapsed = 0, wall = 100000, nextTimer = 0;
   const intervals = new Map(), lifecycle = {}, events = {}, elements = new Map();
   function element(id) {
@@ -1535,22 +1535,171 @@ function signInPageHarness({ storage = new MemoryStorage(), api = {}, signIn = a
     return elements.get(id);
   }
   const API = { signIn, ...api };
-  const context = { API, URL, URLSearchParams, sessionStorage: storage,
+  if (prefilled) { element('identifier').value = 'customer@example.com'; element('password').value = 'password'; }
+  const context = { API, URL, URLSearchParams, sessionStorage: storage, localStorage,
+    history: { replaceState(_state, _title, target) { const url = new URL(target, location.href); location.search = url.search; location.href = url.href; } },
     Date: class extends Date { static now() { return wall; } }, performance: { now: () => elapsed },
     setInterval(f) { const id = ++nextTimer; intervals.set(id, f); return id; }, clearInterval(id) { intervals.delete(id); },
-    window: { location: { search: '', replace() {} }, addEventListener(k, f) { lifecycle[k] = f; } },
+    window: { location, addEventListener(k, f) { lifecycle[k] = f; } },
     document: { getElementById: element, querySelector: () => null,
       addEventListener(k, f) { if (k === 'DOMContentLoaded') f(); else events[k] = f; } },
   };
   vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/verification-code.js'), 'utf8'), context);
   vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/auth/sign-in.js'), 'utf8'), context);
   element('identifier').value = 'customer@example.com'; element('password').value = 'password';
-  return { element, API, intervals, lifecycle, storage,
+  return { element, API, intervals, lifecycle, storage, location,
     submit: () => element('signin').handlers.submit({ preventDefault() {} }),
-    edit(value) { element('identifier').value = value; element('identifier').handlers.input?.(); },
+    edit(value) { element('identifier').value = value; element('identifier').handlers.input?.(); element('signin').handlers.input?.(); },
     advance(ms, { tick = true, wallDelta = ms } = {}) { elapsed += ms; wall += wallDelta; if (tick) for (const f of [...intervals.values()]) f(); },
     visible() { events.visibilitychange?.(); },
   };
+}
+
+function rememberedSignInPage(browser) {
+  return signInPageHarness({api: browser.API, storage: browser.sessionStorage,
+    localStorage: browser.localStorage, location: browser.location});
+}
+
+const rememberedCustomer = {customer_token: '701|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '7'};
+
+async function testRememberedCustomerSignInVerifiesOrRestoresBeforeRedirecting() {
+  for (const expired of [false, true]) {
+    const calls = [];
+    const browser = createBrowser({local: {...rememberedCustomer,
+      'bethlehem.auth.last_activity': JSON.stringify({session: 'customer:701', at: Date.now() - 40 * 60000})},
+      fetchImpl: async (url, options) => {
+        calls.push({url, options});
+        if (url.endsWith('/session')) return expired ? jsonResponse(401, {code: 'session_expired'}) : jsonResponse(200, activeSession());
+        return jsonResponse(200, {...activeSession(), token: '702|cookie', remember_me: true, user: {role: 'customer', user_id: 7}});
+      }});
+    rememberedSignInPage(browser);
+    assert.equal(browser.replacements.length, 0, 'Storage alone must never authorize a redirect');
+    await turn();
+    assert.deepEqual(browser.replacements, ['./dashboard.html']);
+    assert.equal(calls.length, expired ? 2 : 1);
+    if (expired) assert.equal(JSON.parse(calls[1].options.body).account_id, '7');
+    assert.equal(browser.API.getCustomerToken(), expired ? '702|cookie' : '701|cookie');
+  }
+}
+
+async function testOptionalSignInCheckSkipsUnrelatedAndBlockedFlows() {
+  const cases = [
+    {}, {session: rememberedCustomer},
+    {local: {admin_token: '801|cookie', user_role: 'admin'}},
+    {local: rememberedCustomer, session: {admin_token: '801|cookie', user_role: 'staff'}},
+    {local: rememberedCustomer, session: {pending_login_poll_token: 'pending-otp'}},
+    {local: {...rememberedCustomer, 'bethlehem.auth.signed_out': '1'}},
+    {local: {...rememberedCustomer, 'bethlehem.auth.logout_pending': JSON.stringify({id: 'logout', token: '701|cookie'})}},
+  ];
+  for (const state of cases) {
+    let calls = 0;
+    const browser = createBrowser({...state, fetchImpl: async () => { calls++; return jsonResponse(200, activeSession()); }});
+    const page = rememberedSignInPage(browser);
+    assert.equal(page.element('signInBtnLabel').textContent, '', 'Unrelated flows must not show a checking state');
+    await turn();
+    assert.equal(calls, 0);
+    assert.deepEqual(browser.replacements, []);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    if (state.session?.pending_login_poll_token) assert.equal(browser.API.hasPendingLoginConfirmation(), true);
+  }
+  let calls = 0;
+  const prefilled = createBrowser({local: rememberedCustomer, fetchImpl: async () => { calls++; return jsonResponse(200, activeSession()); }});
+  signInPageHarness({api: prefilled.API, prefilled: true});
+  await turn();
+  assert.equal(calls, 0, 'Credentials already entered before page initialization must take priority');
+}
+
+async function testOptionalSignInFailuresKeepTheFormUsable() {
+  for (const failure of ['offline', 'restore-offline', 500, 429, 'revoked', 'session_replaced', 'wrong-account', 'locked']) {
+    let calls = 0;
+    const browser = createBrowser({local: rememberedCustomer, fetchImpl: async url => {
+      calls++;
+      if (failure === 'offline') throw new Error('offline');
+      if (typeof failure === 'number') return jsonResponse(failure, {});
+      if (failure === 'locked') return jsonResponse(200, {...activeSession(), locked: true});
+      if (url.endsWith('/session')) return jsonResponse(401, {code: failure === 'session_replaced' ? failure : 'session_expired'});
+      if (failure === 'restore-offline') throw new Error('offline');
+      if (failure === 'wrong-account') return jsonResponse(200, {...activeSession(), token: '999|cookie', remember_me: true, user: {role: 'customer', user_id: 99}});
+      return jsonResponse(401, {code: 'remembered_session_invalid'});
+    }});
+    const page = rememberedSignInPage(browser);
+    await turn();
+    assert.ok(calls > 0);
+    assert.deepEqual(browser.replacements, []);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(page.element('sharedSignInMessage').textContent, '');
+    assert.equal(page.element('sessionReplacedAlert').hidden, failure !== 'session_replaced');
+    if (['offline', 'restore-offline', 500, 429].includes(failure)) {
+      assert.equal(browser.API.getCustomerToken(), '701|cookie');
+      assert.equal(calls, failure === 'restore-offline' ? 2 : 1, 'Connectivity errors must not initiate or repeat restoration');
+    }
+    assert.notEqual(browser.API.getCustomerToken(), '999|cookie');
+  }
+}
+
+async function testManualSignInInteractionCancelsDelayedAutomaticResponses() {
+  for (const phase of ['status', 'restore']) {
+    for (const interaction of ['input', 'submit', 'api-sign-in', 'pagehide', 'new-login', 'late-rejection']) {
+      let complete;
+      const browser = createBrowser({local: rememberedCustomer, fetchImpl: async url => {
+        if (url.endsWith('/sign-in')) return jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'new-otp'});
+        if (phase === 'restore' && url.endsWith('/session')) return jsonResponse(401, {});
+        return new Promise(resolve => { complete = resolve; });
+      }});
+      const page = rememberedSignInPage(browser);
+      await turn();
+      if (interaction === 'input') page.edit('staff@example.com');
+      if (interaction === 'submit') await page.submit();
+      if (interaction === 'api-sign-in') await browser.API.signIn('staff@example.com', 'password');
+      if (interaction === 'pagehide') page.lifecycle.pagehide();
+      if (interaction === 'new-login') browser.API.setAdminToken('900|cookie');
+      if (interaction === 'late-rejection') { page.edit('staff@example.com'); await page.submit(); }
+      complete(interaction === 'late-rejection' ? jsonResponse(401, {code: 'session_replaced'}) : jsonResponse(200, phase === 'status' ? activeSession() : {
+        ...activeSession(), token: '702|cookie', remember_me: true, user: {role: 'customer', user_id: 7},
+      }));
+      await turn();
+      assert.equal(browser.replacements.includes('./dashboard.html'), false, `${phase}: ${interaction}`);
+      assert.notEqual(browser.API.getCustomerToken(), '702|cookie');
+      if (['submit', 'api-sign-in', 'late-rejection'].includes(interaction)) assert.equal(browser.API.hasPendingLoginConfirmation(), true);
+      if (interaction === 'new-login') assert.equal(browser.API.getAdminToken(), '900|cookie');
+    }
+  }
+}
+
+async function testSignInTabsShareRestorationAndLogoutBlocksEarly() {
+  let tail = Promise.resolve(), restores = 0;
+  const locks = {request(_name, action) { const result = tail.then(action); tail = result.catch(() => {}); return result; }};
+  const profile = createBrowserProfile(async (url, options) => {
+    if (url.endsWith('/session/restore')) { restores++; return jsonResponse(200, {
+      ...activeSession(), token: '702|cookie', remember_me: true, user: {role: 'customer', user_id: 7},
+    }); }
+    return options.headers.Authorization === 'Bearer 701|cookie' ? jsonResponse(401, {}) : jsonResponse(200, activeSession());
+  }, locks);
+  const first = profile.page();
+  for (const [key, value] of Object.entries(rememberedCustomer)) first.localStorage.setItem(key, value);
+  const second = profile.page();
+  rememberedSignInPage(first); rememberedSignInPage(second);
+  await turn(); await turn();
+  assert.equal(restores, 1);
+  assert.deepEqual(first.replacements, ['./dashboard.html']);
+  assert.deepEqual(second.replacements, ['./dashboard.html']);
+
+  let calls = 0;
+  const loggedOut = createBrowser({local: rememberedCustomer, fetchImpl: async () => { calls++; return jsonResponse(200, activeSession()); }});
+  loggedOut.location.search = '?logout=1&next=profile';
+  loggedOut.location.href = 'https://clinic.example/pages/client/sign-in.html?logout=1&next=profile#help';
+  const earlyScript = fs.readFileSync(path.join(projectRoot, 'pages/client/sign-in.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+  vm.runInNewContext(earlyScript, {URL, URLSearchParams, window: {location: loggedOut.location, localStorage: loggedOut.localStorage, sessionStorage: loggedOut.sessionStorage}, localStorage: loggedOut.localStorage,
+    sessionStorage: loggedOut.sessionStorage, history: {replaceState(_state, _title, target) {
+      const clean = new URL(target, loggedOut.location.href); loggedOut.location.search = clean.search; loggedOut.location.href = clean.href;
+    }}});
+  assert.equal(loggedOut.location.search, '?next=profile');
+  assert.ok(loggedOut.location.href.endsWith('#help'));
+  rememberedSignInPage(loggedOut);
+  await turn();
+  assert.equal(calls, 0);
+  assert.ok(loggedOut.localStorage.getItem('bethlehem.auth.signed_out'));
+  assert.deepEqual(loggedOut.replacements, []);
 }
 
 async function testSignInInitializationNeverAttemptsLogout() {
@@ -2116,7 +2265,6 @@ function testStaticAuthContracts() {
     "utf8",
   );
 
-  assert.doesNotMatch(signIn, /Auto-redirect already-authenticated users/);
   assert.doesNotMatch(signIn, /API\.(?:getUserRole|getAdminToken|getCustomerToken)/);
   assert.doesNotMatch(verify, /login_token|approveLogin|pollLoginConfirmation/);
   assert.match(verify, /await API\.confirmLoginCode\(code\)/);
@@ -2410,6 +2558,11 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
 }
 
 (async () => {
+  await testRememberedCustomerSignInVerifiesOrRestoresBeforeRedirecting();
+  await testOptionalSignInCheckSkipsUnrelatedAndBlockedFlows();
+  await testOptionalSignInFailuresKeepTheFormUsable();
+  await testManualSignInInteractionCancelsDelayedAutomaticResponses();
+  await testSignInTabsShareRestorationAndLogoutBlocksEarly();
   await testSignInInitializationNeverAttemptsLogout();
   await testPendingLogoutLifecycle();
   await testUnsafePendingLogoutCannotUseNewerCookies();

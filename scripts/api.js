@@ -69,6 +69,7 @@ var API = (() => {
   let customerRestoreAttempted = false;
   let customerVerifiedAt = 0;
   let customerWaitingForInteraction = false;
+  let rememberedSignInCheck = null;
   // One-time upgrade of credentials left by older deployed frontend versions.
   // Raw credentials are removed from storage immediately and never persisted again.
   const legacyCredentials = new Map();
@@ -1053,8 +1054,32 @@ var API = (() => {
     return !authRedirectStarted && hasAuthenticatedSession('customer');
   }
 
-  function initializeCustomerSession(force = false) {
-    if (!customerVerificationEnabled) return Promise.resolve(false);
+  function eligibleRememberedSignInSession() {
+    const session = getAuthSession();
+    if (!isSignInPage() || restorationIsBlocked() || pendingLogout() || hasPendingLoginConfirmation()
+      || rawAdminToken() || isAdminRole(safeStorageGet(sessionStorage, USER_ROLE_KEY))
+      || new URLSearchParams(window.location.search).get('logout') === '1') return null;
+    return session?.role === 'customer' && session.persistent && session.accountId ? session : null;
+  }
+
+  function cancelRememberedCustomerSessionCheck() {
+    if (rememberedSignInCheck) rememberedSignInCheck.cancelled = true;
+  }
+
+  function checkRememberedCustomerSession() {
+    if (rememberedSignInCheck) return rememberedSignInCheck.promise;
+    const session = eligibleRememberedSignInSession();
+    if (!session) return null; // No optional request or waiting state for unrelated sign-in flows.
+    const check = {cancelled: false, accountId: session.accountId};
+    rememberedSignInCheck = check;
+    check.promise = initializeCustomerSession(false, check).finally(() => {
+      if (rememberedSignInCheck === check) rememberedSignInCheck = null;
+    });
+    return check.promise;
+  }
+
+  function initializeCustomerSession(force = false, signInCheck = null) {
+    if (!customerVerificationEnabled && !signInCheck) return Promise.resolve(false);
     if (customerWaitingForInteraction) return Promise.resolve(false);
     if (customerInitialization) {
       return force ? customerInitialization.then(() => initializeCustomerSession()) : customerInitialization;
@@ -1064,12 +1089,26 @@ var API = (() => {
       && Date.now() - customerVerifiedAt < 15000) return Promise.resolve(true);
     let revision = sessionRevision, initialToken = getAuthSession()?.token;
     const accountId = getAuthSession()?.accountId || observedSession?.accountId;
-    const unchanged = () => revision === sessionRevision && initialToken === getAuthSession()?.token;
+    const eligible = () => !signInCheck || (!signInCheck.cancelled
+      && eligibleRememberedSignInSession()?.accountId === signInCheck.accountId);
+    const unchanged = () => eligible() && revision === sessionRevision && initialToken === getAuthSession()?.token;
+    const acceptStatus = (status, token) => {
+      if (!applyServerSession(status, token)) throw verificationError();
+      if (signInCheck && (status.locked || Date.now() >= serverSession.idleAt || Date.now() >= serverSession.expiresAt)) {
+        throw verificationError();
+      }
+      customerVerifiedAt = Date.now();
+      if (!signInCheck) startSessionInactivityManager(true);
+      return true;
+    };
     let obsolete = false, pending;
     const attempt = async () => {
       try {
+        // A tab ahead of us may already have restored this same account while
+        // we waited for the shared authentication lock. Verify its reference.
+        if (signInCheck && eligible() && revision === sessionRevision) initialToken = getCustomerToken();
         if (!unchanged()) { obsolete = true; return false; }
-        await retryPendingLogoutUnlocked();
+        if (!signInCheck) await retryPendingLogoutUnlocked();
         if (restorationIsBlocked() || (getAuthSession() && getAuthSession().role !== 'customer')) {
           redirectToSignIn();
           return false;
@@ -1079,10 +1118,7 @@ var API = (() => {
           try {
             const status = await networkRequest('GET', '/session', null, token, {cache: 'no-store', suppressAuthRedirect: true});
             if (!unchanged()) { obsolete = true; return false; }
-            if (!applyServerSession(status, token)) throw verificationError();
-            customerVerifiedAt = Date.now();
-            startSessionInactivityManager(true);
-            return true;
+            return acceptStatus(status, token);
           } catch (error) {
             if (!unchanged()) { obsolete = true; return false; }
             if (error.code === 'session_replaced' || (error.status === 403 && INVALID_SESSION_CODES.has(error.code))) {
@@ -1092,7 +1128,7 @@ var API = (() => {
             // Connectivity failures do not authorize credential restoration or destruction.
             if (error.status !== 401) throw error;
             const activity = readSessionActivity(getAuthSession());
-            if (getAuthSession()?.persistent && activity !== null && Date.now() - activity >= 30 * 60000) {
+            if (!signInCheck && getAuthSession()?.persistent && activity !== null && Date.now() - activity >= 30 * 60000) {
               customerWaitingForInteraction = true;
               concealCustomerSession();
               return false;
@@ -1112,26 +1148,24 @@ var API = (() => {
           throw error;
         }
         if (!unchanged() || restorationIsBlocked()) { obsolete = true; return false; }
-        if (!restored.token || restored.user?.role !== 'customer') throw verificationError();
+        if (!restored.token || restored.user?.role !== 'customer'
+          || (accountId && String(restored.user.user_id) !== String(accountId))) throw verificationError();
         if (token !== restored.token) setAuthSession(restored.token, 'customer', restored.remember_me === true, restored.user.user_id, true);
         token = restored.token;
         revision = sessionRevision;
         initialToken = token;
-        sessionChecking = true;
-        const acceptedRevision = sessionRevision;
+        if (!signInCheck) sessionChecking = true;
         const status = typeof restored.locked === 'boolean' ? restored
           : await networkRequest('GET', '/session', null, token, {cache: 'no-store', suppressAuthRedirect: true});
-        if (acceptedRevision !== sessionRevision || getCustomerToken() !== token) { obsolete = true; return false; }
-        if (!applyServerSession(status, token)) throw verificationError();
-        customerVerifiedAt = Date.now();
-        startSessionInactivityManager(true);
-        return true;
+        if (!unchanged()) { obsolete = true; return false; }
+        return acceptStatus(status, token);
       } catch (error) {
         if (!unchanged()) { obsolete = true; return false; }
         if (error.status === 401 || (error.status === 403 && INVALID_SESSION_CODES.has(error.code))) {
           invalidateSession('customer', error.code === 'session_replaced' ? error.code : 'expired');
           return false;
         }
+        if (signInCheck) return false; // Optional checks never block the public form or report connectivity as logout.
         sessionChecking = true;
         ensureSessionLockCard();
         sessionGate('unavailable');
@@ -1142,6 +1176,7 @@ var API = (() => {
     pending = Promise.resolve(withAuthTransition(attempt)).finally(() => {
       if (customerInitialization !== pending) return;
       customerInitialization = null;
+      if (signInCheck) return; // Public sign-in checks are one-shot; no gate, polling or automatic retries.
       if (obsolete && sessionChecking && !restorationIsBlocked()) { void initializeCustomerSession(); return; }
       if (sessionPollTimer) clearTimeout(sessionPollTimer);
       if (!authRedirectStarted && getCustomerToken()) sessionPollTimer = setTimeout(() => {
@@ -2128,6 +2163,7 @@ var API = (() => {
     // Accepts email, local/international mobile phone, or username. Saves to the
     // correct public-reference key based on role. The backend owns cookie
     // persistence and every inactivity/absolute deadline.
+    cancelRememberedCustomerSessionCheck();
     if (pendingLogout()) {
       await retryPendingLogout();
     }
@@ -3581,6 +3617,8 @@ var API = (() => {
     getBaseUrl,
     waitForSessionVerification,
     waitForCustomerSession,
+    checkRememberedCustomerSession,
+    cancelRememberedCustomerSessionCheck,
     syncSessionState,
     retryPendingLogout,
     readAdminCache,
