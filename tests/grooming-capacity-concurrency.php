@@ -14,8 +14,11 @@ $migrationMethod = match ($argv[1] ?? '') {
     '' => null,
     '--migration-upgrade' => 'test_upgrade_removes_only_predictions_and_preserves_completed_and_future_visits',
     '--migration-fresh' => 'test_clean_install_migrates_without_the_retired_engine',
-    default => throw new RuntimeException('Use no option, --migration-upgrade, or --migration-fresh.'),
+    '--pre-registration-fresh' => 'test_fresh_migrations_preserve_scheduled_expiration_and_existing_database_reruns',
+    default => throw new RuntimeException('Use no option, --migration-upgrade, --migration-fresh, or --pre-registration-fresh.'),
 };
+$migrationClass = ($argv[1] ?? '') === '--pre-registration-fresh'
+    ? 'PreRegistrationMigrationTest' : 'GroomingEstimateRetirementMigrationTest';
 $server = null;
 $created = $markerReady = $directoryCreated = false;
 $directory = null;
@@ -47,7 +50,7 @@ try {
     $markerReady = true;
     echo "Created disposable database: {$database}\n";
     $arguments = [PHP_BINARY, 'vendor/phpunit/phpunit/phpunit', '--configuration', 'phpunit.capacity-mysql.xml'];
-    if ($migrationMethod) $arguments[] = 'tests/Feature/GroomingEstimateRetirementMigrationTest.php';
+    if ($migrationMethod) $arguments[] = 'tests/Feature/'.$migrationClass.'.php';
     array_push($arguments, '--no-progress', '--filter', '::'.($migrationMethod ?? 'test_concurrent_grooming_submissions_preserve_registration_integrity_on_mysql').'$',
         '--log-junit', $directory.'/junit.xml', '--log-events-text', $directory.'/events.log');
     $process = new Process($arguments, dirname(__DIR__), [
@@ -63,7 +66,7 @@ try {
     $report = is_file($directory.'/junit.xml') ? file_get_contents($directory.'/junit.xml') : null;
     $events = is_file($directory.'/events.log') ? file_get_contents($directory.'/events.log') : '';
     $result = $migrationMethod
-        ? concurrencyPhpunitResult($report, $events, $exit, 'Tests\\Feature\\GroomingEstimateRetirementMigrationTest', $migrationMethod)
+        ? concurrencyPhpunitResult($report, $events, $exit, 'Tests\\Feature\\'.$migrationClass, $migrationMethod)
         : capacityPhpunitResult($report, $events, $exit);
     if ($result === 'passed' && ! $migrationMethod) {
         if (! is_file($directory.'/verification.json')) throw new RuntimeException('Missing real MySQL execution proof.');

@@ -734,22 +734,37 @@ class QueuePreRegistrationModelTest extends TestCase
         $this->assertDirectoryDoesNotExist($directory);
     }
 
-    public function test_migration_preserves_legacy_history_and_only_normalizes_unused_no_shows(): void
+    public function test_migration_preserves_history_without_running_expiry_before_later_tables_exist(): void
     {
         $unused = $this->grooming('no_show', 2);
         $arrived = $this->grooming('no_show', 1);
         DB::table('bookings')->where('booking_id', $arrived)->update(['dropped_off_at' => now()]);
         $clinic = $this->clinic('no_show');
+        $pendingGrooming = $this->grooming('waiting_to_arrive', 1);
+        $pendingClinic = $this->clinic('waiting_to_arrive');
+        Carbon::setTestNow('2026-10-09 18:00:00');
+        // This table is created on October 16, after the migration under test.
+        Schema::drop('pet_groomers');
         $migration = require database_path('migrations/2026_10_09_120000_add_expired_pre_registration_status.php');
         $migration->up();
         $this->assertDatabaseHas('bookings', ['booking_id' => $unused, 'status' => 'expired', 'legacy_pre_registration_status' => 'no_show']);
         $this->assertDatabaseHas('bookings', ['booking_id' => $arrived, 'status' => 'no_show']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => $clinic, 'status' => 'expired', 'legacy_pre_registration_status' => 'no_show']);
-        $this->assertDatabaseCount('booking_pets', 3);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $pendingGrooming, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $pendingClinic, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseCount('booking_pets', 4);
+        $this->assertDatabaseCount('notifications', 0);
+        $this->assertDatabaseCount('customer_notifications', 0);
+        $this->assertTrue(Schema::hasColumn('customer_notifications', 'clinic_appointment_id'));
+        $this->assertFalse(Schema::hasTable('pet_groomers'));
         $migration->down();
         $this->assertDatabaseHas('bookings', ['booking_id' => $unused, 'status' => 'expired']);
+        $this->createPetGroomers();
         $migration->up();
         $this->assertDatabaseHas('bookings', ['booking_id' => $unused, 'status' => 'expired', 'legacy_pre_registration_status' => 'no_show']);
+        $this->assertDatabaseHas('bookings', ['booking_id' => $pendingGrooming, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseHas('clinic_appointments', ['id' => $pendingClinic, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseCount('notifications', 0);
     }
 
     public function test_preferred_windows_keep_real_restrictions_without_counting_registrations(): void

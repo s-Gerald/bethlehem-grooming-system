@@ -37,8 +37,6 @@ return new class extends Migration
             ]);
         }
 
-        app(\App\Services\PreRegistrationExpiry::class)->expire();
-
         if (! Schema::hasColumn('customer_notifications', 'clinic_appointment_id')) {
             Schema::table('customer_notifications', function (Blueprint $table) {
                 $table->foreignId('clinic_appointment_id')->nullable()
