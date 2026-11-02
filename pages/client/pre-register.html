@@ -19,7 +19,7 @@
 
       <section class="mt-6 text-center">
         <p class="text-sm font-semibold uppercase tracking-wide text-[#315b7e]">
-          Online Registration
+          Queue Registration
         </p>
         <h1 class="mt-2 text-2xl font-bold sm:text-3xl text-[#2f4b66]">
           What service does your pet need?
@@ -78,7 +78,10 @@
               <dt class="text-slate-500">Status</dt>
               <dd id="serviceStatus" role="status" aria-live="polite" class="text-right font-medium text-[#315b7e]"></dd>
             </dl>
-            <p id="serviceNote" class="mt-4 text-sm leading-6 text-slate-500">Queue numbers are assigned at check-in. Online registration does not reserve a queue position or grooming cage.</p>
+            <div class="mt-4 flex items-start gap-2">
+              <svg class="mt-0.5 h-5 w-5 shrink-0 fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#info"></use></svg>
+                <p id="serviceNote" class="text-sm leading-6 text-slate-500">Your queue number will be assigned when you check in at Bethlehem.</p>
+            </div>
             <p id="serviceAccessMessage" role="status" class="mt-4 text-sm font-medium text-amber-800" hidden>
               <svg class="mr-1 inline h-4 w-4 align-text-bottom" fill="currentColor" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>
               <span id="serviceAccessText"></span>
@@ -93,6 +96,6 @@
     </main>
 
     <script src="../../scripts/api.js?phone=20261025-sms&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-    <script type="module" src="../../scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029&service-access=20261031-v1"></script>
+    <script type="module" src="../../scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029&service-access=20261031-v1&copy=queue-note-20261103"></script>
   </body>
 </html>

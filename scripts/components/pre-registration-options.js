@@ -8,12 +8,12 @@ const services = {
   grooming: {
     title: "Grooming", icon: "scissors", href: "./grooming-pre-registration.html",
     description: "Register your pet and choose grooming services.",
-    note: "Queue numbers are assigned at check-in. Online registration does not reserve a queue position or grooming cage.",
+    note: "Your queue number will be assigned when you check in at Bethlehem.",
   },
   clinic: {
     title: "Clinic Visit", icon: "stethoscope", href: "./booking-pet-details.html?flow=clinic",
     description: "Register your pet for a veterinary consultation.",
-    note: "Queue numbers are assigned at check-in.",
+    note: "Your queue number will be assigned when you check in at Bethlehem.",
   },
 };
 
