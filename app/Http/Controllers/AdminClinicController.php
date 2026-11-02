@@ -208,7 +208,7 @@ class AdminClinicController extends Controller
                     return response()->json([
                         'success' => false,
                         'code' => 'pre_registration_exists',
-                        'message' => "{$pet->pet_name} already has an online registration waiting for arrival ({$existing->appointment_reference}).",
+                        'message' => "{$pet->pet_name} already has a queue registration waiting for arrival ({$existing->appointment_reference}).",
                         'arrival' => $case,
                     ], 409);
                 }
@@ -888,7 +888,7 @@ class AdminClinicController extends Controller
             : ($user?->phone ?? $walkin?->phone ?? $petOwner?->phone ?? '—');
         $ownerEmail = $ownerAccountDeleted ? null : ($user?->email ?? $walkin?->email ?? $petOwner?->email);
         $appointmentTypeLabel = match ($a->appointment_type) {
-            'pre_registered' => 'Online Registration',
+            'pre_registered' => 'Online Queue Registration',
             'scheduled' => 'Scheduled',
             default => 'Walk-in',
         };

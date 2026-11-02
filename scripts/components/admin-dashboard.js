@@ -1269,7 +1269,7 @@ function adminDashboard() {
     confirmCancelBooking(booking) {
       if (!this.shouldShowOwnerCancel(booking)) return;
       this.openActionConfirmModal({ action: "cancel", booking,
-        title: booking.bookingType === "Walk-In" ? "Cancel walk-in?" : "Cancel online registration?", message: "", confirmLabel: "Confirm cancellation",
+        title: booking.bookingType === "Walk-In" ? "Cancel walk-in?" : "Cancel queue registration?", message: "", confirmLabel: "Confirm cancellation",
         busyLabel: "Cancelling...", icon: "cancel", variant: "danger" });
     },
 

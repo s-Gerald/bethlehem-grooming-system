@@ -282,7 +282,7 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertCount(1, $secondPage['notifications']);
         $this->assertFalse($secondPage['pagination']['has_more']);
         $this->assertSame(
-            'New Online Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
+            'New Online Queue Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
             $firstPage['notifications'][0]['message'],
         );
         $this->assertSame('calendar-days', $firstPage['notifications'][0]['icon']);
@@ -349,11 +349,11 @@ class AdminNotificationCenterTest extends TestCase
         $rescheduled = collect($notifications)->firstWhere('type', 'rescheduled');
 
         $this->assertSame(
-            'New Online Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
+            'New Online Queue Registration BAC-20260821-0001 by Gerald Senining on Aug 21 at 8:00 AM - 9:00 AM.',
             $booked['message'],
         );
         $this->assertStringNotContainsString('10:00 AM', $booked['message']);
-        $this->assertSame(str_replace('Pre-registration', 'Online Registration', $rescheduledMessage), $rescheduled['message']);
+        $this->assertSame(str_replace('Pre-registration', 'Online Queue Registration', $rescheduledMessage), $rescheduled['message']);
         $this->assertStringContainsString(
             'from Aug 21 at 8:00 AM - 9:00 AM',
             $rescheduled['message'],
@@ -449,7 +449,7 @@ class AdminNotificationCenterTest extends TestCase
 
         $payload = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired']);
         $this->assertCount(2, $payload['notifications']);
-        $this->assertSame(['Online Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
+        $this->assertSame(['Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
         foreach (['grooming' => 'no_show', 'clinic' => 'clinic_no_show'] as $service => $type) {
             $filtered = $this->notificationPayload(['mode' => 'full', 'service' => $service, 'activity' => 'expired']);
             $this->assertSame([$type], array_column($filtered['notifications'], 'type'));
@@ -493,8 +493,8 @@ class AdminNotificationCenterTest extends TestCase
         $rows = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired'])['notifications'];
         $this->assertCount(3, $rows);
         $this->assertSame('Historical no show record.', $rows[0]['message']);
-        $this->assertSame(str_replace(['Grooming', 'Pre-registration'], ['Clinic', 'Online Registration'], $message), $rows[1]['message']);
-        $this->assertSame(str_replace('Pre-registration', 'Online Registration', $message), $rows[2]['message']);
+        $this->assertSame(str_replace(['Grooming', 'Pre-registration'], ['Clinic', 'Online Queue Registration'], $message), $rows[1]['message']);
+        $this->assertSame(str_replace('Pre-registration', 'Online Queue Registration', $message), $rows[2]['message']);
     }
 
     public function test_invalid_service_or_activity_is_rejected(): void
@@ -507,6 +507,64 @@ class AdminNotificationCenterTest extends TestCase
                 $this->assertArrayHasKey($field, $exception->errors());
             }
         }
+    }
+
+    public function test_historical_registration_phrases_preserve_names_and_stored_snapshots(): void
+    {
+        foreach (['Pre-registration', 'Online Registration', 'Online pre-registration', 'Online Queue Registration'] as $legacy) {
+            foreach ([
+                ['booked', "New {$legacy} BAC-LEGACY-1 by Pre-registration Online Registration on Aug 21.",
+                    'New Online Queue Registration BAC-LEGACY-1 by Pre-registration Online Registration on Aug 21.', 'New Online Queue Registration'],
+                ['rescheduled', "{$legacy} BAC-LEGACY-1 was rescheduled by Online Registration from Aug 21 to Aug 22.",
+                    'Online Queue Registration BAC-LEGACY-1 was rescheduled by Online Registration from Aug 21 to Aug 22.', 'Grooming Queue Registration Rescheduled'],
+                ['clinic_booked', "Clinic {$legacy} CLN-LEGACY-1 was submitted by Pre-registration for Online Registration.",
+                    'Clinic Online Queue Registration CLN-LEGACY-1 was submitted by Pre-registration for Online Registration.', 'New Clinic Online Queue Registration'],
+                ['no_show', "No show — Grooming: Pre-registration · Online Registration. {$legacy} for Aug 21 · No check-in recorded",
+                    'No show — Grooming: Pre-registration · Online Registration. Online Queue Registration for Aug 21 · No check-in recorded', 'No show — Grooming'],
+                ['clinic_no_show', "No show — Clinic: Pre-registration · Online Registration. {$legacy} for Aug 21 · No check-in recorded",
+                    'No show — Clinic: Pre-registration · Online Registration. Online Queue Registration for Aug 21 · No check-in recorded', 'No show — Clinic'],
+            ] as [$type, $stored, $expected, $title]) {
+                $id = $this->insertNotification($type, false, message: $stored);
+                $row = $this->notificationPayload(['mode' => 'full', 'selected_id' => $id])['selected_notification'];
+                $this->assertSame($expected, $row['message']);
+                $this->assertSame($title, $row['title']);
+                $this->assertSame($expected, implode('', array_column($row['message_parts'], 'text')));
+                $this->assertSame($stored, DB::table('notifications')->where('notification_id', $id)->value('message'));
+                $this->assertStringNotContainsString('Queue Queue', $row['message']);
+            }
+        }
+    }
+
+    public function test_registration_snapshot_dates_do_not_change_references_or_authored_text(): void
+    {
+        foreach ([
+            ['booked', 'New Online Registration BAC-2026-08-21-0001 by Online Registration 2026-08-21 on 2026-08-21.',
+                'New Online Queue Registration BAC-2026-08-21-0001 by Online Registration 2026-08-21 on Aug 21.'],
+            ['rescheduled', 'Pre-registration BAC-2026-08-21-0001 was rescheduled by Pre-registration from 2026-08-21 to 2026-08-22.',
+                'Online Queue Registration BAC-2026-08-21-0001 was rescheduled by Pre-registration from Aug 21 to Aug 22.'],
+            ['booked', 'Owner requested Pre-registration on 2026-08-21.', 'Owner requested Pre-registration on 2026-08-21.'],
+        ] as [$type, $stored, $expected]) {
+            $id = $this->insertNotification($type, false, message: $stored);
+            $row = $this->notificationPayload(['mode' => 'full', 'selected_id' => $id])['selected_notification'];
+            $this->assertSame($expected, $row['message']);
+            $this->assertSame($stored, DB::table('notifications')->where('notification_id', $id)->value('message'));
+        }
+    }
+
+    public function test_registration_normalization_leaves_walk_ins_and_authored_text_untouched(): void
+    {
+        $reason = 'Owner requested Pre-registration and Online Registration wording.';
+        foreach (['walk_in_registered', 'clinic_walk_in', 'status_update', 'booked', 'rescheduled'] as $type) {
+            $stored = $type === 'clinic_walk_in' ? 'New clinic walk-in CLN-1 for '.$reason : $reason;
+            $id = $this->insertNotification($type, false, message: $stored);
+            $row = $this->notificationPayload(['mode' => 'full', 'selected_id' => $id])['selected_notification'];
+            $this->assertSame($stored, $row['message']);
+            if (str_contains($type, 'walk_in')) $this->assertStringNotContainsString('Online Queue Registration', $row['title']);
+        }
+        DB::table('bookings')->where('booking_id', 1)->update(['cancellation_reason' => $reason]);
+        $id = $this->insertNotification('cancelled', false, bookingId: 1, message: 'Cancelled by staff. Reason: '.$reason);
+        $row = $this->notificationPayload(['mode' => 'full', 'selected_id' => $id])['selected_notification'];
+        $this->assertSame('Reason: '.$reason, $row['context']);
     }
 
     /** @param array<string, mixed> $filters */

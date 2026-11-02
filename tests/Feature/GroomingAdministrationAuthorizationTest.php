@@ -2412,8 +2412,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ],
         ]);
 
-        $customMessage = 'Your grooming online registration CANCEL-CUSTOM-50 has been cancelled by the clinic. Reason: Owner requested a different date.';
-        $defaultMessage = 'Your grooming online registration CANCEL-DEFAULT-51 has been cancelled by the clinic. Reason: Clinic unavailable.';
+        $customMessage = 'Your grooming queue registration CANCEL-CUSTOM-50 has been cancelled by the clinic. Reason: Owner requested a different date.';
+        $defaultMessage = 'Your grooming queue registration CANCEL-DEFAULT-51 has been cancelled by the clinic. Reason: Clinic unavailable.';
 
         $this->postJson('/api/admin/bookings/50/cancel', [
             'cancellation_reason' => '  Owner requested a different date.  ',
@@ -3151,7 +3151,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('booking_pets', ['booking_pet_id' => $pets[1]->booking_pet_id, 'grooming_state' => 'not_started']);
         $this->assertDatabaseHas('bookings', ['booking_id' => $id, 'status' => 'waiting_to_arrive']);
         $this->assertDatabaseHas('customer_notifications', ['pet_id' => $pets[0]->pet_id, 'booking_id' => $id,
-            'message' => "Coco's Grooming online registration was cancelled because Coco was checked in for Clinic."]);
+            'message' => "Coco's Grooming queue registration was cancelled because Coco was checked in for Clinic."]);
         $this->getJson('/api/customer/notifications')->assertOk()
             ->assertJsonPath('notifications.0.pet_names', ['Coco'])
             ->assertJsonPath('notifications.0.title', 'Grooming Cancellation');
@@ -3318,8 +3318,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         Carbon::setTestNow('2026-10-16 17:00:00');
         $this->getJson('/api/customer/notifications')->assertOk()->assertJsonPath('unread_count', 1)
-            ->assertJsonPath('notifications.0.title', 'Grooming Online Registration — No Show')
-            ->assertJsonPath('notifications.0.display_message', 'Your Grooming Online Registration for Oct 16 was marked No Show because no check-in was recorded before closing.');
+            ->assertJsonPath('notifications.0.title', 'Grooming Queue Registration — No Show')
+            ->assertJsonPath('notifications.0.display_message', 'Your Grooming Queue Registration for Oct 16 was marked No Show because no check-in was recorded before closing.');
         $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseCount('customer_notifications', 1);
         $this->assertSame(1, DB::table('notifications')->where('type', 'no_show')->where('booking_id', $id)->count());

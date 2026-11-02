@@ -131,7 +131,7 @@ assert.equal(ui.actionConfirmModal.message, '', 'Cancellation adds no helper par
 assert.equal(ui.actionConfirmModal.booking.actionPet.bookingPetId, sibling.bookingPetId);
 ui.closeActionConfirmModal();
 ui.confirmCancelBooking(pair);
-assert.equal(ui.actionConfirmModal.title, 'Cancel online registration?');
+assert.equal(ui.actionConfirmModal.title, 'Cancel queue registration?');
 assert.equal(ui.actionConfirmModal.confirmLabel, 'Confirm cancellation');
 assert.equal(ui.actionConfirmModal.message, '');
 ui.closeActionConfirmModal();

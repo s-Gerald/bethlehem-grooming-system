@@ -1634,6 +1634,7 @@ body.customer-detail-modal-open {
 .grooming-incoming-pets { min-width: 0; margin-top: 10px; }
 .grooming-incoming-card .grooming-booking-main { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(210px, .8fr); align-items: center; gap: 20px; }
 .grooming-incoming-badges { display: flex; flex-wrap: wrap; gap: 6px; max-width: 160px; }
+.grooming-incoming-badges .grooming-status { max-width: 100%; white-space: normal; }
 .grooming-incoming-timing { display: grid; gap: 10px; min-width: 0; }
 .grooming-incoming-timing > div { display: flex; align-items: flex-start; gap: 8px; }
 .grooming-incoming-timing svg { flex: none; color: var(--grooming-accent); }

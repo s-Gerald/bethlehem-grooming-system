@@ -107,7 +107,7 @@ class PetServiceSessionPolicy
         }
         if ($ownerId) CustomerNotification::create($reference + ['user_id' => $ownerId, 'pet_id' => $record->pet_id,
             'type' => CustomerNotification::TYPE_BOOKING_CANCELLED,
-            'message' => "{$pet->pet_name}'s {$from} online registration was cancelled because {$pet->pet_name} was checked in for {$to}.",
+            'message' => "{$pet->pet_name}'s {$from} queue registration was cancelled because {$pet->pet_name} was checked in for {$to}.",
             'is_read' => false, 'created_at' => now()]);
     }
 

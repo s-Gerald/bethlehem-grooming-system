@@ -109,7 +109,7 @@ assert.equal(ui.groomingSessionFields.map(field => field.label).join(','), 'Entr
 assert.equal(ui.groomingSessionFields[0].value, 'Walk-in');
 ui.detailsBooking = session;
 assert.equal(ui.groomingSessionFields.map(field => field.label).join(','), 'Visit day,Entry source,Arrival window,Grooming started,Finished');
-assert.equal(ui.groomingSessionFields.find(field => field.label === 'Entry source').value, 'Online Registration');
+assert.equal(ui.groomingSessionFields.find(field => field.label === 'Entry source').value, 'Online Queue Registration');
 ui.detailsBooking = repeat;
 assert.equal(ui.groomingSessionFields.map(field => field.label).join(','), 'Visit day,Entry source');
 

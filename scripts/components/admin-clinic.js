@@ -794,7 +794,7 @@ function adminClinicPage() {
       window.scrollTo(0, 0);
     },
 
-    caseLabel(item) { return ({ online_request: "Online Registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
+    caseLabel(item) { return ({ online_request: "Online Queue Registration", consultation: "Consultation", vaccination: "Vaccination" })[item.case_type] || "Clinic case"; },
     caseStatus(item) { return ({ waiting_to_arrive: "Waiting to Arrive", checked_in: "Checked In", in_consultation: "In Consultation", for_payment: "For Payment" })[item.status] || item.status; },
     casePatientLabel(item) {
       return (item.status !== 'waiting_to_arrive' && item.queue_number ? `#${item.queue_number} · ` : '') + (item.pet?.name || 'Patient');

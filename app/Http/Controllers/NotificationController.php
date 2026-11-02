@@ -197,7 +197,7 @@ class NotificationController extends Controller
     {
         $booking = $notification->booking;
         $clinicAppointment = $notification->clinicAppointment;
-        $storedMessage = $this->normalizeStoredMessage($notification->message);
+        $storedMessage = $this->normalizeStoredMessage($notification->message, $notification->type);
 
         return match ($notification->type) {
             'booked' => $this->groomingBookedContent($booking, $storedMessage),
@@ -250,13 +250,13 @@ class NotificationController extends Controller
         $schedule = $this->bookingSchedule($booking);
         $message = $fallback !== ''
             ? $this->normalizeStoredScheduleMessage($fallback)
-            : ($reference ? 'New online registration '.$reference
+            : ($reference ? 'New Online Queue Registration '.$reference
                 .($owner ? " by {$owner}" : '')
                 .($schedule ? " on {$schedule}" : '').'.'
                 : $fallback);
 
         return $this->content(
-            'New online registration',
+            'New Online Queue Registration',
             $message,
             null,
             [$reference, $owner],
@@ -270,13 +270,13 @@ class NotificationController extends Controller
         $schedule = $this->bookingSchedule($booking);
         $message = $fallback !== ''
             ? $this->normalizeStoredScheduleMessage($fallback)
-            : ($reference ? 'Online Registration '.$reference.' was rescheduled'
+            : ($reference ? 'Online Queue Registration '.$reference.' was rescheduled'
                 .($owner ? " by {$owner}" : '')
                 .($schedule ? " to {$schedule}" : '').'.'
                 : $fallback);
 
         return $this->content(
-            'Grooming online registration rescheduled',
+            'Grooming Queue Registration Rescheduled',
             $message,
             null,
             [$reference, $owner],
@@ -351,14 +351,14 @@ class NotificationController extends Controller
         $pet = trim((string) $appointment?->pet?->pet_name);
         $schedule = $this->clinicSchedule($appointment);
         $message = $reference
-            ? ($walkIn ? 'New clinic walk-in ' : 'New clinic online registration ').$reference
+            ? ($walkIn ? 'New clinic walk-in ' : 'New Clinic Online Queue Registration ').$reference
                 .($owner ? " for {$owner}" : '')
                 .($pet ? " and {$pet}" : '')
                 .($schedule ? " on {$schedule}" : '').'.'
             : $fallback;
 
         return $this->content(
-            $walkIn ? 'New clinic walk-in' : 'New clinic online registration',
+            $walkIn ? 'New clinic walk-in' : 'New Clinic Online Queue Registration',
             $message,
             null,
             [$reference, $owner, $pet],
@@ -547,22 +547,31 @@ class NotificationController extends Controller
             : $date->format('M j, Y');
     }
 
-    private function normalizeStoredMessage(?string $message): string
+    private function normalizeStoredMessage(?string $message, string $type): string
     {
-        return str_ireplace('pre-registration', 'Online Registration', trim((string) preg_replace('/\s+/', ' ', (string) $message)));
+        $text = trim((string) preg_replace('/\s+/', ' ', (string) $message));
+        $registration = '(?:Online(?: Queue)? Registration|(?:Online )?Pre-registration)';
+        // Match generated event phrases only; names and cancellation reasons are snapshots.
+        $pattern = match ($type) {
+            'booked' => '/\A(New )'.$registration.'(?= [A-Z0-9]+(?:-[A-Z0-9]+)+\b)/i',
+            'rescheduled' => '/\A()'.$registration.'(?= [A-Z0-9]+(?:-[A-Z0-9]+)+ was rescheduled\b)/i',
+            Notification::TYPE_CLINIC_BOOKED => '/\A((?:New )?Clinic )'.$registration.'(?= [A-Z0-9]+(?:-[A-Z0-9]+)+\b)/i',
+            Notification::TYPE_NO_SHOW, Notification::TYPE_CLINIC_NO_SHOW => '/\A(No show — (?:Grooming|Clinic)(?:: .*)?\. )'.$registration.'(?=(?: for [^·]+)? · No check-in recorded\z)/i',
+            default => null,
+        };
+
+        return $pattern ? (preg_replace($pattern, '${1}Online Queue Registration', $text) ?? $text) : $text;
     }
 
     private function normalizeStoredScheduleMessage(string $message): string
     {
-        $message = preg_replace_callback(
-            '/\b\d{4}-\d{2}-\d{2}\b/',
-            fn (array $matches) => $this->notificationDateLabel($matches[0]),
-            $message,
-        ) ?? $message;
+        if (! preg_match('/\A(?:New )?Online Queue Registration [A-Z0-9]+(?:-[A-Z0-9]+)+\b/i', $message)) {
+            return $message;
+        }
 
-        return preg_replace(
-            '/\bNew Pre-registration\b/i',
-            'New online registration',
+        return preg_replace_callback(
+            '/\b(on|from|to) (\d{4}-\d{2}-\d{2})\b/',
+            fn (array $matches) => $matches[1].' '.$this->notificationDateLabel($matches[2]),
             $message,
         ) ?? $message;
     }

@@ -43,6 +43,11 @@ function setup() {
 
 (async () => {
   const app = setup();
+  assert.equal(app.state.caseLabel({case_type: 'online_request'}), 'Online Queue Registration');
+  assert.equal(app.state.caseLabel({case_type: 'consultation'}), 'Consultation');
+  assert.equal(app.state.caseLabel({case_type: 'vaccination'}), 'Vaccination');
+  assert.equal(app.state.caseStatus({status: 'waiting_to_arrive'}), 'Waiting to Arrive');
+  assert.equal(app.state.casePatientLabel({status: 'waiting_to_arrive', queue_number: 99, pet: {name: 'Mochi'}}), 'Mochi');
   await app.state.openProfile({pet: {id: 7, petName: 'Mochi'}, owner}, app.trigger);
   assert.deepEqual(app.calls, [['history', 7], ['registered', 8]]);
   assert.equal(app.state.profile.pet.color, 'Brown', 'Profile loads full pet data rather than the directory summary');

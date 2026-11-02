@@ -4,7 +4,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const origin = 'http://127.0.0.1:8000';
 const evidence = process.env.LOCAL_REVIEW_SCREENSHOTS;
 const activities = [
-  ['pre_registrations', 'Pre-registrations'], ['schedule_changes', 'Schedule changes'],
+  ['pre_registrations', 'Online Queue Registrations'], ['schedule_changes', 'Schedule changes'],
   ['payments', 'Payments'], ['cancellations', 'Cancellations'], ['expired', 'No show'],
 ].map(([value, label]) => ({value, label}));
 const types = ['booked', 'payment_due', 'cancelled', 'clinic_booked', 'clinic_payment_due', 'clinic_cancelled'];
@@ -143,7 +143,7 @@ async function filtersAndMutations(browser) {
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 20);
     const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
     const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
-    assert.deepEqual(await activity.locator('option').allTextContents(), ['All Activities', 'Pre-registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show']);
+    assert.deepEqual(await activity.locator('option').allTextContents(), ['All Activities', 'Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show']);
     for (const control of [service, activity]) {
       await control.click(); await f.page.keyboard.press('Escape');
       assert.equal(await control.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Pointer focus has no filter outline');
@@ -274,7 +274,7 @@ async function noShowFiltersAndServerRefresh(browser) {
   const noShow = (id, service, is_read = false) => ({notification_id: id, type: service === 'clinic' ? 'clinic_no_show' : 'no_show',
     service, activity: 'expired', icon: 'history', title: `No show — ${service}`,
     message_parts: [{text: `No show — ${service}: Local Review · Mochi`, emphasized: false}],
-    context_parts: [{text: 'Pre-registration for Oct 20 · No check-in recorded', emphasized: false}], is_read, created_at: new Date().toISOString()});
+    context_parts: [{text: 'Online Queue Registration for Oct 20 · No check-in recorded', emphasized: false}], is_read, created_at: new Date().toISOString()});
   try {
     await f.page.clock.install();
     f.state.rows = [noShow(100, 'grooming'), noShow(101, 'clinic', true)];

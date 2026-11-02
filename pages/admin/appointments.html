@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/components/product-search-dropdown.css?v=20261029-v2" />
     <link rel="stylesheet" href="/css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030&estimate-ui=20261031-v2&overdue-icon=20261031" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
-    <link rel="stylesheet" href="/css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3&references=20261031" />
+    <link rel="stylesheet" href="/css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3&references=20261031&queue-copy=20261103-admin-v1" />
     <link
       rel="stylesheet"
       href="/css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029&references=20261031"
@@ -575,7 +575,7 @@
                       </div>
                       <div class="grooming-incoming-badges">
                         <span class="grooming-status">Incoming</span>
-                        <span class="grooming-status" x-text="booking.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Registration'"></span>
+                        <span class="grooming-status" x-text="booking.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Queue Registration'"></span>
                       </div>
                       <dl class="grooming-incoming-timing">
                         <div>
@@ -1353,7 +1353,7 @@
                     <div x-show="detailsBooking?.startedAt && !(detailsBooking?.pets || []).some(pet => pet.groomingStartedAt)"><dt>Grooming started</dt><dd x-text="detailsBooking?.startedAt"></dd></div>
                     <div x-show="detailsBooking?.completedAt && !(detailsBooking?.pets || []).some(pet => pet.groomingFinishedAt)"><dt>Finished</dt><dd x-text="detailsBooking?.completedAt"></dd></div>
                     <div x-show="detailsBooking?.bookingType !== 'Walk-In' && detailsBooking?.registeredAt"><dt>Submitted online</dt><dd x-text="registrationTimestamp(detailsBooking?.registeredAt)"></dd></div>
-                    <div x-show="detailsBooking?.bookingType"><dt>Entry source</dt><dd x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Registration'"></dd></div>
+                    <div x-show="detailsBooking?.bookingType"><dt>Entry source</dt><dd x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Walk-in' : 'Online Queue Registration'"></dd></div>
                     <div><dt>Payment</dt><dd x-text="detailsBooking?.paid ? 'Paid' : 'Unpaid'"></dd></div>
                   </dl>
                 </div>
@@ -1586,6 +1586,6 @@
     <script src="/scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="/scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="/scripts/services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1"></script>
-    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103"></script>
+    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1"></script>
   </body>
 </html>
