@@ -36,6 +36,7 @@ function createPage(getMe, phoneApi = {}) {
         : []);
       const listeners = new Map();
       elements.set(id, {
+        id,
         value: "",
         textContent: id === "accountDisplayName" ? "Loading..." : "",
         classList: {
@@ -62,6 +63,7 @@ function createPage(getMe, phoneApi = {}) {
   }
 
   const context = {
+    TextEncoder,
     API: {
       hasAuthenticatedSession: () => true,
       getMe,
@@ -110,6 +112,80 @@ function deferred() {
 
 async function flush() {
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+async function testPasswordChangeSubmissionAndErrors() {
+  const pending = deferred();
+  let calls = 0, redirected = false;
+  const element = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
+    changeCustomerPassword: async payload => {
+      calls++;
+      assert.equal(payload.current_password, 'old value');
+      assert.equal(payload.password, '  violet meadow river  ');
+      return pending.promise;
+    },
+    redirectToSignIn(options) { redirected = options.passwordChanged === true; },
+  });
+  await flush();
+  element('currentPassword').value = 'old value';
+  element('newPassword').value = element('confirmNewPassword').value = '  violet meadow river  ';
+  const submission = element('passwordForm').dispatch('submit');
+  assert.equal(calls, 1);
+  assert.equal(element('changePasswordSubmit').disabled, true);
+  assert.equal(element('changePasswordLabel').textContent, 'Changing Password...');
+  await element('passwordForm').dispatch('submit');
+  assert.equal(calls, 1);
+  pending.resolve({ success: true });
+  await submission;
+  assert.equal(redirected, true);
+  assert.equal(element('currentPassword').value, '');
+  assert.equal(element('newPassword').value, '');
+  assert.equal(element('confirmNewPassword').value, '');
+
+  for (const error of [
+    Object.assign(new Error('Invalid'), { status: 422, errors: { current_password: ['Incorrect current password.'] } }),
+    Object.assign(new Error('Wait'), { status: 429, retryAfter: 300 }),
+    Object.assign(new Error('Lost'), { status: 0 }),
+  ]) {
+    let attempts = 0;
+    const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
+      changeCustomerPassword: async () => { attempts++; throw error; },
+    });
+    await flush();
+    page('currentPassword').value = 'old value';
+    page('newPassword').value = page('confirmNewPassword').value = 'long meadow river passphrase';
+    await page('passwordForm').dispatch('submit');
+    assert.equal(attempts, 1);
+    assert.equal(page('changePasswordSubmit').disabled, false);
+    assert.equal(page('newPassword').value, 'long meadow river passphrase');
+    if (error.status === 422) assert.equal(page('currentPasswordError').textContent, 'Incorrect current password.');
+    if (error.status === 429) assert.match(page('settingsStatus').textContent, /300/);
+    if (error.status === 0) assert.match(page('settingsStatus').textContent, /may have changed.*sign in again/i);
+  }
+}
+
+async function testPasswordPolicyErrorsStayBesideTheirFields() {
+  for (const [old, password, confirmation, field] of [
+    ['', 'violet meadow river passphrase', 'violet meadow river passphrase', 'currentPassword'],
+    ['old', 'too short', 'too short', 'newPassword'],
+    ['same meadow river password', 'same meadow river password', 'same meadow river password', 'newPassword'],
+    ['old', 'violet meadow river passphrase', 'mismatch', 'confirmNewPassword'],
+    ['old', 'é'.repeat(37), 'é'.repeat(37), 'newPassword'],
+  ]) {
+    let calls = 0;
+    const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
+      changeCustomerPassword: async () => { calls++; },
+    });
+    await flush();
+    page('currentPassword').value = old;
+    page('newPassword').value = password;
+    page('confirmNewPassword').value = confirmation;
+    await page('passwordForm').dispatch('submit');
+    assert.equal(calls, 0);
+    assert.equal(page(field).getAttribute('aria-invalid'), 'true');
+    assert.equal(page(`${field}Error`).hidden, false);
+    assert.equal(page('newPassword').value, password);
+  }
 }
 
 async function testSettingsWaitsForProfile() {
@@ -259,6 +335,8 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
   await element('accountForm').dispatch('submit');
   assert.equal(saves, 2, 'Cancel and unchanged saves do not send requests.');
   await testSettingsWaitsForProfile();
+  await testPasswordChangeSubmissionAndErrors();
+  await testPasswordPolicyErrorsStayBesideTheirFields();
   await testSettingsFailureKeepsFormHiddenUntilRetry();
   await testPhoneVerificationBadgesUseServerStatus();
   await testConfirmedPhoneRefreshUpdatesExistingSettingsFields();

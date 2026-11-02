@@ -3,20 +3,88 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreUnregisteredCustomerRequest;
+use App\Http\Middleware\UseAccountSessionCookie;
 use App\Models\Booking;
+use App\Models\LoginEmailChallenge;
+use App\Models\PasswordResetRequest;
 use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
+use App\Rules\CustomerPassword;
+use App\Services\AccountSessionService;
+use App\Services\AuthenticationEmailPolicy;
+use App\Services\AuthenticationMailDelivery;
 use App\Services\CustomerIdentityService;
+use App\Services\RememberedDeviceService;
 use App\Support\HumanName;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
+    public function changeOwnPassword(Request $request)
+    {
+        app(AuthenticationEmailPolicy::class)->assertSharedStore();
+        $unexpected = array_diff(array_keys($request->all()), ['current_password', 'password', 'password_confirmation']);
+        if ($unexpected) {
+            throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
+        }
+        $data = $request->validate([
+            'current_password' => ['required', 'string', 'max:4096'],
+            'password' => ['required', 'string', 'min:15', 'max:72'],
+            'password_confirmation' => ['required', 'string', 'same:password'],
+        ], [
+            'current_password.required' => 'Enter your current password.',
+            'password.min' => 'Use at least 15 characters.',
+            'password_confirmation.same' => 'New password and confirmation do not match.',
+        ]);
+
+        // session.active holds account -> token locks for this mutation. Re-read
+        // both here as well: stale authenticated models must never authorize replay.
+        DB::transaction(function () use ($request, $data): void {
+            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
+            $policy = app(AccountSessionService::class);
+            abort_unless($user->role === 'customer' && $policy->accountIsUsable($user), 403);
+            $tokenId = $request->user()->currentAccessToken()?->getKey();
+            $token = $tokenId ? $user->tokens()->whereKey($tokenId)->lockForUpdate()->first() : null;
+            abort_unless($token && $policy->isUsable($token, $user), 401, 'Please sign in again.');
+            if (! Hash::check($data['current_password'], $user->password_hash)) {
+                throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
+            }
+            if (Hash::check($data['password'], $user->password_hash)) {
+                throw ValidationException::withMessages(['password' => 'New password must be different from the current password.']);
+            }
+            Validator::make(['password' => $data['password']], [
+                'password' => [new CustomerPassword($user)],
+            ])->validate();
+
+            $user->password_hash = Hash::make($data['password']);
+            $user->save(); // Existing User hook revokes all remembered devices once.
+            $user->tokens()->delete();
+            PasswordResetRequest::where('user_id', $user->getKey())->delete();
+            LoginEmailChallenge::where('user_id', $user->getKey())->delete();
+
+            DB::afterCommit(function () use ($user): void {
+                try {
+                    AuthenticationMailDelivery::queue($user, new PasswordChangedNotification,
+                        allowImmediate: false, purpose: 'security_notice');
+                } catch (\Throwable) {
+                    Log::warning('Customer password confirmation could not be queued.', ['user_id' => $user->getKey()]);
+                }
+            });
+        });
+
+        return response()->json(['success' => true])->header('Cache-Control', 'no-store')
+            ->withCookie(UseAccountSessionCookie::cookie($request, UseAccountSessionCookie::NAME, '', now()->subYear()))
+            ->withCookie(UseAccountSessionCookie::cookie($request, RememberedDeviceService::COOKIE, '', now()->subYear()));
+    }
+
     public function updateOwnName(Request $request)
     {
         $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'current_password']);

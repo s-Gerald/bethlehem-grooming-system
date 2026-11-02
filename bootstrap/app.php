@@ -43,11 +43,25 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->report(function (\Throwable $exception) {
+            if (request()->is('api/customer/password')) {
+                // Exception messages/traces can contain SQL bindings or HTTP
+                // payloads. Keep this credential endpoint's failure log allowlisted.
+                \Illuminate\Support\Facades\Log::error('Customer password change failed.', [
+                    'exception_type' => $exception::class, 'user_id' => request()->user()?->getKey(),
+                ]);
+                return false;
+            }
+        });
         $exceptions->respond(function ($response) {
+            if (request()->is('api/customer/password') && $response instanceof \Illuminate\Http\JsonResponse
+                && ($response->getData(true)['code'] ?? null) === 'password_screening_unavailable') {
+                return $response;
+            }
             if (\App\Http\Middleware\UseAccountSessionCookie::isPrivateRequest(request())) {
                 $response->headers->set('Cache-Control', 'no-store');
             }
-            if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*') && $response->getStatusCode() >= 500) {
+            if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/customer/password') && $response->getStatusCode() >= 500) {
                 return response()->json(['success' => false, 'message' => request()->is('api/register*')
                     ? "Couldn't create your account. Please try again."
                     : 'Something went wrong. Please try again.'], $response->getStatusCode())

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="../../css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1&password-change=20261102" />
     <link rel="stylesheet" href="../../css/custom.css?ui=20260915-password-reveal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
 
     <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
@@ -394,10 +394,10 @@
               <h3 class="text-xl font-bold text-portal-text">Change Password</h3>
               <form
                 id="passwordForm"
+                novalidate
                 class="rounded-3xl border border-portal-border bg-white p-5 shadow-portal sm:p-6"
               >
                 <div class="space-y-6">
-                  <!-- BACKEND: Wire this form to the customer password update endpoint when it is available. -->
                   <div>
                     <label
                       for="currentPassword"
@@ -409,6 +409,8 @@
                       <input
                         type="password"
                         id="currentPassword"
+                        name="current_password"
+                        aria-describedby="currentPasswordError"
                         autocomplete="current-password"
                         class="custom-password-input w-full rounded-xl border border-portal-border px-4 py-3 pr-12 text-portal-text focus:border-portal-accent focus:outline-none"
                         required
@@ -416,7 +418,7 @@
                       <button
                         type="button"
                         data-password-toggle="currentPassword"
-                        class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline-none"
+                        class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary"
                         aria-label="Show password"
                         title="Show password"
                       >
@@ -424,6 +426,7 @@
                         <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#eye"></use></svg>
                       </button>
                     </div>
+                    <p id="currentPasswordError" class="mt-2 text-xs font-medium text-red-700" hidden aria-live="polite"></p>
                   </div>
 
                   <div class="space-y-6">
@@ -438,15 +441,16 @@
                         <input
                           type="password"
                           id="newPassword"
+                          name="password"
                           autocomplete="new-password"
-                          aria-describedby="passwordStrength passwordRequirements"
+                          aria-describedby="passwordStrength passwordRequirements newPasswordError"
                           class="custom-password-input w-full rounded-xl border border-portal-border px-4 py-3 pr-12 text-portal-text focus:border-portal-accent focus:outline-none"
                           required
                         />
                         <button
                           type="button"
                           data-password-toggle="newPassword"
-                          class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline-none"
+                          class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary"
                           aria-label="Show password"
                           title="Show password"
                         >
@@ -455,15 +459,15 @@
                         </button>
                       </div>
                       <p id="passwordStrength" class="mt-2 text-xs font-medium text-portal-muted">
-                        Please add all necessary characters to create a safe password.
+                        Spaces and passphrases are welcome.
                       </p>
                       <ul id="passwordRequirements" class="mt-2 grid gap-1.5 text-xs text-portal-muted sm:grid-cols-2" aria-label="New password requirements">
-                        <li data-password-rule="length" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>Minimum 12 characters</span></li>
-                        <li data-password-rule="uppercase" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>One uppercase character</span></li>
-                        <li data-password-rule="lowercase" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>One lowercase character</span></li>
-                        <li data-password-rule="special" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>One special character</span></li>
-                        <li data-password-rule="number" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>One number</span></li>
+                        <li data-password-rule="length" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>At least 15 characters</span></li>
+                        <li data-password-rule="bytes" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>At most 72 bytes (fewer Unicode characters)</span></li>
+                        <li class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>Different from your current password</span></li>
+                        <li class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg><span>No common, predictable or breached passwords</span></li>
                       </ul>
+                      <p id="newPasswordError" class="mt-2 text-xs font-medium text-red-700" hidden aria-live="polite"></p>
                     </div>
 
                     <div>
@@ -477,15 +481,16 @@
                         <input
                           type="password"
                           id="confirmNewPassword"
+                          name="password_confirmation"
                           autocomplete="new-password"
-                          aria-describedby="confirmPasswordFeedback"
+                          aria-describedby="confirmPasswordFeedback confirmNewPasswordError"
                           class="custom-password-input w-full rounded-xl border border-portal-border px-4 py-3 pr-12 text-portal-text focus:border-portal-accent focus:outline-none"
                           required
                         />
                         <button
                           type="button"
                           data-password-toggle="confirmNewPassword"
-                          class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline-none"
+                          class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-portal-muted transition hover:text-portal-primary focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary"
                           aria-label="Show password"
                           title="Show password"
                         >
@@ -494,15 +499,18 @@
                         </button>
                       </div>
                       <p id="confirmPasswordFeedback" class="mt-2 text-xs text-portal-muted" aria-live="polite"></p>
+                      <p id="confirmNewPasswordError" class="mt-2 text-xs font-medium text-red-700" hidden aria-live="polite"></p>
                     </div>
                   </div>
 
                   <div class="flex justify-end pt-1">
                     <button
+                      id="changePasswordSubmit"
                       type="submit"
                       class="portal-button-primary w-full text-sm font-semibold sm:w-[240px]"
                     >
-                      Change Password
+                      <span id="changePasswordSpinner" class="hidden mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" aria-hidden="true"></span>
+                      <span id="changePasswordLabel" aria-live="polite">Change Password</span>
                     </button>
                   </div>
                 </div>
@@ -515,11 +523,11 @@
     </div>
 
     <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1"></script>
+    <script src="../../scripts/api.js?password-change=20261102&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1"></script>
     <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="../../scripts/components/client-notification-ui.js?v=20261030-pet-information"></script>
     <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
     <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3"></script>
-    <script src="../../scripts/components/client-settings.js?v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029"></script>
+    <script src="../../scripts/components/client-settings.js?password-change=20261102&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029"></script>
   </body>
 </html>

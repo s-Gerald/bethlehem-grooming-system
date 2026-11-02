@@ -162,6 +162,7 @@ class LoginEmailChallengeService
         if ($pendingToken) {
             $resumed = DB::transaction(function () use ($user, $pendingToken): ?array {
                 $lockedUser = User::whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+                $this->assertPasswordUnchanged($user, $lockedUser);
                 self::assertAttemptBudget($lockedUser);
                 $challenge = LoginEmailChallenge::where('user_id', $lockedUser->getKey())
                     ->where('poll_token_hash', hash('sha256', $pendingToken))->lockForUpdate()->first();
@@ -194,6 +195,7 @@ class LoginEmailChallengeService
             $lockedUser = User::query()
                 ->lockForUpdate()
                 ->findOrFail($user->getKey());
+            $this->assertPasswordUnchanged($user, $lockedUser);
 
             $eligibleRole = in_array($lockedUser->role, ['customer', 'admin', 'staff'], true);
             $customerEmailIsVerified = $lockedUser->role !== 'customer'
@@ -241,5 +243,13 @@ class LoginEmailChallengeService
             'expires_in' => max(0, $expiresAt->timestamp - now()->timestamp),
             'requires_new_code' => false,
         ];
+    }
+
+    private function assertPasswordUnchanged(User $verifiedUser, User $lockedUser): void
+    {
+        if (! hash_equals($verifiedUser->password_hash, $lockedUser->password_hash)) {
+            throw new HttpResponseException(response()->json(['success' => false,
+                'message' => 'Your credentials changed. Please sign in again.'], 401)->header('Cache-Control', 'no-store'));
+        }
     }
 }

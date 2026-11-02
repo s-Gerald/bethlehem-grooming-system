@@ -536,7 +536,8 @@ var API = (() => {
   let sessionChecking = false;
   let serverSession = null;
   let sessionSync = null;
-  let emailChangeSignOut = null;
+  let credentialSignOut = null;
+  let passwordChangeConfirmed = false;
   let sessionPollTimer = null;
   let activityReportTimer = null;
   let lastActivityReportAt = 0;
@@ -694,6 +695,7 @@ var API = (() => {
   }
 
   function setAuthSession(token, role, remember = false, accountId = null, restored = false) {
+    passwordChangeConfirmed = false;
     if (!token || (role !== "customer" && !isAdminRole(role))) {
       throw new Error("The server returned an invalid authentication session.");
     }
@@ -837,10 +839,10 @@ var API = (() => {
     return appPath("pages/client/sign-in.html");
   }
 
-  function redirectToSignIn({ replace = true } = {}) {
+  function redirectToSignIn({ replace = true, passwordChanged = false } = {}) {
     if (!isSignInPage() && !authRedirectStarted) {
       authRedirectStarted = true;
-      const target = signInPath();
+      const target = signInPath() + (passwordChanged || passwordChangeConfirmed ? '?password_changed=1' : '');
       if (replace && typeof window.location.replace === "function") {
         window.location.replace(target);
       } else {
@@ -917,7 +919,8 @@ var API = (() => {
     try {
       localStorage.setItem(
         AUTH_LOGOUT_EVENT_KEY,
-        JSON.stringify({ role, reason, sessionId: logoutSessionId(session), at: Date.now() })
+        JSON.stringify({ role, reason, sessionId: logoutSessionId(session),
+          ...(reason === 'password_changed' ? { accountId: session?.accountId } : {}), at: Date.now() })
       );
     } catch {
       // Non-fatal: removing the token still syncs logout in supported browsers.
@@ -948,7 +951,18 @@ var API = (() => {
       enforceProtectedPageAccess();
       return;
     }
-    if (!event?.sessionId || event.sessionId !== logoutSessionId(session)) return;
+    const passwordRevoked = event?.reason === 'password_changed' && session.role === 'customer'
+      && event.accountId && event.accountId === session.accountId
+      && Number(event.sessionId?.split(':')[1]) >= Number(session.token?.split('|')[0]);
+    if (!event?.sessionId || (event.sessionId !== logoutSessionId(session) && !passwordRevoked)) return;
+
+    if (event.reason === 'password_changed') {
+      restoreBlocked = true;
+      for (const storage of [localStorage, sessionStorage]) {
+        try { storage.setItem(RESTORE_BLOCK_KEY, '1'); } catch { /* Memory still blocks restoration. */ }
+      }
+      if (isProtectedClientPage()) concealCustomerSession();
+    }
 
     clearAuthStorage();
     if (session.role === "customer") clearBookingDraft();
@@ -2034,11 +2048,11 @@ var API = (() => {
     const lostAuthenticatedSession = response.status === 401
       && responseBelongsToCurrentSession;
 
-    // Revocation can reach a background read before the final email-change
+    // Revocation can reach a background read before the final credential-change
     // response. Let that response settle before deciding whether to redirect.
-    const completingEmail = emailChangeSignOut;
-    if ((lostAuthenticatedSession || invalidAccountSession) && completingEmail?.token === token
-      && endpoint !== completingEmail.endpoint) await completingEmail.settled;
+    const completingChange = credentialSignOut;
+    if ((lostAuthenticatedSession || invalidAccountSession) && completingChange?.token === token
+      && endpoint !== completingChange.endpoint) await completingChange.settled;
 
     if (
       (lostAuthenticatedSession || invalidAccountSession)
@@ -2495,6 +2509,39 @@ var API = (() => {
       }
     }
     return response;
+  }
+
+  async function changeCustomerPassword(payload) {
+    const session = getAuthSession();
+    if (session?.role !== 'customer') throw new Error('Please sign in again.');
+    const endpoint = '/customer/password';
+    let settle;
+    const completing = { token: session.token, endpoint, settled: new Promise(resolve => { settle = resolve; }) };
+    credentialSignOut = completing;
+    try {
+      const response = await withAuthTransition(() => request('POST', endpoint, payload, session.token,
+        { cache: 'no-store', suppressAuthRedirect: true }));
+      if (response.success !== true) {
+        const error = new Error('Unable to confirm the password change.');
+        error.status = 0;
+        throw error;
+      }
+      if (getAuthSession()?.token !== session.token) throw new Error('Your session changed. Please sign in again.');
+      passwordChangeConfirmed = true;
+      restoreBlocked = true;
+      for (const storage of [localStorage, sessionStorage]) {
+        try { storage.setItem(RESTORE_BLOCK_KEY, '1'); } catch { /* Memory still blocks restoration. */ }
+      }
+      clearAuthStorage();
+      clearBookingDraft();
+      if (isProtectedClientPage()) concealCustomerSession();
+      notifyLogout('customer', 'password_changed', session);
+      return response;
+    } finally {
+      for (const field of ['current_password', 'password', 'password_confirmation']) payload[field] = '';
+      if (credentialSignOut === completing) credentialSignOut = null;
+      settle();
+    }
   }
 
   function sendPhoneVerification(phone, currentPassword = null) {
@@ -3172,7 +3219,7 @@ var API = (() => {
     const endpoint = `/settings/security/email-change/${encodeURIComponent(id)}/confirm`;
     let settle;
     const completing = stage === 'new' ? { token, endpoint, settled: new Promise(resolve => { settle = resolve; }) } : null;
-    if (completing) emailChangeSignOut = completing;
+    if (completing) credentialSignOut = completing;
     try {
       const response = await request('POST', endpoint, { stage, code }, token);
       if (response.completed) {
@@ -3184,7 +3231,7 @@ var API = (() => {
       return response;
     } finally {
       if (completing) {
-        if (emailChangeSignOut === completing) emailChangeSignOut = null;
+        if (credentialSignOut === completing) credentialSignOut = null;
         settle();
       }
     }
@@ -3627,6 +3674,7 @@ var API = (() => {
     loadCustomerData,
     invalidateCustomerCache,
     updateCustomerName,
+    changeCustomerPassword,
     adminRequest,
     // Token access (used by other scripts that need to attach the token)
     getCustomerToken,

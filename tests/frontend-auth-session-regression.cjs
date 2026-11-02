@@ -24,6 +24,89 @@ class MemoryStorage {
   }
 }
 
+async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
+  const requests = [];
+  const profile = createBrowserProfile(async (url, options) => {
+    requests.push({ url, options });
+    if (url.endsWith('/customer/password')) return jsonResponse(200, { success: true });
+    return jsonResponse(200, { user: { first_name: 'Private', last_name: 'Customer' } });
+  });
+  const first = profile.page();
+  first.localStorage.setItem('customer_token', '601|cookie');
+  first.localStorage.setItem('user_role', 'customer');
+  first.localStorage.setItem('bethlehem.auth.account_id', '7');
+  const second = profile.page(new MemoryStorage(), '/pages/client/settings.html');
+  await first.API.getMe();
+  assert.ok(first.API.readCustomerCache('/me'));
+  requests.length = 0;
+  await first.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(first.API.hasAuthenticatedSession('customer'), false);
+  assert.equal(second.API.hasAuthenticatedSession('customer'), false);
+  assert.equal(first.API.readCustomerCache('/me'), null);
+  assert.equal(second.API.readCustomerCache('/me'), null);
+  await first.API.checkRememberedCustomerSession();
+  assert.equal(requests.length, 1, 'Password change neither logs out again nor restores a remembered device.');
+  assert.equal(requests[0].options.cache, 'no-store');
+  assert.match(second.replacements.at(-1), /sign-in\.html$/);
+}
+
+async function testPasswordSuccessSurvivesBackgroundRevocationAndNeverRetriesMutations() {
+  let resolveRead, resolveChange;
+  const browser = createBrowser({ pathname: '/pages/client/settings.html', local: {
+    customer_token: '602|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '7',
+  }, fetchImpl: url => url.endsWith('/me') ? new Promise(resolve => { resolveRead = resolve; })
+    : new Promise(resolve => { resolveChange = resolve; }) });
+  const reading = browser.API.getMe().catch(() => browser.API.redirectToSignIn());
+  const changing = browser.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  resolveRead(jsonResponse(401, {}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(browser.replacements.length, 0);
+  resolveChange(jsonResponse(200, { success: true }));
+  await Promise.all([reading, changing]);
+  assert.match(browser.replacements.at(-1), /password_changed=1$/, 'Background reads cannot hide confirmed success feedback.');
+
+  let attempts = 0;
+  const offline = createBrowser({ local: { customer_token: '603|cookie', user_role: 'customer' },
+    fetchImpl: async () => { attempts++; throw new TypeError('Network lost'); } });
+  await assert.rejects(offline.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' }), error => error.status === 0);
+  assert.equal(attempts, 1);
+  assert.equal(offline.API.hasAuthenticatedSession('customer'), true, 'Uncertain transport failure is not success.');
+}
+
+async function testPasswordSignOutDoesNotEraseNewerAccountsOrSessions() {
+  let resolveChange;
+  const browser = createBrowser({ local: { customer_token: '610|cookie', user_role: 'customer' },
+    fetchImpl: () => new Promise(resolve => { resolveChange = resolve; }) });
+  const changing = browser.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  browser.localStorage.setItem('customer_token', '611|cookie');
+  resolveChange(jsonResponse(200, { success: true }));
+  await assert.rejects(changing, /session changed/);
+  assert.equal(browser.API.getCustomerToken(), '611|cookie');
+
+  for (const [id, account, revoked] of [['609', '7', true], ['611', '7', false], ['609', '8', false]]) {
+    const tab = createBrowser({ pathname: '/pages/client/settings.html', session: {
+      customer_token: `${id}|cookie`, user_role: 'customer', 'bethlehem.auth.account_id': account,
+    } });
+    tab.dispatch('storage', { storageArea: tab.localStorage, key: 'bethlehem.auth.logout',
+      newValue: JSON.stringify({ role: 'customer', reason: 'password_changed', accountId: '7', sessionId: 'customer:610' }) });
+    assert.equal(tab.API.hasAuthenticatedSession('customer'), !revoked);
+    if (revoked) {
+      assert.equal(tab.sessionStorage.getItem('bethlehem.auth.signed_out'), '1');
+      tab.dispatch('pageshow', { persisted: true });
+      assert.match(tab.replacements.at(-1), /sign-in\.html$/);
+    }
+  }
+}
+
+function testPasswordChangeSignInFeedback() {
+  const page = signInPageHarness({ location: { href: 'https://clinic.test/pages/client/sign-in.html?password_changed=1', search: '?password_changed=1' } });
+  assert.match(page.element('sharedSignInMessage').textContent, /Password changed successfully/);
+  assert.match(page.element('sharedSignInMessage').textContent, /Your password has been updated. Please sign in again\./);
+  assert.equal(page.element('signInBtnLabel').textContent, 'Sign in again');
+  assert.equal(page.location.search, '', 'Success feedback is consumed once.');
+}
+
 function jsonResponse(status, data) {
   return {
     ok: status >= 200 && status < 300,
@@ -2571,6 +2654,10 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   await testUnknownLogout401CannotProceedToSignIn();
   await testExplicitLoginReconcilesAnObsoleteLogoutForEveryRole();
   await testEveryRoleHonorsTheServerConfirmedCheckbox();
+  await testCustomerPasswordChangeClearsCachesAndBlocksRestoration();
+  await testPasswordSuccessSurvivesBackgroundRevocationAndNeverRetriesMutations();
+  await testPasswordSignOutDoesNotEraseNewerAccountsOrSessions();
+  testPasswordChangeSignInFeedback();
   await testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads();
   await testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalidity();
   await testDelayedRestoreCannotOverwriteANewerAccount();

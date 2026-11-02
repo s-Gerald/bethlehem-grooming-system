@@ -207,6 +207,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("registered");
     history.replaceState(null, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  } else if (new URLSearchParams(window.location.search).get("password_changed") === "1") {
+    showMessage('success', 'Password changed successfully');
+    messageBox.innerHTML = '<strong class="block">Password changed successfully</strong><span class="block">Your password has been updated. Please sign in again.</span>';
+    const label = document.getElementById('signInBtnLabel');
+    if (label) label.textContent = 'Sign in again';
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('password_changed');
+    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
   } else if (new URLSearchParams(window.location.search).get("password_reset") === "1") {
     showMessage("success", "Password reset successfully. Please sign in.");
     const cleanUrl = new URL(window.location.href);

@@ -17,7 +17,7 @@ class UseAccountSessionCookie
     public static function isAuthenticationRequest(Request $request): bool
     {
         return $request->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/session*', 'api/logout',
-            'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*');
+            'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*', 'api/customer/password');
     }
 
     public static function isPrivateRequest(Request $request): bool
@@ -52,7 +52,7 @@ class UseAccountSessionCookie
             if ($request->header('X-Requested-With') !== 'XMLHttpRequest'
                 || $request->header('Sec-Fetch-Site') === 'cross-site'
                 || ($origin && ! in_array($origin, config('cors.allowed_origins'), true))) {
-                return response()->json(['message' => 'Request origin could not be verified.'], 419);
+                return response()->json(['message' => 'Request origin could not be verified.'], 419)->header('Cache-Control', 'no-store');
             }
         }
         if ($cookieRequest) {
@@ -60,7 +60,7 @@ class UseAccountSessionCookie
             if (! is_string($cookie) || ! str_starts_with($cookie, $match[1].'|')) {
                 // Logout can revoke a device after the shorter active cookie has expired.
                 if (! $request->routeIs('auth.logout')) {
-                    return response()->json(['success' => false, 'code' => 'session_changed', 'message' => 'Please sign in again.'], 401);
+                    return response()->json(['success' => false, 'code' => 'session_changed', 'message' => 'Please sign in again.'], 401)->header('Cache-Control', 'no-store');
                 }
             } else {
                 $request->headers->set('Authorization', 'Bearer '.$cookie);

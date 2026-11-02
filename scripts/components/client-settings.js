@@ -23,6 +23,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const statusBox = document.getElementById("settingsStatus");
   const passwordForm = document.getElementById("passwordForm");
+  const currentPasswordInput = document.getElementById('currentPassword');
+  const passwordSubmit = document.getElementById('changePasswordSubmit');
+  const passwordLabel = document.getElementById('changePasswordLabel');
+  const passwordSpinner = document.getElementById('changePasswordSpinner');
+  let changingPassword = false;
   const newPasswordInput = document.getElementById("newPassword");
   const confirmPasswordInput = document.getElementById("confirmNewPassword");
   const passwordStrength = document.getElementById("passwordStrength");
@@ -282,15 +287,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function setupForms() {
     logoutBtn?.addEventListener("click", handleLogout);
+    for (const [field, input] of Object.entries(passwordFields())) {
+      input?.addEventListener('input', () => setPasswordFieldError(field));
+    }
     newPasswordInput?.addEventListener("input", () => {
       updatePasswordStrength();
       updateConfirmationFeedback();
     });
     confirmPasswordInput?.addEventListener("input", updateConfirmationFeedback);
 
-    passwordForm?.addEventListener("submit", (event) => {
+    passwordForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      validatePasswordForm();
+      await validatePasswordForm();
     });
 
   }
@@ -381,43 +389,80 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function validatePasswordForm() {
-    const currentPassword = document.getElementById("currentPassword").value;
-    const newPassword = document.getElementById("newPassword").value;
-    const confirmNewPassword = document.getElementById("confirmNewPassword").value;
+  function passwordFields() {
+    return { current_password: currentPasswordInput, password: newPasswordInput, password_confirmation: confirmPasswordInput };
+  }
 
-    if (!currentPassword || !newPassword || !confirmNewPassword) {
-      showStatus("Please complete all password fields.", "error");
+  function setPasswordFieldError(field, message = '') {
+    const input = passwordFields()[field];
+    const error = document.getElementById(`${input.id}Error`);
+    error.textContent = message;
+    error.hidden = !message;
+    input.setAttribute('aria-invalid', String(Boolean(message)));
+    input.classList.toggle('!border-red-400', Boolean(message));
+  }
+
+  async function validatePasswordForm() {
+    if (changingPassword) return;
+    hideStatus();
+    const fields = passwordFields();
+    for (const field of Object.keys(fields)) setPasswordFieldError(field);
+    const errors = {};
+    if (!currentPasswordInput.value) errors.current_password = 'Enter your current password.';
+    const rules = getPasswordRules(newPasswordInput.value);
+    if (!rules.length) errors.password = 'Use at least 15 characters.';
+    else if (!rules.bytes) errors.password = 'Use at most 72 bytes. Unicode characters can use more than one byte.';
+    else if (newPasswordInput.value.includes('\0')) errors.password = 'Remove null characters from your password.';
+    else if (newPasswordInput.value === currentPasswordInput.value) errors.password = 'New password must be different from the current password.';
+    if (!confirmPasswordInput.value || newPasswordInput.value !== confirmPasswordInput.value) errors.password_confirmation = 'New password and confirmation do not match.';
+    if (Object.keys(errors).length) {
+      for (const [field, message] of Object.entries(errors)) setPasswordFieldError(field, message);
+      fields[Object.keys(errors)[0]].focus();
       return;
     }
 
-    if (!Object.values(getPasswordRules(newPassword)).every(Boolean)) {
-      showStatus("Please meet every new password requirement.", "error");
-      updatePasswordStrength();
-      return;
+    changingPassword = true;
+    passwordForm.setAttribute('aria-busy', 'true');
+    passwordSubmit.disabled = true;
+    passwordSubmit.setAttribute('aria-busy', 'true');
+    passwordLabel.textContent = 'Changing Password...';
+    passwordSpinner.classList.remove('hidden');
+    for (const input of Object.values(fields)) input.readOnly = true;
+    try {
+      const result = await API.changeCustomerPassword({ current_password: currentPasswordInput.value,
+        password: newPasswordInput.value, password_confirmation: confirmPasswordInput.value });
+      if (result.success !== true) throw Object.assign(new Error('Unconfirmed change'), { status: 0 });
+      for (const input of Object.values(fields)) { input.value = ''; input.type = 'password'; }
+      serverUser = null;
+      namePassword.value = '';
+      API.redirectToSignIn({ replace: true, passwordChanged: true });
+    } catch (error) {
+      let first;
+      for (const [field, messages] of Object.entries(error.errors || {})) {
+        if (!fields[field]) continue;
+        setPasswordFieldError(field, [].concat(messages)[0]); first ||= fields[field];
+      }
+      if (first) first.focus();
+      else if (error.status === 429) showStatus(`Too many attempts. Try again in ${error.retryAfter || 60} seconds.`, 'error');
+      else if (error.code === 'password_screening_unavailable') showStatus('Password safety checking is temporarily unavailable. Try again later.', 'error');
+      else if (error.status === 401 || error.status === 403) API.redirectToSignIn();
+      else if (!error.status || error.status >= 500) showStatus('Unable to confirm the change. Your password may have changed. Please sign in again before trying another change.', 'error');
+      else showStatus(error.message || 'Unable to change your password. Please try again.', 'error');
+    } finally {
+      changingPassword = false;
+      passwordForm.setAttribute('aria-busy', 'false');
+      for (const input of Object.values(fields)) input.readOnly = false;
+      passwordSubmit.disabled = false;
+      passwordSubmit.setAttribute('aria-busy', 'false');
+      passwordLabel.textContent = 'Change Password';
+      passwordSpinner.classList.add('hidden');
     }
-
-    if (newPassword === currentPassword) {
-      showStatus("New password must be different from the current password.", "error");
-      return;
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      showStatus("New password and confirmation do not match.", "error");
-      return;
-    }
-
-    // BACKEND: Send current_password, password, and password_confirmation here.
-    showStatus("Your password meets the requirements. No password change was made.", "info");
   }
 
   function getPasswordRules(value) {
     return {
-      length: value.length >= 12,
-      uppercase: /[A-Z]/.test(value),
-      lowercase: /[a-z]/.test(value),
-      special: /[^A-Za-z0-9\s]/.test(value),
-      number: /\d/.test(value),
+      length: Array.from(value).length >= 15,
+      bytes: new TextEncoder().encode(value).length <= 72,
     };
   }
 
@@ -440,10 +485,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     newPasswordInput.setAttribute("aria-invalid", String(Boolean(value && !complete)));
 
     passwordStrength.textContent = !value
-      ? "Please add all necessary characters to create a safe password."
+      ? "Spaces and passphrases are welcome."
       : complete
-        ? "Your new password meets all requirements."
-        : "Please add all necessary characters to create a safe password.";
+        ? "Length is valid. Password safety is checked when you submit."
+        : "Use at least 15 characters and no more than 72 bytes.";
     passwordStrength.classList.toggle("text-green-700", Boolean(value && complete));
     passwordStrength.classList.toggle("text-red-700", Boolean(value && !complete));
     passwordStrength.classList.toggle("text-portal-muted", !value);

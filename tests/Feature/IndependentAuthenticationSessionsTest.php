@@ -95,6 +95,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
     protected function tearDown(): void
     {
         Schema::dropIfExists('account_security_incidents');
+        Schema::dropIfExists('password_reset_requests');
         foreach (['remembered_device_credentials', 'remembered_devices', 'services', 'personal_access_tokens', 'login_email_challenges', 'users'] as $table) {
             Schema::dropIfExists($table);
         }
@@ -691,13 +692,20 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     public static function overlappingAuthentication(): array
     {
-        return [['otp'], ['restore'], ['exhausted-otp'], ['resend']];
+        return [['otp'], ['restore'], ['exhausted-otp'], ['resend'], ['password']];
     }
 
     #[DataProvider('overlappingAuthentication')]
     public function test_overlapping_authentication_and_replacement_preserve_single_use_and_attempt_limits(string $mode): void
     {
-        if ($mode !== 'restore') {
+        if ($mode === 'password') {
+            (require base_path('database/migrations/2026_08_28_000003_create_password_reset_requests_table.php'))->up();
+            (require base_path('database/migrations/2026_09_28_000002_add_code_verification_to_password_reset_requests.php'))->up();
+            $public = $this->login('customer', true);
+            $payload = ['path' => '/api/customer/password', 'authorization' => 'Bearer '.$public,
+                'body' => ['current_password' => 'SessionTest!123', 'password' => 'violet lantern meadow river', 'password_confirmation' => 'violet lantern meadow river'],
+                'cookies' => ['bethlehem_account_session' => $this->browserCookies[$public]]];
+        } elseif ($mode !== 'restore') {
             $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();
             $code = Notification::sent(User::where('role', 'admin')->firstOrFail(), ConfirmLoginNotification::class)->last()->code;
             $payload = ['path' => '/api/email/login/confirm', 'body' => ['poll_token' => $pending->json('login_poll_token'), 'code' => $code], 'cookies' => []];
@@ -739,6 +747,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 $app = require 'bootstrap/app.php';
                 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
                 Illuminate\Support\Facades\Notification::fake();
+                Illuminate\Support\Facades\Http::preventStrayRequests();
+                Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0', 200)]);
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
@@ -770,7 +780,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                     });
                 $input = json_decode($payload, true);
                 $request = Illuminate\Http\Request::create($input['path'], 'POST', $input['body'], $input['cookies'],
-                    server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+                    server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest', 'HTTP_AUTHORIZATION' => $input['authorization'] ?? '']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy,
                     'code' => json_decode($response->getContent(), true)['code'] ?? null,
@@ -792,6 +802,16 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $this->assertNotSame($one['pid'], $two['pid']);
             $this->assertTrue($two['busy'], 'The second verified login must overlap the first transaction.');
             $connection = new \PDO('sqlite:'.$database);
+            if ($mode === 'password') {
+                $this->assertSame(200, $one['status']);
+                $this->assertSame(401, $two['status']);
+                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+                $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM remembered_devices WHERE revoked_at IS NULL')->fetchColumn());
+                $hash = $connection->query("SELECT password_hash FROM users WHERE role = 'customer'")->fetchColumn();
+                $this->assertTrue(Hash::check('violet lantern meadow river', $hash));
+                $this->assertFalse(Hash::check('SessionTest!123', $hash));
+                return;
+            }
             if ($mode === 'exhausted-otp') {
                 // Each worker has its own array cache, so this isolates the
                 // durable issued-code guard from the shared source restriction.

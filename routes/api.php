@@ -101,6 +101,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     // Auth
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/customer/password', [CustomerController::class, 'changeOwnPassword'])
+        ->middleware(['role:customer', 'throttle:customer-password-change']);
     Route::patch('/customer/profile/name', [CustomerController::class, 'updateOwnName'])
         ->middleware(['role:customer', 'throttle:10,1']);
     Route::middleware('role:customer')->prefix('phone-verification')->group(function () {
