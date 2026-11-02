@@ -170,6 +170,7 @@ class QueuePreRegistrationModelTest extends TestCase
             foreach (['06:00:00', '07:00:00', '08:00:00', '10:00:00', '12:30:00', '16:59:00'] as $time) {
                 Carbon::setTestNow("2026-10-09 {$time}");
                 $this->assertSame('2026-10-09', $days->resolve($service));
+                $this->assertSame('Queue registration available', $days->availability($service)['message']);
                 $this->assertSame($time >= '08:00:00', $days->acceptingCheckIns($service));
             }
             Carbon::setTestNow('2026-10-09 17:00:00');
@@ -178,6 +179,7 @@ class QueuePreRegistrationModelTest extends TestCase
         }
         DB::table('clinic_closures')->insert(['type' => 'blocked_date', 'start_date' => '2026-10-10', 'end_date' => '2026-10-15']);
         $this->assertFalse($days->availability('clinic')['registration_available']);
+        $this->assertSame('Clinic queue registration is unavailable for today and tomorrow.', $days->availability('clinic')['message']);
         Carbon::setTestNow('2026-10-09 12:30:00');
         $this->assertTrue($days->acceptingCheckIns('grooming'));
         Carbon::setTestNow('2026-10-09 13:00:00');

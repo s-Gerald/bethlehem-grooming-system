@@ -71,6 +71,23 @@ class CustomerNotificationPaginationTest extends TestCase
         $this->assertSame(1, DB::table('customer_notifications')->where('user_id', 2)->where('is_read', false)->count());
     }
 
+    public function test_registration_notifications_use_queue_terminology_for_saved_messages(): void
+    {
+        foreach ([
+            ['grooming_no_show', 'Your Grooming Online Registration was marked No Show.', 'Your Grooming Online Queue Registration was marked No Show.', 'Grooming Queue Registration — No Show'],
+            ['grooming_pre_registration_expired', 'Your pre-registration expired.', 'Your Online Queue Registration expired.', 'Grooming Queue Registration expired'],
+            ['reminder_24h', 'New booking BAC-TEST-1 received.', 'New Online Queue Registration BAC-TEST-1 received.', null],
+            ['reminder_24h', 'Your Online Queue Registration is waiting.', 'Your Online Queue Registration is waiting.', null],
+            ['reminder_24h', 'Your walk-in visit is waiting.', 'Your walk-in visit is waiting.', null],
+        ] as [$type, $stored, $expected, $title]) {
+            DB::table('customer_notifications')->where('user_id', 1)->update(['type' => $type, 'message' => $stored]);
+            $item = (new CustomerNotificationController)->index($this->customerRequest())->getData(true)['notifications'][0];
+            $this->assertSame($expected, $item['message']);
+            $this->assertSame($expected, $item['display_message']);
+            $this->assertSame($title, $item['title']);
+        }
+    }
+
     private function customerRequest(array $query = []): Request
     {
         $request = Request::create('/api/customer/notifications', 'GET', $query);

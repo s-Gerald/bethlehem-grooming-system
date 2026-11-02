@@ -2022,6 +2022,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'common_concerns' => ['Routine check-up', 'Vaccination'],
         ])
             ->assertCreated()
+            ->assertJsonPath('message', 'Your queue registration has been received. Your queue number will be assigned when you check in at Bethlehem.')
+            ->assertJsonPath('appointment.queue_number', null)
             ->assertJsonPath('appointment.common_concerns', ['Routine check-up', 'Vaccination'])
             ->assertJsonPath('appointment.chief_complaint', 'Routine check-up, Vaccination');
     }
@@ -3477,7 +3479,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseCount('customer_notifications', 2);
         $this->authenticateAs('customer', 10);
         $items = $this->getJson('/api/customer/notifications')->assertOk()->json('notifications');
-        $this->assertSame(['Clinic Online Registration Cancelled', 'Clinic Walk-in Cancelled'], array_column($items, 'title'));
+        $this->assertSame(['Clinic Online Queue Registration Cancelled', 'Clinic Walk-in Cancelled'], array_column($items, 'title'));
         $this->assertStringStartsWith('Your registration ', $items[0]['display_message']);
         $this->assertStringStartsWith('Your visit ', $items[1]['display_message']);
     }

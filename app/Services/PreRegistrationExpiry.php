@@ -87,7 +87,7 @@ class PreRegistrationExpiry
                         $label = $day->format($day->year === now()->year ? 'M j' : 'M j, Y');
                         return ['user_id' => $booking->user_id, 'booking_id' => $booking->booking_id,
                             'type' => CustomerNotification::TYPE_GROOMING_NO_SHOW,
-                            'message' => "Your Grooming Online Registration for {$label} was marked No Show because no check-in was recorded before closing.",
+                            'message' => "Your Grooming Queue Registration for {$label} was marked No Show because no check-in was recorded before closing.",
                             'is_read' => false, 'created_at' => now()];
                     })->all() : [];
                     if ($notifications !== []) CustomerNotification::insert($notifications);

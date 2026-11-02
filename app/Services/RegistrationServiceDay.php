@@ -49,7 +49,7 @@ class RegistrationServiceDay
             'open_time' => $hours['open_time'],
             'close_time' => $hours['close_time'],
             'check_in_starts' => Carbon::createFromFormat('H:i', $hours['open_time'], 'Asia/Manila')->format('g:i A'),
-            'message' => $day ? 'Online Registration available' : ucfirst($service).' registration is unavailable for today and tomorrow.',
+            'message' => $day ? 'Queue registration available' : ucfirst($service).' queue registration is unavailable for today and tomorrow.',
         ];
     }
 

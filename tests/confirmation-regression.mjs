@@ -72,6 +72,22 @@ printCallback();
 assert.equal(printed, true);
 restoreTitle();
 assert.equal(document.title, "Clinic Walk-in Checked In");
+document.body.dataset = {};
+globalThis.sessionStorage = { getItem: () => JSON.stringify({ appointment_reference: 'CL-ONLINE-1',
+  status: 'waiting_to_arrive', queue_number: null, appointment_date: '2026-11-03',
+  created_at: '2026-11-03T02:30:00Z', owner: { name: 'Ana Santos' }, pet: { name: 'Mochi' } }) };
+window.API = { waitForCustomerSession: async () => true };
+await initClinicVisitConfirmation();
+assert.equal(document.title, 'Queue Registration Received');
+assert.match(root.innerHTML, /Clinic Queue Registration Confirmation/);
+assert.match(root.innerHTML, /Entry source<\/dt><dd>Online Queue Registration/);
+assert.match(root.innerHTML, /Registration reference<\/dt><dd>CL-ONLINE-1/);
+assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
+assert.match(root.innerHTML, /Waiting to Arrive/);
+assert.match(root.innerHTML, /Your queue number is assigned after check-in/);
+printCallback();
+restoreTitle();
+assert.equal(document.title, 'Queue Registration Received');
 renderConfirmation(root, { title: "Grooming Walk-in Checked In", printTitle: "GROOMING WALK-IN CHECK-IN CONFIRMATION", message: "Checked in", reference: "GR-2", status: "Checked In", walkIn: true, queueNumber: 27, sections: grooming, primaryHref: "./appointments.html", primaryLabel: "Go to Grooming" });
 assert.match(root.innerHTML, /Queue number<\/dt><dd>27/);
 assert.match(root.innerHTML, /href="\.\/appointments\.html">Go to Grooming<\/a>/);

@@ -54,8 +54,8 @@ class CustomerNotificationController extends Controller
                     'type' => $n->type,
                     'title' => match ($n->type) {
                         CustomerNotification::TYPE_PET_INFORMATION_UPDATED => 'Pet Information Updated',
-                        CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Online Registration expired',
-                        CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Online Registration — No Show',
+                        CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Queue Registration expired',
+                        CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Queue Registration — No Show',
                         CustomerNotification::TYPE_BOOKING_CANCELLED => $this->cancellationContent($n)['title'],
                         default => null,
                     },
@@ -268,17 +268,19 @@ class CustomerNotificationController extends Controller
 
         $text = preg_replace(
             '/\bNew booking\s+(BAC-[A-Za-z0-9-]+)/i',
-            'New Online Registration $1',
+            'New Online Queue Registration $1',
             $text
         );
 
         $text = preg_replace(
             '/\bBooking\s+(BAC-[A-Za-z0-9-]+)/i',
-            'Online Registration $1',
+            'Online Queue Registration $1',
             $text
         );
 
-        return str_ireplace(['pre-registration', 'grooming appointment'], ['Online Registration', 'grooming visit'], $text);
+        $text = preg_replace('/\b(?:online registration|pre-registration)\b/i', 'Online Queue Registration', $text);
+
+        return str_ireplace('grooming appointment', 'grooming visit', $text);
     }
 
     private function formatNameList(array $names): string

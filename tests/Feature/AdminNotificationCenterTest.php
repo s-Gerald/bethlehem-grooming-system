@@ -74,7 +74,7 @@ class AdminNotificationCenterTest extends TestCase
     public function test_cancellation_wording_uses_origin_and_keeps_customer_text_concise(): void
     {
         foreach (['walk_in' => ['Grooming Walk-in Cancelled', 'Your visit REF was cancelled by staff.'],
-            'online' => ['Grooming Online Registration Cancelled', 'Your registration REF was cancelled by staff.'],
+            'online' => ['Grooming Online Queue Registration Cancelled', 'Your registration REF was cancelled by staff.'],
             '' => ['Grooming Visit Cancelled', 'Your visit REF was cancelled by staff.']] as $origin => $expected) {
             $booking = new \App\Models\Booking(['booking_type' => $origin, 'booking_reference' => 'REF']);
             $content = \App\Services\CancellationNotificationContent::forVisit($booking, 'Grooming', 'Cancelled by clinic staff.');

@@ -49,7 +49,7 @@ async function harness({ allowed = true, active = [], failure = false, phoneRequ
     loadRegistrationAvailability: service => { requests++; return new Promise((resolve, reject) => {
       const finish = () => failure ? reject(Error('offline')) : resolve({
       service_day: service === 'grooming' ? '2026-10-28' : '2026-10-27', registration_available: !unavailable.includes(service),
-      visit_day_label: service === 'grooming' ? 'Tomorrow, Wed, Oct 28, 2026' : 'Today, Tue, Oct 27, 2026', check_in_starts: '8:00 AM', message: 'Online Registration available',
+      visit_day_label: service === 'grooming' ? 'Tomorrow, Wed, Oct 28, 2026' : 'Today, Tue, Oct 27, 2026', check_in_starts: '8:00 AM', message: 'Queue registration available',
       });
       finish.service = service;
       pending.push(finish);

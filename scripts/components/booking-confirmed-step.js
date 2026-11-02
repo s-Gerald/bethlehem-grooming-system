@@ -79,7 +79,7 @@ export async function initBookingConfirmedStep() {
         ["Checked in at", formatConfirmationTimestamp(confirmation.checked_in_at || confirmation.submitted_at || confirmation.created_at) || "Not available", "submittedAt"],
         ["Current status", currentStatus],
       ] : [
-        ["Entry source", "Online Registration"],
+        ["Entry source", "Online Queue Registration"],
         ["Visit day", formatBookingDate(confirmation.booking_date) || "Not available"],
         ["Queue number", confirmation.queue_number ?? "Not assigned"],
         ["Status", currentStatus],
@@ -98,9 +98,9 @@ export async function initBookingConfirmedStep() {
   ].join("");
 
   renderConfirmation(root, {
-    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Online Registration Received",
+    title: isWalkInConfirmation ? "Grooming Walk-in Checked In" : "Queue Registration Received",
     message: isWalkInConfirmation ? "The pet has been added to today’s grooming queue." : "",
-    printTitle: isWalkInConfirmation ? "GROOMING WALK-IN CHECK-IN CONFIRMATION" : "Grooming Online Registration Confirmation",
+    printTitle: isWalkInConfirmation ? "GROOMING WALK-IN CHECK-IN CONFIRMATION" : "Grooming Queue Registration Confirmation",
     reference: confirmation.booking_reference,
     status: isWalkInConfirmation ? currentStatus : "Waiting to Arrive",
     walkIn: isWalkInConfirmation, queueNumber: confirmation.queue_number, sections,

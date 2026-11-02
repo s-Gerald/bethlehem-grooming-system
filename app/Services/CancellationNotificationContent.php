@@ -14,7 +14,7 @@ class CancellationNotificationContent
         $origin = $grooming ? $visit->booking_type : $visit?->appointment_type;
         $walkIn = $visit?->walkin_id || $origin === 'walk_in';
         $online = !$walkIn && $origin === ($grooming ? 'online' : 'pre_registered');
-        $kind = $walkIn ? 'Walk-in' : ($online ? 'Online Registration' : 'Visit');
+        $kind = $walkIn ? 'Walk-in' : ($online ? 'Online Queue Registration' : 'Visit');
         $reference = $grooming ? $visit->booking_reference : $visit?->appointment_reference;
         $reason = trim((string) ($grooming ? $visit->cancellation_reason : ''));
         if (!$reason && preg_match('/Reason:\s*(.*?)(?: Other pets remain| The visit is now|$)/is', $stored, $match)) $reason = trim($match[1]);

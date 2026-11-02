@@ -39,7 +39,7 @@ export async function initClinicVisitConfirmation() {
       ["Checked in at", checkedInAt || "Not available"],
       ["Current status", currentStatus],
     ] : [
-      ["Entry source", "Online Registration"],
+      ["Entry source", "Online Queue Registration"],
       ["Visit day", formatClinicVisitDate(appointment.appointment_date)],
       ["Queue number", appointment.queue_number ?? "Not assigned"],
       ["Status", currentStatus],
@@ -51,8 +51,8 @@ export async function initClinicVisitConfirmation() {
     !walkIn ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
   ].join("");
   renderConfirmation(root, {
-    title: walkIn ? "Clinic Walk-in Checked In" : "Online Registration Received",
-    printTitle: walkIn ? "CLINIC WALK-IN CHECK-IN CONFIRMATION" : "Clinic Online Registration Confirmation",
+    title: walkIn ? "Clinic Walk-in Checked In" : "Queue Registration Received",
+    printTitle: walkIn ? "CLINIC WALK-IN CHECK-IN CONFIRMATION" : "Clinic Queue Registration Confirmation",
     message: walkIn ? "The patient has been checked in and added to the clinic queue." : "",
     reference: appointment.appointment_reference, status: walkIn ? "Checked In" : "Waiting to Arrive",
     walkIn, queueNumber: appointment.queue_number, sections,

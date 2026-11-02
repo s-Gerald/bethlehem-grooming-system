@@ -46,13 +46,13 @@ async function submitClinicVisit(draft) {
     window.location.href = "/account/registration/clinic/confirmed";
   } catch (error) {
     elements.submit.disabled = false;
-    elements.submit.textContent = "Submit Online Registration";
+    elements.submit.textContent = "Submit Queue Registration";
     if (registrationDayNotice(error, "clinic")) {
       elements.status.textContent = "";
       elements.status.className = "hidden";
       await refreshAvailability();
     } else {
-      showError(error.message || "The clinic visit could not be submitted. Please try again.");
+      showError(error.message || "Clinic queue registration could not be submitted. Please try again.");
     }
   }
 }
@@ -81,7 +81,7 @@ async function init() {
   }
 
   elements.details.innerHTML = getClinicVisitSummaryMarkup({
-    visitType: "Clinic Online Registration",
+    visitType: "Clinic Queue Registration",
     pet: draft.pet,
     reason: formatClinicVisitReason(draft.commonConcerns, draft.chiefComplaint),
   });

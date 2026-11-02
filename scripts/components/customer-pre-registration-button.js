@@ -11,7 +11,7 @@ function setButtonAccess(button, allowed) {
     return;
   }
   button.setAttribute("tabindex", "-1");
-  button.setAttribute("title", "Online Registration ongoing");
+  button.setAttribute("title", "Queue registration ongoing");
 }
 function entryMessage(button, text) {
   let notice = document.getElementById("phoneVerificationEntryMessage");

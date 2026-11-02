@@ -1236,7 +1236,7 @@ class AdminBookingController extends Controller
     {
         $booking->loadMissing('user');
         if (! $booking->user) return false;
-        $subject = $booking->walkin_id === null ? 'grooming online registration' : 'grooming visit';
+        $subject = $booking->walkin_id === null ? 'grooming queue registration' : 'grooming visit';
         $message = $pet
             ? ($pet->pet?->pet_name ?? 'Your pet')."'s grooming was cancelled. Reason: {$reason}"
             : "Your {$subject} {$booking->booking_reference} has been cancelled by the clinic. Reason: {$reason}";

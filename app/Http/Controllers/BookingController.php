@@ -273,7 +273,7 @@ class BookingController extends Controller
             Notification::create([
                 'type' => 'booked',
                 'booking_id' => $booking->booking_id,
-                'message' => "New online registration {$reference} by {$user->first_name} {$user->last_name} on {$schedule}.",
+                'message' => "New online queue registration {$reference} by {$user->first_name} {$user->last_name} on {$schedule}.",
                 'is_read' => 0,
                 'created_at' => now(),
             ]);
@@ -288,7 +288,7 @@ class BookingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your online registration has been received. Your queue position will be assigned when you check in at the clinic.',
+                'message' => 'Your queue registration has been received. Your queue number will be assigned when you check in at Bethlehem.',
                 'consent' => $signedConsent->only(['grooming_consent', 'sedation_consent', 'signer_name', 'signed_at', 'consent_version']),
                 'booking' => [
                     'booking_id' => $booking->booking_id,
@@ -700,7 +700,7 @@ class BookingController extends Controller
             Notification::create([
                 'type' => 'cancelled',
                 'booking_id' => $booking->booking_id,
-                'message' => "Online Registration {$booking->booking_reference} was cancelled by {$user->first_name} {$user->last_name}.",
+                'message' => "Online Queue Registration {$booking->booking_reference} was cancelled by {$user->first_name} {$user->last_name}.",
                 'is_read' => 0,
                 'created_at' => now(),
             ]);

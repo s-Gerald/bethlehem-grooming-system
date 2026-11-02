@@ -144,6 +144,8 @@ let clinicReads = 0;
 API.getClinicRegistration = async (id) => { assert.equal(id, 17); clinicReads++; return { visit: clinic }; };
 await openClinicVisitSummary(17, replacementTrigger, { id: 17, status: 'waiting_to_arrive' });
 assert.equal(modal.open, true);
+assert.equal(element('groomingVisitSummaryHeading').textContent, 'Clinic Queue Registration Summary');
+assert.match(content.innerHTML, /Entry source<\/dt><dd>Online Queue Registration/);
 assert.match(content.innerHTML, /Mochi &lt;3/);
 assert.match(content.innerHTML, /CL-17/);
 assert.match(content.innerHTML, /October 30, 2026/);
@@ -221,9 +223,10 @@ compact.booking_pets[0].pet_queue_number = 12;
 compact.booking_pets[1].pet_queue_number = 13;
 compact.booking_pets[1].grooming_state = 'not_started';
 const compactView = groomingVisitPresentation(compact, 'Grooming in Progress');
-assert.equal(compactView.title, 'Grooming Online Registration Summary');
+assert.equal(compactView.title, 'Grooming Queue Registration Summary');
+assert.match(compactView.print, /Grooming Queue Registration Summary/);
 for (const output of [compactView.html, compactView.print]) {
-  assert.match(output, /Entry source<\/dt><dd>Online Registration/);
+  assert.match(output, /Entry source<\/dt><dd>Online Queue Registration/);
   assert.match(output, /Submitted online/);
   assert.match(output, /Queue #12/); assert.match(output, /Queue #13/);
   assert.match(output, /Grooming Finished/); assert.match(output, /Checked In/);
@@ -234,7 +237,7 @@ for (const output of [compactView.html, compactView.print]) {
 }
 assert.match(compactView.print, /Alex Cruz/); assert.match(compactView.print, /alex@example.test/);
 assert.equal(groomingVisitPresentation({ ...compact, booking_type: 'walk_in' }, 'Checked In').title, 'Grooming Walk-in Summary');
-assert.doesNotMatch(groomingVisitPresentation({ ...compact, booking_type: 'walk_in' }, 'Checked In').print, /Online Registration|Submitted online/);
+assert.doesNotMatch(groomingVisitPresentation({ ...compact, booking_type: 'walk_in' }, 'Checked In').print, /Online Queue Registration|Submitted online/);
 
 const petSections = [...compactView.html.matchAll(/<section class="grooming-summary-pet confirmation-pet">([\s\S]*?)<\/section>/g)].map(match => match[1]);
 assert.match(petSections[0], /Regular Dog Grooming/); assert.match(petSections[0], /₱700/);

@@ -226,6 +226,19 @@ for (const walkIn of [false, true]) {
       assert.equal(navigated, 'pets');
       sessionStorage.setItem('bookingPets', originalPets);
     }
+    if (!walkIn && sedation) {
+      const successfulSubmit = api.storeBooking;
+      api.storeBooking = async () => { throw new Error('Service unavailable.'); };
+      await form.emit('submit');
+      assert.equal(get('submitBookingButton').textContent, 'Submit Queue Registration');
+      assert.equal(get('submitBookingButton').disabled, false);
+      assert.equal(get('consentStatusMessage').textContent, 'Service unavailable.');
+      api.storeBooking = async () => { throw {}; };
+      await form.emit('submit');
+      assert.equal(get('submitBookingButton').textContent, 'Submit Queue Registration');
+      assert.equal(get('consentStatusMessage').textContent, 'Queue registration submission failed. Please try again.');
+      api.storeBooking = successfulSubmit;
+    }
     const submitting = form.emit('submit');
     const duplicate = form.emit('submit');
     if (!sedation) {

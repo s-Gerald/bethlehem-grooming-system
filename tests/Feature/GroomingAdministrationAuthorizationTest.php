@@ -495,7 +495,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'pet_name' => 'Mochi',
                 'species' => 'cat', 'services' => ['package' => 'cat_full_grooming'],
             ]],
-        ])->assertCreated();
+        ])->assertCreated()
+            ->assertJsonPath('message', 'Your queue registration has been received. Your queue number will be assigned when you check in at Bethlehem.')
+            ->assertJsonPath('booking.queue_number', null);
 
         $this->assertDatabaseHas('bookings', [
             'booking_id' => $response->json('booking.booking_id'),

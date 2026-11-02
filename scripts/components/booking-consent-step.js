@@ -87,7 +87,7 @@ export function initBookingConsentStep() {
       const selections = normalizeStepThreeDraft(getStoredData("bookingStep3"), draft);
       if (sessionStorage.getItem("groomingReviewedPricing") !== selectedPricingSignature(draft, selections)) {
         consent.setBusy(false);
-        submitBookingButton.textContent = "Submit Registration";
+        submitBookingButton.textContent = "Submit Queue Registration";
         goToGroomingStep("review");
         return;
       }
@@ -118,7 +118,7 @@ export function initBookingConsentStep() {
       goToGroomingStep("confirmed");
     } catch (error) {
       consent.setBusy(false);
-      submitBookingButton.textContent = "Submit Registration";
+      submitBookingButton.textContent = "Submit Queue Registration";
 
       if (registrationDayNotice(error, "grooming")) {
         goToGroomingStep("review");
@@ -133,7 +133,7 @@ export function initBookingConsentStep() {
         goToGroomingStep("pets");
         return;
       }
-      showSubmitError(error.message || "Online registration submission failed. Please try again.");
+      showSubmitError(error.message || "Queue registration submission failed. Please try again.");
     }
   });
 

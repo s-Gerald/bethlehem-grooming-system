@@ -15,7 +15,7 @@ class CustomerPreRegistrationAccessInterfaceTest extends TestCase
         $this->assertStringContainsString('data-pre-registration-button', $dashboard);
         $this->assertStringContainsString('API.getPreRegistrationAccess()', $buttonScript);
         $this->assertStringNotContainsString('preRegistrationAccessNotice', $dashboard);
-        $this->assertStringContainsString('"Online Registration ongoing"', $buttonScript);
+        $this->assertStringContainsString('"Queue registration ongoing"', $buttonScript);
         $this->assertStringContainsString('event.preventDefault()', $buttonScript);
         // Service selection and its guarded Continue are exercised by online-registration-selector-regression.mjs.
 

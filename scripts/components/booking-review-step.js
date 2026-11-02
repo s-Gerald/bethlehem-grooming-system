@@ -131,7 +131,7 @@ function renderEmptyState(message) {
   elements.totalPriceHeading.textContent = "Total Price";
   elements.totalPriceText.textContent = "₱0";
   elements.totalPriceSubtext.textContent =
-    "Review data is unavailable until the earlier online registration steps are completed.";
+    "Review data is unavailable until the earlier queue registration steps are completed.";
   elements.confirmBookingBtn.disabled = true;
   elements.confirmBookingBtn.classList.add("opacity-50", "cursor-not-allowed");
 }

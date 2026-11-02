@@ -14,10 +14,10 @@ export function groomingVisitPresentation(booking, statusLabel) {
   const services = booking.booking_services || [];
   const serviceNames = (items) => items.map((item) => item.service?.service_name).filter(Boolean).join(", ");
   const walkIn = booking.booking_type === "walk_in";
-  const title = walkIn ? "Grooming Walk-in Summary" : "Grooming Online Registration Summary";
+  const title = walkIn ? "Grooming Walk-in Summary" : "Grooming Queue Registration Summary";
   const registrationFields = [
     ["Registration reference", booking.booking_reference || "Not recorded"],
-    ["Entry source", walkIn ? "Walk-in" : "Online Registration"],
+    ["Entry source", walkIn ? "Walk-in" : "Online Queue Registration"],
     ["Visit day", formatBookingDate(booking.booking_date) || "Not recorded"],
     ...(!walkIn && booking.created_at ? [["Submitted online", formatConfirmationTimestamp(booking.created_at)]] : []),
     ...(booking.dropped_off_at ? [["Checked in", formatConfirmationTimestamp(booking.dropped_off_at)]] : []),
@@ -94,11 +94,12 @@ function clinicVisitPresentation(visit) {
   const pet = visit.pet || {};
   const status = visit.status === "waiting_to_arrive" ? "Waiting to Arrive" : formatConfirmationLabel(visit.status) || "Not recorded";
   return {
-    title: "Clinic Visit Details",
+    title: "Clinic Queue Registration Summary",
     html: `<div class="grooming-summary-identity"><h3>${escapeHtml(pet.pet_name || "Your pet")}</h3><p>Clinic</p></div>
       <p class="grooming-summary-status">${escapeHtml(status)}</p>` +
       confirmationSection("Registration Details", confirmationFields([
         ["Registration reference", visit.reference || "Not recorded"],
+        ["Entry source", "Online Queue Registration"],
         ["Visit day", formatBookingDate(visit.service_day) || "Not recorded"],
         ["Submitted online", formatConfirmationTimestamp(visit.created_at) || "Not recorded"],
         ...(visit.checked_in_at ? [["Checked in", formatConfirmationTimestamp(visit.checked_in_at) || "Not recorded"]] : []),
@@ -176,7 +177,7 @@ function openVisitSummary(visit) {
   const dialog = document.getElementById("groomingVisitSummary");
   currentVisit = { ...visit, sourceKey: visit.source ? JSON.stringify(visit.source) : undefined };
   returnTrigger = visit.trigger;
-  document.getElementById("groomingVisitSummaryHeading").textContent = visit.service === "clinic" ? "Clinic Visit Details" : "Grooming Visit Details";
+  document.getElementById("groomingVisitSummaryHeading").textContent = visit.service === "clinic" ? "Clinic Queue Registration Summary" : "Grooming Visit Details";
   if (!dialog.open) dialog.showModal();
   document.body.classList.add("grooming-summary-open");
   document.getElementById("closeVisitSummary").focus({ preventScroll: true });
