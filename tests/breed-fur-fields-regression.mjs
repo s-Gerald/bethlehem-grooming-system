@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
+import { createPetBirthdateField } from "../scripts/components/pet-birthdate.js";
 
 // Only the catalogue request is replaced; exercise the actual shared controls.
 const catalogue = JSON.parse(readFileSync(new URL("../scripts/data/breed-coat-options.json", import.meta.url)));
@@ -36,6 +37,7 @@ function element(value = "") {
     },
     set innerHTML(value) { this.children = []; },
     setAttribute(name, value) { attributes.set(name, value); },
+    setCustomValidity(value) { this.validationMessage = value; },
     getAttribute(name) { return attributes.get(name); },
     appendChild(child) { this.children.push(child); },
     addEventListener(name, listener) {
@@ -377,11 +379,13 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
       const shared = { ...ui.context, ...weightTools, breedCombobox: ui.breedControl, breedCoatCombobox: ui.coatControl,
         petTypeCombobox, colorCombobox: { setValue: noop }, genderCombobox: { setValue: noop }, sizeCombobox: { setValue: noop },
         syncWeightAndSize: noop, setStoredSize: noop };
+      ui.elements.birthdate.form = element();
+      shared.birthdateField = createPetBirthdateField({ input: ui.elements.birthdate, errorElement: element() });
       if (integration === "my-pets") {
         const handler = ui.source.slice(ui.source.indexOf("async function openEditModal("), ui.source.indexOf("  function showModal()"));
         const open = vm.runInNewContext(`(${handler.trim()})`, {
           ...shared, syncEditFieldLocks: () => {}, allPets: [{ pet_id: 1, species, breed, fur_type: coat }], editingPet: null,
-          syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: element(), petWeight: element(),
+          syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: ui.elements.birthdate, petWeight: element(),
           normalizeSpecies: value => value, hideFormError: noop, showModal: noop,
         });
         await open(1);
@@ -390,7 +394,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         const handler = ui.source.slice(ui.source.indexOf("    async startEditPet()"), ui.source.indexOf("    cancelEditPet()"));
         const edit = vm.runInNewContext(`({${handler}}).startEditPet`, {
           adminCustomerPetFields: { tools: weightTools, elements: ui.elements,
-            controls: { color: { setValue: noop }, species: petTypeCombobox, gender: shared.genderCombobox, breed: ui.breedControl, furType: ui.coatControl } },
+            controls: { birthdate: shared.birthdateField, color: { setValue: noop }, species: petTypeCombobox, gender: shared.genderCombobox, breed: ui.breedControl, furType: ui.coatControl } },
         });
         const owner = { petModal: { pet: { species, breed, furType: coat } }, initializePetFormFields: async () => true,
           normalizePetSpecies: value => value, syncPetWeightAndSize: noop, setStoredPetSize: noop, refreshIcons: noop };

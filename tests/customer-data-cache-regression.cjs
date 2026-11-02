@@ -334,6 +334,8 @@ function mountPage(env, page) {
       get inert() { return attributes.has("inert"); },
       set inert(value) { if (value) attributes.set("inert", ""); else attributes.delete("inert"); },
       get ownerDocument() { return context.document; },
+      get form() { return id === 'petBirthdate' ? element('petForm') : null; },
+      setCustomValidity(value) { node.validationMessage = value; },
       get parentElement() {
         if (["petModal", "petConfirmationModal", "petsPageShell"].includes(id)) return element("body");
         if (["petConfirmationCard", "cancelPetConfirmation", "confirmPetAction"].includes(id)) return element("petConfirmationModal");
@@ -352,6 +354,7 @@ function mountPage(env, page) {
         toggle: (name, force) => force ? classes.add(name) : classes.delete(name),
       },
       setAttribute: (name, value) => attributes.set(name, value),
+      getAttribute: (name) => attributes.get(name) ?? null,
       removeAttribute: (name) => attributes.delete(name),
       hasAttribute: (name) => attributes.has(name),
       querySelectorAll(selector) {
@@ -422,6 +425,7 @@ function mountPage(env, page) {
   }
   if (page === "my-pets.html") {
     vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/pet-save-confirmation.js"), "utf8").replace("export function", "function"), context);
+    vm.runInContext(fs.readFileSync(path.join(root, "scripts/components/pet-birthdate.js"), "utf8").replaceAll("export function", "function"), context);
   }
   vm.runInContext(script, context);
   ready.forEach((callback) => callback());
@@ -511,7 +515,7 @@ async function testActualPageLoaders() {
 async function testMyPetsStaticModalsAndWorkflows() {
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const env = environment();
-  const activePet = { ...pets.pets[0], breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color"] };
+  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color"] };
   const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
   const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
     ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
@@ -567,6 +571,15 @@ async function testMyPetsStaticModalsAndWorkflows() {
   el("petName").value = "New pet";
   el("petSpecies").value = "Dog";
   el("petWeight").value = "5";
+  el("petBirthdate").value = '1700-01-01';
+  await el("petForm").dispatch("submit", { stopImmediatePropagation() {} });
+  assert.equal(el("petSaveWarning").hidden, true);
+  assert.equal(el("petBirthdateError").textContent, 'Enter a birthdate within the last 40 years.');
+  assert.equal(el("petBirthdate").value, '1700-01-01');
+  assert.equal(ui.document.activeElement, el("petBirthdate"));
+  assert.equal(writes().length, 0, 'Invalid dates cannot create pets');
+  el("petBirthdate").value = '';
+  await el("petBirthdate").dispatch("input");
   await el("petForm").dispatch("submit");
   assert.equal(el("petSaveWarning").hidden, false);
   await el("closePetModal").dispatch("click");
@@ -622,6 +635,8 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("petName").disabled, true);
   assert.equal(el("petSpecies").disabled, true);
   assert.equal(el("petWeight").disabled, true);
+  assert.equal(el("petBirthdate").disabled, true);
+  assert.equal(el("petBirthdate").value, '1700-01-01', 'Locked historical dates remain visible');
   assert.equal(el("petSize").disabled, true);
   assert.equal(el("petMedical").disabled, false);
   assert.equal(el("petColor").disabled, true, "Clinic-cleared saved values remain locked");

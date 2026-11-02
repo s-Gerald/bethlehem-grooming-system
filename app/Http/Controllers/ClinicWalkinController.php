@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Walkin;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
+use App\Rules\ValidPetBirthdate;
 use App\Services\AvailabilityTimeWindowService;
 use App\Services\ClinicAppointmentSequence;
 use App\Services\CustomerPreRegistrationAccessService;
@@ -394,6 +395,9 @@ class ClinicWalkinController extends Controller
 
     private function updateWalkInPetDetails(Pet $pet, array $data): Pet
     {
+        \Illuminate\Support\Facades\Validator::make($data, [
+            'birthdate' => ['nullable', new ValidPetBirthdate($pet->birthdate)],
+        ])->validate();
         $data['color'] ??= $pet->color;
         $data = PetWeightSize::withComputedSizeForUpdate([...$data, 'species' => $pet->species], $pet);
         $pet->update([

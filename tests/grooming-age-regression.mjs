@@ -1,4 +1,5 @@
 import { createPetSaveConfirmation } from "../scripts/components/pet-save-confirmation.js";
+import { createPetBirthdateField } from "../scripts/components/pet-birthdate.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
@@ -45,7 +46,8 @@ function element() {
       toggle: (name, on) => on ? classes.add(name) : classes.delete(name),
       contains: name => classes.has(name),
     },
-    setAttribute() {}, removeAttribute() {}, addEventListener(name, handler) { this.listeners[name] = handler; },
+    setAttribute() {}, getAttribute() { return null; }, removeAttribute() {}, setCustomValidity() {}, focus() {},
+    addEventListener(name, handler) { this.listeners[name] = handler; },
     appendChild(child) { this.children.push(child); },
   };
 }
@@ -73,13 +75,14 @@ function petStep(clinic = false) {
     return nodes.get(id);
   };
   const form = get("addPetForm");
+  get("birthdate").form = form;
   for (const id of ["petType", "petName", "breed", "weight", "furType", "size", "medicalNotes"]) form[id] = get(id);
   form.reset = () => { for (const input of Object.values(form)) if (input?.value !== undefined) input.value = ""; };
   const button = element();
   button.dataset.petId = underage.id;
   let navigated;
   const context = vm.createContext({
-    ...petService, ...tabs, ...weight, ...age, createPetSaveConfirmation, GROOMING_MAX_PETS: 10,
+    ...petService, ...tabs, ...weight, ...age, createPetSaveConfirmation, createPetBirthdateField, GROOMING_MAX_PETS: 10,
     getStoredBookingPets: petService.getBookingPets, saveStoredBookingPets: petService.saveBookingPets,
     getGroomingSchedule: petService.getBookingSchedule, addStoredPet: petService.addPetToBooking,
     removeStoredPet: petService.removePetFromBooking, syncWeightSizeFields: weight.syncPetWeightAndSize,

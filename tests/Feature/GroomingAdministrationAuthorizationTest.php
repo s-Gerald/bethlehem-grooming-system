@@ -3544,6 +3544,46 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/bookings/999/signed-consent')->assertNotFound();
     }
 
+    #[DataProvider('birthdateRangeCases')]
+    public function test_online_pet_birthdate_range_and_saved_legacy_selection(?string $date, bool $saved, ?string $error, bool $blankSavedDate = false): void
+    {
+        Carbon::setTestNow('2026-11-03 10:00:00');
+        $this->authenticateAs('customer');
+        DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $pet = ['pet_name' => 'Mochi', 'species' => 'cat', 'birthdate' => $date, 'services' => ['package' => 'cat_full_grooming']];
+        if ($saved) {
+            DB::table('pets')->insert(['pet_id' => 42, 'user_id' => 3, 'pet_name' => 'Mochi', 'species' => 'cat', 'birthdate' => $blankSavedDate ? null : '1700-01-01']);
+            $pet['pet_id'] = 42;
+        }
+        $response = $this->submitSignedGrooming('/api/booking/store', ['number_of_pets' => 1, 'pets' => [$pet]]);
+        if ($error) {
+            $response->assertUnprocessable()->assertJsonValidationErrors('pets.0.birthdate');
+            $this->assertSame([$error], $response->json('errors')['pets.0.birthdate']);
+            $this->assertDatabaseCount('bookings', 0);
+        } else {
+            $response->assertCreated();
+            $this->assertDatabaseHas('pets', ['pet_name' => 'Mochi', 'birthdate' => $saved ? ($blankSavedDate ? null : '1700-01-01') : $date]);
+        }
+    }
+
+    public static function birthdateRangeCases(): array
+    {
+        return [
+            ['1986-11-03', false, null], [null, false, null],
+            ['1986-11-02', false, 'Enter a birthdate within the last 40 years.'],
+            ['1700-01-01', false, 'Enter a birthdate within the last 40 years.'],
+            ['2026-11-04', false, 'Birthdate cannot be in the future.'],
+            ['2026-02-30', false, 'Enter a valid birthdate.'],
+            ['2026-11-03', false, 'Pet must be at least 6 months old for grooming.'],
+            ['1700-01-01', true, null], [null, true, null],
+            ['1700-01-02', true, 'Saved details can only be changed by clinic staff.'],
+            ['1986-11-02', true, 'Enter a birthdate within the last 40 years.', true],
+            ['2026-11-04', true, 'Birthdate cannot be in the future.', true],
+            ['2026-02-30', true, 'Enter a valid birthdate.', true],
+            ['1986-11-03', true, null, true],
+        ];
+    }
+
     #[DataProvider('groomingMinimumAgeCases')]
     public function test_customer_grooming_enforces_calendar_month_minimum_age(?string $birthdate, string $today, bool $eligible, bool $saved): void
     {

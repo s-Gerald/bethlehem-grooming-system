@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import { createPetSaveConfirmation } from "../scripts/components/pet-save-confirmation.js";
+import { createPetBirthdateField } from "../scripts/components/pet-birthdate.js";
 import * as weightTools from "../scripts/components/pet-weight-size.js";
 import * as petService from "../scripts/services/pet-service.js";
 import * as clinicService from "../scripts/services/clinic-visit-service.js";
@@ -18,10 +19,18 @@ function node() {
       remove(...names) { names.forEach(name => classes.delete(name)); },
       toggle(name, value) { value ? classes.add(name) : classes.delete(name); },
     },
-    setAttribute() {}, removeAttribute() {}, focus() {},
+    setAttribute() {}, getAttribute() { return null; }, removeAttribute() {}, focus() {}, setCustomValidity() {},
     appendChild(child) { this.children.push(child); },
     addEventListener(type, fn) { listeners.set(type, [...(listeners.get(type) || []), fn]); },
-    async dispatch(type) { for (const fn of listeners.get(type) || []) await fn({ preventDefault() {} }); },
+    async dispatch(type) {
+      let stopped = false;
+      const event = { preventDefault() {}, stopImmediatePropagation() { stopped = true; } };
+      for (const fn of listeners.get(type) || []) {
+        const result = fn(event);
+        if (result?.then) await result;
+        if (stopped) break;
+      }
+    },
   };
 }
 
@@ -40,6 +49,7 @@ function mount(clinic) {
   globalThis.sessionStorage = storage();
   const form = get("addPetForm");
   for (const id of ["petType", "petName", "gender", "birthdate", "breed", "color", "weight", "furType", "size", "medicalNotes"]) form[id] = get(id);
+  get("birthdate").form = form;
   form.reset = () => { for (const value of Object.values(form)) if (value?.value !== undefined) value.value = ""; };
   const combobox = ({ input }) => ({
     getValue: () => input.value, getValidationMessage: () => "", showValidation() {},
@@ -49,7 +59,7 @@ function mount(clinic) {
   let writes = 0, save = async payload => ({ pet: { pet_id: 1, ...payload } });
   const context = vm.createContext({
     ...weightTools, ...clinicService, ...ageTools, ...selectionTools,
-    normalizePetSize, formatPetSizeLabel, createPetSaveConfirmation,
+    normalizePetSize, formatPetSizeLabel, createPetSaveConfirmation, createPetBirthdateField,
     syncWeightSizeFields: weightTools.syncPetWeightAndSize,
     GROOMING_MAX_PETS: petService.MAX_PETS_PER_BOOKING,
     getSavedPets: petService.getSavedPets, getStoredBookingPets: petService.getBookingPets,
@@ -81,12 +91,26 @@ for (const clinic of [false, true]) {
   assert.equal(ui.writes(), 0);
   ui.get("petType").value = "Dog";
   ui.get("petName").value = "Milo";
+  for (const invalid of ['1700-01-01', '9999-12-31', '2026-02-30']) {
+    ui.get("birthdate").value = invalid;
+    await ui.submit();
+    assert.equal(warning.hidden, true, 'Invalid birthdates never advance confirmation');
+    assert.equal(ui.writes(), 0);
+    assert.equal(ui.get("birthdate").value, invalid);
+    assert.notEqual(ui.get("birthdateError").textContent, '');
+  }
   ui.get("birthdate").value = "2020-01-01";
   await ui.submit();
   assert.equal(warning.hidden, false);
   assert.equal(button.textContent, "Confirm");
   assert.equal(ui.writes(), 0);
   assert.equal(ui.selected().length, 0);
+  ui.get("birthdate").value = '9999-12-31';
+  await ui.submit();
+  assert.equal(warning.hidden, true, 'A silent invalid date cancels pending confirmation');
+  assert.equal(ui.writes(), 0);
+  ui.get("birthdate").value = '2020-01-01';
+  await ui.submit();
   ui.get("medicalNotes").value = "Gentle handling";
   await ui.get("addPetForm").dispatch("change");
   assert.equal(warning.hidden, true, "Custom dropdown change events reset confirmation");

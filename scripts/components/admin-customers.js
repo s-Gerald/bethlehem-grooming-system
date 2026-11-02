@@ -8,6 +8,7 @@ function loadAdminCustomerPetFields() {
   import("./fixed-option-combobox.js"),
   import("./color-combobox.js?pet-care=20261027-v1"),
   import("./pet-weight-size.js?v=pet-weight-size-20261011-v3"),
+  import("./pet-birthdate.js?v=20261103-v1"),
 ]).then(([
   bookingDraft,
   breedCombobox,
@@ -16,6 +17,7 @@ function loadAdminCustomerPetFields() {
   fixedOptionCombobox,
   colorCombobox,
   petWeightSize,
+  petBirthdate,
 ]) => ({
   ...bookingDraft,
   ...breedCombobox,
@@ -24,6 +26,7 @@ function loadAdminCustomerPetFields() {
   ...fixedOptionCombobox,
   ...colorCombobox,
   ...petWeightSize,
+  ...petBirthdate,
 })).catch(error => { adminCustomerPetFieldModulesReady = null; throw error; });
 }
 
@@ -719,6 +722,7 @@ function adminCustomers() {
       }
 
       const { tools, elements, controls } = adminCustomerPetFields;
+      controls.birthdate.setValue("");
       controls.species.reset();
       controls.gender.reset();
       controls.color.reset();
@@ -767,7 +771,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1');
+            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -783,12 +787,17 @@ function adminCustomers() {
           species: document.getElementById("adminPetSpecies"),
           breed: document.getElementById("adminPetBreed"),
           gender: document.getElementById("adminPetGender"),
+          birthdate: document.getElementById("adminPetBirthdate"),
           size: document.getElementById("adminPetSize"),
           furType: document.getElementById("adminPetFurType"),
           weight: document.getElementById("adminPetWeight"),
           color: document.getElementById("adminPetColor"),
         };
         const controls = {
+          birthdate: tools.createPetBirthdateField({
+            input: elements.birthdate,
+            errorElement: document.getElementById("adminPetBirthdateError"),
+          }),
           color: tools.createColorCombobox({
             input: elements.color,
             listbox: document.getElementById("adminPetColorOptions"),
@@ -904,6 +913,8 @@ function adminCustomers() {
       const { tools, elements, controls } = adminCustomerPetFields;
       const species = this.normalizePetSpecies(p.species);
 
+      controls.birthdate.setValue(p.birthdate, { originalValue: p.birthdate });
+
       controls.species.setValue(species);
       controls.gender.setValue(String(p.gender || "").toLowerCase());
       controls.breed.setValue(p.breed || "");
@@ -933,6 +944,7 @@ function adminCustomers() {
     async saveEditPet() {
       if (this.petModal.saving) return;
       this.petModal.saveError = "";
+      if (!adminCustomerPetFields.controls.birthdate.validate({ focus: true })) return;
 
       const payload = this.buildPetEditPayload();
       const validationMessage = this.validatePetEditPayload(payload);
@@ -1008,6 +1020,11 @@ function adminCustomers() {
         }
 
       } catch (err) {
+        if (err.errors?.birthdate?.[0]) {
+          adminCustomerPetFields.controls.birthdate.showValidation(err.errors.birthdate[0]);
+          adminCustomerPetFields.elements.birthdate.focus();
+          return;
+        }
         if (err.errors?.color?.[0]) {
           adminCustomerPetFields.controls.color.showValidation(err.errors.color[0]);
           adminCustomerPetFields.elements.color.focus();
@@ -1041,7 +1058,7 @@ function adminCustomers() {
         species: controls.species.getValue() || null,
         breed: elements.breed.value.trim() || null,
         gender: controls.gender.getValue() || null,
-        birthdate: form.birthdate || null,
+        birthdate: controls.birthdate.getValue() || null,
         is_neutered: isNeutered,
         neutered_date: isNeutered ? (form.neutered_date || null) : null,
         is_deceased: isDeceased,
@@ -1056,6 +1073,8 @@ function adminCustomers() {
 
     validatePetEditPayload(payload) {
       const { tools, elements, controls } = adminCustomerPetFields;
+      const birthdateMessage = controls.birthdate.getValidationMessage();
+      if (birthdateMessage) return birthdateMessage;
       if (!payload.pet_name) return "Pet name is required.";
       if (this.petModal.creating && !payload.species) return "Species is required.";
 

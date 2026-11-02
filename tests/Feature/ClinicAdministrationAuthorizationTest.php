@@ -1659,6 +1659,45 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonCount(1, 'rows.1.pets');
     }
 
+    #[DataProvider('clinicBirthdateCases')]
+    public function test_clinic_birthdate_range_preserves_legacy_selections_and_allows_young_pets(?string $date, bool $saved, ?string $error): void
+    {
+        Carbon::setTestNow('2026-11-03 10:00:00');
+        $this->authenticateAs('staff');
+        DB::table('users')->insert(['user_id' => 10, 'first_name' => 'Maria', 'last_name' => 'Santos',
+            'email' => 'maria@example.com', 'phone' => '09171234567', 'role' => 'customer']);
+        if ($saved) DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Bantay',
+            'species' => 'Dog', 'birthdate' => '1700-01-01', 'is_archived' => false]);
+        $payload = ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
+            'owner_record_type' => 'registered', 'customer_user_id' => 10, 'pet_name' => 'Bantay',
+            'species' => 'Dog', 'birthdate' => $date, 'common_concerns' => ['Routine check-up'], 'terms_agreed' => true];
+        if ($saved) $payload['pet_id'] = 101;
+        $response = $this->postJson('/api/admin/clinic-walk-in', $payload);
+        if ($error) {
+            $response->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+            $this->assertSame([$error], $response->json('errors.birthdate'));
+            $this->assertDatabaseCount('clinic_appointments', 0);
+        } else {
+            $response->assertCreated();
+            $this->assertDatabaseHas('pets', ['pet_name' => 'Bantay', 'birthdate' => $saved && $date === null ? '1700-01-01' : $date]);
+        }
+    }
+
+    public static function clinicBirthdateCases(): array
+    {
+        $cases = [];
+        foreach ([false, true] as $saved) {
+            foreach (['2026-11-03', '1986-11-03', null] as $date) $cases[] = [$date, $saved, null];
+            foreach (['1986-11-02' => 'Enter a birthdate within the last 40 years.',
+                '2026-11-04' => 'Birthdate cannot be in the future.', '2026-02-30' => 'Enter a valid birthdate.'] as $date => $error) {
+                $cases[] = [$date, $saved, $error];
+            }
+        }
+        $cases[] = ['1700-01-01', true, null];
+        $cases[] = ['1700-01-02', true, 'Enter a birthdate within the last 40 years.'];
+        return $cases;
+    }
+
     public function test_staff_can_create_a_clinic_walk_in_for_a_registered_customer_and_saved_pet(): void
     {
         $this->authenticateAs('staff');

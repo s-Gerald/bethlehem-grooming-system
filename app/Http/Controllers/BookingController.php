@@ -13,6 +13,7 @@ use App\Models\TimeWindow;
 use App\Models\User;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
+use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Services\AvailabilityTimeWindowService;
@@ -64,7 +65,7 @@ class BookingController extends Controller
             'pets.*.pet_name' => 'required|string|max:100',
             'pets.*.species' => ['required_without:pets.*.pet_id', 'string', 'regex:/^(dog|cat)$/i'],
             'pets.*.breed' => 'nullable|string|max:100',
-            'pets.*.birthdate' => 'nullable|date',
+            'pets.*.birthdate' => ['nullable', new ValidPetBirthdate],
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.weight' => ['nullable', new ValidPetWeight],
@@ -133,6 +134,9 @@ class BookingController extends Controller
                         fn ($value) => \App\Support\PetInformation::meaningful($value));
                     if (isset($profile['pet_name'])) $profile['pet_name'] = Pet::normalizeName($profile['pet_name']);
                     \App\Support\PetInformation::customerAttributes($savedPet, $profile, "pets.{$index}.");
+                    \Illuminate\Support\Facades\Validator::make(['pets' => [$index => $profile]], [
+                        "pets.{$index}.birthdate" => ['nullable', new ValidPetBirthdate($savedPet->birthdate)],
+                    ])->validate();
                 }
                 $birthdate = $savedPet ? $savedPet->birthdate : ($petData['birthdate'] ?? null);
                 if ($birthdate && Carbon::parse($birthdate)->startOfDay()->addMonthsNoOverflow(6)->isAfter(Carbon::today())) {

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
+use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\ClinicConcerns;
@@ -68,7 +69,7 @@ class StoreClinicWalkinRequest extends FormRequest
                 'max:100',
             ],
             'gender' => ['nullable', 'in:male,female'],
-            'birthdate' => ['nullable', 'date'],
+            'birthdate' => ['nullable', new ValidPetBirthdate(allowExistingPetSelection: true)],
             'is_neutered' => ['nullable', 'boolean'],
             'neutered_date' => ['nullable', 'date'],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],

@@ -1,4 +1,5 @@
 import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
+import { createPetBirthdateField } from "./pet-birthdate.js?v=20261103-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1";
 import {
@@ -139,6 +140,11 @@ const elements = {
 const petSaveConfirmation = createPetSaveConfirmation({
   form: elements.addPetForm, button: elements.savePetBtn,
   warning: document.getElementById("petSaveWarning"), initialLabel: "Save & Select Pet",
+});
+
+const birthdateField = createPetBirthdateField({
+  input: elements.birthdate, errorElement: document.getElementById("birthdateError"),
+  onInvalid: () => petSaveConfirmation.reset(),
 });
 
 const petTypeCombobox = createFixedOptionCombobox({
@@ -563,7 +569,7 @@ function getFormValues(form) {
     petType: form.petType.value,
     petName: form.petName.value,
     gender: genderCombobox.getValue(),
-    birthdate: elements.birthdate.value,
+    birthdate: birthdateField.getValue(),
     breed: form.breed.value,
     color: colorCombobox.getValue(),
     weight: getEnteredWeight(elements.weight),
@@ -592,7 +598,7 @@ function restoreAddPetFormDraft() {
   petTypeCombobox.setValue(values.petType || "");
   elements.petName.value = values.petName || "";
   genderCombobox.setValue(values.gender || "");
-  elements.birthdate.value = values.birthdate || "";
+  birthdateField.setValue(values.birthdate);
   breedCombobox.setValue(values.petType ? values.breed || "" : "");
   colorCombobox.setValue(values.color);
 
@@ -612,6 +618,8 @@ function restoreAddPetFormDraft() {
 }
 
 function validatePetForm(values) {
+  const birthdateMessage = birthdateField.getValidationMessage();
+  if (birthdateMessage) return birthdateMessage;
   if (!values.petType.trim()) {
     return "Pet type is required.";
   }
@@ -658,6 +666,7 @@ function validatePetForm(values) {
 
 function resetAddPetForm() {
   elements.addPetForm.reset();
+  birthdateField.setValue("");
   petTypeCombobox.reset();
   genderCombobox.reset();
   breedCombobox.reset();
@@ -673,6 +682,7 @@ function resetAddPetForm() {
 async function handleAddPetSubmit(event) {
   event.preventDefault();
   if (petSaveConfirmation.saving) return;
+  if (!birthdateField.validate({ focus: true })) return;
 
   const formValues = getFormValues(elements.addPetForm);
   const validationMessage = validatePetForm(formValues);
@@ -735,6 +745,12 @@ async function handleAddPetSubmit(event) {
     renderSelectedPets();
     clearStepError();
   } catch (error) {
+    if (error.errors?.birthdate?.[0]) {
+      clearStepError();
+      birthdateField.showValidation(error.errors.birthdate[0]);
+      elements.birthdate.focus();
+      return;
+    }
     if (error.errors?.color?.[0]) {
       clearStepError();
       colorCombobox.showValidation(error.errors.color[0]);

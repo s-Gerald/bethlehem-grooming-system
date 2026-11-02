@@ -7,6 +7,7 @@ use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
+use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\PetWeightSize;
@@ -71,7 +72,7 @@ class PetController extends Controller
             'species' => ['required', 'string', 'regex:/^(dog|cat)$/i'],
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
-            'birthdate' => 'nullable|date',
+            'birthdate' => ['nullable', new ValidPetBirthdate],
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
@@ -123,7 +124,7 @@ class PetController extends Controller
             'species' => 'nullable|string|max:50',
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
-            'birthdate' => 'nullable|date',
+            'birthdate' => ['nullable', new ValidPetBirthdate],
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
@@ -162,7 +163,7 @@ class PetController extends Controller
             'species' => 'nullable|string|max:50',
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
-            'birthdate' => 'nullable|date',
+            'birthdate' => ['nullable', new ValidPetBirthdate($pet->birthdate)],
             'is_neutered' => 'nullable|boolean',
             'neutered_date' => 'nullable|date',
             'is_deceased' => 'nullable|boolean',
@@ -189,7 +190,7 @@ class PetController extends Controller
             'species' => $data['species'] ?? $pet->species,
             'breed' => $data['breed'] ?? null,
             'gender' => $data['gender'] ?? null,
-            'birthdate' => $data['birthdate'] ?? null,
+            'birthdate' => array_key_exists('birthdate', $data) ? $data['birthdate'] : $pet->birthdate,
             'is_neutered' => $data['is_neutered'] ?? false,
             'neutered_date' => $data['neutered_date'] ?? null,
             'is_deceased' => $data['is_deceased'] ?? false,
@@ -264,7 +265,7 @@ class PetController extends Controller
             'species' => ['required', 'string', 'regex:/^(dog|cat)$/i'],
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
-            'birthdate' => 'nullable|date',
+            'birthdate' => ['nullable', new ValidPetBirthdate],
             'is_neutered' => 'nullable|boolean',
             'neutered_date' => 'nullable|date',
             'is_deceased' => 'nullable|boolean',

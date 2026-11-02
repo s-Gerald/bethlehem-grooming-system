@@ -1,4 +1,5 @@
 import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
+import { createPetBirthdateField } from "./pet-birthdate.js?v=20261103-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
@@ -69,6 +70,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const petBreed         = document.getElementById("petBreed");
   const petGender        = document.getElementById("petGender");
   const petBirthdate     = document.getElementById("petBirthdate");
+  const birthdateField = createPetBirthdateField({
+    input: petBirthdate, errorElement: document.getElementById("petBirthdateError"),
+    onInvalid: () => petSaveConfirmation.reset(),
+  });
   const petSize          = document.getElementById("petSize");
   const petFurType       = document.getElementById("petFurType");
   const petWeight        = document.getElementById("petWeight");
@@ -202,7 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const payload = {
       pet_name: profileInputs.pet_name.value.trim(), species: petSpecies.value,
       breed: petBreed.value.trim() || null, gender: genderCombobox.getValue() || null,
-      birthdate: petBirthdate.value || null, color: colorCombobox.getValue() || null,
+      birthdate: birthdateField.getValue() || null, color: colorCombobox.getValue() || null,
       size: normalizePetSize(sizeCombobox.getValue()) || null, fur_type: petFurType.value || null,
       weight: getEnteredWeight(petWeight) || null, medical_conditions: profileInputs.medical_conditions.value.trim() || null,
     };
@@ -671,7 +676,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("petName").value = pet.pet_name || "";
     petTypeCombobox.setValue(normalizeSpecies(pet.species));
     genderCombobox.setValue(String(pet.gender || "").toLowerCase());
-    petBirthdate.value = pet.birthdate || "";
+    birthdateField.setValue(pet.birthdate, { originalValue: pet.birthdate });
     breedCombobox.setValue(pet.breed || "");
     petFurType.value = pet.fur_type || "";
     breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
@@ -759,6 +764,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     if (petSaveConfirmation.saving) return;
     hideFormError();
+    if (!birthdateField.validate({ focus: true })) return;
     const id = document.getElementById("petId").value;
     const weight = getEnteredWeight(petWeight);
     const payload = readPetPayload();
@@ -806,6 +812,11 @@ document.addEventListener("DOMContentLoaded", () => {
       invalidatePetCollections();
       await loadPets();
     } catch (err) {
+      if (err.errors?.birthdate?.[0]) {
+        birthdateField.showValidation(err.errors.birthdate[0]);
+        petBirthdate.focus();
+        return;
+      }
       if (err.errors?.color?.[0]) {
         colorCombobox.showValidation(err.errors.color[0]);
         document.getElementById("petColor").focus();
@@ -956,7 +967,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("petName").value = "";
     colorCombobox.reset();
     document.getElementById("petMedical").value = "";
-    petBirthdate.value = "";
+    birthdateField.setValue("");
 
     petTypeCombobox.setValue("");
     genderCombobox.reset();
@@ -998,6 +1009,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function validatePetForm(payload) {
+    const birthdateMessage = birthdateField.getValidationMessage();
+    if (birthdateMessage) return birthdateMessage;
     if (!editingPet && !payload.pet_name) return "Pet name is required.";
     if (!editingPet && !payload.species) return "Species is required.";
     const normalizedPetName = normalizePetNameForComparison(payload.pet_name);

@@ -13,6 +13,70 @@ class ClientPetProfileTest extends TestCase
 {
     use \Tests\Support\CreatesRegistrationAvailability;
 
+    public function test_birthdate_creation_range_is_consistent_for_customer_and_admin_owners(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-02 16:01:00', 'UTC'));
+        Schema::create('users', function (Blueprint $table) {
+            $table->increments('user_id'); $table->string('role');
+        });
+        Schema::create('unregistered_customers', function (Blueprint $table) {
+            $table->id(); $table->boolean('is_archived')->default(false);
+            $table->timestamp('account_deleted_at')->nullable();
+        });
+        DB::table('users')->insert(['user_id' => 10, 'role' => 'customer']);
+        DB::table('unregistered_customers')->insert(['id' => 42]);
+        try {
+            foreach (['/api/pets', '/api/admin/customer-pets/registered/10', '/api/admin/customer-pets/unregistered/42'] as $url) {
+                $this->authenticateUser(10, $url === '/api/pets' ? 'customer' : 'admin');
+                foreach (['2026-11-04', '1986-11-02', '1700-01-01', '2026-02-30', '2024-02-30', '2026-1-01', 'November 2, 2026'] as $date) {
+                    $this->postJson($url, ['pet_name' => 'Invalid date', 'species' => 'Dog', 'birthdate' => $date])
+                        ->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+                }
+                foreach (['2026-11-03', '1986-11-03', '2024-02-29', null, ''] as $index => $date) {
+                    $this->postJson($url, ['pet_name' => md5($url).$index, 'species' => 'Dog', 'birthdate' => $date])
+                        ->assertCreated()->assertJsonPath('pet.birthdate', $date ?: null);
+                }
+            }
+        } finally {
+            Schema::drop('users'); Schema::drop('unregistered_customers');
+        }
+    }
+
+    public function test_legacy_birthdate_is_preserved_and_only_authorized_valid_changes_are_allowed(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-03 10:00:00', 'Asia/Manila'));
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Legacy', 'species' => 'Dog', 'birthdate' => '1700-01-01']);
+        $this->authenticateCustomer(10);
+        $this->putJson('/api/pets/101', ['birthdate' => '1700-01-01', 'medical_conditions' => 'Gentle handling'])
+            ->assertOk()->assertJsonPath('pet.birthdate', '1700-01-01');
+        $this->putJson('/api/pets/101', ['birthdate' => '2020-01-01'])->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+        $this->authenticateUser(20, 'admin');
+        $this->putJson('/api/admin/pets/101', ['pet_name' => 'Legacy', 'birthdate' => '1700-01-01', 'color' => 'Brown'])
+            ->assertOk()->assertJsonPath('pet.birthdate', '1700-01-01');
+        $this->putJson('/api/admin/pets/101', ['pet_name' => 'Legacy', 'color' => 'Black'])
+            ->assertOk()->assertJsonPath('pet.birthdate', '1700-01-01');
+        foreach (['1700-01-02', '1986-11-02', '2026-11-04', '2026-02-30'] as $date) {
+            $this->putJson('/api/admin/pets/101', ['pet_name' => 'Legacy', 'birthdate' => $date])
+                ->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+        }
+        $this->putJson('/api/admin/pets/101', ['pet_name' => 'Legacy', 'birthdate' => '1986-11-03'])
+            ->assertOk()->assertJsonPath('pet.birthdate', '1986-11-03');
+        $this->putJson('/api/admin/pets/101', ['pet_name' => 'Legacy', 'birthdate' => '2026-11-03'])
+            ->assertOk()->assertJsonPath('pet.birthdate', '2026-11-03');
+    }
+
+    public function test_customer_can_fill_an_empty_birthdate_once_with_a_valid_date(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-03 10:00:00', 'Asia/Manila'));
+        $this->authenticateCustomer(10);
+        $id = $this->postJson('/api/pets', ['pet_name' => 'Young pet', 'species' => 'Cat'])->assertCreated()->json('pet.pet_id');
+        foreach (['2026-11-04', '1986-11-02', '2026-02-30'] as $invalid) {
+            $this->putJson('/api/pets/'.$id, ['birthdate' => $invalid])->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+        }
+        $this->putJson('/api/pets/'.$id, ['birthdate' => '2026-11-03'])->assertOk()->assertJsonPath('pet.birthdate', '2026-11-03');
+        $this->putJson('/api/pets/'.$id, ['birthdate' => '2026-11-02'])->assertUnprocessable()->assertJsonValidationErrors('birthdate');
+    }
+
     public function test_customer_cannot_read_update_archive_or_restore_another_owners_pet(): void
     {
         DB::table('pets')->insert([
