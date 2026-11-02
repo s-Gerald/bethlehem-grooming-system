@@ -549,7 +549,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : "No pets yet. Add your first pet using the button above.";
       petsGrid.innerHTML = `
         <div class="col-span-full text-center py-16">
-          <svg class="ph-icon w-10 h-10 mx-auto text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#paw-print"></use></svg>
+          <svg class="ph-icon w-10 h-10 mx-auto text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#paw-print"></use></svg>
           <p class="mt-3 text-portal-muted text-sm">${msg}</p>
         </div>`;
 
@@ -596,21 +596,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const archiveBtn = pet.is_archived
       ? `<button type="button" data-unarchive="${pet.pet_id}"
             class="portal-button-secondary col-span-2 min-h-8 w-full gap-1.5 rounded-xl px-3 py-1.5 text-xs">
-            <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#arrow-counter-clockwise"></use></svg> Restore
+            <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#arrow-counter-clockwise"></use></svg> Restore
           </button>`
       : `<button type="button" data-archive="${pet.pet_id}"
             class="portal-button-secondary min-h-8 w-full gap-1.5 rounded-xl px-3 py-1.5 text-xs">
-            <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#archive"></use></svg> Archive
+            <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#archive"></use></svg> Archive
           </button>`;
 
     const editBtn = pet.is_archived ? "" : `
       <button type="button" data-edit="${pet.pet_id}"
         class="portal-button-secondary min-h-8 w-full gap-1.5 rounded-xl px-3 py-1.5 text-xs">
-        <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#pencil-simple"></use></svg> Edit
+        <svg class="ph-icon w-4 h-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#pencil-simple"></use></svg> Edit
       </button>`;
 
     const viewProfileLink = `
-      <a href="./pet-details.html?pet_id=${encodeURIComponent(pet.pet_id)}"
+      <a href="/account/pets/details?pet_id=${encodeURIComponent(pet.pet_id)}"
         class="portal-button-primary col-span-2 min-h-8 w-full rounded-xl px-3 py-1.5 text-xs font-semibold">
         View profile
       </a>`;
@@ -620,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="flex items-start justify-between gap-2">
           <div class="flex min-w-0 items-center gap-3">
             <div class="portal-icon-tile h-10 w-10 rounded-xl">
-              <svg class="ph-icon w-5 h-5 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#${speciesIcon}"></use></svg>
+              <svg class="ph-icon w-5 h-5 text-portal-primary" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#${speciesIcon}"></use></svg>
             </div>
             <div class="min-w-0 [overflow-wrap:anywhere]">
               <p class="font-bold text-portal-text text-base leading-tight">${escHtml(pet.pet_name)}</p>

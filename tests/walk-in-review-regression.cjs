@@ -73,7 +73,7 @@ async function main() {
   assert.equal(review.calls.length, 0);
   review.context.handleConfirmClick();
   assert.equal(review.consentCalls.length, 1);
-  assert.equal(review.navigation[0], "./walk-in-consent.html");
+  assert.equal(review.navigation[0], "/admin/walk-in/grooming/consent");
   assert.equal(JSON.parse(review.saved.get("walkInReviewStep")).items.length, 1);
   const pets = consent.buildWalkInPets(review.payload);
   assert.equal(pets[0].grooming_preference, "summer_cut");

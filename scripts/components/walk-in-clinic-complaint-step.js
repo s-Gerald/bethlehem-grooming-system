@@ -1,5 +1,5 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1";
-import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261011-v3&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103";
+import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1&urls=20261103";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
 
@@ -9,7 +9,7 @@ function getMarkup() {
   return `
     <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <section data-session-public class="mb-6">
-        <a id="clinicComplaintBackTopBtn" href="./dashboard.html"
+        <a id="clinicComplaintBackTopBtn" href="/admin/dashboard"
           class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700">
           &larr; Back to Home
         </a>
@@ -59,13 +59,13 @@ function handleSubmit(event) {
   sessionStorage.setItem(WALK_IN_CLINIC_COMPLAINT_KEY,
     JSON.stringify({ commonConcerns, chiefComplaint, pet: state.pet }));
 
-  window.history.pushState(null, "", "./walk-in-pet-details.html?step=clinic-consent");
+  window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-consent");
   renderWalkInClinicConsentStep({
     pet: state.pet,
     commonConcerns,
     chiefComplaint,
     onBack: () => {
-      window.history.pushState(null, "", "./walk-in-pet-details.html?step=clinic-complaint");
+      window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-complaint");
       renderWalkInClinicComplaintStep({ pet: state.pet });
     },
   });
@@ -87,6 +87,6 @@ export async function renderWalkInClinicComplaintStep({ pet = null } = {}) {
   );
   document.getElementById("clinicComplaintForm").addEventListener("submit", handleSubmit);
   document.getElementById("clinicComplaintBackBtn").addEventListener("click", () => {
-    window.location.href = "./walk-in-pet-details.html";
+    window.location.href = "/admin/walk-in/pets";
   });
 }

@@ -1,6 +1,6 @@
 // Shared presentation only. Each data owner decides when its region is pending.
 (() => {
-  const sprite = new URL('../../assets/icons/phosphor.svg', document.currentScript.src);
+  const sprite = new URL('/assets/icons/phosphor.svg', document.currentScript.src);
   // A public title hint, never an authorization decision.
   try {
     const roles = [localStorage, sessionStorage].map(storage => {

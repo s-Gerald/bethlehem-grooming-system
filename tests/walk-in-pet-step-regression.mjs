@@ -225,19 +225,19 @@ for (const appointmentType of ["grooming", "clinic"]) {
     furType: "Long", weight: "", size: "small", medicalNotes: "",
   }] } });
   flow.ui("backBtn").events.click();
-  assert.equal(flow.window.location.href, `./walk-in-booking.html?flow=${appointmentType}`);
+  assert.equal(flow.window.location.href, `/admin/walk-in/customer?flow=${appointmentType}`);
   assert.equal(flow.ui("ownerBackLink").events.click, undefined, "Home retains native anchor navigation");
   flow.handlers.handleNext();
   assert.deepEqual(flow.renderedSteps, [appointmentType], "Pet step enters only the originating workflow");
   assert.equal(flow.window.history.url, appointmentType === "clinic"
-    ? "./walk-in-pet-details.html?step=clinic-complaint"
-    : "./walk-in-grooming-services.html");
+    ? "/admin/walk-in/pets?step=clinic-complaint"
+    : "/admin/walk-in/grooming/services");
 }
 
 const directClinic = await runStep({ ...ownerDraft(null, "clinic"), directEntry: "clinic" });
 const directDraft = [...directClinic.stored];
 directClinic.ui("backBtn").events.click();
-assert.equal(directClinic.window.location.href, "./clinic.html", "Direct clinic entry retains its bottom Back shortcut");
+assert.equal(directClinic.window.location.href, "/admin/clinic", "Direct clinic entry retains its bottom Back shortcut");
 assert.equal(directClinic.ui("ownerBackLink").events.click, undefined);
 assert.deepEqual([...directClinic.stored], directDraft, "Back preserves the direct-entry draft");
 

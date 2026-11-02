@@ -1,3 +1,7 @@
+<IfModule mod_dir.c>
+    DirectoryIndex index.php
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
@@ -20,6 +24,10 @@
     # Handle X-XSRF-Token Header
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Browser documents must reach Laravel even when their old HTML file exists.
+    # Fragments and assets keep Apache's existing-file fast path.
+    RewriteRule ^(?:index\.html|pages/client/(?:sign-in|signup|forgot-password|verify-email|set-up-password|confirm-email-recovery|dashboard|my-pets|pet-details|grooming-history|notifications|settings|pre-register|grooming-pre-registration|booking-pet-details|clinic-visit-reason|clinic-visit-summary|clinic-visit-confirmed|clinic-visit-date)\.html|pages/admin/(?:dashboard|clients|appointments|clinic|archive|transactions|reports|services|settings|notifications|activity-log|availability|walk-in-booking|walk-in-pet-details|walk-in-grooming-services|walk-in-booking-review|walk-in-consent|walk-in-booking-confirmed|walk-in-clinic-confirmed)\.html|pages/admin/inventory/(?:inventory|pos)\.html|pages/legal/(?:terms-and-conditions|privacy-policy)\.html)$ index.php [L]
 
     # Redirect Trailing Slashes If Not A Folder...
     RewriteCond %{REQUEST_FILENAME} !-d

@@ -10,7 +10,7 @@ async function clinicalDefaults() {
     staff_permissions: {clinic_workspace: true, availability_view: true, availability_manage: false}}};
   const context = {
     URL, URLSearchParams, Date, Intl, setTimeout, clearTimeout,
-    window: {location: new URL('https://example.test/pages/admin/archive.html?pos=2'), history: {state: null}, addEventListener() {}, removeEventListener() {}},
+    window: {location: new URL('https://example.test/admin/history?pos=2'), history: {state: null}, addEventListener() {}, removeEventListener() {}},
     document: {currentScript: null, addEventListener() {}, removeEventListener() {}},
     API: {isClinicWorkspace: () => true, getCachedStaffIdentity: () => identity,
       getStaffIdentity: async () => identity,

@@ -22,7 +22,7 @@ const context = {
     },
   },
   window: {
-    location: { pathname: '/pages/admin/dashboard.html' },
+    location: { pathname: '/admin/dashboard', origin: 'http://localhost' },
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name) => listeners.delete(name),
     dispatchEvent: (event) => listeners.get(event.type)?.(event),
@@ -62,7 +62,7 @@ async function run() {
   assert.equal(sidebar.incomingAppointmentCount, 1);
 
   // Navigating to Grooming must retain the dot through every active workflow stage.
-  context.window.location.pathname = '/pages/admin/appointments.html';
+  context.window.location.pathname = '/admin/grooming';
   sidebar.detectActivePage();
   assert.equal(sidebar.hasIncomingAppointments, true);
   for (const [index, list] of activeLists.entries()) {
@@ -156,7 +156,7 @@ async function run() {
     'inventory/inventory.html',
   ]) {
     const page = fs.readFileSync(path.join(__dirname, '../pages/admin', file), 'utf8');
-    const groomingLink = page.match(/<a\b[^>]*href="[^"]*appointments\.html"[\s\S]*?<\/a>/)?.[0];
+    const groomingLink = page.match(/<a\b[^>]*href="[^"]*\/admin\/grooming"[\s\S]*?<\/a>/)?.[0];
     assert.ok(groomingLink?.includes('x-show="hasIncomingAppointments"'), `${file} uses the persistent dot`);
     assert.equal((groomingLink.match(/x-show="hasIncomingAppointments"/g) || []).length, 1, `${file} shows exactly one persistent dot`);
     assert.ok(groomingLink?.includes('aria-label="Active grooming customers today"'));

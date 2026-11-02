@@ -1,6 +1,6 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
-import { groomingDurationValue } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import { groomingDurationValue } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,

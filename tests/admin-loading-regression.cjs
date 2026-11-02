@@ -18,7 +18,7 @@ function apiEnvironment() {
       setTimeout, clearTimeout, AbortController,
       document: { getElementById: () => null, querySelector: () => null, addEventListener() {} },
       window: { location: { protocol: 'http:', origin: 'http://127.0.0.1:8000', hostname: '127.0.0.1',
-        port: '8000', pathname: '/pages/admin/dashboard.html', replace() {} }, addEventListener() {} },
+        port: '8000', pathname: '/admin/dashboard', replace() {} }, addEventListener() {} },
       fetch: async (url, options) => { calls.push({ url, method: options.method }); const data = await handler(url, options);
         return { ok: true, status: 200, json: async () => data, headers: { get: () => null } }; },
     });

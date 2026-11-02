@@ -1,6 +1,6 @@
 const adminNotificationIcons = typeof document !== 'undefined' && document.currentScript
-  ? new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href
-  : '../../assets/icons/phosphor.svg?v=admin-icons-20261018';
+  ? new URL('/assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href
+  : '/assets/icons/phosphor.svg?v=admin-icons-20261018';
 
 function getAdminNotificationIcon(name) {
   return ({ 'calendar-days': 'calendar-dots', 'circle-check': 'check-circle', 'credit-card': 'credit-card',

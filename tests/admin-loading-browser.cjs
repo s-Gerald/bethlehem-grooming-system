@@ -10,12 +10,12 @@ const origin = process.env.LOCAL_REVIEW_ORIGIN || 'http://127.0.0.1:8000';
 if (!['127.0.0.1', 'localhost'].includes(new URL(origin).hostname)) throw new Error('Browser review requires a local server.');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const pages = [
-  ['dashboard', 'dashboard.html', 'summaryLoaded'], ['customers', 'clients.html', 'customersLoaded'],
-  ['grooming', 'appointments.html', 'bookingsLoaded'], ['clinic', 'clinic.html', 'activeCasesLoaded'],
-  ['inventory', 'inventory/inventory.html', '_inventory'], ['services', 'services.html', '_services'],
-  ['history', 'archive.html', 'historyLoaded'], ['transactions', 'transactions.html', 'transactionsLoaded'],
-  ['reports', 'reports.html', 'report'], ['settings', 'settings.html', 'staffLoaded'],
-  ['notifications', 'notifications.html', 'loaded'],
+  ['dashboard', 'dashboard', 'summaryLoaded'], ['customers', 'customers', 'customersLoaded'],
+  ['grooming', 'grooming', 'bookingsLoaded'], ['clinic', 'clinic', 'activeCasesLoaded'],
+  ['inventory', 'inventory', '_inventory'], ['services', 'services', '_services'],
+  ['history', 'history', 'historyLoaded'], ['transactions', 'transactions', 'transactionsLoaded'],
+  ['reports', 'reports', 'report'], ['settings', 'settings', 'staffLoaded'],
+  ['notifications', 'notifications', 'loaded'],
 ].filter(([name]) => !process.env.LOCAL_REVIEW_PAGES || process.env.LOCAL_REVIEW_PAGES.split(',').includes(name));
 async function customersBeforeAlpine(page, url) {
   let release;
@@ -75,13 +75,13 @@ async function ready(page, name, property) {
         if (key === 'staff' && ['clinic', 'services'].includes(name)) continue;
         if (key === 'clinic' && ['dashboard', 'grooming'].includes(name)) continue;
         requests.length = 0;
-        if (name === 'customers') await customersBeforeAlpine(page, origin + '/pages/admin/' + file);
-        else await page.goto(origin + '/pages/admin/' + file, { waitUntil: 'domcontentloaded' });
+        if (name === 'customers') await customersBeforeAlpine(page, origin + '/admin/' + file);
+        else await page.goto(origin + '/admin/' + file, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
         assert.equal(await page.locator('aside nav').isVisible(), true, name + ' navigation visible before data');
-        if (session.role === 'staff') assert.equal(await page.locator('aside nav a[href$="reports.html"]').isVisible(), false);
-        if (key === 'clinic') assert.equal(await page.locator('aside nav a[href$="appointments.html"]').isVisible(), false);
-        if (key === 'staff') assert.equal(await page.locator('aside nav a[href$="clinic.html"]').isVisible(), false);
+        if (session.role === 'staff') assert.equal(await page.locator('aside nav a[href$="reports"]').isVisible(), false);
+        if (key === 'clinic') assert.equal(await page.locator('aside nav a[href$="grooming"]').isVisible(), false);
+        if (key === 'staff') assert.equal(await page.locator('aside nav a[href$="clinic"]').isVisible(), false);
         assert.equal(await page.locator('.admin-shell-nav-placeholder, [class*="admin-skeleton"], .reports-skeleton').count(), 0);
         const headings = await page.locator('main [data-session-public]').allInnerTexts();
         if (name === 'dashboard') assert.ok(headings.join(' ').includes(session.role === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'));
@@ -199,10 +199,10 @@ async function ready(page, name, property) {
         console.log(key + ' ' + name + ': authorized shell, title, loader, content and mobile passed');
       }
       if (process.env.LOCAL_REVIEW_WALK_IN) {
-        const entries = key === 'admin' ? ['dashboard.html', 'appointments.html', 'clinic.html']
-          : [key === 'clinic' ? 'clinic.html' : 'appointments.html'];
+        const entries = key === 'admin' ? ['dashboard', 'grooming', 'clinic']
+          : [key === 'clinic' ? 'clinic' : 'grooming'];
         for (const entry of entries) {
-          await page.goto(origin + '/pages/admin/' + entry, { waitUntil: 'domcontentloaded' });
+          await page.goto(origin + '/admin/' + entry, { waitUntil: 'domcontentloaded' });
           await page.waitForFunction(() => document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready') && !document.documentElement.hasAttribute('data-session-gate'));
           let release;
           const held = new Promise(resolve => { release = resolve; });
@@ -220,7 +220,7 @@ async function ready(page, name, property) {
           await page.unroute('**/api/session');
           assert.equal(requests.slice(before).filter(url => url === '/api/session').length, 1);
           assert.equal(requests.slice(before).filter(url => url === '/api/me').length, 0);
-          const flow = entry === 'clinic.html' ? 'clinic' : 'grooming';
+          const flow = entry === 'clinic' ? 'clinic' : 'grooming';
           assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem('walkInOwnerStep')).appointmentType), flow);
           console.log(`${key} ${entry} → ${flow} Walk-in: real API verified in ${Date.now() - started}ms, one /session, zero /me, no checking card`);
           if (process.env.LOCAL_REVIEW_LOCK_HELPER && process.env.LOCAL_REVIEW_PASSWORD) {
@@ -240,7 +240,7 @@ async function ready(page, name, property) {
             sessionStorage.setItem('walkInOwnerStep', JSON.stringify({ appointmentType: flow, firstName: 'Local', lastName: 'Review' }));
             sessionStorage.setItem('walkInPetStep', JSON.stringify({ pets: [{ id: 'local-review', petName: 'Private Local Pet', petType: 'Dog', breed: 'Poodle', furType: 'Curly', weight: 8, size: 'Small' }], newPetForm: {} }));
           }, flow);
-          await page.goto(origin + '/pages/admin/walk-in-pet-details.html', { waitUntil: 'domcontentloaded' });
+          await page.goto(origin + '/admin/walk-in/pets', { waitUntil: 'domcontentloaded' });
           await page.getByText('Private Local Pet', { exact: true }).waitFor();
           const stepChecks = requests.filter(url => url === '/api/session').length;
           await page.locator('#nextBtn').click();
@@ -261,7 +261,7 @@ async function ready(page, name, property) {
         const held = new Promise(resolve => { release = resolve; });
         await page.route('**/api/session', async route => { await held; await route.continue(); });
         try {
-          await page.goto(origin + '/pages/admin/settings.html', { waitUntil: 'domcontentloaded' });
+          await page.goto(origin + '/admin/settings', { waitUntil: 'domcontentloaded' });
           assert.equal(await page.locator('aside nav').isVisible(), true, 'Pending session validation preserves navigation');
           assert.equal(await page.locator('.admin-sidebar-footer').isVisible(), true, 'Pending session validation preserves the footer');
           assert.equal(await page.locator('aside nav').evaluate(el => el.inert), true, 'Pending navigation stays non-interactive');
@@ -276,7 +276,7 @@ async function ready(page, name, property) {
       }
       if (process.env.LOCAL_REVIEW_LOCK_HELPER) {
         execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, 'lock', key]);
-        await page.goto(origin + '/pages/admin/settings.html', { waitUntil: 'domcontentloaded' });
+        await page.goto(origin + '/admin/settings', { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
         assert.equal(await page.locator('aside.admin-sidebar-menu').evaluate(el => getComputedStyle(el).visibility), 'hidden');
         await page.getByLabel('Password', { exact: true }).fill('DeliberatelyIncorrectLocalTest!');
@@ -315,19 +315,19 @@ async function ready(page, name, property) {
           console.log(key + ' real sidebar navigation after unlock, back/forward, one /session and zero /me per document passed');
           if (process.env.LOCAL_REVIEW_VERIFY_REVOCATION && key !== 'clinic') {
             execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, key === 'admin' ? 'expire' : 'revoke', key]);
-            await page.goto(origin + '/pages/admin/settings.html', {waitUntil: 'domcontentloaded'});
-            await page.waitForURL('**/sign-in.html');
+            await page.goto(origin + '/admin/settings', {waitUntil: 'domcontentloaded'});
+            await page.waitForURL('**/sign-in');
             assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);
             console.log(key + ' real ' + (key === 'admin' ? 'expiration' : 'revocation') + ' redirect passed');
             await context.close();
             continue;
           }
           execFileSync('php', [process.env.LOCAL_REVIEW_LOCK_HELPER, 'lock', key]);
-          await page.goto(origin + '/pages/admin/settings.html', {waitUntil: 'domcontentloaded'});
+          await page.goto(origin + '/admin/settings', {waitUntil: 'domcontentloaded'});
           await page.getByRole('heading', {name: 'Session locked', exact: true}).waitFor();
         }
         await page.getByRole('button', { name: 'Sign in with another account', exact: true }).click();
-        await page.waitForURL('**/sign-in.html');
+        await page.waitForURL('**/sign-in');
         assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);
         console.log(key + ' real lock and logout passed');
       }

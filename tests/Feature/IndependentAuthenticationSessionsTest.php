@@ -119,8 +119,8 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->assertSame($user->clinicPermissions(), $confirmed->json('user.clinic_permissions'));
         $this->assertSame($user->staffPermissions(), $confirmed->json('user.staff_permissions'));
 
-        $credential = $confirmed->getCookie('bethlehem_account_session', false)->getValue();
-        $cookieExpiry = $confirmed->getCookie('bethlehem_account_session', false)->getExpiresTime();
+        $credential = $this->accountSessionCookie($confirmed)->getValue();
+        $cookieExpiry = $this->accountSessionCookie($confirmed)->getExpiresTime();
         if (! $remember) $this->assertSame(0, $cookieExpiry);
         else $this->assertGreaterThan(now()->timestamp, $cookieExpiry);
         $this->assertSame(explode('|', $credential)[0].'|cookie', $confirmed->json('token'));
@@ -188,7 +188,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->assertNotSame($cookie, $rotated->getValue());
         $this->assertSame($device->expires_at->timestamp, $rotated->getExpiresTime());
         $this->assertStringNotContainsString($rotated->getValue(), $restored->getContent());
-        $raw = $restored->getCookie('bethlehem_account_session', false)->getValue();
+        $raw = $this->accountSessionCookie($restored)->getValue();
         $this->browserCookies[$restored->json('token')] = $raw;
         $this->requestAs($restored->json('token'), 'GET', '/api/session')->assertOk()
             ->assertJsonPath('expires_at', now()->addDay()->toIso8601String());
@@ -312,7 +312,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $restored = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
         $rotated = $restored->getCookie('bethlehem_remembered_device', false)->getValue();
         $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
-            ->withUnencryptedCookie('bethlehem_account_session', $restored->getCookie('bethlehem_account_session', false)->getValue())
+            ->withUnencryptedCookie('bethlehem_account_session', $this->accountSessionCookie($restored)->getValue())
             ->withUnencryptedCookie('bethlehem_remembered_device', $rotated)->postJson('/api/logout')->assertOk();
         $this->restoreDevice($rotated)->assertUnauthorized();
     }
@@ -463,12 +463,12 @@ class IndependentAuthenticationSessionsTest extends TestCase
         config(['app.url' => 'https://clinic.example']);
         $old = $this->login('customer', true);
         $response = $this->restoreDevice($this->rememberCookies[$old], $this->browserCookies[$old])->assertOk();
-        $cookie = $response->getCookie('bethlehem_account_session', false);
+        $cookie = $this->accountSessionCookie($response);
         $this->assertTrue($cookie->isSecure());
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertSame('lax', $cookie->getSameSite());
         $this->assertNull($cookie->getDomain());
-        $this->assertSame('/api', $cookie->getPath());
+        $this->assertSame('/', $cookie->getPath());
         $this->travel(31)->minutes();
         $remembered = $this->restoreDevice($this->rememberCookies[$old])->assertOk()->getCookie('bethlehem_remembered_device', false);
         $this->assertTrue($remembered->isSecure());
@@ -626,6 +626,41 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->get('/api/admin/availability/page', ['Accept' => 'text/html'])->assertForbidden();
     }
 
+    public function test_clean_protected_pages_use_the_existing_cookie_and_permissions(): void
+    {
+        foreach (['admin', 'clinic_receptionist', 'grooming_receptionist', 'customer'] as $role) {
+            $token = $this->login($role);
+            foreach (['/admin/availability', '/admin/activity-log'] as $url) {
+                $this->app['auth']->forgetGuards();
+                $this->withHeader('Authorization', '')->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$token])->withCredentials();
+                $response = $this->get($url, ['Accept' => 'text/html']);
+                if ($role === 'admin' || ($url === '/admin/availability' && $role !== 'customer')) {
+                    $response->assertOk()->assertHeader('Content-Type', 'text/html; charset=UTF-8');
+                } else $response->assertForbidden();
+            }
+        }
+    }
+
+    public function test_legacy_api_scoped_cookie_can_upgrade_through_an_authorized_page_without_new_tokens(): void
+    {
+        $token = $this->login('admin', false);
+        $before = DB::table('personal_access_tokens')->sole();
+        $this->app['auth']->forgetGuards();
+        $this->withUnencryptedCookie('bethlehem_account_session', '')->withCredentials()
+            ->get('/admin/availability?service=grooming')->assertRedirect('/api/admin/availability/page?service=grooming&canonical=1');
+        $this->app['auth']->forgetGuards();
+        $response = $this->withUnencryptedCookie('bethlehem_account_session', $this->browserCookies[$token])->withCredentials()
+            ->get('/api/admin/availability/page?service=grooming&canonical=1')->assertRedirect('/admin/availability?service=grooming');
+        $cookies = $response->headers->getCookies();
+        $root = collect($cookies)->first(fn ($cookie) => $cookie->getName() === 'bethlehem_account_session' && $cookie->getPath() === '/');
+        $old = collect($cookies)->first(fn ($cookie) => $cookie->getName() === 'bethlehem_account_session' && $cookie->getPath() === '/api');
+        $this->assertSame($this->browserCookies[$token], $root?->getValue());
+        $this->assertSame(0, $root?->getExpiresTime());
+        $this->assertLessThan(now()->timestamp, $old?->getExpiresTime());
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertSame($before->last_interaction_at, DB::table('personal_access_tokens')->sole()->last_interaction_at);
+    }
+
     public function test_guest_html_availability_navigation_returns_unauthorized_without_a_login_route(): void
     {
         $this->get('/api/admin/availability/page', ['Accept' => 'text/html'])->assertUnauthorized();
@@ -657,11 +692,11 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->travel(10)->minutes();
         $this->app['auth']->forgetGuards();
         $status = $this->getJson('/api/session', ['Authorization' => 'Bearer '.$raw])->assertOk();
-        $cookie = $status->getCookie('bethlehem_account_session', false);
+        $cookie = $this->accountSessionCookie($status);
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertTrue($cookie->isSecure());
         $this->assertSame('lax', $cookie->getSameSite());
-        $this->assertSame('/api', $cookie->getPath());
+        $this->assertSame('/', $cookie->getPath());
         $this->assertSame(0, $cookie->getExpiresTime());
         $this->assertNull($cookie->getDomain());
         $this->assertStringNotContainsString($raw, $status->getContent());

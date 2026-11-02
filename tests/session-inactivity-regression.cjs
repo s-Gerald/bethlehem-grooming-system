@@ -136,8 +136,8 @@ function createIdleBrowser(role, fixture = {}) {
     port: "",
     origin: "https://clinic.example",
     pathname: role === "customer"
-      ? "/pages/client/dashboard.html"
-      : "/pages/admin/dashboard.html",
+      ? "/account"
+      : "/admin/dashboard",
     href: "",
     replace(target) {
       replacements.push(target);
@@ -443,7 +443,7 @@ async function testDelayedVerificationCannotExtendDeadlines() {
     if (minutes === 30) assert.equal(browser.API.isSessionLocked(), true, "Response latency cannot move the established idle deadline");
     else {
       assert.equal(browser.API.getAdminToken(), null, "Response latency cannot extend absolute authentication");
-      assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+      assert.equal(browser.replacements.at(-1), "/sign-in");
     }
   }
 }
@@ -494,7 +494,7 @@ async function testResumeExpirationAndCustomerPolicy() {
     browser.dispatchWindow("focus");
     await browser.settle();
     assert.equal(browser.API.getUserRole(), null);
-    assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+    assert.equal(browser.replacements.at(-1), "/sign-in");
   }
 }
 
@@ -550,7 +550,7 @@ async function testResumeAndStorageCannotUnlock() {
   assert.equal(browser.API.isSessionLocked(), true, "server must confirm every cross-tab unlock");
   await browser.advance(12 * 60 - 30);
   assert.equal(browser.localStorage.getItem("admin_token"), null);
-  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(browser.replacements.at(-1), "/sign-in");
 }
 
 async function testRefreshSleepAndRealCrossTabUnlock() {
@@ -602,7 +602,7 @@ async function testManualLogoutFromLock() {
   await browser.elements.get("session-other-account").dispatch("click");
   assert.equal(browser.localStorage.getItem("admin_token"), null);
   assert.equal(browser.requests.at(-1).url, "https://clinic.example/api/logout");
-  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(browser.replacements.at(-1), "/sign-in");
 }
 
 async function testPausedReadsResumeOnceAndWritesAreNeverReplayed() {
@@ -673,7 +673,7 @@ async function testCustomerThirtyMinuteTimeout() {
 
   await browser.advance(1);
   assert.equal(browser.localStorage.getItem("customer_token"), null);
-  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(browser.replacements.at(-1), "/sign-in");
 }
 
 async function testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns() {
@@ -691,7 +691,7 @@ async function testUnattendedRememberedCustomerDoesNotRestoreUntilTheUserReturns
   await browser.settle();
   await reads;
   assert.equal(browser.requests.filter(request => request.url.endsWith('/session/restore')).length, 1);
-  assert.equal(browser.replacements.at(-1), '/pages/client/sign-in.html', 'The fixture has no valid device credential');
+  assert.equal(browser.replacements.at(-1), '/sign-in', 'The fixture has no valid device credential');
 }
 
 async function testReceptionistContextsLockUnlockAndExpireIndependently() {
@@ -717,7 +717,7 @@ async function testReceptionistContextsLockUnlockAndExpireIndependently() {
     assert.equal(privateWindow.API.getCachedStaffIdentity().user.staff_subrole, subroles[1]);
     await normal.advance(12 * 60 - 30);
     assert.equal(normal.API.getAdminToken(), null);
-    assert.equal(normal.replacements.at(-1), '/pages/client/sign-in.html');
+    assert.equal(normal.replacements.at(-1), '/sign-in');
     assert.equal(privateWindow.API.getCachedStaffIdentity().user.staff_subrole, subroles[1]);
     assert.equal((await privateWindow.API.getStaffIdentity()).user.staff_subrole, subroles[1]);
     assert.deepEqual(privateWindow.replacements, []);
@@ -743,7 +743,7 @@ async function testReplacementDetectionReusesTheSessionLifecycle() {
     await browser.settle();
     assert.equal(browser.requests.length, beforeHidden + 1, 'Focus and visibility share one validation');
     assert.equal(browser.sessionStorage.getItem('bethlehem.auth.signout_reason'), 'session_replaced');
-    assert.deepEqual(browser.replacements, ['/pages/client/sign-in.html']);
+    assert.deepEqual(browser.replacements, ['/sign-in']);
     const after = browser.requests.length;
     await browser.advance(2);
     assert.equal(browser.requests.length, after, 'Replacement stops background validation');

@@ -1596,7 +1596,7 @@ class AdminStaffAccountManagementTest extends TestCase
                     implode(' ', [...$message->introLines, ...$message->outroLines]),
                 );
                 $this->assertStringContainsString(
-                    '/pages/client/set-up-password.html#token=',
+                    '/set-up-password#token=',
                     $notification->setupUrl,
                 );
                 parse_str(

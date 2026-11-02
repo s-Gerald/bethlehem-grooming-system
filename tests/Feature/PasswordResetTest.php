@@ -514,7 +514,7 @@ class PasswordResetTest extends TestCase
         $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
         $messages = app('mailer')->getSymfonyTransport()->messages();
         $this->assertCount(1, $messages);
-        preg_match('/set-up-password\.html#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
+        preg_match('/set-up-password#token=([a-zA-Z0-9]+)/', $messages[0]->getOriginalMessage()->getHtmlBody(), $matches);
         $this->assertNotEmpty($matches);
         $this->assertSame('valid', $service->inspectStaffSetup($matches[1])['status']);
         $this->travel(61)->seconds();

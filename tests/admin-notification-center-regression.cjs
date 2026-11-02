@@ -31,8 +31,8 @@ function controller(e) {
 async function originsNeverClaimCurrentPage() {
   for (const file of ['dashboard', 'activity-log', 'availability', 'settings']) {
     const e = environment(), attributes = {};
-    Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?return_to=' + encodeURIComponent(`/pages/admin/${file}.html`)});
-    const link = {href: e.c.window.location.origin + `/pages/admin/${file}.html`, closest: () => null,
+    Object.assign(e.c.window.location, {pathname: '/admin/notifications', search: '?return_to=' + encodeURIComponent(`/admin/${file}`)});
+    const link = {href: e.c.window.location.origin + `/admin/${file}`, closest: () => null,
       setAttribute: (name, value) => {attributes[name] = value;}};
     e.c.document.querySelectorAll = () => [link];
     vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
@@ -72,26 +72,33 @@ async function sidebarOrigin() {
   const e = environment(); e.c.document.querySelectorAll = () => [];
   vm.runInContext(read('scripts/components/admin-sidebar.js'), e.c);
   for (const [path, expected, section = ''] of [
-    ['dashboard.html', 'dashboard'], ['clients.html?q=pet', 'customers'],
-    ['appointments.html', 'appointments'], ['clinic.html#records', 'clinic'],
-    ['inventory/inventory.html#overview', 'inventory', 'overview'],
-    ['inventory/inventory.html#products?filter=expiry', 'inventory', 'products'],
-    ['inventory/inventory.html#history', 'inventory', 'history'],
-    ['inventory/inventory.html#stock-in?item=1&from=products', 'inventory', 'stock-in'],
-    ['inventory/inventory.html#__proto__', 'inventory', 'overview'],
-    ...['archive', 'transactions', 'reports', 'services', 'settings', 'availability', 'activity-log'].map(p => [p + '.html', p]),
+    ['dashboard', 'dashboard'], ['customers?q=pet', 'customers'],
+    ['grooming', 'appointments'], ['clinic#records', 'clinic'],
+    ['inventory#overview', 'inventory', 'overview'],
+    ['inventory#products?filter=expiry', 'inventory', 'products'],
+    ['inventory#history', 'inventory', 'history'],
+    ['inventory#stock-in?item=1&from=products', 'inventory', 'stock-in'],
+    ['inventory#__proto__', 'inventory', 'overview'],
+    ['history', 'archive'], ...['transactions', 'reports', 'services', 'settings', 'availability', 'activity-log'].map(p => [p, p]),
   ]) {
-    const returnTo = '/pages/admin/' + path;
+    const returnTo = '/admin/' + path;
     const search = '?return_to=' + encodeURIComponent(returnTo);
-    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/notifications.html', search), expected);
+    assert.equal(e.c.getAdminSidebarActivePage('/admin/notifications', search), expected);
     const context = e.c.getAdminNotificationOrigin(search);
     assert.equal(context.href, returnTo);
     assert.equal(context.section, section);
   }
-  for (const value of ['', '//example.com/pages/admin/dashboard.html', 'https://example.com/pages/admin/dashboard.html',
-    '/pages/admin/sign-in.html', '/pages/admin/notifications.html', '/pages/admin/../client/dashboard.html', '__proto__', '/pages/admin/dashboard.html/extra']) {
+  for (const [legacy, canonical] of [
+    ['/pages/admin/clients.html?q=pet', '/admin/customers?q=pet'],
+    ['/pages/admin/inventory/inventory.html#stock-out?item=1&from=products', '/admin/inventory#stock-out?item=1&from=products'],
+    ['/api/admin/availability/page?service=grooming', '/admin/availability?service=grooming'],
+  ]) {
+    assert.equal(e.c.getAdminNotificationOrigin('?return_to=' + encodeURIComponent(legacy)).href, canonical);
+  }
+  for (const value of ['', '//example.com/admin/dashboard', 'https://example.com/admin/dashboard',
+    '/pages/admin/sign-in.html', '/admin/notifications', '/pages/admin/../client/dashboard.html', '__proto__', '/admin/dashboard/extra']) {
     const search = '?return_to=' + encodeURIComponent(value);
-    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/notifications.html', search), '');
+    assert.equal(e.c.getAdminSidebarActivePage('/admin/notifications', search), '');
     assert.equal(e.c.getAdminNotificationOrigin(search), null);
   }
 }
@@ -102,22 +109,22 @@ async function targetedNavigationAndReadState() {
   const ui = controller(e);
   e.c.window.removeEventListener = name => e.events.delete(name);
   e.c.document.removeEventListener = () => {};
-  Object.assign(e.c.window.location, {pathname: '/pages/admin/inventory/inventory.html', search: '?q=soap', hash: '#products?filter=expiry'});
+  Object.assign(e.c.window.location, {pathname: '/admin/inventory', search: '?q=soap', hash: '#products?filter=expiry'});
   let navigated;
   e.c.window.location.assign = value => {navigated = new URL(value, e.c.window.location.origin);};
   ui.mode = 'dropdown';
   for (const is_read of [false, true]) {
     await ui.activateNotification({notification_id: 42, is_read}, {detail: 1});
-    assert.equal(navigated.pathname, '/pages/admin/notifications.html');
+    assert.equal(navigated.pathname, '/admin/notifications');
     assert.equal(navigated.searchParams.get('selected_id'), '42');
-    assert.equal(navigated.searchParams.get('return_to'), '/pages/admin/inventory/inventory.html?q=soap#products?filter=expiry');
+    assert.equal(navigated.searchParams.get('return_to'), '/admin/inventory?q=soap#products?filter=expiry');
     assert.equal(navigated.searchParams.has('focus'), false);
   }
   await ui.activateNotification({notification_id: 42, is_read: true}, {detail: 0});
   assert.equal(navigated.searchParams.get('focus'), 'keyboard', 'Keyboard activation preserves a visible destination focus indicator');
   assert.equal(e.calls.length, 0, 'Dropdown navigation never starts a read mutation');
   const selected = {notification_id: 42, is_read: false, created_at: '2026-01-01'};
-  Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?selected_id=42', hash: ''});
+  Object.assign(e.c.window.location, {pathname: '/admin/notifications', search: '?selected_id=42', hash: ''});
   e.c.setInterval = () => 1; e.c.clearInterval = () => {};
   const full = e.c.adminNotifications();
   full.$nextTick = fn => fn(); full.$root = {querySelector: () => null};
@@ -144,7 +151,7 @@ async function selectedReadFailuresAndFocus() {
     const ui = controller(e);
     e.c.setInterval = () => 1; e.c.clearInterval = () => {};
     e.c.window.removeEventListener = () => {}; e.c.document.removeEventListener = () => {};
-    Object.assign(e.c.window.location, {pathname: '/pages/admin/notifications.html', search: '?selected_id=' + (scenario === 'invalid' ? 'bad' : '42') + (scenario === 'keyboard' ? '&focus=keyboard' : '')});
+    Object.assign(e.c.window.location, {pathname: '/admin/notifications', search: '?selected_id=' + (scenario === 'invalid' ? 'bad' : '42') + (scenario === 'keyboard' ? '&focus=keyboard' : '')});
     let focused = 0, scrolled = 0;
     const focusState = {};
     ui.$nextTick = fn => fn();
@@ -187,7 +194,7 @@ async function responsiveBellKeepsOneController() {
   e.c.document.createComment = () => ({});
   e.c.document.querySelector = selector => selector === '[data-notification-mobile]' ? mobile : selector === '[data-notification-slot="products"]' ? products : null;
   e.c.Alpine = {mutateDom: fn => {mutations++; fn();}};
-  Object.assign(e.c.window.location, {pathname: '/pages/admin/inventory/inventory.html', hash: '#products', search: ''});
+  Object.assign(e.c.window.location, {pathname: '/admin/inventory', hash: '#products', search: ''});
   e.c.window.innerWidth = 375; ui.placeBell(); assert.equal(host.parentNode, mobile);
   ui.placeBell(); assert.equal(mutations, 1, 'Unchanged placement performs no DOM mutation');
   e.c.window.innerWidth = 1280; ui.placeBell(); assert.equal(host.parentNode, products);

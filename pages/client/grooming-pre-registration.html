@@ -2,15 +2,15 @@
 <html lang="en" data-session-gate="checking">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Grooming Online Registration</title>
-    <link rel="stylesheet" href="../../css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
-    <link rel="stylesheet" href="../../css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
-    <link rel="stylesheet" href="../../css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
-    <link rel="stylesheet" href="../../css/components/confirmation.css?v=20261010&registration-ui=20261027-v3" />
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
-    <link rel="stylesheet" href="../../css/components/registration-actions.css?v=20261101-v2" />
+    <link rel="stylesheet" href="/css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="/css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="/css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
+    <link rel="stylesheet" href="/css/components/confirmation.css?v=20261010&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="/css/components/registration-actions.css?v=20261101-v2" />
   </head>
   <body data-grooming-flow="single-page" class="min-h-screen bg-[#f6fafd] text-slate-800">
     <div data-grooming-step="pets" class="hidden" hidden>
@@ -19,7 +19,7 @@
       <section class="mb-6">
         <a
           id="petStepBackLink"
-          href="./dashboard.html"
+          href="/account"
           class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
         >
           &larr; <span id="petStepBackLabel">Back to Home</span>
@@ -117,7 +117,7 @@
             </div>
 
             <div id="existingPetsLoading" class="hidden py-8 text-center" role="status" aria-live="polite">
-              <svg class="mx-auto h-8 w-8 animate-spin fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg>
+              <svg class="mx-auto h-8 w-8 animate-spin fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#spinner-gap"></use></svg>
               <p class="mt-2 text-sm text-slate-500">Loading saved pets...</p>
             </div>
             <div id="existingPetList" class="grid gap-4 md:grid-cols-2"></div>
@@ -188,7 +188,7 @@
                         aria-controls="petTypeOptions"
                         aria-expanded="false"
                       >
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#caret-down"></use></svg>
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -210,7 +210,7 @@
                       <button id="genderDropdownButton" type="button"
                         class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active"
                         aria-label="Show gender options" aria-controls="genderOptions" aria-expanded="false">
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#caret-down"></use></svg>
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                       </button>
                     </div>
                     <div id="genderOptions"
@@ -258,7 +258,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#caret-down"></use></svg>
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -331,7 +331,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#caret-down"></use></svg>
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -377,7 +377,7 @@
                         aria-expanded="false"
                         disabled
                       >
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#caret-down"></use></svg>
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                       </button>
                     </div>
                     <div
@@ -406,7 +406,7 @@
               </div>
 
               <p id="petSaveWarning" hidden role="status" aria-live="polite" class="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>
+                <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#warning"></use></svg>
                 <span>Once confirmed, the details you entered can only be changed by clinic staff.</span>
               </p>
               <div class="flex justify-end">
@@ -486,7 +486,7 @@
 <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <!-- Back to Home -->
       <a
-        href="./dashboard.html"
+        href="/account"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -526,7 +526,7 @@
             <div id="petServiceSelections" class="space-y-6"></div>
           </section>
           <div class="registration-actions">
-            <a href="./grooming-pre-registration.html?step=pets" data-grooming-target="pets" class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white">Back</a>
+            <a href="/account/registration/grooming?step=pets" data-grooming-target="pets" class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white">Back</a>
             <button id="reviewBookingBtn" type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#315b7e] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#274a67]">Next Step</button>
           </div>
         </form>
@@ -536,7 +536,7 @@
     <div data-grooming-step="review" class="hidden" hidden>
 <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <a
-        href="./dashboard.html"
+        href="/account"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -597,7 +597,7 @@
           class="registration-actions"
         >
           <a
-            href="./grooming-pre-registration.html?step=services" data-grooming-target="services"
+            href="/account/registration/grooming?step=services" data-grooming-target="services"
             class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white"
           >
             Back
@@ -618,7 +618,7 @@
 <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <!-- Back to Home -->
       <a
-        href="./dashboard.html"
+        href="/account"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -657,7 +657,7 @@
             class="registration-actions"
           >
             <a
-              href="./grooming-pre-registration.html?step=review" data-grooming-target="review"
+              href="/account/registration/grooming?step=review" data-grooming-target="review"
               class="inline-flex items-center justify-center rounded-xl border border-[#315b7e] px-5 py-3 text-sm font-medium text-[#315b7e] transition hover:bg-white"
             >
               Back
@@ -679,7 +679,7 @@
     <div data-grooming-step="confirmed" class="hidden" hidden>
     <main id="confirmationRoot" class="confirmation-page"></main>
     </div>
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&pet-sessions=20261031-v1&estimates=20261031"></script>
-    <script type="module" src="../../scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1"></script>
+    <script src="/scripts/api.js?v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&urls=20261103"></script>
+    <script type="module" src="/scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261011-v3&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1&urls=20261103"></script>
   </body>
 </html>

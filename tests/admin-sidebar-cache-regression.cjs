@@ -26,7 +26,7 @@ function environment() {
       document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null,
         addEventListener() {}, removeEventListener() {} },
       window: { location: { protocol: 'http:', origin: 'http://127.0.0.1:8000', hostname: '127.0.0.1',
-        port: '8000', pathname: '/pages/admin/clinic.html', hash: '', replace() {} },
+        port: '8000', pathname: '/admin/clinic', hash: '', replace() {} },
         addEventListener(name, fn) { listeners.set(name, [...(listeners.get(name) || []), fn]); },
         removeEventListener() {}, dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); } },
       fetch: async (url, options) => { calls.push({ url, method: options.method }); const data = await response(url, options);
@@ -279,18 +279,18 @@ async function activityLogNavigationUsesVerifiedAdminIdentity() {
     const makeLink = () => ({attrs: new Map(), style: {},
       setAttribute(name, value) {this.attrs.set(name, value);}, getAttribute(name) {return this.attrs.get(name);}});
     let inserted;
-    const settings = {href: 'http://127.0.0.1:8000/pages/admin/settings.html',
+    const settings = {href: 'http://127.0.0.1:8000/admin/settings',
       cloneNode: () => makeLink(), before: link => {inserted = link;}};
     const aside = {querySelector: () => null, closest: () => null, setAttribute() {}, removeAttribute() {},
       querySelectorAll: selector => selector === '[x-show]' ? [inserted] : []};
     e.c.document.currentScript = {src: 'http://127.0.0.1:8000/scripts/components/admin-sidebar.js'};
-    e.c.document.querySelector = selector => selector.includes('settings.html') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
+    e.c.document.querySelector = selector => selector.includes('/admin/settings') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
     e.c.installAdminActivityNavigation();
-    assert.equal(inserted.href, 'http://127.0.0.1:8000/pages/admin/activity-log.html');
+    assert.equal(inserted.href, 'http://127.0.0.1:8000/admin/activity-log');
     e.c.renderCachedAdminSidebar();
     assert.equal(inserted.style.display, admin ? '' : 'none', 'Activity Log precedes Settings and is visible only to verified admins');
     assert.equal(e.c.getAdminSidebarActivePage('/api/admin/activity-log/page'), 'activity-log');
-    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/activity-log.html'), 'activity-log');
+    assert.equal(e.c.getAdminSidebarActivePage('/admin/activity-log'), 'activity-log');
   }
 }
 
@@ -301,16 +301,16 @@ async function availabilityNavigationForAuthorizedRoles() {
     e.respond(() => identity({role: admin ? 'admin' : 'staff', staff_subrole: subrole, staff_permissions: {availability_view: true, availability_manage: subrole !== 'veterinarian'}}));
     await e.c.API.getStaffIdentity();
     const links = [];
-    const settings = {href: 'http://127.0.0.1:8000/pages/admin/settings.html', cloneNode: () => ({attrs: new Map(), style: {}, setAttribute(name,value) {this.attrs.set(name,value);}, getAttribute(name) {return this.attrs.get(name);}}), before: link => links.push(link)};
+    const settings = {href: 'http://127.0.0.1:8000/admin/settings', cloneNode: () => ({attrs: new Map(), style: {}, setAttribute(name,value) {this.attrs.set(name,value);}, getAttribute(name) {return this.attrs.get(name);}}), before: link => links.push(link)};
     const aside = {querySelector: () => null, closest: () => null, setAttribute() {}, removeAttribute() {}, querySelectorAll: selector => selector === '[x-show]' ? links : []};
     e.c.document.currentScript = {src: 'http://127.0.0.1:8000/scripts/components/admin-sidebar.js'};
-    e.c.document.querySelector = selector => selector.includes('settings.html') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
+    e.c.document.querySelector = selector => selector.includes('/admin/settings') ? settings : selector === '.admin-sidebar-menu' ? aside : null;
     e.c.installAdminActivityNavigation(); e.c.installAdminAvailabilityNavigation(); e.c.renderCachedAdminSidebar();
-    assert.equal(links[0].href.endsWith('activity-log.html'), true);
-    assert.equal(links[1].href.endsWith('availability.html'), true);
+    assert.equal(links[0].href.endsWith('/admin/activity-log'), true);
+    assert.equal(links[1].href.endsWith('/admin/availability'), true);
     assert.equal(links[1].style.display, '', 'Every authorized role can see Availability');
     assert.equal(links[1].attrs.get('@click'), 'sidebarOpen = false', 'Mobile sidebar closes through the shared action');
-    assert.equal(e.c.getAdminSidebarActivePage('/pages/admin/availability.html'), 'availability');
+    assert.equal(e.c.getAdminSidebarActivePage('/admin/availability'), 'availability');
     assert.equal(e.c.getAdminSidebarActivePage('/api/admin/availability/page'), 'availability');
   }
 }
@@ -325,9 +325,9 @@ async function privateSecurityAlertRendersOnce() {
   vm.runInContext('showAccountSecurityAlert(); showAccountSecurityAlert();', c);
   assert.equal(cards.length, 1);
   assert.equal(cards[0].children[0].textContent, 'Unusual sign-in activity');
-  assert.equal(cards[0].children[2].href, '/pages/admin/settings.html?tab=security&incident=17');
+  assert.equal(cards[0].children[2].href, '/admin/settings?tab=security&incident=17');
   nodes.clear();
-  c.window.location.pathname = '/pages/admin/settings.html';
+  c.window.location.pathname = '/admin/settings';
   vm.runInContext('showAccountSecurityAlert()', c);
   assert.equal(cards.length, 1, 'Settings presents the activity section without duplicating the initial warning.');
 }

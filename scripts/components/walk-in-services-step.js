@@ -1,5 +1,5 @@
-import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   hasCompletedRequiredServiceSelection,
@@ -8,7 +8,7 @@ import {
   normalizeStepThreeDraft,
   createEmptyPetServiceSelection,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103";
 
 const state = {
   pets: [],
@@ -31,7 +31,7 @@ function getServicesMainMarkup() {
       <section data-session-public>
         <a
           id="walkInServicesBackTopBtn"
-          href="./dashboard.html"
+          href="/admin/dashboard"
           class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
         >
           &larr; Back to Home
@@ -146,7 +146,7 @@ function bindEvents() {
   elements.petServiceSelections.addEventListener("input", handleSelectionInput);
   elements.form.addEventListener("submit", handleSubmit);
   elements.backButton.addEventListener("click", () => {
-    window.location.href = "./walk-in-pet-details.html";
+    window.location.href = "/admin/walk-in/pets";
   });
 }
 
@@ -309,12 +309,12 @@ function handleSubmit(event) {
 }
 
 function continueToReview() {
-  window.history.pushState(null, "", "./walk-in-booking-review.html");
+  window.history.pushState(null, "", "/admin/walk-in/grooming/review");
   renderWalkInReviewStep({
     pets: state.pets,
     petSelections: state.petSelections,
     onBack: () => {
-      window.history.pushState(null, "", "./walk-in-grooming-services.html");
+      window.history.pushState(null, "", "/admin/walk-in/grooming/services");
       renderWalkInServicesStep({
         pets: state.pets,
         petSelections: state.petSelections,

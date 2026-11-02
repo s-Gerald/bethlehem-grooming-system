@@ -1,17 +1,20 @@
-// Shared by sidebar context and notification navigation, including nested routes.
-const adminManagementBase = new URL('../../pages/admin/', document.currentScript?.src || new URL('/scripts/components/admin-sidebar.js', window.location.origin));
-const adminManagementPages = new Map([
-  ['dashboard.html', 'dashboard'], ['clients.html', 'customers'],
-  ['appointments.html', 'appointments'], ['clinic.html', 'clinic'],
-  ['inventory/inventory.html', 'inventory'], ['archive.html', 'archive'],
-  ['transactions.html', 'transactions'], ['reports.html', 'reports'],
-  ['services.html', 'services'], ['settings.html', 'settings'],
-  ['availability.html', 'availability'], ['activity-log.html', 'activity-log'],
-]);
+// Canonical management pages shared by sidebar and notification return context.
+const adminManagementBase = new URL('/admin/', window.location.origin);
+// Legacy names remain an allowlist for return_to values in existing bookmarks.
+const adminManagementRoutes = [
+  ['dashboard', 'dashboard', 'dashboard.html'], ['customers', 'customers', 'clients.html'],
+  ['grooming', 'appointments', 'appointments.html'], ['clinic', 'clinic', 'clinic.html'],
+  ['inventory', 'inventory', 'inventory/inventory.html'], ['history', 'archive', 'archive.html'],
+  ['transactions', 'transactions', 'transactions.html'], ['reports', 'reports', 'reports.html'],
+  ['services', 'services', 'services.html'], ['settings', 'settings', 'settings.html'],
+  ['availability', 'availability', 'availability.html'], ['activity-log', 'activity-log', 'activity-log.html'],
+];
+const adminManagementPages = new Map(adminManagementRoutes.map(([route, page]) => [route, page]));
+const adminLegacyManagementPages = new Map(adminManagementRoutes.map(([route, , legacy]) => ['/pages/admin/' + legacy, route]));
 
 function showAccountSecurityAlert() {
   const id = API.getSecurityAlert?.();
-  if (!id || document.getElementById('account-security-alert') || window.location.pathname.endsWith('/settings.html')) return;
+  if (!id || document.getElementById('account-security-alert') || window.location.pathname.endsWith('/settings')) return;
   const main = document.querySelector('main');
   if (!main) return;
   const alert = document.createElement('section');
@@ -27,7 +30,7 @@ function showAccountSecurityAlert() {
   message.className = 'mt-1 text-slate-600';
   message.textContent = "Several sign-in verification attempts failed. Review this activity if you don't recognize it.";
   const action = document.createElement('a');
-  const href = new URL('settings.html', adminManagementBase);
+  const href = new URL('settings', adminManagementBase);
   href.searchParams.set('tab', 'security');
   href.searchParams.set('incident', id);
   action.href = href.pathname + href.search;
@@ -42,15 +45,16 @@ function validateAdminNotificationOrigin(value) {
   try {
     const url = new URL(value, adminManagementBase);
     if (url.origin !== adminManagementBase.origin || url.username || url.password) return null;
-    let route = [...adminManagementPages.keys()].find(path => new URL(path, adminManagementBase).pathname === url.pathname);
+    let route = [...adminManagementPages.keys()].find(path => new URL(path, adminManagementBase).pathname === url.pathname)
+      || adminLegacyManagementPages.get(url.pathname);
     for (const page of ['availability', 'activity-log']) {
-      if (url.pathname === new URL(`../../api/admin/${page}/page`, adminManagementBase).pathname) route = `${page}.html`;
+      if (url.pathname === new URL(`/api/admin/${page}/page`, adminManagementBase).pathname) route = page;
     }
     if (!route) return null;
     const page = adminManagementPages.get(route);
     const requestedSection = url.hash.slice(1).split('?')[0];
     const section = page === 'inventory' ? adminInventoryRoutes.includes(requestedSection) ? requestedSection : 'overview' : '';
-    return {href: url.pathname + url.search + url.hash, page, section};
+    return {href: new URL(route, adminManagementBase).pathname + url.search + url.hash, page, section};
   } catch { return null; }
 }
 
@@ -59,7 +63,7 @@ function getAdminNotificationOrigin(search = window.location.search) {
 }
 
 function getAdminNotificationsHref(id) {
-  const url = new URL('notifications.html', adminManagementBase);
+  const url = new URL('notifications', adminManagementBase);
   const {pathname, search = '', hash = ''} = window.location;
   const origin = validateAdminNotificationOrigin(pathname + search + hash);
   if (origin) url.searchParams.set('return_to', origin.href);
@@ -72,36 +76,31 @@ function getAdminSidebarActivePage(pathname = window.location.pathname, search =
     .replace(/\\/g, "/")
     .toLowerCase();
 
-  if (
-    normalizedPath.includes("/inventory/") ||
-    normalizedPath.endsWith("/inventory.html")
-  ) {
-    return "inventory";
-  }
+  if (normalizedPath === '/admin/inventory') return 'inventory';
 
   if (normalizedPath.endsWith('/api/admin/availability/page')) return 'availability';
   if (normalizedPath.endsWith('/api/admin/activity-log/page')) return 'activity-log';
   const pageName = normalizedPath.split("/").filter(Boolean).pop() || "";
-  if (pageName === 'notifications.html') {
+  if (pageName === 'notifications') {
     return getAdminNotificationOrigin(search)?.page || '';
   }
-  return adminManagementPages.get(pageName) || "";
+  return normalizedPath.startsWith('/admin/') ? adminManagementPages.get(pageName) || "" : "";
 }
 
 const adminInventoryLinks = { overview: "Overview", products: "Products", "sell-product": "Point of Sale", history: "Stock Movements" };
 const adminInventoryRoutes = ["overview", "products", "sell-product", "stock-in", "stock-out", "history"];
 
 function getAdminInventorySection() {
-  if (window.location.pathname.endsWith('/notifications.html')) return getAdminNotificationOrigin()?.section || '';
-  if (!String(window.location.pathname || "").endsWith("/inventory.html")) return "";
+  if (window.location.pathname.endsWith('/notifications')) return getAdminNotificationOrigin()?.section || '';
+  if (!String(window.location.pathname || "").endsWith("/inventory")) return "";
   const section = String(window.location.hash || "").slice(1).split("?")[0];
   return adminInventoryRoutes.includes(section) ? section : "overview";
 }
 
 function installAdminInventoryNavigation() {
-  const link = document.querySelector('.admin-sidebar-menu a[href*="inventory.html"]');
+  const link = document.querySelector('.admin-sidebar-menu a[href="/admin/inventory"]');
   if (!link) return;
-  const url = new URL("inventory.html", link.href);
+  const url = new URL("inventory", link.href);
   const group = document.createElement("div");
   group.className = "admin-inventory-navigation";
   const button = document.createElement("button");
@@ -118,7 +117,7 @@ function installAdminInventoryNavigation() {
   submenu.setAttribute("x-show", "inventoryExpanded");
   submenu.setAttribute("x-cloak", "");
   submenu.className = "admin-inventory-submenu";
-  const notificationContext = window.location.pathname.endsWith('/notifications.html');
+  const notificationContext = window.location.pathname.endsWith('/notifications');
   if (notificationContext) submenu.setAttribute('data-notification-context', '');
   for (const [section, label] of Object.entries(adminInventoryLinks)) {
     const child = document.createElement("a");
@@ -140,43 +139,43 @@ function installAdminInventoryNavigation() {
 }
 
 function installAdminServicesNavigation() {
-  const clinic = document.querySelector('.admin-sidebar-menu a[href$="clinic.html"]');
+  const clinic = document.querySelector('.admin-sidebar-menu a[href="/admin/clinic"]');
   if (!clinic) return;
   const services = document.createElement('a');
-  services.href = new URL('services.html', clinic.href).pathname;
+  services.href = new URL('services', clinic.href).pathname;
   services.className = clinic.className;
   services.setAttribute(':class', "activePage === 'services' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'");
   services.setAttribute('x-show', 'canViewServices');
   services.setAttribute('data-admin-permission', '');
   services.style.display = 'none';
   services.setAttribute('@click', 'sidebarOpen = false');
-  services.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#tag"></use></svg><span>Services</span>`;
+  services.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="${new URL('/assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#tag"></use></svg><span>Services</span>`;
   clinic.after(services);
 }
 
 function installAdminActivityNavigation() {
-  const settings = document.querySelector('.admin-sidebar-menu a[href$="settings.html"]');
+  const settings = document.querySelector('.admin-sidebar-menu a[href="/admin/settings"]');
   if (!settings) return;
   const link = settings.cloneNode(false);
-  link.href = new URL('activity-log.html', settings.href).href;
+  link.href = new URL('activity-log', settings.href).href;
   link.setAttribute('x-show', 'isAdmin');
   link.setAttribute('data-admin-permission', '');
   link.style.display = 'none';
   link.setAttribute('@click', 'sidebarOpen = false');
-  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock-counter-clockwise"></use></svg><span>Activity Log</span>`;
+  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('/assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock-counter-clockwise"></use></svg><span>Activity Log</span>`;
   settings.before(link);
 }
 
 function installAdminAvailabilityNavigation() {
-  const settings = document.querySelector('.admin-sidebar-menu a[href$="settings.html"]');
+  const settings = document.querySelector('.admin-sidebar-menu a[href="/admin/settings"]');
   if (!settings) return;
   const link = settings.cloneNode(false);
-  link.href = new URL('availability.html', settings.href).href;
+  link.href = new URL('availability', settings.href).href;
   link.setAttribute('x-show', 'canViewAvailability');
   link.setAttribute('data-admin-permission', '');
   link.style.display = 'none';
   link.setAttribute('@click', 'sidebarOpen = false');
-  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('../../assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock"></use></svg><span>Availability</span>`;
+  link.innerHTML = `<svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use href="${new URL('/assets/icons/phosphor.svg?v=admin-icons-20261018', document.currentScript.src).href}#clock"></use></svg><span>Availability</span>`;
   settings.before(link);
 }
 
@@ -235,7 +234,7 @@ function renderCachedAdminSidebar() {
     if (el.closest('.admin-inventory-submenu')) return;
     el.classList.toggle('text-[#2f4b66]', !selected);
     for (const name of ['bg-[#315b7e]', 'text-white', 'shadow-sm']) el.classList.toggle(name, !!selected);
-    if (selected && el.tagName === 'A' && !window.location.pathname.endsWith('/notifications.html')) el.setAttribute('aria-current', 'page');
+    if (selected && el.tagName === 'A' && !window.location.pathname.endsWith('/notifications')) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
   });
   if (activePage === 'inventory') {
@@ -245,8 +244,8 @@ function renderCachedAdminSidebar() {
     submenu?.style.removeProperty('display');
     submenu?.querySelectorAll('a').forEach(link => {
       const selected = new URL(link.href).hash === `#${section}`;
-      if (window.location.pathname.endsWith('/notifications.html')) link.classList.toggle('is-context-selected', selected);
-      if (selected && !window.location.pathname.endsWith('/notifications.html')) link.setAttribute('aria-current', 'page');
+      if (window.location.pathname.endsWith('/notifications')) link.classList.toggle('is-context-selected', selected);
+      if (selected && !window.location.pathname.endsWith('/notifications')) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     });
   }
@@ -271,7 +270,7 @@ if (typeof document !== "undefined" && document.querySelector) {
     if (link.closest('.admin-inventory-submenu')) return;
     const page = getAdminSidebarActivePage(new URL(link.href).pathname);
     link.setAttribute(':class', `activePage === '${page}' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'`);
-    link.setAttribute(':aria-current', !window.location.pathname.endsWith('/notifications.html')
+    link.setAttribute(':aria-current', !window.location.pathname.endsWith('/notifications')
       && (window.location.pathname === new URL(link.href).pathname || ['activity-log', 'availability'].includes(page) && getAdminSidebarActivePage() === page)
       ? `activePage === '${page}' ? 'page' : null` : 'null');
   });
@@ -337,7 +336,7 @@ function adminSidebar() {
       window.addEventListener('admin-navigation:updated', this._navigationUpdateListener);
 
       // Notification origins are presentation context, never ownership of workspace data.
-      const ownsGroomingData = window.location.pathname.endsWith('/notifications.html')
+      const ownsGroomingData = window.location.pathname.endsWith('/notifications')
         || ['dashboard', 'appointments'].includes(this.activePage);
       await this.loadLoggedInIdentity();
       if (!ownsGroomingData && this.canAccessGrooming) await this.loadIncomingAppointmentCount();

@@ -2,18 +2,18 @@
 <html data-session-gate="checking" lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Reports | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&grooming=actual-20261026" />
-    <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
-    <link rel="stylesheet" href="../../css/admin-reports.css?v=clinic-reports-20261018" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
-    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031" />
-    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/output.css?auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?v=unified-inventory-20261001b&release=20261001&intake=20261019&grooming=actual-20261026" />
+    <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
+    <link rel="stylesheet" href="/css/admin-reports.css?v=clinic-reports-20261018" />
+    <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
+    <link rel="preload" as="script" href="/scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103" />
+    <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -36,7 +36,7 @@
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
-                src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                src="/assets/images/clinic/Bethlehem_Logo-256.png"
                 alt="Bethlehem Animal Clinic logo"
                 class="h-full w-full object-contain"
               />
@@ -53,25 +53,25 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
-              <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
+              <a href="/admin/dashboard" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
                 <span>Dashboard</span>
               </a>
-              <a href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+              <a href="/admin/customers" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="/admin/grooming" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="/admin/clinic" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                 <span>Clinic</span>
               </a>
-              <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
+              <a href="/admin/inventory" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
                 <span>Inventory</span>
               </a>
             </div>
@@ -80,16 +80,16 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
             <div class="space-y-1.5">
-              <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+              <a href="/admin/history" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                 <span>History</span>
               </a>
-              <a href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
+              <a href="/admin/transactions" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
                 <span>Transactions</span>
               </a>
-              <a aria-current="page" data-admin-permission href="./reports.html" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+              <a aria-current="page" data-admin-permission href="/admin/reports" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                 <span>Reports</span>
               </a>
             </div>
@@ -98,8 +98,8 @@
           <div>
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
             <div class="space-y-1.5">
-              <a href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
+              <a href="/admin/settings" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
                 <span>Settings</span>
               </a>
             </div>
@@ -116,13 +116,13 @@
           </div>
 
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
-            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031"></script>
+      <script src="/scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103"></script>
 
 
 
@@ -140,7 +140,7 @@
             class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm"
             aria-label="Open navigation" @click="sidebarOpen = true"
           >
-            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button></div>
         </header>
 
@@ -178,7 +178,7 @@
                     <button type="submit" class="reports-button reports-primary" :disabled="loading">Apply</button>
                   </div>
                 </template>
-                <button x-show="period !== 'custom'" type="submit" class="reports-button reports-refresh" :disabled="loading" aria-label="Refresh report" title="Refresh report"><svg  aria-hidden="true" class="ph-icon" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrows-clockwise"></use></svg></button>
+                <button x-show="period !== 'custom'" type="submit" class="reports-button reports-refresh" :disabled="loading" aria-label="Refresh report" title="Refresh report"><svg  aria-hidden="true" class="ph-icon" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrows-clockwise"></use></svg></button>
               </form>
             </div>
             <p id="report-validation" class="reports-validation" x-show="validationError" x-text="validationError" role="alert" x-cloak></p>
@@ -194,7 +194,7 @@
                 <div class="reports-kpis" :class="{ 'reports-kpis-clinic': activeSection === 'clinic' }" aria-label="Business overview">
                   <template x-for="kpi in kpis" :key="kpi.title">
                     <article class="reports-card reports-kpi" :title="kpi.hint || null">
-                      <div class="reports-kpi-heading"><h3 x-text="kpi.title"></h3><svg  aria-hidden="true" class="ph-icon" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (kpi.icon)"></use></svg></div>
+                      <div class="reports-kpi-heading"><h3 x-text="kpi.title"></h3><svg  aria-hidden="true" class="ph-icon" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (kpi.icon)"></use></svg></div>
                       <p x-text="kpi.value"></p>
                     </article>
                   </template>
@@ -254,8 +254,8 @@
     ></script>
 
 
-    <script src="../../scripts/components/admin-reports.js?v=clinic-reports-20261018&loading-ui=universal-20261018&icons=20261018"></script>
-    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
-    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
+    <script src="/scripts/components/admin-reports.js?v=clinic-reports-20261018&loading-ui=universal-20261018&icons=20261018"></script>
+    <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>
 </html>

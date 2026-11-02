@@ -2,19 +2,19 @@
 <html data-session-gate="checking" lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Transactions | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026&references=20261031" />
-    <link rel="stylesheet" href="../../css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023&references=20261031" />
-    <link rel="stylesheet" href="../../css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029&references=20261031" />
-    <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
-    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031" />
-    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/output.css?auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?v=history-typography-20261003&release=20261001&intake=20261019&grooming=actual-20261026&references=20261031" />
+    <link rel="stylesheet" href="/css/components/admin-transactions.css?v=history-typography-20261003&qr-workflow=20261023&references=20261031" />
+    <link rel="stylesheet" href="/css/components/print-information.css?v=grooming-invoice-clean-print-20261003&pet-care=20261027-v1&invoice-products=20261029&references=20261031" />
+    <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
+    <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
+    <link rel="preload" as="script" href="/scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103" />
+    <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -41,7 +41,7 @@
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
-                src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                src="/assets/images/clinic/Bethlehem_Logo-256.png"
                 alt="Bethlehem Animal Clinic logo"
                 class="h-full w-full object-contain"
               />
@@ -59,25 +59,25 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
-              <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
+              <a href="/admin/dashboard" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
                 <span>Dashboard</span>
               </a>
-              <a href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+              <a href="/admin/customers" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="/admin/grooming" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="/admin/clinic" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                 <span>Clinic</span>
               </a>
-              <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
+              <a href="/admin/inventory" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
                 <span>Inventory</span>
               </a>
             </div>
@@ -86,16 +86,16 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
             <div class="space-y-1.5">
-              <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+              <a href="/admin/history" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                 <span>History</span>
               </a>
-              <a aria-current="page" href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
+              <a aria-current="page" href="/admin/transactions" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
                 <span>Transactions</span>
               </a>
-              <a data-admin-permission href="./reports.html" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+              <a data-admin-permission href="/admin/reports" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                 <span>Reports</span>
               </a>
             </div>
@@ -104,8 +104,8 @@
           <div>
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
             <div class="space-y-1.5">
-              <a href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
+              <a href="/admin/settings" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
                 <span>Settings</span>
               </a>
             </div>
@@ -124,14 +124,14 @@
           </div>
           <!-- Stop Receiving / Reopen toggle — hidden from staff (admin only) -->
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
-            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
           </button>
         </div>
       </aside>
-      <script src="../../scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031"></script>
+      <script src="/scripts/api.js?v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+    <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen flex-1 flex-col lg:ml-[280px]">
@@ -143,7 +143,7 @@
             <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Transactions</h2>
           </div>
           <div class="admin-notification-header-actions"><span data-notification-mobile></span><button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
-            <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
+            <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button></div>
         </header>
 
@@ -175,7 +175,7 @@
                 <!-- Search -->
                 <label class="transaction-search relative block min-w-0 flex-1 sm:min-w-[280px]">
                   <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
+                    <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
                   </span>
                   <input
                     type="search"
@@ -196,7 +196,7 @@
                 </label>
                 <!-- Period filter -->
                 <div class="flex items-center gap-2 rounded-xl bg-white border border-[#c9d9e8] px-3 py-2.5">
-                  <svg class="ph-icon h-4 w-4 text-[#315b7e] shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
+                  <svg class="ph-icon h-4 w-4 text-[#315b7e] shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
                   <select
                     aria-label="Transaction period"
                     x-model="transactionPeriod"
@@ -211,7 +211,7 @@
 
                 <!-- Period value filter -->
                 <div class="flex items-center gap-2 rounded-xl bg-white border border-[#c9d9e8] px-3 py-2.5">
-                  <svg class="ph-icon h-4 w-4 text-[#315b7e] shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
+                  <svg class="ph-icon h-4 w-4 text-[#315b7e] shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-check"></use></svg>
                   <input
                     x-show="transactionPeriod === 'day'"
                     type="date"
@@ -248,7 +248,7 @@
                     @click="clearFilters()"
                     class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                   >
-                    <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                    <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     Clear Filters
                   </button>
                 </template>
@@ -278,7 +278,7 @@
           <template x-if="transactionsLoaded && !errorMessage && transactions.length === 0">
             <div class="mt-6 rounded-[24px] border border-dashed border-[#bfd3e3] bg-white p-10 text-center">
               <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#dcfce7] text-[#16a34a]">
-                <svg class="ph-icon h-8 w-8" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+                <svg class="ph-icon h-8 w-8" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
               </div>
               <p class="mt-4 text-lg font-bold text-[#2f4b66]">No transactions yet</p>
               <p class="mt-2 text-sm text-slate-500">Completed grooming payments, clinic payments, and product sales will appear here.</p>
@@ -343,7 +343,7 @@
                   <div class="transaction-dialog-title-row">
                     <h2 id="transaction-details-title" x-text="isClinicPayment(selectedTransaction) ? 'Clinic Payment' : isProductSale(selectedTransaction) ? 'Product Sale' : 'Transaction Details'">Transaction Details</h2>
                     <button type="button" class="transaction-close" aria-label="Close Transaction Details" @click="closeDetails()" autofocus>
-                      <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                      <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
                   </div>
                   <div class="transaction-dialog-subtitle" x-show="!selectedTransaction.qrPayment">
@@ -414,7 +414,7 @@
                   <section class="transaction-detail-section" aria-labelledby="transaction-payment-title">
                     <h3 id="transaction-payment-title">Payment Details</h3>
                     <dl class="transaction-line-items transaction-payment">
-                      <template x-if="selectedTransaction.paymentMethod !== 'cash' && !isLegacyQrPayment(selectedTransaction) && (selectedTransaction.paymentMethod === 'online' || selectedTransaction.paymentProvider === 'paymongo' || selectedTransaction.paymentMethodLabel === 'Online Payment')"><div class="payment-provider-id"><dt>Payment ID</dt><dd><span x-text="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod) || 'Unavailable'"></span><button x-show="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod)" type="button" class="payment-id-copy" aria-label="Copy Payment ID" title="Copy Payment ID" @click="window.PaymentInvoice.copyPaymentId(selectedTransaction.providerPaymentId)"><svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg?v=service-references-20261031#copy"></use></svg></button></dd></div></template>
+                      <template x-if="selectedTransaction.paymentMethod !== 'cash' && !isLegacyQrPayment(selectedTransaction) && (selectedTransaction.paymentMethod === 'online' || selectedTransaction.paymentProvider === 'paymongo' || selectedTransaction.paymentMethodLabel === 'Online Payment')"><div class="payment-provider-id"><dt>Payment ID</dt><dd><span x-text="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod) || 'Unavailable'"></span><button x-show="window.PaymentInvoice.paymentId(selectedTransaction.providerPaymentId, selectedTransaction.paymentMethod)" type="button" class="payment-id-copy" aria-label="Copy Payment ID" title="Copy Payment ID" @click="window.PaymentInvoice.copyPaymentId(selectedTransaction.providerPaymentId)"><svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg?v=service-references-20261031#copy"></use></svg></button></dd></div></template>
                       <div><dt>Payment Method</dt><dd x-text="selectedTransaction.paymentMethodLabel || selectedTransaction.paymentMethod || '—'"></dd></div>
                       <div x-show="!selectedTransaction.qrPayment"><dt>Amount Due</dt><dd x-text="formatInvoicePeso(selectedTransaction.finalPrice)"></dd></div>
                       <div x-show="selectedTransaction.paymentMethod === 'cash'"><dt>Cash Received</dt><dd x-text="isClinicPayment(selectedTransaction) && selectedTransaction.amountPaid == null ? '—' : formatInvoicePeso(selectedTransaction.amountPaid)"></dd></div>
@@ -471,11 +471,11 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="../../scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031"></script>
-    <script src="../../scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024&references=20261031"></script>
-    <script src="../../scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026&references=20261031"></script>
-    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
-    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
+    <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
+    <script src="/scripts/components/payment-invoice.js?v=clinic-payments-20261015&release=pos-20261007&copy=grooming-terminology-20261016&payments=cash-only-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261029&invoice-products=20261029&references=20261031&urls=20261103"></script>
+    <script src="/scripts/components/product-sale-invoice.js?v=pos-20261007&payments=cash-only-20261023&presentation=20261024&references=20261031&urls=20261103"></script>
+    <script src="/scripts/components/admin-transactions.js?v=clinic-payments-20261015&payments=qrph-20261023&loading-ui=universal-20261018&icons=20261018&qr-workflow=20261023&veterinary=20261024&legacy-qr=off-20261026&references=20261031"></script>
+    <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>
 </html>

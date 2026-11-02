@@ -242,7 +242,7 @@ for (const walkIn of [false, true]) {
     assert.equal(submitted.signer_name, 'Customer Representative');
     assert.equal(submitted.signature_strokes.length, 1);
     assert.equal(submitted.consent_version, terms.version);
-    if (walkIn) assert.match(context.window.location.href, /walk-in-booking-confirmed/);
+    if (walkIn) assert.match(context.window.location.href, /walk-in\/grooming\/confirmed/);
     else assert.equal(navigated, 'confirmed');
   }
 }

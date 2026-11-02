@@ -305,7 +305,7 @@ class CustomerNotificationController extends Controller
             return null;
         }
 
-        return './pet-details.html?'.http_build_query([
+        return '/account/pets/details?'.http_build_query([
             'pet_id' => $petId,
             'tab' => 'overview',
         ]);

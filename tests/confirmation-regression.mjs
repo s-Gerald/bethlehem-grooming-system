@@ -64,7 +64,7 @@ assert.match(root.innerHTML, /Current status<\/dt><dd>Checked In/);
 assert.match(root.innerHTML, /Checked in at<\/dt><dd>October 24, 2026 at 10:30 AM/);
 assert.doesNotMatch(root.innerHTML, /<dd>Active/);
 assert.match(root.innerHTML, /Print Confirmation/);
-assert.match(root.innerHTML, /href="\.\/clinic\.html\?tab=active-cases">Go to Active Cases<\/a>/);
+assert.match(root.innerHTML, /href="\/admin\/clinic\?tab=active-cases">Go to Active Cases<\/a>/);
 assert.equal((root.innerHTML.match(/class="confirmation-button\b/g) || []).length, 2);
 assert.doesNotMatch(root.innerHTML, /Register Another Walk-in|confirmation-another|walk-in-booking\.html/);
 assert.equal(focused, true);

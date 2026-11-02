@@ -60,7 +60,7 @@ class StaffSettingsInterfaceTest extends TestCase
 
     public function test_availability_page_redirect_preserves_the_legacy_capacity_destination(): void
     {
-        $this->get('/pages/admin/availability.html?service=grooming')->assertRedirect('api/admin/availability/page?service=grooming');
+        $this->get('/pages/admin/availability.html?service=grooming')->assertStatus(301)->assertRedirect('/admin/availability?service=grooming');
     }
 
     public function test_staff_can_reach_settings_from_the_shared_admin_shell(): void

@@ -5,11 +5,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const origin = 'http://127.0.0.1:8000';
 let alpineSource;
 const pages = [
-  ['dashboard.html', 'Dashboard'], ['clients.html', 'Customers'],
-  ['appointments.html', 'Grooming'], ['clinic.html', 'Clinic'],
-  ['inventory/inventory.html', 'Inventory'], ['transactions.html', 'Transactions'],
-  ['reports.html', 'Reports'], ['settings.html', 'Settings'],
-  ['services.html', 'Services'], ['archive.html', 'History'], ['notifications.html', ''],
+  ['dashboard', 'Dashboard'], ['customers', 'Customers'],
+  ['grooming', 'Grooming'], ['clinic', 'Clinic'],
+  ['inventory', 'Inventory'], ['transactions', 'Transactions'],
+  ['reports', 'Reports'], ['settings', 'Settings'],
+  ['services', 'Services'], ['history', 'History'], ['notifications', ''],
 ];
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const profiles = {
@@ -77,7 +77,7 @@ async function fixture(browser, profile = 'admin', inventory = false, workspaces
   page.setDefaultNavigationTimeout(30000);
   return { context, page, state };
 }
-const visit = (page, file) => page.goto(`${origin}/pages/admin/${file}`, { waitUntil: 'domcontentloaded' });
+const visit = (page, file) => page.goto(`${origin}/admin/${file}`, { waitUntil: 'domcontentloaded' });
 const ready = async page => {
   try { await page.waitForFunction(() => document.querySelector('.admin-sidebar-menu')?.hasAttribute('data-admin-navigation-ready') && !document.documentElement.hasAttribute('data-session-gate')); }
   catch (error) {
@@ -97,12 +97,12 @@ async function visibleShell(page, active) {
     assert.equal(await aside.locator('nav a.bg-\\[\\#315b7e\\]').count(), 0);
     return;
   }
-  const selected = aside.locator(active === 'Inventory' ? 'nav button[aria-controls="inventory-submenu"], nav a[href$="inventory.html"]' : 'nav [aria-current="page"]').first();
+  const selected = aside.locator(active === 'Inventory' ? 'nav button[aria-controls="inventory-submenu"], nav a[href$="inventory"]' : 'nav [aria-current="page"]').first();
   assert.equal((await selected.innerText()).trim().replace(/[▾▸]/g, '').trim(), active);
   assert.equal(await selected.evaluate(el => el.classList.contains('bg-[#315b7e]')), true);
   assert.equal(await aside.locator('[data-admin-sidebar-loading]').count(), 0);
   await page.waitForFunction(() => {
-    const icon = document.querySelector('aside.admin-sidebar-menu nav a[href$="dashboard.html"] use');
+    const icon = document.querySelector('aside.admin-sidebar-menu nav a[href$="dashboard"] use');
     return icon && icon.getBBox().width > 0;
   });
 }
@@ -112,7 +112,7 @@ async function walkInNavigation(browser) {
   const { execFileSync } = require('node:child_process');
   const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8'));
   for (const [profile, entry, flow] of [
-    ['admin', 'dashboard.html', 'grooming'], ['grooming', 'appointments.html', 'grooming'], ['vet', 'clinic.html', 'clinic'],
+    ['admin', 'dashboard', 'grooming'], ['grooming', 'grooming', 'grooming'], ['vet', 'clinic', 'clinic'],
   ].filter(([profile]) => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) {
     const f = await fixture(browser, profile, false, true);
     const { page, state } = f;
@@ -214,7 +214,7 @@ async function walkInNavigation(browser) {
         sessionStorage.setItem('walkInBookingConfirmation', JSON.stringify({ booking_reference: 'LOCAL-GROOMING', owner: { name: 'Private Confirmation Owner' }, pets: [] }));
         sessionStorage.setItem('walkInClinicConfirmation', JSON.stringify({ appointment_reference: 'LOCAL-CLINIC', owner: { name: 'Private Confirmation Owner' }, pet: { name: 'Private Draft Pet' } }));
       });
-      for (const file of ['walk-in-booking.html', 'walk-in-pet-details.html', 'walk-in-grooming-services.html', 'walk-in-booking-review.html', 'walk-in-consent.html', 'walk-in-booking-confirmed.html', 'walk-in-clinic-confirmed.html']) {
+      for (const file of ['walk-in/customer', 'walk-in/pets', 'walk-in-grooming-services', 'walk-in/grooming/review', 'walk-in/grooming/consent', 'walk-in/grooming/confirmed', 'walk-in/clinic/confirmed']) {
         state.sessionHold = deferred();
         const checks = state.requests.filter(p => p === '/api/session').length;
         await visit(page, file);
@@ -227,7 +227,7 @@ async function walkInNavigation(browser) {
         assert.equal(state.requests.filter(p => p === '/api/session').length, checks + 1);
       }
       state.statusFailure = true;
-      await visit(page, 'walk-in-pet-details.html');
+      await visit(page, 'walk-in/pets');
       await page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
       assert.equal(await page.locator('#session-lock-form').isVisible(), false);
       assert.equal(await page.locator('#selectedPetCards').innerText(), '');
@@ -236,7 +236,7 @@ async function walkInNavigation(browser) {
       await unlocked(); await page.getByText('Private Draft Pet', { exact: true }).waitFor();
       state.expired = true;
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-      await page.waitForURL('**/pages/client/sign-in.html');
+      await page.waitForURL('**/sign-in');
       assert.equal(await page.evaluate(() => localStorage.getItem('admin_token')), null);
       assert.deepEqual(errors, [], 'Walk-in browser errors');
       console.log(`${profile}: Walk-in forward/back, retained drafts, locked/unlock, direct entry, refresh, mobile, failure/retry and revoked session passed`);
@@ -251,16 +251,16 @@ async function coldPaint(browser) {
     for (const [file, active] of pages.filter(([, active]) => active !== 'Services')) {
       await visit(f.page, file);
       await visibleShell(f.page, active);
-      for (const href of ['clinic.html', 'appointments.html', 'reports.html']) {
+      for (const href of ['clinic', 'grooming', 'reports']) {
         assert.equal(await f.page.locator(`aside a[href$="${href}"]`).isVisible(), false, 'Cold role alone reveals no restricted area');
       }
       assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'true');
       assert.equal(await f.page.locator('aside.admin-sidebar-menu').innerText().then(t => t.includes('Clinic Manager')), false);
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
-      const icon = f.page.locator('aside nav a[href$="dashboard.html"] svg');
+      const icon = f.page.locator('aside nav a[href$="dashboard"] svg');
       assert.ok((await icon.locator('use').getAttribute('href')).includes('/assets/icons/phosphor.svg'));
       assert.equal(await icon.evaluate(el => el.getBoundingClientRect().width), 20);
-      if (file === 'dashboard.html' && process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/sidebar-cold-paint.png` });
+      if (file === 'dashboard' && process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/sidebar-cold-paint.png` });
     }
     console.log('cold HTML paint: persistent shell, static active state, restricted items concealed');
   } finally { await f.context.close(); }
@@ -268,7 +268,7 @@ async function coldPaint(browser) {
 async function cachedRefresh(browser, profile) {
   const f = await fixture(browser, profile);
   try {
-    await visit(f.page, 'dashboard.html'); await ready(f.page);
+    await visit(f.page, 'dashboard'); await ready(f.page);
     const errors = [];
     f.page.on('pageerror', error => errors.push(error.message));
     f.state.locked = true;
@@ -285,7 +285,7 @@ async function cachedRefresh(browser, profile) {
       f.state.sessionHold = deferred();
       const started = Date.now();
       const before = f.state.requests.length;
-      const destination = `${origin}/pages/admin/${file}`;
+      const destination = `${origin}/admin/${file}`;
       await Promise.all([f.page.waitForEvent('domcontentloaded', { timeout: 30000 }), (async () => {
         if (active === 'Inventory') {
           await f.page.getByRole('button', { name: 'Inventory', exact: true }).click();
@@ -300,7 +300,7 @@ async function cachedRefresh(browser, profile) {
       assert.equal(checkingVisible, false, 'Navigation verifies the session without a full-screen card');
       assert.equal(f.state.requests.slice(before).filter(p => p === '/api/session').length, 1, 'One status check per document');
       await visibleShell(f.page, active);
-      if (profile === 'admin' && file === 'dashboard.html' && process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/sidebar-cached-checking.png` });
+      if (profile === 'admin' && file === 'dashboard' && process.env.LOCAL_REVIEW_SCREENSHOTS) await f.page.screenshot({ path: `${process.env.LOCAL_REVIEW_SCREENSHOTS}/sidebar-cached-checking.png` });
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       assert.equal(await f.page.locator('.admin-sidebar-footer').evaluate(el => el.inert), true);
       assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'false');
@@ -326,8 +326,8 @@ async function cachedRefresh(browser, profile) {
       assert.equal(count(), 1, 'Valid cached reload avoids /me');
       f.state.sessionHold.resolve(); await ready(f.page);
     }
-    assert.equal(await f.page.locator('aside a[href$="clinic.html"]').isVisible(), true);
-    assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), profile === 'admin');
+    assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
+    assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profile === 'admin');
     for (const width of [320, 375, 414, 768]) {
       await f.page.setViewportSize({ width, height: 844 });
       await f.page.evaluate(() => Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarOpen = true);
@@ -336,7 +336,7 @@ async function cachedRefresh(browser, profile) {
       await f.page.getByRole('link', { name: 'Customers', exact: true }).click();
       await ready(f.page);
       await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().right <= 1);
-      await visit(f.page, 'notifications.html'); await ready(f.page);
+      await visit(f.page, 'notifications'); await ready(f.page);
     }
     console.log(`${profile}: page sweep, normal/hard reload, no redundant /me, mobile drawer passed`);
     assert.deepEqual(errors, [], 'Sidebar navigation produces no JavaScript errors');
@@ -345,33 +345,33 @@ async function cachedRefresh(browser, profile) {
 async function securityTransitions(browser) {
   const f = await fixture(browser);
   try {
-    await visit(f.page, 'dashboard.html'); await ready(f.page);
+    await visit(f.page, 'dashboard'); await ready(f.page);
     f.state.logoutHold = deferred();
     await f.page.getByRole('button', { name: 'Logout', exact: true }).click();
     await f.page.waitForFunction(() => !localStorage.getItem('admin_token'));
     assert.equal(await f.page.locator('aside nav').isVisible(), true);
     assert.equal(await f.page.getByRole('button', { name: 'Logout', exact: true }).isVisible(), true);
-    assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), false);
+    assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), false);
     assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'true');
     f.state.logoutHold.resolve();
-    await f.page.waitForURL('**/sign-in.html');
+    await f.page.waitForURL('**/sign-in');
   } finally { f.state.logoutHold?.resolve(); await f.context.close(); }
 
   const g = await fixture(browser, 'vet');
   try {
-    await visit(g.page, 'dashboard.html'); await ready(g.page);
+    await visit(g.page, 'dashboard'); await ready(g.page);
     g.state.user = { user_id: 7, ...profiles.grooming };
     g.state.revision = 'revision-2';
     g.state.identityHold = deferred();
     await g.page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await g.page.waitForFunction(() => !Alpine.$data(document.querySelector('[data-admin-shell]')).sidebarReady);
     await visibleShell(g.page, 'Dashboard');
-    assert.equal(await g.page.locator('aside a[href$="clinic.html"]').isVisible(), true);
-    assert.equal(await g.page.locator('aside a[href$="appointments.html"]').isVisible(), false);
+    assert.equal(await g.page.locator('aside a[href$="clinic"]').isVisible(), true);
+    assert.equal(await g.page.locator('aside a[href$="grooming"]').isVisible(), false);
     g.state.identityHold.resolve(); await ready(g.page);
     assert.equal(g.state.requests.filter(p => p === '/api/me').length, 2, 'Revision change refetches identity exactly once');
-    assert.equal(await g.page.locator('aside a[href$="clinic.html"]').isVisible(), false);
-    assert.equal(await g.page.locator('aside a[href$="appointments.html"]').isVisible(), true);
+    assert.equal(await g.page.locator('aside a[href$="clinic"]').isVisible(), false);
+    assert.equal(await g.page.locator('aside a[href$="grooming"]').isVisible(), true);
     g.state.locked = true;
     await g.page.reload({ waitUntil: 'domcontentloaded' });
     await g.page.getByRole('heading', { name: 'Session locked', exact: true }).waitFor();
@@ -383,7 +383,7 @@ async function securityTransitions(browser) {
     assert.equal(g.state.requests.filter(p => p === '/api/me').length, 2, 'Unlock retains valid navigation identity');
     g.state.expired = true;
     await g.page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await g.page.waitForURL('**/sign-in.html');
+    await g.page.waitForURL('**/sign-in');
     assert.equal(await g.page.evaluate(() => localStorage.getItem('admin_token')), null);
     assert.equal(await g.page.evaluate(() => sessionStorage.getItem('bethlehem.admin.navigation.v1')), null);
     console.log('revision invalidation, logout clearing, full lock/unlock, expired-session redirect passed');
@@ -395,7 +395,7 @@ async function sessionTabReturn(browser) {
     try {
       await f.page.clock.install();
       f.state.sessionHold = deferred();
-      await visit(f.page, 'appointments.html');
+      await visit(f.page, 'grooming');
       assert.equal(await f.page.locator('html').getAttribute('data-session-gate'), 'checking');
       assert.equal(await f.page.locator('#bethlehem-session-lock').count(), 0, 'Fresh verification does not construct recovery UI');
       assert.equal(await f.page.locator('main').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Fresh verification never exposes protected content');
@@ -482,7 +482,7 @@ async function invalidCaches(browser) {
   for (const kind of ['cold', 'malformed', 'expired', 'other-account']) {
     const f = await fixture(browser, 'grooming');
     try {
-      await visit(f.page, 'dashboard.html'); await ready(f.page);
+      await visit(f.page, 'dashboard'); await ready(f.page);
       await f.page.evaluate(kind => {
         const key = 'bethlehem.admin.navigation.v1';
         const cached = JSON.parse(sessionStorage.getItem(key));
@@ -496,14 +496,14 @@ async function invalidCaches(browser) {
       await f.page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate'));
       await visibleShell(f.page, 'Dashboard');
       assert.equal(await f.page.locator('.admin-sidebar-footer').evaluate(el => el.inert), false, 'Verified session makes Logout usable without waiting for /me');
-      for (const href of ['clinic.html', 'appointments.html', 'reports.html']) assert.equal(await f.page.locator(`aside a[href$="${href}"]`).isVisible(), false);
+      for (const href of ['clinic', 'grooming', 'reports']) assert.equal(await f.page.locator(`aside a[href$="${href}"]`).isVisible(), false);
       assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'true');
       const before = await f.page.getByRole('button', { name: 'Logout', exact: true }).boundingBox();
       f.state.identityHold.resolve(); await ready(f.page);
       const after = await f.page.getByRole('button', { name: 'Logout', exact: true }).boundingBox();
       assert.equal(before.y, after.y, 'Identity hydration does not move Logout');
-      assert.equal(await f.page.locator('aside a[href$="appointments.html"]').isVisible(), true);
-      assert.equal(await f.page.locator('aside a[href$="clinic.html"]').isVisible(), false);
+      assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), true);
+      assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), false);
     } finally { f.state.identityHold?.resolve(); await f.context.close(); }
   }
   console.log('cold/malformed/expired/other-account caches: safe shell and independent account hydration passed');
@@ -554,14 +554,14 @@ async function inventoryNavigation(browser) {
   });
   const choose = async section => {
     const link = f.page.locator(`#inventory-submenu a[href$="#${section}"]`);
-    if (!new URL(f.page.url()).pathname.endsWith('/inventory.html')) {
+    if (!new URL(f.page.url()).pathname.endsWith('/inventory')) {
       await Promise.all([f.page.waitForEvent('domcontentloaded', { timeout: 30000 }), link.click()]);
     } else await link.click();
     await loaded(section); await inventoryHighlight(f.page, section);
   };
   const entries = ['overview', 'products', 'sell-product', 'history'];
   try {
-    for (const [source, entry] of ['dashboard.html', 'clinic.html'].flatMap(source => entries.map(entry => [source, entry]))) {
+    for (const [source, entry] of ['dashboard', 'clinic'].flatMap(source => entries.map(entry => [source, entry]))) {
       await visit(f.page, source); await ready(f.page);
       await f.page.getByRole('button', { name: 'Inventory' }).click();
       await inventoryHighlight(f.page, '', false);
@@ -587,7 +587,7 @@ async function inventoryNavigation(browser) {
     }
     for (const [hash, section] of [...entries.map(section => [section, section]), ['products?filter=low-stock', 'products'], ['stock-in', 'stock-in'], ['stock-out', 'stock-out'], ['invalid', 'overview']]) {
       await f.page.goto('about:blank');
-      await visit(f.page, `inventory/inventory.html?source=sidebar#${hash}`); await ready(f.page); await loaded(section);
+      await visit(f.page, `inventory?source=sidebar#${hash}`); await ready(f.page); await loaded(section);
       await inventoryHighlight(f.page, section);
       assert.equal(new URL(f.page.url()).search, '?source=sidebar');
       assert.deepEqual(await f.page.locator('[data-inventory-section]').evaluateAll(els => els.map(el => el.dataset.inventorySection)), [section]);
@@ -626,12 +626,12 @@ async function inventoryNavigation(browser) {
 async function cachedBeforeAlpine(browser) {
   const f = await fixture(browser, 'vet');
   try {
-    await visit(f.page, 'dashboard.html'); await ready(f.page);
+    await visit(f.page, 'dashboard'); await ready(f.page);
     const hashes = ['overview', 'products?filter=expiry', 'sell-product', 'history', 'stock-in', 'stock-out', 'invalid'];
     const cases = [
-      ['settings.html'],
-      ...hashes.map(hash => [`inventory/inventory.html#${hash}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0]]),
-      ...hashes.map(hash => [`notifications.html?return_to=${encodeURIComponent(`/pages/admin/inventory/inventory.html?source=sidebar#${hash}`)}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0], true]),
+      ['settings'],
+      ...hashes.map(hash => [`inventory#${hash}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0]]),
+      ...hashes.map(hash => [`notifications?return_to=${encodeURIComponent(`/admin/inventory?source=sidebar#${hash}`)}`, hash.split('?')[0] === 'invalid' ? 'overview' : hash.split('?')[0], true]),
     ];
     for (const [file, section, contextual = false] of cases) {
       const alpine = deferred();
@@ -641,14 +641,14 @@ async function cachedBeforeAlpine(browser) {
         // DOMContentLoaded waits for defer scripts; commit lets us inspect the sidebar while Alpine is held.
         // Leave the document so successive hashes exercise fresh first paint.
         await f.page.goto('about:blank');
-        await f.page.goto(`${origin}/pages/admin/${file}`, { waitUntil: 'commit' });
+        await f.page.goto(`${origin}/admin/${file}`, { waitUntil: 'commit' });
         await f.page.locator('.admin-sidebar-menu[data-admin-navigation-ready]').waitFor({ state: 'attached' });
         assert.equal(await f.page.evaluate(() => typeof window.Alpine), 'undefined', `${file}: cached highlight is painted before Alpine loads`);
         assert.equal(await f.page.locator('[data-admin-account] p').first().innerText(), 'Local Vet');
         assert.equal(await f.page.locator('[data-admin-account] p').last().innerText(), 'Veterinarian');
-        assert.equal(await f.page.locator('aside a[href$="clinic.html"]').isVisible(), true);
-        assert.equal(await f.page.locator('aside a[href$="appointments.html"]').isVisible(), false);
-        assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), false);
+        assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
+        assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), false);
+        assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), false);
         assert.equal(f.state.requests.filter(p => p === '/api/me').length, 1);
         if (section) await inventoryHighlight(f.page, section, true, contextual);
         if (section === 'overview' && !contextual) {
@@ -693,7 +693,7 @@ async function servicesMobileBackdrop(browser) {
         for (const child of main.children) if (child.tagName !== 'HEADER') child.setAttribute('x-ignore', '');
       }));
       await f.page.setViewportSize({ width: 375, height: 844 });
-      await visit(f.page, 'services.html#grooming'); await ready(f.page);
+      await visit(f.page, 'services#grooming'); await ready(f.page);
       const header = f.page.locator('main > header').first();
       const menu = header.getByRole('button', { name: 'Open navigation', exact: true });
       const backdrop = f.page.locator('[data-admin-shell] > div[x-show="sidebarOpen"]');
@@ -728,10 +728,37 @@ async function servicesMobileBackdrop(browser) {
   }
 }
 
+async function canonicalUrlsAndLegacyBookmarks(browser) {
+  const f = await fixture(browser, 'admin');
+  const missing = [];
+  f.page.on('response', response => {
+    const url = new URL(response.url());
+    if (url.origin === origin && !url.pathname.startsWith('/api/') && response.status() >= 400) missing.push(url.pathname);
+  });
+  try {
+    await f.page.goto(`${origin}/pages/admin/inventory/inventory.html?selected_id=42#products?filter=expiry`, { waitUntil: 'domcontentloaded' });
+    await ready(f.page);
+    assert.equal(f.page.url(), `${origin}/admin/inventory?selected_id=42#products?filter=expiry`);
+    await inventoryHighlight(f.page, 'products');
+    await f.page.reload({ waitUntil: 'domcontentloaded' }); await ready(f.page);
+    await inventoryHighlight(f.page, 'products');
+    await visit(f.page, 'dashboard'); await ready(f.page);
+    await f.page.goBack({ waitUntil: 'domcontentloaded' }); await ready(f.page);
+    assert.equal(new URL(f.page.url()).hash, '#products?filter=expiry');
+    await inventoryHighlight(f.page, 'products');
+    await f.page.goForward({ waitUntil: 'domcontentloaded' }); await ready(f.page);
+    assert.equal(new URL(f.page.url()).pathname, '/admin/dashboard');
+    assert.deepEqual(await f.page.locator('aside a[href*=".html"]').allTextContents(), []);
+    assert.deepEqual(missing, [], 'Canonical documents load their first-party assets without 404s');
+    console.log('Legacy redirect preserves query and hash; canonical refresh, browser back/forward, assets and sidebar links passed');
+  } finally { await f.context.close(); }
+}
+
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
     const cases = process.env.LOCAL_REVIEW_CASES?.split(',') || ['cold', 'cache', 'security', 'session', 'invalid', 'pre-alpine', 'inventory', 'services', 'walk-in'];
+    if (cases.includes('urls')) await canonicalUrlsAndLegacyBookmarks(browser);
     if (cases.includes('cold')) await coldPaint(browser);
     if (cases.includes('cache')) for (const profile of Object.keys(profiles).filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedRefresh(browser, profile);
     if (cases.includes('security')) await securityTransitions(browser);

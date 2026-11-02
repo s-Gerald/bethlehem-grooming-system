@@ -15,7 +15,7 @@ async function page({ token = 'a'.repeat(64), verify, complete } = {}) {
     }
     return elements.get(id);
   };
-  const window = { location: { hash: '#' + token, pathname: '/pages/client/confirm-email-recovery.html' }, addEventListener: (name, fn) => events.set(name, fn) };
+  const window = { location: { hash: '#' + token, pathname: '/confirm-email-recovery' }, addEventListener: (name, fn) => events.set(name, fn) };
   const API = {
     async verifyStaffEmailRecovery(value) { calls.push(['verify', value]); return verify ? verify(value) : { email: 'new@example.test' }; },
     async completeStaffEmailRecovery(value, password) { calls.push(['complete', value, password]); return complete ? complete(value, password) : { status: 'completed' }; },

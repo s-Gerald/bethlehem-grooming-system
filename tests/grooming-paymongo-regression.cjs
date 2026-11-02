@@ -16,7 +16,7 @@ const storage = (entries = []) => {
 const context = {
   console, Date, Intl, URL, URLSearchParams,
   window: { addEventListener() {}, removeEventListener() {}, sessionStorage: storage(), history: {replaceState() {}},
-    location: { href: 'http://localhost:5173/pages/admin/appointments.html', assign() {}, protocol: 'http:', hostname: 'localhost', port: '5173', origin: 'http://localhost:5173', pathname: '/tests' } },
+    location: { href: 'http://localhost:5173/admin/grooming', assign() {}, protocol: 'http:', hostname: 'localhost', port: '5173', origin: 'http://localhost:5173', pathname: '/tests' } },
   localStorage: storage([['admin_token', 'test-admin-session'], ['user_role', 'admin']]),
   sessionStorage: storage(),
   setTimeout: (callback) => { timers.set(++nextTimer, callback); return nextTimer; },

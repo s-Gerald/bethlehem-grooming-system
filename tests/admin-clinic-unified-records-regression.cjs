@@ -22,7 +22,7 @@ function setup(access = true) {
     setInterval: () => 1, clearInterval() {},
     CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
     document: {addEventListener() {}},
-    location: {search: '', href: 'http://localhost/pages/admin/clinic.html#cases', hash: '#cases'},
+    location: {search: '', href: 'http://localhost/admin/clinic#cases', hash: '#cases'},
     history: {replaceState() {}}, scrollTo() {}, addEventListener() {},
     dispatchEvent(event) { events.push(event); },
     API: {

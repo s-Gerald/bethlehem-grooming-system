@@ -91,7 +91,7 @@ function petStep(clinic = false) {
     formatBookingSchedule: () => "", formatPetSizeLabel: value => value, normalizePetSize: value => value,
     readClinicVisitDraft: () => ({}), updateClinicVisitDraft() {},
     isGroomingSinglePage: () => true, goToGroomingStep: step => { navigated = step; },
-    window: { addEventListener() {}, location: { search: clinic ? "?flow=clinic" : "" } },
+    window: { addEventListener() {}, location: { pathname: clinic ? "/account/registration/clinic/pets" : "/account/registration/grooming", search: clinic ? "?flow=clinic" : "" } },
     document: {
       getElementById: get, createElement: element,
       querySelectorAll: selector => selector === ".select-existing-pet-btn" ? [button] : [],

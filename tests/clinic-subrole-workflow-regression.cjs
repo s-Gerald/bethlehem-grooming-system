@@ -20,7 +20,7 @@ function focusTarget(id) {
 const sandbox = {
   document: { currentScript: null, activeElement: focusTarget('payment-trigger'), body: { style: { overflow: 'auto' } },
     addEventListener(name, callback) { if (name === 'alpine:init') alpineInit = callback; }, getElementById: focusTarget },
-  window: { addEventListener() {}, dispatchEvent(event) { events.push(event); }, location: new URL('https://example.test/pages/admin/clinic.html') },
+  window: { addEventListener() {}, dispatchEvent(event) { events.push(event); }, location: new URL('https://example.test/admin/clinic') },
   Alpine: { store(name, value) { stores[name] = value; } },
   CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
   API: { getUserRole: () => role },

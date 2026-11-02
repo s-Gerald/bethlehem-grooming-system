@@ -69,7 +69,7 @@ window.PaymentInvoice = (() => {
       return `<section id="${clinic ? 'clinicPaymentInvoice' : 'paymentInvoice'}">
   <header class="payment-invoice-header">
     <div class="payment-invoice-brand">
-      <img src="../../assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" class="payment-invoice-logo" />
+      <img src="/assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" class="payment-invoice-logo" />
       <div><strong>BETHLEHEM</strong><span>ANIMAL CLINIC</span></div>
     </div>
     <div class="payment-invoice-heading">

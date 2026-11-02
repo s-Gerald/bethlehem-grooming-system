@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const stored = new Map();
 let timer, navigated, applied = [], calls = 0;
 const window = {
-  location: {href: 'https://bethlehem.example/pages/admin/clinic.html?payment_context=clinic&gateway_payment=8&payable=3&payment_return=success', assign: url => {navigated = url;}},
+  location: {href: 'https://bethlehem.example/admin/clinic?payment_context=clinic&gateway_payment=8&payable=3&payment_return=success', assign: url => {navigated = url;}},
   sessionStorage: {getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)},
   history: {replaceState() {}},
 };
@@ -20,7 +20,7 @@ vm.runInNewContext(fs.readFileSync('scripts/components/online-payment.js', 'utf8
   navigated = null;
   helper.open('clinic', {id: 8, status: 'paid', checkout_url: 'https://checkout.paymongo.com/cs_test'}, 3);
   assert.equal(navigated, null, 'A payment confirmed during polling must not navigate away from its receipt');
-  window.location.href = 'https://bethlehem.example/pages/admin/clinic.html';
+  window.location.href = 'https://bethlehem.example/admin/clinic';
   assert.equal(helper.get('clinic').id, 8, 'A refresh recovers the pending attempt');
   assert.equal(helper.get('clinic').payable, 3);
   let status = 'pending';

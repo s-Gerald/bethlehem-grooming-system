@@ -10,7 +10,7 @@ function adminClinicShell() {
     destroy() { window.removeEventListener('hashchange', this._navigationListener); },
     async showSection() {
       if (window.location.hash === '#services') {
-        window.location.replace('./services.html#clinic');
+        window.location.replace('/admin/services#clinic');
         return;
       }
       if (window.location.hash !== '#cases') history.replaceState(null, '', '#cases');

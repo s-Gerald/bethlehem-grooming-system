@@ -402,7 +402,7 @@ function adminArchive() {
       const params = new URLSearchParams();
       if (booking.payment.id != null) params.set("payment", booking.payment.id);
       if (booking.bookingReference) params.set("reference", booking.bookingReference);
-      return params.size ? `./transactions.html?${params}` : "";
+      return params.size ? `/admin/transactions?${params}` : "";
     },
 
     rememberHistoryContext(event) {
@@ -508,7 +508,7 @@ function adminArchive() {
     clinicTransactionUrl(visit = this.detailsClinicRecord) {
       if (!visit?.paid || visit.status !== 'completed') return "";
       const params = new URLSearchParams({clinic: visit.id, reference: visit.appointment_reference});
-      return `./transactions.html?${params}`;
+      return `/admin/transactions?${params}`;
     },
 
     clinicMoney(value) {

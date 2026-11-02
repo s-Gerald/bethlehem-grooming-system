@@ -68,7 +68,7 @@ class ClientPhosphorIconInterfaceTest extends TestCase
         $panelBoundaries = [
             ['<section data-pet-panel="overview"', '<section data-pet-panel="grooming"'],
             ['<section data-pet-panel="grooming"', '<section data-pet-panel="health"'],
-            ['<section data-pet-panel="health"', '<script src="../../scripts/api.js'],
+            ['<section data-pet-panel="health"', '<script src="/scripts/api.js'],
         ];
 
         foreach ($panelBoundaries as [$start, $end]) {

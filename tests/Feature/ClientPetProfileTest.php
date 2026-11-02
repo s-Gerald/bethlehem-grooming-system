@@ -608,7 +608,7 @@ class ClientPetProfileTest extends TestCase
             ->assertJsonPath('notifications.0.pet_name', 'Mochi')
             ->assertJsonPath(
                 'notifications.0.destination',
-                './pet-details.html?pet_id=101&tab=overview',
+                '/account/pets/details?pet_id=101&tab=overview',
             );
     }
 

@@ -5,7 +5,7 @@ let onlineCalls = 0, cashCalls = 0, opened = '';
 const context = {URL, URLSearchParams, Date, Intl, console, setTimeout: () => 1, clearTimeout() {},
   CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
   document: {body: {style: {}}, getElementById: () => null},
-  window: {location: {href: 'https://bethlehem.example/pages/admin/clinic.html', assign: url => {opened = url;}},
+  window: {location: {href: 'https://bethlehem.example/admin/clinic', assign: url => {opened = url;}},
     sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}}, history: {replaceState() {}},
     dispatchEvent() {}, crypto: {randomUUID: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}},
   API: {createClinicOnlinePayment: async () => {onlineCalls++; return {online_payment: {id: 2, status: 'pending', amount: '500.00', checkout_url: 'https://checkout.paymongo.com/cs_clinic'}};},

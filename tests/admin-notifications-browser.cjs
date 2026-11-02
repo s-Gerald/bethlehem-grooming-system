@@ -70,7 +70,7 @@ async function fixture(browser, role = 'admin') {
   page.on('pageerror', error => state.errors.push(error.message));
   return {context, page, state};
 }
-const visit = (page, file) => page.goto(`${origin}/pages/admin/${file}`, {waitUntil: 'domcontentloaded'});
+const visit = (page, file) => page.goto(`${origin}/admin/${file}`, {waitUntil: 'domcontentloaded'});
 const ready = page => page.waitForFunction(() => !document.documentElement.hasAttribute('data-session-gate') && document.querySelector('[data-admin-shell]')?.hasAttribute('data-admin-ready'));
 const preview = page => page.locator('#admin-notification-preview');
 const notificationRequests = state => state.requests.filter(r => r.path === '/api/admin/notifications');
@@ -83,7 +83,7 @@ async function bellsAndNavigation(browser) {
   const f = await fixture(browser);
   const budgets = [];
   try {
-    for (const [file, from, label] of [['dashboard.html', 'dashboard', 'Dashboard'], ['appointments.html', 'grooming', 'Grooming'], ['clinic.html', 'clinic', 'Clinic']]) {
+    for (const [file, from, label] of [['dashboard', 'dashboard', 'Dashboard'], ['grooming', 'grooming', 'Grooming'], ['clinic', 'clinic', 'Clinic']]) {
       const before = notificationRequests(f.state).length;
       await visit(f.page, file); await ready(f.page);
       const bell = f.page.getByRole('button', {name: /^Notifications/}); await bell.waitFor();
@@ -112,7 +112,7 @@ async function bellsAndNavigation(browser) {
         await f.page.screenshot({path: `${evidence}/notifications-clinic-preview.png`});
       }
       await preview(f.page).getByRole('link', {name: 'See all notifications'}).click();
-      assert.equal(new URL(f.page.url()).searchParams.get('return_to'), `/pages/admin/${file}`); await ready(f.page);
+      assert.equal(new URL(f.page.url()).searchParams.get('return_to'), `/admin/${file}`); await ready(f.page);
       await f.page.locator('main .admin-notification-row').first().waitFor();
       const active = f.page.locator('aside nav a.bg-\\[\\#315b7e\\]');
       assert.equal((await active.innerText()).trim(), label);
@@ -124,8 +124,8 @@ async function bellsAndNavigation(browser) {
       assert.equal(await f.page.locator('aside [aria-current="page"]').count(), 0);
       assert.equal(f.state.requests.slice(unrelated).some(r => /dashboard|bookings|grooming\/activity|clinic-cases/.test(r.path)), false, 'Origin must not fetch its workspace');
     }
-    for (const from of ['', '?return_to=invalid', '?return_to=__proto__', '?return_to=https://example.com/pages/admin/dashboard.html']) {
-      await visit(f.page, 'notifications.html' + from); await ready(f.page);
+    for (const from of ['', '?return_to=invalid', '?return_to=__proto__', '?return_to=https://example.com/admin/dashboard']) {
+      await visit(f.page, 'notifications' + from); await ready(f.page);
       assert.equal(await f.page.locator('aside nav a.bg-\\[\\#315b7e\\]').count(), 0);
     }
     assert.deepEqual(f.state.errors, []);
@@ -137,7 +137,7 @@ async function bellsAndNavigation(browser) {
 async function filtersAndMutations(browser) {
   const f = await fixture(browser);
   try {
-    await visit(f.page, 'notifications.html?return_to=%2Fpages%2Fadmin%2Fclinic.html'); await ready(f.page);
+    await visit(f.page, 'notifications?return_to=%2Fpages%2Fadmin%2Fclinic'); await ready(f.page);
     await f.page.locator('main .admin-notification-row').first().waitFor();
     await f.page.getByRole('button', {name: 'Load More', exact: true}).click();
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 20);
@@ -184,7 +184,7 @@ async function permissionsAndLifecycle(browser) {
   for (const role of ['grooming', 'clinic']) {
     const f = await fixture(browser, role);
     try {
-      await visit(f.page, role === 'grooming' ? 'appointments.html' : 'clinic.html'); await ready(f.page);
+      await visit(f.page, role === 'grooming' ? 'grooming' : 'clinic'); await ready(f.page);
       const bell = f.page.getByRole('button', {name: /^Notifications/}); await bell.click();
       await preview(f.page).locator('.admin-notification-row').first().waitFor();
       await f.page.locator('h2:visible').first().click(); assert.equal(await preview(f.page).isVisible(), false, 'Outside click closes preview');
@@ -199,7 +199,7 @@ async function permissionsAndLifecycle(browser) {
       await bell.click(); await preview(f.page).locator('.admin-notification-row').first().waitFor();
       await bell.press('Escape');
       await f.page.getByRole('button', {name: 'Logout', exact: true}).click();
-      await f.page.waitForURL('**/sign-in.html');
+      await f.page.waitForURL('**/sign-in');
       assert.equal(await f.page.evaluate(() => localStorage.getItem('admin_token')), null);
       assert.deepEqual(f.state.errors, []);
     } finally {await f.context.close();}
@@ -209,13 +209,13 @@ async function permissionsAndLifecycle(browser) {
 async function preAlpineOrigins(browser) {
   const f = await fixture(browser);
   try {
-    await visit(f.page, 'dashboard.html'); await ready(f.page);
-    for (const [from, label] of [['dashboard.html', 'Dashboard'], ['appointments.html', 'Grooming'], ['clinic.html', 'Clinic'], ['invalid', '']]) {
+    await visit(f.page, 'dashboard'); await ready(f.page);
+    for (const [from, label] of [['dashboard', 'Dashboard'], ['grooming', 'Grooming'], ['clinic', 'Clinic'], ['invalid', '']]) {
       const hold = deferred();
       const handler = async route => {await hold.promise; await route.fallback();};
       await f.context.route('**/alpinejs@*/**', handler);
       try {
-        await f.page.goto(`${origin}/pages/admin/notifications.html?return_to=${encodeURIComponent('/pages/admin/' + from)}`, {waitUntil: 'commit'});
+        await f.page.goto(`${origin}/admin/notifications?return_to=${encodeURIComponent('/admin/' + from)}`, {waitUntil: 'commit'});
         await f.page.waitForFunction(() => typeof renderCachedAdminSidebar === 'function');
         const selected = f.page.locator('aside nav a.bg-\\[\\#315b7e\\]');
         assert.equal(await selected.count(), label ? 1 : 0);
@@ -232,16 +232,16 @@ async function crossTabAndHiddenPolling(browser) {
   const f = await fixture(browser);
   try {
     await f.page.clock.install();
-    await visit(f.page, 'dashboard.html'); await ready(f.page);
+    await visit(f.page, 'dashboard'); await ready(f.page);
     await f.page.getByRole('button', {name: /^Notifications/}).click();
     await preview(f.page).locator('.admin-notification-row').first().waitFor();
     const other = await f.context.newPage();
-    await visit(other, 'clinic.html'); await ready(other);
+    await visit(other, 'clinic'); await ready(other);
     await other.getByRole('button', {name: /^Notifications/}).click();
     await preview(other).locator('.admin-notification-row').first().waitFor();
     if (!await preview(f.page).isVisible()) await f.page.getByRole('button', {name: /^Notifications/}).click();
     await preview(f.page).locator('.admin-notification-row.is-unread').first().click();
-    await f.page.waitForURL('**/notifications.html?**selected_id=*');
+    await f.page.waitForURL('**/notifications?**selected_id=*');
     await f.page.locator('main .admin-notification-row.is-selected').waitFor();
     const selected = f.page.locator('main .admin-notification-row.is-selected');
     assert.equal(await selected.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Mouse-opened selection has no focus rectangle');
@@ -278,7 +278,7 @@ async function noShowFiltersAndServerRefresh(browser) {
   try {
     await f.page.clock.install();
     f.state.rows = [noShow(100, 'grooming'), noShow(101, 'clinic', true)];
-    await visit(f.page, 'notifications.html'); await ready(f.page);
+    await visit(f.page, 'notifications'); await ready(f.page);
     const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
     const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
     await activity.selectOption('expired');

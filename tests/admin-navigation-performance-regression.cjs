@@ -216,7 +216,7 @@ async function retainedDataWaitsForNavigationAuthorization() {
   const verification = deferred();
   e.respond(endpoint => endpoint === '/session' ? verification.promise : {customers: []});
   const next = e.page();
-  next.c.window.location.pathname = '/pages/admin/clients.html';
+  next.c.window.location.pathname = '/admin/customers';
   next.c.document.documentElement = {setAttribute() {}, removeAttribute() {}};
   next.c.document.querySelector = selector => selector === '[data-admin-shell]' ? {} : null;
   next.c.document.createElement = () => ({});

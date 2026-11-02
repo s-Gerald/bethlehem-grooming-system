@@ -135,7 +135,7 @@ class GroomingPayMongoTest extends TestCase
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
         config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
             'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false,
-            'services.paymongo.return_url' => 'https://bethlehem.example/pages/admin/appointments.html']);
+            'services.paymongo.return_url' => 'https://bethlehem.example/admin/grooming']);
         Http::preventStrayRequests();
         $this->fakeProvider();
     }
@@ -216,8 +216,8 @@ class GroomingPayMongoTest extends TestCase
             && $request['data']['attributes']['line_items'][0]['amount'] === 85000
             && $request['data']['attributes']['line_items'][0]['currency'] === 'PHP'
             && $request['data']['attributes']['pass_on_fees'] === false
-            && $request['data']['attributes']['success_url'] === 'https://bethlehem.example/pages/admin/appointments.html?gateway_payment=1&payment_context=grooming&payment_return=success&payable=1'
-            && $request['data']['attributes']['cancel_url'] === 'https://bethlehem.example/pages/admin/appointments.html?gateway_payment=1&payment_context=grooming&payment_return=cancel&payable=1'
+            && $request['data']['attributes']['success_url'] === 'https://bethlehem.example/admin/grooming?gateway_payment=1&payment_context=grooming&payment_return=success&payable=1'
+            && $request['data']['attributes']['cancel_url'] === 'https://bethlehem.example/admin/grooming?gateway_payment=1&payment_context=grooming&payment_return=cancel&payable=1'
             && str_starts_with($request['data']['attributes']['reference_number'], 'BTH-'));
         $this->assertSame(0, Payment::count());
         $this->assertDatabaseHas('bookings', ['booking_id' => 1, 'paid' => false]);

@@ -14,7 +14,7 @@ export async function renderRegistrationQueueInformation(root, service) {
   const render = (data = {}) => {
     const count = Number.isInteger(data.waiting_count) && data.waiting_count >= 0 ? data.waiting_count : "Currently unavailable";
     const tile = (icon, label, value) => `<div class="rounded-xl bg-[#eef5fb] p-4">
-      <svg class="ph-icon h-5 w-5 text-[#315b7e] mb-2" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#${icon}"></use></svg>
+      <svg class="ph-icon h-5 w-5 text-[#315b7e] mb-2" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#${icon}"></use></svg>
       <dt class="text-xs text-slate-600">${label}</dt><dd class="mt-1 font-semibold text-[#2f4b66]">${escapeHtml(value)}</dd></div>`;
     root.innerHTML = `<h2 class="text-lg font-bold text-[#2f4b66]">Queue Information</h2>
       ${notice ? `<p role="alert" class="mt-3 text-sm font-medium text-amber-800">${escapeHtml(notice)}</p>` : ""}

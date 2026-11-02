@@ -1,4 +1,8 @@
-Options -Indexes
+<IfModule mod_dir.c>
+    DirectoryIndex public/index.php
+</IfModule>
+
+Options -Indexes -MultiViews
 
 <IfModule mod_headers.c>
     <Files "sign-in.html">
@@ -19,7 +23,12 @@ Options -Indexes
     RewriteRule ^(?!public/index\.php$).*\.php(?:/|$) - [F,L,NC]
     RewriteRule ^(?:public/)?storage/(?:clinic|payment-proofs)(?:/|$) - [F,L,NC]
 
-    RewriteRule ^pages/admin/(activity-log|availability)\.html$ public/index.php [L]
+    # The shared favicon lives in Laravel's public directory in this layout.
+    RewriteRule ^favicon\.ico$ public/favicon.ico [L]
+
+    # Browser documents must reach Laravel even when their old HTML file exists.
+    # Fragments and assets keep Apache's existing-file fast path.
+    RewriteRule ^(?:index\.html|pages/client/(?:sign-in|signup|forgot-password|verify-email|set-up-password|confirm-email-recovery|dashboard|my-pets|pet-details|grooming-history|notifications|settings|pre-register|grooming-pre-registration|booking-pet-details|clinic-visit-reason|clinic-visit-summary|clinic-visit-confirmed|clinic-visit-date)\.html|pages/admin/(?:dashboard|clients|appointments|clinic|archive|transactions|reports|services|settings|notifications|activity-log|availability|walk-in-booking|walk-in-pet-details|walk-in-grooming-services|walk-in-booking-review|walk-in-consent|walk-in-booking-confirmed|walk-in-clinic-confirmed)\.html|pages/admin/inventory/(?:inventory|pos)\.html|pages/legal/(?:terms-and-conditions|privacy-policy)\.html)$ public/index.php [L]
 
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f

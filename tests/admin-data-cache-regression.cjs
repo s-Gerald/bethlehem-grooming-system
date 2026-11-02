@@ -171,7 +171,7 @@ async function retainedDataWaitsForSessionVerification() {
   const e = environment(); await e.API.getCustomers(); e.advance(31000);
   const session = deferred(), data = deferred();
   e.respond(endpoint => endpoint === '/session' ? session.promise : data.promise);
-  e.c.window.location.pathname = '/pages/admin/dashboard.html';
+  e.c.window.location.pathname = '/admin/dashboard';
   e.c.document.createElement = () => ({});
   e.c.setTimeout = () => 1; e.c.clearTimeout = () => {};
   e.API.startSessionInactivityManager();

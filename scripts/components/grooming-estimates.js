@@ -19,7 +19,7 @@ export function confirmClosingWarning(forecast, staff = false, trigger = documen
   const completion = forecast.completion_at && !["delayed", "uncertain", "unavailable"].includes(forecast.status)
     ? presentation.time(forecast.completion_at, forecast.generated_at) : "Uncertain";
   dialog.innerHTML = `<h3 id="groomingClosingTitle" class="flex items-start gap-2 text-lg font-semibold text-amber-900">
-      <svg class="ph-icon mt-1 h-5 w-5 shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>Grooming May Extend Past Closing</h3>
+      <svg class="ph-icon mt-1 h-5 w-5 shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#warning"></use></svg>Grooming May Extend Past Closing</h3>
     <p id="groomingClosingMessage" class="mt-3 text-sm leading-6 text-slate-700">${staff
       ? "Based on the current queue, this visit may finish after grooming closes."
       : `Based on the current queue, if your ${forecast.pets.length > 1 ? "pets checked" : "pet checked"} in now, grooming may finish after closing. This estimate may change before check-in.`}</p>

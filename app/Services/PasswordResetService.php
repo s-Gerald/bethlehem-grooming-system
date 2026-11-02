@@ -321,7 +321,7 @@ class PasswordResetService
             ])->save();
 
             $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
-            $setupUrl = $frontendUrl.'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
+            $setupUrl = $frontendUrl.'/set-up-password#token='.rawurlencode($plainToken);
             // Durable queue insertion and token rotation commit or roll back together.
             AuthenticationMailDelivery::queue($user, new SetUpStaffPasswordNotification($setupUrl), $request, purpose: 'privileged_change');
 

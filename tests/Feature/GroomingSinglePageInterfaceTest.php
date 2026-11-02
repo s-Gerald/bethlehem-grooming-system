@@ -29,7 +29,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
         $controller = file_get_contents(base_path('scripts/components/grooming-pre-registration.js'));
         $choice = file_get_contents(base_path('pages/client/pre-register.html'));
 
-        $this->assertStringContainsString('href="./grooming-pre-registration.html"', $choice);
+        $this->assertStringContainsString('href="/account/registration/grooming"', $choice);
         $this->assertStringContainsString('window.history.pushState', $controller);
         $this->assertStringContainsString('window.addEventListener("popstate"', $controller);
         $this->assertStringContainsString('section.hidden = !visible', $controller);
@@ -55,7 +55,7 @@ class GroomingSinglePageInterfaceTest extends TestCase
             preg_match('/<a\b[^>]*>.*?<\/a>/s', $section, $matches);
             $topLink = $matches[0] ?? '';
 
-            $this->assertStringContainsString('href="./dashboard.html"', $topLink, $step);
+            $this->assertStringContainsString('href="/account"', $topLink, $step);
             $this->assertStringNotContainsString('data-grooming-target', $topLink, $step);
             $this->assertSame('← Back to Home', trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($topLink)))), $step);
         }
@@ -116,7 +116,7 @@ JS], base_path());
             $this->assertStringContainsString($detail, $html);
         }
         $this->assertStringContainsString('<article class="confirmation-document" aria-label="Confirmation details">', $html);
-        $this->assertMatchesRegularExpression('/<a[^>]+href="\.\/dashboard\.html">Return to Dashboard<\/a>/', $html);
+        $this->assertMatchesRegularExpression('/<a[^>]+href="\/account">Return to Dashboard<\/a>/', $html);
         $this->assertMatchesRegularExpression('/<button[^>]+id="printConfirmationButton"[^>]*>Print Confirmation<\/button>/', $html);
         $this->assertStringContainsString('<dt>Queue number</dt><dd>Not assigned</dd>', $html);
         $this->assertTrue($rendered['focused']);

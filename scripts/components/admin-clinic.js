@@ -1096,7 +1096,7 @@ function adminClinicPage() {
     },
     startWalkIn() {
       if (!this.permissions.intake) return;
-      window.location.href = "./walk-in-booking.html?flow=clinic&new=1";
+      window.location.href = "/admin/walk-in/customer?flow=clinic&new=1";
     },
 
     async loadAllRecords(append = false) {
@@ -1642,7 +1642,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '../../scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&pet-birthdate=20261103-v1';
+    script.src = '/scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

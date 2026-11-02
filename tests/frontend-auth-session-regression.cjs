@@ -35,7 +35,7 @@ async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
   first.localStorage.setItem('customer_token', '601|cookie');
   first.localStorage.setItem('user_role', 'customer');
   first.localStorage.setItem('bethlehem.auth.account_id', '7');
-  const second = profile.page(new MemoryStorage(), '/pages/client/settings.html');
+  const second = profile.page(new MemoryStorage(), '/account/settings');
   await first.API.getMe();
   assert.ok(first.API.readCustomerCache('/me'));
   requests.length = 0;
@@ -48,12 +48,12 @@ async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
   await first.API.checkRememberedCustomerSession();
   assert.equal(requests.length, 1, 'Password change neither logs out again nor restores a remembered device.');
   assert.equal(requests[0].options.cache, 'no-store');
-  assert.match(second.replacements.at(-1), /sign-in\.html$/);
+  assert.match(second.replacements.at(-1), /sign-in$/);
 }
 
 async function testPasswordSuccessSurvivesBackgroundRevocationAndNeverRetriesMutations() {
   let resolveRead, resolveChange;
-  const browser = createBrowser({ pathname: '/pages/client/settings.html', local: {
+  const browser = createBrowser({ pathname: '/account/settings', local: {
     customer_token: '602|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '7',
   }, fetchImpl: url => url.endsWith('/me') ? new Promise(resolve => { resolveRead = resolve; })
     : new Promise(resolve => { resolveChange = resolve; }) });
@@ -85,7 +85,7 @@ async function testPasswordSignOutDoesNotEraseNewerAccountsOrSessions() {
   assert.equal(browser.API.getCustomerToken(), '611|cookie');
 
   for (const [id, account, revoked] of [['609', '7', true], ['611', '7', false], ['609', '8', false]]) {
-    const tab = createBrowser({ pathname: '/pages/client/settings.html', session: {
+    const tab = createBrowser({ pathname: '/account/settings', session: {
       customer_token: `${id}|cookie`, user_role: 'customer', 'bethlehem.auth.account_id': account,
     } });
     tab.dispatch('storage', { storageArea: tab.localStorage, key: 'bethlehem.auth.logout',
@@ -94,13 +94,13 @@ async function testPasswordSignOutDoesNotEraseNewerAccountsOrSessions() {
     if (revoked) {
       assert.equal(tab.sessionStorage.getItem('bethlehem.auth.signed_out'), '1');
       tab.dispatch('pageshow', { persisted: true });
-      assert.match(tab.replacements.at(-1), /sign-in\.html$/);
+      assert.match(tab.replacements.at(-1), /sign-in$/);
     }
   }
 }
 
 function testPasswordChangeSignInFeedback() {
-  const page = signInPageHarness({ location: { href: 'https://clinic.test/pages/client/sign-in.html?password_changed=1', search: '?password_changed=1' } });
+  const page = signInPageHarness({ location: { href: 'https://clinic.test/sign-in?password_changed=1', search: '?password_changed=1' } });
   assert.match(page.element('sharedSignInMessage').textContent, /Password changed successfully/);
   assert.match(page.element('sharedSignInMessage').textContent, /Your password has been updated. Please sign in again\./);
   assert.equal(page.element('signInBtnLabel').textContent, 'Sign in again');
@@ -117,7 +117,7 @@ function jsonResponse(status, data) {
 }
 
 function createBrowser({
-  pathname = "/pages/client/sign-in.html",
+  pathname = "/sign-in",
   local = {},
   session = {},
   elements = {},
@@ -206,7 +206,7 @@ function createBrowser({
 function createBrowserProfile(fetchImpl, locks = null) {
   const values = new Map(), tabs = [];
   return {
-    page(session = new MemoryStorage(), pathname = '/pages/client/sign-in.html', managed = false) {
+    page(session = new MemoryStorage(), pathname = '/sign-in', managed = false) {
       const local = new MemoryStorage();
       local.values = values;
       const broadcast = (key, oldValue, newValue) => {
@@ -319,7 +319,7 @@ function activeSession() {
 async function testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads() {
   const calls = [];
   let completeRestore;
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+  const browser = createBrowser({managed: true, pathname: '/account',
     fetchImpl: async (url, options) => {
       calls.push({url, options});
       if (url.endsWith('/session/restore')) return new Promise(resolve => { completeRestore = resolve; });
@@ -344,7 +344,7 @@ async function testCustomerRestorationIsDeduplicatedAndQueuesOnlySafeReads() {
 
 async function testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalidity() {
   let online = false, restores = 0;
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+  const browser = createBrowser({managed: true, pathname: '/account',
     local: {customer_token: '302|cookie', user_role: 'customer'}, fetchImpl: async url => {
       if (!online) throw new Error('offline');
       if (url.endsWith('/session/restore')) { restores++; return jsonResponse(401, {}); }
@@ -363,7 +363,7 @@ async function testNetworkFailurePreservesReferencesAndDoesNotProveDeviceInvalid
 
 async function testDelayedRestoreCannotOverwriteANewerAccount() {
   let complete;
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+  const browser = createBrowser({managed: true, pathname: '/account',
     fetchImpl: async url => url.endsWith('/session/restore') ? new Promise(resolve => { complete = resolve; })
       : jsonResponse(200, activeSession())});
   await turn();
@@ -380,7 +380,7 @@ async function testUnconfirmedLogoutBlocksRestorationAcrossNavigation() {
   assert.equal(browser.API.getCustomerToken(), null);
   assert.ok(local.getItem('bethlehem.auth.logout_pending'));
   let restores = 0;
-  createBrowser({local, managed: true, pathname: '/pages/client/dashboard.html', fetchImpl: async url => {
+  createBrowser({local, managed: true, pathname: '/account', fetchImpl: async url => {
     if (url.endsWith('/session/restore')) restores++;
     throw new Error('offline');
   }});
@@ -403,8 +403,8 @@ async function testMultipleTabsShareOneRestorationWhenBrowserLocksAreAvailable()
     assert.equal(options.headers.Authorization, 'Bearer 601|cookie');
     return jsonResponse(200, activeSession());
   }, locks);
-  const first = profile.page(new MemoryStorage(), '/pages/client/dashboard.html', true);
-  const second = profile.page(new MemoryStorage(), '/pages/client/my-pets.html', true);
+  const first = profile.page(new MemoryStorage(), '/account', true);
+  const second = profile.page(new MemoryStorage(), '/account/pets', true);
   assert.equal(await first.API.waitForCustomerSession(), true);
   assert.equal(await second.API.waitForCustomerSession(), true);
   assert.equal(restores, 1);
@@ -413,7 +413,7 @@ async function testMultipleTabsShareOneRestorationWhenBrowserLocksAreAvailable()
 
 async function testDelayedRestoreRejectionAndUncachedReadsCannotAffectNewAccount() {
   let release;
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html', fetchImpl: async url =>
+  const browser = createBrowser({managed: true, pathname: '/account', fetchImpl: async url =>
     url.endsWith('/session/restore') ? new Promise(resolve => { release = resolve; }) : jsonResponse(200, activeSession())});
   await turn();
   browser.API.setCustomerToken('701|cookie', false);
@@ -433,7 +433,7 @@ async function testStorageRestrictionsDoNotCreateAnUntrackableRememberedSession(
   const storage = new MemoryStorage();
   storage.setItem = () => { throw new Error('Storage restricted'); };
   let restores = 0;
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html', local: storage,
+  const browser = createBrowser({managed: true, pathname: '/account', local: storage,
     fetchImpl: async () => { restores++; return jsonResponse(401, {}); }});
   await turn();
   assert.equal(restores, 0);
@@ -444,7 +444,7 @@ async function testStorageRestrictionsDoNotCreateAnUntrackableRememberedSession(
 async function testExpiredReadsCanRetryAfterRestorationButMutationsCannot() {
   for (const mutation of [false, true]) {
     let expired = false, operations = 0, restores = 0;
-    const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+    const browser = createBrowser({managed: true, pathname: '/account',
       local: {customer_token: '801|cookie', user_role: 'customer'}, fetchImpl: async url => {
         if (url.endsWith('/session')) return jsonResponse(expired ? 401 : 200, expired ? {code: 'session_expired'} : activeSession());
         if (url.endsWith('/session/restore')) {
@@ -634,7 +634,7 @@ async function testExplicitLoginReconcilesAnObsoleteLogoutForEveryRole() {
 }
 
 async function testMixedCrossTabAccountSwitchHidesOnlyTheObsoleteTabState() {
-  const browser = createBrowser({managed: true, pathname: '/pages/client/dashboard.html',
+  const browser = createBrowser({managed: true, pathname: '/account',
     session: {customer_token: '904|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '9',
       bookingStep2: 'old customer draft', unrelated: 'keep'}, fetchImpl: async () => jsonResponse(200, activeSession())});
   assert.equal(await browser.API.waitForCustomerSession(), true);
@@ -643,7 +643,7 @@ async function testMixedCrossTabAccountSwitchHidesOnlyTheObsoleteTabState() {
   browser.localStorage.setItem('user_role', 'customer');
   browser.dispatch('storage', {storageArea: browser.localStorage, key: 'user_role', newValue: 'customer'});
   assert.equal(browser.document.documentElement['data-session-gate'], 'checking');
-  assert.equal(browser.replacements.at(-1), '/pages/client/sign-in.html');
+  assert.equal(browser.replacements.at(-1), '/sign-in');
   assert.equal(browser.localStorage.getItem('customer_token'), '905|cookie');
   assert.equal(browser.sessionStorage.getItem('customer_token'), null);
   assert.equal(browser.sessionStorage.getItem('bookingStep2'), null);
@@ -688,7 +688,7 @@ function testProfileNameIsAppliedWithoutWaitingForDomContentLoaded() {
   const nameEl = { textContent: "Loading..." };
   const initialsEl = { textContent: "--" };
   createBrowser({
-    pathname: "/pages/client/my-pets.html",
+    pathname: "/account/pets",
     local: {
       customer_token: "token",
       user_role: "customer",
@@ -701,7 +701,7 @@ function testProfileNameIsAppliedWithoutWaitingForDomContentLoaded() {
 
   const otherName = { textContent: "Loading..." };
   createBrowser({
-    pathname: "/pages/client/my-pets.html",
+    pathname: "/account/pets",
     local: { "bethlehem.customer.profile_name": JSON.stringify({ first: "Ridge", last: "Marino" }) },
     elements: { clientProfileName: otherName },
   });
@@ -758,7 +758,7 @@ async function testDitoPhoneIdentifiersKeepExistingSignInNormalization() {
 
 async function testTemporaryServerFailureDoesNotRedirect() {
   const browser = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     local: { customer_token: "valid-looking-token", user_role: "customer" },
     fetchImpl: async () => jsonResponse(500, { message: "Trying to access array offset on null" }),
   });
@@ -770,7 +770,7 @@ async function testTemporaryServerFailureDoesNotRedirect() {
 
 async function testReal401ClearsAndUsesNestedSafePath() {
   const browser = createBrowser({
-    pathname: "/bethlehem/pages/admin/inventory/pos.html",
+    pathname: "/bethlehem/admin/inventory",
     local: { admin_token: "expired-admin-token", user_role: "admin" },
     fetchImpl: async () => jsonResponse(401, { message: "Unauthenticated." }),
   });
@@ -780,7 +780,7 @@ async function testReal401ClearsAndUsesNestedSafePath() {
   assert.equal(browser.localStorage.getItem("admin_token"), null);
   assert.equal(
     browser.replacements.at(-1),
-    "/bethlehem/pages/client/sign-in.html",
+    "/bethlehem/sign-in",
   );
 }
 
@@ -803,7 +803,7 @@ async function testAdminRequestUsesTheCurrentAdminSession() {
 async function testStale401CannotClearANewerLogin() {
   let resolveRequest;
   const browser = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     local: { customer_token: "old-token", user_role: "customer" },
     fetchImpl: () => new Promise((resolve) => {
       resolveRequest = resolve;
@@ -821,7 +821,7 @@ async function testStale401CannotClearANewerLogin() {
 
 async function testOnlyExplicit403AuthCodesInvalidateSession() {
   const generalForbidden = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     local: { customer_token: "customer-token", user_role: "customer" },
     fetchImpl: async () => jsonResponse(403, { message: "Forbidden", code: "forbidden" }),
   });
@@ -831,7 +831,7 @@ async function testOnlyExplicit403AuthCodesInvalidateSession() {
   assert.deepEqual(generalForbidden.replacements, []);
 
   const disabled = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     local: { customer_token: "disabled-token", user_role: "customer" },
     fetchImpl: async () => jsonResponse(403, {
       message: "Account disabled",
@@ -841,14 +841,14 @@ async function testOnlyExplicit403AuthCodesInvalidateSession() {
 
   await assert.rejects(() => disabled.API.getMe("customer"), /Account disabled/);
   assert.equal(disabled.API.getCustomerToken(), null);
-  assert.equal(disabled.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(disabled.replacements.at(-1), "/sign-in");
 }
 
 async function testLogoutClearsBeforeNetworkAndSynchronizesCustomerTabs() {
   let stateAtRequest = null;
   let browser;
   browser = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     session: { customer_token: "101|session-secret", user_role: "customer" },
     fetchImpl: async () => {
       stateAtRequest = {
@@ -866,7 +866,7 @@ async function testLogoutClearsBeforeNetworkAndSynchronizesCustomerTabs() {
   assert.equal(JSON.stringify(logoutEvent).includes("session-secret"), false);
 
   const otherTab = createBrowser({
-    pathname: "/pages/client/settings.html",
+    pathname: "/account/settings",
     session: { customer_token: "101|session-secret", user_role: "customer" },
   });
   otherTab.dispatch("storage", {
@@ -875,10 +875,10 @@ async function testLogoutClearsBeforeNetworkAndSynchronizesCustomerTabs() {
     newValue: JSON.stringify(logoutEvent),
   });
   assert.equal(otherTab.API.getCustomerToken(), null);
-  assert.equal(otherTab.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(otherTab.replacements.at(-1), "/sign-in");
 
   const adminTab = createBrowser({
-    pathname: "/pages/admin/dashboard.html",
+    pathname: "/admin/dashboard",
     local: { admin_token: "102|staff-secret", user_role: "staff" },
   });
   adminTab.dispatch("storage", {
@@ -887,12 +887,12 @@ async function testLogoutClearsBeforeNetworkAndSynchronizesCustomerTabs() {
     newValue: JSON.stringify({ role: "staff", sessionId: "staff:102", reason: "logout" }),
   });
   assert.equal(adminTab.API.getAdminToken(), null);
-  assert.equal(adminTab.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(adminTab.replacements.at(-1), "/sign-in");
 }
 
 function testTokenReplacementRemovalEventCannotClearFreshLogin() {
   const browser = createBrowser({
-    pathname: "/pages/client/dashboard.html",
+    pathname: "/account",
     local: { customer_token: "fresh-token", user_role: "customer" },
   });
 
@@ -910,7 +910,7 @@ function testTokenReplacementRemovalEventCannotClearFreshLogin() {
 function testLogoutFromAnotherSessionCannotClearTheCurrentLogin() {
   for (const role of ["admin", "customer"]) {
     const browser = createBrowser({
-      pathname: `/pages/${role === "customer" ? "client" : "admin"}/dashboard.html`,
+      pathname: role === "customer" ? "/account" : "/admin/dashboard",
       local: { [role === "customer" ? "customer_token" : "admin_token"]: "202|current-secret", user_role: role },
     });
     for (const event of [
@@ -984,14 +984,14 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
       assert.equal(identity.user.staff_subrole || identity.user.role, role);
       const profile = browser === normal ? normalProfile : privateProfile;
       const navigation = profile.page(browser.sessionStorage, identity.user.role === 'customer'
-        ? '/pages/client/dashboard.html' : '/pages/admin/clinic.html');
+        ? '/account' : '/admin/clinic');
       assert.deepEqual(navigation.replacements, []);
       if (role.endsWith('_receptionist')) {
         const reads = calls.filter(url => url.endsWith('/me')).length;
         assert.equal((await navigation.API.getStaffIdentity()).user.staff_subrole, role);
         assert.equal(calls.filter(url => url.endsWith('/me')).length, reads, 'Navigation restores owned identity without another /me');
         assert.equal(navigation.sidebar().staffRoleLabel, role === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
-        const otherTab = profile.page(new MemoryStorage(), '/pages/admin/services.html');
+        const otherTab = profile.page(new MemoryStorage(), '/admin/services');
         if (browser === normal) assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role);
         else await assert.rejects(otherTab.API.getStaffIdentity(), /Session ended/);
       }
@@ -1057,7 +1057,7 @@ async function testDelayedPasswordResponseCannotClearNewerStaffSession() {
 
 async function testRecoveryLinksNeverSendOrReplaceTheExistingBrowserSession() {
   const requests = [];
-  const browser = createBrowser({ pathname: '/pages/client/confirm-email-recovery.html',
+  const browser = createBrowser({ pathname: '/confirm-email-recovery',
     local: { admin_token: '920|admin-secret', user_role: 'admin' },
     fetchImpl: async (url, options) => { requests.push({ url, options }); return jsonResponse(200, {status: 'completed'}); },
   });
@@ -1074,7 +1074,7 @@ async function testRecoveryLinksNeverSendOrReplaceTheExistingBrowserSession() {
 
 async function testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect() {
   let release;
-  const browser = createBrowser({ pathname: '/pages/admin/settings.html',
+  const browser = createBrowser({ pathname: '/admin/settings',
     local: { admin_token: '910|staff-secret', user_role: 'staff' },
     fetchImpl: async (url, options) => {
       if (!url.endsWith('/confirm')) return jsonResponse(401, {message: 'Session ended.'});
@@ -1106,7 +1106,7 @@ async function testVerifiedEmailChangeClearsOnlyItsSessionWithoutEarlyRedirect()
   await assert.rejects(oldCompletion, /session.*changed/i);
   assert.equal(switched.API.getAdminToken(), '912|new-staff');
 
-  const rejected = createBrowser({ pathname: '/pages/admin/settings.html',
+  const rejected = createBrowser({ pathname: '/admin/settings',
     local: { admin_token: '913|expired-staff', user_role: 'staff' },
     fetchImpl: async url => url.endsWith('/confirm')
       ? new Promise(resolve => { release = () => resolve(jsonResponse(422, { message: 'The code is incorrect.' })); })
@@ -1146,7 +1146,7 @@ async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
     });
     const first = profile.page();
     await first.API.signIn(roles[0], 'password', true);
-    const sibling = profile.page(new MemoryStorage(), '/pages/admin/clinic.html');
+    const sibling = profile.page(new MemoryStorage(), '/admin/clinic');
     const cached = await sibling.API.getStaffIdentity();
     assert.equal(cached.user.staff_subrole, roles[0]);
     // An uncached sibling starts an old-token identity read before the switch.
@@ -1164,13 +1164,13 @@ async function testReceptionistAccountSwitchSynchronizesSharedTabs() {
     await Promise.resolve();
     assert.equal(sibling.API.getAdminToken(), null);
     assert.equal(sibling.API.getCachedStaffIdentity(), null);
-    assert.equal(sibling.replacements.at(-1), '/pages/client/sign-in.html');
+    assert.equal(sibling.replacements.at(-1), '/sign-in');
   }
 }
 
 function testSharedPersistentLogoutDoesNotErasePendingConfirmation() {
   const browser = createBrowser({
-    pathname: "/pages/client/verify-email.html",
+    pathname: "/verify-email",
     session: { pending_login_poll_token: "new-login-challenge" },
   });
   browser.dispatch("storage", {
@@ -1180,12 +1180,12 @@ function testSharedPersistentLogoutDoesNotErasePendingConfirmation() {
   assert.equal(browser.sessionStorage.getItem("pending_login_poll_token"), "new-login-challenge");
   assert.deepEqual(browser.replacements, []);
 
-  browser.location.pathname = "/pages/admin/dashboard.html";
+  browser.location.pathname = "/admin/dashboard";
   browser.dispatch("storage", {
     storageArea: browser.localStorage, key: "bethlehem.auth.logout",
     newValue: JSON.stringify({ role: "admin", sessionId: "admin:101" }),
   });
-  assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html");
+  assert.equal(browser.replacements.at(-1), "/sign-in");
 }
 
 async function testPricingAuthFailuresStayLocalToTheRequestingSession() {
@@ -1218,7 +1218,7 @@ async function testPricingAuthFailuresStayLocalToTheRequestingSession() {
 function testBackForwardCacheGuard() {
   for (const role of ["admin", "staff", "customer"]) {
     const browser = createBrowser({
-      pathname: `/pages/${role === "customer" ? "client" : "admin"}/dashboard.html`,
+      pathname: role === "customer" ? "/account" : "/admin/dashboard",
       local: { [role === "customer" ? "customer_token" : "admin_token"]: "token", user_role: role },
     });
     browser.dispatch("pageshow", { persisted: false });
@@ -1226,7 +1226,7 @@ function testBackForwardCacheGuard() {
     assert.deepEqual(browser.replacements, [], "Ordinary lifecycle events preserve an authenticated page");
     browser.API.clearAuthState();
     browser.dispatch("pageshow", { persisted: true });
-    assert.equal(browser.replacements.at(-1), "/pages/client/sign-in.html", "BFCache restoration cannot restore signed-out access");
+    assert.equal(browser.replacements.at(-1), "/sign-in", "BFCache restoration cannot restore signed-out access");
   }
 }
 
@@ -1273,7 +1273,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
     return elements.get(id);
   }
 
-  const pathname = "/pages/client/verify-email.html";
+  const pathname = "/verify-email";
   const location = {
     hash,
     href: `https://clinic.example${pathname}${search}${hash}`,
@@ -1370,7 +1370,7 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
   await expiredRegistration.dispatch('verifyLinkSubmit', 'click');
   assert.equal(expiredRegistration.elements.get('errorMessage').textContent, 'This registration has expired. Start again.');
   assert.equal(expiredRegistration.elements.get('resendSection').classList.contains('hidden'), true);
-  assert.equal(expiredRegistration.elements.get('verificationBackAction').href, './signup.html');
+  assert.equal(expiredRegistration.elements.get('verificationBackAction').href, '/sign-up');
   assert.equal(expiredRegistration.elements.get('verificationBackAction').textContent, 'Back to sign up');
 
   const expiredLink = verificationPageHarness({search:'', hash:'#token=old-token'});
@@ -1395,7 +1395,7 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
     hash: "#token=fragment-token",
   });
   assert.deepEqual(fragmentEvents.events, [
-    { type: "scrub", target: "/pages/client/verify-email.html?campaign=welcome" },
+    { type: "scrub", target: "/verify-email?campaign=welcome" },
   ], 'Loading a link must scrub credentials without verifying');
   fragmentEvents.dispatch('verifyLinkSubmit','click');
   assert.deepEqual(fragmentEvents.events.at(-1), {type:'verify',token:'fragment-token', review:false});
@@ -1403,7 +1403,7 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
   assert.equal(fragmentEvents.events.filter(event => event.type==='verify').length, 1);
 
   const legacyEvents = verificationPageHarness({search:'?token=legacy-token',hash:''});
-  assert.deepEqual(legacyEvents.events, [{type:'scrub',target:'/pages/client/verify-email.html'}]);
+  assert.deepEqual(legacyEvents.events, [{type:'scrub',target:'/verify-email'}]);
   legacyEvents.dispatch('verifyLinkSubmit','click');
   assert.deepEqual(legacyEvents.events.at(-1), {type:'verify',token:'legacy-token', review:false});
 
@@ -1425,7 +1425,7 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
   await foreign.dispatch('verifyLinkSubmit','click');
   assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryToken'),'private-grant');
   assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryUntil'),'700000');
-  assert.deepEqual(foreign.events.at(-1),{type:'redirect',target:'./signup.html?review=1'});
+  assert.deepEqual(foreign.events.at(-1),{type:'redirect',target:'/sign-up?review=1'});
 
   const unavailable = verificationPageHarness({search:'',hash:'#token=valid-token'});
   unavailable.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
@@ -1459,7 +1459,7 @@ async function testLoginCodeIsEnteredOnTheOriginalTab() {
     event.type === "confirm-login-code" && event.code === "012345"
   )));
   assert.ok(page.events.some((event) => (
-    event.type === "redirect" && event.target === "./dashboard.html"
+    event.type === "redirect" && event.target === "/account"
   )));
 }
 
@@ -1598,7 +1598,7 @@ async function testLoginDeliveryErrorsAndPrivilegedRedirects() {
     const page = verificationPageHarness({ search: '?mode=login', hash: '', pendingLogin: true, role });
     page.elements.get('loginCode').value = '012345';
     await page.dispatch('loginCodeForm', 'submit');
-    assert.ok(page.events.some(event => event.type === 'redirect' && event.target === '../admin/dashboard.html'));
+    assert.ok(page.events.some(event => event.type === 'redirect' && event.target === '/admin/dashboard'));
   }
 }
 
@@ -1658,7 +1658,7 @@ async function testRememberedCustomerSignInVerifiesOrRestoresBeforeRedirecting()
     rememberedSignInPage(browser);
     assert.equal(browser.replacements.length, 0, 'Storage alone must never authorize a redirect');
     await turn();
-    assert.deepEqual(browser.replacements, ['./dashboard.html']);
+    assert.deepEqual(browser.replacements, ['/account']);
     assert.equal(calls.length, expired ? 2 : 1);
     if (expired) assert.equal(JSON.parse(calls[1].options.body).account_id, '7');
     assert.equal(browser.API.getCustomerToken(), expired ? '702|cookie' : '701|cookie');
@@ -1741,7 +1741,7 @@ async function testManualSignInInteractionCancelsDelayedAutomaticResponses() {
         ...activeSession(), token: '702|cookie', remember_me: true, user: {role: 'customer', user_id: 7},
       }));
       await turn();
-      assert.equal(browser.replacements.includes('./dashboard.html'), false, `${phase}: ${interaction}`);
+      assert.equal(browser.replacements.includes('/account'), false, `${phase}: ${interaction}`);
       assert.notEqual(browser.API.getCustomerToken(), '702|cookie');
       if (['submit', 'api-sign-in', 'late-rejection'].includes(interaction)) assert.equal(browser.API.hasPendingLoginConfirmation(), true);
       if (interaction === 'new-login') assert.equal(browser.API.getAdminToken(), '900|cookie');
@@ -1764,13 +1764,13 @@ async function testSignInTabsShareRestorationAndLogoutBlocksEarly() {
   rememberedSignInPage(first); rememberedSignInPage(second);
   await turn(); await turn();
   assert.equal(restores, 1);
-  assert.deepEqual(first.replacements, ['./dashboard.html']);
-  assert.deepEqual(second.replacements, ['./dashboard.html']);
+  assert.deepEqual(first.replacements, ['/account']);
+  assert.deepEqual(second.replacements, ['/account']);
 
   let calls = 0;
   const loggedOut = createBrowser({local: rememberedCustomer, fetchImpl: async () => { calls++; return jsonResponse(200, activeSession()); }});
   loggedOut.location.search = '?logout=1&next=profile';
-  loggedOut.location.href = 'https://clinic.example/pages/client/sign-in.html?logout=1&next=profile#help';
+  loggedOut.location.href = 'https://clinic.example/sign-in?logout=1&next=profile#help';
   const earlyScript = fs.readFileSync(path.join(projectRoot, 'pages/client/sign-in.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInNewContext(earlyScript, {URL, URLSearchParams, window: {location: loggedOut.location, localStorage: loggedOut.localStorage, sessionStorage: loggedOut.sessionStorage}, localStorage: loggedOut.localStorage,
     sessionStorage: loggedOut.sessionStorage, history: {replaceState(_state, _title, target) {
@@ -1992,7 +1992,7 @@ async function testPasswordResetRecovery() {
       }
       return elements.get(id);
     };
-    const location = { search: "", href: "http://localhost/pages/client/sign-in.html", replace(target) { this.href = target; } };
+    const location = { search: "", href: "http://localhost/sign-in", replace(target) { this.href = target; } };
     const context = {
       URLSearchParams,
       Date: { now: () => now },
@@ -2095,9 +2095,9 @@ async function testPasswordResetRecovery() {
     assert.equal(storage.getItem(key), null);
     assert.equal(openForgot().getElement("resetEmail").value, "");
   }
-  assert.equal(signIn.location.href, "http://localhost/pages/client/sign-in.html");
+  assert.equal(signIn.location.href, "http://localhost/sign-in");
   const html = fs.readFileSync(path.join(projectRoot, "pages/client/sign-in.html"), "utf8");
-  assert.match(html, /id="forgotPasswordLink" href="\.\/forgot-password\.html"/);
+  assert.match(html, /id="forgotPasswordLink" href="\/forgot-password"/);
   storage.removeItem('passwordResetRecovery');
   resetRequestError = { status: 429, retryAfter: 120 };
   const throttled = openForgot();
@@ -2195,7 +2195,7 @@ async function testPasswordResetRecovery() {
   assert.equal(resetCalls, 1);
   assert.match(resumed.getElement('resetPasswordSubmit').textContent, /Resetting/);
   finishReset({ success: true }); await resetting;
-  assert.equal(resumed.location.href, './sign-in.html?password_reset=1');
+  assert.equal(resumed.location.href, '/sign-in?password_reset=1');
   assert.equal(storage.getItem('passwordResetRecovery'), null);
   resumed.lifecycle.pageshow();
   assert.equal(resumed.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Back/forward cache cannot restore a consumed grant');
@@ -2351,13 +2351,13 @@ function testStaticAuthContracts() {
   assert.doesNotMatch(signIn, /API\.(?:getUserRole|getAdminToken|getCustomerToken)/);
   assert.doesNotMatch(verify, /login_token|approveLogin|pollLoginConfirmation/);
   assert.match(verify, /await API\.confirmLoginCode\(code\)/);
-  assert.match(verify, /dashboard\.html/);
+  assert.match(verify, /\/account/);
   assert.match(verifyHtml, /<img\b[^>]*Bethlehem_Logo-256\.png/);
   assert.match(verifyHtml, /id="loginCode"/);
   assert.match(verifyHtml, /inputmode="numeric"/);
   assert.match(verifyHtml, /autocomplete="one-time-code"/);
   assert.match(verifyHtml, /maxlength="6"/);
-  assert.match(signIn, /window\.location\.replace\("\.\/verify-email\.html\?mode=login"\)/);
+  assert.match(signIn, /window\.location\.replace\("\/verify-email\?mode=login"\)/);
   assert.match(signup, /email_delivery_queued === false/);
   assert.match(signup, /pendingVerificationDeliveryFailed/);
   assert.match(webRoutes, /no-store, private, max-age=0, must-revalidate/);
@@ -2396,7 +2396,7 @@ function testStaticAuthContracts() {
           /(?:19|20)\d{6}/,
           `Missing dated ${matchedAsset} cache key in ${path.relative(projectRoot, htmlFile)}`,
         );
-        assert.ok(fs.existsSync(path.resolve(path.dirname(htmlFile), source.split('?')[0])), `Missing asset ${source}`);
+        assert.ok(fs.existsSync(source.startsWith('/') ? path.join(projectRoot, source.split('?')[0]) : path.resolve(path.dirname(htmlFile), source.split('?')[0])), `Missing asset ${source}`);
       }
     }
   }
@@ -2440,7 +2440,7 @@ async function testStaffSetupUsernameAndResetApiContracts() {
   const requests = [];
   let duplicate = true;
   const browser = createBrowser({
-    pathname: "/pages/client/set-up-password.html",
+    pathname: "/set-up-password",
     fetchImpl: async (url, options) => {
       requests.push({ url, body: JSON.parse(options.body) });
       if (url.endsWith("/staff/password-setup/complete")) {
@@ -2498,7 +2498,7 @@ async function testStaffSetupUsernameForm() {
     vm.runInNewContext(source, {
       URL, URLSearchParams,
       window: { location: {
-        hash: `#token=${token}`, href: `http://localhost/pages/client/set-up-password.html#token=${token}`,
+        hash: `#token=${token}`, href: `http://localhost/set-up-password#token=${token}`,
         replace(url) { redirects.push(url); },
       } },
       history: { replaceState() { scrubbed = true; } },
@@ -2553,7 +2553,7 @@ async function testStaffSetupUsernameForm() {
   assert.equal(page.getElement("setupUsername").getAttribute("aria-invalid"), "false");
   assert.equal(page.requests[1][0], page.token, "Retry uses the same setup token");
   assert.equal(page.requests[1][3], "Other_Staff-2");
-  assert.deepEqual(page.redirects, ["../admin/dashboard.html"]);
+  assert.deepEqual(page.redirects, ["/admin/dashboard"]);
 
   const blank = await loadPage();
   await blank.submit("   ");
@@ -2576,7 +2576,7 @@ async function testStaffSetupUsernameForm() {
 
 async function testReplacementReasonAndCookieTransport() {
   const calls = [];
-  const browser = createBrowser({pathname: '/pages/client/my-pets.html',
+  const browser = createBrowser({pathname: '/account/pets',
     local: {customer_token: '81|cookie', user_role: 'customer'},
     fetchImpl: async (url, options) => {
       calls.push(options);
@@ -2597,17 +2597,17 @@ async function testReplacementNotifiesEveryAffectedTab() {
     : jsonResponse(401, {code: 'session_replaced'}));
   const login = profile.page();
   await login.API.signIn('staff', 'password', true);
-  const tabs = [profile.page(new MemoryStorage(), '/pages/admin/clinic.html'),
-    profile.page(new MemoryStorage(), '/pages/admin/dashboard.html')];
+  const tabs = [profile.page(new MemoryStorage(), '/admin/clinic'),
+    profile.page(new MemoryStorage(), '/admin/dashboard')];
   await assert.rejects(tabs[0].API.getMe('staff'));
   for (const tab of tabs) {
     assert.equal(tab.sessionStorage.getItem('bethlehem.auth.signout_reason'), 'session_replaced');
-    assert.deepEqual(tab.replacements, ['/pages/client/sign-in.html']);
+    assert.deepEqual(tab.replacements, ['/sign-in']);
   }
 }
 
 async function testNetworkFailureDoesNotCreateReplacementReason() {
-  const browser = createBrowser({pathname: '/pages/admin/clinic.html',
+  const browser = createBrowser({pathname: '/admin/clinic',
     local: {admin_token: '92|cookie', user_role: 'staff'},
     fetchImpl: async () => { throw new Error('Offline'); }});
   await assert.rejects(browser.API.getMe('staff'), error => error.status === 0);

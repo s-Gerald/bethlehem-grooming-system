@@ -51,7 +51,7 @@ class ClientPetVaccinationInterfaceTest extends TestCase
         $panel = $this->sourceBetween(
             $this->clientPage,
             '<section data-pet-panel="health"',
-            '<script src="../../scripts/api.js',
+            '<script src="/scripts/api.js',
         );
 
         $this->assertStringContainsString('Vaccinations', $panel);

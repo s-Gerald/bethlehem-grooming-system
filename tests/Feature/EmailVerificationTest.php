@@ -3043,7 +3043,7 @@ class EmailVerificationTest extends TestCase
         $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::sole();
         $token = $this->verificationTokenSentTo($pending);
-        $this->get('/pages/client/verify-email.html?token='.$token)->assertOk();
+        $this->get('/verify-email?token='.$token)->assertOk();
         $this->getJson('/api/email/verify?token='.$token)->assertStatus(405);
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => '123456'])->assertUnprocessable();
         $this->assertDatabaseCount('users', 0);
@@ -3131,7 +3131,7 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::sole();
         $verified = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
         $this->postJson('/api/email/registration/session', ['acknowledge' => true])->assertUnauthorized();
-        $cookie = $verified->getCookie('bethlehem_account_session', false)->getValue();
+        $cookie = $this->accountSessionCookie($verified)->getValue();
         $this->withUnencryptedCookie('bethlehem_account_session', $cookie)->withCredentials();
         $this->postJson('/api/email/registration/session', ['email' => 'other@gmail.com', 'acknowledge' => true])->assertUnauthorized();
         $this->postJson('/api/email/registration/session')->assertOk()->assertJsonPath('original_tab_confirmed', false)->assertJsonMissingPath('token');

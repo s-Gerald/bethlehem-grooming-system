@@ -16,9 +16,16 @@ abstract class TestCase extends BaseTestCase
         return $this->artisan('queue:work', ['--memory' => 512, ...$options]);
     }
 
+    protected function accountSessionCookie(\Illuminate\Testing\TestResponse $response): ?\Symfony\Component\HttpFoundation\Cookie
+    {
+        $path = rtrim((string) parse_url(config('app.url'), PHP_URL_PATH), '/').'/';
+        return collect($response->headers->getCookies())->first(fn ($cookie) =>
+            $cookie->getName() === 'bethlehem_account_session' && $cookie->getPath() === $path);
+    }
+
     protected function withAccountSession(\Illuminate\Testing\TestResponse $response): static
     {
-        $cookie = $response->getCookie('bethlehem_account_session', false);
+        $cookie = $this->accountSessionCookie($response);
         $this->assertNotNull($cookie);
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertSame(explode('|', $cookie->getValue())[0].'|cookie', $response->json('token'));

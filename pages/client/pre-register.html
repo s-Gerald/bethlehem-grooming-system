@@ -2,16 +2,16 @@
 <html lang="en" data-session-gate="checking">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Online Registration | Bethlehem</title>
-    <link rel="stylesheet" href="../../css/output.css?service-access=20261031-v1&registration=skeleton-20261027-v2&auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="/css/output.css?service-access=20261031-v1&registration=skeleton-20261027-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/session-lock.css?remember=20261029" />
   </head>
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
     <main class="mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
-        href="./dashboard.html"
+        href="/account"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -63,7 +63,7 @@
           <div id="serviceContent" hidden>
             <div class="flex items-start gap-4">
               <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#d9e8f4] text-[#315b7e]">
-                <svg class="h-6 w-6 fill-current" viewBox="0 0 256 256" aria-hidden="true"><use id="serviceIcon" href="../../assets/icons/phosphor.svg#scissors"></use></svg>
+                <svg class="h-6 w-6 fill-current" viewBox="0 0 256 256" aria-hidden="true"><use id="serviceIcon" href="/assets/icons/phosphor.svg#scissors"></use></svg>
               </span>
               <div class="min-w-0">
                 <h2 id="serviceTitle" class="text-xl font-bold text-[#2f4b66]">Grooming</h2>
@@ -79,14 +79,14 @@
               <dd id="serviceStatus" role="status" aria-live="polite" class="text-right font-medium text-[#315b7e]"></dd>
             </dl>
             <div class="mt-4 flex items-start gap-2">
-              <svg class="mt-0.5 h-5 w-5 shrink-0 fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#info"></use></svg>
+              <svg class="mt-0.5 h-5 w-5 shrink-0 fill-current text-[#315b7e]" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#info"></use></svg>
                 <p id="serviceNote" class="text-sm leading-6 text-slate-500">Your queue number will be assigned when you check in at Bethlehem.</p>
             </div>
             <p id="serviceAccessMessage" role="status" class="mt-4 text-sm font-medium text-amber-800" hidden>
-              <svg class="mr-1 inline h-4 w-4 align-text-bottom" fill="currentColor" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#warning"></use></svg>
+              <svg class="mr-1 inline h-4 w-4 align-text-bottom" fill="currentColor" aria-hidden="true"><use href="/assets/icons/phosphor.svg#warning"></use></svg>
               <span id="serviceAccessText"></span>
             </p>
-            <a id="serviceContinue" href="./grooming-pre-registration.html" aria-disabled="true" aria-describedby="serviceStatus serviceAccessMessage" tabindex="-1"
+            <a id="serviceContinue" href="/account/registration/grooming" aria-disabled="true" aria-describedby="serviceStatus serviceAccessMessage" tabindex="-1"
               class="mt-6 flex min-h-12 w-full items-center justify-center whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#2f4b66] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] motion-reduce:transition-none pointer-events-none cursor-not-allowed opacity-60">Continue to Grooming</a>
             <button id="retryAvailability" type="button" class="mx-auto mt-4 rounded-lg px-3 py-2 text-sm font-semibold text-[#315b7e] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]" hidden>Try again</button>
           </div>
@@ -95,7 +95,7 @@
       </section>
     </main>
 
-    <script src="../../scripts/api.js?phone=20261025-sms&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-    <script type="module" src="../../scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029&service-access=20261031-v1&copy=queue-note-20261103"></script>
+    <script src="/scripts/api.js?phone=20261025-sms&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+    <script type="module" src="/scripts/components/pre-registration-options.js?v=mobile-format-20261029&auth-feedback=20261028-v3&remember=20261029&service-access=20261031-v1&copy=queue-note-20261103&urls=20261103"></script>
   </body>
 </html>

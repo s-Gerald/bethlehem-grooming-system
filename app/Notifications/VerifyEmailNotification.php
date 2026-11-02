@@ -49,7 +49,7 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
         return (new MailMessage)
             ->subject('Verify your Bethlehem account')
             ->line('Confirm your email to activate your Bethlehem account.')
-            ->action('Verify Email Address', rtrim(config('app.frontend_url'), '/').'/pages/client/verify-email.html#token='.rawurlencode($this->token))
+            ->action('Verify Email Address', rtrim(config('app.frontend_url'), '/').'/verify-email#token='.rawurlencode($this->token))
             ->line('This link expires on '.$expiry->timezone('Asia/Manila')->format('F j, Y, g:i:s A').' (Asia/Manila, UTC+08:00).')
             ->line('If you did not start this registration, ignore this email.');
     }

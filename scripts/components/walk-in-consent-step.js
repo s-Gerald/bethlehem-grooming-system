@@ -20,7 +20,7 @@ function getConsentMainMarkup() {
     <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="walkInConsentBackTopBtn"
-        href="./dashboard.html"
+        href="/admin/dashboard"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -199,7 +199,7 @@ async function handleSubmit(event) {
       WALK_IN_CONFIRMATION_STORAGE_KEY,
       JSON.stringify(buildConfirmationPayload(response, reviewPayload)),
     );
-    window.location.href = "./walk-in-booking-confirmed.html";
+    window.location.href = "/admin/walk-in/grooming/confirmed";
   } catch (error) {
     showSubmitError(error.message || "Failed to register walk-in. Please try again.");
     resetSubmitButton();
@@ -334,7 +334,7 @@ function handleBackClick() {
     return;
   }
 
-  window.location.href = "./walk-in-booking-review.html";
+  window.location.href = "/admin/walk-in/grooming/review";
 }
 
 function buildWalkInConfirmation(consentPayload) {

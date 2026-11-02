@@ -1,7 +1,7 @@
 // Presentation shared by the client notification dropdown and full page.
 // The caller owns loading, read state, click destinations, and pickup alerts.
 (function () {
-  const sprite = "../../assets/icons/phosphor.svg";
+  const sprite = "/assets/icons/phosphor.svg";
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;").replaceAll('"', "&quot;")
@@ -136,7 +136,7 @@
     header.after(tabs);
     const footer = document.createElement("div");
     footer.className = "shrink-0 border-t border-portal-border px-4 py-3 text-center";
-    footer.innerHTML = '<a href="./notifications.html" class="text-xs font-semibold text-portal-primary hover:underline">See all notifications</a>';
+    footer.innerHTML = '<a href="/account/notifications" class="text-xs font-semibold text-portal-primary hover:underline">See all notifications</a>';
     list.after(footer);
     let status = "all";
     tabs.addEventListener("click", (event) => {

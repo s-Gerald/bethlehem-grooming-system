@@ -804,11 +804,11 @@ class InventorySecurityRegressionTest extends TestCase
         $page = file_get_contents(base_path('pages/admin/inventory/inventory.html'));
         foreach (['api.js', 'services/inventory-service.js', 'components/admin-sidebar.js', 'components/admin-inventory.js'] as $script) {
             $this->assertMatchesRegularExpression(
-                '~<script\b[^>]*src="(?:\.\./)+scripts/'.preg_quote($script, '~').'(?:\?[^"#]+)?"[^>]*>~',
+                '~<script\b[^>]*src="/scripts/'.preg_quote($script, '~').'(?:\?[^"#]+)?"[^>]*>~',
                 $page,
             );
         }
-        $this->assertStringContainsString('inventory.html#sell-product', file_get_contents(base_path('pages/admin/inventory/pos.html')));
+        $this->assertStringContainsString('/admin/inventory#sell-product', file_get_contents(base_path('pages/admin/inventory/pos.html')));
 
         $inventoryLoader = file_get_contents(base_path('scripts/components/admin-inventory.js'));
         $posPage = file_get_contents(base_path('pages/admin/inventory/pos.html'));

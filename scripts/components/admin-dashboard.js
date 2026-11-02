@@ -326,7 +326,7 @@ function getPaymentPriceSafetyRules(pricing, serviceDefinition, petSize) {
 function adminDashboard() {
   return {
     _initialized: false,
-    pageMode: window.location?.pathname?.endsWith('/dashboard.html') ? 'dashboard' : 'grooming',
+    pageMode: window.location?.pathname?.endsWith('/admin/dashboard') ? 'dashboard' : 'grooming',
     bookingsLoaded: false,
     bookingsLoading: true,
     bookingsError: "",
@@ -470,7 +470,7 @@ function adminDashboard() {
       bootstrap: null,
       endpoints: {},
       handlers: {},
-      walkInBookingUrl: "./walk-in-booking.html?flow=grooming&new=1",
+      walkInBookingUrl: "/admin/walk-in/customer?flow=grooming&new=1",
       detailPageUrl: "",
       enableOptimisticUpdates: false,
       includeFutureAppointments: false,
@@ -856,7 +856,7 @@ function adminDashboard() {
         customer_id: String(customer.id),
         record_type: customer.recordType || "registered",
       });
-      window.location.href = `./clients.html?${params.toString()}`;
+      window.location.href = `/admin/customers?${params.toString()}`;
     },
 
     openDashboardPet(pet) {
@@ -865,7 +865,7 @@ function adminDashboard() {
         pet_id: String(pet.id),
         record_type: pet.ownerRecordType || "registered",
       });
-      window.location.href = `./clients.html?${params.toString()}`;
+      window.location.href = `/admin/customers?${params.toString()}`;
     },
 
     // Keep the shared poll alive so transient failures recover without a reload.

@@ -17,26 +17,38 @@ $staticFileMiddleware = [
     ValidateCsrfToken::class,
 ];
 
-// Keep the page outside the public static tree; its HTML is admin-authorized too.
-Route::get('/pages/admin/availability.html', fn (\Illuminate\Http\Request $request) => redirect('api/admin/availability/page'.($request->getQueryString() ? '?'.$request->getQueryString() : '')))
-    ->withoutMiddleware($staticFileMiddleware);
+// Ordinary HTML remains session-free. The two protected documents reuse the API
+// cookie transport, Sanctum, account/session checks and existing permissions.
+$protectedPages = [
+    '/admin/activity-log' => [\App\Http\Controllers\ActivityLogController::class, ['role:admin']],
+    '/admin/availability' => [\App\Http\Controllers\ClinicSettingController::class, ['role:admin,staff', 'staff:availability_view']],
+];
 
-Route::get('/pages/admin/activity-log.html', fn () => redirect('api/admin/activity-log/page'))
-    ->withoutMiddleware($staticFileMiddleware);
+foreach (config('frontend.pages') as $url => $file) {
+    $name = 'pages.'.($url === '/' ? 'home' : str_replace('/', '.', trim($url, '/')));
+    if (isset($protectedPages[$url])) {
+        [$controller, $permissions] = $protectedPages[$url];
+        // No bindings are needed here; the web binding priority must not move
+        // authentication ahead of the API's established cookie transport.
+        Route::get($url, [$controller, 'page'])->name($name)
+            ->middleware(['api', 'auth:sanctum', 'account.usable', 'session.active', ...$permissions])
+            ->withoutMiddleware([...$staticFileMiddleware, \Illuminate\Routing\Middleware\SubstituteBindings::class]);
+    } else {
+        Route::get($url, [\App\Http\Controllers\FrontendPageController::class, 'show'])
+            ->defaults('file', $file)->name($name)->withoutMiddleware($staticFileMiddleware);
+    }
+    Route::get('/'.$file, [\App\Http\Controllers\FrontendPageController::class, 'redirect'])
+        ->defaults('destination', $url)->withoutMiddleware($staticFileMiddleware);
+}
 
-Route::get('/', function () {
-    return response()->file(base_path('index.html'), [
-        'Cache-Control' => 'no-store, private, max-age=0, must-revalidate',
-    ]);
-})->withoutMiddleware($staticFileMiddleware);
-
-Route::get('/index.html', function () {
-    return response()->file(base_path('index.html'), [
-        'Cache-Control' => 'no-store, private, max-age=0, must-revalidate',
-    ]);
-})->withoutMiddleware($staticFileMiddleware);
+foreach (config('frontend.aliases') as $legacy => $destination) {
+    Route::get($legacy, [\App\Http\Controllers\FrontendPageController::class, 'redirect'])
+        ->defaults('destination', $destination)->withoutMiddleware($staticFileMiddleware);
+}
 
 Route::get('/{directory}/{path}', function (string $directory, string $path) {
+    if ($directory === 'pages' && !in_array('pages/'.$path, config('frontend.fragments'), true)) abort(404);
+
     $root = realpath(base_path($directory));
     $file = realpath(base_path($directory . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path)));
 

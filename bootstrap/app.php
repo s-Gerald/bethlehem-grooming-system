@@ -23,7 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT);
         // Protected HTML routes use the same sign-in destination as the frontend.
         // API authentication errors still render the JSON 401 response below.
-        $middleware->redirectGuestsTo('/pages/client/sign-in.html');
+        $middleware->redirectGuestsTo('/sign-in');
         // Validate grooming price input as entered, including malformed whitespace.
         $middleware->trimStrings(except: [
             fn ($request) => $request->is('api/admin/grooming/services/*/pricing'),
@@ -70,6 +70,9 @@ return Application::configure(basePath: dirname(__DIR__))
             return $response;
         });
         $exceptions->render(function (AuthenticationException $e, $request) {
+            if ($request->is('api/admin/activity-log/page', 'api/admin/availability/page') && $request->query('canonical') === '1') {
+                return redirect('/sign-in')->header('Cache-Control', 'no-store, private');
+            }
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,

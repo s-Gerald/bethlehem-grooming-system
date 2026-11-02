@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store, must-revalidate" />
     <title>Sign In | Bethlehem Animal Clinic</title>
@@ -30,8 +30,8 @@
         }
       } catch (e) {}
     </script>
-    <link rel="stylesheet" href="../../css/output.css?auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?security=single-session-20261025&ui=20260915-password-reveal&release=20261001&grooming=actual-20261026" />
+    <link rel="stylesheet" href="/css/output.css?auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?security=single-session-20261025&ui=20260915-password-reveal&release=20261001&grooming=actual-20261026" />
   </head>
   <body class="min-h-screen bg-slate-100 px-4 py-8">
     <div class="mx-auto flex min-h-[calc(100vh-4rem)] max-w-2xl items-center justify-center">
@@ -40,7 +40,7 @@
           <!-- Logo Icon -->
           <div class="mb-8 text-center">
             <img class="mx-auto mb-4 h-16 w-auto"
-            src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+            src="/assets/images/clinic/Bethlehem_Logo-256.png"
             alt="Bethlehem Animal Clinic Logo"
             class="brand-lockup__mark"
             />
@@ -53,14 +53,14 @@
           </div>
 
           <div id="sessionReplacedAlert" class="session-signout-alert" role="alert" aria-labelledby="sessionReplacedTitle" hidden>
-            <svg class="session-signout-alert__icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#shield-check"></use></svg>
+            <svg class="session-signout-alert__icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#shield-check"></use></svg>
             <div class="session-signout-alert__content">
               <h3 id="sessionReplacedTitle">You've been signed out</h3>
               <p>Your account was signed in on another browser or device, so this session ended.</p>
               <p>If this wasn't you, reset your password or contact your administrator.</p>
             </div>
             <button id="dismissSessionReplaced" class="session-signout-alert__dismiss" type="button" aria-label="Dismiss sign-out notification">
-              <svg viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
+              <svg viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#x"></use></svg>
             </button>
           </div>
 
@@ -106,8 +106,8 @@
                   aria-label="Show password"
                   title="Show password"
                 >
-                  <svg class="shared-password-icon-closed h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#eye-slash"></use></svg>
-                  <svg class="shared-password-icon-open hidden h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#eye"></use></svg>
+                  <svg class="shared-password-icon-closed h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#eye-slash"></use></svg>
+                  <svg class="shared-password-icon-open hidden h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#eye"></use></svg>
                 </button>
               </div>
             </div>
@@ -118,7 +118,7 @@
                 <span>Remember me</span>
               </label>
 
-              <a id="forgotPasswordLink" href="./forgot-password.html" class="text-[#315b7e] transition hover:text-[#274a66]">
+              <a id="forgotPasswordLink" href="/forgot-password" class="text-[#315b7e] transition hover:text-[#274a66]">
                 Forgot password?
               </a>
             </div>
@@ -142,14 +142,14 @@
             <p class="m-0">
               Don't have an account?
               <a
-                href="./signup.html"
+                href="/sign-up"
                 class="font-semibold text-[#315b7e] transition hover:text-[#274a66]"
               >
                 Sign Up
               </a>
             </p>
             <a
-              href="../../index.html"
+              href="/"
               class="text-[#315b7e] transition hover:text-[#274a66]"
             >
               Home
@@ -159,8 +159,8 @@
       </div>
     </div>
 
-    <script src="../../scripts/api.js?password-change=20261102&v=mobile-format-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-lifecycle=20261028&auth-feedback=20261028-v3&signin=progressive-20261029&remember=signin-20261102&auth-hardening=20261101&otp=progressive-20261030" defer></script><!-- api.js must load before sign-in.js so that sign-in.js can call api.js functions. -->
-    <script src="../../scripts/auth/verification-code.js?v=auth-feedback-20261028&auth-feedback=20261028-v3&otp=progressive-20261030" defer></script>
-    <script src="../../scripts/auth/sign-in.js?password-change=20261102&v=logout-lifecycle-20261101&remember=signin-20261102&otp=progressive-20261030" defer></script>
+    <script src="/scripts/api.js?password-change=20261102&v=mobile-format-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-lifecycle=20261028&auth-feedback=20261028-v3&signin=progressive-20261029&remember=signin-20261102&auth-hardening=20261101&otp=progressive-20261030&urls=20261103" defer></script><!-- api.js must load before sign-in.js so that sign-in.js can call api.js functions. -->
+    <script src="/scripts/auth/verification-code.js?v=auth-feedback-20261028&auth-feedback=20261028-v3&otp=progressive-20261030" defer></script>
+    <script src="/scripts/auth/sign-in.js?password-change=20261102&v=logout-lifecycle-20261101&remember=signin-20261102&otp=progressive-20261030&urls=20261103" defer></script>
   </body>
 </html>

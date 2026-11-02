@@ -1,7 +1,7 @@
 import { createPetSaveConfirmation } from "./pet-save-confirmation.js?v=20261031-v1";
 import { createPetBirthdateField } from "./pet-birthdate.js?v=20261103-v1";
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
-import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1";
+import { initBookingFormAccessGuard } from "../services/booking-form-access-guard.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1&urls=20261103";
 import {
   MAX_PETS_PER_BOOKING as GROOMING_MAX_PETS,
   getSavedPets,
@@ -20,7 +20,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -61,7 +61,7 @@ import {
  * 4. Attach chosen pets to active booking draft
  */
 
-const IS_CLINIC_VISIT = new URLSearchParams(window.location.search).get("flow") === "clinic";
+const IS_CLINIC_VISIT = window.location.pathname.startsWith("/account/registration/clinic/") || new URLSearchParams(window.location.search).get("flow") === "clinic";
 const SELECTED_PETS_STORAGE_KEY = IS_CLINIC_VISIT
   ? CLINIC_VISIT_PETS_KEY
   : undefined;
@@ -772,12 +772,12 @@ async function handleAddPetSubmit(event) {
 
 function handleBack() {
   if (!IS_CLINIC_VISIT && isGroomingSinglePage()) {
-    window.location.href = "./pre-register.html";
+    window.location.href = "/account/registration";
     return;
   }
   window.location.href = IS_CLINIC_VISIT
-    ? "./pre-register.html"
-    : "./grooming-pre-registration.html";
+    ? "/account/registration"
+    : "/account/registration/grooming";
 }
 
 function handleNext() {
@@ -812,8 +812,8 @@ function handleNext() {
     return;
   }
   window.location.href = IS_CLINIC_VISIT
-    ? "./clinic-visit-reason.html"
-    : "./grooming-pre-registration.html?step=services";
+    ? "/account/registration/clinic/reason"
+    : "/account/registration/grooming?step=services";
 }
 
 function setFieldError(input, errorElement, message) {
@@ -910,7 +910,7 @@ function configurePageForFlow() {
   }
 
   document.title = "Clinic Visit - Pet Information";
-  elements.backLink.href = "./dashboard.html";
+  elements.backLink.href = "/account";
   elements.backLabel.textContent = "Back to Home";
   elements.pageTitle.textContent = "Pet Information";
   elements.savedPetsInstruction.textContent =
@@ -919,8 +919,8 @@ function configurePageForFlow() {
 }
 
 export async function initBookingPetStep() {
-  if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ service: "clinic", dashboardPath: "./dashboard.html" })) return;
-  if (IS_CLINIC_VISIT && !await requireCustomerSession("./sign-in.html")) {
+  if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ service: "clinic", dashboardPath: "/account" })) return;
+  if (IS_CLINIC_VISIT && !await requireCustomerSession("/sign-in")) {
     return;
   }
 

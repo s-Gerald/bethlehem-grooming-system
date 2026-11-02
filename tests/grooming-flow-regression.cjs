@@ -69,7 +69,7 @@ async function main() {
   }));
   let ready, popstate, calendarNext;
   const entered = [];
-  const location = { href: 'http://localhost/pages/client/grooming-pre-registration.html', search: '' };
+  const location = { href: 'http://localhost/account/registration/grooming', search: '' };
   const context = vm.createContext({
     console, URL, URLSearchParams, sessionStorage: storage, ...grooming, ...groomingAge,
     document: {
@@ -144,7 +144,7 @@ async function main() {
     .replace(/^export /gm, '');
   for (const clinic of [false, true]) {
     const elements = {
-      backLink: { href: './grooming-pre-registration.html' }, backLabel: { textContent: 'Back to Schedule' },
+      backLink: { href: '/account/registration/grooming' }, backLabel: { textContent: 'Back to Schedule' },
       pageTitle: {}, savedPetsInstruction: {}, selectedPetsTitle: {},
     };
     const initialization = vm.createContext({
@@ -154,14 +154,14 @@ async function main() {
     vm.runInContext(petInitialization, initialization);
     for (let attempt = 0; attempt < 2; attempt++) {
       await initialization.initBookingPetStep();
-      assert.equal(elements.backLink.href, clinic ? './dashboard.html' : './grooming-pre-registration.html');
+      assert.equal(elements.backLink.href, clinic ? '/account' : '/account/registration/grooming');
       assert.equal(elements.backLabel.textContent, clinic ? 'Back to Home' : 'Back to Schedule');
     }
     if (!clinic) {
-      elements.backLink.href = './dashboard.html';
+      elements.backLink.href = '/account';
       elements.backLabel.textContent = 'Back to Home';
       await initialization.initBookingPetStep();
-      assert.equal(elements.backLink.href, './dashboard.html', 'Single-page grooming keeps its Home link');
+      assert.equal(elements.backLink.href, '/account', 'Single-page grooming keeps its Home link');
       assert.equal(elements.backLabel.textContent, 'Back to Home');
     }
   }
@@ -180,10 +180,10 @@ async function main() {
   assert.equal(saved, true);
   assert.equal(error, undefined);
   petContext.handleBack();
-  assert.equal(petContext.window.location.href, './pre-register.html');
+  assert.equal(petContext.window.location.href, '/account/registration');
   petContext.IS_CLINIC_VISIT = true;
   petContext.handleBack();
-  assert.equal(petContext.window.location.href, './pre-register.html', 'Clinic Back returns to service choice');
+  assert.equal(petContext.window.location.href, '/account/registration', 'Clinic Back returns to service choice');
 
   const page = read('pages/client/grooming-pre-registration.html');
   assert.deepEqual([...page.matchAll(/data-grooming-step="([^"]+)"/g)].map((match) => match[1]), sections.map((section) => section.dataset.groomingStep));

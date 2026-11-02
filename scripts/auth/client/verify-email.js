@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
           } catch {
             throw new Error("Email confirmed. Allow browser storage, then request a new link to review your account.");
           }
-          window.location.replace("./signup.html?review=1");
+          window.location.replace("/sign-up?review=1");
           return;
         }
         // A response marker alone is insufficient: confirm the HttpOnly cookie.
@@ -150,7 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (expiredRegistration) {
             const back = document.getElementById("verificationBackAction");
             back.textContent = "Back to sign up";
-            back.setAttribute("href", "./signup.html");
+            back.setAttribute("href", "/sign-up");
           }
         }
       } finally {
@@ -212,8 +212,8 @@ document.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => {
         window.location.replace(
           ["admin", "staff"].includes(response?.user?.role)
-            ? "../admin/dashboard.html"
-            : "./dashboard.html",
+            ? "/admin/dashboard"
+            : "/account",
         );
       }, 750);
     } catch (error) {
@@ -368,7 +368,7 @@ document.addEventListener("DOMContentLoaded", () => {
       sessionStorage.setItem("pendingVerificationResendLimited", window.AuthenticationResend.limited(result) ? "1" : "0");
       sessionStorage.setItem("pendingVerificationState", result.registration_state === "requested" ? "requested" : result.email_delivery_token ? "queued" : "");
       sessionStorage.removeItem("pendingVerificationDeliveryFailed");
-      window.location.replace("./verify-email.html");
+      window.location.replace("/verify-email");
     } catch (error) {
       if (error.status === 429) {
         showResendMessage("error", error.message || "Too many requests. Please wait before trying again.");

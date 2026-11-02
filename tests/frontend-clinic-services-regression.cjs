@@ -76,7 +76,7 @@ async function navigation() {
   legacy.$refs = {cases: {firstElementChild: {state: app.context.adminClinicCasesSection()}}};
   app.context.location.hash = '#services';
   await legacy.showSection();
-  assert.ok(app.calls.some(call => call[0] === 'redirect' && call[1] === './services.html#clinic'));
+  assert.ok(app.calls.some(call => call[0] === 'redirect' && call[1] === '/admin/services#clinic'));
   app.context.location.hash = '#cases';
   await legacy.showSection(); await legacy.showSection();
   assert.equal(app.calls.filter(call => call === 'cases:init').length, 1, 'Clinic cases still initialize once');

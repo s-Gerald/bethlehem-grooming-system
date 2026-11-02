@@ -771,7 +771,7 @@ function adminCustomers() {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('./pet-edit-form.html?v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1');
+            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();

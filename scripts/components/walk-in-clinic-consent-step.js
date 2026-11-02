@@ -1,6 +1,6 @@
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
-import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
+import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
 
 const WALK_IN_OWNER_KEY = "walkInOwnerStep";
 const WALK_IN_CLINIC_CONFIRMED_KEY = "walkInClinicConfirmation";
@@ -19,7 +19,7 @@ function getMarkup(pet, commonConcerns, chiefComplaint) {
     <main class="registration-step mx-auto max-w-5xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="clinicConsentBackTopBtn"
-        href="./dashboard.html"
+        href="/admin/dashboard"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -216,7 +216,7 @@ async function handleSubmit(event) {
       }),
     );
 
-    window.location.href = "./walk-in-clinic-confirmed.html";
+    window.location.href = "/admin/walk-in/clinic/confirmed";
   } catch (error) {
     showError(error.message || "Failed to submit clinic walk-in. Please try again.");
     resetSubmitButton();
@@ -244,7 +244,7 @@ function handleBackClick() {
     state.onBack();
     return;
   }
-  window.location.href = "./walk-in-pet-details.html";
+  window.location.href = "/admin/walk-in/pets";
 }
 
 function bindEvents() {

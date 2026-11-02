@@ -90,10 +90,10 @@ async function confirmationErrorAndRetry() {
 async function legacySettingsLinksForwardWithoutOperationalReads() {
   for (const legacy of ['availability', 'capacity']) {
     const e = environment(); let destination = '';
-    e.c.window.location = {href: 'http://127.0.0.1:8000/pages/admin/settings.html', search: '?tab=' + legacy, hash: '', replace: url => destination = String(url)};
+    e.c.window.location = {href: 'http://127.0.0.1:8000/admin/settings', search: '?tab=' + legacy, hash: '', replace: url => destination = String(url)};
     vm.runInContext(fs.readFileSync('scripts/components/admin-settings.js', 'utf8'), e.c);
     await e.c.adminSettings().init();
-    assert.equal(destination, 'http://127.0.0.1:8000/pages/admin/availability.html' + (legacy === 'capacity' ? '?service=grooming' : ''));
+    assert.equal(destination, 'http://127.0.0.1:8000/admin/availability' + (legacy === 'capacity' ? '?service=grooming' : ''));
     assert.equal(e.calls.length, 0);
   }
 }

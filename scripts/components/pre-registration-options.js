@@ -1,17 +1,17 @@
-import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
-import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1";
+import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1&urls=20261103";
 import { loadRegistrationAvailability } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
-import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3";
+import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103";
 
 const services = {
   grooming: {
-    title: "Grooming", icon: "scissors", href: "./grooming-pre-registration.html",
+    title: "Grooming", icon: "scissors", href: "/account/registration/grooming",
     description: "Register your pet and choose grooming services.",
     note: "Your queue number will be assigned when you check in at Bethlehem.",
   },
   clinic: {
-    title: "Clinic Visit", icon: "stethoscope", href: "./booking-pet-details.html?flow=clinic",
+    title: "Clinic Visit", icon: "stethoscope", href: "/account/registration/clinic/pets?flow=clinic",
     description: "Register your pet for a veterinary consultation.",
     note: "Your queue number will be assigned when you check in at Bethlehem.",
   },
@@ -84,7 +84,7 @@ export async function initPreRegistrationOptions() {
     if (announcement.textContent !== loadingMessage) announcement.textContent = loadingMessage;
     get("serviceTitle").textContent = service.title;
     get("serviceDescription").textContent = service.description;
-    get("serviceIcon").setAttribute("href", `../../assets/icons/phosphor.svg#${service.icon}`);
+    get("serviceIcon").setAttribute("href", `/assets/icons/phosphor.svg#${service.icon}`);
     get("serviceNote").textContent = service.note;
     get("serviceVisitDay").textContent = data?.visit_day_label || "Unavailable";
     get("serviceOpening").textContent = data?.check_in_starts || "Unavailable";
@@ -159,4 +159,4 @@ export async function initPreRegistrationOptions() {
   await load();
 }
 
-if (await requireCustomerSession("./sign-in.html")) await initPreRegistrationOptions();
+if (await requireCustomerSession("/sign-in")) await initPreRegistrationOptions();

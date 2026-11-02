@@ -36,7 +36,7 @@ async function main() {
   assert.equal(clinicPayload.service_day, '2026-10-26');
   assert.equal(clinicPayload.appointment_date, undefined);
   assert.equal(clinicPayload.window_id, undefined);
-  assert.equal(clinic.context.window.location.href, './clinic-visit-confirmed.html');
+  assert.equal(clinic.context.window.location.href, '/account/registration/clinic/confirmed');
   assert.equal(JSON.parse(clinic.storage.get('clinicVisitConfirmation')).queue_number, null);
   const failed = harness('clinic-visit-summary.js', { ...bindings, API: { submitClinicPreRegistration: async () => { throw { message: 'Try again' }; } } });
   await failed.ready;

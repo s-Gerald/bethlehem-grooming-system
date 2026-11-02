@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const origin = 'http://127.0.0.1:8000';
-const url = origin + '/pages/admin/clinic.html#cases';
+const url = origin + '/admin/clinic#cases';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const selector = '[x-data="adminClinicCasesSection()"]';
 const alert = `${selector} [role="alert"][x-text="accessError"]`;
@@ -21,7 +21,7 @@ async function fixture(browser, staffSubrole) {
     localStorage.setItem('admin_token', '17|local-clinic-fixture');
     localStorage.setItem('user_role', staffSubrole ? 'staff' : 'admin');
     // Destination workspaces have separate data fixtures; keep their real sidebar/header.
-    if (!location.pathname.endsWith('/clinic.html')) document.addEventListener('alpine:init', () => {
+    if (!location.pathname.endsWith('/clinic')) document.addEventListener('alpine:init', () => {
       document.querySelectorAll('[x-data]:not([data-admin-shell])').forEach(el => el.setAttribute('x-ignore', ''));
     });
     // Record every insertion, including alerts inserted and removed between frames.
@@ -41,7 +41,7 @@ async function fixture(browser, staffSubrole) {
   if (process.env.CLINIC_BASELINE) {
     for (const file of ['pages/admin/clinic.html', 'scripts/components/admin-clinic.js']) {
       const body = execFileSync('git', ['show', 'HEAD:' + file], { encoding: 'utf8' });
-      await context.route(origin + '/' + file + '*', route => route.fulfill({
+      await context.route(origin + (file.endsWith('.html') ? '/admin/clinic' : '/' + file) + '*', route => route.fulfill({
         contentType: file.endsWith('.html') ? 'text/html' : 'text/javascript', body,
       }));
     }
@@ -221,8 +221,8 @@ async function mobileNavigation(browser, staffSubrole) {
     await menu.click(); await opened();
     assert.equal(await backdrop.isVisible(), true);
     assert.equal(await f.page.locator('aside nav [aria-current="page"]').innerText(), 'Clinic');
-    assert.equal(await f.page.locator('aside a[href$="reports.html"]').isVisible(), !staffSubrole);
-    assert.equal(await f.page.locator('aside a[href$="appointments.html"]').isVisible(), !staffSubrole);
+    assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), !staffSubrole);
+    assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), !staffSubrole);
     const pointer = await menu.evaluate(el => {
       const s = getComputedStyle(el);
       return { visible: el.matches(':focus-visible'), outlineVisible: s.outlineStyle !== 'none' && s.outlineWidth !== '0px' && s.outlineColor !== 'rgba(0, 0, 0, 0)', shadow: s.boxShadow, border: s.border };
@@ -246,7 +246,7 @@ async function mobileNavigation(browser, staffSubrole) {
     assert.equal(pointer.shadow, await menu.evaluate(el => getComputedStyle(el).boxShadow));
     assert.equal(pointer.border, await menu.evaluate(el => getComputedStyle(el).border));
     // Same rendered dimensions, palette, typography and alignment as the existing reference pages.
-    for (const [file, active] of [['dashboard.html', 'Dashboard'], ['clients.html', 'Customers'], ...(!staffSubrole ? [['appointments.html', 'Grooming']] : [])]) {
+    for (const [file, active] of [['dashboard', 'Dashboard'], ['customers', 'Customers'], ...(!staffSubrole ? [['grooming', 'Grooming']] : [])]) {
       await menu.click(); await opened();
       await f.page.locator('aside').getByRole('link', { name: active, exact: true }).click();
       await f.page.waitForURL(`**/${file}`);

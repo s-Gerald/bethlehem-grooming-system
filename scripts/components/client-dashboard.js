@@ -680,7 +680,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
     target.innerHTML = `
       <div class="flex min-h-[140px] flex-col items-center justify-center py-[22px] text-center" role="alert">
-        <svg class="ph-icon w-9 h-9 mx-auto text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#warning-circle"></use></svg>
+        <svg class="ph-icon w-9 h-9 mx-auto text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#warning-circle"></use></svg>
         <p class="mt-3 text-sm text-portal-danger">${escapeDashboardHtml(message)}</p>
       </div>`;
   }
@@ -720,7 +720,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function petIcon(pet, classes = "h-6 w-6") {
     const icon = String(pet?.species || "").toLowerCase() === "cat" ? "cat" : "dog";
-    return `<svg class="ph-icon ${classes}" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../assets/icons/phosphor.svg#${icon}"></use></svg>`;
+    return `<svg class="ph-icon ${classes}" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#${icon}"></use></svg>`;
   }
 
   function petAge(birthdate) {
@@ -817,7 +817,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
         <span class="mt-1 block text-sm text-portal-primary">${service}</span>
         <span class="mt-1 block text-sm text-portal-muted">${escapeDashboardHtml(upcomingDateLine(serviceDay, createdAt))}</span>
       </span>
-      <svg class="ph-icon h-5 w-5 shrink-0 text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#caret-right"></use></svg>
+      <svg class="ph-icon h-5 w-5 shrink-0 text-portal-muted-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#caret-right"></use></svg>
     </button>`;
   }
 
@@ -855,7 +855,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1");
+      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);
@@ -1038,7 +1038,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       return `<li class="relative min-w-0 text-center" ${index === current ? 'aria-current="step"' : ""}>
         ${index < 2 ? `<span class="absolute left-1/2 top-5 h-0.5 w-full ${line}" aria-hidden="true"></span>` : ""}
         <span class="relative mx-auto flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold ${circle}" aria-hidden="true">${done
-          ? '<svg class="ph-icon h-5 w-5" viewBox="0 0 256 256"><use href="../../assets/icons/phosphor.svg#check-circle"></use></svg>'
+          ? '<svg class="ph-icon h-5 w-5" viewBox="0 0 256 256"><use href="/assets/icons/phosphor.svg#check-circle"></use></svg>'
           : index + 1}</span>
         <span class="relative mt-2 block px-1 text-xs leading-snug ${index === current ? "font-semibold text-portal-text" : "text-portal-muted"}">${label}<span class="sr-only">${done ? ", complete" : index === current ? ", current" : ", upcoming"}</span></span>
       </li>`;
@@ -1095,7 +1095,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     const badge = booking.paid ? { label: "Paid", classes: "bg-portal-success-soft text-portal-success" }
       : getStatusConfig(booking.status || "archived");
     return `<article class="mb-3 flex flex-wrap items-center gap-3 rounded-[14px] bg-portal-surface-soft p-3 last:mb-0 [overflow-wrap:anywhere]">
-      <div class="portal-icon-tile h-10 w-10 rounded-[13px] bg-portal-surface"><svg class="ph-icon h-6 w-6" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#scissors"></use></svg></div>
+      <div class="portal-icon-tile h-10 w-10 rounded-[13px] bg-portal-surface"><svg class="ph-icon h-6 w-6" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#scissors"></use></svg></div>
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold text-portal-text">${escapeDashboardHtml(getPetNamesLabel(booking))} · ${escapeDashboardHtml(serviceLabel(booking))}</p>
         <p class="mt-1 text-xs text-portal-muted">${formatDate(booking.booking_date)}</p>

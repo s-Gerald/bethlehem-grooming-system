@@ -73,7 +73,7 @@ function harness(fetcher = async () => ({ok: true, json: async () => ({data: pac
     clinic.append(card);
   }
   doc.append(clinic);
-  doc.baseURI = 'https://clinic.example/subdirectory/index.html';
+  doc.baseURI = 'https://clinic.example/subdirectory/';
   doc.getElementById = id => ids.get(id) || walk(doc).find(node => node.id === id);
   doc.createElement = tag => new Element(tag);
   doc.createElementNS = (ns, tag) => new Element(tag);

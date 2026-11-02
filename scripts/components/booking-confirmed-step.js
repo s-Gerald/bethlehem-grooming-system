@@ -5,7 +5,7 @@ import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,
   readConfirmationData, renderConfirmation,
-} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
+} from "./confirmation-presentation.js?registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029&urls=20261103";
 
 export function groomingPetConfirmation(pet, review = {}, showPrice = true) {
   const price = getGroomingPricePresentation(review.pricing);
@@ -104,7 +104,7 @@ export async function initBookingConfirmedStep() {
     reference: confirmation.booking_reference,
     status: isWalkInConfirmation ? currentStatus : "Waiting to Arrive",
     walkIn: isWalkInConfirmation, queueNumber: confirmation.queue_number, sections,
-    primaryHref: isWalkInConfirmation ? "./appointments.html" : "./dashboard.html",
+    primaryHref: isWalkInConfirmation ? "/admin/grooming" : "/account",
     primaryLabel: isWalkInConfirmation ? "Go to Grooming" : "Return to Dashboard",
     warning: !confirmation.booking_reference ? "Some confirmation details are incomplete. Please contact the clinic." : "",
   });

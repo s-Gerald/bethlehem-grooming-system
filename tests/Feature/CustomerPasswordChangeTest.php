@@ -93,7 +93,9 @@ class CustomerPasswordChangeTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         foreach (['bethlehem_account_session', 'bethlehem_remembered_device'] as $cookie) {
             $response->assertCookieExpired($cookie);
-            $this->assertSame('/api', $response->getCookie($cookie, false)->getPath());
+            $actual = $cookie === 'bethlehem_account_session' ? $this->accountSessionCookie($response) : $response->getCookie($cookie, false);
+            $this->assertSame($cookie === 'bethlehem_account_session' ? '/' : '/api', $actual->getPath());
+            $this->assertLessThan(now()->timestamp, $actual->getExpiresTime());
             $this->assertTrue($response->getCookie($cookie, false)->isHttpOnly());
         }
         $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));

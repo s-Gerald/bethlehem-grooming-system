@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!response.completed_setup || response.user?.role !== "staff") {
         throw new Error("This setup link has expired or is no longer valid.");
       }
-      window.location.replace("../admin/dashboard.html");
+      window.location.replace("/admin/dashboard");
     } catch (error) {
       if (error?.errors?.username?.[0]) {
         setUsernameError(error.errors.username[0]);

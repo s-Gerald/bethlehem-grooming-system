@@ -78,7 +78,7 @@ class PendingStaffAccountService
 
         $frontendUrl = rtrim((string) config('app.frontend_url', config('app.url')), '/');
         $setupUrl = $frontendUrl
-            .'/pages/client/set-up-password.html#token='.rawurlencode($plainToken);
+            .'/set-up-password#token='.rawurlencode($plainToken);
 
         try {
             AuthenticationMailDelivery::queue($staff, new SetUpStaffPasswordNotification($setupUrl),

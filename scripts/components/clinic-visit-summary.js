@@ -1,4 +1,4 @@
-import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3";
+import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
 import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import {
@@ -9,7 +9,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   validateClinicVisitReason,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
 
 const elements = {
   details: document.getElementById("clinicVisitSummaryDetails"),
@@ -43,7 +43,7 @@ async function submitClinicVisit(draft) {
     );
     sessionStorage.removeItem(CLINIC_VISIT_DRAFT_KEY);
     sessionStorage.removeItem(CLINIC_VISIT_PETS_KEY);
-    window.location.href = "./clinic-visit-confirmed.html";
+    window.location.href = "/account/registration/clinic/confirmed";
   } catch (error) {
     elements.submit.disabled = false;
     elements.submit.textContent = "Submit Online Registration";
@@ -64,19 +64,19 @@ async function refreshAvailability() {
 }
 
 async function init() {
-  if (!await requireCustomerSession("./sign-in.html")) {
+  if (!await requireCustomerSession("/sign-in")) {
     return;
   }
 
   const draft = readClinicVisitDraft();
 
   if (!draft.pet?.id) {
-    window.location.replace("./booking-pet-details.html?flow=clinic");
+    window.location.replace("/account/registration/clinic/pets?flow=clinic");
     return;
   }
 
   if (validateClinicVisitReason(draft.commonConcerns, draft.chiefComplaint)) {
-    window.location.replace("./clinic-visit-reason.html");
+    window.location.replace("/account/registration/clinic/reason");
     return;
   }
 

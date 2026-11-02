@@ -69,7 +69,7 @@ function mount(clinic) {
     createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
     sessionStorage, URLSearchParams,
     isGroomingSinglePage: () => true,
-    window: { addEventListener() {}, location: { search: clinic ? "?flow=clinic" : "" } },
+    window: { addEventListener() {}, location: { pathname: clinic ? "/account/registration/clinic/pets" : "/account/registration/grooming", search: clinic ? "?flow=clinic" : "" } },
     document: { getElementById: get, querySelectorAll: () => [], createElement: node },
     API: { getCustomerToken: () => "fixture", addPet: payload => { writes++; return save(payload); } },
   });

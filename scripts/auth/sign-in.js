@@ -143,14 +143,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (response?.requires_login_confirmation) {
         passwordInput.value = "";
-        window.location.replace("./verify-email.html?mode=login");
+        window.location.replace("/verify-email?mode=login");
         return;
       }
 
       const role = response?.user?.role;
       const dest = (role === "admin" || role === "staff")
-        ? "../admin/dashboard.html"
-        : "./dashboard.html";
+        ? "/admin/dashboard"
+        : "/account";
 
       showMessage("success", "Signed in successfully! Redirecting...");
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -182,7 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
         showMessage(
           "verify",
           `Your email address hasn't been verified yet. ` +
-          `<a href="./verify-email.html" ` +
+          `<a href="/verify-email" ` +
           `style="font-weight:600;text-decoration:underline">` +
           `Complete registration →</a>`,
           email
@@ -230,7 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (label) label.textContent = 'Checking your session...';
     if (statusBox) statusBox.textContent = 'Checking your session...';
     sessionCheck.then(verified => {
-      if (checkingSession && verified) window.location.replace('./dashboard.html');
+      if (checkingSession && verified) window.location.replace('/account');
     }).catch(() => { /* An optional check must leave manual sign-in available. */ }).finally(() => {
       if (!checkingSession) return;
       cancelSessionCheck();

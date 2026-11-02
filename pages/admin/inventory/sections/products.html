@@ -17,7 +17,7 @@
     </div>
     <button type="button" aria-label="Scan barcode" @click="openScanner('search')" title="Scan barcode with camera"
       class="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 transition hover:border-[#315b7e] hover:text-[#315b7e]">
-      <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#barcode"></use></svg>
+      <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#barcode"></use></svg>
     </button>
   </div>
   <select x-model="category" @change="load(1)"
@@ -90,15 +90,15 @@
               <div class="flex items-center justify-end gap-2">
                 <button x-show="item.is_active" type="button" aria-label="Edit" @click.stop="openEdit(item)" title="Edit"
                   class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-[#eaf4fb] hover:text-[#315b7e] transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#pencil-simple"></use></svg>
+                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#pencil-simple"></use></svg>
                 </button>
                 <button x-show="item.is_active" type="button" aria-label="Deactivate" @click.stop="confirmDeactivate(item)" title="Deactivate"
                   class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#x-circle"></use></svg>
+                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#x-circle"></use></svg>
                 </button>
                 <button x-show="!item.is_active" style="display:none" type="button" aria-label="Reactivate" @click.stop="doReactivate(item)" title="Reactivate"
                   class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-green-50 hover:text-green-600 transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#arrow-counter-clockwise"></use></svg>
+                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#arrow-counter-clockwise"></use></svg>
                 </button>
               </div>
             </td>
@@ -349,7 +349,7 @@
                 </label>
                 <p :id="'form-price-error-' + index" x-show="range.priceError" x-text="range.priceError" class="mt-1 text-xs text-red-600" role="alert"></p>
               </div>
-              <div class="inventory-weight-remove"><button type="button" @click="ProductForm.removeRange(form, index)" :aria-label="'Remove weight range ' + (index + 1)" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#x"></use></svg></button></div>
+              <div class="inventory-weight-remove"><button type="button" @click="ProductForm.removeRange(form, index)" :aria-label="'Remove weight range ' + (index + 1)" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-red-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#x"></use></svg></button></div>
             </div>
           </template>
         </div>
@@ -369,7 +369,7 @@
             class="w-full rounded-xl border border-slate-200 px-3 py-2.5 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
           <button type="button" aria-label="Scan barcode" @click="openScanner('form')" title="Scan with camera"
             class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#315b7e]">
-            <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="../../../assets/icons/phosphor.svg?v=inventory-icons-20261002#barcode"></use></svg>
+            <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#barcode"></use></svg>
           </button>
         </div>
       </div>

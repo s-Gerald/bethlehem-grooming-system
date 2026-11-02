@@ -27,8 +27,12 @@ async function checkDeployment(layout) {
   await once(probe, 'listening');
   const port = probe.address().port;
   await new Promise(resolve => probe.close(resolve));
-  const safeFiles = ['index.html', 'assets/logo.svg', 'assets/catalogue.json', 'css/output.css', 'scripts/api.js',
-    'pages/client/sign-in.html', 'pages/client/signup.html', 'pages/client/dashboard.html', 'pages/admin/clinic.html'];
+  const safeFiles = ['assets/logo.svg', 'assets/catalogue.json', 'css/output.css', 'scripts/api.js',
+    'pages/admin/pet-edit-form.html', 'pages/admin/inventory/sections/products.html',
+    'pages/admin/clinic/sections/services.html', 'pages/admin/services/sections/grooming.html'];
+  const browserFiles = [...fs.readFileSync(path.join(repository, 'config/frontend.php'), 'utf8')
+    .matchAll(/=> '(index\.html|pages\/[^']+\.html)'/g)].map(match => match[1]);
+  browserFiles.push('pages/admin/inventory/pos.html', 'pages/client/clinic-visit-date.html');
   const credentialFiles = ['auth.json', 'Auth.JSON', 'auth.json~', 'Homestead.json', 'Homestead.yaml',
     'Homestead.yaml~', 'assets/auth.json', 'assets/Homestead.yaml', 'public/auth.json'];
   const privateFiles = [...credentialFiles, ...(layout === 'repository' ? [
@@ -40,9 +44,10 @@ async function checkDeployment(layout) {
     'public/storage/clinic/attachments/1/scan.png', 'public/storage/payment-proofs/proof.png',
     'backup.sql', 'database.sqlite',
   ] : ['.env', '.git/config', 'storage/clinic/attachments/1/scan.png', 'storage/payment-proofs/proof.png'])];
-  for (const name of safeFiles) write(root, name, 'public-fixture');
+  for (const name of [...safeFiles, ...browserFiles]) write(root, name, 'public-fixture');
   for (const name of privateFiles) write(root, name);
   write(root, '.well-known/acme-challenge/fixture', 'acme-fixture');
+  write(root, layout === 'repository' ? 'public/favicon.ico' : 'favicon.ico', 'favicon-fixture');
   const rules = fs.readFileSync(path.join(repository, layout === 'repository' ? '.htaccess' : 'public/.htaccess'));
   write(root, '.htaccess', rules);
   if (layout === 'repository') {
@@ -76,33 +81,41 @@ DocumentRoot "${normalized}"
   let diagnostics = '';
   server.stderr.on('data', chunk => { diagnostics += chunk; });
   const base = `http://127.0.0.1:${port}`;
+  let currentPath = '';
+  const request = async name => { currentPath = name; return fetch(`${base}/${name}`); };
   try {
     let ready = false;
     for (let attempt = 0; attempt < 80; attempt++) {
       if (server.exitCode !== null) break;
-      try { ready = (await fetch(`${base}/index.html`)).status === 200; } catch {}
+      try { ready = (await request('index.html')).status === 200; } catch {}
       if (ready) break;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     assert.ok(ready, `Apache failed to start: ${diagnostics}\n${fs.existsSync(path.join(root, 'apache-errors.log')) ? fs.readFileSync(path.join(root, 'apache-errors.log'), 'utf8') : ''}`);
     for (const name of privateFiles) {
-      const response = await fetch(`${base}/${name}`);
+      const response = await request(name);
       assert.equal(response.status, 403, `${layout}: /${name} must be denied before static serving`);
       assert.ok(!(await response.text()).includes('private-fixture'), name);
     }
     for (const name of [...safeFiles, '.well-known/acme-challenge/fixture']) {
-      const response = await fetch(`${base}/${name}`);
+      const response = await request(name);
       assert.equal(response.status, 200, `${layout}: /${name} remains public`);
       assert.equal(await response.text(), name.startsWith('.well-known/') ? 'acme-fixture' : 'public-fixture',
         `${layout}: /${name} must serve the requested public file`);
     }
-    for (const name of ['api/me', 'pages/admin/availability.html', 'pages/admin/activity-log.html']) {
-      if (name.startsWith('pages/')) fs.rmSync(path.join(root, name), { force: true });
-      const response = await fetch(`${base}/${name}`);
+    const favicon = await request('favicon.ico');
+    assert.equal(favicon.status, 200);
+    assert.equal(await favicon.text(), 'favicon-fixture');
+    for (const name of ['', 'api/me', 'sign-in', 'account/pets/details', 'admin/dashboard', 'admin/inventory', 'admin/activity-log', 'admin/availability', ...browserFiles]) {
+      const response = await request(`${name}?selected_id=42&return_to=%2Fadmin%2Finventory%23products`);
       assert.equal(response.status, 200, name);
       assert.equal(await response.text(), 'front-controller-fixture', `${name} must reach Laravel`);
     }
     console.log(`${layout}: ${privateFiles.length} private paths denied; public assets, ACME and Laravel routing preserved`);
+  } catch (error) {
+    console.error(layout, currentPath, diagnostics);
+    if (fs.existsSync(path.join(root, 'apache-errors.log'))) console.error(fs.readFileSync(path.join(root, 'apache-errors.log'), 'utf8').split('\n').slice(-9).join('\n'));
+    throw error;
   } finally {
     if (server.exitCode === null) { server.kill(); await once(server, 'exit'); }
   }

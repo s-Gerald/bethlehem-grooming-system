@@ -2,22 +2,22 @@
 <html data-session-gate="checking" lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
-    <link rel="stylesheet" href="../../css/components/toast.css" />
+    <link rel="stylesheet" href="/css/output.css?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&groomers=named-20261016&v=grooming-pricing-ui-20261006&intake=20261019&payments=legacy-off-20261026&profile=20261024&availability=20261027&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?v=unified-inventory-20261001b&release=pricing-footer-20261006&intake=20261019&grooming=actual-20261026" />
+    <link rel="stylesheet" href="/css/components/toast.css" />
     <style>
       /* Keep confirmation toasts visible above the Security dialogs. */
       #success-toast { z-index: 10002; }
     </style>
-    <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
-    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031" />
-    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
+    <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
+    <link rel="preload" as="script" href="/scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103" />
+    <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -44,7 +44,7 @@
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
-                src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                src="/assets/images/clinic/Bethlehem_Logo-256.png"
                 alt="Bethlehem Animal Clinic logo"
                 class="h-full w-full object-contain"
               />
@@ -62,25 +62,25 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
-              <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
+              <a href="/admin/dashboard" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
                 <span>Dashboard</span>
               </a>
-              <a href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+              <a href="/admin/customers" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="/admin/grooming" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="/admin/clinic" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                 <span>Clinic</span>
               </a>
-              <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
+              <a href="/admin/inventory" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
                 <span>Inventory</span>
               </a>
             </div>
@@ -89,16 +89,16 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
             <div class="space-y-1.5">
-              <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+              <a href="/admin/history" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                 <span>History</span>
               </a>
-              <a href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
+              <a href="/admin/transactions" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
                 <span>Transactions</span>
               </a>
-              <a data-admin-permission href="./reports.html" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+              <a data-admin-permission href="/admin/reports" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                 <span>Reports</span>
               </a>
             </div>
@@ -107,8 +107,8 @@
           <div>
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
             <div class="space-y-1.5">
-              <a aria-current="page" href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
+              <a aria-current="page" href="/admin/settings" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
                 <span>Settings</span>
               </a>
             </div>
@@ -126,14 +126,14 @@
           </div>
 
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
-            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
           </button>
         </div>
       </aside>
-      <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031"></script>
+      <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="/scripts/api.js?pending-email=20261025&active-email=20261025-2&recovery=20261025-3&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&profile=20261024&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&profile=20261024&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -144,7 +144,7 @@
             <h2 class="text-lg font-bold text-[#1f3850]" data-session-public>Settings</h2>
           </div>
           <div class="admin-notification-header-actions"><span data-notification-mobile></span><button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
-            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button></div>
         </header>
 
@@ -161,7 +161,7 @@
                 </div>
 
                 <div class="admin-notification-header-actions"><div class="flex items-center gap-2 rounded-xl border border-[#c9d9e8] bg-white/75 px-4 py-2.5 text-sm font-semibold text-[#1f3850]">
-                  <svg class="ph-icon h-4 w-4 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sliders-horizontal"></use></svg>
+                  <svg class="ph-icon h-4 w-4 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sliders-horizontal"></use></svg>
                   <span>Clinic Profile</span>
                 </div><admin-notification-bell></admin-notification-bell></div>
               </div>
@@ -175,7 +175,7 @@
                     :class="activeSettingsTab === 'general' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
                     aria-current="page"
                   >
-                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#buildings"></use></svg>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#buildings"></use></svg>
                     <span>General</span>
                   </button>
 
@@ -189,7 +189,7 @@
                     class="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
                     :class="activeSettingsTab === 'security' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-white'"
                   >
-                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                     <span>Security</span>
                   </button>
 
@@ -322,7 +322,7 @@
                     <h3 class="mt-1 text-2xl font-bold text-[#1f3850]">General Information</h3>
                   </div>
                   <div class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e]">
-                    <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#seal-check"></use></svg>
+                    <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#seal-check"></use></svg>
                     <span>Visible Profile</span>
                   </div>
                 </div>
@@ -386,18 +386,18 @@
                     <p class="text-xs font-semibold uppercase tracking-[0.16em] text-[#5c7690]">Clinic Logo</p>
                     <div class="mt-4 flex aspect-square items-center justify-center rounded-2xl border border-[#d7e3ef] bg-white p-6">
                       <img
-                        src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                        src="/assets/images/clinic/Bethlehem_Logo-256.png"
                         alt="Bethlehem Animal Clinic logo"
                         class="h-full w-full object-contain"
                       />
                     </div>
                     <div class="mt-4 grid gap-2">
                       <button type="button" class="flex items-center justify-center gap-2 rounded-xl border border-[#315b7e] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-[#eef5fb]">
-                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#upload-simple"></use></svg>
+                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#upload-simple"></use></svg>
                         <span>Upload Logo</span>
                       </button>
                       <button type="button" class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-white">
-                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-counter-clockwise"></use></svg>
+                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-counter-clockwise"></use></svg>
                         <span>Reset</span>
                       </button>
                     </div>
@@ -408,7 +408,7 @@
               <div class="rounded-[24px] border border-[#d7e3ef] bg-white p-5 shadow-sm lg:p-6">
                 <div class="mb-5 flex items-center gap-3">
                   <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#map-pin"></use></svg>
+                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#map-pin"></use></svg>
                   </div>
                   <div>
                     <h3 class="text-lg font-bold text-[#1f3850]">Public Contact Details</h3>
@@ -443,7 +443,7 @@
                 </button>
                 <!-- BACKEND: Wire this button to save General Information only. -->
                 <button type="button" class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]">
-                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
+                  <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
                   <span>Save Changes</span>
                 </button>
               </div>
@@ -497,7 +497,7 @@
                   <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-start gap-3">
                       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                       </div>
                       <div>
                         <h3 class="text-xl font-bold text-[#1f3850]">Admin account</h3>
@@ -505,7 +505,7 @@
                       </div>
                     </div>
                     <div class="inline-flex w-fit items-center gap-2 rounded-full bg-[#eef5fb] px-3 py-1.5 text-xs font-semibold text-[#315b7e]">
-                      <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
+                      <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
                       <span x-cloak class="max-w-[15rem] truncate" x-show="staffLoaded" x-text="adminAccount.email">Admin email</span>
                     </div>
                   </div>
@@ -546,8 +546,8 @@
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
                           :aria-label="adminPassword.showCurrent ? 'Hide current password' : 'Show current password'"
                         >
-                          <svg x-show="!adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="adminPassword.showCurrent"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
                     </label>
@@ -571,8 +571,8 @@
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
                           :aria-label="adminPassword.showPassword ? 'Hide new password' : 'Show new password'"
                         >
-                          <svg x-show="!adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="adminPassword.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
                     </label>
@@ -596,8 +596,8 @@
                           class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]"
                           :aria-label="adminPassword.showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'"
                         >
-                          <svg x-show="!adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="adminPassword.showConfirmation"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
                     </label>
@@ -610,7 +610,7 @@
                       :disabled="adminPassword.submitting"
                       class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#floppy-disk"></use></svg>
                       <span x-text="adminPassword.submitting ? 'Updating...' : 'Update Changes'">Update Changes</span>
                     </button>
                   </div>
@@ -625,7 +625,7 @@
                   <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div class="flex items-start gap-3">
                       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
                       </div>
                       <div>
                         <h3 id="staffAccountsHeading" class="text-xl font-bold text-[#1f3850]">Staff accounts</h3>
@@ -637,7 +637,7 @@
                       @click="openAddStaffAccount()"
                       class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67]"
                     >
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                       <span>Add staff account</span>
                     </button>
                   </div>
@@ -734,7 +734,7 @@
                           class="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition"
                           :class="staff.active ? 'border-red-200 bg-white text-red-600 hover:bg-red-50' : 'border-[#c9d9e8] bg-white text-[#315b7e] hover:bg-[#eef5fb]'"
                         >
-                          <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staff.active ? 'user-minus' : 'user-check')"></use></svg>
+                          <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staff.active ? 'user-minus' : 'user-check')"></use></svg>
                           <span x-text="staff.active ? 'Deactivate' : 'Reactivate'"></span>
                         </button>
                       </div>
@@ -743,7 +743,7 @@
 
                   <div x-cloak x-show="staffLoaded && filteredStaffAccounts.length === 0" class="px-5 py-10 text-center lg:px-6">
                     <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
+                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users-three"></use></svg>
                     </div>
                     <h4
                       class="mt-3 font-bold text-[#1f3850]"
@@ -782,7 +782,7 @@
                         class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                         :aria-label="addStaffModal.step === 'role' && addStaffModal.roleStage === 'clinic' ? 'Back to account roles' : 'Close add staff account form'"
                       >
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                       </button>
                     </div>
 
@@ -799,10 +799,10 @@
                             class="flex w-full items-center gap-4 rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-4 text-left transition hover:border-[#9fb9d1] hover:bg-[#eef5fb]"
                           >
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#315b7e] shadow-sm">
-                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                             </span>
                             <span class="flex-1 font-bold text-[#1f3850]">Clinic Staff</span>
-                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
+                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
                           </button>
                           <button
                             type="button"
@@ -810,10 +810,10 @@
                             class="flex w-full items-center gap-4 rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-4 text-left transition hover:border-[#9fb9d1] hover:bg-[#eef5fb]"
                           >
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#315b7e] shadow-sm">
-                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg>
+                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg>
                             </span>
                             <span class="flex-1 font-bold text-[#1f3850]">Grooming Receptionist</span>
-                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
+                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
                           </button>
                         </div>
 
@@ -824,10 +824,10 @@
                             class="flex w-full items-center gap-4 rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-4 text-left transition hover:border-[#9fb9d1] hover:bg-[#eef5fb]"
                           >
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#315b7e] shadow-sm">
-                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#heartbeat"></use></svg>
+                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#heartbeat"></use></svg>
                             </span>
                             <span class="flex-1 font-bold text-[#1f3850]">Veterinarian</span>
-                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
+                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
                           </button>
                           <button
                             type="button"
@@ -835,10 +835,10 @@
                             class="flex w-full items-center gap-4 rounded-2xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-4 text-left transition hover:border-[#9fb9d1] hover:bg-[#eef5fb]"
                           >
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-[#315b7e] shadow-sm">
-                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#headset"></use></svg>
+                              <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#headset"></use></svg>
                             </span>
                             <span class="flex-1 font-bold text-[#1f3850]">Clinic Receptionist</span>
-                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
+                            <svg class="ph-icon h-5 w-5 text-slate-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg>
                           </button>
                         </div>
                       </div>
@@ -866,7 +866,7 @@
                       <div class="flex flex-col-reverse gap-3 border-t border-[#e8f0f8] px-5 py-4 sm:flex-row sm:justify-between sm:px-6">
                         <button type="button" @click="returnToStaffType()" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Back</button>
                         <button type="button" @click="requestNewStaffAccount()" :disabled="addStaffModal.submitting" class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70">
-                          <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope-simple-open"></use></svg>
+                          <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#envelope-simple-open"></use></svg>
                           <span x-text="addStaffModal.submitting ? 'Sending...' : 'Confirm'">Confirm</span>
                         </button>
                       </div>
@@ -875,7 +875,7 @@
                     <div x-show="addStaffModal.step === 'success'" class="px-5 py-6 sm:px-6">
                       <div class="text-center">
                         <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                          <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#check-circle"></use></svg>
+                          <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#check-circle"></use></svg>
                         </span>
                         <h3 id="staffAccountCreatedTitle" class="mt-4 text-xl font-bold text-[#1f3850]">Account setup email sent</h3>
                         <p class="mt-3 text-sm leading-6 text-slate-500">A Set Up Your Password link was sent to the staff member's email address. Their account will become active after they complete setup.</p>
@@ -903,7 +903,7 @@
                         <h3 id="staffStatusTitle" class="text-xl font-bold text-[#1f3850]" x-text="staffStatusModal.targetActive ? 'Reactivate staff account' : 'Deactivate staff account'"></h3>
                       </div>
                       <button type="button" @click="closeStaffStatusModal()" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Close staff status confirmation">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                       </button>
                     </div>
                     <div class="px-5 py-4 sm:px-6">
@@ -920,8 +920,8 @@
                       <div class="relative">
                         <input id="staffStatusAdminPassword" :type="staffStatusModal.showPassword ? 'text' : 'password'" x-model="staffStatusModal.password" @keydown.enter.prevent="updateStaffStatus()" :disabled="staffStatusModal.busy" :aria-invalid="Boolean(staffStatusModal.error)" aria-describedby="staffStatusError" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-3 py-2.5 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
                         <button type="button" @click="staffStatusModal.showPassword = !staffStatusModal.showPassword" :aria-label="staffStatusModal.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffStatusModal.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]">
-                          <svg x-show="!staffStatusModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                          <svg x-show="staffStatusModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                          <svg x-show="!staffStatusModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                          <svg x-show="staffStatusModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                         </button>
                       </div>
                       <p id="staffStatusError" x-show="staffStatusModal.error" x-text="staffStatusModal.error" class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-600" role="alert"></p>
@@ -929,7 +929,7 @@
                     <div class="flex justify-end gap-3 border-t border-[#e8f0f8] px-5 py-3 sm:px-6">
                       <button type="button" @click="closeStaffStatusModal()" class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Cancel</button>
                       <button type="button" @click="updateStaffStatus()" :disabled="staffStatusModal.busy" class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-70" :class="staffStatusModal.targetActive ? 'bg-[#315b7e] hover:bg-[#284a67]' : 'bg-red-600 hover:bg-red-700'">
-                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffStatusModal.targetActive ? 'user-check' : 'user-minus')"></use></svg>
+                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffStatusModal.targetActive ? 'user-check' : 'user-minus')"></use></svg>
                         <span x-text="staffStatusModal.busy ? 'Updating...' : (staffStatusModal.targetActive ? 'Reactivate' : 'Deactivate')"></span>
                       </button>
                     </div>
@@ -943,10 +943,10 @@
                   <div class="flex w-full max-w-md flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" style="max-height: calc(100dvh - 3rem)" role="dialog" aria-modal="true" aria-labelledby="staffDetailsTitle" id="staffDetailsDialog" tabindex="-1" :aria-busy="staffDetailsModal.busy" @keydown.tab="trapStaffDetailsFocus($event)">
                     <div class="flex shrink-0 items-start justify-between gap-4 border-b border-[#e8f0f8] px-5 py-5 sm:px-6">
                       <div class="flex items-center gap-3">
-                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg></div>
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg></div>
                         <div class="min-w-0"><h3 id="staffDetailsTitle" class="text-xl font-bold text-[#1f3850]" x-text="staffDetailsTitle">Staff account details</h3><p class="mt-1 break-words text-sm text-slate-500" x-text="staffDetailsModal.view === 'details' ? 'Account information' : (staffDetailsModal.staff?.fullName + ' · ' + (staffDetailsModal.staff?.subroleLabel || staffDetailsModal.staff?.roleLabel))">Account information</p></div>
                       </div>
-                      <button id="staffDetailsClose" type="button" @click="closeStaffDetails()" :disabled="staffDetailsModal.busy" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60" aria-label="Close staff account details"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
+                      <button id="staffDetailsClose" type="button" @click="closeStaffDetails()" :disabled="staffDetailsModal.busy" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60" aria-label="Close staff account details"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
                     </div>
                     <dl id="staffDetailsBody" x-show="staffDetailsModal.view === 'details'" class="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
                       <div><dt class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Staff name</dt><dd class="mt-1 text-sm font-semibold text-[#1f3850]" x-text="staffDetailsModal.staff?.fullName"></dd></div>
@@ -968,8 +968,8 @@
                               <div class="relative">
                                 <input id="staffRoleAdminPassword" :type="staffDetailsModal.showPassword ? 'text' : 'password'" x-model="staffDetailsModal.password" @input="staffDetailsModal.error = ''" @keydown.enter.prevent="saveStaffRoleChange()" :disabled="staffDetailsModal.busy" :aria-invalid="Boolean(staffDetailsModal.error)" aria-describedby="staffRolePasswordHelp staffRolePasswordError" placeholder="Enter your password" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" />
                                 <button type="button" @click="staffDetailsModal.showPassword = !staffDetailsModal.showPassword" :disabled="staffDetailsModal.busy" :aria-label="staffDetailsModal.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffDetailsModal.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]">
-                                  <svg x-show="!staffDetailsModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                                  <svg x-show="staffDetailsModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                                  <svg x-show="!staffDetailsModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                                  <svg x-show="staffDetailsModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                                 </button>
                               </div>
                               <p id="staffRolePasswordHelp" class="mt-1.5 text-xs text-slate-500">Required to save this role change.</p>
@@ -990,7 +990,7 @@
                         </div>
                       </template>
                       <button x-show="staffDetailsModal.staff && !staffDetailsModal.staff.setupRequired" type="button" @click="const staff = staffDetailsModal.staff; closeStaffDetails(); openStaffStatusModal(staff)" :disabled="staffDetailsModal.busy" class="inline-flex items-center justify-center gap-2 rounded-xl border border-[#c9d9e8] px-4 py-2.5 text-sm font-semibold text-[#315b7e] disabled:opacity-60">
-                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffDetailsModal.staff?.active ? 'user-minus' : 'user-check')"></use></svg>
+                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffDetailsModal.staff?.active ? 'user-minus' : 'user-check')"></use></svg>
                         <span x-text="staffDetailsModal.staff?.active ? 'Deactivate' : 'Reactivate'"></span>
                       </button>
                       <div class="ml-auto flex gap-2">
@@ -1013,8 +1013,8 @@
                           <div class="relative">
                             <input id="staffEmailAdminPassword" :type="staffEmailCorrection.showPassword ? 'text' : 'password'" x-model="staffEmailCorrection.password" @blur="validateStaffEmailField('current_password')" @input="delete staffEmailCorrection.errors.current_password; staffEmailCorrection.error = ''" :disabled="staffDetailsModal.busy" :aria-invalid="Boolean(staffEmailCorrection.errors.current_password)" aria-describedby="staffEmailPasswordError" required placeholder="Enter your password" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" />
                             <button type="button" @click="staffEmailCorrection.showPassword = !staffEmailCorrection.showPassword" :disabled="staffDetailsModal.busy" :aria-label="staffEmailCorrection.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffEmailCorrection.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-xl text-slate-400 transition hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]">
-                              <svg x-show="!staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                              <svg x-show="staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                              <svg x-show="!staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                              <svg x-show="staffEmailCorrection.showPassword" class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                             </button>
                           </div>
                           <p id="staffEmailPasswordError" x-show="staffEmailCorrection.errors.current_password" x-text="staffEmailCorrection.errors.current_password" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p>
@@ -1037,7 +1037,7 @@
                           <div><label class="flex items-start gap-3 text-sm text-slate-700"><input id="recoveryIdentity" type="checkbox" x-model="staffRecovery.identityVerified" @change="delete staffRecovery.errors.identity_verified" :aria-invalid="Boolean(staffRecovery.errors.identity_verified)" aria-describedby="recoveryIdentityMethod recoveryIdentityError" class="mt-0.5 h-4 w-4 shrink-0 accent-[#315b7e]" /><span>I verified this staff member's identity.</span></label><p id="recoveryIdentityMethod" class="mt-1 text-xs text-slate-500">In person, against trusted employment records.</p><p id="recoveryIdentityError" x-show="staffRecovery.errors.identity_verified" x-text="staffRecovery.errors.identity_verified" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p></div>
                         </div>
                         <div x-show="staffDetailsModal.view === 'recovery-manage'"><p class="text-sm font-semibold text-slate-600">New Email</p><p class="mt-1 break-all text-sm text-[#1f3850]" x-text="staffDetailsModal.staff?.emailRecovery?.new_email"></p><p x-show="staffRecoveryExpired" class="mt-2 text-sm text-amber-700">Access remains suspended. Renew the link or cancel recovery after confirming the current email is safe.</p></div>
-                        <div><label for="recoveryAdminPassword" class="mb-1.5 block text-sm font-semibold text-slate-600">Admin Password</label><div class="relative"><input id="recoveryAdminPassword" :type="staffRecovery.showPassword ? 'text' : 'password'" x-model="staffRecovery.password" @input="delete staffRecovery.errors.current_password" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore :aria-invalid="Boolean(staffRecovery.errors.current_password)" aria-describedby="recoveryPasswordError" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 pr-11" /><button type="button" @click="staffRecovery.showPassword = !staffRecovery.showPassword" :aria-label="staffRecovery.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffRecovery.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use :href="'../../assets/icons/phosphor.svg#' + (staffRecovery.showPassword ? 'eye' : 'eye-slash')"></use></svg></button></div><p id="recoveryPasswordError" x-show="staffRecovery.errors.current_password" x-text="staffRecovery.errors.current_password" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p></div>
+                        <div><label for="recoveryAdminPassword" class="mb-1.5 block text-sm font-semibold text-slate-600">Admin Password</label><div class="relative"><input id="recoveryAdminPassword" :type="staffRecovery.showPassword ? 'text' : 'password'" x-model="staffRecovery.password" @input="delete staffRecovery.errors.current_password" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore :aria-invalid="Boolean(staffRecovery.errors.current_password)" aria-describedby="recoveryPasswordError" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60 pr-11" /><button type="button" @click="staffRecovery.showPassword = !staffRecovery.showPassword" :aria-label="staffRecovery.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffRecovery.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor"><use :href="'/assets/icons/phosphor.svg#' + (staffRecovery.showPassword ? 'eye' : 'eye-slash')"></use></svg></button></div><p id="recoveryPasswordError" x-show="staffRecovery.errors.current_password" x-text="staffRecovery.errors.current_password" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p></div>
                         <div x-show="staffDetailsModal.view === 'recovery-manage'"><label class="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" x-model="staffRecovery.oldEmailSafe" @change="delete staffRecovery.errors.old_email_safe" :aria-invalid="Boolean(staffRecovery.errors.old_email_safe)" aria-describedby="recoverySafeError" class="mt-0.5 h-4 w-4 shrink-0 accent-[#315b7e]" /><span>Current email access is safe to restore if I cancel recovery.</span></label><p id="recoverySafeError" x-show="staffRecovery.errors.old_email_safe" x-text="staffRecovery.errors.old_email_safe" class="mt-2 text-sm font-semibold text-red-600" role="alert"></p></div>
                         <p x-show="staffRecovery.error" x-text="staffRecovery.error" class="text-sm font-semibold text-red-600" role="alert"></p>
                       </fieldset>
@@ -1072,8 +1072,8 @@
                     <div class="relative">
                       <input id="staffSetupAdminPassword" :type="staffSetupModal.showPassword ? 'text' : 'password'" x-model="staffSetupModal.password" @keydown.enter.prevent="cancelStaffSetup()" :disabled="staffSetupModal.busy" :aria-invalid="Boolean(staffSetupModal.error)" aria-describedby="staffSetupError" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
                       <button type="button" @click="staffSetupModal.showPassword = !staffSetupModal.showPassword" :aria-label="staffSetupModal.showPassword ? 'Hide admin password' : 'Show admin password'" :aria-pressed="staffSetupModal.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]">
-                        <svg x-show="!staffSetupModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
-                        <svg x-show="staffSetupModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
+                        <svg x-show="!staffSetupModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye-slash"></use></svg>
+                        <svg x-show="staffSetupModal.showPassword"  class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#eye"></use></svg>
                       </button>
                     </div>
                     <p id="staffSetupError" x-show="staffSetupModal.error" x-text="staffSetupModal.error" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
@@ -1090,11 +1090,11 @@
                 <section class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm" aria-labelledby="yourAccountHeading">
                   <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[#e8f0f8] px-5 py-5 lg:px-6">
                     <div class="flex items-start gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg></div>
+                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg></div>
                       <div><h3 id="yourAccountHeading" class="text-xl font-bold text-[#1f3850]">Your Account</h3><p class="mt-1 text-sm text-slate-500">Your staff account information</p></div>
                     </div>
                     <button id="editStaffProfile" type="button" x-show="!staffProfile.editing" @click="editStaffProfile()" :disabled="!staffLoaded || staffLoading" class="ml-auto inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#315b7e] transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] active:bg-[#eef5fb] disabled:cursor-not-allowed disabled:opacity-60">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#pencil-simple"></use></svg>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#pencil-simple"></use></svg>
                       <span>Edit Profile</span>
                     </button>
                   </div>
@@ -1140,7 +1140,7 @@
                           <label for="staffProfileCurrentPassword" class="mb-1.5 block text-sm font-semibold text-slate-600">Current Password</label>
                           <div class="relative">
                             <input id="staffProfileCurrentPassword" required :type="staffProfile.showPassword ? 'text' : 'password'" x-model="staffProfile.currentPassword" @input="staffProfileInput('current_password')" :disabled="staffProfile.submitting || !staffProfile.confirming" autocomplete="current-password" :aria-invalid="!!staffProfile.errors.current_password" aria-describedby="staffProfilePasswordError" :class="staffProfile.errors.current_password ? 'border-red-400' : 'border-slate-200'" class="w-full rounded-xl border bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-70" />
-                            <button type="button" @click="staffProfile.showPassword = !staffProfile.showPassword" :disabled="staffProfile.submitting" :aria-label="staffProfile.showPassword ? 'Hide current password' : 'Show current password'" :aria-pressed="staffProfile.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffProfile.showPassword ? 'eye' : 'eye-slash')"></use></svg></button>
+                            <button type="button" @click="staffProfile.showPassword = !staffProfile.showPassword" :disabled="staffProfile.submitting" :aria-label="staffProfile.showPassword ? 'Hide current password' : 'Show current password'" :aria-pressed="staffProfile.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffProfile.showPassword ? 'eye' : 'eye-slash')"></use></svg></button>
                           </div>
                           <p id="staffProfilePasswordError" x-show="staffProfile.errors.current_password" x-text="staffProfile.errors.current_password" class="mt-1.5 text-sm text-red-600" role="alert"></p>
                         </div>
@@ -1157,7 +1157,7 @@
                 <form @submit.prevent="submitStaffPassword()" class="overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-sm">
                   <div class="border-b border-[#e8f0f8] px-5 py-5 lg:px-6">
                     <div class="flex items-start gap-3">
-                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#key"></use></svg></div>
+                      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#key"></use></svg></div>
                       <div><h3 class="text-xl font-bold text-[#1f3850]">Change Password</h3><p class="mt-1 text-sm text-slate-500">A verification code will be sent to your registered email before your password is changed.</p></div>
                     </div>
                   </div>
@@ -1166,27 +1166,27 @@
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Current Password</span>
                       <div class="relative">
                         <input :type="staffPassword.showCurrent ? 'text' : 'password'" x-model="staffPassword.current" autocomplete="current-password" required class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
-                        <button type="button" @click="staffPassword.showCurrent = !staffPassword.showCurrent" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showCurrent ? 'Hide current password' : 'Show current password'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showCurrent ? 'eye' : 'eye-slash')"></use></svg></button>
+                        <button type="button" @click="staffPassword.showCurrent = !staffPassword.showCurrent" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showCurrent ? 'Hide current password' : 'Show current password'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showCurrent ? 'eye' : 'eye-slash')"></use></svg></button>
                       </div>
                     </label>
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">New Password</span>
                       <div class="relative">
                         <input :type="staffPassword.showPassword ? 'text' : 'password'" x-model="staffPassword.password" autocomplete="new-password" required class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
-                        <button type="button" @click="staffPassword.showPassword = !staffPassword.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showPassword ? 'Hide new password' : 'Show new password'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showPassword ? 'eye' : 'eye-slash')"></use></svg></button>
+                        <button type="button" @click="staffPassword.showPassword = !staffPassword.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showPassword ? 'Hide new password' : 'Show new password'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showPassword ? 'eye' : 'eye-slash')"></use></svg></button>
                       </div>
                     </label>
                     <label class="block">
                       <span class="mb-1.5 block text-sm font-semibold text-slate-600">Confirm New Password</span>
                       <div class="relative">
                         <input :type="staffPassword.showConfirmation ? 'text' : 'password'" x-model="staffPassword.confirmation" autocomplete="new-password" required class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10" />
-                        <button type="button" @click="staffPassword.showConfirmation = !staffPassword.showConfirmation" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showConfirmation ? 'eye' : 'eye-slash')"></use></svg></button>
+                        <button type="button" @click="staffPassword.showConfirmation = !staffPassword.showConfirmation" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-[#315b7e]" :aria-label="staffPassword.showConfirmation ? 'Hide password confirmation' : 'Show password confirmation'"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffPassword.showConfirmation ? 'eye' : 'eye-slash')"></use></svg></button>
                       </div>
                     </label>
                     <p class="text-xs text-slate-500">Use at least 12 characters with uppercase, lowercase, a number, and a symbol.</p>
                     <p x-show="staffPassword.error" x-text="staffPassword.error" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600" role="alert"></p>
                     <div class="flex justify-end border-t border-slate-100 pt-4">
-                      <button type="submit" :disabled="staffPassword.submitting" class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#key"></use></svg><span x-text="staffPassword.submitting ? 'Sending code...' : 'Change Password'">Change Password</span></button>
+                      <button type="submit" :disabled="staffPassword.submitting" class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-70"><svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#key"></use></svg><span x-text="staffPassword.submitting ? 'Sending code...' : 'Change Password'">Change Password</span></button>
                     </div>
                   </div>
                 </form>
@@ -1199,14 +1199,14 @@
                 <div x-cloak x-show="staffEmailChange.open" x-transition.opacity class="fixed inset-0 flex items-center justify-center px-4 py-6" style="z-index: 10000; background-color: rgba(15, 23, 42, 0.65)" @click.self="closeOwnEmailChange()">
                   <form id="ownEmailDialog" tabindex="-1" @submit.prevent="staffEmailChange.stage === 'form' ? startOwnEmailChange() : verifyOwnEmailChange()" novalidate class="flex w-full max-w-md flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl" style="max-height: calc(100dvh - 3rem)" role="dialog" aria-modal="true" aria-labelledby="ownEmailTitle" :aria-busy="staffEmailChange.busy" @keydown.tab="trapStaffDetailsFocus($event)">
                     <div class="flex shrink-0 items-start justify-between gap-3 bg-[#315b7e] px-5 py-5 text-white sm:px-6">
-                      <div class="flex min-w-0 items-center gap-3"><div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg></div><h3 id="ownEmailTitle" class="min-w-0 text-xl font-bold" x-text="({ form: 'Change Email', current: 'Verify Current Email', new: 'Verify New Email', success: 'Email Updated' })[staffEmailChange.stage]"></h3></div>
-                      <button x-show="staffEmailChange.stage !== 'success'" type="button" @click="closeOwnEmailChange()" :disabled="staffEmailChange.busy" aria-label="Close email change" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/75 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-60"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
+                      <div class="flex min-w-0 items-center gap-3"><div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg></div><h3 id="ownEmailTitle" class="min-w-0 text-xl font-bold" x-text="({ form: 'Change Email', current: 'Verify Current Email', new: 'Verify New Email', success: 'Email Updated' })[staffEmailChange.stage]"></h3></div>
+                      <button x-show="staffEmailChange.stage !== 'success'" type="button" @click="closeOwnEmailChange()" :disabled="staffEmailChange.busy" aria-label="Close email change" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/75 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-60"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg></button>
                     </div>
                     <div class="min-h-0 space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
                       <div x-show="staffEmailChange.stage === 'form'" class="space-y-4">
                         <div><p class="mb-1.5 text-sm font-semibold text-slate-600">Current email</p><p class="break-all text-sm font-semibold text-[#1f3850]" x-text="staffAccount.email"></p></div>
                         <div><label for="ownNewEmail" class="mb-1.5 block text-sm font-semibold text-slate-600">New email</label><input id="ownNewEmail" type="email" x-init="AccountEmail.bind($el, { getError: value => emailReplacementError(value, staffAccount.email), errorId: 'ownNewEmailError', onError: message => { if (message) staffEmailChange.errors.email = message; else delete staffEmailChange.errors.email; } })" x-model="staffEmailChange.newEmail" @input="ownEmailInput('email')" @blur="validateOwnEmailField('email')" :disabled="staffEmailChange.busy" required autocomplete="off" autocapitalize="none" spellcheck="false" :aria-invalid="Boolean(staffEmailChange.errors.email)" aria-describedby="ownNewEmailError" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" /><p id="ownNewEmailError" x-show="staffEmailChange.errors.email" x-text="staffEmailChange.errors.email" class="mt-1.5 text-sm text-red-600" role="alert"></p></div>
-                        <div><label for="ownEmailPassword" class="mb-1.5 block text-sm font-semibold text-slate-600">Current password</label><div class="relative"><input id="ownEmailPassword" :type="staffEmailChange.showPassword ? 'text' : 'password'" x-model="staffEmailChange.password" @input="ownEmailInput('current_password')" @blur="validateOwnEmailField('current_password')" :disabled="staffEmailChange.busy" required autocomplete="current-password" :aria-invalid="Boolean(staffEmailChange.errors.current_password)" aria-describedby="ownEmailPasswordError" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" /><button type="button" @click="staffEmailChange.showPassword = !staffEmailChange.showPassword" :disabled="staffEmailChange.busy" :aria-label="staffEmailChange.showPassword ? 'Hide current password' : 'Show current password'" :aria-pressed="staffEmailChange.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-xl text-slate-400 hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffEmailChange.showPassword ? 'eye' : 'eye-slash')"></use></svg></button></div><p id="ownEmailPasswordError" x-show="staffEmailChange.errors.current_password" x-text="staffEmailChange.errors.current_password" class="mt-1.5 text-sm text-red-600" role="alert"></p></div>
+                        <div><label for="ownEmailPassword" class="mb-1.5 block text-sm font-semibold text-slate-600">Current password</label><div class="relative"><input id="ownEmailPassword" :type="staffEmailChange.showPassword ? 'text' : 'password'" x-model="staffEmailChange.password" @input="ownEmailInput('current_password')" @blur="validateOwnEmailField('current_password')" :disabled="staffEmailChange.busy" required autocomplete="current-password" :aria-invalid="Boolean(staffEmailChange.errors.current_password)" aria-describedby="ownEmailPasswordError" class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 pr-11 text-sm font-semibold text-slate-700 outline-none focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10 disabled:opacity-60" /><button type="button" @click="staffEmailChange.showPassword = !staffEmailChange.showPassword" :disabled="staffEmailChange.busy" :aria-label="staffEmailChange.showPassword ? 'Hide current password' : 'Show current password'" :aria-pressed="staffEmailChange.showPassword" class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-xl text-slate-400 hover:text-[#315b7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]"><svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + (staffEmailChange.showPassword ? 'eye' : 'eye-slash')"></use></svg></button></div><p id="ownEmailPasswordError" x-show="staffEmailChange.errors.current_password" x-text="staffEmailChange.errors.current_password" class="mt-1.5 text-sm text-red-600" role="alert"></p></div>
                         <p class="text-sm text-slate-500">You'll verify both email addresses before the change takes effect.</p>
                       </div>
                       <div x-show="staffEmailChange.stage === 'current' || staffEmailChange.stage === 'new'" class="space-y-4">
@@ -1250,7 +1250,7 @@
                       <div class="flex items-start justify-between gap-4">
                         <div class="flex items-start gap-3">
                           <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-                            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
+                            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                           </div>
                           <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Security verification</p>
@@ -1259,14 +1259,14 @@
                           </div>
                         </div>
                         <button type="button" @click="closeSecurityVerification()" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white" aria-label="Close security verification">
-                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                         </button>
                       </div>
                     </div>
 
                     <div class="space-y-5 px-5 py-6 sm:px-6">
                       <div class="flex items-center gap-2 rounded-xl border border-[#d7e3ef] bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-[#315b7e]">
-                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
+                        <svg class="ph-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
                         <span class="truncate" x-text="securityVerification.email"></span>
                       </div>
 
@@ -1307,7 +1307,7 @@
                             :disabled="!securityCodeComplete || securityVerification.submitting || securityVerification.resending"
                             class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
+                            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#shield-check"></use></svg>
                             <span x-text="securityVerification.submitting ? 'Confirming...' : (isStaff ? 'Change Password' : 'Confirm change')">Confirm change</span>
                           </button>
                         </div>
@@ -1327,11 +1327,11 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/components/success-toast.js"></script>
-    <script src="../../scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
-    <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030"></script>
-    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
-    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
+    <script src="/scripts/components/success-toast.js"></script>
+    <script src="/scripts/auth/email-delivery.js?v=otp-resend-20261021"></script>
+    <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="/scripts/components/admin-settings.js?availability=20261027&pending-email=20261025&active-email=20261025-2&recovery=20261025-3&services=20261017&v=staff-settings-20260928&release=clinic-merge-20261007&staff=role-change-20261012&role_model=canonical-20261012&groomers=named-20261016&loading=20261018&loading-ui=universal-20261018&icons=20261018&intake=20261019&otp=20261021&payments=legacy-off-20261026&qr-workflow=20261023-methods&profile=20261024&veterinary=20261024&legacy-qr=off-20261026&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&urls=20261103"></script>
+    <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>
 </html>

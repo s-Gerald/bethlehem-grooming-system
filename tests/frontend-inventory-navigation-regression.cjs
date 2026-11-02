@@ -367,7 +367,7 @@ async function testScannerLibraryIsSharedAndLoadedOnceOnUse() {
 }
 
 function testSidebarNavigation() {
-  const context={window:{location:{origin:'http://localhost',pathname:'/pages/admin/inventory/inventory.html',hash:'#products'}},document:{},URL};
+  const context={window:{location:{origin:'http://localhost',pathname:'/admin/inventory',hash:'#products'}},document:{},URL};
   vm.createContext(context);
   vm.runInContext(read('scripts/components/admin-sidebar.js'),context);
   const sidebar=context.adminSidebar();
@@ -379,19 +379,19 @@ function testSidebarNavigation() {
   context.window.location.pathname='/pages/admin/inventory/pos.html';
   assert.equal(context.getAdminInventorySection(),'');
   let group;
-  const link={href:'http://localhost/pages/admin/inventory/inventory.html',className:'sidebar-link',innerHTML:'<i data-lucide="box"></i><span>Inventory</span>',getAttribute:()=>"activePage === 'inventory' ? 'active' : ''",replaceWith:element=>{group=element;}};
+  const link={href:'http://localhost/admin/inventory',className:'sidebar-link',innerHTML:'<i data-lucide="box"></i><span>Inventory</span>',getAttribute:()=>"activePage === 'inventory' ? 'active' : ''",replaceWith:element=>{group=element;}};
   context.document.querySelector=()=>link;
   context.document.createElement=()=>({attrs:{},style:{},children:[],setAttribute(key,value){this.attrs[key]=value;},append(...children){this.children.push(...children);},appendChild(child){this.children.push(child);}});
   context.installAdminInventoryNavigation();
   assert.equal(group.children[0].attrs['aria-controls'],'inventory-submenu');
   assert.deepEqual(group.children[1].children.map(child=>child.textContent),['Overview','Products','Point of Sale','Stock Movements']);
-  assert.equal(group.children[1].children[1].href,'/pages/admin/inventory/inventory.html#products');
+  assert.equal(group.children[1].children[1].href,'/admin/inventory#products');
   assert.equal(group.children[1].children[1].attrs['@click'],'sidebarOpen = false');
   assert.match(group.children[1].children[1].attrs[':aria-current'],/inventorySection === 'products'/);
 
   const mobileTitle=read('pages/admin/inventory/inventory.html').match(/x-text="([^"]*\[inventorySection\][^"]*)"/)[1];
   for (const [section,title] of [['stock-in','Stock In'],['stock-out','Stock Out'],['sell-product','Point of Sale'],['history','Stock Movements']]) {
-    context.window.location.pathname='/pages/admin/inventory/inventory.html';
+    context.window.location.pathname='/admin/inventory';
     context.window.location.hash='#'+section;
     const actionSidebar=context.adminSidebar();
     assert.equal(actionSidebar.activePage,'inventory');

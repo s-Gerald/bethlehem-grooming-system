@@ -18,7 +18,7 @@ class ClinicSettingController extends Controller
 {
     public function page()
     {
-        $html = str_replace('{{ADMIN_BASE}}', e(url('pages/admin').'/'), file_get_contents(base_path('resources/views/admin/availability.html')));
+        $html = file_get_contents(base_path('resources/views/admin/availability.html'));
         return response($html, 200, [
             'Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store, private',
         ]);

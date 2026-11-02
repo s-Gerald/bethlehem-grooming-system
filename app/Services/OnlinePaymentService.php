@@ -28,12 +28,13 @@ class OnlinePaymentService
         }
         $path = $parts['path'] ?? '';
         $admin = strpos($path, '/pages/admin/');
+        if ($admin === false) $admin = strpos($path, '/admin/');
         $base = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '')
             .($admin === false ? '' : substr($path, 0, $admin));
         $page = match ($attempt->context) {
-            'clinic' => '/pages/admin/clinic.html', 'pos' => '/pages/admin/inventory/inventory.html', default => null,
+            'clinic' => '/admin/clinic', 'pos' => '/admin/inventory', default => '/admin/grooming',
         };
-        $url = $page ? $base.$page : strtok($anchor, '?#');
+        $url = $base.$page;
         return $url.'?'.http_build_query([
             'gateway_payment' => $attempt->id, 'payment_context' => $attempt->context,
             'payment_return' => $outcome, 'payable' => $attempt->payable_id,

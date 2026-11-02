@@ -149,7 +149,7 @@ function adminSettings() {
     async init() {
       const legacyTab = new URLSearchParams(window.location.search).get('tab') || window.location.hash?.slice(1);
       if (['availability', 'capacity'].includes(legacyTab)) {
-        window.location.replace(new URL('availability.html' + (legacyTab === 'capacity' ? '?service=grooming' : ''), window.location.href));
+        window.location.replace(new URL('/admin/availability' + (legacyTab === 'capacity' ? '?service=grooming' : ''), window.location.href));
         return;
       }
       if (!['general', 'security'].includes(this.activeSettingsTab)) this.activeSettingsTab = 'general';

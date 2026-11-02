@@ -168,7 +168,7 @@ class SharedPayMongoTest extends TestCase
         DB::table('booking_services')->insert(['booking_service_id' => 3, 'booking_id' => 1, 'booking_pet_id' => 2,
             'service_id' => 3, 'price_at_booking' => 850, 'price_min_at_booking' => 850]);
         config(['services.paymongo.secret_key' => 'sk_test_fixture', 'services.paymongo.webhook_secret' => 'whsec_fixture',
-            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/pages/admin/appointments.html']);
+            'services.paymongo.payment_methods' => ['qrph'], 'services.paymongo.livemode' => false, 'services.paymongo.return_url' => 'https://bethlehem.example/admin/grooming']);
         Http::preventStrayRequests();
         $this->fakeProvider();
         Schema::create('clinic_appointments', function (Blueprint $table) {
@@ -220,8 +220,8 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('payments', 0);
         Http::assertSent(fn ($r) => $r['data']['attributes']['line_items'][0]['amount'] === 50000
             && $r['data']['attributes']['payment_method_types'] === ['qrph']
-            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/pages/admin/clinic.html?gateway_payment=1&payment_context=clinic&payment_return=success&payable=1'
-            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/pages/admin/clinic.html?gateway_payment=1&payment_context=clinic&payment_return=cancel&payable=1');
+            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/admin/clinic?gateway_payment=1&payment_context=clinic&payment_return=success&payable=1'
+            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/admin/clinic?gateway_payment=1&payment_context=clinic&payment_return=cancel&payable=1');
         $this->postJson('/api/admin/clinic-appointments/1/pay', ['payment_method' => 'cash', 'total_amount' => 500, 'amount_paid' => 500])->assertUnprocessable();
     }
 
@@ -229,7 +229,9 @@ class SharedPayMongoTest extends TestCase
     {
         return [
             'explicit HTTPS return overrides localhost' => ['http://127.0.0.1:8000', 'http://127.0.0.1:5173',
-                'https://bethlehem.example/pages/admin/appointments.html', 'https://bethlehem.example'],
+                'https://bethlehem.example/admin/grooming', 'https://bethlehem.example'],
+            'legacy configured anchor upgrades without a redirect' => ['https://api.example', null,
+                'https://bethlehem.example/system/pages/admin/appointments.html', 'https://bethlehem.example/system'],
             'frontend fallback preserves subdirectory' => ['https://api.example', 'https://bethlehem.example/system/',
                 null, 'https://bethlehem.example/system'],
             'app fallback' => ['https://bethlehem.example', null, null, 'https://bethlehem.example'],
@@ -300,8 +302,8 @@ class SharedPayMongoTest extends TestCase
                 $this->assertFalse($result['live']);
                 $this->assertTrue($result['valid_signature']);
                 $this->assertFalse($result['tampered_signature']);
-                foreach (['grooming' => '/pages/admin/appointments.html', 'clinic' => '/pages/admin/clinic.html',
-                    'pos' => '/pages/admin/inventory/inventory.html'] as $context => $page) {
+                foreach (['grooming' => '/admin/grooming', 'clinic' => '/admin/clinic',
+                    'pos' => '/admin/inventory'] as $context => $page) {
                     foreach (['success', 'cancel'] as $outcome) {
                         $this->assertSame($expectedBase.$page.'?gateway_payment=7&payment_context='.$context
                             .'&payment_return='.$outcome.'&payable=9'.($context === 'pos' ? '#sell-product' : ''),
@@ -438,8 +440,8 @@ class SharedPayMongoTest extends TestCase
         Http::assertSent(fn ($r) => $r['data']['attributes']['payment_method_types'] === ['qrph']
             && $r['data']['attributes']['line_items'][0]['quantity'] === 2
             && $r['data']['attributes']['line_items'][0]['amount'] === 8000
-            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/pages/admin/inventory/inventory.html?gateway_payment=1&payment_context=pos&payment_return=success&payable=7#sell-product'
-            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/pages/admin/inventory/inventory.html?gateway_payment=1&payment_context=pos&payment_return=cancel&payable=7#sell-product');
+            && $r['data']['attributes']['success_url'] === 'https://bethlehem.example/admin/inventory?gateway_payment=1&payment_context=pos&payment_return=success&payable=7#sell-product'
+            && $r['data']['attributes']['cancel_url'] === 'https://bethlehem.example/admin/inventory?gateway_payment=1&payment_context=pos&payment_return=cancel&payable=7#sell-product');
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 3]);
         $this->assertDatabaseHas('gateway_stock_reservations', ['item_id' => 10, 'quantity' => 2]);

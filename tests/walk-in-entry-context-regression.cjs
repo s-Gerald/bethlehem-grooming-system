@@ -88,7 +88,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   const top = markup.match(new RegExp(`<([a-z]+)\\b([^>]*\\bid="${topId}"[^>]*)>([\\s\\S]*?)<\\/\\1>`));
   assert.ok(top, `${file}: top navigation is rendered`);
   assert.equal(top[1], "a", `${file}: Home uses native anchor navigation`);
-  assert.match(top[2], /href="\.\/dashboard\.html"/, file);
+  assert.match(top[2], /href="\/admin\/dashboard"/, file);
   assert.equal(top[3].replace(/<[^>]+>/g, "").replace(/&larr;/g, "←").replace(/\s+/g, " ").trim(), "← Back to Home", file);
   assert.equal(get(topId).events.click, undefined, `${file}: no handler overrides Home`);
   assert.deepEqual([...saved], initialDraft, `${file}: navigation setup preserves drafts`);
@@ -109,11 +109,11 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
 
 (async () => {
   for (const step of [
-    ["walk-in-services-step", "getServicesMainMarkup", "walkInServicesBackTopBtn", "walkInServicesBackBtn", "./walk-in-pet-details.html"],
-    ["walk-in-review-step", "getReviewMainMarkup", "walkInReviewBackTopBtn", "walkInReviewBackBtn", "./walk-in-grooming-services.html"],
-    ["walk-in-consent-step", "getConsentMainMarkup", "walkInConsentBackTopBtn", "walkInConsentBackBtn", "./walk-in-booking-review.html"],
-    ["walk-in-clinic-complaint-step", "getMarkup", "clinicComplaintBackTopBtn", "clinicComplaintBackBtn", "./walk-in-pet-details.html"],
-    ["walk-in-clinic-consent-step", "getMarkup", "clinicConsentBackTopBtn", "clinicConsentBackBtn", "./walk-in-pet-details.html"],
+    ["walk-in-services-step", "getServicesMainMarkup", "walkInServicesBackTopBtn", "walkInServicesBackBtn", "/admin/walk-in/pets"],
+    ["walk-in-review-step", "getReviewMainMarkup", "walkInReviewBackTopBtn", "walkInReviewBackBtn", "/admin/walk-in/grooming/services"],
+    ["walk-in-consent-step", "getConsentMainMarkup", "walkInConsentBackTopBtn", "walkInConsentBackBtn", "/admin/walk-in/grooming/review"],
+    ["walk-in-clinic-complaint-step", "getMarkup", "clinicComplaintBackTopBtn", "clinicComplaintBackBtn", "/admin/walk-in/pets"],
+    ["walk-in-clinic-consent-step", "getMarkup", "clinicConsentBackTopBtn", "clinicConsentBackBtn", "/admin/walk-in/pets"],
   ]) await checkStepNavigation(...step);
   let authorize;
   const verification = new Promise(resolve => { authorize = resolve; });
@@ -128,7 +128,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.equal(JSON.parse(denied.storage.get("walkInOwnerStep")).firstName, "Private draft", "Failed authorization cannot initialize a new flow");
   assert.doesNotMatch(ownerPage, /Walk-in Type|typeGrooming|typeClinic|name="appointmentType"/);
   assert.doesNotMatch(ownerSource, /syncExistingCustomerSearchVisibility|applyRequestedAppointmentType/);
-  assert.match(read("scripts/components/admin-dashboard.js"), /walkInBookingUrl: "\.\/walk-in-booking.html\?flow=grooming&new=1"/);
+  assert.match(read("scripts/components/admin-dashboard.js"), /walkInBookingUrl: "\/admin\/walk-in\/customer\?flow=grooming&new=1"/);
 
   for (const type of ["grooming", "clinic"]) {
     const flow = ownerFlow(type);
@@ -153,7 +153,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     phoneInput.value = '0897abc12345678'; phoneInput.selectionStart = 7; phoneInput.selectionEnd = 7;
     phoneInput.events.input(); assert.equal(phoneInput.value, '0897 123 4567'); assert.equal(phoneInput.selectionStart, 4);
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
-    assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "./clinic.html" : "./appointments.html");
+    assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "/admin/clinic" : "/admin/grooming");
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
     continuationKeys.forEach((key) => assert.equal(flow.storage.has(key), false, `${type}: clears ${key}`));
     assert.equal(flow.storage.get("unrelated"), "keep");
@@ -182,7 +182,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(owner.appointmentType, type);
     assert.equal(owner.confirmSimilarName, true);
     assert.equal(owner.ownerRecordType, "new");
-    assert.equal(flow.window.location.href, "./walk-in-pet-details.html");
+    assert.equal(flow.window.location.href, "/admin/walk-in/pets");
 
     for (const recordType of ["registered", "unregistered"]) {
       flow.context.customer = { ...values, phone: '09031234567', id: 7, recordType, pets: [{ petId: 4 }] };
@@ -214,7 +214,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(completed.customerUserId, 17);
     assert.equal(completed.phone, '09179998888');
     assert.equal(completed.existingPets[0].petId, 14);
-    assert.equal(missing.window.location.href, './walk-in-pet-details.html');
+    assert.equal(missing.window.location.href, '/admin/walk-in/pets');
   }
 
   const clinic = vm.createContext({ document: { addEventListener() {} }, window: { location: {} } });
@@ -225,7 +225,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.equal(clinic.window.location.href, undefined);
   cases.$store.clinicAccess.permissions = { intake: true, customers: false };
   cases.startWalkIn();
-  assert.equal(clinic.window.location.href, "./walk-in-booking.html?flow=clinic&new=1");
+  assert.equal(clinic.window.location.href, "/admin/walk-in/customer?flow=clinic&new=1");
   assert.match(clinicPage, /x-show="permissions.intake" @click="startWalkIn\(\)"/);
   assert.doesNotMatch(clinicSource + clinicPage, /addCustomer|openAddCustomer|closeAddCustomer|saveCustomerRecord|createUnregisteredCustomer|adminAddCustomerPet/);
   assert.match(read("routes/api.php"), /post\('\/admin\/clinic-walk-in',[^\n]+middleware\('clinic:intake'\)/);

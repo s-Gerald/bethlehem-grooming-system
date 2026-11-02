@@ -59,7 +59,7 @@ class ActivityLogTest extends TestCase
             $this->actor('staff', $role);
             foreach (['', '/options', '/'.$event->id] as $suffix) $this->getJson('/api/admin/activity-log'.$suffix)->assertForbidden();
             $this->get('/api/admin/activity-log/page')->assertForbidden();
-            $this->get('/pages/admin/activity-log.html')->assertRedirect('api/admin/activity-log/page');
+            $this->get('/pages/admin/activity-log.html')->assertStatus(301)->assertRedirect('/admin/activity-log');
         }
     }
 

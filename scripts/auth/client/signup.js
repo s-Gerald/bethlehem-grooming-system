@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : "Email confirmed. Review your details and choose a password.";
       document.getElementById("signupBtnLabel").textContent = "Complete registration";
     } catch {
-      window.location.replace("./verify-email.html?recover=1");
+      window.location.replace("/verify-email?recover=1");
       return;
     }
   }
@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
       sessionStorage.setItem("pendingVerificationState", "resumed");
       sessionStorage.setItem("pendingVerificationRegistrationUntil", String(pending.expiresAt));
     } catch { /* The waiting screen can restore non-secret context. */ }
-    window.location.replace("./verify-email.html");
+    window.location.replace("/verify-email");
   }
   continueButton.addEventListener("click", () => { if (!busy) continueVerification(); });
   editButton.addEventListener("click", async () => {
@@ -231,7 +231,7 @@ document.addEventListener("DOMContentLoaded", () => {
         for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationRecoveryUntil", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationRegistrationUntil", "pendingVerificationState", "pendingVerificationLinkUntil", "pendingVerificationResendLimited", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
           try { sessionStorage.removeItem(key); } catch { /* session already established */ }
         }
-        window.location.replace("./dashboard.html");
+        window.location.replace("/account");
         return;
       }
 
@@ -261,13 +261,13 @@ document.addEventListener("DOMContentLoaded", () => {
             sessionStorage.removeItem("pendingVerificationDeliveryFailed");
           }
         } catch { /* delivery and verification remain recoverable by email */ }
-        window.location.replace("./verify-email.html");
+        window.location.replace("/verify-email");
         return;
       }
 
       // Registration never implies authentication, including when talking to
       // an older backend response that omits requires_verification.
-      window.location.replace("./sign-in.html");
+      window.location.replace("/sign-in");
     } catch (error) {
       if (error.errors) {
         const [field, firstError] = Object.entries(error.errors)[0];

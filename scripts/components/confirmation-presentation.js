@@ -68,7 +68,7 @@ export function confirmationDocument({
   return `<article class="confirmation-document" aria-label="Confirmation details">
       <header class="confirmation-brand-header">
         <div class="brand-lockup" role="img" aria-label="Bethlehem Animal Clinic">
-          <img src="../../assets/images/clinic/Bethlehem_Logo-256.png" alt="" class="brand-lockup__mark" />
+          <img src="/assets/images/clinic/Bethlehem_Logo-256.png" alt="" class="brand-lockup__mark" />
           <span class="brand-lockup__divider" aria-hidden="true"></span>
           <span class="brand-lockup__text" aria-hidden="true">
             <span class="brand-lockup__name">BETHLEHEM</span>

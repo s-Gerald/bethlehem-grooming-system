@@ -292,7 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
       confirmation.value = "";
       stopTimer();
       try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage unavailable. */ }
-      window.location.replace("./sign-in.html?password_reset=1");
+      window.location.replace("/sign-in?password_reset=1");
     } catch (error) {
       const message = firstApiError(error);
       if (error?.expired) restartRecovery("Your reset session expired. Request a new code.");

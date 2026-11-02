@@ -38,7 +38,7 @@ class DynamicLucideIconInterfaceTest extends TestCase
             preg_match_all('/<use\b[^>]*(?<!:)href="([^"]*phosphor\.svg[^"]*)"/', file_get_contents($file->getPathname()), $icons);
             foreach ($icons[1] as $href) {
                 $references++;
-                $this->assertMatchesRegularExpression('~^(?:\.\./)+assets/icons/phosphor\.svg(?:\?[^#]*)?#[a-z0-9-]+$~', $href);
+                $this->assertMatchesRegularExpression('~^/assets/icons/phosphor\.svg(?:\?[^#]*)?#[a-z0-9-]+$~', $href);
                 $this->assertContains(parse_url($href, PHP_URL_FRAGMENT), $symbols[1], "Missing sprite target: {$href}");
             }
         }

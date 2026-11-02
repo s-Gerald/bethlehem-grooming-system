@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     password.type = 'password';
     reveal.setAttribute('aria-label', 'Show current account password');
     reveal.setAttribute('aria-pressed', 'false');
-    document.getElementById('recoveryEye').setAttribute('href', '../../assets/icons/phosphor.svg#eye-slash');
+    document.getElementById('recoveryEye').setAttribute('href', '/assets/icons/phosphor.svg#eye-slash');
   };
   const unavailable = () => {
     token = ''; password.value = ''; hidePassword();
@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     password.type = showing ? 'text' : 'password';
     reveal.setAttribute('aria-label', (showing ? 'Hide' : 'Show') + ' current account password');
     reveal.setAttribute('aria-pressed', String(showing));
-    document.getElementById('recoveryEye').setAttribute('href', '../../assets/icons/phosphor.svg#' + (showing ? 'eye' : 'eye-slash'));
+    document.getElementById('recoveryEye').setAttribute('href', '/assets/icons/phosphor.svg#' + (showing ? 'eye' : 'eye-slash'));
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();

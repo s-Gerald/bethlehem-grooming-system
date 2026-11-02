@@ -14,7 +14,7 @@ class PasswordResetInterfaceTest extends TestCase
         $api = file_get_contents(base_path('scripts/api.js'));
         $routes = file_get_contents(base_path('routes/api.php'));
 
-        $this->assertStringContainsString('href="./forgot-password.html"', $signIn);
+        $this->assertStringContainsString('href="/forgot-password"', $signIn);
         $this->assertStringNotContainsString('Forgot password?" has no password reset flow', $signIn);
         $this->assertStringContainsString('id="forgotPasswordForm"', $forgot);
         $this->assertStringContainsString('type="email"', $forgot);
@@ -64,7 +64,7 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('"Create New Password"', $forgotScript);
         $this->assertStringContainsString('API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim())', $forgotScript);
         $this->assertStringContainsString('await API.resetPassword(', $forgotScript);
-        $this->assertStringContainsString('"./sign-in.html?password_reset=1"', $forgotScript);
+        $this->assertStringContainsString('"/sign-in?password_reset=1"', $forgotScript);
         $this->assertStringContainsString('window.VerificationCode.bind', $forgotScript);
         $this->assertStringContainsString('codeInput.addEventListener("paste"', file_get_contents(base_path('scripts/auth/verification-code.js')));
         $this->assertStringContainsString('setFieldError(confirmation, confirmPasswordMessage', $forgotScript);
@@ -133,9 +133,9 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('API.requestNewStaffPasswordSetupLink(setupToken)', $script);
         $this->assertStringContainsString('password.disabled = true', $script);
         $this->assertStringContainsString('confirmation.disabled = true', $script);
-        $this->assertStringContainsString('window.location.replace("../admin/dashboard.html")', $script);
+        $this->assertStringContainsString('window.location.replace("/admin/dashboard")', $script);
         $this->assertStringContainsString('submit.disabled = busy || validationError() !== ""', $script);
-        $this->assertStringContainsString('"set-up-password.html"', $api);
+        $this->assertStringContainsString('set-up-password', $api);
         $this->assertStringContainsString('"/staff/password-setup/verify"', $api);
         $this->assertStringContainsString('"/staff/password-setup/complete"', $api);
         $this->assertStringContainsString('"/staff/password-setup/request-new-link"', $api);

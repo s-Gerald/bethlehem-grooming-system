@@ -2,18 +2,18 @@
 <html lang="en" data-session-gate="checking">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notifications | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?v=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
-    <link rel="stylesheet" href="../../css/session-lock.css?remember=20261029" />
+    <link rel="stylesheet" href="/css/output.css?v=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?v=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="/css/session-lock.css?remember=20261029" />
   </head>
   <body class="portal-theme group/portal bg-portal-canvas text-portal-text" data-icon-library="phosphor">
     <div class="flex min-h-screen">
       <button type="button" id="clientSidebarToggle" aria-controls="clientSidebar" aria-expanded="false" aria-label="Open navigation menu"
         class="fixed left-4 top-4 z-[60] hidden h-12 w-12 items-center justify-center rounded-full border border-portal-border bg-portal-surface-soft text-portal-primary shadow-portal transition hover:bg-portal-active max-[1180px]:inline-flex">
-        <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#list"></use></svg>
+        <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#list"></use></svg>
       </button>
       <button type="button" id="clientSidebarBackdrop" aria-label="Close navigation menu"
         class="fixed inset-0 z-[95] invisible hidden border-0 bg-[rgba(44,62,80,0.28)] p-0 opacity-0 pointer-events-none transition-[opacity,visibility] duration-[240ms] max-[1180px]:block max-[1180px]:group-[.client-sidebar-open]/portal:visible max-[1180px]:group-[.client-sidebar-open]/portal:opacity-100 max-[1180px]:group-[.client-sidebar-open]/portal:pointer-events-auto"></button>
@@ -22,32 +22,32 @@
         <div>
           <div class="px-6 pb-5 pt-[25px]">
             <div class="flex items-start justify-between gap-4">
-              <a href="./dashboard.html" class="flex items-center gap-3">
+              <a href="/account" class="flex items-center gap-3">
                 <div class="flex h-[52px] w-12 flex-none items-center justify-center rounded-[14px] border border-portal-border bg-portal-surface p-[5px]">
-                  <img src="../../assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" width="256" height="341" class="h-full w-full object-contain" />
+                  <img src="/assets/images/clinic/Bethlehem_Logo-256.png" alt="Bethlehem Animal Clinic logo" width="256" height="341" class="h-full w-full object-contain" />
                 </div>
                 <div><h1 class="text-[16px] font-bold leading-tight">Bethlehem Animal Clinic</h1><p class="mt-[3px] text-sm text-portal-muted">Client Portal</p></div>
               </a>
               <button type="button" id="clientSidebarClose" aria-label="Close navigation menu" class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full border border-portal-border bg-portal-surface-soft text-portal-primary max-[1180px]:inline-flex">
-                <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
+                <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#x"></use></svg>
               </button>
             </div>
           </div>
           <nav class="grid gap-[7px] p-4" aria-label="Customer navigation">
             <p class="mx-3 mb-[3px] text-xs uppercase tracking-[0.2em] text-portal-muted">Menu</p>
-            <a href="./dashboard.html" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#squares-four"></use></svg><span>Dashboard</span></a>
-            <a href="./my-pets.html" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#paw-print"></use></svg><span>My Pets</span></a>
-            <a href="./grooming-history.html" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#clipboard-text"></use></svg><span>History</span></a>
-            <a href="./settings.html" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#gear"></use></svg><span>Settings</span></a>
+            <a href="/account" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#squares-four"></use></svg><span>Dashboard</span></a>
+            <a href="/account/pets" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#paw-print"></use></svg><span>My Pets</span></a>
+            <a href="/account/grooming-history" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#clipboard-text"></use></svg><span>History</span></a>
+            <a href="/account/settings" class="portal-nav-item font-medium"><svg class="ph-icon h-[21px] w-[21px]" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#gear"></use></svg><span>Settings</span></a>
           </nav>
         </div>
         <div class="p-4">
-          <a href="./settings.html" aria-label="View profile settings" class="mb-2 flex items-center gap-3 rounded-[15px] border border-portal-border bg-portal-surface-soft p-[13px] text-portal-text transition hover:bg-portal-active">
+          <a href="/account/settings" aria-label="View profile settings" class="mb-2 flex items-center gap-3 rounded-[15px] border border-portal-border bg-portal-surface-soft p-[13px] text-portal-text transition hover:bg-portal-active">
             <div id="clientProfileInitials" class="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-portal-primary font-bold text-white">--</div>
             <div class="min-w-0 [overflow-wrap:anywhere]"><p id="clientProfileName" class="text-[14px] font-semibold">Loading...</p><p class="text-sm text-portal-muted">Pet Owner</p></div>
           </a>
           <button type="button" id="clientLogoutBtn" class="flex min-h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-portal-border bg-transparent px-4 py-3 font-bold text-portal-primary-hover transition hover:bg-portal-active">
-            <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#sign-out"></use></svg><span>Logout</span>
+            <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#sign-out"></use></svg><span>Logout</span>
           </button>
         </div>
       </aside>
@@ -57,12 +57,12 @@
             <div class="min-w-0 max-[639px]:pl-[62px]"><h2 class="text-3xl font-bold text-portal-text max-[639px]:text-[26px]">Notifications</h2><p class="mt-1 text-[14px] leading-[1.5] text-portal-muted">Stay up to date with your pets, grooming visits, and clinic updates.</p></div>
             <div class="flex flex-none items-center gap-4 min-[1181px]:max-[1420px]:ml-auto max-[1180px]:flex-wrap max-[639px]:gap-2.5">
               <div class="flex min-h-[46px] w-[clamp(210px,18vw,300px)] items-center gap-2.5 rounded-full border border-portal-border bg-portal-surface-soft px-[15px] py-[11px] text-portal-primary focus-within:border-portal-accent max-[1180px]:w-auto max-[1180px]:flex-1 max-[639px]:order-3 max-[639px]:basis-full">
-                <svg class="ph-icon h-4 w-4 shrink-0 text-portal-muted" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#magnifying-glass"></use></svg>
+                <svg class="ph-icon h-4 w-4 shrink-0 text-portal-muted" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#magnifying-glass"></use></svg>
                 <input id="notificationSearch" type="search" placeholder="Search notifications..." aria-label="Search notifications" class="w-full min-w-0 bg-transparent text-sm text-portal-text outline-none placeholder:text-portal-muted focus-visible:!outline-none" />
               </div>
               <div class="relative" id="notifBellWrapper">
                 <button id="notifBellBtn" type="button" aria-label="Notifications" aria-controls="notifDropdown" aria-expanded="false" class="relative flex h-[46px] w-[46px] items-center justify-center rounded-2xl border border-portal-border bg-portal-surface-soft text-portal-primary-hover transition hover:bg-portal-active">
-                  <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#bell"></use></svg>
+                  <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#bell"></use></svg>
                   <span id="notifBadge" class="absolute -right-1 -top-1 hidden min-h-5 min-w-5 items-center justify-center rounded-full bg-portal-danger px-1 text-[10px] font-bold text-white"></span>
                 </button>
                 <div id="notifDropdown" class="notif-client-dropdown !rounded-2xl !border-portal-border !shadow-portal-dropdown" style="display:none">
@@ -70,7 +70,7 @@
                   <div id="notifList" class="notif-list"><p class="px-4 py-6 text-center text-sm text-portal-muted">Loading...</p></div>
                 </div>
               </div>
-              <a id="preRegisterButton" data-pre-registration-button href="./pre-register.html" aria-disabled="true" tabindex="-1" title="Checking availability" class="portal-button-primary cursor-not-allowed font-semibold opacity-60 max-[639px]:flex-1">Register Online</a>
+              <a id="preRegisterButton" data-pre-registration-button href="/account/registration" aria-disabled="true" tabindex="-1" title="Checking availability" class="portal-button-primary cursor-not-allowed font-semibold opacity-60 max-[639px]:flex-1">Register Online</a>
             </div>
           </div>
         </header>
@@ -90,10 +90,10 @@
         </section>
       </main>
     </div>
-    <script src="../../scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101"></script>
-    <script src="../../scripts/components/client-notification-ui.js?v=20261030-pet-information"></script>
-    <script type="module" src="../../scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
-    <script type="module" src="../../scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3"></script>
-    <script src="../../scripts/components/client-notifications-page.js?v=20260915-client-notifications&remember=20261029"></script>
+    <script src="/scripts/api.js?v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+    <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103"></script>
+    <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
+    <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103"></script>
+    <script src="/scripts/components/client-notifications-page.js?v=20260915-client-notifications&remember=20261029"></script>
   </body>
 </html>

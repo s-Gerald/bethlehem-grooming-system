@@ -1,20 +1,20 @@
 import {
   CLINIC_VISIT_CONFIRMATION_KEY, formatClinicVisitDate, requireCustomerSession,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
 import {
   clinicReasonConfirmation, confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
   renderConfirmation,
-} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029";
+} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029&urls=20261103";
 
 export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";
   if (walkIn && !await API.waitForSessionVerification()) return;
-  if (!walkIn && !await requireCustomerSession("./sign-in.html")) return;
+  if (!walkIn && !await requireCustomerSession("/sign-in")) return;
   const appointment = readConfirmationData(walkIn ? "walkInClinicConfirmation" : CLINIC_VISIT_CONFIRMATION_KEY);
   const root = document.getElementById("confirmationRoot");
   if (!appointment?.appointment_reference) {
-    if (!walkIn) window.location.replace("./dashboard.html");
+    if (!walkIn) window.location.replace("/account");
     else if (root) root.innerHTML = '<h1>Confirmation unavailable</h1><p role="status">No saved clinic walk-in confirmation was found.</p>';
     return;
   }
@@ -56,7 +56,7 @@ export async function initClinicVisitConfirmation() {
     message: walkIn ? "The patient has been checked in and added to the clinic queue." : "",
     reference: appointment.appointment_reference, status: walkIn ? "Checked In" : "Waiting to Arrive",
     walkIn, queueNumber: appointment.queue_number, sections,
-    primaryHref: walkIn ? "./clinic.html?tab=active-cases" : "./dashboard.html",
+    primaryHref: walkIn ? "/admin/clinic?tab=active-cases" : "/account",
     primaryLabel: walkIn ? "Go to Active Cases" : "Return to Dashboard",
   });
 }

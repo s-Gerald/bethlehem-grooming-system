@@ -2,17 +2,17 @@
 <html data-session-gate="checking" lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="../../assets/images/clinic/Bethlehem_Logo-256.png" />
+    <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="../../css/output.css?clinical-history=20261029&customer-records=20261029&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
-    <link rel="stylesheet" href="../../css/custom.css?v=customer-records-20261029&release=20261001&intake=20261019&pet-fields=20261030-v1&grooming=actual-20261026&pet-care=20261027-v1" />
-    <link rel="stylesheet" href="../../css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
-    <link rel="stylesheet" href="../../css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
-    <script src="../../scripts/components/admin-loading.js?v=universal-20261018"></script>
-    <link rel="preload" as="script" href="../../scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101" />
-    <link rel="preload" as="script" href="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031" />
-    <link rel="stylesheet" href="../../css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/output.css?clinical-history=20261029&customer-records=20261029&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/custom.css?v=customer-records-20261029&release=20261001&intake=20261019&pet-fields=20261030-v1&grooming=actual-20261026&pet-care=20261027-v1" />
+    <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
+    <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
+    <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
+    <link rel="preload" as="script" href="/scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103" />
+    <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103" />
+    <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -38,7 +38,7 @@
           <div class="flex items-start gap-4">
             <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm">
               <img
-                src="../../assets/images/clinic/Bethlehem_Logo-256.png"
+                src="/assets/images/clinic/Bethlehem_Logo-256.png"
                 alt="Bethlehem Animal Clinic logo"
                 class="h-full w-full object-contain"
               />
@@ -55,25 +55,25 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Main</p>
             <div class="space-y-1.5">
-              <a href="./dashboard.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
+              <a href="/admin/dashboard" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'dashboard' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#squares-four"></use></svg>
                 <span>Dashboard</span>
               </a>
-              <a aria-current="page" href="./clients.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+              <a aria-current="page" href="/admin/customers" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 bg-[#315b7e] text-white shadow-sm" :class="activePage === 'customers' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                 <span>Customers</span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="./appointments.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || canAccessGrooming" href="/admin/grooming" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'appointments' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar-dots"></use></svg>
                 <span>Grooming</span>
                 <span x-show="hasIncomingAppointments" style="display: none" class="ml-auto h-2.5 w-2.5 rounded-full bg-red-500" aria-label="Active grooming customers today"></span>
               </a>
-              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="./clinic.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
+              <a data-admin-permission style="display: none" x-show="isAdmin || clinicPermissions.access" href="/admin/clinic" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'clinic' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg>
                 <span>Clinic</span>
               </a>
-              <a href="./inventory/inventory.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
+              <a href="/admin/inventory" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'inventory' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cube"></use></svg>
                 <span>Inventory</span>
               </a>
             </div>
@@ -81,16 +81,16 @@
           <div class="mb-8">
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">Records</p>
             <div class="space-y-1.5">
-              <a href="./archive.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+              <a href="/admin/history" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'archive' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                 <span>History</span>
               </a>
-              <a href="./transactions.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
+              <a href="/admin/transactions" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'transactions' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#receipt"></use></svg>
                 <span>Transactions</span>
               </a>
-              <a data-admin-permission href="./reports.html" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+              <a data-admin-permission href="/admin/reports" x-show="isAdmin" style="display: none" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'reports' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                 <span>Reports</span>
               </a>
             </div>
@@ -98,8 +98,8 @@
           <div>
             <p class="mb-3 px-3 text-xs font-bold uppercase tracking-[0.18em] text-[#5c7690]">System</p>
             <div class="space-y-1.5">
-              <a href="./settings.html" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
-                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
+              <a href="/admin/settings" class="flex items-center gap-3 rounded-2xl px-4 py-3 font-semibold transition hover:bg-white/40 text-[#2f4b66]" :class="activePage === 'settings' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66]'">
+                <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#gear"></use></svg>
                 <span>Settings</span>
               </a>
             </div>
@@ -118,14 +118,14 @@
           <!-- Stop Receiving / Reopen toggle — hidden from staff (admin only) -->
 
           <button type="button" class="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#6e8ba8] px-4 py-3 font-bold text-[#1f3850] transition hover:bg-white/30" @click="handleLogout()">
-            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
+            <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sign-out"></use></svg>
             <span>Logout</span>
           </button>
         </div>
       </aside>
-      <script src="../../scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="../../scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101"></script>
-      <script src="../../scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031"></script>
+      <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
+    <script src="/scripts/api.js?clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103"></script>
+      <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103"></script>
 
       <!-- Main Content -->
       <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-[280px]">
@@ -137,7 +137,7 @@
             <h2 class="text-lg font-extrabold text-[#1f3850]" data-session-public>Customers</h2>
           </div>
           <div class="admin-notification-header-actions"><span data-notification-mobile></span><button type="button" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#c9d9e8] bg-white text-[#315b7e] shadow-sm" @click="sidebarOpen = true">
-            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
+            <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#list"></use></svg>
           </button></div>
         </header>
 
@@ -163,7 +163,7 @@
                   <!-- Search -->
                   <label class="relative block min-w-0 flex-1 sm:min-w-[260px]">
                     <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
+                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#magnifying-glass"></use></svg>
                     </span>
                     <input
                       type="text"
@@ -181,7 +181,7 @@
                     aria-label="Add customer"
                     class="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#274b69] sm:w-auto"
                   >
-                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                     <span>Add Customer</span>
                   </button>
                 <admin-notification-bell></admin-notification-bell></div>
@@ -190,7 +190,7 @@
               <!-- Stats and customer tier filters -->
               <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex items-center gap-2 rounded-xl bg-white/60 px-4 py-2 text-sm font-semibold text-[#1f3850]">
-                  <svg class="ph-icon h-4 w-4 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+                  <svg class="ph-icon h-4 w-4 text-[#315b7e]" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
                   <span x-text="searchQuery.trim()
                     ? (totalCount + petSearchResults.length) + ' result' + ((totalCount + petSearchResults.length) !== 1 ? 's' : '')
                     : totalCount + ' customer' + (totalCount !== 1 ? 's' : '')" x-cloak x-show="customersLoaded"></span>
@@ -267,8 +267,8 @@
           <section x-cloak x-show="customersLoaded && !errorMessage && customers.length === 0 && petSearchResults.length === 0" class="mt-6">
             <div class="rounded-[24px] border border-dashed border-[#bfd3e3] bg-white p-10 text-center">
               <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                <svg x-show="statusFilter === 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
-                <svg x-show="statusFilter !== 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
+                <svg x-show="statusFilter === 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                <svg x-show="statusFilter !== 'unregistered'"  class="ph-icon h-8 w-8" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#users"></use></svg>
               </div>
               <p class="mt-4 text-lg font-semibold text-[#2f4b66]" x-text="searchQuery ? 'No customers or pets match your search.' : statusFilter === 'unregistered' ? 'No Walk-in / Manual customers yet.' : 'No customers in ' + categoryLabel(statusFilter) + '.'"></p>
               <p class="mt-2 text-sm text-slate-500" x-text="searchQuery ? 'Try a different name, phone number, or email address.' : statusFilter === 'unregistered' ? 'Customers added without an online account will appear here.' : 'Try adjusting your search or filter.'"></p>
@@ -278,7 +278,7 @@
                 @click="openAddCustomerModal()"
                 class="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#274b69]"
               >
-                <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                 Add customer
               </button>
             </div>
@@ -327,26 +327,26 @@
                           class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
                           :class="customer.tier === 'returning' ? 'badge-returning' : 'badge-new'"
                         >
-                          <template x-if="customer.tier === 'returning'"><svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#repeat"></use></svg></template>
-                          <template x-if="customer.tier !== 'returning'"><svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#sparkle"></use></svg></template>
+                          <template x-if="customer.tier === 'returning'"><svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#repeat"></use></svg></template>
+                          <template x-if="customer.tier !== 'returning'"><svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#sparkle"></use></svg></template>
                           <span x-text="customer.tier === 'returning' ? 'Returning' : 'New'"></span>
                         </span>
 
                         <span x-show="customer.recordType === 'unregistered' || statusFilter === 'archived'"
                           class="inline-flex items-center gap-1 rounded-full bg-[#eaf4fb] px-2.5 py-0.5 text-xs font-semibold text-[#315b7e]">
-                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                           <span x-text="customer.recordType === 'unregistered' ? 'Manual record' : 'Online account'"></span>
                         </span>
 
                         <!-- Status badge -->
                         <span x-show="statusFilter === 'inactive'"
                           class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#prohibit"></use></svg>
+                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#prohibit"></use></svg>
                           Deactivated
                         </span>
                         <span x-show="statusFilter === 'archived'"
                           class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">
-                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
+                          <svg class="ph-icon h-3 w-3" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#archive"></use></svg>
                           Archived
                         </span>
                       </div>
@@ -354,19 +354,19 @@
                       <!-- Contact -->
                       <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-500">
                         <span class="flex items-center gap-1.5">
-                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#phone"></use></svg>
+                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#phone"></use></svg>
                           <span x-text="formatMobileNumber(customer.phone)"></span>
                         </span>
                         <span class="flex min-w-0 items-center gap-1.5">
-                          <svg class="ph-icon h-3.5 w-3.5 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
+                          <svg class="ph-icon h-3.5 w-3.5 shrink-0" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
                           <span class="break-all" x-text="formatTextValue(customer.email)"></span>
                         </span>
                         <span class="flex items-center gap-1.5">
-                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#calendar"></use></svg>
+                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#calendar"></use></svg>
                           <span x-text="(customer.recordType === 'unregistered' ? 'Added ' : 'Joined ') + formatDate(customer.joinedAt)"></span>
                         </span>
                         <span x-show="customer.recordType !== 'unregistered'" class="flex items-center gap-1.5">
-                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
+                          <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#clipboard-text"></use></svg>
                           <span x-text="customer.bookingCount + ' visit' + (customer.bookingCount !== 1 ? 's' : '')"></span>
                         </span>
                       </div>
@@ -404,10 +404,10 @@
                   }">
                   <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
                     <template x-if="String(pet.species || '').trim().toLowerCase() === 'cat'">
-                      <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cat"></use></svg>
+                      <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cat"></use></svg>
                     </template>
                     <template x-if="String(pet.species || '').trim().toLowerCase() !== 'cat'">
-                      <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dog"></use></svg>
+                      <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#dog"></use></svg>
                     </template>
                   </span>
                   <span class="min-w-0 flex-1">
@@ -422,11 +422,11 @@
                         Owner: <span class="font-medium text-slate-700" x-text="pet.ownerName"></span>
                       </span>
                       <span class="inline-flex items-center gap-1.5">
-                        <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#phone"></use></svg>
+                        <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#phone"></use></svg>
                         <span x-text="formatMobileNumber(pet.ownerPhone)"></span>
                       </span>
                       <span class="inline-flex min-w-0 items-center gap-1.5">
-                        <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
+                        <svg class="ph-icon h-3.5 w-3.5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#envelope"></use></svg>
                         <span class="break-all" x-text="formatTextValue(pet.ownerEmail)"></span>
                       </span>
                     </span>
@@ -502,7 +502,7 @@
               <div class="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-6">
                 <div class="flex min-w-0 items-center gap-3">
                   <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef5fb] text-[#315b7e]">
-                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                    <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                   </div>
                   <div>
                     <h3 class="text-xl font-semibold text-[#1f3850]">Add customer</h3>
@@ -516,7 +516,7 @@
                   aria-label="Close add customer form"
                   class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
                 >
-                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                 </button>
               </div>
 
@@ -636,7 +636,7 @@
                     :disabled="addCustomerModal.saving"
                     class="inline-flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#274b69] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user-plus"></use></svg>
                     <span x-text="addCustomerModal.saving ? 'Adding customer...' : 'Add customer'"></span>
                   </button>
                 </div>
@@ -656,7 +656,7 @@
             <div class="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-xl">
               <div class="flex items-start gap-3">
                 <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning"></use></svg>
+                  <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#warning"></use></svg>
                 </div>
                 <div>
                   <h3 class="text-xl font-semibold text-[#1f3850]">Similar customer found</h3>
@@ -707,7 +707,7 @@
                   <div class="flex items-center justify-between gap-4 px-5 py-4">
                     <div class="flex min-w-0 items-center gap-4">
                       <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-                        <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg>
+                        <svg class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg>
                       </div>
                       <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
@@ -720,12 +720,12 @@
                     <div class="flex shrink-0 items-center gap-2">
                       <div class="relative" x-show="!detailModal.loading && !detailModal.error && customerActions(detailModal.customer).length" @click.outside="closeOwnerActions(false)" @focusout="if (!$el.contains($event.relatedTarget)) closeOwnerActions(false)">
                         <button type="button" x-ref="ownerActionsButton" @click="toggleOwnerActions()" @keydown.arrow-down.prevent="if (!ownerActionsOpen) toggleOwnerActions()" @keydown.escape="if (ownerActionsOpen) { $event.preventDefault(); $event.stopPropagation(); closeOwnerActions(); }" :aria-expanded="ownerActionsOpen" aria-haspopup="menu" aria-controls="customerActionsMenu" aria-label="More customer actions" class="customer-header-button">
-                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three"></use></svg>
+                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#dots-three"></use></svg>
                         </button>
                         <div x-cloak x-show="ownerActionsOpen" x-ref="ownerActionsMenu" id="customerActionsMenu" role="menu" aria-label="Customer actions" class="customer-actions-menu" @keydown="navigateOwnerActions($event)" @keydown.escape.stop.prevent="closeOwnerActions()">
                           <template x-for="item in customerActions(detailModal.customer)" :key="item.action">
                             <button type="button" role="menuitem" tabindex="-1" @click="confirmAction(item.action, detailModal.customer)" :disabled="busyId !== null" :class="{ 'customer-action-divider': item.action === 'archive' }">
-                              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'../../assets/icons/phosphor.svg?v=admin-icons-20261018#' + item.icon"></use></svg>
+                              <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use :href="'/assets/icons/phosphor.svg?v=admin-icons-20261018#' + item.icon"></use></svg>
                               <span x-text="item.label"></span>
                             </button>
                           </template>
@@ -735,7 +735,7 @@
                       @click="closeCustomerDetails()" x-ref="ownerClose"
                       class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60"
                       aria-label="Close customer details">
-                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
                     </div>
                   </div>
@@ -754,7 +754,7 @@
                   <section class="rounded-[24px] border border-[#d9e6f1] bg-[#f8fbfd] p-4">
                     <div class="mb-3 flex items-center gap-3">
                       <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef5fb] text-[#315b7e]">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg>
                       </div>
                       <div>
                         <h4 class="text-lg font-semibold text-[#1f3850]" x-text="detailModal.customer?.recordType === 'unregistered' ? 'Customer information' : 'Account information'"></h4>
@@ -805,7 +805,7 @@
                     <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div class="flex items-center gap-3">
                         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef5fb] text-[#315b7e]">
-                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
+                          <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
                         </div>
                         <div>
                           <h4 class="text-lg font-semibold text-[#1f3850]">Pets</h4>
@@ -820,7 +820,7 @@
                           @click="openAddPetForCustomer(detailModal.customer)"
                           class="inline-flex items-center gap-2 rounded-xl bg-[#315b7e] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#274b69]"
                         >
-                          <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#plus"></use></svg>
+                          <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#plus"></use></svg>
                           Add pet
                         </button>
                       </div>
@@ -828,7 +828,7 @@
 
                     <div x-show="(detailModal.customer?.pets || []).length === 0" class="rounded-2xl border border-dashed border-[#bfd3e3] bg-[#f8fbfd] px-5 py-8 text-center">
                       <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#eef5fb] text-[#315b7e]">
-                        <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
+                        <svg class="ph-icon h-6 w-6" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
                       </div>
                       <p class="mt-3 font-semibold text-[#2f4b66]">No pets added yet.</p>
                     </div>
@@ -895,9 +895,9 @@
                 <div class="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div class="flex min-w-0 items-center gap-4">
                     <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-                      <svg x-show="petModal.creating"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
-                      <svg x-show="!petModal.creating && normalizePetSpecies(petModal.pet?.species) === 'Dog'"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#dog"></use></svg>
-                      <svg x-show="!petModal.creating && normalizePetSpecies(petModal.pet?.species) === 'Cat'"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#cat"></use></svg>
+                      <svg x-show="petModal.creating"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg>
+                      <svg x-show="!petModal.creating && normalizePetSpecies(petModal.pet?.species) === 'Dog'"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#dog"></use></svg>
+                      <svg x-show="!petModal.creating && normalizePetSpecies(petModal.pet?.species) === 'Cat'"  class="ph-icon h-7 w-7" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#cat"></use></svg>
                     </div>
                     <div class="min-w-0">
                       <div class="flex flex-wrap items-center gap-2">
@@ -916,18 +916,18 @@
                   <div class="flex shrink-0 items-center gap-2 self-end sm:self-auto">
                     <button x-show="!petModal.editing && !petModal.creating" @click="startEditPet()" type="button"
                       class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/70 bg-white px-4 py-2.5 text-sm font-semibold text-[#315b7e] shadow-sm transition hover:bg-[#eef5fb] focus:outline-none focus:ring-2 focus:ring-white/70">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#pencil-simple"></use></svg>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#pencil-simple"></use></svg>
                       <span>Edit details</span>
                     </button>
                     <button x-show="petModal.editing" @click="cancelEditPet()" :disabled="petModal.saving" type="button"
                       class="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60 disabled:cursor-not-allowed disabled:opacity-60">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg>
                       <span>Cancel</span>
                     </button>
                     <button @click="closePetDetails()" x-ref="petClose" :disabled="petModal.saving" type="button"
                       class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/25 text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/60 disabled:cursor-not-allowed disabled:opacity-60"
                       aria-label="Close pet details">
-                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
+                      <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#x"></use></svg>
                     </button>
                   </div>
                 </div>
@@ -949,25 +949,25 @@
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'overview' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
                       id="customer-pet-overview-tab" aria-controls="customer-pet-overview-panel" :tabindex="petModal.activeTab === 'overview' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'overview'">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg><span>Overview</span>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#paw-print"></use></svg><span>Overview</span>
                     </button>
                     <button type="button" @click="selectPetProfileTab('grooming')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'grooming' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
                       id="customer-pet-grooming-tab" aria-controls="customer-pet-grooming-panel" :tabindex="petModal.activeTab === 'grooming' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'grooming'">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg><span>Grooming Records</span>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg><span>Grooming Records</span>
                     </button>
                     <button type="button" @click="selectPetProfileTab('medical')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'medical' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
                       id="customer-pet-medical-tab" aria-controls="customer-pet-medical-panel" :tabindex="petModal.activeTab === 'medical' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'medical'">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg><span>Medical Records</span>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#stethoscope"></use></svg><span>Medical Records</span>
                     </button>
                     <button type="button" @click="selectPetProfileTab('confinements')"
                       class="flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
                       :class="petModal.activeTab === 'confinements' ? 'bg-[#315b7e] text-white shadow-sm' : 'text-[#2f4b66] hover:bg-slate-50'"
                       id="customer-pet-confinements-tab" aria-controls="customer-pet-confinements-panel" :tabindex="petModal.activeTab === 'confinements' ? 0 : -1" role="tab" :aria-selected="petModal.activeTab === 'confinements'">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#buildings"></use></svg><span>Confinements</span>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#buildings"></use></svg><span>Confinements</span>
                     </button>
                   </div>
                 </div>
@@ -975,11 +975,11 @@
                 <admin-loader x-cloak x-show="petModal.profileLoading && !petModal.profileLoaded && petModal.activeTab === 'grooming'"></admin-loader>
 
                 <div x-show="!petModal.profileLoading && petModal.profileError && petModal.activeTab === 'grooming'" class="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-center" role="alert">
-                  <svg class="ph-icon mx-auto h-8 w-8 text-red-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#warning-circle"></use></svg>
+                  <svg class="ph-icon mx-auto h-8 w-8 text-red-400" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#warning-circle"></use></svg>
                   <h4 class="mt-3 font-bold text-red-800">Pet records could not be loaded</h4>
                   <p class="mt-1 text-sm text-red-600" x-text="petModal.profileError"></p>
                   <button type="button" @click="loadPetProfile()" class="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">
-                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrows-clockwise"></use></svg>Retry
+                    <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrows-clockwise"></use></svg>Retry
                   </button>
                 </div>
 
@@ -1002,7 +1002,7 @@
                   <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start gap-3">
                       <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#eef5fb] text-[#315b7e]">
-                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#heartbeat"></use></svg>
+                        <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#heartbeat"></use></svg>
                       </div>
                       <div>
                         <h3 class="text-lg font-bold text-[#2f4b66]">Allergies &amp; Special Care Notes</h3>
@@ -1019,7 +1019,7 @@
                       <p class="mt-1 text-sm text-slate-500">Only grooming activity connected to this pet is shown.</p>
                     </div>
                     <div x-show="petModal.groomingRecords.length === 0" class="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center">
-                      <svg class="ph-icon mx-auto h-8 w-8 text-slate-300" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg>
+                      <svg class="ph-icon mx-auto h-8 w-8 text-slate-300" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#scissors"></use></svg>
                       <h4 class="mt-3 font-bold text-slate-700">No grooming records found</h4>
                       <p class="mt-1 text-sm text-slate-500">This pet does not have grooming activity yet.</p>
                     </div>
@@ -1060,7 +1060,7 @@
                             <td class="px-4 py-3 font-medium text-slate-700"><span class="block truncate" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></span><span x-show="rec.record_type === 'historical'" class="mt-1 block truncate text-xs font-normal text-slate-500" :title="[rec.treatment?.treatment_name, fmtDate(rec.appointment_date)].filter(Boolean).join(' · ')" x-text="[rec.treatment?.treatment_name, fmtDate(rec.appointment_date)].filter(Boolean).join(' · ')"></span></td>
                             <td class="truncate px-4 py-3 text-slate-600" :title="rec.chief_complaint" x-text="rec.chief_complaint || '—'"></td>
                           <td class="truncate px-4 py-3 text-slate-600" :title="rec.working_diagnosis" x-text="rec.working_diagnosis || '—'"></td>
-                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'medical')" :aria-label="'View ' + historyCaseLabel(rec) + (rec.treatment ? ' · ' + rec.treatment.treatment_name + ' · ' + fmtDate(rec.appointment_date) : '')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
+                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'medical')" :aria-label="'View ' + historyCaseLabel(rec) + (rec.treatment ? ' · ' + rec.treatment.treatment_name + ' · ' + fmtDate(rec.appointment_date) : '')" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
                           </tr>
                         </template>
                         <tr x-show="petHistories.medical.loaded && !petHistories.medical.loading && !petHistories.medical.error && !petHistories.medical.rows.length"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No medical records yet.</td></tr>
@@ -1083,7 +1083,7 @@
                             <td class="truncate px-4 py-3 font-medium text-slate-700" :title="historyCaseLabel(rec)" x-text="historyCaseLabel(rec)"></td>
                             <td class="px-4 py-3 text-slate-600"><span class="block truncate" :title="historyService(rec.case_service).name" x-text="historyService(rec.case_service).name || 'Confinement'"></span><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold" :class="rec.discharged_at ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'" x-text="rec.discharged_at ? 'Discharged' : 'Confined'"></span></td>
                           <td class="truncate px-4 py-3 text-slate-600" :title="historyDuration(rec)" x-text="historyDuration(rec)"></td>
-                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'confinement')" :aria-label="'View ' + historyCaseLabel(rec)" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
+                            <td class="px-4 py-3 text-right"><button type="button" @click.stop="viewPetHistory(rec, $event.currentTarget, 'confinement')" :aria-label="'View ' + historyCaseLabel(rec)" class="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-semibold text-[#315b7e] hover:bg-[#eef5fb]">View<svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#caret-right"></use></svg></button></td>
                           </tr>
                         </template>
                         <tr x-show="petHistories.confinements.loaded && !petHistories.confinements.loading && !petHistories.confinements.error && !petHistories.confinements.rows.length"><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No confinement records yet.</td></tr>
@@ -1097,7 +1097,7 @@
                 <template x-if="detail.record"><section class="customer-clinical-history" :aria-busy="detail.loading">
                   <div class="mb-5 border-b border-slate-100 pb-4">
                     <button type="button" x-ref="petHistoryBack" @click="backToPetHistory()" class="mb-3 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-[#315b7e] hover:bg-[#eef5fb]">
-                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="../../assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg><span x-text="detail.kind === 'confinement' ? 'Back to Confinements' : 'Back to Medical Records'"></span>
+                      <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#arrow-u-up-left"></use></svg><span x-text="detail.kind === 'confinement' ? 'Back to Confinements' : 'Back to Medical Records'"></span>
                     </button>
                     <h3 class="text-lg font-bold text-[#2f4b66]" x-text="petHistoryTitle"></h3>
                     <p class="mt-1 text-sm text-slate-500" x-text="petHistorySubtitle"></p>
@@ -1136,12 +1136,12 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 
-    <script src="../../scripts/utils/account-email.js?v=email-entry-20261028"></script>
-    <script src="../../scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="../../scripts/components/clinic-attachments.js?v=20261015"></script>
-    <script src="../../scripts/components/clinic-record-presentation.js?v=20261029"></script>
-    <script src="../../scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1"></script>
-    <script src="../../scripts/services/admin-notification-service.js?v=20261027"></script>
-    <script src="../../scripts/components/admin-notifications.js?v=20261027-2"></script>
+    <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
+    <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
+    <script src="/scripts/components/clinic-record-presentation.js?v=20261029"></script>
+    <script src="/scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103"></script>
+    <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
+    <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>
 </html>

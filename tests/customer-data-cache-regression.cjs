@@ -803,7 +803,7 @@ function serveBrowserFixture() {
     }
     res.end(content);
   });
-  server.listen(port, "127.0.0.1", () => console.log(`Customer acceptance fixture: http://127.0.0.1:${port}/pages/client/dashboard.html`));
+  server.listen(port, "127.0.0.1", () => console.log(`Customer acceptance fixture: http://127.0.0.1:${port}/account`));
 }
 
 if (require.main === module) {

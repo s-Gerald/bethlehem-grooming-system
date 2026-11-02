@@ -1,4 +1,4 @@
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   escapeHtml,
@@ -14,7 +14,7 @@ import {
   formatPriceOption,
   getPackageById,
 } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
-import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1&intake-reliability=20261029&registration-actions=20261101-v1";
+import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1&intake-reliability=20261029&registration-actions=20261101-v1&urls=20261103";
 
 const state = {
   bookingDraft: null,
@@ -39,7 +39,7 @@ function getReviewMainMarkup() {
     <main class="registration-step mx-auto max-w-6xl px-4 py-8 md:px-6 lg:px-8">
       <a
         id="walkInReviewBackTopBtn"
-        href="./dashboard.html"
+        href="/admin/dashboard"
         class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-slate-700"
       >
         &larr; Back to Home
@@ -146,7 +146,7 @@ function handleBackClick() {
     return;
   }
 
-  window.location.href = "./walk-in-grooming-services.html";
+  window.location.href = "/admin/walk-in/grooming/services";
 }
 
 function handleConfirmClick() {
@@ -156,11 +156,11 @@ function handleConfirmClick() {
 
   if (state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection))) return;
   saveReviewDraft();
-  window.history.pushState(null, "", "./walk-in-consent.html");
+  window.history.pushState(null, "", "/admin/walk-in/grooming/consent");
   renderWalkInConsentStep({
     reviewPayload: state.reviewPayload,
     onBack: () => {
-      window.history.pushState(null, "", "./walk-in-booking-review.html");
+      window.history.pushState(null, "", "/admin/walk-in/grooming/review");
       renderWalkInReviewStep({
         pets: state.bookingDraft.pets,
         petSelections: state.petSelections,

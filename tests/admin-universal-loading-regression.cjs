@@ -70,7 +70,7 @@ async function sidebarReadiness() {
     getMe: async () => ({}), getStaffIdentity: async () => { identityCalls++; return { user: { role: 'admin', clinic_permissions: {} } }; },
     getAdminGroomingActivity: async () => ({}), getAdminToken: () => 'local', getAdminBookings() {} };
   const { ui } = component('admin-sidebar.js', 'adminSidebar', API, {
-    window: { API, location: new URL('https://example.test/pages/admin/dashboard.html'), addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
+    window: { API, location: new URL('https://example.test/admin/dashboard'), addEventListener() {}, removeEventListener() {}, dispatchEvent() {} },
     document: { currentScript: null, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
     setInterval: () => 1, clearInterval() {}, CustomEvent: class {},
   });

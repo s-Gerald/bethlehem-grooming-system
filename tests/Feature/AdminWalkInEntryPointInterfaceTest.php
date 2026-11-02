@@ -26,7 +26,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $ownerStep,
         );
         $this->assertStringContainsString(
-            'window.location.href = "./walk-in-booking.html?flow=clinic&new=1";',
+            'window.location.href = "/admin/walk-in/customer?flow=clinic&new=1";',
             $clinicComponent,
         );
         $this->assertSame(
@@ -38,7 +38,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $ownerStep,
         );
         $this->assertStringContainsString(
-            '"href", isClinic ? "./clinic.html" : "./appointments.html",',
+            '"href", isClinic ? "/admin/clinic" : "/admin/grooming",',
             $ownerStep,
         );
         $this->assertStringContainsString(
@@ -73,14 +73,14 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
         $this->assertMatchesRegularExpression('/\?\s*"clinic"\s*:\s*"grooming";/', $ownerStep);
         $this->assertSame(
             1,
-            substr_count($walkInPage, 'href="./appointments.html"'),
+            substr_count($walkInPage, 'href="/admin/grooming"'),
         );
         $this->assertStringContainsString(
             '@click="handleWalkInBooking()"',
             $appointmentsPage,
         );
         $this->assertStringContainsString(
-            'walkInBookingUrl: "./walk-in-booking.html?flow=grooming&new=1"',
+            'walkInBookingUrl: "/admin/walk-in/customer?flow=grooming&new=1"',
             $dashboardComponent,
         );
     }
@@ -91,7 +91,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $html = file_get_contents(base_path('pages/admin/'.$page.'.html'));
             preg_match('/<main\b[^>]*>(.*?)<h1\b/s', $html, $header);
             preg_match('/<a\b([^>]*)>(.*?)<\/a>/s', $header[1] ?? '', $link);
-            $this->assertStringContainsString('href="./dashboard.html"', $link[1] ?? '', $page);
+            $this->assertStringContainsString('href="/admin/dashboard"', $link[1] ?? '', $page);
             $this->assertSame('← Back to Home', trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($link[2] ?? '')))), $page);
             $this->assertStringNotContainsString('data-walk-in-back-link', $html, $page);
         }
@@ -125,7 +125,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             'API.searchWalkInCustomers(query)',
             'ownerRecordType: selectedCustomer?.recordType || "new"',
             'existingPets: Array.isArray(selectedCustomer?.pets)',
-            'window.location.href = "./walk-in-pet-details.html";',
+            'window.location.href = "/admin/walk-in/pets";',
         ] as $behavior) {
             $this->assertStringContainsString($behavior, $ownerStep);
         }
@@ -154,7 +154,7 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             $ownerStep,
         );
         $this->assertStringContainsString(
-            '`./walk-in-booking.html?flow=${getOwnerAppointmentType()}`',
+            '`/admin/walk-in/customer?flow=${getOwnerAppointmentType()}`',
             $petStep,
         );
 

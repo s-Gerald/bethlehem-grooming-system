@@ -22,7 +22,7 @@ export function setPreRegistrationLinkAccess(link, allowed, message = "") {
 }
 
 export async function enforceBookingFormAccessGuard(options = {}) {
-  const dashboardPath = options.dashboardPath || "./dashboard.html";
+  const dashboardPath = options.dashboardPath || "/account";
 
   // Entry decisions require a server check even when a recent header result exists.
   const access = await API.getPreRegistrationAccess({ force: true });
@@ -43,7 +43,7 @@ export async function enforceBookingFormAccessGuard(options = {}) {
 }
 
 export async function initBookingFormAccessGuard(options = {}) {
-  const dashboardPath = options.dashboardPath || "./dashboard.html";
+  const dashboardPath = options.dashboardPath || "/account";
   let blockedNow = false;
 
   try {

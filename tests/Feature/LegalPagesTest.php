@@ -12,7 +12,7 @@ class LegalPagesTest extends TestCase
         $queries = [];
         DB::listen(function ($query) use (&$queries) { $queries[] = $query->sql; });
 
-        foreach (['/pages/legal/terms-and-conditions.html', '/pages/legal/privacy-policy.html',
+        foreach (['/terms-and-conditions', '/privacy-policy',
             '/css/legal.css', '/assets/images/clinic/Bethlehem_Logo-256.png'] as $path) {
             $response = $this->get($path)->assertOk();
             $this->assertSame([], $response->headers->getCookies());

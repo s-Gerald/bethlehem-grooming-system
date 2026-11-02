@@ -324,7 +324,7 @@ class StaffEmailRecoveryService
         $recovery->update(['token_hash' => hash('sha256', $plain), 'expires_at' => now()->addMinutes(30), 'last_sent_at' => now(), 'expiration_recorded_at' => null]);
         $frontend = rtrim((string) config('app.frontend_url', config('app.url')), '/');
         $receipt = AuthenticationMailDelivery::queue(Notification::route('mail', $recovery->new_email),
-            new StaffEmailRecoveryLinkNotification($frontend.'/pages/client/confirm-email-recovery.html#'.$plain, $recovery->id, $recovery->expires_at->toIso8601String()), $recovery, purpose: 'privileged_change');
+            new StaffEmailRecoveryLinkNotification($frontend.'/confirm-email-recovery#'.$plain, $recovery->id, $recovery->expires_at->toIso8601String()), $recovery, purpose: 'privileged_change');
         $this->audit($recovery, 'link_issued', $actorId);
         return $receipt;
     }

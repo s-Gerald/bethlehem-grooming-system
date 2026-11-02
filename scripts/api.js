@@ -502,17 +502,7 @@ var API = (() => {
     staff: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
     customer: Object.freeze({ timeoutMs: 30 * 60 * 1000, warningMs: 29 * 60 * 1000 }),
   });
-  const ADMIN_ONLY_PAGE_NAMES = [
-    "reports.html",
-  ];
-  const PUBLIC_CLIENT_PAGE_NAMES = new Set([
-    "sign-in.html",
-    "signup.html",
-    "verify-email.html",
-    "forgot-password.html",
-    "set-up-password.html",
-    "confirm-email-recovery.html",
-  ]);
+  const ADMIN_ONLY_PAGE_NAMES = ["reports", "activity-log"];
   const INVALID_SESSION_CODES = new Set([
     "account_disabled",
     "email_not_verified",
@@ -800,34 +790,24 @@ var API = (() => {
   }
 
   function isAdminPage() {
-    return window.location.pathname.replace(/\\/g, "/").includes("/pages/admin/")
-      || window.location.pathname.endsWith("/api/admin/activity-log/page")
-      || window.location.pathname.endsWith("/api/admin/availability/page");
+    const path = window.location.pathname.replace(/\\/g, "/");
+    return /\/admin\//.test(path) && !/\/api\//.test(path)
+      || path.endsWith("/api/admin/activity-log/page")
+      || path.endsWith("/api/admin/availability/page");
   }
 
   function isSignInPage() {
-    return window.location.pathname.replace(/\\/g, "/").includes("/pages/client/sign-in.html");
+    return window.location.pathname.replace(/\\/g, "/").endsWith("/sign-in");
   }
 
   function isProtectedClientPage() {
-    const path = window.location.pathname.replace(/\\/g, "/");
-    if (!path.includes("/pages/client/")) return false;
-    return !PUBLIC_CLIENT_PAGE_NAMES.has(currentPageName());
+    return /\/account(?:\/|$)/.test(window.location.pathname.replace(/\\/g, "/"));
   }
 
   function appBasePath(pathname = window.location.pathname) {
     const path = String(pathname || "/").replace(/\\/g, "/");
-    const markerIndex = path.toLowerCase().indexOf(path.endsWith("/api/admin/activity-log/page") ? "/api/" : "/pages/");
-
-    if (markerIndex >= 0) {
-      return path.slice(0, markerIndex).replace(/\/$/, "");
-    }
-
-    const directory = path.endsWith("/")
-      ? path.replace(/\/$/, "")
-      : path.slice(0, path.lastIndexOf("/"));
-
-    return directory === "/" ? "" : directory;
+    const marker = path.match(/\/(?:pages|api|account|admin|sign-in|sign-up|verify-email|forgot-password|set-up-password|confirm-email-recovery)(?:\/|$)/);
+    return marker ? path.slice(0, marker.index) : "";
   }
 
   function appPath(relativePath) {
@@ -836,7 +816,7 @@ var API = (() => {
   }
 
   function signInPath() {
-    return appPath("pages/client/sign-in.html");
+    return appPath("sign-in");
   }
 
   function redirectToSignIn({ replace = true, passwordChanged = false } = {}) {
@@ -861,8 +841,8 @@ var API = (() => {
   }
 
   function redirectToAdminDashboard() {
-    if (currentPageName() !== "dashboard.html") {
-      window.location.replace(appPath("pages/admin/dashboard.html"));
+    if (currentPageName() !== "dashboard") {
+      window.location.replace(appPath("admin/dashboard"));
     }
   }
 
@@ -884,7 +864,7 @@ var API = (() => {
     }
 
     const user = getCachedStaffIdentity()?.user;
-    if (user?.staff_permissions?.clinic_workspace && ['appointments.html', 'services.html', 'pos.html', 'stock-in.html', 'stock-out.html'].includes(currentPageName())) {
+    if (user?.staff_permissions?.clinic_workspace && ['grooming', 'services'].includes(currentPageName())) {
       redirectToAdminDashboard();
       return false;
     }

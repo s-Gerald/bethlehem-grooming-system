@@ -91,7 +91,7 @@ export function normalizeApiPet(pet) {
   };
 }
 
-export async function requireCustomerSession(signInPath = "./sign-in.html") {
+export async function requireCustomerSession(signInPath = "/sign-in") {
   if (window.API?.waitForCustomerSession) return window.API.waitForCustomerSession();
   if (window.API?.getCustomerToken?.()) {
     return true;

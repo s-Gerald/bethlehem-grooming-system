@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     recoveryEmail.required = !email;
     const back = document.getElementById("verificationBackAction");
     back.textContent = "Back to sign up";
-    back.setAttribute("href", "./signup.html");
+    back.setAttribute("href", "/sign-up");
     if (email && context.read(email)?.review && !registrationEnded) {
       description.textContent = "Verify your email to edit your details.";
       instruction.textContent = "Use your latest verification link.";
@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
         clearInterval(timer);
         window.clearTimeout(expirationTimer);
         channel?.postMessage({ type: "registration-tab-ready" });
-        window.location.replace("./dashboard.html");
+        window.location.replace("/account");
       }
     } catch { /* Not verified in this browser; keep waiting for the email. */ }
     finally {

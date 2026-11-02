@@ -191,7 +191,7 @@ async function requestCode(resend = false) {
 function createDialog() {
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
-  stylesheet.href = new URL("../../css/components/verification-code.css?v=phone-eligibility-20261028", import.meta.url).href;
+  stylesheet.href = new URL("/css/components/verification-code.css?v=phone-eligibility-20261028", import.meta.url).href;
   document.head.appendChild(stylesheet);
   dialog = document.createElement("dialog");
   dialog.id = "phoneVerificationDialog";
@@ -201,7 +201,7 @@ function createDialog() {
   dialog.setAttribute("closedby", "none");
   dialog.innerHTML = `
     <button id="phoneVerificationClose" type="button" class="phone-verification-close" aria-label="Close phone verification">
-      <svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="../../assets/icons/phosphor.svg#x"></use></svg>
+      <svg width="20" height="20" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#x"></use></svg>
     </button>
     <div class="verification-heading">
       <h2 id="phoneVerificationTitle">Verify Phone Number</h2>
@@ -235,7 +235,7 @@ function createDialog() {
           ${'<span class="verification-code-cell" aria-hidden="true"></span>'.repeat(6)}
         </div>
         <button id="phoneVerificationVerify" type="submit" class="verification-primary" disabled>
-          <svg id="phoneVerificationSpinner" class="animate-spin" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true" hidden><use href="../../assets/icons/phosphor.svg#spinner-gap"></use></svg>
+          <svg id="phoneVerificationSpinner" class="animate-spin" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true" hidden><use href="/assets/icons/phosphor.svg#spinner-gap"></use></svg>
           <span id="phoneVerificationVerifyLabel">Verify and continue</span>
         </button>
         <div class="verification-resend">

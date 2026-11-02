@@ -147,8 +147,8 @@ for (const [line, detail, total] of [
 }
 assert.equal(ui.productAddonsTotal(session), 150);
 assert.equal(ui.productAddonsTotal(repeat), 0);
-assert.equal(ui.transactionUrl(session), './transactions.html?payment=10&reference=BAC-20261003-0001');
-assert.equal(ui.transactionUrl({ ...session, payment: {} }), './transactions.html?reference=BAC-20261003-0001');
+assert.equal(ui.transactionUrl(session), '/admin/transactions?payment=10&reference=BAC-20261003-0001');
+assert.equal(ui.transactionUrl({ ...session, payment: {} }), '/admin/transactions?reference=BAC-20261003-0001');
 assert.equal(ui.transactionUrl({}), '');
 
 let lastFocus;

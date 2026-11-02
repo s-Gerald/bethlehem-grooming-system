@@ -1,6 +1,6 @@
 // Product-sale snapshots share Bethlehem's print styling, without customer fields.
 window.ProductSaleInvoice = {
-  logoUrl: new URL('../../assets/images/clinic/Bethlehem_Logo-256.png', document.currentScript.src).href,
+  logoUrl: new URL('/assets/images/clinic/Bethlehem_Logo-256.png', document.currentScript.src).href,
   formatPeso: amount => window.PaymentInvoice.formatPeso(amount),
   formatDate: value => new Intl.DateTimeFormat('en-PH', {
     timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric',

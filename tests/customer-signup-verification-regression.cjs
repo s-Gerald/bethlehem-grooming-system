@@ -147,7 +147,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(returning.calls.length, 0, 'A recognized return cannot submit another public signup');
   returning.element('firstName').value = 'John';
   await returning.dispatch('signupEdit', 'click');
-  assert.deepEqual(returning.calls, [['review-intent','customer@gmail.com'], ['redirect','./verify-email.html']]);
+  assert.deepEqual(returning.calls, [['review-intent','customer@gmail.com'], ['redirect','/verify-email']]);
   const proposedContext = JSON.parse(returning.storage.get('pendingSignupContext'));
   assert.equal(proposedContext.draft.firstName, 'John');
   assert.equal(proposedContext.expiresAt, 3700000, 'Returning does not extend the original context');
@@ -184,7 +184,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
   for (const pendingRegistrationRecoveryUntil of ['100000','NaN','3700000']) {
     const expiredReview = page({signup:true, reviewing:true, initialStorage:{pendingRegistrationRecoveryUntil}});
-    assert.deepEqual(expiredReview.calls, [['redirect','./verify-email.html?recover=1']]);
+    assert.deepEqual(expiredReview.calls, [['redirect','/verify-email?recover=1']]);
   }
   const expiredDraft = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:100000, review:true, draft:{firstName:'Stale'}})}});
   assert.equal(expiredDraft.element('firstName').value, 'Saved');
@@ -339,7 +339,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         assert.equal(signup.storage.has('pendingSignupDetails'), false, 'Public input never becomes an authorized saved profile');
         assert.equal(signup.storage.has('pendingSignupContext'), true);
       }
-      assert.deepEqual(signup.calls.at(-1), ['redirect', reviewing ? './dashboard.html' : './verify-email.html']);
+      assert.deepEqual(signup.calls.at(-1), ['redirect', reviewing ? '/account' : '/verify-email']);
       assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
     }
   }
@@ -403,7 +403,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const obsoleteResponse = page({signup:true});
   obsoleteResponse.API.register = async () => ({success:true});
   await obsoleteResponse.dispatch('signupForm','submit');
-  assert.deepEqual(obsoleteResponse.calls, [['redirect','./sign-in.html']], 'An unexpected registration response must not claim activation');
+  assert.deepEqual(obsoleteResponse.calls, [['redirect','/sign-in']], 'An unexpected registration response must not claim activation');
 
   const reviewing = page({ signup: true, reviewing: true });
   assert.equal(reviewing.element('firstName').value, 'Saved');
@@ -415,11 +415,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await reviewing.dispatch('signupForm', 'submit');
   assert.equal(reviewing.calls[0][0], 'update');
   assert.equal(reviewing.calls[0][2], 'ownership-grant');
-  assert.deepEqual(reviewing.calls.at(-1), ['redirect', './dashboard.html']);
+  assert.deepEqual(reviewing.calls.at(-1), ['redirect', '/account']);
   assert.equal(reviewing.storage.has('pendingRegistrationRecoveryToken'), false);
 
   const unprovenReview = page({ signup: true, reviewing: true, missingGrant: true });
-  assert.deepEqual(unprovenReview.calls, [['redirect', './verify-email.html?recover=1']], 'A lost recovery grant returns to email proof');
+  assert.deepEqual(unprovenReview.calls, [['redirect', '/verify-email?recover=1']], 'A lost recovery grant returns to email proof');
 
   const interrupted = page({ signup: true });
   let failSignup;
@@ -440,7 +440,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const pending = page();
   assert.equal(pending.element('verificationTitle').textContent, 'Registration pending');
   assert.doesNotMatch(pending.element('verificationDescription').textContent, /We sent/);
-  assert.equal(pending.element('verificationBackAction').attributes.href, './signup.html');
+  assert.equal(pending.element('verificationBackAction').attributes.href, '/sign-up');
   assert.equal(pending.element('verifyCodeEmail').textContent, 'c***@gmail.com');
   assert.equal(pending.element('signupResend').textContent, 'Resend link in 1m 00s');
   assert.deepEqual(pending.calls, [], 'Waiting must never automatically verify or send');
@@ -481,7 +481,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   await expired.dispatch('signupLinkForm', 'submit');
   assert.equal(expired.element('signupLinkMessage').textContent, 'This registration has expired. Start again.');
   assert.equal(expired.element('signupResend').disabled, true);
-  assert.equal(expired.element('verificationBackAction').attributes.href, './signup.html');
+  assert.equal(expired.element('verificationBackAction').attributes.href, '/sign-up');
   expired.advance(60000);
   await expired.dispatch('signupLinkForm', 'submit');
   assert.equal(expiredSends, 1, 'An expired registration must not offer a resend that revives it.');
@@ -529,7 +529,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     return {session_token:'11|cookie', user:{role:'customer',email}};
   };
   await safeHandoff.windowHandlers.focus();
-  assert.deepEqual(safeHandoff.calls, [['redirect','./dashboard.html']]);
+  assert.deepEqual(safeHandoff.calls, [['redirect','/account']]);
 
   const concurrent = page();
   let checks = 0;

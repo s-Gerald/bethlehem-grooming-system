@@ -315,7 +315,7 @@ async function testInitialAndReturningSessionGreetings() {
         requestAnimationFrame: (callback) => callback(),
         requestIdleCallback: (callback) => callback(),
         addEventListener() {},
-        location: { href: "http://127.0.0.1:8000/pages/client/dashboard.html" },
+        location: { href: "http://127.0.0.1:8000/account" },
       },
     };
     element("clientSidebar").querySelectorAll = () => [];
@@ -495,7 +495,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
           element(match[2]).textContent = match[3].trim();
         }
       },
-      href: 'http://127.0.0.1:8000/pages/client/pre-register.html',
+      href: 'http://127.0.0.1:8000/account/registration',
       classList: {
         toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
         add(name) { classes.add(name); }, remove(name) { classes.delete(name); },
@@ -733,7 +733,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-format-20261029');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-format-20261029&urls=20261103');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
