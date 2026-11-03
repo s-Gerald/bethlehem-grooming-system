@@ -171,20 +171,61 @@ async function scopedListsReuseRetainedData() {
     refresh.resolve(response); await p; e.respond(()=>response);
   }
 }
-async function servicesPrimaryDoesNotWaitForClinicPermissions() {
-  const e=environment(), permission=deferred(); e.c.API.getUserRole=()=> 'admin';
-  e.c.API.getCachedStaffIdentity=()=>({user:{role:'admin',clinic_permissions:{services_view:false}}});
-  e.c.window.location.hash='#grooming'; e.c.window.removeEventListener=()=>{};
-  e.c.history={replaceState(){}};
-  vm.runInContext(read('scripts/components/admin-services.js'),e.c);
-  const shell=e.c.adminServices(); shell.$store={clinicAccess:{init:()=>permission.promise,user:{role:'admin',clinic_permissions:{services_view:false}},permissions:{services_view:false}}};
-  let mounted=''; const state={loaded:true,activate:async()=>{}};
-  shell.$refs={grooming:{},clinic:{}}; shell.mount=async tab=>{mounted=tab;return {};}; e.c.Alpine={$data:()=>state};
-  const pending=shell.init(); await new Promise(setImmediate);
-  assert.equal(mounted,'grooming','Unresolved Clinic permissions cannot delay Grooming');
-  permission.resolve(); await pending;
-  e.c.window.location.hash='#clinic'; await shell.showTab();
-  assert.equal(mounted,'grooming','Denied Clinic access never mounts its functionality'); assert.ok(shell.error);
+async function servicesWaitForSharedIdentityBeforeMountingAuthorizedCatalog() {
+  for (const cached of [false, true]) {
+    const e = environment(), verification = deferred(), stores = {}, mounted = [];
+    const identity = {sidebar_revision: 'services-navigation-1', user: {
+      user_id: 1, role: 'admin', staff_type: null, staff_subrole: null,
+      first_name: 'Test', last_name: 'Administrator', username: 'servicesadmin',
+      clinic_permissions: {access: true, services_view: false, services_manage: false},
+      staff_permissions: {grooming: true, grooming_services_view: true, services_manage: true, clinic_workspace: false},
+    }};
+    e.API.setUserRole('admin');
+    e.respond(endpoint => {
+      if (endpoint === '/me') return verification.promise;
+      assert.equal(endpoint, '/admin/grooming/services', 'Only the authorized catalog may request data');
+      return {data: [], priceLimits: {}};
+    });
+    if (cached) { verification.resolve(identity); await e.API.getStaffIdentity(); }
+    e.c.window.location.hash = '';
+    e.c.window.removeEventListener = () => {};
+    e.c.history = {replaceState(_, __, hash) { e.c.window.location.hash = hash; }};
+    e.c.Alpine = {store: (name, state) => { stores[name] = state; }, $data: panel => panel.state};
+    e.c.document.addEventListener = (name, listener) => { if (name === 'alpine:init') listener(); };
+    for (const file of ['clinic-feedback.js', 'admin-grooming-services.js', 'admin-services.js'])
+      vm.runInContext(read('scripts/components/' + file), e.c);
+    const shell = e.c.adminServices(), panel = {state: e.c.adminGroomingServices()};
+    shell.$store = panel.state.$store = stores;
+    shell.$refs = {grooming: {}, clinic: {}};
+    shell.mount = async tab => { mounted.push(tab); return panel; };
+    // Another identity consumer and Services must share the existing verification.
+    const sharedIdentity = e.API.getStaffIdentity(), pending = shell.init();
+    assert.deepEqual(mounted, [], 'Even cached presentation waits for shared identity initialization');
+    if (!cached) {
+      await new Promise(setImmediate);
+      assert.deepEqual(mounted, [], 'Neither catalog mounts while identity verification is pending');
+      assert.equal(shell.loading, true);
+    }
+    assert.deepEqual(e.calls.map(call => call.endpoint), ['/me']);
+    verification.resolve(identity);
+    await Promise.all([sharedIdentity, pending]);
+    assert.deepEqual(mounted, ['grooming'], 'A verified administrator defaults to Grooming');
+    assert.equal(shell.activeTab, 'grooming');
+    assert.equal(e.c.window.location.hash, '#grooming');
+    assert.equal(shell.loading, false);
+    assert.equal(shell.error, '');
+    assert.equal(panel.state.loaded, true);
+    assert.deepEqual(e.calls.map(call => call.endpoint), ['/me', '/admin/grooming/services']);
+    e.c.window.location.hash = '#clinic'; await shell.showTab();
+    assert.deepEqual(mounted, ['grooming'], 'An explicit verified denial cannot mount Clinic functionality');
+    assert.equal(shell.activeTab, 'grooming');
+    assert.match(shell.error, /do not have access to Clinic Services/);
+    e.c.window.location.hash = '#grooming'; await shell.showTab();
+    assert.equal(shell.error, '', 'Returning to an authorized catalog clears the navigation error');
+    assert.equal(shell.loading, false);
+    assert.deepEqual(e.calls.map(call => call.endpoint), ['/me', '/admin/grooming/services'], 'Initialized identity and fresh catalog data are reused');
+    shell.destroy();
+  }
 }
 async function historyActiveTypeAndSearchRace() {
   const e=environment(); e.c.API.getStaffIdentity=async()=>({user:{role:'admin'}});
@@ -235,6 +276,6 @@ async function retainedDataWaitsForNavigationAuthorization() {
   assert.equal(presented, true, 'Verified navigation immediately reuses retained data');
   assert.equal(e.calls.filter(call => call.endpoint === '/admin/customers?status=active').length, 1, 'Verification does not discard or refetch a fresh directory');
 }
-(async () => { for (const test of [retainedDataWaitsForNavigationAuthorization, scopedListsReuseRetainedData, servicesPrimaryDoesNotWaitForClinicPermissions, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardLoadsSummaryDirectly, dashboardDoesNotRequestIntakeStatus, groomingUsesManilaDateDirectly, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
+(async () => { for (const test of [retainedDataWaitsForNavigationAuthorization, scopedListsReuseRetainedData, servicesWaitForSharedIdentityBeforeMountingAuthorizedCatalog, staffServicesWaitForAuthorizedActiveTab, historyActiveTypeAndSearchRace, customersStartupAndSearchRace, customerDetailsFormatWeightWithoutPetEditor, dashboardLoadsSummaryDirectly, dashboardDoesNotRequestIntakeStatus, groomingUsesManilaDateDirectly, clinicDefersRecordsAndKeepsConfinedOnDemand, clinicListRefreshPreservesWorkspaceDetails]) {
   await test(); console.log(test.name+' passed');
 } })().catch(error => { console.error(error); process.exitCode = 1; });
