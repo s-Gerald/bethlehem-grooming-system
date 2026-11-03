@@ -37,9 +37,12 @@ for (const name of ['inventory-alerts.js', 'admin-inventory-dashboard.js']) {
   const markup=fs.readFileSync(path.join(root,'pages/admin/inventory/sections/overview.html'),'utf8');
   assert.match(markup, />Processed By<\/th>/);
   assert.match(markup, /tx\.performed_by_name/);
-  assert.match(markup, /href="#history"/);
-  assert.match(markup, /href="#products\?filter=low-stock"/);
-  assert.match(markup, /href="#products\?filter=expiry"/);
+  for (const label of ['View all low-stock products', 'View all expiry alerts', 'View full history']) {
+    assert.equal(markup.includes(label), false, `${label} footer link is removed`);
+  }
+  assert.match(markup, /<a href="#products\?filter=low-stock"[^>]*x-text="item\.item_name"><\/a>/);
+  assert.match(markup, /<a href="#products\?filter=expiry"[^>]*x-text="item\.item_name"><\/a>/);
+  assert.match(markup, /<a :href="inventoryStockHref\('stock-in', item\.item_id\)"[^>]*>Restock<\/a>/);
   assert.doesNotMatch(markup, /pagination|goTo\w+Page|Top Used|Most Used|data-lucide/i);
   console.log('frontend inventory overview regression checks passed');
 })().catch(error => { console.error(error); process.exitCode=1; });
