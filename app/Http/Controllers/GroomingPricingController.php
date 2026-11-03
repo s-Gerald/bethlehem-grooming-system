@@ -32,6 +32,9 @@ class GroomingPricingController extends Controller
 
     public function index(Request $request, GroomingServicePriceResolver $resolver)
     {
+        if ($request->user()?->role === 'staff') {
+            abort_unless($request->user()->staffPermissions()['grooming_services_view'], 403);
+        }
         $billing = $request->boolean('include_inactive') && in_array($request->user()?->role, ['admin', 'staff'], true);
         return $this->catalogue($billing, $resolver);
     }

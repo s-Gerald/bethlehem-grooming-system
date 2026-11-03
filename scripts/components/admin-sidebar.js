@@ -190,7 +190,7 @@ function getAdminSidebarIdentityState(user) {
     isAdmin: user.role === 'admin',
     canViewAvailability: user.role === 'admin' || user.staff_permissions?.availability_view === true,
     clinicOnly: user.staff_permissions?.clinic_workspace === true,
-    canViewServices: user.role === 'admin' || (!!user.clinic_permissions?.services_view && !user.staff_permissions?.clinic_workspace),
+    canViewServices: user.role === 'admin' || !!user.clinic_permissions?.services_view || !!user.staff_permissions?.grooming_services_view,
     clinicPermissions: user.clinic_permissions || {},
     canAccessGrooming: user.role === 'admin' || !!user.staff_permissions?.grooming,
     staffDisplayName: `${first} ${last}`.trim() || 'Staff',

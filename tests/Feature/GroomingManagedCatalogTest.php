@@ -148,7 +148,9 @@ class GroomingManagedCatalogTest extends TestCase
     {
         Service::where('slug', 'regular_dog_grooming')->update(['is_active' => false]);
         foreach (['admin', 'staff', 'customer'] as $role) {
-            Sanctum::actingAs(new User(['role' => $role]));
+            Sanctum::actingAs(new User(['role' => $role,
+                'staff_type' => $role === 'staff' ? 'grooming' : null,
+                'staff_subrole' => $role === 'staff' ? 'grooming_receptionist' : null]));
             $response = $this->getJson('/api/grooming/services?include_inactive=1')->assertOk();
             $this->assertSame($role !== 'customer', in_array('regular_dog_grooming', array_column($response->json('data'), 'id')));
             $this->getJson('/api/grooming/services')->assertOk()->assertJsonCount(9, 'data');
@@ -192,7 +194,9 @@ class GroomingManagedCatalogTest extends TestCase
                 'is_active' => true, 'display_order' => $index]);
         }
         foreach (['admin', 'staff', 'customer'] as $role) {
-            Sanctum::actingAs(new User(['role' => $role]));
+            Sanctum::actingAs(new User(['role' => $role,
+                'staff_type' => $role === 'staff' ? 'clinic' : null,
+                'staff_subrole' => $role === 'staff' ? 'clinic_receptionist' : null]));
             $endpoints = $role === 'admin' ? ['/api/grooming/services', '/api/admin/grooming/services'] : ['/api/grooming/services'];
             foreach ($endpoints as $endpoint) {
                 $rows = collect($this->getJson($endpoint)->assertOk()->json('data'));

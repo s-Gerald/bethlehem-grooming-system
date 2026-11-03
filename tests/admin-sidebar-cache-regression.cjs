@@ -315,6 +315,28 @@ async function availabilityNavigationForAuthorizedRoles() {
   }
 }
 
+async function servicesNavigationAndPageGuardForAuthorizedRoles() {
+  for (const subrole of [null, 'grooming_receptionist', 'clinic_receptionist', 'veterinarian']) {
+    const e = environment(), admin = subrole === null;
+    if (admin) e.c.API.setUserRole('admin');
+    e.respond(() => identity({role: admin ? 'admin' : 'staff', staff_subrole: subrole,
+      staff_permissions: {grooming: subrole !== 'veterinarian', grooming_services_view: subrole !== 'veterinarian', clinic_workspace: subrole === 'veterinarian'}}));
+    await e.c.API.getStaffIdentity();
+    assert.equal(e.c.adminSidebar().canViewServices, true, `${subrole || 'admin'} sees Services in the cached sidebar`);
+    const redirects = [];
+    e.c.window.location.replace = url => redirects.push(url);
+    e.c.window.location.pathname = '/admin/services';
+    assert.equal(e.c.API.enforceAdminPageAccess(), true);
+    assert.equal(e.c.getAdminSidebarActivePage(), 'services');
+    assert.equal(redirects.length, 0);
+    if (subrole === 'veterinarian') {
+      e.c.window.location.pathname = '/admin/grooming';
+      assert.equal(e.c.API.enforceAdminPageAccess(), false, 'Services access must not grant Grooming workspace access');
+      assert.equal(redirects.length, 1);
+    }
+  }
+}
+
 async function privateSecurityAlertRendersOnce() {
   const {c} = environment();
   const nodes = new Map(), cards = [];
@@ -333,7 +355,7 @@ async function privateSecurityAlertRendersOnce() {
 }
 
 (async () => {
-  for (const test of [reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
+  for (const test of [servicesNavigationAndPageGuardForAuthorizedRoles, reuseAndInvalidate, isolationAndRaces, independentRendering, rolesAndInvalidCache, permissionRevalidation, firstLoginAndExpiration, cachedIdentityLogoutRace, sharedReceptionistSwitchReplacesTheFormerAccountDocument, profileIdentitySynchronization, profileSessionSwitchRace, activityLogNavigationUsesVerifiedAdminIdentity, availabilityNavigationForAuthorizedRoles, privateSecurityAlertRendersOnce]) {
     await test(); console.log(test.name + ' passed');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

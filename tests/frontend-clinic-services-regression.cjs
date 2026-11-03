@@ -7,7 +7,7 @@ const read = name => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
 function setup(permissions = {services_view: true, services_manage: true}, role = 'admin', subrole = null) {
   const calls = [], panels = [], listeners = new Map(), scripts = [];
   const clinicAccess = {permissions, user: {role, staff_subrole: subrole, clinic_permissions: permissions,
-    staff_permissions: {grooming_services_view: role === 'admin' || ['clinic_receptionist', 'grooming_receptionist'].includes(subrole), services_manage: role === 'admin'}}, init: async () => {}};
+    staff_permissions: {grooming_services_view: role === 'admin' || ['clinic_receptionist', 'grooming_receptionist'].includes(subrole), services_manage: role === 'admin', clinic_workspace: subrole === 'veterinarian'}}, init: async () => {}};
   let failMarkup = false;
   const context = {
     URLSearchParams, clearTimeout, setTimeout, console,
@@ -21,14 +21,14 @@ function setup(permissions = {services_view: true, services_manage: true}, role 
         : method !== 'GET' ? {data: {}}
         : {data: [], total: 0, current_page: 1, last_page: 1};
     }},
-    fetch: async () => {calls.push('services:markup'); return {ok: !failMarkup, text: async () => ''};},
+    fetch: async url => {calls.push('services:markup'); return {ok: !failMarkup, text: async () => ''};},
     document: {title: '', head: {appendChild(script) {
       calls.push('services:script');
       scripts.push(script.src);
       if (!script.src.includes('inventory-money-input')) vm.runInContext(read('scripts/components/'+script.src.split('/').pop().split('?')[0]), context);
       queueMicrotask(script.onload);
     }}, createElement: () => ({style: {}, kind: '', setAttribute(name, value) {if (name === 'x-data') this.kind = value;}, querySelector: () => null, remove() {}})},
-    Alpine: {mutateDom: fn => fn(), initTree(panel) {panel.state = panel.kind === 'adminClinicServices()' ? component(context) : {activate() {}, closeEditor() {}};}, $data: panel => panel.state},
+    Alpine: {mutateDom: fn => fn(), initTree(panel) {panel.state = panel.kind === 'adminClinicServices()' ? component(context) : groomingComponent(context);}, destroyTree(panel) {panel.state.destroy?.();}, $data: panel => panel.state},
     clinicAccess,
   };
   context.window = context;
@@ -40,9 +40,9 @@ function setup(permissions = {services_view: true, services_manage: true}, role 
   shell.$store = {clinicAccess};
   const cases = {state: context.adminClinicCasesSection()};
   const groomingPanels = [];
-  shell.$refs = {cases: {firstElementChild: cases}, clinic: {get firstElementChild() {return panels[0];}, appendChild: panel => panels.push(panel)}, grooming: {get firstElementChild() {return groomingPanels[0];}, appendChild: panel => groomingPanels.push(panel)}};
+  shell.$refs = {cases: {firstElementChild: cases}, clinic: {get firstElementChild() {return panels[0];}, appendChild: panel => panels.push(panel), replaceChildren: () => panels.splice(0)}, grooming: {get firstElementChild() {return groomingPanels[0];}, appendChild: panel => groomingPanels.push(panel), replaceChildren: () => groomingPanels.splice(0)}};
   shell.$nextTick = fn => fn();
-  return {context, shell, calls, panels, listeners, scripts, failMarkup: value => {failMarkup = value;},
+  return {context, shell, calls, panels, groomingPanels, listeners, scripts, failMarkup: value => {failMarkup = value;},
     visit: async hash => {context.location.hash = hash; await shell.showSection();}};
 }
 
@@ -53,6 +53,87 @@ function component(context) {
   state.$nextTick = fn => fn();
   state.$store = {clinicAccess: context.clinicAccess, clinicFeedback: {notify() {}, confirm: async () => true}};
   return state;
+}
+
+function groomingComponent(context) {
+  const state = context.adminGroomingServices();
+  state.$store = {clinicAccess: context.clinicAccess, clinicFeedback: {notify() {}, confirm: async () => true}};
+  state.$refs = {editor: {close() {}}};
+  return state;
+}
+
+async function roleDefaultsAndPermissionChanges() {
+  for (const [role, subrole, expected] of [
+    ['admin', null, 'grooming'], ['staff', 'clinic_receptionist', 'clinic'],
+    ['staff', 'grooming_receptionist', 'grooming'], ['staff', 'veterinarian', 'clinic'],
+  ]) {
+    for (const cached of [true, false]) {
+      const app = setup({services_view: true, services_manage: role === 'admin'}, role, subrole);
+      if (!cached) app.context.API.getCachedStaffIdentity = () => null;
+      app.context.location.hash = '';
+      await app.shell.init();
+      assert.equal(app.shell.activeTab, expected, `${subrole || role} default catalog`);
+      assert.equal(app.panels.length + app.groomingPanels.length, 1, 'Both cached and uncached identities mount the authorized default');
+      assert.equal(app.shell.canSwitchCatalogs, subrole !== 'veterinarian');
+      assert.equal(app.shell.pageTitle, subrole === 'veterinarian' ? 'Clinic Services' : 'Services');
+      for (const hash of ['#clinic', '#grooming', '#invalid', '']) {
+        app.context.location.hash = hash;
+        await app.listeners.get('hashchange')();
+        const tab = subrole === 'veterinarian' ? 'clinic' : ['#clinic', '#grooming'].includes(hash) ? hash.slice(1) : expected;
+        assert.equal(app.shell.activeTab, tab);
+        assert.equal(app.context.location.hash, `#${tab}`);
+        assert.equal(app.shell.error, '');
+    }
+    if (subrole === 'veterinarian') {
+      app.shell.selectTab('grooming');
+      assert.equal(app.context.location.hash, '#clinic');
+      assert.equal(app.groomingPanels.length, 0);
+      assert.equal(app.scripts.some(src => src.includes('admin-grooming-services')), false);
+      assert.equal(app.calls.some(call => Array.isArray(call) && call[1].includes('/grooming/services')), false);
+    }
+    app.shell.destroy();
+    assert.equal(app.listeners.size, 0);
+    }
+  }
+
+  const race = setup({services_view: true, services_manage: false}, 'staff', 'grooming_receptionist');
+  race.context.location.hash = '';
+  const originalFetch = race.context.fetch;
+  let finishGrooming;
+  race.context.fetch = url => url.includes('/services/sections/grooming.html')
+    ? new Promise(resolve => {finishGrooming = resolve;}) : originalFetch(url);
+  const opening = race.shell.init();
+  await new Promise(setImmediate);
+  const vet = {role: 'staff', staff_subrole: 'veterinarian', clinic_permissions: {services_view: true, services_manage: false},
+    staff_permissions: {clinic_workspace: true, grooming_services_view: false}};
+  race.listeners.get('admin-navigation:updated')({detail: {user: vet}});
+  await new Promise(setImmediate);
+  finishGrooming({ok: true, text: async () => ''});
+  await opening;
+  assert.equal(race.groomingPanels.length, 0, 'An old pending Grooming mount cannot survive a role change');
+  assert.equal(race.shell.activeTab, 'clinic');
+  assert.equal(race.panels.length, 1);
+  assert.equal(race.calls.some(call => Array.isArray(call) && call[1].includes('/grooming/services')), false);
+  const clinic = race.panels[0];
+  clinic.state.q = 'CBC';
+  race.listeners.get('admin-navigation:updated')({detail: {user: {...vet, first_name: 'Updated'}}});
+  await new Promise(setImmediate);
+  assert.equal(race.panels[0], clinic, 'A profile update with unchanged access keeps the current catalog');
+  assert.equal(race.panels[0].state.q, 'CBC');
+  race.listeners.get('admin-navigation:invalidated')({detail: {reload: false}});
+  assert.equal(race.panels.length, 0, 'Identity invalidation removes previously loaded catalog data');
+  assert.equal(race.shell.identityReady, false);
+
+  const restored = setup();
+  restored.context.location.hash = '#grooming';
+  await restored.shell.init();
+  restored.context.clinicAccess.user = vet;
+  restored.context.clinicAccess.permissions = vet.clinic_permissions;
+  await restored.listeners.get('pageshow')({persisted: true});
+  await new Promise(setImmediate);
+  assert.equal(restored.shell.activeTab, 'clinic', 'Restoring a cached document rereads the current identity');
+  assert.equal(restored.groomingPanels.length, 0);
+  assert.equal(restored.shell.pageTitle, 'Clinic Services');
 }
 
 async function navigation() {
@@ -180,8 +261,7 @@ async function readOnlyAccess() {
     if (subrole !== 'veterinarian') {
       await app.visit('#grooming');
       assert.equal(app.shell.activeTab, 'grooming', 'Receptionists can follow the Grooming deep link');
-      const grooming = app.context.adminGroomingServices();
-      grooming.$store = state.$store;
+      const grooming = app.groomingPanels[0].state;
       await grooming.activate(); await grooming.activate();
       assert.equal(grooming.canManageServices, false);
       grooming.openEditor('package'); await grooming.save(); await grooming.changeStatus({serviceId: 1});
@@ -189,7 +269,7 @@ async function readOnlyAccess() {
       assert.equal(app.calls.filter(call => Array.isArray(call) && call[1] === '/admin/grooming/services/catalogue').length, 1);
       assert.equal(app.calls.some(call => Array.isArray(call) && call[0] !== 'GET'), false);
       await app.visit('');
-      assert.equal(app.shell.activeTab, 'clinic', 'Receptionists default back to Clinic Services');
+      assert.equal(app.shell.activeTab, subrole === 'grooming_receptionist' ? 'grooming' : 'clinic', 'Each receptionist returns to their own default catalog');
     }
   }
   const denied = setup({services_view: false, services_manage: false});
@@ -219,10 +299,11 @@ async function readOnlyAccess() {
 
   const transition = setup();
   await transition.shell.init();
-  transition.panels[0].state.openModal();
-  assert.equal(transition.panels[0].state.modalOpen, true);
+  const oldPanel = transition.panels[0];
+  oldPanel.state.openModal();
+  assert.equal(oldPanel.state.modalOpen, true);
   transition.listeners.get('admin-navigation:invalidated')({detail: {reload: true}});
-  assert.equal(transition.panels[0].state.modalOpen, false, 'Revoking access closes an existing service editor');
+  assert.equal(oldPanel.state.modalOpen, false, 'Revoking access closes an existing service editor');
   assert.equal(transition.shell.isAdmin, false);
   assert.equal(transition.shell.canViewGrooming, false);
   assert.ok(transition.shell.error);
@@ -374,4 +455,4 @@ async function confirmationDismissal() {
   assert.equal(await answer, true);
 }
 
-(async () => {await navigation(); await workflow(); await readOnlyAccess(); await priceValidation(); await confirmationDismissal(); await confinementConfiguration(); formatting(); console.log('Clinic Services navigation, pricing and workflow regressions passed');})().catch(error => {console.error(error); process.exitCode = 1;});
+(async () => {await roleDefaultsAndPermissionChanges(); await navigation(); await workflow(); await readOnlyAccess(); await priceValidation(); await confirmationDismissal(); await confinementConfiguration(); formatting(); console.log('Clinic Services role defaults, identity changes, navigation, pricing and workflow regressions passed');})().catch(error => {console.error(error); process.exitCode = 1;});

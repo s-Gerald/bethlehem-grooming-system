@@ -133,6 +133,13 @@ class GroomingPricingCatalogueTest extends TestCase
         foreach (['veterinarian', null] as $subrole) {
             Sanctum::actingAs(new User(['role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => $subrole]));
             $this->getJson('/api/admin/grooming/services/catalogue')->assertForbidden();
+            $this->getJson('/api/grooming/services')->assertForbidden();
+            $this->getJson('/api/grooming/services?include_inactive=1')->assertForbidden();
+            $this->getJson('/api/admin/grooming/services')->assertForbidden();
+            $this->postJson('/api/admin/grooming/services', [])->assertForbidden();
+            $this->putJson("/api/admin/grooming/services/{$id}", [])->assertForbidden();
+            $this->patchJson("/api/admin/grooming/services/{$id}/status", ['isActive' => true])->assertForbidden();
+            $this->updatePrice('facial_trimming', ['pricing_type' => 'fixed', 'amount' => '999'])->assertForbidden();
         }
         $this->asRole('admin');
         $this->getJson('/api/admin/grooming/services/catalogue')->assertOk();
@@ -147,6 +154,9 @@ class GroomingPricingCatalogueTest extends TestCase
     {
         foreach (['staff', 'customer'] as $role) {
             $this->asRole($role);
+            if ($role === 'staff') {
+                Sanctum::actingAs(new User(['role' => 'staff', 'staff_type' => 'grooming', 'staff_subrole' => 'grooming_receptionist']));
+            }
             $this->updatePrice('facial_trimming', ['pricing_type' => 'fixed', 'amount' => '200'])->assertForbidden();
             $this->updatePrice('cat_full_grooming', ['sizes' => [
                 'small' => ['pricing_type' => 'range', 'amount' => '500', 'maximum' => '550'],

@@ -14,24 +14,21 @@ function adminServices() {
   return {
     activeTab: 'grooming', loading: true, error: '',
     isAdmin: false, canViewClinic: false, canViewGrooming: false, identityReady: false,
+    defaultTab: 'clinic', _identityKey: null, _accessRevision: 0, _navigationRevision: 0,
     _navigationListener: null,
+    get canSwitchCatalogs() { return this.identityReady && this.canViewClinic && this.canViewGrooming; },
+    get pageTitle() { return this.identityReady && this.canViewClinic && !this.canViewGrooming ? 'Clinic Services' : 'Services'; },
     async init() {
       this.applyIdentity(API.getCachedStaffIdentity?.()?.user);
-      this._clinicAccess = this.$store.clinicAccess.init().then(() => {
-        this.applyIdentity(this.$store.clinicAccess.user);
-      });
+      this.loadIdentity();
       this._accessInvalidated = event => {
-        this.closePanel('grooming');
-        this.closePanel('clinic');
         this.applyIdentity(null);
         this.$store.clinicAccess.user = null;
         this.$store.clinicAccess.permissions = {};
         this.error = 'Could not verify access.';
         if (event.detail?.reload) {
           this.$store.clinicAccess.ready = null;
-          this._clinicAccess = this.$store.clinicAccess.init().then(() => {
-            this.applyIdentity(this.$store.clinicAccess.user);
-          });
+          this.loadIdentity();
           void this._clinicAccess.then(() => this.showTab());
         }
       };
@@ -46,22 +43,63 @@ function adminServices() {
       window.addEventListener('admin-navigation:invalidated', this._accessInvalidated);
       window.addEventListener('admin-navigation:updated', this._identityUpdated);
       this._navigationListener = () => this.showTab();
+      this._pageShowListener = event => {
+        if (!event.persisted) return;
+        const user = API.getCachedStaffIdentity?.()?.user || null;
+        this.$store.clinicAccess.user = user;
+        this.$store.clinicAccess.permissions = user?.clinic_permissions || {};
+        this.applyIdentity(user);
+        this.$store.clinicAccess.ready = null;
+        this.loadIdentity();
+        return this._clinicAccess.then(() => this.showTab());
+      };
       window.addEventListener('hashchange', this._navigationListener);
+      window.addEventListener('pageshow', this._pageShowListener);
       await this.showTab();
     },
     destroy() {
+      this._accessRevision++;
+      this._navigationRevision++;
       window.removeEventListener('hashchange', this._navigationListener);
+      window.removeEventListener('pageshow', this._pageShowListener);
       window.removeEventListener('admin-navigation:invalidated', this._accessInvalidated);
       window.removeEventListener('admin-navigation:updated', this._identityUpdated);
     },
+    loadIdentity() {
+      const revision = this._accessRevision;
+      this._clinicAccess = this.$store.clinicAccess.init().then(() => {
+        if (revision === this._accessRevision) this.applyIdentity(this.$store.clinicAccess.user);
+      });
+    },
     applyIdentity(user) {
+      const clinic = !!user?.clinic_permissions?.services_view;
+      const grooming = user?.role === 'admin' || (!!user?.staff_permissions?.grooming_services_view && !user?.staff_permissions?.clinic_workspace);
+      const key = user ? JSON.stringify([user.user_id, user.role, user.staff_subrole, clinic, grooming, user.clinic_permissions?.services_manage]) : null;
+      if (key !== this._identityKey) {
+        this._identityKey = key;
+        this._accessRevision++;
+        this._navigationRevision++;
+        this.loading = true;
+        this.resetPanels();
+      }
       this.identityReady = !!user;
       this.isAdmin = user?.role === 'admin';
-      this.canViewClinic = !!user?.clinic_permissions?.services_view;
-      this.canViewGrooming = this.isAdmin || !!user?.staff_permissions?.grooming_services_view;
+      this.canViewClinic = clinic;
+      this.canViewGrooming = grooming;
+      this.defaultTab = this.isAdmin || user?.staff_subrole === 'grooming_receptionist' ? 'grooming' : 'clinic';
+    },
+    resetPanels() {
+      for (const tab of ['grooming', 'clinic']) {
+        delete pending[tab];
+        const panel = this.$refs[tab]?.firstElementChild;
+        if (!panel) continue;
+        this.closePanel(tab);
+        Alpine.mutateDom(() => { Alpine.destroyTree(panel); this.$refs[tab].replaceChildren(); });
+      }
     },
     requestedTab() {
-      return ['#grooming', '#clinic'].includes(window.location.hash) ? window.location.hash.slice(1) : this.isAdmin ? 'grooming' : 'clinic';
+      if (this.canViewClinic && !this.canViewGrooming) return 'clinic';
+      return ['#grooming', '#clinic'].includes(window.location.hash) ? window.location.hash.slice(1) : this.defaultTab;
     },
     closePanel(tab) {
       const panel = this.$refs[tab]?.firstElementChild;
@@ -72,35 +110,42 @@ function adminServices() {
       state.closeEditor?.();
     },
     selectTab(tab) {
+      if (tab === 'grooming' ? !this.canViewGrooming : tab !== 'clinic' || !this.canViewClinic) return;
       if (this.activeTab === tab && !this.error) return;
       window.location.hash = tab;
     },
     async mount(tab) {
+      if (!(tab === 'clinic' ? this.canViewClinic : tab === 'grooming' && this.canViewGrooming)) return null;
       const host = this.$refs[tab];
       if (host.firstElementChild) return host.firstElementChild;
-      return pending[tab] ??= (async () => {
+      if (pending[tab]) return pending[tab];
+      const revision = this._accessRevision;
+      const request = pending[tab] = (async () => {
         const [response] = await Promise.all([
           fetch(tab === 'clinic' ? '/pages/admin/clinic/sections/services.html?urls=20261103&v=services-20261017&icons=20261018' : '/pages/admin/services/sections/grooming.html?urls=20261103&v=services-20261017-followup&icons=20261018&staff-access=20261024'),
           loadScript(tab === 'clinic' ? 'admin-clinic-services.js' : 'admin-grooming-services.js'),
           ...(tab === 'clinic' ? [loadScript('inventory-money-input.js')] : []),
         ]);
         if (!response.ok) throw new Error('Unable to load Services. Please retry.');
+        const markup = await response.text();
+        if (revision !== this._accessRevision || !(tab === 'clinic' ? this.canViewClinic : this.canViewGrooming)) return null;
         const panel = document.createElement('section');
         panel.setAttribute('x-data', tab === 'clinic' ? 'adminClinicServices()' : 'adminGroomingServices()');
-        panel.innerHTML = await response.text();
+        panel.innerHTML = markup;
         // The Services page provides the shared heading and tabs.
         if (tab === 'clinic') panel.querySelector('header')?.remove();
         Alpine.mutateDom(() => { host.appendChild(panel); Alpine.initTree(panel); });
         return panel;
-      })().finally(() => { delete pending[tab]; });
+      })().finally(() => { if (pending[tab] === request) delete pending[tab]; });
+      return request;
     },
     async showTab() {
-      if (!this.identityReady) await this._clinicAccess;
+      const access = this._clinicAccess;
+      await access;
+      if (access !== this._clinicAccess) return;
+      const navigation = ++this._navigationRevision;
+      if (!this.identityReady) { this.loading = false; this.error = 'Could not verify access.'; return; }
       const tab = this.requestedTab();
-      if (tab === 'clinic') {
-        await this._clinicAccess;
-        if (this.requestedTab() !== tab) return;
-      }
       if (tab === 'clinic' && !this.canViewClinic) { this.error = 'You do not have access to Clinic Services.'; return; }
       if (tab === 'grooming' && !this.canViewGrooming) { this.error = 'You do not have access to Grooming Services.'; return; }
       if (tab !== this.activeTab) {
@@ -113,14 +158,15 @@ function adminServices() {
       this.loading = !existing || !Alpine.$data(existing).loaded;
       try {
         const panel = await this.mount(tab);
-        if (this.activeTab !== tab) return;
+        if (!panel || navigation !== this._navigationRevision) return;
         const state = Alpine.$data(panel);
-        state._onPresentation = () => { if (this.activeTab === tab) this.loading = false; };
+        state._onPresentation = () => { if (navigation === this._navigationRevision) this.loading = false; };
         await state.activate();
-      } catch (error) { if (this.activeTab === tab) this.error = error.message || 'Unable to load Services.'; }
-      finally { if (this.activeTab === tab) this.loading = false; }
+      } catch (error) { if (navigation === this._navigationRevision) this.error = error.message || 'Unable to load Services.'; }
+      finally { if (navigation === this._navigationRevision) this.loading = false; }
     },
     tabKeydown(event) {
+      if (!this.canSwitchCatalogs) return;
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       const tabs = [...this.$refs.tabs.querySelectorAll('[role="tab"]')].filter(tab => tab.offsetParent !== null);
       if (!tabs.length) return;

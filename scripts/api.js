@@ -864,7 +864,7 @@ var API = (() => {
     }
 
     const user = getCachedStaffIdentity()?.user;
-    if (user?.staff_permissions?.clinic_workspace && ['grooming', 'services'].includes(currentPageName())) {
+    if (user?.staff_permissions?.clinic_workspace && currentPageName() === 'grooming') {
       redirectToAdminDashboard();
       return false;
     }
