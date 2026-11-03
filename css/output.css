@@ -1654,10 +1654,6 @@ video {
   max-width: 15rem;
 }
 
-.max-w-\[180px\] {
-  max-width: 180px;
-}
-
 .max-w-\[260px\] {
   max-width: 260px;
 }
@@ -4064,11 +4060,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
   background-color: rgb(4 120 87 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-green-50:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(240 253 244 / var(--tw-bg-opacity, 1));
-}
-
 .hover\:bg-portal-active:hover {
   background-color: var(--portal-active);
 }
@@ -4169,11 +4160,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 .hover\:text-amber-500:hover {
   --tw-text-opacity: 1;
   color: rgb(245 158 11 / var(--tw-text-opacity, 1));
-}
-
-.hover\:text-green-600:hover {
-  --tw-text-opacity: 1;
-  color: rgb(22 163 74 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-portal-primary:hover {
@@ -4910,10 +4896,6 @@ clinic-record-sections .case-detail-section ~ .case-detail-section {
 @media (min-width: 768px) {
   .md\:col-span-2 {
     grid-column: span 2 / span 2;
-  }
-
-  .md\:table-cell {
-    display: table-cell;
   }
 
   .md\:grid-cols-2 {

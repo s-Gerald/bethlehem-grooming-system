@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const context = { window: {}, InventoryAPI: {}, API: {loadAdminData: (key, load, render) => load().then(render)}, console };
 vm.createContext(context);
-for (const name of ['inventory-alerts.js', 'admin-inventory-dashboard.js']) {
+for (const name of ['inventory-alerts.js', 'inventory-movement.js', 'admin-inventory-dashboard.js', 'admin-inventory-transactions.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', name), 'utf8'), context);
 }
 
@@ -27,6 +27,29 @@ for (const name of ['inventory-alerts.js', 'admin-inventory-dashboard.js']) {
   assert.equal(page.totalItems,43);
   assert.equal(page.lowStockCount,37);
   assert.equal(page.expiryCount,12);
+  page.$nextTick = callback => callback();
+  let scrolls = 0;
+  page.$refs = {alerts: {scrollIntoView: () => scrolls++}};
+  assert.equal(typeof page.showAlert, 'function', 'Summary alert cards activate their existing Overview view');
+  page.showAlert('expiry'); assert.equal(page.activeTab, 'expiry');
+  page.showAlert('low_stock'); assert.equal(page.activeTab, 'low_stock');
+  assert.equal(scrolls, 2);
+  assert.deepEqual(calls, ['summary'], 'Switching summary views reuses the already loaded alerts');
+  const history = context.adminInventoryTransactions();
+  for (const [reason, label, style] of [
+    ['purchase', 'Purchase', 'background-color:#dcfce7;color:#166534'],
+    ['return', 'Return', 'background-color:#dbeafe;color:#1d4ed8'],
+    ['used', 'Used', 'background-color:#fef3c7;color:#92400e'],
+    ['sold', 'Sold', 'background-color:#d1fae5;color:#065f46'],
+    ['expired', 'Expired', 'background-color:#fee2e2;color:#b91c1c'],
+    ['damaged', 'Damaged', 'background-color:#fee2e2;color:#b91c1c'],
+    ['adjustment', 'Adjustment', 'background-color:#f1f5f9;color:#475569'],
+  ]) {
+    assert.equal(page.reasonLabel(reason), label);
+    assert.equal(page.reasonStyle(reason), style);
+    assert.equal(history.reasonLabel(reason), label);
+    assert.equal(history.reasonStyle(reason), style);
+  }
   assert.equal(page.expiryLabel({is_expired:true}), 'Expired');
   assert.equal(page.expiryLabel({days_until_expiry:0}), 'Expires today');
   context.InventoryAPI.getSummary = async () => { throw new Error('Unavailable'); };
@@ -42,7 +65,7 @@ for (const name of ['inventory-alerts.js', 'admin-inventory-dashboard.js']) {
   }
   assert.match(markup, /<a href="#products\?filter=low-stock"[^>]*x-text="item\.item_name"><\/a>/);
   assert.match(markup, /<a href="#products\?filter=expiry"[^>]*x-text="item\.item_name"><\/a>/);
-  assert.match(markup, /<a :href="inventoryStockHref\('stock-in', item\.item_id\)"[^>]*>Restock<\/a>/);
+  assert.match(markup, /<a :href="inventoryStockHref\('stock-in', item\.item_id\)"[^>]*title="Restock"[^>]*:aria-label="'Restock ' \+ item\.item_name"/);
   assert.doesNotMatch(markup, /pagination|goTo\w+Page|Top Used|Most Used|data-lucide/i);
   console.log('frontend inventory overview regression checks passed');
 })().catch(error => { console.error(error); process.exitCode=1; });

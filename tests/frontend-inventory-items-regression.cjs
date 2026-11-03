@@ -56,6 +56,19 @@ function validForm(overrides = {}) {
   };
 }
 
+function testProductListShowsServerUsableStock() {
+  const markup = fs.readFileSync(path.join(projectRoot, 'pages/admin/inventory/sections/products.html'), 'utf8');
+  const table = markup.match(/<table\b[^>]*aria-label="Inventory products"[\s\S]*?<\/table>/)[0];
+  assert.deepEqual([...table.matchAll(/<th\b[^>]*>([^<]+)<\/th>/g)].map(match => match[1]),
+    ['Item', 'Category', 'Selling Price', 'Usable Stock', 'Status', 'Actions']);
+  const stockCell = table.match(/<td\b[^>]*class="inventory-product-stock[^\"]*"[^>]*>([\s\S]*?)<\/td>/)[1];
+  const quantity = stockCell.match(/x-text="([^"]+)"/)[1];
+  const page = createPage();
+  const item = { quantity_on_hand: 14, usable_quantity: 9, saleable_quantity: 6, reserved_quantity: 3, stock_status: 'in_stock' };
+  assert.equal(vm.runInNewContext(quantity, { item, fmtQty: value => page.fmtQty(value) }), '9');
+  assert.equal(page.stockLabel(item), 'In Stock');
+}
+
 async function testClientRejectsInvalidProductFormValuesWithoutSubmitting() {
   const invalidForms = [
     [validForm({ barcode: "01234567890123" }), /Barcode must contain 1 to 13 digits/],
@@ -176,17 +189,6 @@ async function testPageRecoveryKeepsLoadingUntilTheFallbackResponseArrives() {
   assert.equal(page.loading, false);
 }
 
-function testRowNumbersFollowTheCurrentPaginationAndResetWithFilters() {
-  const page = createPage();
-
-  page.currentPage = 2;
-  assert.equal(page.rowNumber(0), 11);
-  assert.equal(page.rowNumber(9), 20);
-
-  page.currentPage = 1;
-  assert.equal(page.rowNumber(0), 1);
-}
-
 async function testDetailsLoadsFreshInformationAndUsesTheExistingEditForm() {
   let resolveDetails;
   let calls = 0;
@@ -299,6 +301,7 @@ async function testReactivateRefreshesDetailsAndKeepsFocusInsideTheModal() {
 }
 
 (async () => {
+  testProductListShowsServerUsableStock();
   assert.equal(createPage().stockLabel({stock_status: 'unavailable', quantity_on_hand: 5, usable_quantity: 0}), 'No Usable Stock');
   for (const legacy of ['0.00', '1.00', '2000.00']) {
     const page = createPage();
@@ -319,7 +322,6 @@ async function testReactivateRefreshesDetailsAndKeepsFocusInsideTheModal() {
   await testEditingAnIntegerMinimumStockStoredAsDecimalCanBeSavedUnchanged();
   await testClientPreservesLeadingZeroBarcodeAndReloadsTheLastValidPage();
   await testPageRecoveryKeepsLoadingUntilTheFallbackResponseArrives();
-  testRowNumbersFollowTheCurrentPaginationAndResetWithFilters();
   await testDetailsLoadsFreshInformationAndUsesTheExistingEditForm();
   await testDetailsIgnoresClosedAndSupersededRequests();
   await testDetailsFailureCanBeRetriedAndEscapeRestoresFocus();

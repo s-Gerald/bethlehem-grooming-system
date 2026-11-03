@@ -1,11 +1,11 @@
 // The shell owns navigation and resource loading; each workflow keeps its own state.
 const InventorySections = {
-  overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js"] },
+  overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js", "inventory-movement.js"] },
   products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js", "success-toast.js"] },
   "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "recorded-product-pricing.js", "payment-invoice.js", "product-sale-invoice.js"] },
   "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js"] },
   "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js"] },
-  history: { script: "admin-inventory-transactions.js", factory: "adminInventoryTransactions", dependencies: [] },
+  history: { script: "admin-inventory-transactions.js", factory: "adminInventoryTransactions", dependencies: ["inventory-movement.js"] },
 };
 
 function inventoryRoute(hash = window.location.hash) {
@@ -37,7 +37,7 @@ function loadInventoryScript(name) {
       const script = document.createElement("script");
       script.src = name === "scanner"
         ? "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
-        : `/scripts/components/${name}?urls=20261103&v=product-details-20261002&release=combined-20261023&icons=20261018&fetching=20261019&inventory=20261023&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2&invoice-products=20261029&references=20261031&batches=20261103`;
+        : `/scripts/components/${name}?urls=20261103&v=product-details-20261002&release=combined-20261023&icons=20261018&fetching=20261019&inventory=20261023&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2&invoice-products=20261029&references=20261031&batches=20261103&inventory-ui=20261103-v1`;
       script.onload = resolve;
       script.onerror = () => {
         script.remove();
@@ -108,7 +108,7 @@ function adminInventory() {
         const mount = async () => {
           const config = InventorySections[section];
           const [response] = await Promise.all([
-            fetch(`/pages/admin/inventory/sections/${section}.html?batches=20261103&urls=20261103&v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2${section === 'sell-product' ? '&cash-input=20261030&references=20261031' : ''}`),
+            fetch(`/pages/admin/inventory/sections/${section}.html?inventory-ui=20261103-v1&batches=20261103&urls=20261103&v=inventory-receipts-20261023&release=combined-20261023&icons=20261018&presentation=20261024&veterinary=20261024&product-dropdown=20261029-v2${section === 'sell-product' ? '&cash-input=20261030&references=20261031' : ''}`),
             ...config.dependencies.map(loadInventoryScript),
             loadInventoryScript(config.script),
           ]);

@@ -40,65 +40,54 @@
 <!-- Table -->
 <div x-show="loaded" class="mt-4 overflow-hidden rounded-2xl border border-[#e6eef7] bg-white shadow-sm">
   <div x-show="alertFilter !== 'expiry'" class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="inventory-products-table w-full text-sm" :class="{'inventory-products-table--readonly': clinicOnly}" aria-label="Inventory products">
       <thead>
         <tr class="border-b border-[#e6eef7] bg-[#f5f8fb] text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-          <th class="w-12 px-3 py-3 text-center font-medium text-slate-400">#</th>
-          <th class="px-4 py-3">Item</th>
-          <th class="px-4 py-3 hidden sm:table-cell">Category</th>
-          <th class="px-4 py-3 hidden md:table-cell">Barcode</th>
-          <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Unit Cost</th>
-          <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Selling Price</th>
-          <th class="px-4 py-3">Physical Stock</th>
-          <th class="px-4 py-3 hidden md:table-cell">Min Stock</th>
-          <th class="px-4 py-3">Status</th>
-          <th x-show="!clinicOnly" class="px-4 py-3 text-right">Actions</th>
+          <th scope="col" class="px-4 py-3">Item</th>
+          <th scope="col" class="px-4 py-3">Category</th>
+          <th scope="col" x-show="!clinicOnly" class="px-4 py-3">Selling Price</th>
+          <th scope="col" class="px-4 py-3">Usable Stock</th>
+          <th scope="col" class="px-4 py-3">Status</th>
+          <th scope="col" x-show="!clinicOnly" class="px-4 py-3 text-right">Actions</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-[#e6eef7]">
         <template x-if="items.length === 0">
-          <tr><td :colspan="clinicOnly ? 7 : 10" class="px-4 py-10 text-center text-sm text-slate-400">No items found.</td></tr>
+          <tr><td :colspan="clinicOnly ? 4 : 6" class="px-4 py-10 text-center text-sm text-slate-400">No items found.</td></tr>
         </template>
-        <template x-for="(item, index) in items" :key="item.item_id">
+        <template x-for="item in items" :key="item.item_id">
           <tr tabindex="0" role="button" aria-haspopup="dialog" :aria-label="'View details for ' + item.item_name"
             @click="openDetails(item, $event)" @keydown.enter.self.prevent="openDetails(item, $event)" @keydown.space.self.prevent="openDetails(item, $event)"
-            class="cursor-pointer hover:bg-[#eaf4fb] focus-visible:bg-[#eaf4fb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e] transition">
-            <td class="w-12 px-3 py-3 text-center text-xs font-medium tabular-nums text-slate-400" x-text="rowNumber(index)"></td>
-            <td class="px-4 py-3">
+            class="inventory-product-row cursor-pointer hover:bg-[#eaf4fb] focus-visible:bg-[#eaf4fb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e] transition">
+            <td class="inventory-product-item px-4 py-3">
               <p class="font-semibold text-slate-800" x-text="item.item_name"></p>
-              <p x-show="item.description" style="display:none" class="text-xs text-slate-400 mt-0.5 truncate max-w-[180px]" x-text="item.description"></p>
             </td>
-            <td class="px-4 py-3 hidden sm:table-cell">
-              <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="categoryColor(item.category)" x-text="categoryLabel(item.category)"></span>
+            <td class="inventory-product-category px-4 py-3">
+              <span class="inventory-category-badge rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="categoryColor(item.category)" x-text="categoryLabel(item.category)"></span>
             </td>
-            <td class="px-4 py-3 hidden md:table-cell text-slate-500 font-mono text-xs" x-text="item.barcode || '—'"></td>
-            <td x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="'₱' + parseFloat(item.unit_cost || 0).toFixed(2)"></td>
-            <td x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell text-slate-600" x-text="ProductForm.isWeightBased(item) ? 'Weight-based' : fmtMoney(item.selling_price)"></td>
-            <td class="px-4 py-3 font-semibold text-slate-800">
-              <span x-text="fmtQty(item.quantity_on_hand)"></span>
+            <td x-show="!clinicOnly" class="inventory-product-price px-4 py-3 text-slate-600" x-text="ProductForm.isWeightBased(item) ? 'Weight-based' : fmtMoney(item.selling_price)"></td>
+            <td class="inventory-product-stock px-4 py-3 font-semibold text-slate-800">
+              <span class="inventory-mobile-label">Usable Stock</span>
+              <span x-text="fmtQty(item.usable_quantity)"></span>
               <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
             </td>
-            <td class="px-4 py-3 hidden md:table-cell text-slate-500">
-              <span x-text="fmtQty(item.reorder_level)"></span>
-              <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
+            <td class="inventory-product-status px-4 py-3">
+              <span x-show="item.is_active" class="inventory-stock-badge rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="stockStyle(item)" x-text="stockLabel(item)"></span>
+              <span x-show="!item.is_active" style="display:none;background-color:#f1f5f9;color:#64748b" class="inventory-stock-badge rounded-full px-2.5 py-0.5 text-xs font-semibold">Deactivated</span>
             </td>
-            <td class="px-4 py-3">
-              <span x-show="item.is_active" class="rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="stockStyle(item)" x-text="stockLabel(item)"></span>
-              <span x-show="!item.is_active" style="display:none;background-color:#f1f5f9;color:#64748b" class="rounded-full px-2.5 py-0.5 text-xs font-semibold">Deactivated</span>
-            </td>
-            <td x-show="!clinicOnly" class="px-4 py-3">
-              <div class="flex items-center justify-end gap-2">
+            <td x-show="!clinicOnly" class="inventory-product-actions px-2 py-3">
+              <div class="flex items-center justify-end gap-1">
                 <button x-show="item.is_active" type="button" aria-label="Edit" @click.stop="openEdit(item)" title="Edit"
-                  class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-[#eaf4fb] hover:text-[#315b7e] transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#pencil-simple"></use></svg>
+                  class="inventory-icon-action inventory-product-action">
+                  <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#pencil-simple"></use></svg>
                 </button>
                 <button x-show="item.is_active" type="button" aria-label="Deactivate" @click.stop="confirmDeactivate(item)" title="Deactivate"
-                  class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#x-circle"></use></svg>
+                  class="inventory-icon-action inventory-product-action inventory-action-danger">
+                  <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#x-circle"></use></svg>
                 </button>
                 <button x-show="!item.is_active" style="display:none" type="button" aria-label="Reactivate" @click.stop="doReactivate(item)" title="Reactivate"
-                  class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-green-50 hover:text-green-600 transition">
-                  <svg class="ph-icon h-4 w-4" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#arrow-counter-clockwise"></use></svg>
+                  class="inventory-icon-action inventory-product-action">
+                  <svg class="ph-icon" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg?v=inventory-icons-20261002#arrow-counter-clockwise"></use></svg>
                 </button>
               </div>
             </td>

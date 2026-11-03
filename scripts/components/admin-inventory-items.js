@@ -107,10 +107,6 @@ function adminInventoryItems() {
     prevPage() { if (this.currentPage > 1) this.load(this.currentPage - 1); },
     nextPage() { if (this.currentPage < this.lastPage) this.load(this.currentPage + 1); },
 
-    rowNumber(index) {
-      return ((this.currentPage - 1) * this.perPage) + index + 1;
-    },
-
     handleBarcodeInput(event) {
       const barcode = ProductForm.normalizeBarcode(event.target.value);
       this.form.barcode = barcode;

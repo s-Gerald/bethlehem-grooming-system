@@ -37,11 +37,13 @@ function adminInventoryDashboard() {
     expiryStyle(item) { return InventoryAlerts.expiryStyle(item); },
     expiryLabel(item) { return InventoryAlerts.expiryLabel(item); },
 
-    typeStyle(type) {
-      return type === "stock_in"
-        ? "background-color:#dcfce7;color:#166534"
-        : "background-color:#fee2e2;color:#b91c1c";
+    showAlert(tab) {
+      this.activeTab = tab;
+      this.$nextTick(() => this.$refs.alerts?.scrollIntoView({block: 'nearest'}));
     },
+
+    reasonStyle(reason) { return InventoryMovement.reasonStyle(reason); },
+    reasonLabel(reason) { return InventoryMovement.reasonLabel(reason); },
 
     fmtDate(d) {
       if (!d) return "—";

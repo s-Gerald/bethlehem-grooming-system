@@ -422,7 +422,7 @@ function testUnifiedEntryAndSectionMarkup() {
   assert.match(header,/Monitor products, stock levels, alerts, and recent activity\./);
   assert.match(header,/href="#stock-in"[^>]*>Stock In<\/a>/);
   assert.match(header,/href="#stock-out"[^>]*>Stock Out<\/a>/);
-  assert.match(overview,/:href="inventoryStockHref\('stock-in', item.item_id\)"[^>]*>Restock<\/a>/);
+  assert.match(overview,/:href="inventoryStockHref\('stock-in', item.item_id\)"[^>]*title="Restock"[^>]*:aria-label="'Restock ' \+ item\.item_name"/);
   assert.doesNotMatch(overview,/New Sale|href=["'][^"']*pos\.html|scannerActive|pending\.length/i);
   for (const section of ['stock-in','stock-out']) {
     const start=shell.indexOf(`activeSection === '${section}'`);

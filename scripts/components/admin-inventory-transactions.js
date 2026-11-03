@@ -65,29 +65,8 @@ function adminInventoryTransactions() {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    reasonStyle(reason) {
-      return {
-        purchase:   "background-color:#dcfce7;color:#166534",
-        return:     "background-color:#dbeafe;color:#1d4ed8",
-        used:       "background-color:#fef3c7;color:#92400e",
-        sold:       "background-color:#d1fae5;color:#065f46",
-        expired:    "background-color:#fee2e2;color:#b91c1c",
-        damaged:    "background-color:#fee2e2;color:#b91c1c",
-        adjustment: "background-color:#f1f5f9;color:#475569",
-      }[reason] ?? "background-color:#f1f5f9;color:#475569";
-    },
-
-    reasonLabel(r) {
-      return {
-        purchase:   "Purchase",
-        return:     "Return",
-        used:       "Used",
-        sold:       "Sold",
-        expired:    "Expired",
-        damaged:    "Damaged",
-        adjustment: "Adjustment",
-      }[r] ?? r;
-    },
+    reasonStyle(reason) { return InventoryMovement.reasonStyle(reason); },
+    reasonLabel(reason) { return InventoryMovement.reasonLabel(reason); },
 
     qtyStyle(type) {
       return type === "stock_in" ? "color:#166534;font-weight:600" : "color:#b91c1c;font-weight:600";
