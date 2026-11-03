@@ -51,7 +51,7 @@ function validForm(overrides = {}) {
     description: "",
     unit_cost: "1.25",
     selling_price: "2.50",
-    reorder_level: "0",
+    reorder_level: "2",
     ...overrides,
   };
 }
@@ -139,7 +139,7 @@ async function testClientPreservesLeadingZeroBarcodeAndReloadsTheLastValidPage()
     description: "",
     unit_cost: "1.25",
     selling_price: "2.50",
-    reorder_level: "0",
+    reorder_level: "2",
   };
 
   await page.submitForm();
@@ -299,6 +299,21 @@ async function testReactivateRefreshesDetailsAndKeepsFocusInsideTheModal() {
 }
 
 (async () => {
+  assert.equal(createPage().stockLabel({stock_status: 'unavailable', quantity_on_hand: 5, usable_quantity: 0}), 'No Usable Stock');
+  for (const legacy of ['0.00', '1.00', '2000.00']) {
+    const page = createPage();
+    page.openEdit({...validForm(), item_id: 7, reorder_level: legacy});
+    assert.equal(page.form.reorder_level, String(Number(legacy)));
+    const formContext = {window: {}};
+    vm.runInNewContext(productFormSource, formContext);
+    assert.equal(formContext.window.ProductForm.minimumStockError(page.form), '');
+    page.form.reorder_level = '1001';
+    assert.ok(formContext.window.ProductForm.minimumStockError(page.form));
+  }
+  for (const value of ['0', '1', '-1', '1.5', '1001', '1e2']) {
+    const page = createPage(); page.form = validForm({reorder_level: value});
+    await page.submitForm(); assert.match(page.modal.error, /Minimum stock/);
+  }
   await testClientRejectsInvalidProductFormValuesWithoutSubmitting();
   testBarcodeInputKeepsOnlyThirteenDigits();
   await testEditingAnIntegerMinimumStockStoredAsDecimalCanBeSavedUnchanged();

@@ -86,6 +86,7 @@ class AdminVaccinationApiTest extends TestCase
         });
 
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->json('stock_out_allocations')->nullable();
             $table->unsignedInteger('transaction_id')->autoIncrement();
             $table->unsignedInteger('item_id');
             $table->string('type');

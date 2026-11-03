@@ -16,7 +16,7 @@ const context = {URL, URLSearchParams, Date, Intl, console, setTimeout: () => 1,
     onlinePaymentStatus: async () => ({online_payment: {id: 3, flow: 'online', status: 'pending', amount: '160.00'}}),
     processSale: async () => {cashCalls++;}},
 };
-for (const name of ['cash-payment', 'online-payment', 'payment-invoice', 'admin-clinic', 'admin-pos']) vm.runInNewContext(fs.readFileSync(`scripts/components/${name}.js`, 'utf8'), context);
+for (const name of ['cash-payment', 'online-payment', 'payment-invoice', 'product-form', 'admin-clinic', 'admin-pos']) vm.runInNewContext(fs.readFileSync(`scripts/components/${name}.js`, 'utf8'), context);
 (async () => {
   const clinic = context.adminClinicPage();
   clinic.$store = {clinicAccess: {permissions: {payment: true}}}; clinic.$nextTick = fn => fn();

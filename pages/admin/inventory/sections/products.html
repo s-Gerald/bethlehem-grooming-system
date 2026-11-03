@@ -49,7 +49,7 @@
           <th class="px-4 py-3 hidden md:table-cell">Barcode</th>
           <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Unit Cost</th>
           <th x-show="!clinicOnly" class="px-4 py-3 hidden lg:table-cell">Selling Price</th>
-          <th class="px-4 py-3">Stock</th>
+          <th class="px-4 py-3">Physical Stock</th>
           <th class="px-4 py-3 hidden md:table-cell">Min Stock</th>
           <th class="px-4 py-3">Status</th>
           <th x-show="!clinicOnly" class="px-4 py-3 text-right">Actions</th>
@@ -193,14 +193,14 @@
           <section aria-labelledby="product-inventory-heading">
             <h4 id="product-inventory-heading" class="mb-3 text-sm font-bold text-[#355674]">Inventory</h4>
             <dl class="grid gap-3 rounded-2xl border border-[#e6eef7] bg-[#f5f8fb] p-4 sm:grid-cols-3">
-              <div><dt class="text-xs text-slate-500">Current Stock</dt><dd class="mt-1 text-lg font-bold text-slate-800" x-text="fmtQty(details.item.quantity_on_hand) + ' ' + details.item.unit"></dd><p class="mt-1 text-xs text-slate-500">Physical quantity in inventory</p></div>
-              <div x-show="details.item.tracks_expiry"><dt class="text-xs text-slate-500">Saleable Stock</dt><dd class="mt-1 text-lg font-bold text-[#315b7e]" x-text="fmtQty(details.item.saleable_quantity) + ' ' + details.item.unit"></dd><p class="mt-1 text-xs text-slate-500">Unexpired quantity available for sale or use</p></div>
+              <div><dt class="text-xs text-slate-500">Physical Stock</dt><dd class="mt-1 text-lg font-bold text-slate-800" x-text="fmtQty(details.item.quantity_on_hand) + ' ' + details.item.unit"></dd><p class="mt-1 text-xs text-slate-500">Physical quantity in inventory</p></div>
+              <div><dt class="text-xs text-slate-500">Saleable Stock</dt><dd class="mt-1 text-lg font-bold text-[#315b7e]" x-text="fmtQty(details.item.saleable_quantity) + ' ' + details.item.unit"></dd><p class="mt-1 text-xs text-slate-500" x-text="'Usable: ' + fmtQty(details.item.usable_quantity) + ' ' + details.item.unit + ' · Reserved: ' + fmtQty(details.item.reserved_quantity)"></p></div>
               <div><dt class="text-xs text-slate-500">Minimum Stock</dt><dd class="mt-1 text-lg font-bold text-slate-800" x-text="fmtQty(details.item.reorder_level) + ' ' + details.item.unit"></dd></div>
             </dl>
             <div x-show="details.item.tracks_expiry" class="mt-3 space-y-1 text-sm">
-              <p x-show="details.item.expired_quantity > 0" class="font-semibold text-red-700" x-text="fmtQty(details.item.expired_quantity) + ' ' + details.item.unit + ' expired — included in Current Stock, unavailable for sale or use.'"></p>
+              <p x-show="details.item.expired_quantity > 0" class="font-semibold text-red-700" x-text="fmtQty(details.item.expired_quantity) + ' ' + details.item.unit + ' expired — included in Physical Stock, unavailable for sale or use.'"></p>
               <p x-show="details.item.expiry_unknown_quantity > 0" class="text-amber-700" x-text="fmtQty(details.item.expiry_unknown_quantity) + ' ' + details.item.unit + ' have no recorded expiry date and are excluded from Saleable Stock.'"></p>
-              <p x-show="details.item.untracked_quantity > 0" class="text-amber-700" x-text="fmtQty(details.item.untracked_quantity) + ' ' + details.item.unit + ' have no tracked stock receipt and are excluded from Saleable Stock.'"></p>
+              <p x-show="details.item.untracked_quantity > 0" class="text-amber-700" x-text="fmtQty(details.item.untracked_quantity) + ' ' + details.item.unit + (details.item.tracks_expiry ? ' have no tracked stock receipt and are excluded from Saleable Stock.' : ' have no tracked stock receipt.')"></p>
             </div>
           </section>
           <section aria-labelledby="product-expiry-heading">
@@ -400,9 +400,10 @@
       </div>
       <!-- Reorder level -->
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Minimum Stock <span class="font-normal text-slate-400">(reorder level)</span></label>
-        <input x-model="form.reorder_level" type="number" step="1" min="0" required placeholder="0"
+        <label for="products-minimum-stock" class="block text-sm font-semibold text-slate-700 mb-1.5">Minimum Stock <span class="font-normal text-slate-400">(reorder level)</span></label>
+        <input id="products-minimum-stock" x-model="form.reorder_level" type="text" inputmode="numeric" :aria-invalid="form.reorder_level !== '' &amp;&amp; Boolean(ProductForm.minimumStockError(form))" aria-describedby="products-minimum-stock-error" required :placeholder="ProductForm.inventoryPolicy.minimum_stock_minimum + '–' + ProductForm.inventoryPolicy.minimum_stock_maximum"
           class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
+        <p id="products-minimum-stock-error" x-show="form.reorder_level !== '' &amp;&amp; ProductForm.minimumStockError(form)" role="status" class="mt-1 text-xs text-red-700" x-text="ProductForm.minimumStockError(form)"></p>
       </div>
       <!-- Error -->
       <p x-show="modal.error" style="display:none" class="text-sm text-red-600" x-text="modal.error"></p>
@@ -412,8 +413,8 @@
         class="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
         Cancel
       </button>
-      <button type="button" @click="submitForm()" :disabled="modal.busy"
-        class="flex-1 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] disabled:opacity-50">
+      <button type="button" @click="submitForm()" :disabled="modal.busy || !!ProductForm.minimumStockError(form)"
+        class="disabled:opacity-50 disabled:cursor-not-allowed flex-1 whitespace-nowrap rounded-xl bg-[#315b7e] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#284a67] disabled:opacity-50">
         <span x-text="modal.busy ? 'Saving…' : (form.item_id ? 'Save Changes' : 'Add Product')">Add Product</span>
       </button>
     </div>

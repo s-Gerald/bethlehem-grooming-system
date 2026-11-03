@@ -41,6 +41,10 @@
 .pos-line-product strong, .pos-line-product span { display: block; }
 .pos-line-product strong { font-size: 14px; }
 .pos-line-product span { color: var(--pos-muted); font-size: 12px; }
+.pos-line-product .pos-receipt-label { display: block; margin-top: 8px; }
+.pos-receipt-label select { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--pos-border); border-radius: 8px; background: var(--pos-surface); color: var(--pos-ink); font: inherit; font-size: 12px; }
+.pos-receipt-label select:focus-visible { outline: 2px solid var(--pos-blue); outline-offset: 2px; }
+.pos-receipt-label select:disabled { cursor: not-allowed; opacity: .55; }
 .pos-quantity { width: 90px; margin: 0 !important; }
 .pos-quantity span { font-size: 12px; color: var(--pos-muted); }
 .pos-line-total { font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

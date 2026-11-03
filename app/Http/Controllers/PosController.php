@@ -23,7 +23,8 @@ class PosController extends Controller
         $validated = $request->validate([
             'items' => 'required|array|min:1|max:100',
             'items.*.item_id' => 'required|integer|min:1',
-            'items.*.quantity' => 'required|integer|min:1|max:99999999',
+            'items.*.quantity' => \App\Support\InventoryQuantityPolicy::wholeNumberRules(1, 99999999),
+            'items.*.receipt_id' => 'nullable|integer|min:1',
         ], ['items.*.quantity.integer' => 'Quantity must be a whole number.']);
         [, , $snapshots] = app(PosSaleService::class)->cartInventory(collect($validated['items'])->pluck('item_id'));
 
@@ -36,7 +37,8 @@ class PosController extends Controller
         $validated = $request->validate([
             'items' => 'required|array|min:1|max:100',
             'items.*.item_id' => 'required|integer|min:1',
-            'items.*.quantity' => 'required|integer|min:1|max:99999999',
+            'items.*.quantity' => \App\Support\InventoryQuantityPolicy::wholeNumberRules(1, 99999999),
+            'items.*.receipt_id' => 'nullable|integer|min:1',
             'items.*.expected_price' => 'sometimes|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,
             'items.*.expected_stock' => 'sometimes|numeric|decimal:0,2|min:0|max:99999999.99',
             'items.*.price_at_sale' => 'sometimes|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,

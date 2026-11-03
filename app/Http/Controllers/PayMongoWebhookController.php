@@ -128,6 +128,7 @@ class PayMongoWebhookController extends Controller
                             }
                             $item->item_name = $product['name']; $item->unit = $product['unit'];
                             $lines[] = ['item' => $item, 'quantity' => $product['quantity'],
+                                'receipt_id' => $product['receipt_id'] ?? null,
                                 'price_at_sale' => $product['price_at_sale'], 'subtotal' => $product['subtotal']];
                         }
                         $attempt->releaseStock();

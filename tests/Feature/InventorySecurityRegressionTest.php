@@ -61,6 +61,7 @@ class InventorySecurityRegressionTest extends TestCase
         });
 
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->json('stock_out_allocations')->nullable();
             $table->unsignedInteger('transaction_id')->autoIncrement();
             $table->unsignedInteger('item_id');
             $table->string('type');
@@ -648,7 +649,7 @@ class InventorySecurityRegressionTest extends TestCase
             'barcode' => '0012345678901',
             'unit_cost' => 0,
             'selling_price' => 2.50,
-            'reorder_level' => 0,
+            'reorder_level' => 2,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['unit_cost']);
 
@@ -657,7 +658,7 @@ class InventorySecurityRegressionTest extends TestCase
             'barcode' => '0012345678901',
             'unit_cost' => 1.25,
             'selling_price' => 0,
-            'reorder_level' => 0,
+            'reorder_level' => 2,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['selling_price']);
 
@@ -683,7 +684,7 @@ class InventorySecurityRegressionTest extends TestCase
             'barcode' => '00123456789012',
             'unit_cost' => 1.25,
             'selling_price' => 2.50,
-            'reorder_level' => 0,
+            'reorder_level' => 2,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['barcode']);
 
@@ -692,7 +693,7 @@ class InventorySecurityRegressionTest extends TestCase
             'barcode' => '0012345678901',
             'unit_cost' => 1.25,
             'selling_price' => 2.50,
-            'reorder_level' => 0,
+            'reorder_level' => 2,
         ])->assertCreated()
             ->json('data.item_id');
 
@@ -706,7 +707,7 @@ class InventorySecurityRegressionTest extends TestCase
             ...$basePayload,
             'unit_cost' => 0,
             'selling_price' => null,
-            'reorder_level' => 0,
+            'reorder_level' => 2,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['unit_cost', 'selling_price']);
     }
@@ -812,7 +813,6 @@ class InventorySecurityRegressionTest extends TestCase
 
         $inventoryLoader = file_get_contents(base_path('scripts/components/admin-inventory.js'));
         $posPage = file_get_contents(base_path('pages/admin/inventory/pos.html'));
-        $stockOutScript = file_get_contents(base_path('scripts/components/admin-stock-out.js'));
 
         $this->assertMatchesRegularExpression('~scripts/components/\$\{name\}(?:\?[^`\s]+)?`~', $inventoryLoader);
         foreach ([
@@ -828,13 +828,6 @@ class InventorySecurityRegressionTest extends TestCase
         $this->assertStringContainsString('"success-toast.js"', $inventoryLoader);
         $this->assertStringContainsString('admin-pos.js', $inventoryLoader);
         $this->assertFileExists(base_path('pages/admin/inventory/sections/sell-product.html'));
-        $this->assertStringContainsString(
-            'p.item_id === this.selected.item_id && p.reason === this.reason',
-            $stockOutScript,
-        );
-        $this->assertStringContainsString('physicalQuantity - pendingQuantity', $stockOutScript);
-        $this->assertStringNotContainsString('unexpired_quantity ?? 0', $stockOutScript);
-        $this->assertStringNotContainsString('expired_quantity ?? 0', $stockOutScript);
     }
 
     public function test_exhausted_expired_batch_does_not_create_a_false_alert_after_restock(): void
@@ -874,13 +867,13 @@ class InventorySecurityRegressionTest extends TestCase
             ->assertJsonPath('expiry_alert_count', 0);
     }
 
-    public function test_manual_stock_out_uses_physical_stock_while_pos_rejects_expired_stock(): void
+    public function test_manual_stock_out_and_pos_both_reject_expired_stock(): void
     {
         Sanctum::actingAs($this->createUser('admin', '09170000004'));
 
         $itemId = $this->createInventoryItem('Expired Medicine', 5, 75);
         DB::table('inventory_items')->where('item_id', $itemId)->update(['category' => 'food']);
-        $this->recordInventoryTransaction($itemId, 'stock_in', 5, [
+        $expiredReceipt = $this->recordInventoryTransaction($itemId, 'stock_in', 5, [
             'batch_number' => 'EXPIRED-ONLY',
             'expiry_date' => now()->subDay()->toDateString(),
         ]);
@@ -891,8 +884,7 @@ class InventorySecurityRegressionTest extends TestCase
                 'quantity' => 1,
                 'reason' => 'used',
             ]],
-        ])->assertCreated()
-            ->assertJsonPath('data.0.quantity_on_hand', '4.00');
+        ])->assertUnprocessable();
 
         $this->postJson('/api/pos/transactions', [
             'items' => [[
@@ -904,14 +896,15 @@ class InventorySecurityRegressionTest extends TestCase
             'amount_tendered' => 100,
             'change_amount' => 99,
         ])->assertUnprocessable()
-            ->assertJsonPath('message', 'Insufficient unexpired stock for "Expired Medicine". Unexpired available: 0 piece; physical stock: 4.00 piece.');
+            ->assertJsonPath('message', 'Insufficient unexpired stock for "Expired Medicine". Unexpired available: 0 piece; physical stock: 5.00 piece.');
 
         $this->assertDatabaseCount('pos_transactions', 0);
         $this->postJson('/api/inventory/stock-out', [
             'items' => [[
                 'item_id' => $itemId,
-                'quantity' => 4,
+                'quantity' => 5,
                 'reason' => 'expired',
+                'receipt_id' => $expiredReceipt,
             ]],
         ])->assertCreated()
             ->assertJsonPath('data.0.unexpired_quantity', 0);
@@ -924,7 +917,7 @@ class InventorySecurityRegressionTest extends TestCase
             'item_id' => $itemId,
             'type' => 'stock_out',
             'reason' => 'expired',
-            'quantity' => 4,
+            'quantity' => 5,
         ]);
     }
 
@@ -990,7 +983,7 @@ class InventorySecurityRegressionTest extends TestCase
         ]);
     }
 
-    public function test_manual_stock_out_uses_remaining_physical_stock_after_fresh_stock_is_used(): void
+    public function test_manual_stock_out_cannot_use_expired_remainder_after_fresh_stock_is_used(): void
     {
         Sanctum::actingAs($this->createUser('admin', '09170000006'));
 
@@ -1020,13 +1013,12 @@ class InventorySecurityRegressionTest extends TestCase
                 'quantity' => 1,
                 'reason' => 'used',
             ]],
-        ])->assertCreated()
-            ->assertJsonPath('data.0.quantity_on_hand', '4.00');
+        ])->assertUnprocessable();
 
         $this->getJson("/api/inventory/items/{$itemId}")
             ->assertOk()
             ->assertJsonPath('data.unexpired_quantity', 0)
-            ->assertJsonPath('data.expired_quantity', 4);
+            ->assertJsonPath('data.expired_quantity', 5);
     }
 
     public function test_pos_rejects_an_item_without_a_server_selling_price(): void
@@ -1113,12 +1105,12 @@ class InventorySecurityRegressionTest extends TestCase
             ->assertJsonPath('data.0.expiring_batches.0.batch_number', 'RECEIVED-LATER-EXPIRED');
     }
 
-    public function test_manual_expired_writeoff_uses_physical_stock(): void
+    public function test_manual_expired_writeoff_uses_only_the_selected_expired_receipt(): void
     {
         Sanctum::actingAs($this->createUser('admin', '09170000009'));
 
         $itemId = $this->createInventoryItem('Writeoff Stock', 5, 25);
-        $this->recordInventoryTransaction($itemId, 'stock_in', 2, [
+        $expiredReceipt = $this->recordInventoryTransaction($itemId, 'stock_in', 2, [
             'batch_number' => 'WRITEOFF-EXPIRED',
             'expiry_date' => now()->subDay()->toDateString(),
         ]);
@@ -1132,14 +1124,16 @@ class InventorySecurityRegressionTest extends TestCase
                 'item_id' => $itemId,
                 'quantity' => 3,
                 'reason' => 'expired',
+                'receipt_id' => $expiredReceipt,
             ]],
-        ])->assertCreated()
-            ->assertJsonPath('data.0.quantity_on_hand', '2.00');
+        ])->assertUnprocessable();
+
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $itemId, 'quantity' => 2, 'reason' => 'expired', 'receipt_id' => $expiredReceipt]]])->assertCreated();
 
         $this->postJson('/api/inventory/stock-out', [
             'items' => [[
                 'item_id' => $itemId,
-                'quantity' => 2,
+                'quantity' => 3,
                 'reason' => 'damaged',
             ]],
         ])->assertCreated();
@@ -1246,11 +1240,11 @@ class InventorySecurityRegressionTest extends TestCase
         Sanctum::actingAs($this->createUser('admin', '09170000013'));
 
         $itemId = $this->createInventoryItem('Mixed Writeoff Order', 5, 25);
-        $this->recordInventoryTransaction($itemId, 'stock_in', 2, [
+        $expiredReceipt = $this->recordInventoryTransaction($itemId, 'stock_in', 2, [
             'batch_number' => 'ORDER-EXPIRED',
             'expiry_date' => now()->subDay()->toDateString(),
         ]);
-        $this->recordInventoryTransaction($itemId, 'stock_in', 3, [
+        $validReceipt = $this->recordInventoryTransaction($itemId, 'stock_in', 3, [
             'batch_number' => 'ORDER-FRESH',
             'expiry_date' => now()->addYear()->toDateString(),
         ]);
@@ -1261,11 +1255,13 @@ class InventorySecurityRegressionTest extends TestCase
                     'item_id' => $itemId,
                     'quantity' => 3,
                     'reason' => 'damaged',
+                    'receipt_id' => $validReceipt,
                 ],
                 [
                     'item_id' => $itemId,
                     'quantity' => 2,
                     'reason' => 'expired',
+                    'receipt_id' => $expiredReceipt,
                 ],
             ],
         ])->assertCreated();
@@ -1467,11 +1463,21 @@ class InventorySecurityRegressionTest extends TestCase
         $this->recordInventoryTransaction($id, 'stock_in', 1, ['stock_in_reference' => 'COLLAR-AAAAAAAAAA']);
     }
 
-    public function test_simultaneous_stock_in_requests_preserve_exact_stock_and_unique_references(): void
+    public static function concurrentInventoryDirections(): array
+    {
+        return [['stock-in'], ['stock-out']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('concurrentInventoryDirections')]
+    public function test_simultaneous_inventory_requests_preserve_stock_and_receipt_balances(string $direction): void
     {
         $actor = $this->createUser('admin', '09170000095');
         $id = $this->createInventoryItem('Concurrent Collar', 0, 50);
         DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        if ($direction === 'stock-out') {
+            DB::table('inventory_items')->where('item_id', $id)->update(['quantity_on_hand' => 3]);
+            $receipt = $this->recordInventoryTransaction($id, 'stock_in', 3);
+        }
         $directory = sys_get_temp_dir().'/bethlehem-receipts-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
         $database = $directory.'/receipts.sqlite';
@@ -1528,15 +1534,15 @@ class InventorySecurityRegressionTest extends TestCase
                     }
                 });
                 $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
-                $request = Illuminate\Http\Request::create('/api/inventory/stock-in', 'POST', [], [], [],
+                $request = Illuminate\Http\Request::create('/api/inventory/'.$argv[5], 'POST', [], [], [],
                     ['CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
-                    json_encode(['items' => [['item_id' => (int) $argv[3], 'quantity' => 2, 'reason' => 'purchase']]]));
+                    json_encode(['items' => [['item_id' => (int) $argv[3], 'quantity' => 2, 'reason' => $argv[5] === 'stock-in' ? 'purchase' : 'used']]]));
                 $response = $kernel->handle($request);
                 echo json_encode(['status' => $response->getStatusCode(), 'body' => json_decode($response->getContent(), true), 'pid' => getmypid(),
                     'php' => PHP_VERSION, 'binary' => PHP_BINARY, 'contended' => $contended, 'transaction_mode' => $connection->getConfig('transaction_mode')]);
                 PHP;
             foreach (['first', 'second'] as $role) {
-                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, (string) $actor->user_id, (string) $id, $role], base_path(), [
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, (string) $actor->user_id, (string) $id, $role, $direction], base_path(), [
                     'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => base_path('storage/framework/testing-config-unused.php'),
                     'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
                     'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
@@ -1557,7 +1563,16 @@ class InventorySecurityRegressionTest extends TestCase
                 $this->assertSame(PHP_VERSION, $result['php']);
                 $this->assertSame(PHP_BINARY, $result['binary']);
                 $this->assertSame('IMMEDIATE', $result['transaction_mode']);
-                $this->assertSame(201, $result['status'], json_encode($result['body']));
+                $this->assertSame($direction === 'stock-out' && $result === $results[1] ? 422 : 201, $result['status'], json_encode($result['body']));
+            }
+            if ($direction === 'stock-out') {
+                $pdo = new \PDO('sqlite:'.$database);
+                $this->assertEquals(1, $pdo->query('SELECT quantity_on_hand FROM inventory_items WHERE item_id = '.$id)->fetchColumn());
+                $this->assertEquals(1, $pdo->query("SELECT COUNT(*) FROM inventory_transactions WHERE type = 'stock_out'")->fetchColumn());
+                $picks = json_decode($pdo->query("SELECT stock_out_allocations FROM inventory_transactions WHERE type = 'stock_out'")->fetchColumn(), true);
+                $this->assertEquals([['receipt_id' => $receipt, 'quantity' => 2]], $picks);
+                $pdo = null;
+                return;
             }
             $this->assertNotSame($results[0]['body']['data'][0]['stock_in_reference'], $results[1]['body']['data'][0]['stock_in_reference']);
             $pdo = new \PDO('sqlite:'.$database);
@@ -1592,7 +1607,7 @@ class InventorySecurityRegressionTest extends TestCase
             DB::table('inventory_items')->where('item_id', $itemId)->update(['category' => $category]);
             $this->getJson("/api/inventory/items/{$itemId}")->assertOk()
                 ->assertJsonPath('data.tracks_expiry', false)
-                ->assertJsonPath('data.saleable_quantity', '4.00')
+                ->assertJsonPath('data.saleable_quantity', 4)
                 ->assertJsonCount(0, 'data.current_batches');
         }
         $itemId = $this->createInventoryItem('Deactivated product', 0, 50);
@@ -1851,6 +1866,170 @@ class InventorySecurityRegressionTest extends TestCase
         foreach ($lines as $line) {
             $this->assertDatabaseHas('inventory_items', ['item_id' => $line['item_id'], 'quantity_on_hand' => 3]);
         }
+    }
+
+    public function test_receipt_picks_are_persisted_and_replayed_without_merging_identical_lots(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000901'));
+        $id = $this->createInventoryItem('Receipt picks', 30, 10);
+        $expired = $this->recordInventoryTransaction($id, 'stock_in', 5, ['batch_number' => 'SAME', 'expiry_date' => now()->subDay()->toDateString()]);
+        $first = $this->recordInventoryTransaction($id, 'stock_in', 5, ['batch_number' => 'SAME', 'expiry_date' => now()->addMonth()->toDateString()]);
+        $last = $this->recordInventoryTransaction($id, 'stock_in', 20, ['batch_number' => 'SAME', 'expiry_date' => now()->addYear()->toDateString()]);
+        $response = $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 12, 'reason' => 'used']]])->assertCreated();
+        $movement = InventoryTransaction::findOrFail($response->json('data.0.transaction_id'));
+        $this->assertEquals([['receipt_id' => $first, 'quantity' => 5], ['receipt_id' => $last, 'quantity' => 7]], $movement->stock_out_allocations);
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 3, 'reason' => 'damaged', 'receipt_id' => $last]]])->assertCreated();
+        $batches = collect(app(\App\Services\InventoryBatchBalanceService::class)->forItem($id)['batches'])->keyBy('transaction_id');
+        $this->assertEquals(5, $batches[$expired]['remaining_quantity']);
+        $this->assertEquals(0, $batches[$first]['remaining_quantity']);
+        $this->assertEquals(10, $batches[$last]['remaining_quantity']);
+        $this->getJson('/api/inventory/transactions?item_id='.$id)->assertOk()->assertJsonPath('data.0.allocation_status', 'recorded')
+            ->assertJsonPath('data.0.receipt_allocations.0.receipt_id', $last);
+    }
+
+    public function test_expired_and_selected_receipt_limits_are_enforced_atomically(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000902'));
+        $id = $this->createInventoryItem('Mixed eligibility', 25, 10);
+        $expired = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->subDay()->toDateString()]);
+        $valid = $this->recordInventoryTransaction($id, 'stock_in', 20, ['expiry_date' => now()->addYear()->toDateString()]);
+        foreach ([['quantity' => 21, 'reason' => 'used'], ['quantity' => 1, 'reason' => 'sold', 'receipt_id' => $expired],
+            ['quantity' => 1, 'reason' => 'expired'], ['quantity' => 6, 'reason' => 'expired', 'receipt_id' => $expired],
+            ['quantity' => 1, 'reason' => 'expired', 'receipt_id' => $valid]] as $entry) {
+            $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, ...$entry]]])->assertUnprocessable();
+        }
+        $this->postJson('/api/inventory/stock-out', ['items' => [
+            ['item_id' => $id, 'quantity' => 12, 'reason' => 'used', 'receipt_id' => $valid],
+            ['item_id' => $id, 'quantity' => 9, 'reason' => 'used', 'receipt_id' => $valid],
+        ]])->assertUnprocessable();
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 25]);
+        $this->assertDatabaseCount('inventory_transactions', 2);
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 2, 'reason' => 'expired', 'receipt_id' => $expired]]])->assertCreated();
+        $this->getJson('/api/inventory/alerts/expiry')->assertOk()->assertJsonPath('data.0.expired_quantity', 3);
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 3, 'reason' => 'expired', 'receipt_id' => $expired]]])->assertCreated();
+        $this->getJson('/api/inventory/alerts/expiry')->assertOk()->assertJsonPath('count', 0);
+    }
+
+    public function test_usable_quantities_drive_every_low_stock_view_and_receiving_preserves_expired_stock(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000903'));
+        $id = $this->createInventoryItem('Usable reorder', 25, 10);
+        DB::table('inventory_items')->where('item_id', $id)->update(['reorder_level' => 22]);
+        $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->subDay()->toDateString()]);
+        $this->recordInventoryTransaction($id, 'stock_in', 20, ['expiry_date' => now()->addYear()->toDateString()]);
+        $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.usable_quantity', 20)->assertJsonPath('data.saleable_quantity', 20)->assertJsonPath('data.expired_quantity', 5)->assertJsonPath('data.low_stock', true)->assertJsonPath('data.stock_status', 'low_stock');
+        $this->getJson('/api/inventory/items?low_stock=1')->assertOk()->assertJsonPath('total', 1);
+        $this->getJson('/api/inventory/low-stock')->assertOk()->assertJsonPath('count', 1);
+        $this->getJson('/api/inventory/alerts/badge')->assertOk()->assertJsonPath('low_stock_count', 1);
+        $this->getJson('/api/inventory/summary?view=overview')->assertOk()->assertJsonPath('low_stock_count', 1)->assertJsonPath('low_stock_items.0.usable_quantity', 20);
+        $this->postJson('/api/inventory/stock-in', ['items' => [['item_id' => $id, 'quantity' => 30, 'reason' => 'purchase', 'batch_number' => 'NEW', 'expiry_date' => now()->addYear()->toDateString()]]])->assertCreated();
+        $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.quantity_on_hand', '55.00')->assertJsonPath('data.usable_quantity', 50)->assertJsonPath('data.expired_quantity', 5)->assertJsonPath('data.low_stock', false);
+    }
+
+    public function test_receiving_cap_and_strict_whole_quantity_validation_cannot_be_bypassed(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000904'));
+        $id = $this->createInventoryItem('Operational cap', 0, 10);
+        $entry = ['item_id' => $id, 'reason' => 'purchase', 'batch_number' => 'CAP', 'expiry_date' => now()->addYear()->toDateString()];
+        foreach ([0, -1, 1.5, 'abc', '1e2', 1001] as $quantity) {
+            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'quantity' => $quantity]]])->assertUnprocessable();
+        }
+        $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'quantity' => 900], [...$entry, 'quantity' => 200]]])->assertUnprocessable();
+        $this->assertDatabaseCount('inventory_transactions', 0);
+        $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'quantity' => 900], [...$entry, 'quantity' => 100]]])->assertCreated()->assertJsonCount(2, 'data');
+        $this->assertDatabaseCount('inventory_transactions', 2);
+    }
+
+    public function test_minimum_stock_policy_preserves_unchanged_legacy_thresholds(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000905'));
+        $base = ['item_name' => 'New reorder', 'category' => 'pet_shop', 'unit' => 'piece', 'unit_cost' => 10, 'selling_price' => 20];
+        foreach ([0, 1, -1, 2.5, 1001, '1e2'] as $level) {
+            $this->postJson('/api/inventory/items', [...$base, 'reorder_level' => $level])->assertUnprocessable()->assertJsonValidationErrors('reorder_level');
+        }
+        $this->postJson('/api/inventory/items', [...$base, 'reorder_level' => 2])->assertCreated();
+        foreach ([0, 1, 2000] as $legacy) {
+            $id = $this->createInventoryItem('Legacy reorder '.$legacy, 0, 10);
+            DB::table('inventory_items')->where('item_id', $id)->update(['reorder_level' => $legacy]);
+            $this->putJson('/api/inventory/items/'.$id, ['unit_cost' => 10, 'selling_price' => 20, 'reorder_level' => $legacy, 'description' => 'Updated'])->assertOk()->assertJsonPath('data.reorder_level', number_format($legacy, 2, '.', ''));
+            $this->putJson('/api/inventory/items/'.$id, ['unit_cost' => 10, 'selling_price' => 20, 'reorder_level' => 1001])->assertUnprocessable();
+        }
+    }
+
+    public function test_pos_allocates_fefo_and_preserves_an_optional_receipt_override(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000906'));
+        $id = $this->createInventoryItem('POS receipt picks', 30, 10);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'food']);
+        $expired = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->subDay()->toDateString()]);
+        $first = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->addMonth()->toDateString()]);
+        $last = $this->recordInventoryTransaction($id, 'stock_in', 20, ['expiry_date' => now()->addYear()->toDateString()]);
+        $this->postJson('/api/pos/transactions', ['items' => [['item_id' => $id, 'quantity' => 6, 'receipt_id' => $first]], 'amount_tendered' => 100])->assertUnprocessable();
+        $this->postJson('/api/pos/transactions', ['items' => [['item_id' => $id, 'quantity' => 2, 'receipt_id' => $expired]], 'amount_tendered' => 100])->assertUnprocessable();
+        $this->postJson('/api/pos/transactions', ['items' => [['item_id' => $id, 'quantity' => 2, 'receipt_id' => $last]], 'amount_tendered' => 100])->assertCreated();
+        $this->assertEquals([['receipt_id' => $last, 'quantity' => 2]], InventoryTransaction::where('type', 'stock_out')->firstOrFail()->stock_out_allocations);
+        $this->postJson('/api/pos/transactions', ['items' => [['item_id' => $id, 'quantity' => 12]], 'amount_tendered' => 200])->assertCreated();
+        $this->assertEquals([['receipt_id' => $first, 'quantity' => 5], ['receipt_id' => $last, 'quantity' => 7]], InventoryTransaction::where('type', 'stock_out')->orderByDesc('transaction_id')->firstOrFail()->stock_out_allocations);
+        $this->assertDatabaseCount('pos_transaction_items', 2);
+    }
+
+    public function test_shared_removal_service_rejects_invalid_quantities_before_any_stock_write(): void
+    {
+        $actor = $this->createUser('admin', '09170000910');
+        $id = $this->createInventoryItem('Strict removals', 5, 10);
+        $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->addYear()->toDateString()]);
+        foreach ([0, -1, 0.5, '1e0', 'invalid'] as $quantity) {
+            try {
+                app(InventoryStockMovementService::class)->remove($actor, [['item_id' => $id, 'quantity' => $quantity, 'reason' => 'used']]);
+                $this->fail('Invalid quantities must be rejected.');
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) {
+                $this->assertSame(422, $error->getStatusCode());
+            }
+        }
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 5]);
+        $this->assertDatabaseCount('inventory_transactions', 1);
+        app(InventoryStockMovementService::class)->remove($actor, [['item_id' => $id, 'quantity' => '1.00', 'reason' => 'used']]);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 4]);
+    }
+
+    public function test_equal_expiry_uses_receiving_time_for_clinic_preview_and_actual_picks(): void
+    {
+        $actor = $this->createUser('admin', '09170000909');
+        $id = $this->createInventoryItem('FIFO expiry tie', 10, 10);
+        $expiry = now()->addYear()->toDateString();
+        $later = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => $expiry, 'created_at' => now()->subDay()]);
+        $earlier = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => $expiry, 'created_at' => now()->subDays(2)]);
+        $service = app(\App\Services\InventoryBatchBalanceService::class);
+        $this->assertSame($earlier, $service->nextAvailableBatch($service->forItem($id))['transaction_id']);
+        app(InventoryStockMovementService::class)->remove($actor, [['item_id' => $id, 'quantity' => 6, 'reason' => 'used']]);
+        $this->assertEquals([['receipt_id' => $earlier, 'quantity' => 5], ['receipt_id' => $later, 'quantity' => 1]], InventoryTransaction::where('type', 'stock_out')->sole()->stock_out_allocations);
+    }
+
+    public function test_pending_removals_keep_the_reviewed_order_for_the_same_product(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000908'));
+        $id = $this->createInventoryItem('Pending order', 10, 10);
+        $first = $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->addMonth()->toDateString()]);
+        $this->recordInventoryTransaction($id, 'stock_in', 5, ['expiry_date' => now()->addYear()->toDateString()]);
+        $this->postJson('/api/inventory/stock-out', ['items' => [
+            ['item_id' => $id, 'quantity' => 5, 'reason' => 'damaged', 'receipt_id' => $first],
+            ['item_id' => $id, 'quantity' => 5, 'reason' => 'used'],
+        ]])->assertCreated();
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $id, 'quantity_on_hand' => 0]);
+    }
+
+    public function test_non_expiring_receipts_use_fifo_and_untracked_stock_remains_unattributed(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000907'));
+        $id = $this->createInventoryItem('FIFO stock', 12, 10);
+        DB::table('inventory_items')->where('item_id', $id)->update(['category' => 'pet_shop']);
+        $first = $this->recordInventoryTransaction($id, 'stock_in', 2, ['created_at' => now()->subDays(2)]);
+        $last = $this->recordInventoryTransaction($id, 'stock_in', 3, ['created_at' => now()->subDay()]);
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 8, 'reason' => 'used']]])->assertCreated();
+        $this->assertEquals([['receipt_id' => $first, 'quantity' => 2], ['receipt_id' => $last, 'quantity' => 3]], InventoryTransaction::where('type', 'stock_out')->firstOrFail()->stock_out_allocations);
+        $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.saleable_quantity', 4)->assertJsonPath('data.untracked_quantity', 4)->assertJsonCount(0, 'data.current_batches');
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => $id, 'quantity' => 2, 'reason' => 'used']]])->assertCreated();
+        $this->assertSame([], InventoryTransaction::where('type', 'stock_out')->orderByDesc('transaction_id')->firstOrFail()->stock_out_allocations);
     }
 
     private function createUser(string $role, string $phone): User

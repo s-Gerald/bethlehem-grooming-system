@@ -9,7 +9,7 @@ const pf = context.ProductForm = context.window.ProductForm;
 const fixtures = JSON.parse(fs.readFileSync('tests/Fixtures/weight-rules.json'));
 const clean = value => JSON.parse(JSON.stringify(value));
 const range = (min_weight_kg, max_weight_kg, price = 50) => ({ min_weight_kg, max_weight_kg, price });
-const validForm = (ranges, mode = 'catalog') => pf.empty({ item_name: 'Clinic medicine', category: 'medicine', medicine_type: 'deworming', unit: 'bottle', dose_unit: 'mL', unit_cost: '73.25', reorder_level: '0',
+const validForm = (ranges, mode = 'catalog') => pf.empty({ item_name: 'Clinic medicine', category: 'medicine', medicine_type: 'deworming', unit: 'bottle', dose_unit: 'mL', unit_cost: '73.25', reorder_level: '2',
   ...pf.clinicFields({category:'medicine', medicine_type:'deworming', dose_unit:'mL', pricing_method:'weight_based', weight_pricing_mode:mode, weight_prices:ranges}) });
 const detailsExpression = fs.readFileSync('pages/admin/inventory/sections/products.html', 'utf8').match(/x-text="(ProductForm.rangeLabel[^"]+)"/)[1];
 for (const example of Object.values(fixtures.catalog_pricing)) {

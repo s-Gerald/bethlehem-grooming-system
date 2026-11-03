@@ -27,9 +27,11 @@ class InventoryTransaction extends Model
         'notes',
         'performed_by',
         'vaccination_record_id',
+        'stock_out_allocations',
     ];
 
     protected $casts = [
+        'stock_out_allocations' => 'array',
         'quantity'              => 'decimal:2',
         'unit_cost_at_time'     => 'decimal:2',
         'selling_price_at_time' => 'decimal:2',

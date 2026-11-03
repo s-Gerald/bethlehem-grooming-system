@@ -61,6 +61,10 @@
               </p>
               <p class="mt-0.5 text-xs text-slate-500" x-text="tx.type === 'stock_in' ? 'Stock In' : 'Stock Out'"></p>
               <p x-show="tx.stock_in_reference" class="mt-0.5 font-mono text-xs text-[#315b7e]" x-text="tx.stock_in_reference"></p>
+              <template x-for="(pick, index) in (tx.receipt_allocations || [])" :key="index">
+                <p class="mt-0.5 text-xs text-slate-500" x-text="[pick.stock_in_reference || ('Receipt #' + pick.receipt_id), pick.batch_number, pick.expiry_date, fmtQty(pick.quantity) + ' ' + tx.unit].filter(Boolean).join(' · ')"></p>
+              </template>
+              <p x-show="tx.allocation_status === 'historical_inferred'" class="mt-0.5 text-xs text-slate-500">Historical movement · receipt inferred</p>
               <template x-if="tx.reference_type === 'pos' && tx.reference_id"><a :href="'/admin/transactions?pos=' + tx.reference_id + '&reference=' + encodeURIComponent(tx.source_label)" class="mt-0.5 block text-xs font-semibold text-[#315b7e] underline" x-text="tx.source_label"></a></template>
               <p x-show="tx.source_label && tx.reference_type !== 'pos'" class="mt-0.5 text-xs font-semibold text-[#315b7e]" x-text="tx.source_label"></p>
             </td>

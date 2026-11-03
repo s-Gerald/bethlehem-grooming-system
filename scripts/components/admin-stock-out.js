@@ -9,6 +9,7 @@ function adminStockOut() {
     // ── Current entry ─────────────────────────────────────────────────────────
     qty: "",
     reason: "used",
+    receiptId: "",
     sellingPrice: "",
     notes: "",
     entryError: "",
@@ -53,6 +54,7 @@ function adminStockOut() {
     pickItem(item) {
       if (item.is_active === false) return;
       this.selected      = item;
+      this.receiptId     = '';
       this.sellingPrice  = item.selling_price ?? "";
       if (this.reason === "expired" && !this.canUseExpired(item)) this.reason = "used";
       this.qty           = "";
@@ -67,6 +69,7 @@ function adminStockOut() {
 
     clearSelected() {
       this.selected     = null;
+      this.receiptId    = '';
       this.qty          = "";
       this.sellingPrice = "";
       this.notes        = "";
@@ -77,14 +80,71 @@ function adminStockOut() {
       return !!item && !["pet_shop", "miscellaneous"].includes(item.category);
     },
 
+    remainingBatches(item = this.selected) {
+      return (item?.current_batches || []).map(batch => ({...batch,
+        remaining_quantity: Math.max(0, Number(batch.available_quantity ?? batch.remaining_quantity) - this.pending
+          .filter(p => p.item_id === item.item_id).flatMap(p => p.receipt_allocations || [])
+          .filter(pick => pick.receipt_id === batch.transaction_id).reduce((sum, pick) => sum + pick.quantity, 0)),
+      }));
+    },
+
+    get receiptOptions() {
+      return this.remainingBatches().filter(batch => batch.remaining_quantity > 0 && (
+        this.reason === 'expired' ? batch.is_expired : ['used', 'sold'].includes(this.reason)
+          ? !this.canUseExpired() || batch.is_unexpired : true
+      )).sort((a, b) => (this.canUseExpired() ? String(a.expiry_date || '9999').localeCompare(b.expiry_date || '9999') : 0)
+        || String(a.received_at || '').localeCompare(b.received_at || '') || a.transaction_id - b.transaction_id);
+    },
+
+    receiptLabel(batch) {
+      return [batch.batch_number, batch.stock_in_reference || `Receipt #${batch.transaction_id}`, batch.expiry_date,
+        `${batch.remaining_quantity} ${this.selected?.unit || ''}`].filter(Boolean).join(' · ');
+    },
+
+    get showReceiptSelector() {
+      return this.reason === 'expired' || (!!this.receiptOptions.length && (this.receiptOptions.length > 1
+        || ['damaged', 'adjustment'].includes(this.reason) || Number(this.selected?.untracked_quantity) > 0));
+    },
+
     availableForReason(item = this.selected) {
       if (!item) return 0;
-      const pendingQuantity = this.pending
-        .filter(pending => pending.item_id === item.item_id)
-        .reduce((sum, pending) => sum + Number(pending.quantity), 0);
-      const physicalQuantity = parseFloat(item.quantity_on_hand ?? 0);
+      const pending = this.pending.filter(p => p.item_id === item.item_id);
+      const physical = Number(item.quantity_on_hand || 0) - pending.reduce((sum, p) => sum + Number(p.quantity), 0);
+      const reserved = Number(item.reserved_quantity || 0);
+      let available = Math.max(0, physical - reserved);
+      if (['used', 'sold'].includes(this.reason)) {
+        const consumed = pending.reduce((sum, p) => sum + (p.receipt_allocations
+          ? p.receipt_allocations.reduce((sum, pick) => sum + ((item.current_batches || []).find(b => b.transaction_id === pick.receipt_id)?.is_unexpired || !this.canUseExpired(item) ? pick.quantity : 0), 0)
+          : Number(p.quantity)), 0);
+        const usable = this.canUseExpired(item) ? Number(item.usable_quantity ?? item.unexpired_quantity ?? 0) : Number(item.quantity_on_hand || 0);
+        available = Math.min(available, Math.max(0, usable - reserved - consumed));
+      }
+      if (this.reason === 'expired' && !this.receiptId) return 0;
+      if (this.receiptId) {
+        const receipt = this.receiptOptions.find(batch => String(batch.transaction_id) === String(this.receiptId));
+        available = Math.min(available, Number(receipt?.remaining_quantity || 0));
+        if (receipt?.is_unexpired && reserved > 0) {
+          const usable = this.remainingBatches().filter(b => b.is_unexpired).reduce((sum, b) => sum + b.remaining_quantity, 0);
+          available = Math.min(available, Math.max(0, usable - reserved));
+        }
+      }
+      return Math.max(0, Math.floor(available));
+    },
 
-      return Math.max(0, Math.round((physicalQuantity - pendingQuantity) * 100) / 100);
+    get quantityError() { return this.receiptError ? '' : window.ProductForm.wholeQuantityError(this.qty, this.availableForReason(), this.selected?.unit || 'units'); },
+    get receiptError() { return this.reason === 'expired' && !this.receiptId ? 'Select the expired stock receipt.' : ''; },
+    get canAdd() { return !!this.selected && !this.quantityError && !this.receiptError && !this.submitting; },
+
+    pendingAllocations(quantity) {
+      const allocations = [];
+      for (const batch of this.receiptOptions) {
+        if (this.receiptId && String(batch.transaction_id) !== String(this.receiptId)) continue;
+        if (quantity <= 0) break;
+        const picked = Math.min(quantity, batch.remaining_quantity);
+        allocations.push({receipt_id: batch.transaction_id, quantity: picked});
+        quantity -= picked;
+      }
+      return allocations;
     },
 
     // ── Add to pending ────────────────────────────────────────────────────────
@@ -97,22 +157,13 @@ function adminStockOut() {
       }
 
       const qty = Number(this.qty);
-      if (!Number.isInteger(qty) || qty <= 0) {
-        this.entryError = "Enter a whole number quantity.";
-        return;
-      }
+      if (this.receiptError || this.quantityError) { this.entryError = this.receiptError || this.quantityError; return; }
+      const allocations = this.pendingAllocations(qty);
 
-      const available = this.availableForReason();
-      if (qty > available) {
-        this.entryError = "Insufficient stock. Please check available inventory.";
-        return;
-      }
-
-      const existing = this.pending.find(p =>
-        p.item_id === this.selected.item_id && p.reason === this.reason
-      );
-      if (existing) {
+      const existing = this.pending.filter(p => p.item_id === this.selected.item_id).at(-1);
+      if (existing?.reason === this.reason && String(existing.receipt_id || '') === String(this.receiptId)) {
         existing.quantity      += qty;
+        existing.receipt_allocations.push(...allocations);
         if (this.reason === "sold" && this.sellingPrice !== "") {
           existing.selling_price = parseFloat(this.sellingPrice);
         }
@@ -125,6 +176,9 @@ function adminStockOut() {
           category:      this.selected.category,
           quantity:      qty,
           reason:        this.reason,
+          receipt_id: this.receiptId ? Number(this.receiptId) : null,
+          receipt_label: this.receiptId ? this.receiptLabel(this.receiptOptions.find(b => String(b.transaction_id) === String(this.receiptId))) : null,
+          receipt_allocations: allocations,
           selling_price: this.reason === "sold" && this.sellingPrice !== ""
             ? parseFloat(this.sellingPrice)
             : null,
@@ -167,6 +221,7 @@ function adminStockOut() {
             item_id:       p.item_id,
             quantity:      p.quantity,
             reason:        p.reason,
+            receipt_id:    p.receipt_id || null,
             selling_price: p.selling_price,
             notes:         p.notes,
           }))

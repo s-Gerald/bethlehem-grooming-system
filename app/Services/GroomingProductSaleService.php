@@ -31,9 +31,7 @@ class GroomingProductSaleService
             ->lockForUpdate()
             ->get()
             ->keyBy('item_id');
-        $expiringIds = $items->filter(fn ($item) => ! in_array($item->category, ['pet_shop', 'miscellaneous'], true))
-            ->keys();
-        $balances = $this->balances->forItems($expiringIds);
+        $balances = $this->balances->forItems($items->keys());
 
         $reserved = \App\Models\GatewayPayment::reservedQuantities($items->keys());
         foreach ($requestedLines as $requestedLine) {
@@ -46,12 +44,7 @@ class GroomingProductSaleService
             }
 
             $quantity = (int) $requestedLine['quantity'];
-            $available = (float) $item->quantity_on_hand;
-            if (! in_array($item->category, ['pet_shop', 'miscellaneous'], true)) {
-                $available = min($available,
-                    (float) $balances[$item->item_id]['unexpired_quantity']);
-            }
-            $available = max(0, $available - ($reserved[$item->item_id] ?? 0));
+            $available = $this->balances->quantities($item, $balances[$item->item_id], (float) ($reserved[$item->item_id] ?? 0))['saleable_quantity'];
             if ($available < $quantity) {
                 throw ValidationException::withMessages([
                     'products' => "{$item->item_name} no longer has enough stock. Available: {$available} {$item->unit}.",

@@ -22,12 +22,15 @@ class PosSaleService
         $ids = $ids->unique()->sort()->values();
         $items = InventoryItem::whereIn('item_id', $ids)->orderBy('item_id')
             ->when($lock, fn ($query) => $query->lockForUpdate())->get()->keyBy('item_id');
-        $balances = $this->batchBalances->forItems($items
-            ->reject(fn ($item) => in_array($item->category, ['pet_shop', 'miscellaneous'], true))->keys());
+        $balances = $this->batchBalances->forItems($items->keys());
         $reserved = \App\Models\GatewayPayment::reservedQuantities($ids);
+        $receiptReservations = \App\Models\GatewayPayment::reservedReceiptQuantities($ids);
+        foreach ($balances as $id => $balance) {
+            $balances[$id] = $this->batchBalances->withReceiptAvailability($balance, $receiptReservations[$id] ?? []);
+        }
         $snapshots = $ids->mapWithKeys(function ($id) use ($items, $balances, $reserved) {
             $item = $items->get($id);
-            $physical = (float) ($item?->quantity_on_hand ?? 0);
+            $balance = $balances[$id] ?? $this->batchBalances->emptyBalance();
 
             return [$id => [
                 'item_id' => (int) $id,
@@ -36,8 +39,9 @@ class PosSaleService
                 'category' => $item?->category,
                 'is_active' => (bool) ($item?->is_active ?? false),
                 'selling_price' => $item?->selling_price,
-                'saleable_quantity' => isset($balances[$id])
-                    ? max(0, min($physical, (float) $balances[$id]['unexpired_quantity']) - ($reserved[$id] ?? 0)) : max(0, $physical - ($reserved[$id] ?? 0)),
+                'saleable_quantity' => $item ? $this->batchBalances->quantities($item, $balance, (float) ($reserved[$id] ?? 0))['saleable_quantity'] : 0,
+                'tracks_expiry' => $item ? $this->batchBalances->tracksExpiry($item) : false,
+                'current_batches' => $item ? $this->batchBalances->eligibleBatches($item, $balance, 'sold') : [],
             ]];
         });
 
@@ -51,6 +55,7 @@ class PosSaleService
             ->map(fn ($lines, int $itemId) => [
                 'item_id' => $itemId,
                 'quantity' => (int) $lines->sum('quantity'),
+                'receipt_ids' => $lines->map(fn ($line) => $line['receipt_id'] ?? null)->unique()->values()->all(),
                 'expected_prices' => $lines->pluck('expected_price')->filter(fn ($price) => $price !== null)->all(),
                 'expected_stocks' => $lines->pluck('expected_stock')->filter(fn ($stock) => $stock !== null)->all(),
             ])
@@ -107,7 +112,7 @@ class PosSaleService
             if ((float) $item->quantity_on_hand < $line['quantity']) {
                 abort(422, "Insufficient stock for \"{$item->item_name}\". Available: {$item->quantity_on_hand} {$item->unit}.");
             }
-            if (isset($balances[$item->item_id])
+            if ($this->batchBalances->tracksExpiry($item)
                 && (float) $balances[$item->item_id]['unexpired_quantity'] + 0.00001 < $line['quantity']) {
                 $available = $balances[$item->item_id]['unexpired_quantity'];
                 abort(422, "Insufficient unexpired stock for \"{$item->item_name}\". Unexpired available: {$available} {$item->unit}; physical stock: {$item->quantity_on_hand} {$item->unit}.");
@@ -115,6 +120,17 @@ class PosSaleService
 
             if ($snapshots->get($item->item_id)['saleable_quantity'] < $line['quantity']) {
                 abort(422, 'Stock is reserved for an unresolved payment.');
+            }
+
+            if (count($line['receipt_ids']) > 1) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['receipt_id' => 'Use one receipt selection per product.']);
+            }
+            $receiptId = $line['receipt_ids'][0] ?? null;
+            if ($receiptId) {
+                $receipt = collect($this->batchBalances->eligibleBatches($item, $balances[$item->item_id], 'sold'))->firstWhere('transaction_id', (int) $receiptId);
+                if (! $receipt || $receipt['available_quantity'] < $line['quantity']) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['receipt_id' => 'The selected receipt is unavailable or has insufficient eligible stock.']);
+                }
             }
 
             $priceAtSale = round((float) $item->selling_price, 2);
@@ -135,6 +151,7 @@ class PosSaleService
             $preparedLines[] = [
                 'item' => $item,
                 'quantity' => $line['quantity'],
+                'receipt_id' => $receiptId,
                 'price_at_sale' => $priceAtSale,
                 'subtotal' => $subtotal,
             ];
@@ -179,6 +196,7 @@ class PosSaleService
 
             $stockOutEntries[] = [
                 'item_id' => $item->item_id,
+                'receipt_id' => $line['receipt_id'] ?? null,
                 'quantity' => $line['quantity'],
                 'unit_cost_at_time' => $item->unit_cost,
                 'selling_price' => $line['price_at_sale'],

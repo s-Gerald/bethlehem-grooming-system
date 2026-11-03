@@ -59,6 +59,26 @@ class GatewayPayment extends Model
             ->selectRaw('item_id, SUM(quantity) as quantity')->groupBy('item_id')->pluck('quantity', 'item_id')->all();
     }
 
+    /** Protect optional physical receipt picks while their payment is unresolved. */
+    public static function reservedReceiptQuantities(iterable $ids): array
+    {
+        if (! Schema::hasTable('gateway_stock_reservations')) return [];
+        $rows = DB::table('gateway_stock_reservations as reservation')
+            ->join('gateway_payments as payment', 'payment.id', '=', 'reservation.gateway_payment_id')
+            ->whereIn('reservation.item_id', collect($ids)->all())
+            ->get(['reservation.item_id', 'payment.snapshot']);
+        $reserved = [];
+        foreach ($rows as $row) {
+            $snapshot = json_decode($row->snapshot, true, 512, JSON_THROW_ON_ERROR);
+            foreach ($snapshot['products'] ?? [] as $product) {
+                if ((int) $product['item_id'] !== (int) $row->item_id || empty($product['receipt_id'])) continue;
+                $receiptId = (int) $product['receipt_id'];
+                $reserved[$row->item_id][$receiptId] = ($reserved[$row->item_id][$receiptId] ?? 0) + (float) $product['quantity'];
+            }
+        }
+        return $reserved;
+    }
+
     public static function labelFor(?string $method): string
     {
         return match ($method) {

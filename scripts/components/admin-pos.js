@@ -138,11 +138,11 @@ function adminPos() {
       const existingIndex = this.cart.findIndex(line => line.item_id === item.item_id);
       const existing = this.cart[existingIndex];
       if (existing) {
-        if (!Number.isInteger(Number(existing.quantity)) || Number(existing.quantity) < 1) {
+        if (window.ProductForm.wholeQuantityError(existing.quantity, Number.MAX_SAFE_INTEGER)) {
           this.error = `Enter a whole quantity of at least 1 for ${item.item_name}.`; return;
         }
         const nextQuantity = Number(existing.quantity) + 1;
-        if (nextQuantity > available) { this.error = `Cannot add another ${item.item_name}. Saleable stock: ${available} ${item.unit}.`; return; }
+        if (nextQuantity > Math.min(available, this.lineMaximum(existing))) { this.error = `Cannot add another ${item.item_name}. Saleable stock: ${available} ${item.unit}.`; return; }
         existing.stock = available;
         existing.quantity = nextQuantity;
         this.updateLineSubtotal(existing);
@@ -153,6 +153,7 @@ function adminPos() {
       } else {
         const quantity = 1;
         this.cart.unshift({ item_id: item.item_id, item_name: item.item_name, unit: item.unit,
+          receipt_id: '', tracks_expiry: item.tracks_expiry, current_batches: item.current_batches || [],
           stock: available, quantity, price: Number(item.selling_price),
           subtotal: Math.round(quantity * Number(item.selling_price) * 100) / 100, unavailable: false });
       }
@@ -161,13 +162,26 @@ function adminPos() {
       this.error = "";
     },
 
+    lineMaximum(line) {
+      if (!line.receipt_id) return Math.floor(line.stock);
+      const receipt = (line.current_batches || []).find(batch => String(batch.transaction_id) === String(line.receipt_id));
+      return Math.max(0, Math.floor(Math.min(line.stock, Number(receipt?.available_quantity ?? receipt?.remaining_quantity ?? 0))));
+    },
+    receiptOptions(line) {
+      return (line.current_batches || []).filter(batch => (batch.available_quantity ?? batch.remaining_quantity) > 0 && (line.tracks_expiry === false || batch.is_unexpired));
+    },
+    showReceiptSelector(line) {
+      const options = this.receiptOptions(line);
+      return !!line.receipt_id || options.length > 1 || (options.length === 1 && Number(options[0].available_quantity ?? options[0].remaining_quantity) < line.stock);
+    },
+    receiptLabel(batch, line) {
+      return [batch.batch_number, batch.stock_in_reference || `Receipt #${batch.transaction_id}`, batch.expiry_date, `${batch.available_quantity ?? batch.remaining_quantity} ${line.unit}`].filter(Boolean).join(' · ');
+    },
     lineError(line) {
-      const quantity = Number(line.quantity);
       if (line.unavailable) return "Product inactive, unpriced, or unavailable for retail sale. Remove it to continue.";
-      if (!Number.isInteger(quantity) || quantity < 1)
-        return "Enter a whole quantity of at least 1.";
-      if (quantity > line.stock) return `Only ${line.stock} ${line.unit} of saleable stock available. Reduce the quantity.`;
-      return "";
+      const error = window.ProductForm.wholeQuantityError(line.quantity, this.lineMaximum(line), line.unit);
+      if (error === 'Enter a whole number quantity.') return 'Enter a whole quantity of at least 1.';
+      return error;
     },
     updateLineSubtotal(line) {
       line.subtotal = Math.round((Number(line.quantity) || 0) * line.price * 100) / 100;
@@ -193,6 +207,8 @@ function adminPos() {
         if (unavailable && !line.unavailable) details.push("no longer available for retail sale");
         if (details.length) changes.push(`${line.item_name}: ${details.join('; ')}`);
         line.stock = stock;
+        line.current_batches = item?.current_batches || [];
+        line.tracks_expiry = item?.tracks_expiry;
         line.price = price;
         line.unavailable = unavailable;
         // Keep the entered quantity; staff must correct insufficient stock themselves.
@@ -207,7 +223,7 @@ function adminPos() {
       this.validating = true; this.validationFailed = false; this.error = "";
       try {
         const response = await InventoryAPI.validateCart({
-          items: this.cart.map(line => ({ item_id: line.item_id, quantity: Number(line.quantity) })),
+          items: this.cart.map(line => ({ item_id: line.item_id, quantity: Number(line.quantity), ...(line.receipt_id ? {receipt_id: Number(line.receipt_id)} : {}) })),
         });
         return !this.reconcileCart(response.data);
       } catch (err) {
@@ -252,7 +268,7 @@ function adminPos() {
           this.cancelSearch();
           const response = await InventoryAPI.createOnlinePayment({
             request_key: this.requestKey, payment_method: this.paymentMethod,
-            items: this.cart.map(line => ({item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock})),
+            items: this.cart.map(line => ({item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock, ...(line.receipt_id ? {receipt_id: Number(line.receipt_id)} : {})})),
             notes: this.notes || null,
           });
           await this.applyPosOnlineStatus(response);
@@ -260,7 +276,7 @@ function adminPos() {
           return;
         }
         const res = await InventoryAPI.processSale({
-          items: this.cart.map(line => ({ item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock })),
+          items: this.cart.map(line => ({ item_id: line.item_id, quantity: Number(line.quantity), expected_price: line.price, expected_stock: line.stock, ...(line.receipt_id ? {receipt_id: Number(line.receipt_id)} : {}) })),
           amount_tendered: Number(this.amountTendered), notes: this.notes || null,
         });
         this.completePosSale(res.data);
@@ -343,6 +359,7 @@ function adminPos() {
         });
         if (!sameCart) this.cart = response.cart.map(line => ({
           item_id: line.item_id, item_name: line.name, unit: line.unit, quantity: line.quantity,
+          receipt_id: line.receipt_id || '', current_batches: [],
           price: Number(line.price_at_sale), stock: line.quantity, subtotal: Number(line.subtotal), unavailable: false,
         }));
         this.notes = response.notes ?? this.notes;

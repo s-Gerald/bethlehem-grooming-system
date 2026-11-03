@@ -125,6 +125,7 @@ class SharedPayMongoTest extends TestCase
             $table->timestamps();
         });
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->json('stock_out_allocations')->nullable();
             $table->increments('transaction_id');
             $table->unsignedInteger('item_id');
             $table->string('type');
@@ -455,6 +456,26 @@ class SharedPayMongoTest extends TestCase
         $this->assertDatabaseCount('gateway_stock_reservations', 0);
         $this->getJson('/api/pos/transactions/1')->assertOk()->assertJsonPath('data.payment_method', 'online')
             ->assertJsonPath('data.payment_method_label', 'Online Payment')->assertJsonPath('data.is_test', true);
+    }
+
+    public function test_online_receipt_override_is_reserved_and_settled_once_from_the_selected_receipt(): void
+    {
+        DB::table('inventory_items')->where('item_id', 10)->update(['quantity_on_hand' => 7]);
+        $first = DB::table('inventory_transactions')->insertGetId(['item_id' => 10, 'type' => 'stock_in', 'quantity' => 3,
+            'reason' => 'purchase', 'reference_type' => 'manual', 'created_at' => now()->subDay()]);
+        $last = DB::table('inventory_transactions')->insertGetId(['item_id' => 10, 'type' => 'stock_in', 'quantity' => 4,
+            'reason' => 'purchase', 'reference_type' => 'manual', 'created_at' => now()]);
+        $this->postJson('/api/pos/online-payment', ['request_key' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'payment_method' => 'online',
+            'items' => [['item_id' => 10, 'quantity' => 2, 'receipt_id' => $last]]])->assertOk();
+        $this->assertSame($last, \App\Models\GatewayPayment::firstOrFail()->snapshot['products'][0]['receipt_id']);
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => 10, 'quantity' => 3, 'reason' => 'used', 'receipt_id' => $last]]])->assertUnprocessable();
+        $this->postJson('/api/inventory/stock-out', ['items' => [['item_id' => 10, 'quantity' => 3, 'reason' => 'used', 'receipt_id' => $first]]])->assertCreated();
+        $event = $this->event(16000);
+        $this->webhook($event)->assertOk(); $this->webhook($event)->assertOk();
+        $this->assertDatabaseCount('pos_transactions', 1);
+        $movement = \App\Models\InventoryTransaction::where('reference_type', 'pos')->sole();
+        $this->assertEquals([['receipt_id' => $last, 'quantity' => 2]], $movement->stock_out_allocations);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => 10, 'quantity_on_hand' => 2]);
     }
 
     public function test_pos_online_methods_duplicate_requests_and_frozen_prices(): void

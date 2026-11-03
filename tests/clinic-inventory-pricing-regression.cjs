@@ -18,7 +18,7 @@ const ranges = [
   { min_weight_kg: "15.1", max_weight_kg: "50", price: "900" },
 ];
 const form = pf.empty({ item_name: "Medicine", category: "medicine", medicine_type: "deworming",
-  unit: "bottle", strength_concentration: "10 mg/mL", unit_cost: "50", reorder_level: "0", weight_prices: ranges.map(range => ({...range, band: "normal"})) });
+  unit: "bottle", strength_concentration: "10 mg/mL", unit_cost: "50", reorder_level: "2", weight_prices: ranges.map(range => ({...range, band: "normal"})) });
 assert.equal(form.pricing_method, "weight_based");
 assert.equal(pf.validate(form), "");
 for (const option of pf.medicineTypeOptions) {
@@ -71,7 +71,7 @@ assert.ok(pf.unitOptions.some(option => option.value === "pipette" && option.lab
 assert.equal(pf.unitFields("pipette").unit, "pipette");
 for (const category of ["medicine", "vaccine"]) {
   const product = pf.empty({item_name: "Spot-on", category, medicine_type: "general_medication",
-    unit: "pipette", pricing_method: "flat", unit_cost: "35.00", selling_price: "75.00", reorder_level: "0"});
+    unit: "pipette", pricing_method: "flat", unit_cost: "35.00", selling_price: "75.00", reorder_level: "2"});
   assert.equal(pf.validate(product), "");
   assert.equal(pf.payload(product).unit, "pipette");
   assert.equal(Object.hasOwn(pf.payload(product), "dose_unit"), false);

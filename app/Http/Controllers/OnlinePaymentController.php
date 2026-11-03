@@ -72,7 +72,8 @@ class OnlinePaymentController extends Controller
         $data = $request->validate([
             'request_key' => 'required|uuid', 'payment_method' => 'required|in:online',
             'items' => 'required|array|min:1|max:100', 'items.*.item_id' => 'required|integer|min:1',
-            'items.*.quantity' => 'required|integer|min:1|max:99999999',
+            'items.*.quantity' => \App\Support\InventoryQuantityPolicy::wholeNumberRules(1, 99999999),
+            'items.*.receipt_id' => 'nullable|integer|min:1',
             'items.*.expected_price' => 'sometimes|numeric|decimal:0,2|min:0|max:999999.99',
             'items.*.expected_stock' => 'sometimes|numeric|decimal:0,2|min:0|max:99999999.99',
             'notes' => 'nullable|string|max:500',
@@ -91,6 +92,7 @@ class OnlinePaymentController extends Controller
             $products = collect($lines)->map(fn ($line) => [
                 'item_id' => $line['item']->item_id, 'name' => $line['item']->item_name, 'unit' => $line['item']->unit,
                 'quantity' => $line['quantity'], 'price_at_sale' => $line['price_at_sale'], 'subtotal' => $line['subtotal'],
+                'receipt_id' => $line['receipt_id'] ?? null,
             ])->all();
             $attempt = $this->newAttempt($actor, 'pos', $data['payment_method'], $request, [
                 'total' => number_format($total, 2, '.', ''), 'products' => $products, 'notes' => $data['notes'] ?? null,

@@ -101,7 +101,7 @@ async function testSave(editing) {
   const page = context.adminInventoryItems();
   const calls = [];
   page.form = context.ProductForm.empty({ item_id: editing ? 1 : null, item_name: 'Test', category: 'food',
-    unit: 'pc', unit_cost: '1.25', selling_price: '2.50', reorder_level: '0' });
+    unit: 'pc', unit_cost: '1.25', selling_price: '2.50', reorder_level: '2' });
   page.modal.open = true;
   context.InventoryAPI = { createItem: async () => calls.push('create'), updateItem: async () => calls.push('update') };
   page.load = async () => { assert.equal(page.modal.open, false); calls.push('refresh'); };

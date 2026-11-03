@@ -52,7 +52,7 @@
               </div>
               <span class="ml-3 shrink-0 text-xs text-slate-500">
                 <span x-text="Math.trunc(Number(item.quantity_on_hand ?? 0))"></span> <span x-text="item.unit"></span> physical
-                · <span x-text="item.unexpired_quantity ?? 0"></span> unexpired
+                · <span x-text="item.usable_quantity ?? 0"></span> usable
               </span>
             </button>
           </template>
@@ -81,17 +81,18 @@
         <div class="space-y-4">
           <div class="grid gap-3 sm:grid-cols-3">
             <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-600">
+              <label for="stock-out-quantity" class="mb-1 block text-xs font-semibold text-slate-600">
                 Quantity <span style="color:#ef4444" class="font-bold">*</span>
               </label>
-              <input x-model="qty" data-qty-input type="number" step="1" min="1" inputmode="numeric" placeholder="0"
+              <input id="stock-out-quantity" x-model="qty" @input="entryError = ''" data-qty-input type="text" inputmode="numeric" :aria-invalid="qty !== '' &amp;&amp; Boolean(quantityError)" aria-describedby="stock-out-quantity-error" placeholder="0"
                 class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
+              <p id="stock-out-quantity-error" x-show="qty !== '' &amp;&amp; quantityError" role="status" class="mt-1 text-xs text-red-700" x-text="quantityError"></p>
             </div>
             <div>
               <label class="mb-1 block text-xs font-semibold text-slate-600">
                 Reason <span style="color:#ef4444" class="font-bold">*</span>
               </label>
-              <select x-model="reason" @change="if (reason !== 'sold') sellingPrice = ''"
+              <select x-model="reason" @change="receiptId = ''; entryError = ''; if (reason !== 'sold') sellingPrice = ''"
                 class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30">
                 <option value="used">Used (service)</option>
                 <option value="sold">Sold</option>
@@ -110,6 +111,15 @@
                 class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
             </div>
           </div>
+          <div x-show="showReceiptSelector" x-cloak>
+            <label for="stock-out-receipt" class="mb-1 block text-xs font-semibold text-slate-600">Batch / Stock Receipt</label>
+            <select id="stock-out-receipt" x-model="receiptId" @change="entryError = ''" :aria-invalid="reason === 'expired' &amp;&amp; !receiptId" aria-describedby="stock-out-receipt-error"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30">
+              <option value="" x-text="reason === 'expired' ? 'Select expired receipt' : (canUseExpired() ? 'Automatic (FEFO)' : 'Automatic (FIFO)')"></option>
+              <template x-for="batch in receiptOptions" :key="batch.transaction_id"><option :value="batch.transaction_id" x-text="receiptLabel(batch)"></option></template>
+            </select>
+            <p id="stock-out-receipt-error" x-show="receiptError" class="mt-1 text-xs text-red-700" x-text="receiptError"></p>
+          </div>
           <div>
             <label class="mb-1 block text-xs font-semibold text-slate-600">
               Notes <span class="font-normal text-slate-400">(optional)</span>
@@ -120,7 +130,7 @@
 
           <p x-show="entryError" style="display:none;color:#b91c1c" class="text-xs font-semibold" x-text="entryError"></p>
 
-          <button type="button" @click="addToPending()"
+          <button type="button" @click="addToPending()" :disabled="!canAdd" :style="!canAdd ? 'background-color:#315b7e;opacity:0.5;cursor:not-allowed' : 'background-color:#315b7e'"
             class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition"
             style="background-color:#315b7e">
 
@@ -152,6 +162,7 @@
                 <span x-text="p.quantity"></span>
                 <span x-text="p.unit"></span>
               </span>
+              <span x-show="p.receipt_label" x-text="p.receipt_label"></span>
               <span class="capitalize" x-text="'· ' + p.reason"></span>
               <span x-show="p.selling_price" style="display:none">
                 · ₱<span x-text="parseFloat(p.selling_price).toFixed(2)"></span>

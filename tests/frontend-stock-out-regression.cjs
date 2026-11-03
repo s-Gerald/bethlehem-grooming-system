@@ -25,6 +25,8 @@ function createPage(inventoryApi = {}, toastMessages = []) {
     notifications: [],
   };
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(projectRoot, 'scripts/components/product-form.js'), 'utf8'), context);
+  context.ProductForm = context.window.ProductForm;
   vm.runInContext(source, context, {
     filename: "scripts/components/admin-stock-out.js",
   });
@@ -44,6 +46,8 @@ function product() {
     unit: "pack",
     category: "food",
     quantity_on_hand: "13.00",
+    usable_quantity: 13, saleable_quantity: 13, reserved_quantity: 0,
+    current_batches: [{transaction_id: 10, remaining_quantity: 13, is_unexpired: true, expiry_date: "2030-01-01"}],
     selling_price: "100.00",
   };
 }
@@ -66,7 +70,7 @@ function testPendingStockOutReducesDisplayedAndValidatedAvailability() {
   page.qty = "4";
   page.addToPending();
   assert.equal(page.pending.length, 1);
-  assert.equal(page.entryError, "Insufficient stock. Please check available inventory.");
+  assert.equal(page.entryError, "Maximum available: 3 pack");
 
   page.qty = "3";
   page.addToPending();
@@ -148,6 +152,27 @@ async function testFailedStockOutKeepsPendingAndShowsError() {
 }
 
 (async () => {
+  const picks = createPage();
+  const item = {...product(), quantity_on_hand: 25, usable_quantity: 20, saleable_quantity: 20, expired_quantity: 5,
+    current_batches: [
+      {transaction_id: 1, remaining_quantity: 5, is_expired: true, is_unexpired: false, expiry_date: '2020-01-01'},
+      {transaction_id: 2, remaining_quantity: 5, is_unexpired: true, expiry_date: '2030-01-01'},
+      {transaction_id: 3, remaining_quantity: 15, is_unexpired: true, expiry_date: '2031-01-01'},
+    ]};
+  picks.pickItem(item); picks.qty = '21'; assert.equal(picks.canAdd, false); assert.match(picks.quantityError, /20/);
+  picks.qty = '6'; picks.receiptId = '2'; assert.equal(picks.availableForReason(), 5); assert.equal(picks.canAdd, false);
+  picks.receiptId = ''; picks.qty = '12'; assert.equal(picks.canAdd, true); picks.addToPending();
+  assert.deepEqual(JSON.parse(JSON.stringify(picks.pending[0].receipt_allocations)), [{receipt_id: 2, quantity: 5}, {receipt_id: 3, quantity: 7}]);
+  picks.pickItem(item); assert.equal(picks.availableForReason(), 8); picks.qty = '9'; assert.equal(picks.canAdd, false);
+  picks.reason = 'expired'; picks.qty = '1'; assert.equal(picks.canAdd, false);
+  picks.receiptId = '1'; assert.equal(picks.availableForReason(), 5); assert.equal(picks.canAdd, true);
+  picks.qty = '6'; assert.equal(picks.canAdd, false); assert.equal(picks.qty, '6');
+  const order = createPage();
+  const ordered = {...item, quantity_on_hand: 20, usable_quantity: 20, current_batches: item.current_batches.slice(1)};
+  order.pickItem(ordered); order.qty = '1'; order.addToPending();
+  order.pickItem(ordered); order.reason = 'damaged'; order.receiptId = '2'; order.qty = '4'; order.addToPending();
+  order.pickItem(ordered); order.reason = 'used'; order.qty = '5'; order.addToPending();
+  assert.equal(order.pending.length, 3, 'Later automatic picks retain their position after a physical receipt pick');
   testPendingStockOutReducesDisplayedAndValidatedAvailability();
   testStockOutRejectsDecimalQuantities();
   testExpiredReasonDependsOnProductCategory();

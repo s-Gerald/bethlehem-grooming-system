@@ -45,7 +45,7 @@ async function testCheckoutAndDuplicateGuard() {
   for (const changes of [{category: 'medicine'}, {category: 'vaccine'}, {is_active: false}, {selling_price: null}, {selling_price: 0}, {saleable_quantity: 0}]) ui.addToCart({...product, ...changes});
   assert.equal(ui.cart.length, 0);
   ui.addToCart(product);
-  for (const quantity of [0, -1, 5, 1.02, 1.5, 2.75, 1.001, 'invalid']) {
+  for (const quantity of [0, -1, 5, 1.02, 1.5, 2.75, 1.001, 'invalid', '1e0', '2.0']) {
     ui.cart[0].quantity = quantity; ui.updateLineSubtotal(ui.cart[0]); ui.amountTendered = '1000';
     assert.equal(ui.canProcess, false);
   }
@@ -95,7 +95,7 @@ async function testStaleSearchRefreshAndErrors() {
   ui.amountTendered = '1000'; await ui.processSale();
   assert.equal(ui.cart[0].quantity, 2, 'Do not silently reduce staff quantities');
   assert.match(ui.notice, /Shampoo: stock changed from 4 to 1 bottle; price changed from ₱250.00 to ₱300.00/);
-  assert.match(ui.lineError(ui.cart[0]), /Reduce/);
+  assert.match(ui.lineError(ui.cart[0]), /Maximum available: 1 bottle/);
   ui.cart[0].quantity = 1; ui.updateLineSubtotal(ui.cart[0]); ui.amountTendered = '500';
   await ui.processSale();
   assert.equal(ui.error, 'Stock changed. Reduce quantity.');
@@ -217,7 +217,7 @@ function testPaymentAndScannerIntegration() {
   const markup = read('pages/admin/inventory/sections/sell-product.html');
   assert.doesNotMatch(markup, /Add a product to enable checkout\./);
   assert.doesNotMatch(markup, /Refresh stock and prices|refreshCart/);
-  assert.match(markup, /min="1" step="1"/);
+
   assert.match(markup, /x-show="validationFailed"/);
   assert.match(markup, /@click="openScanner\(\)" aria-label="Scan barcode"/);
   assert.match(markup, /phosphor\.svg(?:\?[^"#\s]+)?#barcode/);
@@ -329,6 +329,20 @@ async function testPaymentInputInteractions() {
   } finally { await browser.close(); }
 }
 (async () => {
+  const receiptProduct = {...product, tracks_expiry: false, current_batches: [
+    {transaction_id: 1, remaining_quantity: 1, available_quantity: 1},
+    {transaction_id: 2, remaining_quantity: 3, available_quantity: 3},
+  ]};
+  let selectedReceipt;
+  const picked = setup({validateCart: async () => ({data: [receiptProduct]}), processSale: async body => {selectedReceipt = body.items[0].receipt_id; return {data: receipt};}}).ui;
+  picked.addToCart(receiptProduct);
+  for (const invalid of ['1e0', '2.0']) {
+    picked.cart[0].quantity = invalid; picked.addToCart(receiptProduct);
+    assert.equal(picked.cart[0].quantity, invalid, 'Re-adding a product must preserve an invalid typed quantity for correction');
+  }
+  picked.cart[0].quantity = '2'; picked.updateLineSubtotal(picked.cart[0]); picked.amountTendered = '1000';
+  picked.cart[0].receipt_id = '1'; assert.equal(picked.canProcess, false); assert.equal(picked.cart[0].quantity, '2');
+  picked.cart[0].receipt_id = '2'; assert.equal(picked.canProcess, true); await picked.processSale(); assert.equal(selectedReceipt, 2);
   testNewestFirstProducts();
   await testCheckoutAndDuplicateGuard(); await testStaleSearchRefreshAndErrors(); await testChangedCartsRequireReviewAndCanThenComplete(); await testValidationRetryAndCheckoutRace(); testCashPaymentParity(); await testCameraScannerUsesExistingLookup(); testProductHistoryInvoice(); testPaymentAndScannerIntegration();
   if (process.argv.includes('--browser')) await testPaymentInputInteractions();

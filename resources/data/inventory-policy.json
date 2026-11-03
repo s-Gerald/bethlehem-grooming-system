@@ -1,0 +1,5 @@
+{
+  "stock_in_maximum": 1000,
+  "minimum_stock_minimum": 2,
+  "minimum_stock_maximum": 1000
+}

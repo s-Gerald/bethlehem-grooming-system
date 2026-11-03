@@ -9,8 +9,8 @@ use Carbon\CarbonInterface;
 class InventoryBatchBalanceService
 {
     /**
-     * Reconstruct the remaining quantity of each received batch. Historical
-     * stock-out rows do not identify a batch, so each quantity is allocated in
+     * Replay persisted receipt picks for new removals. Historical stock-out
+     * rows do not identify a batch, so their quantities are inferred in
      * FEFO order with the transaction id as a deterministic tie-breaker. Sales
      * and service usage can consume only batches that were unexpired then;
      * write-offs can consume any physical batch.
@@ -67,6 +67,7 @@ class InventoryBatchBalanceService
                         'batch_number' => $transaction->batch_number,
                         'batch_unavailable_reason' => $transaction->batch_unavailable_reason,
                         'expiry_date' => $transaction->expiry_date?->format('Y-m-d'),
+                        'received_at' => $transaction->created_at?->format('Y-m-d H:i:s.u'),
                         'received_quantity' => $quantity,
                         'remaining_quantity' => $quantity,
                     ];
@@ -75,6 +76,19 @@ class InventoryBatchBalanceService
                 }
 
                 $stockOutQuantity += $quantity;
+                if ($transaction->stock_out_allocations !== null) {
+                    // New movements are replayed exactly, never inferred from a lot string.
+                    foreach ($transaction->stock_out_allocations as $allocation) {
+                        foreach ($batches as &$batch) {
+                            if ($batch['transaction_id'] === (int) $allocation['receipt_id']) {
+                                $batch['remaining_quantity'] = max(0, $batch['remaining_quantity'] - (float) $allocation['quantity']);
+                                break;
+                            }
+                        }
+                        unset($batch);
+                    }
+                    continue;
+                }
                 $quantityToAllocate = $quantity;
                 $stockOutDate = $transaction->created_at?->toDateString() ?? $today;
                 $requiresUnexpiredStock = in_array($transaction->reason, ['sold', 'used'], true);
@@ -189,6 +203,72 @@ class InventoryBatchBalanceService
         return $this->forItems([$itemId], $asOf)[$itemId] ?? $this->emptyBalance();
     }
 
+    public function tracksExpiry(InventoryItem $item): bool
+    {
+        return ! in_array($item->category, ['pet_shop', 'miscellaneous'], true);
+    }
+
+    public function withReceiptAvailability(array $balance, array $reserved): array
+    {
+        foreach ($balance['batches'] as &$batch) {
+            $batch['reserved_quantity'] = (float) ($reserved[$batch['transaction_id']] ?? 0);
+            $batch['available_quantity'] = max(0, $batch['remaining_quantity'] - $batch['reserved_quantity']);
+        }
+        unset($batch);
+        return $balance;
+    }
+
+    /** Shared definitions for every inventory consumer; reservations never affect reorder status. */
+    public function quantities(InventoryItem $item, array $balance, float $reserved = 0): array
+    {
+        $physical = max(0, (float) $item->quantity_on_hand);
+        $usable = $this->tracksExpiry($item) ? min($physical, (float) $balance['unexpired_quantity']) : $physical;
+        $lowStock = (float) $item->reorder_level > 0 && $usable <= (float) $item->reorder_level;
+        return [
+            'physical_quantity' => $physical,
+            'usable_quantity' => $usable,
+            'saleable_quantity' => max(0, $usable - $reserved),
+            'reserved_quantity' => $reserved,
+            'expired_quantity' => min($physical, (float) $balance['expired_quantity']),
+            'low_stock' => $lowStock,
+            'stock_status' => $physical <= 0 ? 'out_of_stock' : ($usable < 1 ? 'unavailable' : ($lowStock ? 'low_stock' : 'available')),
+        ];
+    }
+
+    /** Ordered eligible receipts, used by the transactional allocator and API selectors. */
+    public function eligibleBatches(InventoryItem $item, array $balance, string $reason): array
+    {
+        $tracked = $this->tracksExpiry($item);
+        return collect($balance['batches'])->filter(fn ($batch) => $batch['remaining_quantity'] > 0
+            && match ($reason) {
+                'used', 'sold' => ! $tracked || $batch['is_unexpired'],
+                'expired' => $tracked && $batch['is_expired'],
+                default => true,
+            })->sortBy(fn ($batch) => [
+                $tracked ? ($batch['expiry_date'] ?? '9999-12-31') : '',
+                $batch['received_at'] ?? '', $batch['transaction_id'],
+            ])->values()->all();
+    }
+
+    /** Update the operation's snapshot without re-reading its full ledger. */
+    public function consume(array &$balance, array $allocations): void
+    {
+        foreach ($allocations as $allocation) {
+            foreach ($balance['batches'] as &$batch) {
+                if ($batch['transaction_id'] === $allocation['receipt_id']) {
+                    $quantity = (float) $allocation['quantity'];
+                    $batch['remaining_quantity'] = $this->normalizeQuantity($batch['remaining_quantity'] - $quantity);
+                    $batch['available_quantity'] = max(0, $batch['remaining_quantity'] - ($batch['reserved_quantity'] ?? 0));
+                    $balance['tracked_remaining_quantity'] -= $quantity;
+                    $key = $batch['is_expired'] ? 'expired_quantity' : ($batch['is_unexpired'] ? 'unexpired_quantity' : 'unknown_expiry_quantity');
+                    $balance[$key] = $this->normalizeQuantity($balance[$key] - $quantity);
+                    break;
+                }
+            }
+            unset($batch);
+        }
+    }
+
     /** Availability for clinical use, independent of dosage and pricing. */
     public function treatmentAvailability(InventoryItem $item, array $balance): array
     {
@@ -224,7 +304,7 @@ class InventoryBatchBalanceService
     {
         return collect($balance['batches'] ?? [])
             ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0 && $batch['is_unexpired'])
-            ->sortBy(fn (array $batch) => [$batch['expiry_date'], $batch['transaction_id']])
+            ->sortBy(fn (array $batch) => [$batch['expiry_date'], $batch['received_at'] ?? '', $batch['transaction_id']])
             ->first();
     }
 

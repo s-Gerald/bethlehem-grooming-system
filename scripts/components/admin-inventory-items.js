@@ -213,6 +213,7 @@ function adminInventoryItems() {
         unit_cost:     item.unit_cost ?? "",
         selling_price: item.selling_price ?? "",
         reorder_level: ProductForm.normalizeReorderLevel(item.reorder_level),
+        original_reorder_level: ProductForm.normalizeReorderLevel(item.reorder_level),
       });
       this.modal = { open: true, busy: false, error: "" };
     },
@@ -346,7 +347,7 @@ function adminInventoryItems() {
     },
 
     stockStyle(item) {
-      if (parseFloat(item.quantity_on_hand) <= 0)
+      if (['out_of_stock', 'unavailable'].includes(item.stock_status))
         return "background-color:#fee2e2;color:#b91c1c";
       if (item.low_stock)
         return "background-color:#fef3c7;color:#92400e";
@@ -354,9 +355,7 @@ function adminInventoryItems() {
     },
 
     stockLabel(item) {
-      if (parseFloat(item.quantity_on_hand) <= 0) return "Out of Stock";
-      if (item.low_stock)                          return "Low Stock";
-      return "In Stock";
+      return {out_of_stock: 'Out of Stock', unavailable: 'No Usable Stock', low_stock: 'Low Stock', available: 'In Stock'}[item.stock_status] || 'In Stock';
     },
 
     fmtQty(n) {

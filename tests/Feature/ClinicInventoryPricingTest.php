@@ -36,6 +36,7 @@ class ClinicInventoryPricingTest extends TestCase
             (require database_path("migrations/{$file}.php"))->up();
         }
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->json('stock_out_allocations')->nullable();
             $table->increments('transaction_id'); $table->unsignedInteger('item_id'); $table->string('type');
             $table->decimal('quantity', 10, 2); $table->decimal('unit_cost_at_time', 8, 2)->nullable();
             $table->decimal('selling_price_at_time', 8, 2)->nullable(); $table->string('reason');
@@ -100,7 +101,7 @@ class ClinicInventoryPricingTest extends TestCase
         $payload = array_replace([
             'item_name' => 'Clinic medicine', 'category' => 'medicine', 'unit' => 'bottle',
             'medicine_type' => 'deworming', 'pricing_method' => 'weight_based',
-            'weight_pricing_mode' => 'ranges', 'strength_concentration' => '10 mg/mL', 'unit_cost' => 50, 'selling_price' => null, 'reorder_level' => 0,
+            'weight_pricing_mode' => 'ranges', 'strength_concentration' => '10 mg/mL', 'unit_cost' => 50, 'selling_price' => null, 'reorder_level' => 2,
             'weight_prices' => [
                 ['min_weight_kg' => 1, 'max_weight_kg' => 5, 'price' => 200],
                 ['min_weight_kg' => 5.1, 'max_weight_kg' => 10, 'price' => 400],
@@ -165,7 +166,7 @@ class ClinicInventoryPricingTest extends TestCase
                     ->assertJsonPath('data.weight_prices.'.$index.'.max_weight_kg', $range['max_weight_kg'] === null ? null : number_format($range['max_weight_kg'], 2, '.', ''));
             }
             $this->putJson('/api/inventory/items/'.$item->item_id, [
-                'item_name' => 'Updated catalog', 'unit_cost' => 73.25, 'reorder_level' => 0,
+                'item_name' => 'Updated catalog', 'unit_cost' => 73.25, 'reorder_level' => 2,
             ])->assertOk()->assertJsonPath('data.weight_pricing_mode', 'catalog');
             $this->assertSame('73.25', $item->fresh()->unit_cost);
             $this->assertSame('3.00', $item->fresh()->quantity_on_hand);
@@ -382,7 +383,7 @@ class ClinicInventoryPricingTest extends TestCase
         $item->weightPrices()->delete(); $item->weightPrices()->createMany($legacy);
         $item->update(['weight_pricing_mode' => 'legacy', 'quantity_on_hand' => 7]);
         $this->assertEquals(250, $item->fresh()->clinicPrice(2)['price']);
-        $this->putJson('/api/inventory/items/'.$item->item_id, ['description' => 'Updated', 'unit_cost' => 50, 'reorder_level' => 0])
+        $this->putJson('/api/inventory/items/'.$item->item_id, ['description' => 'Updated', 'unit_cost' => 50, 'reorder_level' => 2])
             ->assertOk()->assertJsonPath('data.weight_pricing_mode', 'legacy')->assertJsonPath('data.weight_prices.1.max_weight_kg', null);
         $this->assertSame('7.00', $item->fresh()->quantity_on_hand);
         $this->putJson('/api/inventory/items/'.$item->item_id, $this->product(['weight_prices' => $legacy]))->assertUnprocessable();
@@ -497,7 +498,7 @@ class ClinicInventoryPricingTest extends TestCase
         $flat = $this->item(['pricing_method' => 'flat', 'weight_prices' => [], 'selling_price' => 300]);
         $this->assertSame('300.00', $flat->clinicPrice(null)['price']);
         foreach (InventoryItem::RETAIL_CATEGORIES as $category) {
-            $payload = ['item_name' => $category, 'category' => $category, 'unit' => 'box', 'unit_cost' => 20, 'selling_price' => 30, 'reorder_level' => 0];
+            $payload = ['item_name' => $category, 'category' => $category, 'unit' => 'box', 'unit_cost' => 20, 'selling_price' => 30, 'reorder_level' => 2];
             $this->postJson('/api/inventory/items', $payload)->assertCreated()->assertJsonMissingPath('data.dose_unit')->assertJsonPath('data.selling_price', '30.00');
         }
         $this->getJson('/api/inventory/search?q=Clinic&sale_context=pos')->assertOk()->assertJsonCount(0, 'data');
@@ -526,7 +527,7 @@ class ClinicInventoryPricingTest extends TestCase
 
         foreach (InventoryItem::RETAIL_CATEGORIES as $category) {
             $payload = ['item_name' => $category, 'category' => $category, 'unit' => 'box', 'unit_cost' => 20,
-                'selling_price' => 30, 'reorder_level' => 0, 'strength_concentration' => '100 mg'];
+                'selling_price' => 30, 'reorder_level' => 2, 'strength_concentration' => '100 mg'];
             $id = $this->postJson('/api/inventory/items', $payload)->assertCreated()
                 ->assertJsonPath('data.strength_concentration', null)->json('data.item_id');
             $this->assertNull(InventoryItem::findOrFail($id)->strength_concentration);

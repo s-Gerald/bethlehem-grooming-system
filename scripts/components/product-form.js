@@ -1,5 +1,9 @@
 /* Shared add-product field behavior used by Inventory and Stock In. */
 window.ProductForm = (() => {
+  // BEGIN GENERATED INVENTORY POLICY
+  // Source: resources/data/inventory-policy.json; run npm run build:inventory.
+  const inventoryPolicy = {"stock_in_maximum":1000,"minimum_stock_minimum":2,"minimum_stock_maximum":1000};
+  // END GENERATED INVENTORY POLICY
   const unitOptions = [
     ["pc", "Piece (pc)"], ["tablet", "Tablet"], ["capsule", "Capsule"],
     ["bottle", "Bottle"], ["vial", "Vial"], ["ampoule", "Ampoule"], ["syringe", "Syringe"],
@@ -217,6 +221,21 @@ window.ProductForm = (() => {
       : reorderLevel;
   }
 
+  function wholeQuantityError(value, maximum, unit = 'units') {
+    if (!/^[0-9]+$/.test(String(value ?? '')) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) return 'Enter a whole number quantity.';
+    if (Number(value) > maximum) return `Maximum available: ${maximum} ${unit}`;
+    return '';
+  }
+
+  function minimumStockError(form) {
+    const value = String(form.reorder_level ?? '');
+    if (form.item_id && value === String(form.original_reorder_level)) return '';
+    if (!/^[0-9]+$/.test(value)) return 'Minimum stock must be a whole number';
+    if (Number(value) < inventoryPolicy.minimum_stock_minimum || Number(value) > inventoryPolicy.minimum_stock_maximum)
+      return `Minimum stock must be ${inventoryPolicy.minimum_stock_minimum}–${inventoryPolicy.minimum_stock_maximum} whole units.`;
+    return '';
+  }
+
   function unitFields(unit) {
     return standardUnits.includes(unit)
       ? { unit, customUnit: "" }
@@ -233,12 +252,12 @@ window.ProductForm = (() => {
     const barcode = String(form.barcode ?? "");
     const unitCost = String(form.unit_cost ?? "");
     const sellingPrice = String(form.selling_price ?? "");
-    const reorderLevel = String(form.reorder_level ?? "");
 
     if (barcode !== "" && !/^[0-9]{1,13}$/.test(barcode)) return "Barcode must contain 1 to 13 digits";
     if (!validMoney(unitCost)) return "Unit cost must be a valid amount";
     if (!isWeightBased(form) && !validMoney(sellingPrice)) return "Selling price must be a valid amount";
-    if (!/^\d+$/.test(reorderLevel) || Number(reorderLevel) > 99999999) return "Minimum stock must be a whole number";
+    const minimumError = minimumStockError(form);
+    if (minimumError) return minimumError;
     if (form.category === "medicine") {
       if (String(form.strength_concentration || "").length > 150) return "Product strength must be at most 150 characters.";
       if (!medicineTypeOptions.some(option => option.value === form.medicine_type)) return "Medicine type is required.";
@@ -262,7 +281,7 @@ window.ProductForm = (() => {
       pricing_method: form.category === "medicine" ? form.pricing_method : "flat",
       weight_pricing_mode: "catalog",
       weight_prices: isWeightBased(form) ? scheduleRanges(form) : [],
-      reorder_level: parseInt(form.reorder_level, 10),
+      reorder_level: Number(form.reorder_level),
     };
   }
 
@@ -319,5 +338,5 @@ window.ProductForm = (() => {
     owner.scannerActive = false;
   }
 
-  return { addBelowRange, addAboveRange, addRange, checkWeightSchedule, focusLastThreshold, focusWeightError, removeRange, scheduleRanges, rangeLabel, weightFieldError, clinicFields, isClinic, isWeightBased, medicineTypeOptions, validateRanges, categoryOptions, closeBarcodeScanner, empty, normalizeBarcode, normalizeReorderLevel, openBarcodeScanner, payload, unitFields, unitOptions, validate };
+  return { inventoryPolicy, wholeQuantityError, minimumStockError, addBelowRange, addAboveRange, addRange, checkWeightSchedule, focusLastThreshold, focusWeightError, removeRange, scheduleRanges, rangeLabel, weightFieldError, clinicFields, isClinic, isWeightBased, medicineTypeOptions, validateRanges, categoryOptions, closeBarcodeScanner, empty, normalizeBarcode, normalizeReorderLevel, openBarcodeScanner, payload, unitFields, unitOptions, validate };
 })();

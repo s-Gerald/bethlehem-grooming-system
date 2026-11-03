@@ -14,6 +14,8 @@ function createPage(file, factory, api) {
     clearTimeout: () => { pendingSearch = null; },
   };
   if (fs.existsSync(path.join(__dirname, "../scripts/components/product-search-dropdown.js"))) vm.runInNewContext(read("scripts/components/product-search-dropdown.js"), context);
+  vm.runInNewContext(read("scripts/components/product-form.js"), context);
+  context.ProductForm = context.window.ProductForm;
   vm.runInNewContext(read(file), context);
   const page = context[factory]();
   page.$nextTick = callback => callback();

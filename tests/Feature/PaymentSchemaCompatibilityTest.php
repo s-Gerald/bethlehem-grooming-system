@@ -491,6 +491,7 @@ class PaymentSchemaCompatibilityTest extends TestCase
             $table->timestamps();
         });
         Schema::create('inventory_transactions', function (Blueprint $table) {
+            $table->json('stock_out_allocations')->nullable();
             $table->increments('transaction_id');
             $table->unsignedInteger('item_id');
             $table->string('type');

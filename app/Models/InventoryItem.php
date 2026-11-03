@@ -52,16 +52,6 @@ class InventoryItem extends Model
         'is_active'        => 'boolean',
     ];
 
-    // ── Computed attributes ────────────────────────────────────────────────────
-
-    public function getLowStockAttribute(): bool
-    {
-        if ((float) $this->reorder_level <= 0) {
-            return false;
-        }
-        return (float) $this->quantity_on_hand <= (float) $this->reorder_level;
-    }
-
     // ── Relationships ──────────────────────────────────────────────────────────
 
     public function weightPrices()

@@ -183,7 +183,7 @@ async function testNewProductUnitOptionsAndCustomUnit() {
   page.createForm.unit = "other";
   page.createForm.unit_cost = "1.00";
   page.createForm.selling_price = "2.00";
-  page.createForm.reorder_level = "0";
+  page.createForm.reorder_level = "2";
   await page.createAndSelect();
   assert.equal(page.createError, "Custom unit is required.");
   assert.equal(createCalls.length, 0);
@@ -204,7 +204,7 @@ async function testNewProductUsesSharedValidationMessages() {
     description: "",
     unit_cost: "1.25",
     selling_price: "0",
-    reorder_level: "0",
+    reorder_level: "2",
   };
 
   await page.createAndSelect();
@@ -296,6 +296,20 @@ function testMedicalLotValidation() {
 }
 
 (async () => {
+  const limit = createPage();
+  const item = {item_id: 1, item_name: 'Limits', unit: 'pack', category: 'pet_shop'};
+  limit.pickItem(item);
+  for (const value of ['0', '-1', '1.5', 'abc', '1e2', '1001']) {
+    limit.qty = value;
+    assert.equal(limit.canAdd, false, value);
+    assert.ok(limit.quantityError);
+    assert.equal(limit.qty, value, 'Invalid typed quantities remain visible');
+  }
+  limit.qty = '900'; assert.equal(limit.canAdd, true); limit.addToPending();
+  limit.pickItem(item); limit.qty = '200'; assert.equal(limit.canAdd, false);
+  assert.match(limit.quantityError, /100/); limit.addToPending(); assert.equal(limit.pending[0].quantity, 900);
+  limit.qty = '100'; assert.equal(limit.canAdd, true); limit.addToPending();
+  assert.equal(limit.pending.reduce((sum, entry) => sum + entry.quantity, 0), 1000);
   testMedicalLotValidation();
   testClientRejectsDecimalStockInQuantity();
   testExpiryDateIsRequired();

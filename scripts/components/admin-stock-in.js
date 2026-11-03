@@ -191,14 +191,30 @@ function adminStockIn() {
 
     // ── Add to pending ────────────────────────────────────────────────────────
 
+    get quantityMaximum() {
+      const used = this.pending.filter(p => p.item_id === this.selected?.item_id).reduce((sum, p) => sum + Number(p.quantity), 0);
+      return Math.max(0, ProductForm.inventoryPolicy.stock_in_maximum - used);
+    },
+
+    get quantityError() { return ProductForm.wholeQuantityError(this.qty, this.quantityMaximum, this.selected?.unit || 'units'); },
+    get canAdd() { return !!this.selected && !this.quantityError && !this.submitting; },
+
+    get pendingQuantityError() {
+      const totals = new Map();
+      for (const entry of this.pending) {
+        const total = (totals.get(entry.item_id) || 0) + Number(entry.quantity);
+        if (ProductForm.wholeQuantityError(entry.quantity, ProductForm.inventoryPolicy.stock_in_maximum) || total > ProductForm.inventoryPolicy.stock_in_maximum)
+          return `Maximum per product per submission: ${ProductForm.inventoryPolicy.stock_in_maximum} units.`;
+        totals.set(entry.item_id, total);
+      }
+      return '';
+    },
+
     addToPending() {
       this.entryError = "";
       if (!this.selected)        { this.entryError = "Select an item first.";       return; }
       const qty = Number(this.qty);
-      if (!Number.isInteger(qty) || qty <= 0) {
-        this.entryError = "Enter a whole number quantity.";
-        return;
-      }
+      if (this.quantityError) { this.entryError = this.quantityError; return; }
       if (this.needsExpiry && !this.expiryDate) {
         this.entryError = "Expiry date is required.";
         return;
@@ -260,6 +276,7 @@ function adminStockIn() {
       if (this.submitting) return;
       this.error = "";
       if (!this.pending.length) { this.error = "Add at least one item first."; return; }
+      if (this.pendingQuantityError) { this.error = this.pendingQuantityError; return; }
 
       this.submitting = true;
       try {
