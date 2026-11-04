@@ -2246,8 +2246,22 @@ var API = (() => {
     return request("POST", "/register/cancel", {registration_token: token});
   }
 
-  async function verifyEmail(token, review = false) {
-    const data = await request("POST", "/email/verify", { token, review });
+  async function verifyEmail(token, review = false, confirmationCode) {
+    const data = await request("POST", "/email/verify", { token, review, confirmation_code: confirmationCode });
+    acceptRegistrationSession(data);
+    return data;
+  }
+
+  function registrationStatus(email) {
+    return request("POST", "/email/registration/status", {registration_token: pendingRegistrationToken(email)}, null, {cache:"no-store"});
+  }
+
+  async function redeemRegistration(email) {
+    const revision = sessionRevision, previousToken = getAuthSession()?.token;
+    const data = await request("POST", "/email/registration/redeem", {registration_token: pendingRegistrationToken(email)}, null, {cache:"no-store"});
+    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
+      throw new Error("Registration session changed. Please try again.");
+    }
     acceptRegistrationSession(data);
     return data;
   }
@@ -3884,6 +3898,8 @@ var API = (() => {
     verifyEmail,
     cancelRegistration,
     registrationSession,
+    registrationStatus,
+    redeemRegistration,
     updatePendingRegistration,
     adminGetPetProfile,
     adminGetPetCaseDetails,

@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 
-function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, signIn = false, reviewing = false, missingGrant = false, phone = '', search = '', initialStorage = {} } = {}) {
+function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null, signup = false, signIn = false, magicLink = false, reviewing = false, missingGrant = false, phone = '', search = '', initialStorage = {} } = {}) {
   let now = 100000;
   const intervals = new Map();
   const timeouts = new Map();
@@ -26,12 +26,13 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   let nextId = 0;
   let ready;
   const elements = new Map();
+  const documentHandlers = {};
   const document = {
     activeElement: null,
     querySelector() { return null; },
     querySelectorAll(selector) { return !signup && !signIn && selector.startsWith("a[") ? [element("verificationBackAction")] : []; },
     createElement: () => element(`generated-${++nextId}`),
-    addEventListener(name, callback) { if (name === 'DOMContentLoaded') ready = callback; },
+    addEventListener(name, callback) { if (name === 'DOMContentLoaded') ready = callback; else documentHandlers[name] = callback; },
     getElementById: element,
   };
   function element(id) {
@@ -66,6 +67,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   const windowHandlers = {};
   const window = {
+    registrationMagicLinkToken: magicLink ? 'email-link' : '',
     addEventListener(name, callback) { windowHandlers[name] = callback; },
     location: { search: reviewing ? '?review=1' : search, hash: '', replace(target) { calls.push(['redirect', target]); } },
     setInterval(callback) { const id = ++nextId; intervals.set(id, callback); return id; },
@@ -81,6 +83,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
     async resendVerification(email) { calls.push(['send', email]); return { resend_after: 60 }; },
     async registrationSession() { return null; },
+    async registrationStatus() { return {state:'pending'}; },
+    async redeemRegistration() { calls.push(['redeem']); return {token:'11|cookie', user:{role:'customer'}}; },
+    async verifyEmail() { return {requires_registration_confirmation:true}; },
     async signIn() { throw {status: 429, code: 'sign_in_password_cooldown', retryAfter: 576}; },
   };
   const context = vm.createContext({
@@ -104,7 +109,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     element('terms').checked = true;
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
-  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : 'scripts/auth/client/signup-verification.js']) {
+  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : magicLink ? 'scripts/auth/client/verify-email.js' : 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/auth/client/signup-context.js'), 'utf8'), context);
@@ -115,7 +120,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     element('phone').handlers.input?.call(element('phone'), {type:'input'});
   }
   return {
-    element, API, calls, storage, windowHandlers, window, intervals, activeElement: () => document.activeElement,
+    element, API, calls, storage, windowHandlers, window, document, documentHandlers, intervals, activeElement: () => document.activeElement,
     dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
     advance(ms) {
       now += ms;
@@ -126,6 +131,70 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 }
 
 (async () => {
+  const pairing = page({initialStorage:{pendingVerificationRegistrationUntil:'3700000'}});
+  await new Promise(resolve => setImmediate(resolve));
+  pairing.API.registrationStatus = async () => ({state:'confirmation_required', confirmation_code:'123456', confirmation_expires_at:new Date(400000).toISOString()});
+  await pairing.windowHandlers.focus();
+  assert.equal(pairing.element('registrationConfirmationCode').textContent, '123456');
+  assert.equal(pairing.element('registrationConfirmation').classList.contains('hidden'), false);
+  assert.deepEqual(pairing.calls, [], 'Displaying a challenge never authenticates');
+  pairing.API.registrationStatus = async () => ({state:'approved'});
+  await pairing.windowHandlers.focus();
+  assert.deepEqual(pairing.calls, [['redeem']], 'Approval alone must not redirect without validating the cookie');
+  pairing.API.registrationSession = async () => ({session_token:'11|cookie',user:{role:'customer',email:'customer@gmail.com'}});
+  await pairing.windowHandlers.focus();
+  assert.deepEqual(pairing.calls.at(-1), ['redirect','/account']);
+  pairing.advance(10000);
+  assert.equal(pairing.calls.filter(call => call[0] === 'redeem').length, 2);
+
+  const polling = page({initialStorage:{pendingVerificationRegistrationUntil:'3700000'}});
+  await new Promise(resolve => setImmediate(resolve));
+  let polls = 0;
+  polling.API.registrationStatus = async () => { polls++; return {state:'pending'}; };
+  polling.advance(5000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(polls, 1, 'Poll without tab messaging');
+  polling.document.hidden = true;
+  polling.documentHandlers.visibilitychange();
+  polling.advance(10000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(polls, 1, 'Do not poll hidden pages');
+  polling.document.hidden = false;
+  await polling.documentHandlers.visibilitychange();
+  assert.equal(polls, 2, 'Recheck when visible');
+  polling.advance(3600000);
+  await new Promise(resolve => setImmediate(resolve));
+  const expiredPolls = polls;
+  polling.advance(10000);
+  assert.equal(polls, expiredPolls, 'Stop polling after expiry');
+
+  const foreign = page({magicLink:true});
+  await foreign.dispatch('verifyLinkSubmit','click');
+  assert.equal(foreign.element('stateConfirmation').classList.contains('hidden'), false);
+  foreign.element('registrationCode').value = '123456';
+  foreign.API.verifyEmail = async (token, review, code) => {
+    assert.equal(token,'email-link'); assert.equal(review,false); assert.equal(code,'123456');
+    return {registration_approved:true};
+  };
+  foreign.API.registrationSession = async () => { throw Error('Foreign approval must not request a session'); };
+  await foreign.dispatch('registrationConfirmationForm','submit');
+  assert.equal(foreign.element('successTitle').textContent,'Email verified!');
+  assert.equal(foreign.element('successDashboard').classList.contains('hidden'),true);
+  assert.deepEqual(foreign.calls, [], 'Verifying browser remains signed out without navigation');
+
+  const handoffRace = page({initialStorage:{pendingVerificationRegistrationUntil:'3700000'}});
+  handoffRace.API.registrationStatus = async () => {throw {status:422,code:'registration_unavailable'};};
+  let missingSession = true;
+  handoffRace.API.registrationSession = async () => {
+    if (missingSession) throw {status:401};
+    return {session_token:'11|cookie',user:{role:'customer',email:'customer@gmail.com'}};
+  };
+  await handoffRace.windowHandlers.focus();
+  missingSession = false;
+  handoffRace.advance(5000);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(handoffRace.calls,[['redirect','/account']], 'Allow the same-browser verification response to deliver its cookie before ending checks');
+
   const noTerms = page({signup:true});
   noTerms.element('terms').checked = false;
   await noTerms.dispatch('signupForm', 'submit');
@@ -444,7 +513,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(interrupted.element('emailError').textContent, 'Enter a valid email address.');
 
   const pending = page();
-  assert.equal(pending.element('verificationTitle').textContent, 'Registration pending');
+  assert.equal(pending.element('verificationTitle').textContent, 'Check your email');
   assert.doesNotMatch(pending.element('verificationDescription').textContent, /We sent/);
   assert.equal(pending.element('verificationBackAction').attributes.href, '/sign-up');
   assert.equal(pending.element('verifyCodeEmail').textContent, 'c***@gmail.com');
@@ -485,7 +554,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   let expiredSends = 0;
   expired.API.resendVerification = async () => { expiredSends++; throw {status:422, code:'registration_expired', message:'This registration has expired. Start again.'}; };
   await expired.dispatch('signupLinkForm', 'submit');
-  assert.equal(expired.element('signupLinkMessage').textContent, 'This registration has expired. Start again.');
+  assert.equal(expired.element('signupLinkMessage').textContent, 'Registration expired. Start again.');
   assert.equal(expired.element('signupResend').disabled, true);
   assert.equal(expired.element('verificationBackAction').attributes.href, '/sign-up');
   expired.advance(60000);
@@ -496,7 +565,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   restoredExpiry.windowHandlers.pageshow({persisted:true});
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(restoredExpiry.element('verificationTitle').textContent, 'Registration expired');
-  assert.equal(restoredExpiry.element('signupLinkMessage').textContent, 'This registration has expired. Start again.');
+  assert.equal(restoredExpiry.element('signupLinkMessage').textContent, 'Registration expired. Start again.');
   assert.equal(restoredExpiry.element('signupResend').disabled, true);
 
   const busy = page({deliveryFailed:true});

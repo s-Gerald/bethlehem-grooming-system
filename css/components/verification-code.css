@@ -1,4 +1,31 @@
 /* Bethlehem authentication: shared verification screens and code cells. */
+.verification-confirmation {
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #64748b;
+  font-size: .875rem;
+}
+.verification-confirmation .verification-confirmation-code {
+  margin: .5rem 0;
+  color: #1e293b;
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .2em;
+}
+.verification-confirmation p:last-child { margin-top: .75rem; }
+.verification-security,
+.verification-waiting {
+  text-align: center;
+  color: #64748b;
+  font-size: .875rem;
+}
+.verification-waiting svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0 auto 1rem;
+  fill: currentColor;
+}
 .verification-code-cells {
   position: relative;
   display: grid;

@@ -56,8 +56,12 @@ class EmailVerificationController extends Controller
                     && ! $request->boolean('review')) {
                     return app(CustomerRegistrationService::class)->complete($pending);
                 }
-                // Foreign browsers and legacy accounts must discard the pending
-                // password and establish their own through the email-proven grant.
+                if ($pending && CustomerRegistrationService::hasCurrentTerms($pending)
+                    && $pending->registration_browser_token_hash && $pending->registration_edit_token_hash
+                    && ! $request->boolean('review')) {
+                    return app(\App\Services\RegistrationPairingService::class)->confirm($pending, $request);
+                }
+                // Explicit review and legacy accounts require a fresh password.
                 return app(CustomerRegistrationService::class)->authorizeReview($registrant);
             }, 3);
         } catch (UniqueConstraintViolationException) {
@@ -70,13 +74,13 @@ class EmailVerificationController extends Controller
         return response()->json(['success' => false, 'expired' => $expired,
             'code' => $expired ? 'registration_link_expired' : 'registration_link_invalid',
             'message' => $expired ? 'This link has expired. Request a new one.'
-                : 'This verification link is no longer valid.'], 422)->header('Cache-Control', 'no-store');
+                : 'This link is no longer valid.'], 422)->header('Cache-Control', 'no-store');
     }
 
     private function expiredRegistration()
     {
         return response()->json(['success' => false, 'expired' => true, 'code' => 'registration_expired',
-            'message' => 'This registration has expired. Start again.'], 422)->header('Cache-Control', 'no-store');
+            'message' => 'Registration expired. Start again.'], 422)->header('Cache-Control', 'no-store');
     }
 
     public function resend(Request $request)
@@ -139,6 +143,16 @@ class EmailVerificationController extends Controller
         $data = $request->validate(['delivery_token' => 'required|string|size:64']);
         return response()->json(['success' => true, 'status' => AuthenticationMailDelivery::status($data['delivery_token'])])
             ->header('Cache-Control', 'no-store');
+    }
+
+    public function registrationStatus(Request $request)
+    {
+        return app(\App\Services\RegistrationPairingService::class)->status($request);
+    }
+
+    public function redeemRegistration(Request $request)
+    {
+        return app(\App\Services\RegistrationPairingService::class)->redeem($request);
     }
 
     public static function sendVerificationEmail(User|PendingCustomerRegistration $registrant): string

@@ -216,6 +216,7 @@ class CustomerRegistrationService
             'registration_recovery_expires_at' => now()->addMinutes(10),
         ];
         if ($registrant instanceof PendingCustomerRegistration) {
+            $values = [...$values, ...RegistrationPairingService::cleared()];
             $values['registration_edit_token_hash'] = null;
             $values['registration_browser_token_hash'] = null;
         }
@@ -232,7 +233,7 @@ class CustomerRegistrationService
     }
 
     // Caller holds the registrant row lock and transaction, including session creation.
-    public function complete(User|PendingCustomerRegistration $registrant, ?array $details = null)
+    public function complete(User|PendingCustomerRegistration $registrant, ?array $details = null, bool $retainPending = false)
     {
         $acceptance = $details ?? $registrant->only(['terms_accepted_version', 'terms_accepted_at']);
         if (($acceptance['terms_accepted_version'] ?? null) !== self::TERMS_VERSION || empty($acceptance['terms_accepted_at'])) {
@@ -247,7 +248,7 @@ class CustomerRegistrationService
                 ...$values, 'role' => 'customer', 'customer_tier' => 'new',
                 'is_active' => true, 'is_archived' => false, 'email_verified_at' => now(),
             ]);
-            $registrant->delete();
+            if (! $retainPending) $registrant->delete();
         } else {
             if (! self::recoverableUser($registrant)) $this->unavailable();
             $user = $registrant;

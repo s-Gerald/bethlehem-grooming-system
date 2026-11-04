@@ -19,6 +19,224 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_pairing_approves_only_the_bound_original_tab_and_retries_the_same_session(): void
+    {
+        Notification::fake();
+        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $credential = $registration->json('registration_token');
+        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
+        $pending = PendingCustomerRegistration::sole();
+        $link = $this->verificationTokenSentTo($pending);
+        $payload = ['registration_token' => $credential];
+        $this->postJson('/api/email/registration/status', $payload)->assertOk()
+            ->assertJsonPath('state', 'pending')->assertJsonMissingPath('confirmation_code');
+        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()
+            ->assertJsonPath('requires_registration_confirmation', true)->assertJsonMissingPath('confirmation_code')
+            ->assertJsonMissingPath('token')->assertJsonMissingPath('details');
+        $this->postJson('/api/email/registration/status', $payload)->assertUnprocessable();
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $status = $this->postJson('/api/email/registration/status', $payload)->assertOk()->assertJsonPath('state', 'confirmation_required');
+        $code = $status->json('confirmation_code');
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
+        $this->assertNotSame($code, $pending->fresh()->getRawOriginal('confirmation_code_ciphertext'));
+        $this->assertArrayNotHasKey('confirmation_code_ciphertext', $pending->fresh()->toArray());
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
+        $approval = $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertOk()
+            ->assertJsonPath('registration_approved', true)->assertJsonMissingPath('token');
+        $this->assertNull($this->accountSessionCookie($approval));
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->postJson('/api/email/registration/session')->assertUnauthorized();
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $this->postJson('/api/email/registration/status', $payload)->assertOk()->assertJsonPath('state', 'approved');
+        $completed = $this->postJson('/api/email/registration/redeem', $payload)->assertOk()->assertJsonStructure(['token']);
+        $retry = $this->postJson('/api/email/registration/redeem', $payload)->assertOk();
+        $this->assertSame($completed->json('token'), $retry->json('token'));
+        $this->assertSame($this->accountSessionCookie($completed)->getValue(), $this->accountSessionCookie($retry)->getValue());
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
+        $this->withAccountSession($retry)->getJson('/api/me')->assertOk();
+    }
+
+    public function test_pairing_attempts_expire_and_cannot_be_reset_by_reopening_the_link(): void
+    {
+        Notification::fake();
+        $registration = $this->registerInBrowser($this->registrationPayload());
+        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
+        $link = $this->verificationTokenSentTo(PendingCustomerRegistration::sole());
+        $payload = ['registration_token' => $registration->json('registration_token')];
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()->assertJsonPath('requires_registration_confirmation', true);
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
+        $wrong = $code === '000000' ? '111111' : '000000';
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $wrong])->assertUnprocessable();
+        }
+        $this->postJson('/api/email/verify', ['token' => $link])->assertUnprocessable()->assertJsonPath('code', 'registration_confirmation_expired');
+        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_pairing_expiry_and_resend_invalidate_approval_without_extending_deadlines(): void
+    {
+        Notification::fake();
+        $registration = $this->registerInBrowser($this->registrationPayload());
+        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
+        $pending = PendingCustomerRegistration::sole();
+        $link = $this->verificationTokenSentTo($pending);
+        $payload = ['registration_token' => $registration->json('registration_token')];
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link])->assertOk();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
+        $this->travel(5)->minutes();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, ...$payload])->assertOk();
+        $newLink = $this->verificationTokenSentTo($pending);
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $newLink])->assertOk();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $newLink, 'confirmation_code' => $code])->assertOk()->assertJsonPath('registration_approved', true);
+        $this->travel(61)->seconds();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $this->postJson('/api/email/resend', ['email' => $pending->email, ...$payload])->assertOk();
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->postJson('/api/email/verify', ['token' => $newLink, 'confirmation_code' => $code])->assertUnprocessable();
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_pairing_redemption_rolls_back_and_never_revives_a_revoked_session(): void
+    {
+        [$registration, $pending, $link, $code] = $this->approvedPairing();
+        $payload = ['registration_token' => $registration->json('registration_token')];
+        DB::statement("CREATE TRIGGER reject_pairing_session BEFORE INSERT ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'session unavailable'); END");
+        $this->postJson('/api/email/registration/redeem', $payload)->assertServerError();
+        $this->assertDatabaseCount('users', 0);
+        $this->assertNull($pending->fresh()->registration_completed_at);
+        $this->assertNotNull($pending->fresh()->registration_approved_at);
+        DB::statement('DROP TRIGGER reject_pairing_session');
+        $completed = $this->postJson('/api/email/registration/redeem', $payload)->assertOk();
+        $this->assertNotSame($this->accountSessionCookie($completed)->getValue(), $pending->fresh()->getRawOriginal('registration_session_ciphertext'));
+        User::sole()->tokens()->delete();
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertDatabaseCount('users', 1);
+    }
+
+    public static function pairingInvalidations(): array
+    {
+        return [['cancel'], ['replace'], ['review'], ['expire'], ['account_conflict']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('pairingInvalidations')]
+    public function test_pairing_cannot_redeem_an_invalidated_or_conflicting_registration(string $action): void
+    {
+        [$registration, $pending, $link, $code] = $this->approvedPairing();
+        $payload = ['registration_token' => $registration->json('registration_token')];
+        if ($action === 'cancel') $this->postJson('/api/register/cancel', $payload)->assertOk();
+        if ($action === 'replace') {
+            $this->travel(61)->seconds();
+            $this->postJson('/api/register', [...$this->registrationPayload(), ...$payload])->assertAccepted();
+        }
+        if ($action === 'review') {
+            $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+            $review = $this->postJson('/api/email/verify', ['token' => $link, 'review' => true])->assertOk()
+                ->assertJsonPath('requires_registration_review', true);
+            $this->assertNull($pending->fresh()->registration_approved_at);
+            $this->assertNull($pending->fresh()->confirmation_code_ciphertext);
+            $this->withUnencryptedCookie('bethlehem_registration_browser', $registration->getCookie('bethlehem_registration_browser', false)->getValue())->withCredentials();
+        }
+        if ($action === 'expire') $this->travel(5)->minutes();
+        if ($action === 'account_conflict') User::factory()->create(['email' => $pending->email, 'password_hash' => Hash::make('legitimate-password')]);
+        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('users', $action === 'account_conflict' ? 1 : 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        if ($action === 'account_conflict') $this->assertTrue(Hash::check('legitimate-password', User::sole()->password_hash));
+        if ($action === 'review') {
+            $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'password' => 'fresh-owner-password',
+                'password_confirmation' => 'fresh-owner-password', 'registration_recovery_token' => $review->json('registration_recovery_token')])->assertOk();
+            $this->assertTrue(Hash::check('fresh-owner-password', User::sole()->password_hash));
+        }
+    }
+
+    public function test_pairing_status_and_redemption_enforce_origin_scope_and_rate_limits(): void
+    {
+        [$registration] = $this->approvedPairing();
+        $payload = ['registration_token' => $registration->json('registration_token')];
+        foreach (['status', 'redeem'] as $endpoint) {
+            $this->postJson('/api/email/registration/'.$endpoint, [])->assertUnprocessable();
+            $this->postJson('/api/email/registration/'.$endpoint, ['registration_token' => str_repeat('q', 64)])->assertUnprocessable();
+            $this->withHeader('Origin', 'https://attacker.example')->postJson('/api/email/registration/'.$endpoint, $payload)->assertStatus(419);
+            $this->withHeader('Origin', config('app.url'));
+        }
+        for ($attempt = 0; $attempt < 31; $attempt++) $response = $this->postJson('/api/email/registration/status', $payload);
+        $response->assertTooManyRequests();
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_pairing_deadline_is_capped_by_the_original_registration_expiry(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        Notification::fake();
+        $registration = $this->registerInBrowser($this->registrationPayload());
+        $pending = PendingCustomerRegistration::sole();
+        $pending->forceFill(['created_at' => now()->subMinutes(59), 'email_verification_expires_at' => now()->addMinutes(20)])->save();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        $this->assertSame($pending->retentionExpiresAt()->toIso8601String(), $pending->fresh()->confirmation_expires_at->toIso8601String());
+        $this->travel(60)->seconds();
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $registration->getCookie('bethlehem_registration_browser', false)->getValue())->withCredentials();
+        $this->postJson('/api/email/registration/redeem', ['registration_token' => $registration->json('registration_token')])
+            ->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_pairing_failed_resend_preserves_the_approved_issuance(): void
+    {
+        [$registration, $pending] = $this->approvedPairing();
+        $this->useDatabaseMailQueue();
+        Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
+        $before = $pending->fresh()->getAttributes();
+        $this->travel(61)->seconds();
+        DB::statement("CREATE TRIGGER reject_pairing_mail BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $registration->json('registration_token')])->assertStatus(503);
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        DB::statement('DROP TRIGGER reject_pairing_mail');
+        $this->postJson('/api/email/registration/redeem', ['registration_token' => $registration->json('registration_token')])->assertOk();
+        $this->assertDatabaseCount('users', 1);
+    }
+
+    private function approvedPairing(): array
+    {
+        Notification::fake();
+        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
+        $link = $this->verificationTokenSentTo($pending);
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()->assertJsonPath('requires_registration_confirmation', true);
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        $code = $this->postJson('/api/email/registration/status', ['registration_token' => $registration->json('registration_token')])->assertOk()->json('confirmation_code');
+        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
+        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertOk()->assertJsonPath('registration_approved', true);
+        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
+        return [$registration, $pending, $link, $code];
+    }
+
     public function test_email_proven_review_uses_the_same_account_conflict_contract(): void
     {
         Notification::fake();
@@ -776,6 +994,7 @@ class EmailVerificationTest extends TestCase
         (require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
         (require base_path('database/migrations/2026_10_28_000002_add_registration_browser_binding.php'))->up();
         (require base_path('database/migrations/2026_11_01_000001_add_customer_terms_acceptance.php'))->up();
+        (require base_path('database/migrations/2026_11_04_000001_add_registration_pairing.php'))->up();
     }
 
     protected function tearDown(): void
@@ -2643,7 +2862,7 @@ class EmailVerificationTest extends TestCase
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
         $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => 'invalid'])
             ->assertUnprocessable()->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('details');
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])
+        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending), 'review' => true])
             ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonPath('details.first_name', 'New')
             ->assertJsonStructure(['registration_recovery_token'])->assertJsonMissingPath('token');
         $this->assertDatabaseCount('users', 0);
@@ -2656,7 +2875,7 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::query()->sole();
         $code = $this->verificationTokenSentTo($pending);
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code])
+        $review = $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code, 'review' => true])
             ->assertOk()->assertJsonPath('requires_registration_review', true)
             ->assertJsonMissingPath('token')->assertJsonMissingPath('details.password_hash');
         $grant = $review->json('registration_recovery_token');
@@ -2682,7 +2901,7 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::query()->sole();
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
         $review = $this->postJson('/api/email/verify', ['email' => $pending->email,
-            'token' => $this->verificationTokenSentTo($pending)])->assertOk();
+            'token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
         $this->travel(10)->minutes();
         $this->putJson('/api/register/pending', [...$this->registrationPayload(),
             'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
@@ -2823,7 +3042,7 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::query()->sole();
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
         $review = $this->postJson('/api/email/verify', ['email' => $pending->email,
-            'token' => $this->verificationTokenSentTo($pending)])->assertOk();
+            'token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
         DB::statement("CREATE TRIGGER reject_customer_session BEFORE INSERT ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'session unavailable'); END");
         $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
         $this->putJson('/api/register/pending', $payload)->assertServerError();
@@ -2894,7 +3113,7 @@ class EmailVerificationTest extends TestCase
 
     public static function simultaneousVerificationFlows(): array
     {
-        return [['registration'], ['login']];
+        return [['registration'], ['login'], ['pairing']];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('simultaneousVerificationFlows')]
@@ -2912,7 +3131,10 @@ class EmailVerificationTest extends TestCase
         $pending = PendingCustomerRegistration::query()->sole();
         $payload = json_encode(['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending),
             'registration_token' => $this->authorizedEditCredential($response),
+            '_verification_endpoint' => $flow === 'pairing' ? '/api/email/registration/redeem' : '/api/email/verify',
             'registration_browser' => $response->getCookie('bethlehem_registration_browser', false)->getValue()], JSON_THROW_ON_ERROR);
+        if ($flow === 'pairing') $pending->update(['confirmation_code_ciphertext' => '123456',
+            'confirmation_expires_at' => now()->addMinutes(5), 'registration_approved_at' => now()]);
         }
         $directory = sys_get_temp_dir().'/bethlehem-signup-'.bin2hex(random_bytes(6));
         $this->assertTrue(mkdir($directory, 0700));
@@ -3014,10 +3236,10 @@ class EmailVerificationTest extends TestCase
             $this->assertNotSame($one['pid'], $two['pid']);
             $this->assertTrue($two['busy'], 'The requests must overlap while the first owns the database lock.');
             $this->assertSame(200, $one['status']);
-            $this->assertSame(422, $two['status']);
+            $this->assertSame($flow === 'pairing' ? 200 : 422, $two['status']);
             $connection = new \PDO('sqlite:'.$database);
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM users')->fetchColumn());
-            $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM pending_customer_registrations')->fetchColumn());
+            $this->assertSame($flow === 'pairing' ? 1 : 0, (int) $connection->query('SELECT COUNT(*) FROM pending_customer_registrations')->fetchColumn());
             $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM login_email_challenges')->fetchColumn());
             $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
         } finally {
@@ -3120,7 +3342,7 @@ class EmailVerificationTest extends TestCase
         $this->withAccountSession($verified)->getJson('/api/me')->assertOk();
     }
 
-    public function test_foreign_browser_must_replace_password_and_cannot_authorize_the_original_browser(): void
+    public function test_foreign_browser_review_must_replace_password_and_cannot_authorize_the_original_browser(): void
     {
         Notification::fake();
         $registration = $this->registerInBrowser($this->registrationPayload());
@@ -3128,7 +3350,7 @@ class EmailVerificationTest extends TestCase
         $originalCookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
         $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
         $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending),
-            'registration_token' => $this->authorizedEditCredential($registration)])->assertOk()
+            'registration_token' => $this->authorizedEditCredential($registration), 'review' => true])->assertOk()
             ->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
         $this->assertNull($pending->fresh()->registration_browser_token_hash);
         $this->withUnencryptedCookie('bethlehem_registration_browser', $originalCookie)->withCredentials();
@@ -3266,7 +3488,7 @@ class EmailVerificationTest extends TestCase
         $token = $this->verificationTokenSentTo($second);
         $this->travel(15)->minutes();
         $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()
-            ->assertJsonPath('code', 'registration_expired')->assertJsonPath('message', 'This registration has expired. Start again.');
+            ->assertJsonPath('code', 'registration_expired')->assertJsonPath('message', 'Registration expired. Start again.');
         $this->assertDatabaseCount('users', 1);
         $this->assertTrue($second->fresh()->retentionExpired());
     }
@@ -3305,7 +3527,7 @@ class EmailVerificationTest extends TestCase
         $token = $this->verificationTokenSentTo($pending);
         $this->travel(8)->minutes();
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonPath('requires_registration_review', true);
+        $review = $this->postJson('/api/email/verify', ['token' => $token, 'review' => true])->assertOk()->assertJsonPath('requires_registration_review', true);
         $deadline = $pending->fresh()->registration_recovery_expires_at;
         $this->travel(1)->seconds();
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
@@ -3332,7 +3554,7 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
         $this->travel(9)->minutes();
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
         $this->travel(10)->minutes();
         $this->putJson('/api/register/pending', [...$this->registrationPayload(),
             'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
@@ -3441,7 +3663,7 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
         $this->travel(9)->minutes();
         $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
         // An old/malformed stored grant cannot reserve identifiers indefinitely.
         $pending->update(['registration_recovery_expires_at' => now()->addDay()]);
         $this->travel(1)->minutes();

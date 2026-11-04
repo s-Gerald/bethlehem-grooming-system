@@ -59,6 +59,7 @@ class RegistrationMagicLinkService
             }
             $token = Str::random(64);
             $locked->update([
+                ...($locked instanceof PendingCustomerRegistration ? RegistrationPairingService::cleared() : []),
                 'email_verification_token' => hash('sha256', $token),
                 'email_verification_code_hash' => null,
                 'email_verification_expires_at' => $expiresAt,

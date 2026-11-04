@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showState(name) {
-    [stateVerifying, stateSuccess, statePending, stateLoginCode, stateError, document.getElementById("stateLink")]
+    [stateVerifying, stateSuccess, statePending, stateLoginCode, stateError, document.getElementById("stateLink"), document.getElementById("stateConfirmation")]
       .forEach((element) => element.classList.add("hidden"));
     const element = {
       verifying: stateVerifying,
@@ -58,6 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
       loginCode: stateLoginCode,
       error: stateError,
       link: document.getElementById("stateLink"),
+      confirmation: document.getElementById("stateConfirmation"),
     }[name];
     if (element) element.classList.remove("hidden");
   }
@@ -76,29 +77,60 @@ document.addEventListener("DOMContentLoaded", () => {
     const verifyButton = document.getElementById("verifyLinkSubmit");
     const editButton = document.getElementById("verifyLinkEdit");
     const dashboard = document.getElementById("successDashboard");
+    const codeInput = document.getElementById("registrationCode");
+    const codeSubmit = document.getElementById("registrationCodeSubmit");
+    const codeMessage = document.getElementById("registrationCodeMessage");
+    const finishHere = document.getElementById("registrationFinishHere");
+    let confirmationRequired = false;
+    let confirmationExpired = false;
+    window.VerificationCode.bind(codeInput,
+      [...document.getElementById("stateConfirmation").querySelectorAll(".verification-code-cell")], () => {
+        codeInput.setAttribute("aria-invalid", "false");
+        if (!confirmationExpired) { codeMessage.textContent = ""; codeMessage.classList.add("hidden"); }
+      });
     let channel;
     try { channel = new BroadcastChannel("bethlehem-registration"); } catch { /* Dashboard fallback remains available. */ }
     async function confirmHandoff() {
       try {
         const session = await API.registrationSession();
         if (session?.original_tab_confirmed) {
-          successMessage.textContent = "Your account is ready. You can safely close this tab and continue to your dashboard.";
+          successMessage.textContent = "You can close this page.";
           dashboard.classList.add("hidden");
         }
       } catch { /* Keep the working dashboard entry point. */ }
     }
     if (channel) channel.onmessage = event => { if (event.data?.type === "registration-tab-ready") confirmHandoff(); };
-    async function verify(review = false) {
+    async function verify(review = false, confirmationCode) {
       if (verifying || !verificationToken) return;
       verifying = true;
       verifyButton.disabled = true;
       editButton.disabled = true;
+      codeSubmit.disabled = true;
+      codeInput.disabled = true;
+      finishHere.disabled = true;
+      codeSubmit.textContent = "Confirming...";
+      document.getElementById("registrationConfirmationForm").setAttribute("aria-busy", "true");
       verifyButton.textContent = "Verifying your email...";
       verifyButton.setAttribute("aria-busy", "true");
-      showState("verifying");
+      if (!confirmationRequired || review) showState("verifying");
       try {
-        const result = await API.verifyEmail(verificationToken, review);
+        const result = await API.verifyEmail(verificationToken, review, confirmationCode);
         if (departed) return;
+        if (result?.requires_registration_confirmation) {
+          confirmationRequired = true;
+          showState("confirmation");
+          codeInput.disabled = false;
+          codeInput.focus();
+          return;
+        }
+        if (result?.registration_approved) {
+          verificationToken = "";
+          successTitle.textContent = "Email verified!";
+          successMessage.textContent = "You can close this page.";
+          dashboard.classList.add("hidden");
+          showState("success");
+          return;
+        }
         verificationToken = "";
         if (result?.requires_registration_review && result?.registration_recovery_token && result?.details) {
           const details = result.details;
@@ -118,14 +150,23 @@ document.addEventListener("DOMContentLoaded", () => {
         const session = await API.registrationSession();
         if (!session) throw new Error("Email confirmed. Please sign in to continue.");
         window.SignupContext.clear(session.user?.email);
-        successTitle.textContent = "Account created successfully!";
-        successMessage.textContent = "Your account is ready.";
+        successTitle.textContent = "Email verified!";
+        successMessage.textContent = "You can close this page.";
         dashboard.classList.remove("hidden");
         showState("success");
         channel?.postMessage({type: "registration-verified"});
         window.setTimeout(confirmHandoff, 1500);
       } catch (error) {
         if (departed) return;
+        if (confirmationRequired && !review && (error.code === "registration_confirmation_incorrect"
+            || error.code === "registration_confirmation_expired" || !error.status || error.status >= 500 || error.status === 429)) {
+          confirmationExpired = error.code === "registration_confirmation_expired";
+          showState("confirmation");
+          codeInput.setAttribute("aria-invalid", "true");
+          codeMessage.classList.remove("hidden");
+          codeMessage.textContent = !error.status || error.status >= 500 ? "Connection lost. Try again." : error.message;
+          return;
+        }
         if (verificationToken && (!error.status || error.status >= 500)) {
           // A lost response may have committed activation. Restore only using
           // the server's usable account cookie; otherwise retain a retry.
@@ -133,8 +174,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const session = await API.registrationSession();
             if (session) {
               verificationToken = "";
-              successTitle.textContent = "Account created successfully!";
-              successMessage.textContent = "Your account is ready.";
+              successTitle.textContent = "Email verified!";
+              successMessage.textContent = "You can close this page.";
               dashboard.classList.remove("hidden");
               showState("success");
               channel?.postMessage({type: "registration-verified"});
@@ -161,12 +202,31 @@ document.addEventListener("DOMContentLoaded", () => {
         verifying = false;
         verifyButton.disabled = false;
         editButton.disabled = false;
+        codeSubmit.disabled = confirmationExpired;
+        codeInput.disabled = confirmationExpired;
+        finishHere.disabled = false;
+        codeSubmit.textContent = "Confirm Registration";
+        document.getElementById("registrationConfirmationForm").setAttribute("aria-busy", "false");
+        if (confirmationRequired && !confirmationExpired && !document.getElementById("stateConfirmation").classList.contains("hidden")) codeInput.focus();
         verifyButton.textContent = "Verify Email Address";
         verifyButton.setAttribute("aria-busy", "false");
       }
     }
     verifyButton.addEventListener("click", () => verify());
     editButton.addEventListener("click", () => verify(true));
+    finishHere.addEventListener("click", () => verify(true));
+    document.getElementById("registrationConfirmationForm").addEventListener("submit", event => {
+      event.preventDefault();
+      if (verifying || confirmationExpired) return;
+      if (!/^\d{6}$/.test(codeInput.value)) {
+        codeInput.setAttribute("aria-invalid", "true");
+        codeMessage.textContent = "Enter the 6-digit code.";
+        codeMessage.classList.remove("hidden");
+        codeInput.focus();
+        return;
+      }
+      return verify(false, codeInput.value);
+    });
   } else if (loginCodeMode) {
     document.title = "Verify your sign-in | Bethlehem Animal Clinic";
 

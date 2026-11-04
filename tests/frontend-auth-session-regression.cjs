@@ -1416,7 +1416,7 @@ async function testVerificationCredentialsAreScrubbedBeforeUse() {
   const success = verificationPageHarness({search:'',hash:'#token=valid-token'});
   success.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
   await success.dispatch('verifyLinkSubmit','click');
-  assert.equal(success.elements.get('successTitle').textContent,'Account created successfully!');
+  assert.equal(success.elements.get('successTitle').textContent,'Email verified!');
   assert.equal(success.elements.get('successDashboard').classList.contains('hidden'),false);
   assert.doesNotMatch(success.elements.get('successMessage').textContent,/close this tab/);
 
@@ -2547,6 +2547,39 @@ async function testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement() {
   assert.equal(mismatch.API.getCustomerToken(), null);
 }
 
+async function testPairingApiKeepsApprovalSeparateAndRejectsStaleRedemption() {
+  const requests = [];
+  const browser = createBrowser({fetchImpl: async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({url,body,options});
+    if (url.endsWith('/email/verify')) return jsonResponse(200, {registration_approved:true});
+    if (url.endsWith('/status')) return jsonResponse(200, {state:'approved'});
+    return jsonResponse(200, {token:'11|cookie',user:{role:'customer',email:'owner@gmail.com'}});
+  }});
+  browser.sessionStorage.setItem('pendingVerificationEmail','owner@gmail.com');
+  browser.sessionStorage.setItem('pendingRegistrationEditToken','scoped-edit');
+  await browser.API.verifyEmail('email-link',false,'123456');
+  assert.equal(browser.API.getCustomerToken(),null,'Email approval does not create a verifier session');
+  assert.deepEqual(requests[0].body,{token:'email-link',review:false,confirmation_code:'123456'});
+  await browser.API.registrationStatus('owner@gmail.com');
+  assert.equal(browser.API.getCustomerToken(),null);
+  assert.deepEqual(requests[1].body,{registration_token:'scoped-edit'});
+  assert.equal(requests[1].options.cache,'no-store');
+  await browser.API.redeemRegistration('owner@gmail.com');
+  assert.equal(browser.API.getCustomerToken(),'11|cookie');
+
+  let resolveRedemption;
+  const stale = createBrowser({fetchImpl: () => new Promise(resolve => {resolveRedemption=resolve;})});
+  stale.sessionStorage.setItem('pendingVerificationEmail','owner@gmail.com');
+  stale.sessionStorage.setItem('pendingRegistrationEditToken','scoped-edit');
+  const redeeming = stale.API.redeemRegistration('owner@gmail.com');
+  stale.localStorage.setItem('customer_token','12|cookie');
+  stale.localStorage.setItem('user_role','customer');
+  resolveRedemption(jsonResponse(200,{token:'11|cookie',user:{role:'customer',email:'owner@gmail.com'}}));
+  await assert.rejects(redeeming,/session changed/i);
+  assert.equal(stale.API.getCustomerToken(),'12|cookie');
+}
+
 async function testInitialCustomerBrowserSessionMarker() {
   const user = { user_id: 7, role: "customer", first_name: "Gerald", last_name: "Senining" };
   const browser = createBrowser({ fetchImpl: async url => jsonResponse(200,
@@ -2809,6 +2842,7 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   }
   await testInitialCustomerBrowserSessionMarker();
   await testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement();
+  await testPairingApiKeepsApprovalSeparateAndRejectsStaleRedemption();
   await testLoginCodeHonorsRememberMeStorage();
   await testTemporaryVerificationThrottlingPreservesTheBrowserChallenge();
   await testProfileNameLivesAndDiesWithTheSession();

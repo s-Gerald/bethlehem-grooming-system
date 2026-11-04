@@ -27,6 +27,8 @@ class PendingCustomerRegistration extends Model
         'registration_recovery_expires_at',
         'terms_accepted_version',
         'terms_accepted_at',
+        'confirmation_code_ciphertext', 'confirmation_expires_at', 'confirmation_attempts',
+        'registration_approved_at', 'registration_completed_at', 'registration_session_ciphertext',
     ];
 
     protected $hidden = [
@@ -36,6 +38,7 @@ class PendingCustomerRegistration extends Model
         'registration_edit_token_hash',
         'registration_browser_token_hash',
         'registration_recovery_token_hash',
+        'confirmation_code_ciphertext', 'registration_session_ciphertext',
     ];
 
     protected $casts = [
@@ -44,6 +47,12 @@ class PendingCustomerRegistration extends Model
         'email_verification_attempts' => 'integer',
         'registration_recovery_expires_at' => 'datetime',
         'terms_accepted_at' => 'datetime',
+        'confirmation_code_ciphertext' => 'encrypted',
+        'confirmation_expires_at' => 'datetime',
+        'confirmation_attempts' => 'integer',
+        'registration_approved_at' => 'datetime',
+        'registration_completed_at' => 'datetime',
+        'registration_session_ciphertext' => 'encrypted',
     ];
 
     public function scopeUnexpired($query)

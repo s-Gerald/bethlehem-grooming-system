@@ -20,7 +20,7 @@
     <title>Verify Your Email | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="/css/output.css?auth-hardening=20261030" />
     <link rel="stylesheet" href="/css/custom.css?v=site-assets-20261001&release=20261001&grooming=actual-20261026" />
-    <link rel="stylesheet" href="/css/components/verification-code.css?v=magic-links-20261028&otp=progressive-20261030" />
+    <link rel="stylesheet" href="/css/components/verification-code.css?pairing=20261104&v=magic-links-20261028&otp=progressive-20261030" />
   </head>
   <body class="verification-page">
     <main class="verification-layout">
@@ -49,11 +49,18 @@
 
           <div id="statePending" class="hidden">
             <div class="verification-heading">
-              <h1 id="verificationTitle">Registration pending</h1>
-              <p id="verificationDescription">Email delivery is not confirmed.</p>
+              <h1 id="verificationTitle">Check your email</h1>
+              <p id="verificationDescription">Open the verification link to continue.</p>
               <p id="verifyCodeEmail" class="verification-email"></p>
-              <p id="verificationInstruction">Open a verification link you've received to continue.</p>
+              <p id="verificationInstruction"></p>
             </div>
+            <div id="registrationConfirmation" class="hidden verification-confirmation" role="status" aria-live="polite">
+              <p>Confirmation code</p>
+              <p id="registrationConfirmationCode" class="verification-confirmation-code"></p>
+              <p>Enter this code on the verification page.</p>
+              <p>Only confirm if you started this sign-up.</p>
+            </div>
+            <p id="signupWaiting" class="verification-waiting" aria-label="Waiting for verification"><svg viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#spinner-gap"></use></svg></p>
             <form id="signupLinkForm" class="space-y-5">
               <div id="verificationEmailRecovery" class="hidden">
                 <label for="verificationEmail" class="mb-2 block text-sm font-semibold text-slate-800">Email address</label>
@@ -74,6 +81,30 @@
             <button id="verifyLinkSubmit" type="button" class="verification-primary">Verify Email Address</button>
             <div class="verification-resend"><button id="verifyLinkEdit" type="button" class="verification-link">Edit registration details</button></div>
             <p id="verifyLinkMessage" class="hidden verification-message" role="alert"></p>
+          </div>
+
+          <!-- Login code state -->
+          <div id="stateConfirmation" class="hidden">
+            <div class="verification-heading">
+              <h1>Confirm registration</h1>
+              <p id="registrationCodeDescription">Enter the code shown on your sign-up page.</p>
+            </div>
+            <form id="registrationConfirmationForm" class="space-y-5" novalidate>
+              <label for="registrationCode" class="sr-only">Confirmation code</label>
+              <div class="verification-code-cells">
+                <input id="registrationCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]{6}" aria-describedby="registrationCodeDescription registrationCodeMessage registrationCodeWarning" required />
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+                <span class="verification-code-cell" aria-hidden="true"></span>
+              </div>
+              <p id="registrationCodeMessage" class="hidden verification-message" role="alert"></p>
+              <p id="registrationCodeWarning" class="verification-security">Only confirm if you started this sign-up.</p>
+              <button id="registrationCodeSubmit" type="submit" class="verification-primary">Confirm Registration</button>
+            </form>
+            <div class="verification-resend"><button id="registrationFinishHere" type="button" class="verification-link">Finish here instead</button></div>
           </div>
 
           <!-- Login code state -->
@@ -150,11 +181,11 @@
       </div>
     </main>
 
-    <script src="/scripts/api.js?registration=20261104-v2&v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&otp=progressive-20261030&urls=20261103" defer></script>
+    <script src="/scripts/api.js?registration=20261104-v3&v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&otp=progressive-20261030&urls=20261103" defer></script>
     <script src="/scripts/auth/email-delivery.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
     <script src="/scripts/auth/verification-code.js?v=auth-speed-20261018&auth-feedback=20261028-v3&otp=progressive-20261030" defer></script>
-    <script src="/scripts/auth/client/signup-context.js?registration=20261104-v2&v=registration-review-20261029" defer></script>
-    <script src="/scripts/auth/client/signup-verification.js?registration=20261104-v2&v=registration-review-20261029&urls=20261103" defer></script>
-    <script src="/scripts/auth/client/verify-email.js?registration=20261104-v2&v=registration-review-20261029&otp=progressive-20261030&urls=20261103" defer></script>
+    <script src="/scripts/auth/client/signup-context.js?registration=20261104-v3&v=registration-review-20261029" defer></script>
+    <script src="/scripts/auth/client/signup-verification.js?registration=20261104-v3&v=registration-review-20261029&urls=20261103" defer></script>
+    <script src="/scripts/auth/client/verify-email.js?registration=20261104-v3&v=registration-review-20261029&otp=progressive-20261030&urls=20261103" defer></script>
   </body>
 </html>
