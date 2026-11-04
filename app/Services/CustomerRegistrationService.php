@@ -92,7 +92,7 @@ class CustomerRegistrationService
                     'registration_edit_token_hash' => hash('sha256', $credential),
                 ]);
                 $receipt = app(AuthenticationEmailPolicy::class)->send($pending->email,
-                    fn () => app(RegistrationMagicLinkService::class)->issue($pending, allowImmediate: false));
+                    fn () => app(RegistrationMagicLinkService::class)->issue($pending));
                 return response()->json([
                     'success' => true, 'requires_verification' => true, 'registration_state' => 'queued',
                     'message' => 'Verification email queued. Delivery is not confirmed.',

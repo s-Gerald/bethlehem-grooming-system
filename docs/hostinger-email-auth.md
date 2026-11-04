@@ -1,5 +1,170 @@
 # Hostinger email authentication
 
+## Initial registration immediate delivery — November 4, 2026
+
+Initial Create Account requests now allow `RegistrationMagicLinkService::issue()`
+to use the existing immediate authentication-mail mechanism. Previously,
+`CustomerRegistrationService::start()` explicitly disabled it, making the first
+SMTP attempt wait for the database worker even with `AUTH_MAIL_DELIVERY=immediate`.
+A once-per-minute cron can add approximately 0–60 seconds before SMTP starts.
+
+Pending registration, issuance, and the encrypted notification job are saved in
+the same database transaction. Only after the outermost commit does the shared
+delivery service register a termination callback. SMTP runs at termination, never
+inside that transaction. Rollback discards both database work and the callback.
+Successful immediate delivery records `sent`; the retained job is removed by the
+existing worker without another send. A failed immediate attempt records
+`retrying` and leaves the job for the existing worker's retry policy. Both paths
+use the same receipt lock and current issuance checks; canceled, consumed,
+replaced, or expired links are suppressed. Queued mode remains supported.
+
+`processPublicRequest()` still uses `allowImmediate: false`: unauthenticated
+recovery is queued worker processing and must not retain termination callbacks.
+Authorized registration resends and Sign In OTP keep their existing immediate
+behavior. There are no UI, schema, provider, or worker changes in this correction.
+
+### Production deployment and verification for bethlehem-ac.com
+
+These are operator steps; no production configuration, deployment, SMTP send, or
+Hostinger resource was changed locally. Use the existing release process and the
+actual Laravel directory containing `artisan`; do not infer its path from the URL.
+
+1. Deploy `app/Services/CustomerRegistrationService.php` from the corrected
+   `gerald-frontend` release. Keep the existing compatible
+   `RegistrationMagicLinkService`, `AuthenticationMailDelivery`,
+   `TrackAuthenticationMailDelivery`, `VerifyEmailNotification`, and policy code
+   from that same release together. Their implementations are unchanged here.
+   Include the updated `tests/Feature/EmailVerificationTest.php` and documentation
+   in the source release. No asset rebuild, dependency update, or new migration
+   is needed for this correction; verify earlier release prerequisites separately.
+2. Privately confirm the approved cron-only values below. Preserve the existing
+   `APP_KEY`, Brevo credentials, verified sender, HTTPS app/frontend URLs, and
+   database. Leave `AUTH_MAIL_QUEUE` unset unless the existing worker explicitly
+   consumes that named queue. `DB_QUEUE_CONNECTION`, when set, must name the same
+   Laravel database connection as registration issuance.
+
+   ```dotenv
+   AUTH_MAIL_DELIVERY=immediate
+   QUEUE_CONNECTION=database
+   CACHE_STORE=database
+   MAIL_TIMEOUT=30
+   ```
+
+3. From that release directory, use the site's verified PHP CLI binary to rebuild
+   configuration **after** deploying code and any operator-approved `.env`
+   corrections, then signal existing workers:
+
+   ```sh
+   php artisan config:cache
+   php artisan queue:restart
+   ```
+
+   A cron worker starts a fresh Laravel process each run, so subsequent invocations
+   load the release without a persistent daemon restart. The restart signal lets
+   an already-running worker exit after its current job; verify the next existing
+   cron invocation. Do not add a worker or cron, flush application cache, regenerate
+   `APP_KEY`, or bulk retry old authentication failures. Shared receipts, locks,
+   and rate histories must survive deployment. Laravel documents the restart
+   behavior in [queue worker deployment](https://laravel.com/docs/12.x/queues#queue-workers-and-deployment).
+4. Check **effective Laravel configuration**, not just `.env`. Run this read-only
+   command in the deployed root with the same PHP binary/user/environment as the
+   existing cron. It prints selected values and presence booleans, no credentials,
+   keys, recipients, queue payloads, or tokens:
+
+   ```sh
+   php <<'PHP'
+   <?php
+   require 'vendor/autoload.php';
+   $app = require 'bootstrap/app.php';
+   $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+   $db = Illuminate\Support\Facades\DB::getDefaultConnection();
+   $queue = config('queue.connections.database', []);
+   $cache = config('cache.stores.'.config('cache.default'), []);
+   echo json_encode([
+       'configuration_cached' => $app->configurationIsCached(),
+       'auth_delivery' => config('mail.authentication.delivery'),
+       'queue_default' => config('queue.default'),
+       'database_queue_driver' => $queue['driver'] ?? null,
+       'queue_shares_issuance_connection' => ($queue['connection'] ?? $db) === $db,
+       'database_queue_name' => $queue['queue'] ?? 'default',
+       'auth_queue' => config('mail.authentication.queue') ?: '(unset)',
+       'cache_store' => config('cache.default'),
+       'cache_driver' => $cache['driver'] ?? null,
+       'cache_shares_issuance_connection' => ($cache['connection'] ?? $db) === $db,
+       'cache_lock_shares_issuance_connection' => ($cache['lock_connection'] ?? $cache['connection'] ?? $db) === $db,
+       'app_key_configured' => filled(config('app.key')),
+       'mailer' => config('mail.default'),
+       'smtp_host' => config('mail.mailers.smtp.host'),
+       'smtp_port' => config('mail.mailers.smtp.port'),
+       'smtp_scheme' => config('mail.mailers.smtp.scheme'),
+       'smtp_url_override_present' => filled(config('mail.mailers.smtp.url')),
+       'smtp_timeout' => config('mail.mailers.smtp.timeout'),
+       'smtp_login_configured' => filled(config('mail.mailers.smtp.username')),
+       'smtp_key_configured' => filled(config('mail.mailers.smtp.password')),
+       'sender_configured' => filled(config('mail.from.address')),
+   ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), PHP_EOL;
+   PHP
+   ```
+
+   Expect cached `immediate`, database queue/cache, matching issuance connection,
+   the worker's consumed queue, and timeout 30. The code rejects a database queue
+   on another Laravel connection; immediate jobs explicitly use `database` and
+   insert before commit. Verify web and cron resolve the **same release**, private
+   environment/config cache, `APP_KEY`, cache database/tables/lock tables and cache
+   prefix. Presence booleans alone do not prove shared configuration. Never print
+   the full mail/database/app configuration. If a private SMTP URL override is
+   present, review its effective settings privately because it can override fields.
+5. In Brevo, verify the existing SMTP login/key remain valid, transactional
+   sending is enabled, quota is available, and the configured sender/domain is
+   still verified. Confirm the deployed mailer uses Brevo's relay with the existing
+   supported port/TLS settings, without a logging/array failover. See
+   [Brevo SMTP configuration](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP).
+6. Confirm the **web** PHP SAPI's response-flushing support using existing private
+   hosting diagnostics or Hostinger support. The installed Symfony response code
+   calls `fastcgi_finish_request()` or `litespeed_finish_request()` when available;
+   Laravel sends the response before kernel termination. CLI function availability
+   does not establish web support. With a controlled signup, compare browser API
+   response duration with sanitized `sending`/`sent` timestamps. Without effective
+   response flushing (including proxy buffering), the client may wait for SMTP at
+   termination. The existing SMTP timeout bounds socket waits, not total request
+   duration. Immediate SMTP also occupies an existing PHP process until it finishes.
+   Record any hosting limitation; do not add shell detachment or a public endpoint.
+7. Inspect the **existing** once-per-minute hPanel worker's command, last execution
+   and output. Confirm its Laravel path, PHP binary, `database` connection, and
+   queue selection match step 4. Retain its current bounded worker settings and
+   retry policy (SMTP timeout 30, documented worker timeout 45, reservation 90).
+   After a successful immediate signup, confirm the retained job drains on a cron
+   tick without a second message. To exercise worker delivery without breaking
+   production SMTP, use an owner-controlled pending registration after cooldown
+   and request public recovery without the private edit token. Confirm the public
+   processing and mail jobs drain and the replacement message is sent by cron.
+   Inspect only queue counts/ages/attempts and sanitized failed-job summaries;
+   never dump encrypted notification payloads or exception arguments. Simulate
+   immediate SMTP rejection and recovery only in staging, then restore its config
+   and rebuild its configuration cache.
+8. Correlate `Authentication mail delivery` log entries by opaque `delivery_id`:
+   `queued.request_ms` measures time to queue submission; `sending.elapsed_ms`
+   includes the wait to the attempt; `sent.transport_ms` measures the transport.
+   Successful immediate registration should no longer wait exclusively for the
+   next cron tick. `retrying` retains fallback; `failed` means worker exhaustion;
+   `superseded` means invalid work was skipped. Compare UTC/offset-aware log times
+   with Brevo transactional accepted/deferred/delivered/bounced/blocked events
+   and the controlled inbox headers. `sent` is SMTP acceptance, not inbox arrival.
+9. Using dedicated accounts/inboxes, verify a still-valid pre-deployment magic
+   link, a fresh signup link, and an authorized resend. The old link must fail
+   after replacement; the current one must verify once and preserve the existing
+   original-browser/cross-device approval or review/session handoff. Expired,
+   canceled, and consumed links must fail. This release does not extend deadlines
+   or restore obsolete signup OTP links. Verify customer/staff/admin Sign In OTP
+   and normal queued notifications as a smoke check, keeping credentials out of
+   reports.
+
+Local regression tests use PHP 8.4, SQLite, encrypted database jobs and array or
+failing transports. They do not establish production PHP flushing, MySQL timing,
+Brevo acceptance, inbox latency, or PHP capacity. Ordinary SMTP ambiguity remains:
+a process crash after remote acceptance but before recording `sent` can result
+in a retry; exactly-once inbox delivery is not guaranteed.
+
 > October 30 local hardening, the two new forward migrations, purpose/provider quotas, source-aware OTP restrictions and future deployment/edge steps are documented in [authentication-security-hardening.md](authentication-security-hardening.md). Both migrations were applied only to localhost. No live deployment or hosting change was made. The October 29 note below that no migration was needed applies only to that earlier release.
 
 > Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The operational and test notes below describe earlier releases and are retained as history; their signup OTP, 45-second resend and repeatable-confirmation descriptions are superseded.
@@ -16,7 +181,7 @@ Alongside the existing queue worker, keep one scheduler cron every minute, using
 
 Check existing hPanel jobs before adding this command. `php artisan schedule:list` should show one `pending-customer-registrations:prune` task every five minutes with overlap protection. The existing creation-time index supports cleanup; it never deletes verified accounts. Expiration is enforced by the API and queue guards even if cron is delayed. Only an already email-proven ten-minute review grant can briefly outlive the hour, with an absolute pending age limit of 70 minutes.
 
-Public signup has two queued stages: registration processing and mail delivery. Workers discard public work older than an hour, and skip expired, consumed or superseded mail. They also skip mail with less than 60 seconds of validity remaining. Emails state the actual capped expiration timestamp in Asia/Manila, so queue delays do not promise another 30 minutes. Verify the configured `AUTH_MAIL_QUEUE` is consumed and inspect worker/SMTP acceptance on the actual host. No live Hostinger configuration or production data was changed for this release.
+Initial signup now creates its pending registration in the web request and supports immediate delivery as described above. Public recovery still has two queued stages: recovery processing and mail delivery. Workers discard public work older than an hour, and skip expired, consumed or superseded mail. They also skip mail with less than 60 seconds of validity remaining. Emails state the actual capped expiration timestamp in Asia/Manila, so queue delays do not promise another 30 minutes. Verify the configured `AUTH_MAIL_QUEUE` is consumed and inspect worker/SMTP acceptance on the actual host. No live Hostinger configuration or production data was changed for this release.
 
 The test deployment is https://darkorchid-horse-104804.hostingersite.com/.
 Keep Laravel notifications, the encrypted database queue, and the existing Brevo
