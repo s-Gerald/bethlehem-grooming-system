@@ -45,7 +45,7 @@ async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
   assert.equal(second.API.hasAuthenticatedSession('customer'), false);
   assert.equal(first.API.readCustomerCache('/me'), null);
   assert.equal(second.API.readCustomerCache('/me'), null);
-  await first.API.checkRememberedCustomerSession();
+  await first.API.checkRememberedSession();
   assert.equal(requests.length, 1, 'Password change neither logs out again nor restores a remembered device.');
   assert.equal(requests[0].options.cache, 'no-store');
   assert.match(second.replacements.at(-1), /sign-in$/);
@@ -1645,6 +1645,140 @@ function rememberedSignInPage(browser) {
 }
 
 const rememberedCustomer = {customer_token: '701|cookie', user_role: 'customer', 'bethlehem.auth.account_id': '7'};
+const rememberedStaff = {admin_token: '801|cookie', user_role: 'staff', 'bethlehem.auth.account_id': '8'};
+
+function staffSession(role = 'staff', locked = false) {
+  return {...activeSession(), role, user_id: 8, locked,
+    idle_at: new Date(Date.now() + (locked ? -1 : 29 * 60000)).toISOString(),
+    expires_at: new Date(Date.now() + 11 * 3600000).toISOString()};
+}
+
+async function testRememberedStaffSignInValidatesExistingSessionWithoutRestoration() {
+  for (const [role, subrole] of [['admin', null], ['staff', 'grooming_receptionist'],
+    ['staff', 'clinic_receptionist'], ['staff', 'veterinarian']]) {
+    for (const locked of [false, true]) {
+      const calls = [];
+      const browser = createBrowser({local: {...rememberedStaff, user_role: role},
+        fetchImpl: async (url, options) => {
+          calls.push({url, options});
+          return jsonResponse(200, {...staffSession(role, locked), staff_subrole: subrole});
+        }});
+      const page = rememberedSignInPage(browser);
+      assert.equal(page.element('signInBtnLabel').textContent, 'Checking your session...');
+      assert.equal(page.element('sharedSignInSubmit').disabled, false);
+      assert.deepEqual(browser.replacements, [], 'Local references cannot authenticate staff');
+      await turn();
+      assert.deepEqual(browser.replacements, ['/admin/dashboard'], `${subrole || role}: locked=${locked}`);
+      assert.equal(calls.length, 1, 'Staff recognition must neither restore nor create a session');
+      assert.ok(calls[0].url.endsWith('/session'));
+      assert.equal(calls[0].options.method, 'GET');
+      assert.equal(calls[0].options.headers.Authorization, 'Bearer 801|cookie');
+      assert.equal(calls[0].options.credentials, 'include');
+      assert.equal(calls[0].options.cache, 'no-store');
+      assert.equal(browser.API.getAdminToken(), '801|cookie');
+    }
+  }
+}
+
+async function testRememberedStaffFailuresKeepManualSignInAvailable() {
+  for (const failure of ['offline', 401, 403, 419, 429, 500, 'session_replaced',
+    'wrong-account', 'wrong-role', 'missing-identity', 'missing-lock', 'invalid-time', 'expired']) {
+    let calls = 0;
+    const browser = createBrowser({local: rememberedStaff, fetchImpl: async () => {
+      calls++;
+      if (failure === 'offline') throw new TypeError('offline');
+      if (typeof failure === 'number') return jsonResponse(failure, {code: failure === 403 ? 'account_disabled' : 'session_expired'});
+      if (failure === 'session_replaced') return jsonResponse(401, {code: failure});
+      const data = staffSession();
+      if (failure === 'wrong-account') data.user_id = 99;
+      if (failure === 'wrong-role') data.role = 'admin';
+      if (failure === 'missing-identity') delete data.user_id;
+      if (failure === 'missing-lock') delete data.locked;
+      if (failure === 'invalid-time') data.idle_at = 'invalid';
+      if (failure === 'expired') data.expires_at = data.server_now;
+      return jsonResponse(200, data);
+    }});
+    const page = rememberedSignInPage(browser);
+    await turn();
+    assert.equal(calls, 1, failure);
+    assert.deepEqual(browser.replacements, [], failure);
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+    assert.equal(page.element('sharedSignInStatus').textContent, '');
+    assert.equal(page.element('sharedSignInMessage').textContent, '');
+    assert.equal(page.element('sessionReplacedAlert').hidden, failure !== 'session_replaced');
+    if (['offline', 419, 429, 500].includes(failure)) assert.equal(browser.API.getAdminToken(), '801|cookie');
+  }
+}
+
+async function testRememberedStaffSkipsNonpersistentAndBlockedSessions() {
+  for (const state of [
+    {session: rememberedStaff},
+    {local: {...rememberedStaff, 'bethlehem.auth.account_id': ''}},
+    {local: rememberedStaff, session: rememberedCustomer},
+    {local: rememberedStaff, session: {pending_login_poll_token: 'new-otp'}},
+    {local: {...rememberedStaff, 'bethlehem.auth.signed_out': '1'}},
+    {local: {...rememberedStaff, 'bethlehem.auth.logout_pending': JSON.stringify({id: 'logout', token: '801|cookie'})}},
+  ]) {
+    let calls = 0;
+    const browser = createBrowser({...state, fetchImpl: async () => { calls++; return jsonResponse(200, staffSession()); }});
+    const page = rememberedSignInPage(browser);
+    await turn();
+    assert.equal(calls, 0);
+    assert.deepEqual(browser.replacements, []);
+    assert.equal(page.element('signInBtnLabel').textContent, '');
+    assert.equal(page.element('sharedSignInSubmit').disabled, false);
+  }
+  const browser = createBrowser({local: rememberedStaff, fetchImpl: () => { throw new Error('Prefilled form must skip checking'); }});
+  signInPageHarness({api: browser.API, prefilled: true});
+  await turn();
+  assert.deepEqual(browser.replacements, []);
+}
+
+async function testRememberedStaffDisregardsObsoleteResponses() {
+  for (const interaction of ['pointerdown', 'keydown', 'input', 'change', 'submit', 'api-sign-in',
+    'pagehide', 'new-login', 'account-change', 'role-change', 'logout', 'cross-tab-logout']) {
+    for (const rejected of [false, true]) {
+      let complete;
+      const browser = createBrowser({local: rememberedStaff, fetchImpl: async url => {
+        if (url.endsWith('/sign-in')) return jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'new-otp'});
+        return new Promise(resolve => { complete = resolve; });
+      }});
+      const page = rememberedSignInPage(browser);
+      await turn();
+      if (['pointerdown', 'keydown', 'input', 'change'].includes(interaction)) page.element('signin').handlers[interaction]();
+      if (interaction === 'submit') await page.submit();
+      if (interaction === 'api-sign-in') await browser.API.signIn('new@example.com', 'password');
+      if (interaction === 'pagehide') page.lifecycle.pagehide();
+      if (interaction === 'new-login') browser.API.setAdminToken('900|cookie');
+      if (interaction === 'account-change') browser.localStorage.setItem('bethlehem.auth.account_id', '9');
+      if (interaction === 'role-change') browser.localStorage.setItem('user_role', 'admin');
+      if (interaction === 'logout') browser.API.clearAuthState();
+      if (interaction === 'cross-tab-logout') browser.dispatch('storage', {storageArea: browser.localStorage,
+        key: 'bethlehem.auth.logout', newValue: JSON.stringify({role: 'staff', sessionId: 'staff:801', reason: 'logout'})});
+      complete(rejected ? jsonResponse(401, {code: 'session_replaced'}) : jsonResponse(200, staffSession('staff', true)));
+      await turn();
+      assert.equal(browser.replacements.includes('/admin/dashboard'), false, `${interaction}: rejected=${rejected}`);
+      if (interaction === 'new-login') assert.equal(browser.API.getAdminToken(), '900|cookie');
+      if (interaction === 'account-change') assert.equal(browser.localStorage.getItem('bethlehem.auth.account_id'), '9');
+      if (['submit', 'api-sign-in'].includes(interaction)) assert.equal(browser.API.hasPendingLoginConfirmation(), true);
+    }
+  }
+}
+
+async function testCachedCustomerSignInCheckKeepsItsOriginalContract() {
+  const customer = createBrowser({local: rememberedCustomer, fetchImpl: async () => jsonResponse(200, activeSession())});
+  assert.equal(await customer.API.checkRememberedCustomerSession(), true);
+  const staff = createBrowser({local: rememberedStaff, fetchImpl: () => { throw new Error('Customer-only check must skip staff'); }});
+  assert.equal(staff.API.checkRememberedCustomerSession(), null);
+  let complete;
+  const cancelled = createBrowser({local: rememberedCustomer,
+    fetchImpl: () => new Promise(resolve => { complete = resolve; })});
+  const check = cancelled.API.checkRememberedCustomerSession();
+  await turn();
+  cancelled.API.cancelRememberedCustomerSessionCheck();
+  complete(jsonResponse(200, activeSession()));
+  assert.equal(await check, false);
+}
 
 async function testRememberedCustomerSignInVerifiesOrRestoresBeforeRedirecting() {
   for (const expired of [false, true]) {
@@ -2800,6 +2934,11 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
 }
 
 (async () => {
+  await testRememberedStaffSignInValidatesExistingSessionWithoutRestoration();
+  await testRememberedStaffFailuresKeepManualSignInAvailable();
+  await testRememberedStaffSkipsNonpersistentAndBlockedSessions();
+  await testRememberedStaffDisregardsObsoleteResponses();
+  await testCachedCustomerSignInCheckKeepsItsOriginalContract();
   await testRememberedCustomerSignInVerifiesOrRestoresBeforeRedirecting();
   await testOptionalSignInCheckSkipsUnrelatedAndBlockedFlows();
   await testOptionalSignInFailuresKeepTheFormUsable();

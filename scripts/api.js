@@ -1051,25 +1051,61 @@ var API = (() => {
   function eligibleRememberedSignInSession() {
     const session = getAuthSession();
     if (!isSignInPage() || restorationIsBlocked() || pendingLogout() || hasPendingLoginConfirmation()
-      || rawAdminToken() || isAdminRole(safeStorageGet(sessionStorage, USER_ROLE_KEY))
       || new URLSearchParams(window.location.search).get('logout') === '1') return null;
-    return session?.role === 'customer' && session.persistent && session.accountId ? session : null;
+    if (session?.role === 'customer' && (rawAdminToken() || isAdminRole(safeStorageGet(sessionStorage, USER_ROLE_KEY)))) return null;
+    return session?.persistent && session.accountId ? session : null;
   }
 
-  function cancelRememberedCustomerSessionCheck() {
+  function cancelRememberedSessionCheck() {
     if (rememberedSignInCheck) rememberedSignInCheck.cancelled = true;
   }
 
+  // Cached sign-in scripts still expect a customer-only boolean result.
   function checkRememberedCustomerSession() {
+    if (eligibleRememberedSignInSession()?.role !== 'customer') return null;
+    return checkRememberedSession()?.then(destination => !!destination);
+  }
+
+  function checkRememberedSession() {
     if (rememberedSignInCheck) return rememberedSignInCheck.promise;
     const session = eligibleRememberedSignInSession();
     if (!session) return null; // No optional request or waiting state for unrelated sign-in flows.
     const check = {cancelled: false, accountId: session.accountId};
     rememberedSignInCheck = check;
-    check.promise = initializeCustomerSession(false, check).finally(() => {
+    const validation = session.role === 'customer'
+      ? initializeCustomerSession(false, check) : checkRememberedStaffSession(session, check);
+    check.promise = validation.then(verified => !check.cancelled && verified
+      ? appPath(session.role === 'customer' ? 'account' : 'admin/dashboard') : null).finally(() => {
       if (rememberedSignInCheck === check) rememberedSignInCheck = null;
     });
     return check.promise;
+  }
+
+  async function checkRememberedStaffSession(session, check) {
+    const revision = sessionRevision;
+    const unchanged = () => {
+      const current = eligibleRememberedSignInSession();
+      return !check.cancelled && revision === sessionRevision && current?.token === session.token
+        && current.role === session.role && current.accountId === session.accountId;
+    };
+    try {
+      const status = await networkRequest('GET', '/session', null, session.token,
+        {cache: 'no-store', suppressAuthRedirect: true});
+      if (!unchanged() || status.role !== session.role || String(status.user_id) !== session.accountId
+        || typeof status.locked !== 'boolean') return false;
+      const serverNow = Date.parse(status.server_now);
+      const idleAt = Date.parse(status.idle_at);
+      const expiresAt = Date.parse(status.expires_at);
+      // A locked session returns to the protected dashboard's existing gate.
+      // Recognition never unlocks, reports activity, or issues a new token.
+      return Number.isFinite(serverNow) && Number.isFinite(idleAt) && Number.isFinite(expiresAt)
+        && expiresAt > serverNow;
+    } catch (error) {
+      if (unchanged() && (error.status === 401 || (error.status === 403 && INVALID_SESSION_CODES.has(error.code)))) {
+        invalidateSession(session.role, error.code === 'session_replaced' ? error.code : 'expired');
+      }
+      return false;
+    }
   }
 
   function initializeCustomerSession(force = false, signInCheck = null) {
@@ -2157,7 +2193,7 @@ var API = (() => {
     // Accepts email, local/international mobile phone, or username. Saves to the
     // correct public-reference key based on role. The backend owns cookie
     // persistence and every inactivity/absolute deadline.
-    cancelRememberedCustomerSessionCheck();
+    cancelRememberedSessionCheck();
     if (pendingLogout()) {
       await retryPendingLogout();
     }
@@ -3658,8 +3694,10 @@ var API = (() => {
     getBaseUrl,
     waitForSessionVerification,
     waitForCustomerSession,
+    checkRememberedSession,
+    cancelRememberedSessionCheck,
     checkRememberedCustomerSession,
-    cancelRememberedCustomerSessionCheck,
+    cancelRememberedCustomerSessionCheck: cancelRememberedSessionCheck,
     syncSessionState,
     retryPendingLogout,
     readAdminCache,

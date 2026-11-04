@@ -100,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentIdentifier = () => identifierInput.value.trim().toLowerCase();
   let checkingSession = false;
   function cancelSessionCheck() {
-    API.cancelRememberedCustomerSessionCheck?.();
+    API.cancelRememberedSessionCheck?.();
     if (!checkingSession) return;
     checkingSession = false;
     setBusyState(busy);
@@ -223,14 +223,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const sessionCheck = !identifierInput.value && !passwordInput.value
-    ? API.checkRememberedCustomerSession?.() : null;
+    ? API.checkRememberedSession?.() : null;
   if (sessionCheck) {
     checkingSession = true;
     const label = document.getElementById('signInBtnLabel');
     if (label) label.textContent = 'Checking your session...';
     if (statusBox) statusBox.textContent = 'Checking your session...';
-    sessionCheck.then(verified => {
-      if (checkingSession && verified) window.location.replace('/account');
+    sessionCheck.then(destination => {
+      if (checkingSession && destination) window.location.replace(destination);
     }).catch(() => { /* An optional check must leave manual sign-in available. */ }).finally(() => {
       if (!checkingSession) return;
       cancelSessionCheck();

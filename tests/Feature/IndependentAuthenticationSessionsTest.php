@@ -266,17 +266,40 @@ class IndependentAuthenticationSessionsTest extends TestCase
 
     public static function privilegedRememberChoices(): array
     {
-        return [['admin', false], ['admin', true], ['clinic_receptionist', false], ['clinic_receptionist', true]];
+        return array_merge(...array_map(fn ($role) => [[$role, false], [$role, true]],
+            ['admin', 'clinic_receptionist', 'grooming_receptionist', 'veterinarian']));
     }
 
     #[DataProvider('privilegedRememberChoices')]
     public function test_privileged_checkbox_never_changes_lock_or_absolute_expiration(string $role, bool $remember): void
     {
+        $this->travelTo(now()->startOfSecond());
+        if ($role === 'veterinarian') {
+            User::create(['first_name' => 'Vet', 'last_name' => 'Test', 'username' => $role,
+                'email' => "$role@example.test", 'phone' => '0917000040', 'role' => 'staff',
+                'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian',
+                'password_hash' => Hash::make('SessionTest!123'), 'email_verified_at' => now()]);
+        }
         $old = $this->login($role, $remember);
-        $this->travel(30)->minutes();
+        $user = User::where('email', "$role@example.test")->firstOrFail();
+        $deadline = now()->addHours(12)->toIso8601String();
+        $cookieExpiry = $remember ? now()->addHours(12)->timestamp : 0;
+        $this->travel(29)->minutes();
+        $active = $this->requestAs($old, 'GET', '/api/session')->assertOk()
+            ->assertJsonPath('role', $user->role)->assertJsonPath('user_id', $user->user_id)
+            ->assertJsonPath('locked', false)->assertJsonPath('expires_at', $deadline);
+        $this->assertSame($cookieExpiry, $this->accountSessionCookie($active)->getExpiresTime());
+        $this->travel(1)->minutes();
+        $locked = $this->requestAs($old, 'GET', '/api/session')->assertOk()
+            ->assertJsonPath('role', $user->role)->assertJsonPath('user_id', $user->user_id)
+            ->assertJsonPath('locked', true)->assertJsonPath('expires_at', $deadline);
+        $this->assertSame($cookieExpiry, $this->accountSessionCookie($locked)->getExpiresTime());
         $this->requestAs($old, 'GET', '/api/me')->assertStatus(423);
         $this->restoreDevice('', $this->browserCookies[$old])->assertUnauthorized();
-        $this->requestAs($old, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk();
+        $this->requestAs($old, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk()
+            ->assertJsonPath('locked', false)->assertJsonPath('expires_at', $deadline);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        Notification::assertSentTimes(ConfirmLoginNotification::class, 1);
         $this->travel(11)->hours();
         $this->travel(30)->minutes();
         $this->requestAs($old, 'GET', '/api/session')->assertUnauthorized();
