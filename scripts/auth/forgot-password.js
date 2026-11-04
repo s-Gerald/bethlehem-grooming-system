@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const codeCells = [...document.querySelectorAll(".verification-code-cell")];
   const resend = document.getElementById("resendCode");
   const emailMessage = document.getElementById("forgotPasswordMessage");
+  const createAccount = document.getElementById("passwordResetCreateAccount");
+  let emailRevision = 0;
   const codeMessage = document.getElementById("verifyCodeMessage");
   const newPasswordMessage = document.getElementById("newPasswordMessage");
   const confirmPasswordMessage = document.getElementById("confirmPasswordMessage");
@@ -38,10 +40,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let timer = null;
   let busy = false;
   let completed = false;
+  let departed = false;
+  let journey = 0;
 
-  // Only recovery credentials and deadlines survive reloads; never passwords or OTPs.
+  // Only a reload may resume this journey. Links and history navigation start fresh.
   try {
-    const saved = JSON.parse(sessionStorage.getItem(recoveryKey) || "null");
+    const reloading = window.performance?.getEntriesByType("navigation")[0]?.type === "reload";
+    if (!reloading) sessionStorage.removeItem(recoveryKey);
+    const saved = reloading ? JSON.parse(sessionStorage.getItem(recoveryKey) || "null") : null;
     if (saved && typeof saved.requestedEmail === "string" && ["email", "confirmation", "code", "password"].includes(saved.step)) {
       ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step } = saved);
       emailInput.value = requestedEmail;
@@ -57,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
   } catch { /* Storage is optional; server-side limits remain authoritative. */ }
 
   function saveRecovery() {
+    if (departed) return;
     try {
       sessionStorage.setItem(recoveryKey, JSON.stringify({
         requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step,
@@ -64,14 +71,14 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch { /* Continue in memory when storage is unavailable. */ }
   }
 
-  installVisibilityToggle("toggleNewPassword", password, ".new-password-icon-closed", ".new-password-icon-open", "new password");
-  installVisibilityToggle("toggleConfirmNewPassword", confirmation, ".confirm-password-icon-closed", ".confirm-password-icon-open", "password confirmation");
+  const hidePassword = installVisibilityToggle("toggleNewPassword", password, ".new-password-icon-closed", ".new-password-icon-open", "new password");
+  const hideConfirmation = installVisibilityToggle("toggleConfirmNewPassword", confirmation, ".confirm-password-icon-closed", ".confirm-password-icon-open", "password confirmation");
 
   function showStep(next) {
     step = next;
     const content = {
       email: ["Forgot Password", "Enter your email address to request a verification code."],
-      confirmation: ["Check Your Email", "If you receive a code, enter it to continue."],
+      confirmation: ["Check Your Email", "Check your email for a verification code."],
       code: ["Check Your Email", ""],
       password: ["Create New Password", "Set a strong password to secure your account."],
     }[next];
@@ -86,7 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
     codeForm.classList.toggle("hidden", next !== "code");
     passwordForm.classList.toggle("hidden", next !== "password");
     back.classList.toggle("hidden", !["confirmation", "code"].includes(next));
-    document.getElementById("registrationRecovery").classList.toggle("hidden", !["email", "confirmation"].includes(next));
     if (next === "confirmation") enterCode.focus();
     if (next === "code") codeInput.focus();
     if (next === "password") password.focus();
@@ -134,7 +140,24 @@ document.addEventListener("DOMContentLoaded", () => {
     setFieldError(confirmation, confirmPasswordMessage);
     showStep("email");
     setError(emailMessage, message);
+    createAccount.classList.toggle("hidden", true);
     saveRecovery();
+  }
+
+  function abandonRecovery() {
+    requestedEmail = "";
+    maskedEmail = "";
+    resendUntil = verifyUntil = resetUntil = 0;
+    busy = false;
+    emailInput.value = "";
+    verifyEmail.textContent = "";
+    setError(codeMessage);
+    codeInput.setAttribute("aria-invalid", "false");
+    emailInput.setAttribute("aria-invalid", "false");
+    hidePassword();
+    hideConfirmation();
+    restartRecovery("");
+    updateControls();
   }
 
   function tick() {
@@ -188,56 +211,84 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault();
     if (busy || step !== "email" || emailSubmit.disabled) return;
     const email = emailInput.value.trim().toLowerCase();
-    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError(emailMessage, "Enter a valid email address.");
+      emailInput.setAttribute("aria-invalid", "true");
+      emailInput.focus();
+      return;
+    }
+    const submittedEmailRevision = emailRevision;
+    createAccount.classList.toggle("hidden", true);
+    emailInput.setAttribute("aria-invalid", "false");
     if (email !== requestedEmail) failedAttempts = 0;
     requestedEmail = email;
+    const currentJourney = journey;
     busy = true;
     setError(emailMessage);
     updateControls();
     try {
-      acceptRequest(await API.requestPasswordReset(requestedEmail), "confirmation");
+      const response = await API.requestPasswordReset(requestedEmail);
+      if (currentJourney !== journey || submittedEmailRevision !== emailRevision) return;
+      acceptRequest(response, "confirmation");
     } catch (error) {
-      setError(emailMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
+      if (currentJourney !== journey) return;
+      if (submittedEmailRevision !== emailRevision) return;
+      const accountStatus = ["account_not_found", "password_reset_unavailable"].includes(error?.code);
+      setError(emailMessage, accountStatus ? error.message : error?.status === 429 ? "Too many requests. Please wait before trying again."
+        : error?.status === 422 ? "Enter a valid email address."
         : error?.status === 0 ? error.message : "Couldn't request a code. Try again.");
+      createAccount.classList.toggle("hidden", error?.code !== "account_not_found");
+      emailInput.setAttribute("aria-invalid", String(accountStatus || error?.status === 422));
+      if (accountStatus || error?.status === 422) emailInput.focus();
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
       saveRecovery();
       startTimer();
     } finally {
-      busy = false;
-      tick();
-      if (step === "confirmation") enterCode.focus();
+      if (currentJourney === journey) {
+        busy = false;
+        tick();
+        if (step === "confirmation") enterCode.focus();
+      }
     }
   });
 
   resend.addEventListener("click", async () => {
     if (step !== "code" || resetGrant || resend.disabled || busy || !requestedEmail) return;
+    const currentJourney = journey;
     busy = true;
     otp.clear();
     setError(codeMessage);
     updateControls();
     try {
-      acceptRequest(await API.requestPasswordReset(requestedEmail));
+      const response = await API.requestPasswordReset(requestedEmail);
+      if (currentJourney !== journey) return;
+      acceptRequest(response);
     } catch (error) {
+      if (currentJourney !== journey) return;
       setError(codeMessage, error?.status === 429 ? "Too many requests. Please wait before trying again."
         : "Couldn't request a code. Try again.");
       resendUntil = Date.now() + (error?.retryAfter || 0) * 1000;
       saveRecovery();
       startTimer();
     } finally {
-      busy = false;
-      tick();
-      if (!codeInput.disabled) codeInput.focus();
+      if (currentJourney === journey) {
+        busy = false;
+        tick();
+        if (!codeInput.disabled) codeInput.focus();
+      }
     }
   });
 
   codeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (busy || step !== "code" || codeSubmit.disabled || resetGrant) return;
+    const currentJourney = journey;
     setError(codeMessage);
     busy = true;
     updateControls();
     try {
       const response = await API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim());
+      if (currentJourney !== journey) return;
       resetGrant = response.token;
       expiresAt = Date.now() + response.expires_in * 1000;
       otp.clear();
@@ -245,6 +296,7 @@ document.addEventListener("DOMContentLoaded", () => {
       confirmation.value = "";
       showStep("password");
     } catch (error) {
+      if (currentJourney !== journey) return;
       if (error?.status === 422) failedAttempts++;
       if (failedAttempts >= 5) resendUntil = Math.max(resendUntil, expiresAt);
       if (error?.retryAfter) verifyUntil = Date.now() + error.retryAfter * 1000;
@@ -254,19 +306,27 @@ document.addEventListener("DOMContentLoaded", () => {
         : "Invalid or expired code. Check it or request a new code.");
       codeInput.setAttribute("aria-invalid", error?.status === 422 ? "true" : "false");
     } finally {
-      busy = false;
-      saveRecovery();
-      startTimer();
+      if (currentJourney === journey) {
+        busy = false;
+        saveRecovery();
+        startTimer();
+      }
     }
   });
 
   password.addEventListener("input", () => setFieldError(password, newPasswordMessage));
   confirmation.addEventListener("input", () => setFieldError(confirmation, confirmPasswordMessage));
-  emailInput.addEventListener("input", () => setError(emailMessage));
+  emailInput.addEventListener("input", () => {
+    emailRevision++;
+    setError(emailMessage);
+    createAccount.classList.toggle("hidden", true);
+    emailInput.setAttribute("aria-invalid", "false");
+  });
 
   passwordForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (completed || busy || step !== "password" || passwordSubmit.disabled) return;
+    const currentJourney = journey;
     if (!resetGrant || remaining(expiresAt) === 0) {
       restartRecovery("Your reset session expired. Request a new code.");
       tick();
@@ -285,6 +345,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateControls();
     try {
       await API.resetPassword(resetGrant, password.value, confirmation.value);
+      if (currentJourney !== journey) return;
       completed = true;
       resetGrant = "";
       expiresAt = 0;
@@ -294,6 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage unavailable. */ }
       window.location.replace("/sign-in?password_reset=1");
     } catch (error) {
+      if (currentJourney !== journey) return;
       const message = firstApiError(error);
       if (error?.expired) restartRecovery("Your reset session expired. Request a new code.");
       else if (error?.errors?.password_confirmation) setFieldError(confirmation, confirmPasswordMessage, error.errors.password_confirmation[0] || message);
@@ -303,17 +365,28 @@ document.addEventListener("DOMContentLoaded", () => {
       if (error?.retryAfter) resetUntil = Date.now() + error.retryAfter * 1000;
       saveRecovery();
     } finally {
-      busy = false;
-      if (!completed) startTimer();
+      if (currentJourney === journey) {
+        busy = false;
+        if (!completed) startTimer();
+      }
     }
   });
 
-  window.addEventListener("pagehide", stopTimer);
-  window.addEventListener("pageshow", () => {
-    // A completed reset must not be restored from the browser's back/forward cache.
-    try {
-      if (completed || (resetGrant && !sessionStorage.getItem(recoveryKey))) restartRecovery("");
-    } catch { /* In-memory recovery remains available. */ }
+  window.addEventListener("pagehide", () => {
+    departed = true;
+    journey++;
+    stopTimer();
+    // Leave the stored snapshot for a true reload; scrub the document before caching.
+    abandonRecovery();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (departed || completed || event?.persisted) {
+      journey++;
+      departed = true;
+      abandonRecovery();
+      try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage unavailable. */ }
+      departed = false;
+    }
     startTimer();
   });
   showStep(resetGrant ? "password" : step);
@@ -351,12 +424,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const button = document.getElementById(buttonId);
     const closedIcon = document.querySelector(closedSelector);
     const openIcon = document.querySelector(openSelector);
-    button.addEventListener("click", () => {
-      const show = input.type === "password";
+    function setVisibility(show) {
       input.type = show ? "text" : "password";
       button.setAttribute("aria-label", `${show ? "Hide" : "Show"} ${label}`);
       closedIcon.classList.toggle("hidden", show);
       openIcon.classList.toggle("hidden", !show);
-    });
+    }
+    button.addEventListener("click", () => setVisibility(input.type === "password"));
+    return () => setVisibility(false);
   }
 });

@@ -2147,7 +2147,7 @@ var API = (() => {
     // POST /api/register
     // payload: { first_name, last_name, username?, email, phone, password, password_confirmation }
     // Registration establishes a session only after deliberate magic-link verification.
-    const data = await request("POST", "/register", {...payload, registration_token: pendingRegistrationToken(payload.email) || undefined});
+    const data = await request("POST", "/register", payload);
     if (data.registration_token) storeEmailDelivery("registration", data.email_delivery_token);
     return data;
   }
@@ -2242,8 +2242,8 @@ var API = (() => {
     return data;
   }
 
-  async function requestRegistrationReview(email) {
-    return request("POST", "/email/registration/review", { email });
+  async function cancelRegistration(token) {
+    return request("POST", "/register/cancel", {registration_token: token});
   }
 
   async function verifyEmail(token, review = false) {
@@ -2310,8 +2310,8 @@ var API = (() => {
 
   function pendingRegistrationToken(email) {
     try {
-      const details = JSON.parse(safeStorageGet(sessionStorage, "pendingSignupDetails") || "null");
-      return details?.email?.toLowerCase() === email?.toLowerCase()
+      const activeEmail = safeStorageGet(sessionStorage, "pendingVerificationEmail");
+      return activeEmail?.toLowerCase() === email?.toLowerCase()
         ? safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || "" : "";
     } catch { return ""; }
   }
@@ -3882,7 +3882,7 @@ var API = (() => {
     getAdminVaccinationOptions,
     // Email verification
     verifyEmail,
-    requestRegistrationReview,
+    cancelRegistration,
     registrationSession,
     updatePendingRegistration,
     adminGetPetProfile,

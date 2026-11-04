@@ -21,21 +21,34 @@ class PasswordResetController extends Controller
 
         $publicStatus = app(\App\Services\AuthenticationEmailPolicy::class)->publicRecoveryRequest($data['email']);
         try {
-            $passwordResets->sendCode($data['email']);
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException) {
-            // Destination restrictions cannot become a public account-status oracle.
+            $result = $passwordResets->sendCode($data['email']);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
+            return response()->json(['success' => false, 'code' => 'email_delivery_failed',
+                'message' => "Couldn't request a code. Try again."], 503)->header('Cache-Control', 'no-store');
+        }
+
+        if ($result['status'] === 'limited') {
+            return response()->json(['success' => false, 'code' => 'email_rate_limited',
+                'message' => 'Too many requests. Please wait before trying again.',
+                'retry_after' => $result['retry_after']], 429)->header('Retry-After', (string) $result['retry_after']);
+        }
+        if ($result['status'] !== 'queued') {
+            $message = $result['status'] === 'account_not_found' ? 'No account found with this email.'
+                : "Password reset isn't available for this account.";
+            return response()->json(['success' => false, 'code' => $result['status'],
+                'message' => $message, 'errors' => ['email' => [$message]], ...$publicStatus], 422)->header('Cache-Control', 'no-store');
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'If eligible, a new code was requested. Check your email.',
+            'message' => 'Check your email for a verification code.',
             'email' => $passwordResets->maskEmail($data['email']),
             ...$publicStatus,
-            // Public policy, identical for eligible and ineligible accounts.
             'expires_in' => $passwordResets->ttlMinutes() * 60,
-        ], 202);
+        ], 202)->header('Cache-Control', 'no-store');
     }
 
     public function verifyCode(Request $request, PasswordResetService $passwordResets)

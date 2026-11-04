@@ -7,7 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldQueue;
 
-// Every public request queues the same encrypted work before any account lookup.
+// Generic verification resend work. Old creation payloads are safely ignored.
 class ProcessPublicRegistration implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;

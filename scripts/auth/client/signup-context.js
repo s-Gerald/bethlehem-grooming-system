@@ -1,52 +1,62 @@
-// Browser presentation state only. Email proof and server grants authorize edits.
+// Active verification lives only in this tab. Stored values never authorize an account session.
 window.SignupContext = (() => {
-  const key = "pendingSignupContext";
-  const fields = { firstName: 100, lastName: 100, username: 50, phone: 40 };
-  const normalize = email => typeof email === "string" ? email.trim().toLowerCase() : "";
+  const keys = ["pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationState",
+    "pendingVerificationRegistrationUntil", "pendingVerificationResendUntil", "pendingVerificationLinkUntil",
+    "pendingVerificationResendLimited", "pendingVerificationDeliveryFailed", "pendingRegistrationEditToken",
+    "pendingRegistrationRecoveryToken", "pendingRegistrationRecoveryUntil", "pendingSignupDetails",
+    "pending_registration_email_delivery", "pendingSignupContext"];
+  const get = key => { try { return sessionStorage.getItem(key) || ""; } catch { return ""; } };
   function read(email = "") {
-    let raw;
-    try { raw = localStorage.getItem(key); } catch { /* Session fallback. */ }
-    try { raw ??= sessionStorage.getItem(key); } catch { /* Ordinary signup remains available. */ }
+    const activeEmail = get("pendingVerificationEmail");
+    const expiresAt = Number(get("pendingVerificationRegistrationUntil"));
+    return activeEmail && expiresAt > Date.now() && expiresAt <= Date.now() + 3600000
+      && (!email || activeEmail.toLowerCase() === email.trim().toLowerCase()) ? {email: activeEmail, expiresAt} : null;
+  }
+  function remember(email, expiry) {
+    const value = {email, expiresAt: Date.parse(expiry) || Date.now() + 3600000};
     try {
-      const value = JSON.parse(raw || "null");
-      if (!value || typeof value.email !== "string" || !Number.isFinite(value.expiresAt)
-          || value.expiresAt <= Date.now() || value.expiresAt > Date.now() + 3600000
-          || (email && normalize(value.email) !== normalize(email))) return null;
-      return value;
-    } catch { return null; }
-  }
-  function write(value) {
-    const raw = JSON.stringify(value);
-    try { localStorage.setItem(key, raw); } catch { /* Session fallback. */ }
-    try { sessionStorage.setItem(key, raw); } catch { /* UX only. */ }
-  }
-  function remember(email) {
-    const value = read(email) || {email: normalize(email), expiresAt: Date.now() + 3600000};
-    write(value);
+      sessionStorage.setItem("pendingVerificationEmail", email);
+      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(value.expiresAt));
+      sessionStorage.removeItem("registrationReplacement");
+    } catch { /* Server expiry remains authoritative. */ }
     return value;
   }
-  function propose(email, values) {
-    const value = read(email);
-    if (!value) return;
-    const draft = {};
-    for (const [field, max] of Object.entries(fields)) {
-      if (typeof values[field] === "string") draft[field] = values[field].slice(0, max);
+  function clear() {
+    for (const key of keys) { try { sessionStorage.removeItem(key); } catch { /* UX only. */ } }
+    try { localStorage.removeItem("pendingSignupContext"); } catch { /* Obsolete drafts. */ }
+  }
+  function fresh() {
+    const active = read();
+    const token = get("pendingRegistrationEditToken");
+    let replacement = null;
+    try {
+      replacement = active && token ? {...active, token} : JSON.parse(get("registrationReplacement") || "null");
+      if (!replacement || replacement.expiresAt <= Date.now() || replacement.expiresAt > Date.now() + 3600000) replacement = null;
+      if (replacement) sessionStorage.setItem("registrationReplacement", JSON.stringify(replacement));
+      else sessionStorage.removeItem("registrationReplacement");
+    } catch { /* Fresh signup remains available. */ }
+    clear();
+    return replacement;
+  }
+  async function abandon(scopedToken = "") {
+    const token = scopedToken || get("pendingRegistrationEditToken") || get("pendingRegistrationRecoveryToken");
+    clear();
+    try { sessionStorage.removeItem("registrationReplacement"); } catch { /* UX only. */ }
+    if (token) {
+      try { await API.cancelRegistration(token); } catch { /* Expiry is the fallback for network loss. */ }
     }
-    write({...value, draft, review: true});
   }
-  function draft(email) {
-    const value = read(email);
-    const result = {};
-    if (!value?.review || !value.draft) return result;
-    for (const [field, max] of Object.entries(fields)) {
-      if (typeof value.draft[field] === "string") result[field] = value.draft[field].slice(0, max);
+  function bindExits(onExit = () => {}, attemptToken = () => "") {
+    for (const link of document.querySelectorAll('a[href="/sign-up"], a[href="/sign-in"], a[href="/"]')) {
+      link.addEventListener("click", async event => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        const token = attemptToken();
+        onExit();
+        await abandon(token);
+        window.location.replace(link.getAttribute("href"));
+      });
     }
-    return result;
   }
-  function clear(email) {
-    if (email && !read(email)) return;
-    try { localStorage.removeItem(key); } catch { /* UX only. */ }
-    try { sessionStorage.removeItem(key); } catch { /* UX only. */ }
-  }
-  return {read, remember, propose, draft, clear};
+  return {read, remember, clear, fresh, abandon, bindExits};
 })();

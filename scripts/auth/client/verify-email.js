@@ -71,6 +71,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (verificationToken) {
     showState("link");
     let verifying = false;
+    let departed = false;
+    window.SignupContext.bindExits(() => { departed = true; verificationToken = ""; }, () => verificationToken);
     const verifyButton = document.getElementById("verifyLinkSubmit");
     const editButton = document.getElementById("verifyLinkEdit");
     const dashboard = document.getElementById("successDashboard");
@@ -96,6 +98,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showState("verifying");
       try {
         const result = await API.verifyEmail(verificationToken, review);
+        if (departed) return;
         verificationToken = "";
         if (result?.requires_registration_review && result?.registration_recovery_token && result?.details) {
           const details = result.details;
@@ -122,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
         channel?.postMessage({type: "registration-verified"});
         window.setTimeout(confirmHandoff, 1500);
       } catch (error) {
+        if (departed) return;
         if (verificationToken && (!error.status || error.status >= 500)) {
           // A lost response may have committed activation. Restore only using
           // the server's usable account cookie; otherwise retain a retry.
@@ -145,7 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
           errorTitle.textContent = "Verification unavailable";
           errorMessage.textContent = error.message || "This link is invalid or has already been used.";
           showState("error");
-          const expiredRegistration = error.code === "registration_expired" || error.code === "registration_restart_required";
+          const expiredRegistration = ["registration_expired", "registration_restart_required", "registration_link_invalid"].includes(error.code);
           resendSection.classList.toggle("hidden", expiredRegistration);
           if (expiredRegistration) {
             const back = document.getElementById("verificationBackAction");

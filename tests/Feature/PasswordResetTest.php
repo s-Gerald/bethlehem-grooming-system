@@ -16,7 +16,29 @@ use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
 {
-    public function test_public_recovery_does_not_disclose_private_destination_email_history(): void
+    public function test_unknown_recovery_stays_at_email_entry_without_issuing_code(): void
+    {
+        Notification::fake();
+        $this->postJson('/api/password/forgot', ['email' => 'unknown@example.test'])
+            ->assertUnprocessable()->assertJsonPath('code', 'account_not_found')
+            ->assertJsonPath('message', 'No account found with this email.');
+        $this->assertDatabaseCount('password_reset_requests', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_staff_setup_account_is_reserved_but_cannot_use_password_recovery(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('staff');
+        $user->update(['is_active' => false, 'password_hash' => User::passwordSetupPlaceholder()]);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])
+            ->assertUnprocessable()->assertJsonPath('code', 'password_reset_unavailable')
+            ->assertJsonPath('message', "Password reset isn't available for this account.");
+        $this->assertDatabaseCount('password_reset_requests', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_private_destination_limit_does_not_claim_a_reset_code_was_sent(): void
     {
         $this->freezeTime();
         Notification::fake();
@@ -24,10 +46,8 @@ class PasswordResetTest extends TestCase
         config(['authentication.email.quarter_hour' => 2]);
         app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'login');
         app(\App\Services\AuthenticationEmailPolicy::class)->send($user->email, fn () => null, 'privileged_change');
-        $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonPath('resend_after', 60);
-        $unknown = $this->postJson('/api/password/forgot', ['email' => 'unknown@example.test'])->assertAccepted();
-        $this->assertSame($known->json('resend_after'), $unknown->json('resend_after'));
-        $this->assertSame($known->json('resend_limited'), $unknown->json('resend_limited'));
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests();
+        $this->postJson('/api/password/forgot', ['email' => 'unknown@example.test'])->assertUnprocessable()->assertJsonPath('code', 'account_not_found');
         Notification::assertNothingSent();
     }
 
@@ -109,7 +129,7 @@ class PasswordResetTest extends TestCase
             ->assertJsonPath('email', 'c***@example.test')
             ->assertJsonPath(
                 'message',
-                'If eligible, a new code was requested. Check your email.',
+                'Check your email for a verification code.',
             );
 
         $code = $this->resetCodeSentTo($user);
@@ -183,8 +203,8 @@ class PasswordResetTest extends TestCase
         $user->update(['email_verified_at' => null]);
         Notification::fake();
         $this->travel(61)->seconds();
-        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()
-            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertUnprocessable()->assertJsonPath('code', 'password_reset_unavailable')
+            ->assertJsonPath('message', "Password reset isn't available for this account.");
         Notification::assertNothingSent();
         $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
         $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
@@ -193,7 +213,7 @@ class PasswordResetTest extends TestCase
         $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
     }
 
-    public function test_unknown_and_disabled_accounts_receive_the_same_generic_response_without_email(): void
+    public function test_unknown_and_disabled_accounts_receive_specific_feedback_without_email(): void
     {
         Notification::fake();
         $disabled = $this->createUser('admin', 'disabled@example.test', false);
@@ -202,11 +222,10 @@ class PasswordResetTest extends TestCase
 
         foreach (['missing@example.test', 'disabled@example.test', 'archived@example.test'] as $email) {
             $response = $this->postJson('/api/password/forgot', ['email' => $email])
-                ->assertAccepted()
-                ->assertJsonPath('email', $email[0].'***@example.test')
+                ->assertUnprocessable()
                 ->assertJsonPath(
                     'message',
-                    'If eligible, a new code was requested. Check your email.',
+                    $email === 'missing@example.test' ? 'No account found with this email.' : "Password reset isn't available for this account.",
                 );
             $this->assertStringNotContainsString($email, $response->getContent());
         }
@@ -230,8 +249,8 @@ class PasswordResetTest extends TestCase
         $deleted = $this->createUser('customer', 'deleted@example.test');
         $deleted->update(['account_deleted_at' => now()]);
         $this->postJson('/api/password/forgot', ['email' => $deleted->email])
-            ->assertAccepted()
-            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
+            ->assertUnprocessable()->assertJsonPath('code', 'password_reset_unavailable')
+            ->assertJsonPath('message', "Password reset isn't available for this account.");
         Notification::assertNothingSent();
         $this->assertDatabaseCount('password_reset_requests', 0);
     }
@@ -241,7 +260,7 @@ class PasswordResetTest extends TestCase
         Notification::fake();
         $user = $this->createUser('customer');
         $user->update(['password_hash' => '']);
-        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertUnprocessable()->assertJsonPath('code', 'password_reset_unavailable');
         Notification::assertNothingSent();
         $this->assertDatabaseCount('password_reset_requests', 0);
     }
@@ -337,8 +356,8 @@ class PasswordResetTest extends TestCase
         $this->postJson('/api/password/forgot', [
             'email' => $staff->email,
         ])
-            ->assertAccepted()
-            ->assertJsonPath('message', 'If eligible, a new code was requested. Check your email.');
+            ->assertUnprocessable()->assertJsonPath('code', 'password_reset_unavailable')
+            ->assertJsonPath('message', "Password reset isn't available for this account.");
 
         Notification::assertNotSentTo($staff, PasswordResetCodeNotification::class);
         $this->postJson('/api/password/code/verify', [
@@ -540,7 +559,7 @@ class PasswordResetTest extends TestCase
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.40'])
             ->postJson('/api/password/forgot', ['email' => strtoupper($user->email)])
-            ->assertAccepted()->assertJsonPath('resend_after', 60);
+            ->assertTooManyRequests()->assertJsonPath('resend_after', 60);
         Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
     }
@@ -549,10 +568,10 @@ class PasswordResetTest extends TestCase
     {
         $this->freezeTime();
         foreach (range(1, 2) as $attempt) {
-            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 60);
+            $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('resend_after', 60);
             $this->travel(60)->seconds();
         }
-        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonPath('resend_after', 780);
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('resend_after', 780);
         $this->travel(60)->seconds();
         $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertTooManyRequests()->assertHeader('Retry-After', '720');
     }
@@ -579,7 +598,7 @@ class PasswordResetTest extends TestCase
         }
     }
 
-    public function test_password_queue_insert_failure_keeps_the_previous_issuance_and_generic_response(): void
+    public function test_password_queue_insert_failure_keeps_the_previous_issuance_and_reports_failure(): void
     {
         $this->useDatabaseMailQueue();
         $user = $this->createUser('customer');
@@ -587,9 +606,8 @@ class PasswordResetTest extends TestCase
         $before = PasswordResetRequest::query()->sole()->getAttributes();
         $this->travel(61)->seconds();
         \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
-        $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $unknown = $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->assertSame($known->json('message'), $unknown->json('message'));
+        $known = $this->postJson('/api/password/forgot', ['email' => $user->email])->assertStatus(503)->assertJsonPath('code', 'email_delivery_failed');
+        $this->postJson('/api/password/forgot', ['email' => 'missing@example.test'])->assertUnprocessable()->assertJsonPath('code', 'account_not_found');
         $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
         $this->assertDatabaseCount('jobs', 1);
     }
@@ -604,10 +622,11 @@ class PasswordResetTest extends TestCase
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
     }
 
-    public function test_verified_grant_survives_resend_and_expires_at_its_exact_deadline(): void
+    #[DataProvider('passwordResetRoles')]
+    public function test_new_issuance_replaces_a_verified_grant_and_only_the_new_code_can_reset(string $role): void
     {
         Notification::fake();
-        $user = $this->createUser('customer');
+        $user = $this->createUser($role);
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()
             ->assertJsonPath('expires_in', 900);
         $code = $this->resetCodeSentTo($user);
@@ -615,16 +634,64 @@ class PasswordResetTest extends TestCase
             ->assertOk()->assertJsonStructure(['token', 'expires_in']);
         $grant = $verified->json('token');
         $before = PasswordResetRequest::query()->sole();
+        // Keep the consumed code's fingerprint so replacement cannot choose the same digits.
+        $this->assertTrue(Hash::check($code, $before->token_hash));
         $this->travel(61)->seconds();
-        app(\App\Services\PasswordResetService::class)->sendCode($user->email);
-        $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
-        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
-        $this->travelTo($before->expires_at);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
+        Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 2);
+        $this->assertDatabaseCount('password_reset_requests', 1);
+        $this->assertSame($before->getKey(), $before->fresh()->getKey());
+        $this->assertNull($before->fresh()->verified_token_hash);
+        $newCode = $this->resetCodeSentTo($user);
+        $this->assertNotSame($code, $newCode);
+        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
         $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
             'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable()->assertJsonPath('expired', true);
         Notification::assertNotSentTo($user, PasswordChangedNotification::class);
-        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted();
-        $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $this->resetCodeSentTo($user)])->assertOk();
+        $newGrant = $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $newCode])
+            ->assertOk()->json('token');
+        $this->postJson('/api/password/reset', ['token' => $newGrant, 'password' => 'UpdatedPass!234',
+            'password_confirmation' => 'UpdatedPass!234'])->assertOk();
+        $this->assertTrue(Hash::check('UpdatedPass!234', $user->fresh()->password_hash));
+        $this->assertDatabaseCount('password_reset_requests', 0);
+    }
+
+    public function test_failed_replacement_queue_insert_preserves_a_verified_grant(): void
+    {
+        $this->useDatabaseMailQueue();
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        $grant = $service->verifyCode($user->email, $this->resetCodeSentTo($user))['token'];
+        $before = PasswordResetRequest::query()->sole()->getAttributes();
+        $this->travel(61)->seconds();
+        Notification::swap(new \Illuminate\Notifications\ChannelManager(app()));
+        \Illuminate\Support\Facades\DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        try {
+            $service->sendCode($user->email);
+            $this->fail('Expected replacement queue insertion to fail.');
+        } catch (\Illuminate\Database\QueryException) {
+            $this->assertSame($before, PasswordResetRequest::query()->sole()->getAttributes());
+            $this->assertDatabaseCount('jobs', 0);
+            $this->assertSame(0, app(\App\Services\AuthenticationEmailPolicy::class)->status($user->email, 'password_recovery')['resend_after']);
+        }
+        Notification::fake();
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+    }
+
+    public function test_verified_grant_expires_at_its_exact_deadline(): void
+    {
+        Notification::fake();
+        $user = $this->createUser('customer');
+        $service = app(\App\Services\PasswordResetService::class);
+        $service->sendCode($user->email);
+        $grant = $service->verifyCode($user->email, $this->resetCodeSentTo($user))['token'];
+        $this->travelTo(PasswordResetRequest::query()->sole()->expires_at);
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
+            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable()->assertJsonPath('expired', true);
+        $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
+        Notification::assertNotSentTo($user, PasswordChangedNotification::class);
     }
 
     public function test_five_failures_cannot_be_bypassed_by_resending_but_expiry_allows_recovery(): void
@@ -638,7 +705,8 @@ class PasswordResetTest extends TestCase
         }
         $before = PasswordResetRequest::query()->sole();
         $this->travel(61)->seconds();
-        $service->sendCode($user->email);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.41'])
+            ->postJson('/api/password/forgot', ['email' => $user->email])->assertTooManyRequests();
         $this->assertSame($before->getAttributes(), $before->fresh()->getAttributes());
         Notification::assertSentToTimes($user, PasswordResetCodeNotification::class, 1);
         $this->travelTo($before->expires_at);

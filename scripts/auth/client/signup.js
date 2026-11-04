@@ -17,9 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let recoveryToken = "";
   let busy = false;
   const context = window.SignupContext;
-  const continuation = document.getElementById("signupContinuation");
-  const continueButton = document.getElementById("signupContinue");
-  const editButton = document.getElementById("signupEdit");
   const params = new URLSearchParams(window.location.search);
   if (params.get("review") === "1") {
     try {
@@ -28,69 +25,31 @@ document.addEventListener("DOMContentLoaded", () => {
       recoveryToken = sessionStorage.getItem("pendingRegistrationRecoveryToken") || "";
       if (!saved?.email || !recoveryToken || !Number.isFinite(expiresAt)
           || expiresAt <= Date.now() || expiresAt > Date.now() + 600000) throw new Error("Expired review");
-      const proposed = context.draft(saved.email);
       for (const id of ["firstName", "lastName", "username", "email", "phone"]) {
         document.getElementById(id).value = typeof saved[id] === "string" ? saved[id] : "";
       }
-      for (const [id, value] of Object.entries(proposed)) document.getElementById(id).value = value;
       passwordInput.value = "";
       confirmPasswordInput.value = "";
       emailInput.readOnly = true;
       document.getElementById("signupTitle").textContent = "Review your details";
-      document.getElementById("signupDescription").textContent = Object.keys(proposed).length
-        ? "Your proposed changes are shown. Confirm your details and choose a password."
-        : "Email confirmed. Review your details and choose a password.";
+      document.getElementById("signupDescription").textContent = "Email confirmed. Review your details and choose a password.";
       document.getElementById("signupBtnLabel").textContent = "Complete registration";
     } catch {
       window.location.replace("/verify-email?recover=1");
       return;
     }
   }
-  const touched = new Set();
-  for (const id of ["firstName", "lastName", "username", "phone"]) {
-    document.getElementById(id).addEventListener("input", () => touched.add(id));
-  }
-  function returningContext() { return !recoveryToken && context.read(emailInput.value); }
-  function renderContinuation() {
-    const returning = !!returningContext();
-    continuation.classList.toggle("hidden", !returning);
-    submitButton.classList.toggle("hidden", returning);
-    return returning;
-  }
-  function continueVerification() {
-    const pending = returningContext();
-    if (!pending) { renderContinuation(); return; }
-    try {
-      sessionStorage.setItem("pendingVerificationEmail", pending.email);
-      sessionStorage.setItem("pendingVerificationState", "resumed");
-      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(pending.expiresAt));
-    } catch { /* The waiting screen can restore non-secret context. */ }
-    window.location.replace("/verify-email");
-  }
-  continueButton.addEventListener("click", () => { if (!busy) continueVerification(); });
-  editButton.addEventListener("click", async () => {
-    if (busy || !returningContext()) return;
-    const values = {};
-    for (const id of ["firstName", "lastName", "username", "phone"]) {
-      const value = document.getElementById(id).value.trim();
-      if (value || touched.has(id)) values[id] = value;
+  let replacement = recoveryToken ? null : context.fresh();
+  function resetForm() {
+    if (recoveryToken) return;
+    for (const id of ["firstName", "lastName", "username", "email", "phone", "password", "confirmPassword"]) {
+      const input = document.getElementById(id);
+      input.value = "";
+      input.setAttribute("aria-invalid", "false");
     }
-    const email = emailInput.value.trim().toLowerCase();
-    setBusyState(true);
-    try {
-      await API.requestRegistrationReview(email);
-      context.propose(email, values);
-      continueVerification();
-    } catch (error) {
-      showMessage(error.message || "Couldn't continue. Try again.");
-    } finally { setBusyState(false); }
-  });
-  emailInput.addEventListener("input", renderContinuation);
-  emailInput.addEventListener("change", renderContinuation);
-  window.addEventListener("pageshow", renderContinuation);
-  window.addEventListener("focus", renderContinuation);
-  window.addEventListener("storage", renderContinuation);
-  renderContinuation();
+    termsInput.checked = false;
+  }
+  resetForm();
 
   const fieldIds = {first_name: "firstName", last_name: "lastName", email: "email", username: "username",
     phone: "phone", password: "password", password_confirmation: "confirmPassword", terms_accepted: "terms"};
@@ -110,7 +69,6 @@ document.addEventListener("DOMContentLoaded", () => {
       feedback.textContent = "";
       feedback.classList.add("hidden");
       input.setAttribute("aria-invalid", "false");
-      clearMessage();
     });
   }
 
@@ -155,13 +113,70 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   const phoneField = PhilippineMobile.bind(phoneInput, {
-    required: false, errorId: 'phoneServerError', onChange: clearMessage,
+    required: false, errorId: 'phoneServerError',
+  });
+
+  const conflictArea = document.getElementById("signupConflict");
+  const conflictMessage = document.getElementById("signupConflictMessage");
+  const recoveryLink = document.getElementById("signupConflictRecovery");
+  const footer = document.getElementById("signupFooter");
+  const conflicts = new Set();
+  const revisions = new Map();
+  let journey = 0;
+  function renderConflict() {
+    const field = conflicts.has("email") ? "email" : conflicts.has("phone") ? "phone" : "";
+    conflictArea.classList.toggle("hidden", !field);
+    footer.classList.toggle("hidden", !!field);
+    recoveryLink.classList.toggle("hidden", field !== "email");
+    if (conflicts.has("phone")) phoneInput.classList.add("!border-red-400");
+    conflictMessage.textContent = field === "email" ? "An account with this email already exists."
+      : field === "phone" ? "An account with this mobile number already exists." : "";
+    for (const input of [emailInput, phoneInput]) {
+      const ids = (input.getAttribute("aria-describedby") || "").split(" ").filter(id => id && id !== "signupConflictMessage");
+      if (conflicts.has(input.id)) ids.push("signupConflictMessage");
+      input.setAttribute("aria-describedby", ids.join(" "));
+    }
+  }
+  for (const id of Object.values(fieldIds)) {
+    document.getElementById(id).addEventListener("input", () => {
+      revisions.set(id, (revisions.get(id) || 0) + 1);
+      if (conflicts.delete(id)) {
+        document.getElementById(id).setAttribute("aria-invalid", "false");
+        renderConflict();
+      }
+    });
+  }
+  recoveryLink.addEventListener("click", () => {
+    if (!conflicts.has("email")) return;
+    try { sessionStorage.setItem("pendingPasswordResetEmail", emailInput.value.trim()); } catch { /* Prefill is optional. */ }
+  });
+  // Input utilities also validate on blur. Reapply a confirmed account conflict.
+  for (const input of [emailInput, phoneInput]) input.addEventListener("blur", () => {
+    if (conflicts.has(input.id)) {
+      input.setAttribute("aria-invalid", "true");
+      if (input === phoneInput) input.classList.add("!border-red-400");
+    }
+  });
+  renderConflict();
+  if (recoveryToken) context.bindExits(() => { journey++; });
+  window.addEventListener("pagehide", () => { journey++; });
+  window.addEventListener("pageshow", event => {
+    if (!event.persisted || recoveryToken) return;
+    replacement = context.fresh() || replacement;
+    resetForm();
+    conflicts.clear();
+    renderConflict();
+    clearMessage();
+    emailField.clear();
+    phoneField.clear();
+    for (const id of ["firstName", "lastName"]) HumanName.reset(document.getElementById(id));
+    for (const feedback of fieldErrors.values()) { feedback.textContent = ""; feedback.classList.add("hidden"); }
+    setBusyState(false);
   });
 
   signupForm.addEventListener("submit", async function (e) {
     e.preventDefault();
     if (busy) return;
-    if (renderContinuation()) { continuation.focus(); return; }
 
     if (!termsInput.checked) {
       const feedback = fieldErrors.get("terms");
@@ -185,7 +200,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const confirmPassword = confirmPasswordInput.value;
 
     clearMessage();
-    for (const id of ["firstName", "lastName", "email", "username", "phone", "password"]) document.getElementById(id).setAttribute("aria-invalid", "false");
 
     if (!emailField.validate()) { emailInput.focus(); return; }
 
@@ -210,6 +224,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     setBusyState(true);
+    const submittedRevisions = new Map(revisions);
+    const currentJourney = journey;
 
     try {
       const payload = {
@@ -221,11 +237,13 @@ document.addEventListener("DOMContentLoaded", () => {
         password,
         password_confirmation: confirmPassword,
         terms_accepted:         termsInput.checked,
+        registration_token: replacement?.email?.toLowerCase() === email.toLowerCase() ? replacement.token : undefined,
       };
       const data = recoveryToken
         ? await API.updatePendingRegistration(payload, recoveryToken)
         : await API.register(payload);
 
+      if (currentJourney !== journey) return;
       if (recoveryToken && data?.token && data?.user?.role === "customer") {
         context.clear(email);
         for (const key of ["pendingRegistrationRecoveryToken", "pendingRegistrationRecoveryUntil", "pendingRegistrationEditToken", "pendingSignupDetails", "pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationResendUntil", "pendingVerificationRegistrationUntil", "pendingVerificationState", "pendingVerificationLinkUntil", "pendingVerificationResendLimited", "pendingVerificationDeliveryFailed", "pending_registration_email_delivery"]) {
@@ -236,12 +254,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (data?.requires_verification) {
-        if (!data.registration_token && data.registration_state !== "requested") {
+        if (!data.registration_token) {
           showMessage("Registration couldn't continue. No new verification email was confirmed. Try another email or sign in.");
           setBusyState(false);
           return;
         }
-        const pendingContext = context.remember(email);
+        const pendingContext = context.remember(email, data.registration_expires_at);
         try {
           sessionStorage.setItem("pendingVerificationRegistrationUntil", String(pendingContext.expiresAt));
           sessionStorage.setItem("pendingVerificationEmail", data.email ?? email);
@@ -269,29 +287,33 @@ document.addEventListener("DOMContentLoaded", () => {
       // an older backend response that omits requires_verification.
       window.location.replace("/sign-in");
     } catch (error) {
+      if (currentJourney !== journey) return;
       if (error.errors) {
-        const [field, firstError] = Object.entries(error.errors)[0];
-        if (field === 'first_name' || field === 'last_name') {
-          const input = document.getElementById(field === 'first_name' ? 'firstName' : 'lastName');
-          HumanName.showError(input, [].concat(firstError)[0]); input.focus(); setBusyState(false); return;
+        let firstInput;
+        for (const [field, messages] of Object.entries(error.errors)) {
+          const id = fieldIds[field];
+          const input = id && document.getElementById(id);
+          if (input && (revisions.get(id) || 0) !== (submittedRevisions.get(id) || 0)) continue;
+          if (id === "email" && AccountEmail.normalize(emailInput.value) !== email) continue;
+          if (id === "phone" && PhilippineMobile.unformat(phoneInput.value) !== phone) continue;
+          const text = [].concat(messages)[0];
+          if ((field === "email" || field === "phone") && error.data?.conflicts?.[field] === "account_exists") {
+            conflicts.add(id);
+            input.setAttribute("aria-invalid", "true");
+            continue;
+          }
+          if (field === "first_name" || field === "last_name") HumanName.showError(input, text);
+          else if (id === "email") emailField.setError(text, email);
+          else if (id === "phone") phoneField.setError(text);
+          else if (fieldErrors.has(id)) {
+            fieldErrors.get(id).textContent = text;
+            fieldErrors.get(id).classList.remove("hidden");
+          } else showMessage(text);
+          if (input) { input.setAttribute("aria-invalid", "true"); firstInput ||= input; }
         }
-        if (field === "email") {
-          if (emailField.setError(Array.isArray(firstError) ? firstError[0] : firstError, email)) emailInput.focus();
-          setBusyState(false);
-          return;
-        }
-        const id = fieldIds[field];
-        if (id === 'phone' && PhilippineMobile.unformat(phoneInput.value) !== phone) { setBusyState(false); return; }
-        const feedback = fieldErrors.get(id);
-        const text = Array.isArray(firstError) ? firstError[0] : firstError;
-        if (id === 'phone') phoneField.setError(text);
-        else if (feedback) { feedback.textContent = text; feedback.classList.remove("hidden"); }
-        else showMessage(text);
-        if (id) {
-          const input = document.getElementById(id);
-          input.setAttribute("aria-invalid", "true");
-          input.focus();
-        }
+        renderConflict();
+        if (conflicts.size) conflictArea.focus();
+        else firstInput?.focus();
       } else {
         showMessage(error.message || "Couldn't create your account. Please try again.");
       }
@@ -302,8 +324,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function setBusyState(isBusy) {
     busy = isBusy;
     submitButton.disabled = isBusy;
-    continueButton.disabled = isBusy;
-    editButton.disabled = isBusy;
     signupForm.setAttribute("aria-busy", String(isBusy));
     const label = document.getElementById("signupBtnLabel");
     if (label) label.textContent = isBusy ? "Creating your account..." : recoveryToken ? "Complete registration" : "Create Account";

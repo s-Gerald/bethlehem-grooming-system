@@ -21,6 +21,11 @@ use Throwable;
 
 class AuthController extends Controller
 {
+    public function cancelRegistration(Request $request, CustomerRegistrationService $registrations)
+    {
+        return $registrations->cancel($request);
+    }
+
     // ── REGISTER ──────────────────────────────────────────
     public function register(Request $request)
     {
@@ -32,36 +37,27 @@ class AuthController extends Controller
             'username' => filled($request->input('username'))
                 ? trim((string) $request->input('username'))
                 : null,
-            'phone' => is_string($phone) && trim($phone) === '' ? null : $phone,
+            'phone' => is_string($phone) && trim($phone) === '' ? null : \App\Support\PhilippineMobile::normalize($phone),
         ]);
 
         $request->validate(['email' => $request->isMethod('put')
             ? ['required', 'email', 'max:150'] : AccountEmail::rules()]);
 
         if (! $request->isMethod('put')) {
-            // Specific status requires a credential issued before this request,
-            // bound to this browser. An email address alone proves no ownership.
-            if (is_string($request->input('registration_token')) && strlen($request->input('registration_token')) === 64) {
-                $pending = PendingCustomerRegistration::query()->unexpired()
-                    ->where('registration_edit_token_hash', hash('sha256', $request->input('registration_token')))->first();
-                if ($pending && strcasecmp($pending->email, $request->input('email')) === 0
-                    && CustomerRegistrationService::canContinue($pending, $request)) {
-                    $linkAvailable = CustomerRegistrationService::usableLink($pending);
-                    return response()->json([
-                        'success' => true, 'requires_verification' => true, 'registration_state' => 'resumed',
-                        'email_delivery_queued' => false, 'verification_link_available' => $linkAvailable,
-                        'verification_link_expires_at' => $linkAvailable
-                            ? \App\Services\RegistrationMagicLinkService::expiresAt($pending)->toIso8601String() : null,
-                        'email' => $pending->email, 'registration_token' => $request->input('registration_token'),
-                        ...app(AuthenticationEmailPolicy::class)->status($pending->email),
-                    ], 202)->header('Cache-Control', 'no-store');
-                }
-            }
             $data = $this->registrationData($request, checkAvailability: false);
+            $registrations = app(CustomerRegistrationService::class);
             $data['password_hash'] = Hash::make($data['password']);
             unset($data['password']);
-            return app(CustomerRegistrationService::class)->requestPublic($data['email'], $data, hash('sha256', $browserToken))
-                ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
+            try {
+                return $registrations->start($request, $data, hash('sha256', $browserToken))
+                    ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
+            } catch (HttpResponseException $exception) {
+                throw $exception;
+            } catch (Throwable $exception) {
+                report($exception);
+                return response()->json(['success' => false, 'code' => 'email_delivery_failed',
+                    'message' => "Couldn't queue the verification email. Please try again."], 503)->header('Cache-Control', 'no-store');
+            }
         }
         PendingCustomerRegistration::pruneExpired();
 
@@ -108,14 +104,12 @@ class AuthController extends Controller
                 'nullable',
                 'string',
                 'max:50',
-                ...($checkAvailability ? [Rule::unique('users', 'username')->ignore($legacy?->getKey(), 'user_id'),
-                    Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey())] : []),
+                ...($checkAvailability ? [Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey())] : []),
             ],
             'phone' => [
                 'nullable',
                 ...\App\Support\PhilippineMobile::rules(required: false),
-                ...($checkAvailability ? [Rule::unique('users', 'phone')->ignore($legacy?->getKey(), 'user_id'),
-                    Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey())] : []),
+                ...($checkAvailability ? [Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey())] : []),
             ],
             'email' => [
                 ...(($existing && strcasecmp($existing->email, $request->input('email')) === 0)
@@ -131,7 +125,12 @@ class AuthController extends Controller
         foreach (['first_name', 'last_name'] as $field) {
             $data[$field] = $existing && $data[$field] === $existing->$field ? $data[$field] : User::normalizeName($data[$field]);
         }
-        if ($checkAvailability) AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
+        // Pending completion checks real/reserved accounts in complete(), under
+        // the same transaction. Legacy completion must exclude its own account.
+        if ($legacy) {
+            app(CustomerRegistrationService::class)->assertAccountAvailability($data, true, $legacy);
+            AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
+        }
         return $data;
     }
 

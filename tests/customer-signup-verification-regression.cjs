@@ -29,6 +29,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const document = {
     activeElement: null,
     querySelector() { return null; },
+    querySelectorAll(selector) { return !signup && !signIn && selector.startsWith("a[") ? [element("verificationBackAction")] : []; },
     createElement: () => element(`generated-${++nextId}`),
     addEventListener(name, callback) { if (name === 'DOMContentLoaded') ready = callback; },
     getElementById: element,
@@ -73,8 +74,8 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     setTimeout(callback, ms) { const id = ++nextId; timeouts.set(id, { callback, at: now + ms }); return id; },
   };
   const API = {
-    async requestRegistrationReview(email) { calls.push(['review-intent', email]); return {success:true}; },
-    async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_state:'requested', resend_after:60 }; },
+    async cancelRegistration(token) { calls.push(['cancel', token]); return {success:true}; },
+    async register(payload) { calls.push(['register', payload]); return { requires_verification: true, registration_token:'attempt-token', registration_state:'queued', resend_after:60 }; },
     async updatePendingRegistration(payload, grant) { calls.push(['update', payload, grant]); return { token: 'session', user: { role: 'customer' } }; },
     getEmailDeliveryToken: () => deliveryStatus ? 'private-delivery-receipt' : '',
     emailDeliveryStatus: async () => ({ status: deliveryStatus }),
@@ -108,6 +109,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   }
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/auth/client/signup-context.js'), 'utf8'), context);
   ready();
+  if (signup && !reviewing) {
+    element('terms').checked = true;
+    for (const [id,value] of Object.entries({firstName:'Test',lastName:'Customer',email:'customer@gmail.com',phone,password:'strong-password',confirmPassword:'strong-password'})) element(id).value=value;
+    element('phone').handlers.input?.call(element('phone'), {type:'input'});
+  }
   return {
     element, API, calls, storage, windowHandlers, window, intervals, activeElement: () => document.activeElement,
     dispatch(id, event, extra = {}) { return element(id).handlers[event].call(element(id), { preventDefault() {}, ...extra }); },
@@ -141,73 +147,74 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(rejectedTerms.activeElement()?.id, 'terms');
   assert.equal(rejectedTerms.element('termsServerError').textContent, 'Please agree to the Terms and Conditions.');
 
-  const returning = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
-  assert.equal(returning.element('signupContinuation').classList.contains('hidden'), false);
+  const returning = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000, draft:{firstName:'Abandoned'}})}});
+  assert.equal(returning.storage.has('pendingSignupContext'), false, 'Ordinary signup discards obsolete saved context');
   await returning.dispatch('signupForm', 'submit');
-  assert.equal(returning.calls.length, 0, 'A recognized return cannot submit another public signup');
-  returning.element('firstName').value = 'John';
-  await returning.dispatch('signupEdit', 'click');
-  assert.deepEqual(returning.calls, [['review-intent','customer@gmail.com'], ['redirect','/verify-email']]);
-  const proposedContext = JSON.parse(returning.storage.get('pendingSignupContext'));
-  assert.equal(proposedContext.draft.firstName, 'John');
-  assert.equal(proposedContext.expiresAt, 3700000, 'Returning does not extend the original context');
-  for (const value of returning.storage.values()) assert.doesNotMatch(String(value), /strong-password|confirmPassword/);
-
-  const mismatched = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'other@gmail.com', expiresAt:3700000})}});
-  assert.equal(mismatched.element('signupContinuation').classList.contains('hidden'), true);
-  await mismatched.dispatch('signupForm', 'submit');
-  assert.equal(mismatched.calls[0][0], 'register');
-  const expiredContext = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:100000})}});
-  assert.equal(expiredContext.element('signupContinuation').classList.contains('hidden'), true);
-  await expiredContext.dispatch('signupForm', 'submit');
-  assert.equal(expiredContext.calls[0][0], 'register');
-
-  const liveContext = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:101000})}});
-  liveContext.advance(1000);
-  liveContext.windowHandlers.focus();
-  assert.equal(liveContext.element('signupContinuation').classList.contains('hidden'), true);
-
-  const draftReview = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'CUSTOMER@gmail.com', expiresAt:3700000, review:true,
-    draft:{firstName:'John', username:'john', phone:'', password:'must-not-prefill', confirmPassword:'must-not-prefill', email:'attacker@gmail.com'}})}});
-  assert.equal(draftReview.element('firstName').value, 'John');
-  assert.equal(draftReview.element('lastName').value, 'Customer');
-  assert.equal(draftReview.element('email').value, 'customer@gmail.com');
-  assert.equal(draftReview.element('password').value, '');
-  assert.equal(draftReview.element('confirmPassword').value, '');
-  assert.match(draftReview.element('signupDescription').textContent, /proposed changes/);
-  draftReview.element('password').value = 'owner-password';
-  draftReview.element('confirmPassword').value = 'owner-password';
-  await draftReview.dispatch('signupForm','submit');
-  assert.equal(draftReview.calls[0][1].first_name, 'John');
-  assert.equal(draftReview.calls[0][1].password, 'owner-password');
-  assert.equal(draftReview.storage.has('pendingSignupContext'), false);
+  assert.equal(returning.calls[0][0], 'register', 'Returning users submit a fresh form');
 
   for (const pendingRegistrationRecoveryUntil of ['100000','NaN','3700000']) {
     const expiredReview = page({signup:true, reviewing:true, initialStorage:{pendingRegistrationRecoveryUntil}});
     assert.deepEqual(expiredReview.calls, [['redirect','/verify-email?recover=1']]);
   }
-  const expiredDraft = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:100000, review:true, draft:{firstName:'Stale'}})}});
-  assert.equal(expiredDraft.element('firstName').value, 'Saved');
-  const wrongDraft = page({signup:true, reviewing:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'other@gmail.com', expiresAt:3700000, review:true, draft:{firstName:'Wrong'}})}});
-  assert.equal(wrongDraft.element('firstName').value, 'Saved');
 
-  const rapidEdit = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
-  let finishIntent;
-  let intents = 0;
-  rapidEdit.API.requestRegistrationReview = () => { intents++; return new Promise(resolve => {finishIntent = resolve;}); };
-  const editing = rapidEdit.dispatch('signupEdit','click');
-  await rapidEdit.dispatch('signupEdit','click');
-  assert.equal(intents, 1);
-  assert.equal(rapidEdit.element('signupContinue').disabled, true);
-  finishIntent({success:true});
-  await editing;
+  const conflicts = page({signup:true, phone:'09171234567'});
+  conflicts.API.register = async () => { throw {status:422, data:{conflicts:{email:'account_exists',phone:'account_exists'}},
+    errors:{email:['An account with this email already exists.'], phone:['An account with this mobile number already exists.'], username:['That username is already in use.']}}; };
+  await conflicts.dispatch('signupForm','submit');
+  assert.equal(conflicts.element('signupConflictMessage').textContent, 'An account with this email already exists.');
+  assert.equal(conflicts.element('signupConflictRecovery').classList.contains('hidden'), false);
+  assert.equal(conflicts.element('signupFooter').classList.contains('hidden'), true);
+  assert.equal(conflicts.element('emailError').textContent, '');
+  assert.equal(conflicts.element('phoneServerError').textContent, '');
+  assert.equal(conflicts.element('email').attributes['aria-invalid'], 'true');
+  assert.equal(conflicts.element('phone').attributes['aria-invalid'], 'true');
+  assert.equal(conflicts.element('terms').checked, true);
+  assert.equal(conflicts.element('firstName').value, 'Test');
+  assert.equal(conflicts.element('usernameServerError').textContent, 'That username is already in use.');
+  assert.equal(conflicts.activeElement()?.id, 'signupConflict');
+  conflicts.element('email').value = 'changed@gmail.com';
+  conflicts.dispatch('email','input');
+  assert.equal(conflicts.element('email').attributes['aria-invalid'], 'false');
+  assert.equal(conflicts.element('phone').attributes['aria-invalid'], 'true');
+  assert.equal(conflicts.element('signupConflictMessage').textContent, 'An account with this mobile number already exists.');
+  assert.equal(conflicts.element('signupConflictRecovery').classList.contains('hidden'), true);
+  assert.equal(conflicts.element('usernameServerError').textContent, 'That username is already in use.');
+  conflicts.element('phone').value = '';
+  conflicts.dispatch('phone','input');
+  assert.equal(conflicts.element('signupConflict').classList.contains('hidden'), true);
+  assert.equal(conflicts.element('signupFooter').classList.contains('hidden'), false);
+  assert.equal(conflicts.element('phone').attributes['aria-invalid'], 'false');
+  assert.equal(conflicts.element('password').value, 'strong-password');
 
-  const failedEdit = page({signup:true, initialStorage:{pendingSignupContext:JSON.stringify({email:'customer@gmail.com', expiresAt:3700000})}});
-  failedEdit.API.requestRegistrationReview = async () => {throw {message:'Try again.'};};
-  await failedEdit.dispatch('signupEdit','click');
-  assert.equal(failedEdit.calls.length, 0);
-  assert.equal(JSON.parse(failedEdit.storage.get('pendingSignupContext')).review, undefined);
-  assert.equal(failedEdit.element('signupEdit').disabled, false);
+  const staleConflict = page({signup:true,phone:'09171234567'});
+  let rejectConflict;
+  staleConflict.API.register = () => new Promise((_resolve,reject) => {rejectConflict=reject;});
+  const staleRequest = staleConflict.dispatch('signupForm','submit');
+  staleConflict.element('email').value = 'corrected@gmail.com';
+  staleConflict.dispatch('email','input');
+  rejectConflict({status:422,data:{conflicts:{email:'account_exists',phone:'account_exists'}},errors:{email:['duplicate'],phone:['duplicate']}});
+  await staleRequest;
+  assert.equal(staleConflict.element('signupConflictMessage').textContent,'An account with this mobile number already exists.');
+  assert.equal(staleConflict.element('email').attributes['aria-invalid'],'false');
+
+  const exit = page();
+  await exit.dispatch('verificationBackAction','click');
+  assert.deepEqual(exit.calls, [['cancel','private-edit-credential'],['redirect','/sign-up']]);
+  assert.equal(exit.storage.has('pendingVerificationEmail'), false);
+  const reload = page();
+  reload.windowHandlers.pagehide({persisted:false});
+  assert.deepEqual(reload.calls, [], 'Reload/close never destructively cancels on pagehide');
+  assert.equal(reload.storage.get('pendingRegistrationEditToken'), 'private-edit-credential');
+
+  const historyReturn = page({signup:true});
+  historyReturn.element('password').value = 'abandoned-password';
+  historyReturn.element('email').value = 'abandoned@gmail.com';
+  historyReturn.windowHandlers.pagehide({persisted:true});
+  historyReturn.windowHandlers.pageshow({persisted:true});
+  assert.equal(historyReturn.element('email').value,'');
+  assert.equal(historyReturn.element('password').value,'');
+  assert.equal(historyReturn.element('terms').checked,false);
+  assert.deepEqual(historyReturn.calls,[]);
 
   const waitingDeadline = page({initialStorage:{pendingVerificationState:'resumed', pendingVerificationRegistrationUntil:'101000'}});
   waitingDeadline.advance(1000);
@@ -335,9 +342,9 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       assert.equal(signup.calls[0][1].email, 'customer@gmail.com');
       if (reviewing) assert.equal(signup.calls[0][2], 'ownership-grant');
       else {
-        assert.equal(signup.storage.get('pendingVerificationState'), 'requested');
+        assert.equal(signup.storage.get('pendingVerificationState'), 'queued');
         assert.equal(signup.storage.has('pendingSignupDetails'), false, 'Public input never becomes an authorized saved profile');
-        assert.equal(signup.storage.has('pendingSignupContext'), true);
+        assert.equal(signup.storage.has('pendingSignupContext'), false);
       }
       assert.deepEqual(signup.calls.at(-1), ['redirect', reviewing ? '/account' : '/verify-email']);
       assert.equal(signup.calls.length, 2, 'One signup request and the existing verification redirect');
@@ -392,12 +399,11 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   const abandoned = page({ signup: true });
   abandoned.API.register = async () => ({ requires_verification: true, resend_after: 0 });
   await abandoned.dispatch('signupForm', 'submit');
-  assert.equal(abandoned.element('signupContinuation').classList.contains('hidden'), true, 'A public response cannot establish an unfinished registration');
   assert.equal(abandoned.element('firstName').value, 'Test');
   assert.equal(abandoned.element('password').value, 'strong-password');
   assert.deepEqual(abandoned.calls, [], 'A response without authorized pending context stays on signup');
   assert.match(abandoned.element('signupMessage').textContent, /Registration couldn't continue/);
-  assert.equal(abandoned.storage.get('pendingRegistrationEditToken'), 'private-edit-credential', 'An inconclusive response cannot erase an existing credential');
+  assert.equal(abandoned.storage.has('pendingRegistrationEditToken'), false);
   assert.equal(abandoned.storage.has('pendingSignupDetails'), false, 'Unproven submitted details cannot become recovered account details');
 
   const obsoleteResponse = page({signup:true});

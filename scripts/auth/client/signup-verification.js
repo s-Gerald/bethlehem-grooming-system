@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let email = recovering ? "" : read("pendingVerificationEmail") || context.read()?.email || "";
   let busy = false;
   let joining = false;
+  let departed = false;
   let state = recovering ? "" : read("pendingVerificationState");
   let registrationEnded = state === "expired" || state === "restart_required";
   const registrationUntil = recovering ? 0 : Number(read("pendingVerificationRegistrationUntil")) || context.read(email)?.expiresAt || 0;
@@ -50,10 +51,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const back = document.getElementById("verificationBackAction");
     back.textContent = "Back to sign up";
     back.setAttribute("href", "/sign-up");
-    if (email && context.read(email)?.review && !registrationEnded) {
-      description.textContent = "Verify your email to edit your details.";
-      instruction.textContent = "Use your latest verification link.";
-    }
     if (registrationEnded) {
       title.textContent = state === "expired" ? "Registration expired" : "Registration ending";
       description.textContent = "";
@@ -121,13 +118,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   async function join() {
-    if (joining || busy || !email) return;
+    if (departed || joining || busy || !email) return;
     joining = true;
     try {
       // Only the server-validated HttpOnly account cookie can establish a
       // dashboard session. Broadcast messages and storage never authorize it.
       const result = await API.registrationSession(email, !!email);
-      if (result) {
+      if (result && !departed) {
         context.clear(email);
         stopDelivery();
         clearInterval(timer);
@@ -154,6 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
     tick();
     try {
       const result = await API.resendVerification(email);
+      if (departed) return;
       state = result.registration_state === "requested" ? "requested" : result.email_delivery_token ? "queued" : "";
       linkUntil = 0;
       write("pendingVerificationLinkUntil", "0");
@@ -164,6 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
       cooldown(result);
       delivery(result.email_delivery_token);
     } catch (error) {
+      if (departed) return;
       if (error.code === "registration_expired" || error.code === "registration_restart_required") {
         registrationEnded = true;
         state = error.code === "registration_expired" ? "expired" : "restart_required";
@@ -176,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
       announce(window.AuthenticationResend.limited(error)
         ? window.AuthenticationResend.message(window.AuthenticationResend.seconds(error))
         : error.message || "Couldn't send the verification email. Try resending.", true);
-    } finally { busy = false; tick(); }
+    } finally { busy = false; if (!departed) tick(); }
   });
   if (channel) channel.onmessage = event => { if (event.data?.type === "registration-verified") join(); };
   window.addEventListener("focus", join);
@@ -192,6 +191,12 @@ document.addEventListener("DOMContentLoaded", () => {
     window.clearTimeout(expirationTimer);
     timer = null;
     if (!event.persisted) channel?.close();
+  });
+  context.bindExits(() => {
+    departed = true;
+    stopDelivery();
+    clearInterval(timer);
+    window.clearTimeout(expirationTimer);
   });
   view.classList.remove("hidden");
   renderEmail();

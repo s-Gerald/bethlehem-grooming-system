@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Support\AccountEmail;
 use App\Models\PendingCustomerRegistration;
+use App\Models\PendingStaffAccount;
 use App\Models\User;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class CustomerRegistrationService
@@ -22,17 +24,109 @@ class CustomerRegistrationService
         return $registrant->terms_accepted_version === self::TERMS_VERSION && $registrant->terms_accepted_at !== null;
     }
 
-    // Presentation intent only: never authorizes access to saved details.
-    public static function reviewIntentKey(string $browserHash, string $email): string
+    public function assertAccountAvailability(array $details, bool $lock = false, ?User $except = null): void
     {
-        return 'registration-review:'.hash('sha256', $browserHash.'|'.strtolower(trim($email)));
+        $query = User::query()->where(function ($query) use ($details) {
+            $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$details['email']]);
+            if (! empty($details['phone'])) $query->orWhere('phone', $details['phone']);
+            if (! empty($details['username'])) $query->orWhereRaw(
+                (DB::getDriverName() === 'sqlite' ? 'username COLLATE NOCASE' : 'username').' = ?', [$details['username']]);
+        })->when($except, fn ($query) => $query->whereKeyNot($except->getKey()));
+        if ($lock) $query->lockForUpdate();
+        $accounts = $query->get(['email', 'phone', 'username']);
+        // Older staff invitation records still reserve their live credentials.
+        if (Schema::hasTable('pending_staff_accounts')) {
+            $reserved = PendingStaffAccount::query()->where('expires_at', '>', now())->where(function ($query) use ($details) {
+                $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$details['email']]);
+                if (! empty($details['username'])) $query->orWhereRaw(
+                    (DB::getDriverName() === 'sqlite' ? 'username COLLATE NOCASE' : 'username').' = ?', [$details['username']]);
+            });
+            if ($lock) $reserved->lockForUpdate();
+            $accounts = $accounts->concat($reserved->get(['email', 'username']));
+        }
+        $errors = $conflicts = [];
+        foreach ($accounts as $account) {
+            if (strcasecmp($account->email ?? '', $details['email']) === 0) {
+                $errors['email'] = ['An account with this email already exists.'];
+                $conflicts['email'] = 'account_exists';
+            }
+            if (! empty($details['phone']) && $account->phone === $details['phone']) {
+                $errors['phone'] = ['An account with this mobile number already exists.'];
+                $conflicts['phone'] = 'account_exists';
+            }
+            if (! empty($details['username']) && strcasecmp($account->username ?? '', $details['username']) === 0) {
+                $errors['username'] = ['That username is already in use.'];
+                $conflicts['username'] = 'username_taken';
+            }
+        }
+        if ($errors) throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+            'message' => reset($errors)[0], 'errors' => $errors, 'conflicts' => $conflicts,
+        ], 422)->header('Cache-Control', 'no-store'));
     }
 
-    public static function wantsReview(PendingCustomerRegistration $registration, Request $request): bool
+    public function start(Request $request, array $details, string $browserHash): \Illuminate\Http\JsonResponse
     {
-        $browser = $request->cookie(self::BROWSER_COOKIE);
-        $intent = is_string($browser) ? Cache::get(self::reviewIntentKey(hash('sha256', $browser), $registration->email)) : null;
-        return is_int($intent) && $registration->created_at?->timestamp <= $intent;
+        try {
+            return DB::transaction(function () use ($request, $details, $browserHash) {
+                PendingCustomerRegistration::pruneExpired();
+                $this->assertAccountAvailability($details, true);
+                $collisions = PendingCustomerRegistration::query()->where(function ($query) use ($details) {
+                    $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$details['email']]);
+                    foreach (['phone', 'username'] as $field) {
+                        if (! empty($details[$field])) $query->orWhere($field, $details[$field]);
+                    }
+                })->lockForUpdate()->get();
+                foreach ($collisions as $pending) {
+                    if (strcasecmp($pending->email, $details['email']) !== 0 || ! self::canContinue($pending, $request)) {
+                        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                            'success' => false, 'code' => 'registration_pending',
+                            'message' => 'These details are reserved by an unfinished registration. Use its verification email or try again after it expires.',
+                            'retry_after' => max(1, ($pending->registration_recovery_expires_at ?? $pending->retentionExpiresAt())->timestamp - now()->timestamp),
+                        ], 422)->header('Cache-Control', 'no-store'));
+                    }
+                    $pending->delete();
+                }
+                $credential = Str::random(64);
+                $pending = PendingCustomerRegistration::create([
+                    ...$details, 'registration_browser_token_hash' => $browserHash,
+                    'registration_edit_token_hash' => hash('sha256', $credential),
+                ]);
+                $receipt = app(AuthenticationEmailPolicy::class)->send($pending->email,
+                    fn () => app(RegistrationMagicLinkService::class)->issue($pending, allowImmediate: false));
+                return response()->json([
+                    'success' => true, 'requires_verification' => true, 'registration_state' => 'queued',
+                    'message' => 'Verification email queued. Delivery is not confirmed.',
+                    'email' => $pending->email, 'registration_token' => $credential,
+                    'registration_expires_at' => $pending->retentionExpiresAt()->toIso8601String(),
+                    'email_delivery_token' => $receipt, 'email_delivery_queued' => true,
+                    ...app(AuthenticationEmailPolicy::class)->status($pending->email),
+                ], 202)->header('Cache-Control', 'no-store');
+            }, 3);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $this->assertAccountAvailability($details);
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                'success' => false, 'code' => 'registration_pending',
+                'message' => 'These details are reserved by an unfinished registration. Use its verification email or try again after it expires.',
+            ], 422)->header('Cache-Control', 'no-store'));
+        }
+    }
+
+    public function cancel(Request $request): \Illuminate\Http\JsonResponse
+    {
+        // UseAccountSessionCookie enforces the shared XHR/origin protections.
+        $data = $request->validate(['registration_token' => 'required|string|size:64']);
+        DB::transaction(function () use ($data, $request) {
+            $hash = hash('sha256', $data['registration_token']);
+            $pending = PendingCustomerRegistration::query()
+                ->where(fn ($query) => $query->where('registration_edit_token_hash', $hash)
+                    ->orWhere('registration_recovery_token_hash', $hash)
+                    ->orWhere('email_verification_token', $hash))->lockForUpdate()->first();
+            if ($pending && ((self::trustsBrowser($pending, $request) && $pending->registration_edit_token_hash === $hash)
+                || ($pending->hasActiveReview() && $pending->registration_recovery_token_hash === $hash)
+                || ($pending->email_verification_token === $hash && ! $pending->retentionExpired()
+                    && RegistrationMagicLinkService::expiresAt($pending)?->isFuture()))) $pending->delete();
+        }, 3);
+        return response()->json(['success' => true])->header('Cache-Control', 'no-store');
     }
 
     public function requestPublic(string $email, ?array $details, string $browserHash): \Illuminate\Http\JsonResponse
@@ -58,40 +152,16 @@ class CustomerRegistrationService
     public function processPublicRequest(string $email, ?array $details, string $browserHash, int $requestedAt): void
     {
         // Replayed or delayed public work must never recreate an expired signup.
-        if ($requestedAt <= now()->subHour()->timestamp) return;
+        // Pre-deployment creation jobs are obsolete: only live rows issue mail.
+        if ($details !== null || $requestedAt <= now()->subHour()->timestamp) return;
         try {
-            DB::transaction(function () use ($email, $details, $browserHash, $requestedAt) {
-                if ($details !== null) {
-                    PendingCustomerRegistration::pruneExpired();
-                    $identifiers = function ($query) use ($email, $details) {
-                        $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$email]);
-                        foreach (['phone', 'username'] as $field) {
-                            if (! empty($details[$field])) $query->orWhere($field, $details[$field]);
-                        }
-                    };
-                    if (User::query()->where($identifiers)->lockForUpdate()->first()
-                        || PendingCustomerRegistration::query()->where($identifiers)->lockForUpdate()->first()) return;
-                    $registrant = PendingCustomerRegistration::create([
-                        ...$details, 'email' => $email,
-                        'registration_browser_token_hash' => $browserHash,
-                        'registration_edit_token_hash' => hash('sha256', Str::random(64)),
-                    ]);
-                    // Editing may be selected before this durable job runs.
-                    // Carry it through this creation time and retention deadline,
-                    // including a retry after the transaction rolls back.
-                    $intentKey = self::reviewIntentKey($browserHash, $email);
-                    $intent = Cache::get($intentKey);
-                    if (is_int($intent) && $intent >= $requestedAt) {
-                        Cache::put($intentKey, now()->timestamp, $registrant->retentionExpiresAt());
-                    }
-                } else {
-                    $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
-                    $registrant = $user ? (self::recoverableUser($user) ? $user : null)
-                        : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
-                    // Retried or out-of-order work must not replace a newer link.
-                    if (! $registrant || $registrant->created_at?->timestamp > $requestedAt
-                        || $registrant->email_verification_last_sent_at?->timestamp >= $requestedAt) return;
-                }
+            DB::transaction(function () use ($email, $requestedAt) {
+                $user = User::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
+                $registrant = $user ? (self::recoverableUser($user) ? $user : null)
+                    : PendingCustomerRegistration::query()->unexpired()->whereRaw(AccountEmail::lookupColumn().' = ?', [$email])->lockForUpdate()->first();
+                // Retried or out-of-order work must not replace a newer link.
+                if (! $registrant || $registrant->created_at?->timestamp > $requestedAt
+                    || $registrant->email_verification_last_sent_at?->timestamp >= $requestedAt) return;
                 if ($registrant instanceof PendingCustomerRegistration
                     && ($registrant->hasActiveReview()
                         || $registrant->retentionExpiresAt()->lessThan(now()->addSeconds(RegistrationMagicLinkService::MIN_DELIVERY_SECONDS)))) return;
@@ -108,13 +178,6 @@ class CustomerRegistrationService
         return ! $registration->retentionExpired() && self::trustsBrowser($registration, $request)
             && is_string($token) && strlen($token) === 64 && $registration->registration_edit_token_hash
             && hash_equals($registration->registration_edit_token_hash, hash('sha256', $token));
-    }
-
-    public static function usableLink(PendingCustomerRegistration $registration): bool
-    {
-        return ! $registration->retentionExpired() && $registration->email_verification_token
-            && $registration->email_verification_last_sent_at
-            && RegistrationMagicLinkService::expiresAt($registration)?->isFuture();
     }
 
     public static function browserToken(Request $request): string
@@ -179,12 +242,7 @@ class CustomerRegistrationService
             if ($registrant->retentionExpired() && (! $details || ! $registrant->hasActiveReview())) $this->unavailable();
             $values = $details ?? $registrant->only(['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash',
                 'terms_accepted_version', 'terms_accepted_at']);
-            $conflict = User::query()->where(function ($query) use ($values) {
-                $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$values['email']]);
-                if ($values['phone'] ?? null) $query->orWhere('phone', $values['phone']);
-                if ($values['username'] ?? null) $query->orWhere('username', $values['username']);
-            })->lockForUpdate()->exists();
-            if ($conflict) $this->unavailable();
+            $this->assertAccountAvailability($values, true);
             $user = User::create([
                 ...$values, 'role' => 'customer', 'customer_tier' => 'new',
                 'is_active' => true, 'is_archived' => false, 'email_verified_at' => now(),

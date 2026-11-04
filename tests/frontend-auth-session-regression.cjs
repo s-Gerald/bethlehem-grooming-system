@@ -1260,7 +1260,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
         },
         setAttribute(name, value) { this[name] = value; },
         setSelectionRange() {},
-        querySelectorAll() { return Array.from({ length: 6 }, (_, i) => element(`cell${i}`)); },
+        querySelectorAll(selector) { return selector.startsWith("a[") ? [] : Array.from({ length: 6 }, (_, i) => element(`cell${i}`)); },
         className: "",
         disabled: id === "loginCodeSubmit",
         textContent: "",
@@ -1313,6 +1313,7 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
         if (name === "DOMContentLoaded") onReady = handler;
       },
       getElementById: element,
+      querySelectorAll: () => [],
     },
     history: {
       replaceState(_state, _title, target) {
@@ -1966,7 +1967,7 @@ async function testPasswordResetRecovery() {
   let resetRequestError = null;
   let maskedResponse = "c***@example.com";
   let resetResendAfter = 75;
-  function loadPage(script) {
+  function loadPage(script, navigationType = 'reload') {
     let now = 100000;
     const intervals = new Map();
     const lifecycle = {};
@@ -1996,7 +1997,7 @@ async function testPasswordResetRecovery() {
     const context = {
       URLSearchParams,
       Date: { now: () => now },
-      performance: { now: () => now },
+      performance: { now: () => now, getEntriesByType: () => [{ type: navigationType }] },
       sessionStorage: storage,
       window: { location, addEventListener(name, handler) { lifecycle[name] = handler; }, setInterval(callback) { intervals.set(1, callback); return 1; }, clearInterval(id) { intervals.delete(id); } },
       API: {
@@ -2021,6 +2022,7 @@ async function testPasswordResetRecovery() {
         addEventListener(name, handler) { if (name === "DOMContentLoaded") handler(); },
       },
     };
+    context.window.performance = context.performance;
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "scripts/auth/verification-code.js"), "utf8"), context);
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, script), "utf8"), context);
     return { getElement, location, API: context.API, lifecycle, intervals, activeElement: () => context.document.activeElement, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
@@ -2029,7 +2031,7 @@ async function testPasswordResetRecovery() {
   const signIn = loadPage("scripts/auth/sign-in.js");
   const identifier = signIn.getElement("identifier");
   const clickForgot = () => signIn.getElement("forgotPasswordLink").handlers.click();
-  const openForgot = () => loadPage("scripts/auth/forgot-password.js");
+  const openForgot = (navigationType) => loadPage("scripts/auth/forgot-password.js", navigationType);
   identifier.value = "  Customer@example.com  ";
   clickForgot();
   assert.equal(storage.getItem(key), "Customer@example.com");
@@ -2043,7 +2045,7 @@ async function testPasswordResetRecovery() {
   assert.equal(forgot.getElement('verifyCodeForm').classList.contains('hidden'), true, 'Generic success must not automatically open reset OTP entry');
   assert.equal(forgot.getElement('passwordResetConfirmation').classList.contains('hidden'), false);
   assert.equal(forgot.activeElement(), forgot.getElement('enterResetCode'), 'Confirmation must focus its enabled next action');
-  assert.equal(forgot.getElement('registrationRecovery').classList.contains('hidden'), false);
+  assert.equal(forgot.getElement('forgotDescription').textContent, 'Check your email for a verification code.', 'Accepted requests provide concise verification guidance');
   const confirmed = openForgot();
   assert.equal(confirmed.getElement('passwordResetConfirmation').classList.contains('hidden'), false, 'Reload preserves neutral confirmation');
   assert.equal(confirmed.getElement('verifyCodeForm').classList.contains('hidden'), true);
@@ -2098,6 +2100,26 @@ async function testPasswordResetRecovery() {
   assert.equal(signIn.location.href, "http://localhost/sign-in");
   const html = fs.readFileSync(path.join(projectRoot, "pages/client/sign-in.html"), "utf8");
   assert.match(html, /id="forgotPasswordLink" href="\/forgot-password"/);
+    for (const [code, message, create] of [
+    ['account_not_found', 'No account found with this email.', true],
+    ['password_reset_unavailable', "Password reset isn't available for this account.", false],
+  ]) {
+    const unknown = openForgot();
+    unknown.getElement('resetEmail').value = 'unknown@example.com';
+    resetRequestError = {status:422,code,message};
+    await unknown.getElement('forgotPasswordForm').handlers.submit({preventDefault(){}});
+    assert.equal(unknown.getElement('forgotPasswordMessage').textContent,message);
+    assert.equal(unknown.getElement('forgotPasswordForm').classList.contains('hidden'),false);
+    assert.equal(unknown.getElement('passwordResetCreateAccount').classList.contains('hidden'),!create);
+    assert.equal(unknown.getElement('resetEmail').attributes['aria-invalid'],'true');
+    unknown.getElement('resetEmail').value = '';
+    unknown.getElement('resetEmail').handlers.input();
+    assert.equal(unknown.getElement('forgotPasswordMessage').textContent,'');
+    assert.equal(unknown.getElement('passwordResetCreateAccount').classList.contains('hidden'),true);
+    assert.equal(unknown.getElement('resetEmail').attributes['aria-invalid'],'false');
+  }
+  resetRequestError = null;
+  requests.length = 0;
   storage.removeItem('passwordResetRecovery');
   resetRequestError = { status: 429, retryAfter: 120 };
   const throttled = openForgot();
@@ -2140,19 +2162,122 @@ async function testPasswordResetRecovery() {
   await pendingRequest;
   resetRequestError = null;
 
-  async function requestRecovery() {
+  async function requestRecovery(enterCodeStep = true) {
     storage.removeItem('passwordResetRecovery');
     const page = openForgot();
     page.getElement('resetEmail').value = 'customer@example.com';
     await page.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
     assert.equal(page.getElement('verifyCodeForm').classList.contains('hidden'), true);
-    page.getElement('enterResetCode').handlers.click();
+    if (enterCodeStep) page.getElement('enterResetCode').handlers.click();
     return page;
   }
   function enterCode(page, value = '123456') {
     page.getElement('verificationCode').value = value;
     page.getElement('verificationCode').handlers.input();
   }
+
+  for (const stage of ['confirmation', 'code', 'password']) {
+    for (const navigationType of ['navigate', 'back_forward']) {
+      const page = await requestRecovery(stage !== 'confirmation');
+      if (stage === 'password') {
+        enterCode(page);
+        await page.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+      }
+      const count = requests.length;
+      const reopened = openForgot(navigationType);
+      assert.equal(reopened.getElement('forgotPasswordForm').classList.contains('hidden'), false, `${navigationType} must abandon ${stage} recovery`);
+      assert.equal(reopened.getElement('resetPasswordForm').classList.contains('hidden'), true);
+      assert.equal(reopened.getElement('forgotPasswordSubmit').disabled, false, 'Reopening never inherits a countdown');
+      assert.equal(reopened.getElement('forgotPasswordSubmitLabel').textContent, 'Send Code');
+      assert.equal(reopened.getElement('resetEmail').value, '');
+      assert.equal(storage.getItem('passwordResetRecovery'), null);
+      assert.equal(requests.length, count, 'Navigation cannot automatically request email');
+    }
+  }
+
+  const abandoned = await requestRecovery();
+  enterCode(abandoned);
+  await abandoned.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  abandoned.getElement('newPassword').value = 'UpdatedPass!234';
+  abandoned.getElement('confirmNewPassword').value = 'DifferentPass!234';
+  abandoned.getElement('toggleNewPassword').handlers.click();
+  await abandoned.getElement('resetPasswordForm').handlers.submit({ preventDefault() {} });
+  abandoned.lifecycle.pagehide({ persisted: true });
+  assert.equal(abandoned.getElement('newPassword').value, '', 'Departure scrubs password fields before caching');
+  assert.equal(abandoned.getElement('confirmNewPassword').value, '');
+  assert.equal(abandoned.getElement('resetPasswordForm').classList.contains('hidden'), true);
+  assert.equal(abandoned.intervals.size, 0);
+  abandoned.lifecycle.pageshow({ persisted: true });
+  assert.equal(abandoned.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.equal(abandoned.getElement('forgotPasswordSubmit').disabled, false);
+  assert.equal(abandoned.getElement('confirmPasswordMessage').textContent, '');
+  assert.equal(abandoned.getElement('newPassword').type, 'password');
+  assert.equal(abandoned.getElement('toggleNewPassword').attributes['aria-label'], 'Show new password');
+  assert.equal(storage.getItem('passwordResetRecovery'), null);
+
+  const reloading = await requestRecovery();
+  enterCode(reloading);
+  await reloading.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  reloading.lifecycle.pagehide({ persisted: false });
+  const reloaded = openForgot('reload');
+  assert.equal(reloaded.getElement('resetPasswordForm').classList.contains('hidden'), false, 'A real reload retains the active grant');
+  assert.equal(reloaded.getElement('newPassword').value, '');
+  identifier.value = 'prefill@example.com';
+  clickForgot();
+  const fromSignIn = openForgot('navigate');
+  assert.equal(fromSignIn.getElement('resetEmail').value, 'prefill@example.com');
+  assert.equal(fromSignIn.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.equal(fromSignIn.getElement('forgotPasswordSubmit').disabled, false);
+
+  for (const operation of ['request', 'resend', 'verify', 'reset']) {
+    for (const outcome of ['resolve', 'reject']) {
+      const delayed = await requestRecovery();
+      enterCode(delayed);
+      if (operation === 'request') {
+        delayed.getElement('forgotBack').handlers.click();
+        delayed.advance(75000);
+      } else if (operation === 'resend') delayed.advance(75000);
+      else if (operation === 'reset') {
+        await delayed.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+        delayed.getElement('newPassword').value = delayed.getElement('confirmNewPassword').value = 'UpdatedPass!234';
+      }
+      const [method, element, event] = {
+        request: ['requestPasswordReset', 'forgotPasswordForm', 'submit'],
+        resend: ['requestPasswordReset', 'resendCode', 'click'],
+        verify: ['verifyPasswordResetCode', 'verifyCodeForm', 'submit'],
+        reset: ['resetPassword', 'resetPasswordForm', 'submit'],
+      }[operation];
+      let settle;
+      delayed.API[method] = () => new Promise((resolve, reject) => { settle = outcome === 'resolve' ? resolve : reject; });
+      const pending = delayed.getElement(element).handlers[event]({ preventDefault() {} });
+      delayed.lifecycle.pagehide({ persisted: true });
+      assert.equal(delayed.getElement('verificationCode').value, '', 'Departure scrubs entered OTPs');
+      assert.equal(delayed.getElement('newPassword').value, '');
+      delayed.lifecycle.pageshow({ persisted: true });
+      settle(outcome === 'resolve' ? { token: 'x'.repeat(64), expires_in: 900, resend_after: 60 } : { status: 429, retryAfter: 120 });
+      await pending;
+      assert.equal(delayed.getElement('forgotPasswordForm').classList.contains('hidden'), false, `An old ${operation} response cannot restore an abandoned journey`);
+      assert.equal(delayed.getElement('verifyCodeMessage').textContent, '');
+      assert.equal(delayed.getElement('forgotPasswordMessage').textContent, '');
+      assert.equal(delayed.getElement('resetPasswordMessage').textContent, '');
+      assert.equal(delayed.getElement('forgotPasswordSubmit').disabled, false);
+      assert.equal(delayed.location.href, 'http://localhost/sign-in', 'An abandoned reset cannot redirect the current page');
+      assert.equal(storage.getItem('passwordResetRecovery'), null);
+    }
+  }
+
+  const restored = await requestRecovery();
+  enterCode(restored);
+  let finishCachedVerification;
+  restored.API.verifyPasswordResetCode = () => new Promise(resolve => { finishCachedVerification = resolve; });
+  const cachedVerification = restored.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+  // A persisted pageshow must itself discard stale work, even without an observed pagehide.
+  restored.lifecycle.pageshow({ persisted: true });
+  finishCachedVerification({ token: 'x'.repeat(64), expires_in: 900 });
+  await cachedVerification;
+  assert.equal(restored.getElement('forgotPasswordForm').classList.contains('hidden'), false);
+  assert.equal(storage.getItem('passwordResetRecovery'), null);
+
   const recovering = await requestRecovery();
   assert.equal(recovering.getElement('forgotTitle').textContent, 'Check Your Email');
   assert.equal(recovering.getElement('forgotBack').classList.contains('hidden'), false);
@@ -2200,6 +2325,7 @@ async function testPasswordResetRecovery() {
   resumed.lifecycle.pageshow();
   assert.equal(resumed.getElement('forgotPasswordForm').classList.contains('hidden'), false, 'Back/forward cache cannot restore a consumed grant');
   resumed.advance(75000);
+  resumed.getElement('resetEmail').value = 'customer@example.com';
   await resumed.getElement('forgotPasswordForm').handlers.submit({ preventDefault() {} });
   resumed.getElement('enterResetCode').handlers.click();
   enterCode(resumed);

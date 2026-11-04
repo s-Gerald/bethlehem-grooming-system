@@ -21,27 +21,25 @@ class PasswordResetService
 {
     public const MAX_ATTEMPTS = 5;
 
-    public function sendCode(string $email): void
-    {
-        app(AuthenticationEmailPolicy::class)->send($email, fn () => $this->sendEligibleCode($email), 'password_recovery');
-    }
-
-    private function sendEligibleCode(string $email): void
+    public function sendCode(string $email): array
     {
         $user = User::query()
             ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
             ->first();
 
-        if (! $user || ! $this->userIsEligible($user) || $user->requiresPasswordSetup()) {
-            return;
-        }
+        if (! $user) return ['status' => 'account_not_found'];
+        if (! $this->userIsEligible($user) || $user->requiresPasswordSetup()) return ['status' => 'password_reset_unavailable'];
+        return app(AuthenticationEmailPolicy::class)->send($email, fn () => $this->sendEligibleCode($user), 'password_recovery');
+    }
 
+    private function sendEligibleCode(User $user): array
+    {
         EmailVerificationController::assertMailCanBeDelivered();
 
-        DB::transaction(function () use ($user): void {
+        return DB::transaction(function () use ($user): array {
             $lockedUser = User::query()->whereKey($user->getKey())->lockForUpdate()->first();
             if (! $lockedUser || ! $this->userIsEligible($lockedUser) || $lockedUser->requiresPasswordSetup()) {
-                return;
+                return ['status' => 'password_reset_unavailable'];
             }
 
             $existing = PasswordResetRequest::query()
@@ -49,11 +47,11 @@ class PasswordResetService
                 ->lockForUpdate()
                 ->first();
             if ($existing && $existing->last_sent_at->timestamp + (int) config('authentication.email.cooldown', 60) > now()->timestamp) {
-                return;
+                return ['status' => 'limited', 'retry_after' => max(1, $existing->last_sent_at->timestamp + (int) config('authentication.email.cooldown', 60) - now()->timestamp)];
             }
             $attempts = $existing && now()->isBefore($existing->expires_at) ? $existing->verification_attempts : 0;
-            if ($attempts >= self::MAX_ATTEMPTS || ($existing?->verified_token_hash && now()->isBefore($existing->expires_at))) {
-                return;
+            if ($attempts >= self::MAX_ATTEMPTS) {
+                return ['status' => 'limited', 'retry_after' => max(1, $existing->expires_at->timestamp - now()->timestamp)];
             }
             do {
                 $code = (string) random_int(100000, 999999);
@@ -69,6 +67,7 @@ class PasswordResetService
             ])->save();
 
             AuthenticationMailDelivery::queue($lockedUser, new PasswordResetCodeNotification($code), $issuance);
+            return ['status' => 'queued'];
         });
     }
 
@@ -96,7 +95,8 @@ class PasswordResetService
 
             $grant = Str::random(64);
             $request->update([
-                'token_hash' => Hash::make(Str::random(64)),
+                // verified_token_hash consumes the code; retain its hash to exclude
+                // the same digits when issuing a replacement.
                 'verified_token_hash' => hash('sha256', $grant),
             ]);
             return [

@@ -118,13 +118,6 @@
                 </div>
               </div>
 
-              <section id="signupContinuation" class="hidden rounded-xl border border-slate-300 px-4 py-3" aria-labelledby="signupContinuationTitle" aria-live="polite" tabindex="-1">
-                <h3 id="signupContinuationTitle" class="font-semibold text-gray-800">Registration in progress</h3>
-                <p class="mt-2 text-sm text-gray-600">Continue verifying your email to finish creating your account.</p>
-                <button id="signupContinue" type="button" class="mt-3 w-full rounded-xl bg-[#315b7e] px-4 py-3 font-semibold text-white hover:bg-[#264760] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-70">Continue verification</button>
-                <button id="signupEdit" type="button" class="mt-3 w-full text-sm font-semibold text-[#315b7e] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e] disabled:opacity-70">Edit registration details</button>
-              </section>
-
               <!-- Username + Phone -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -178,7 +171,7 @@
                     <input
                       type="password"
                       id="password"
-                      name="password"
+                      name="password" autocomplete="new-password"
                       placeholder="Create password"
                       class="w-full rounded-xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
                       required
@@ -207,7 +200,7 @@
                     <input
                       type="password"
                       id="confirmPassword"
-                      name="confirmPassword"
+                      name="confirmPassword" autocomplete="new-password"
                       placeholder="Confirm password"
                       class="w-full rounded-xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-[#315b7e]"
                       required
@@ -245,6 +238,14 @@
                 </div>
               </div>
 
+              <div id="signupConflict" class="hidden text-left text-sm text-red-700" role="alert" aria-atomic="true" tabindex="-1">
+                <p id="signupConflictMessage"></p>
+                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                  <a href="/sign-in" class="font-semibold text-[#315b7e] hover:underline">Log in instead</a>
+                  <a id="signupConflictRecovery" href="/forgot-password" class="font-semibold text-[#315b7e] hover:underline">Forgot your password?</a>
+                </div>
+              </div>
+
               <!-- Button -->
               <button
                 id="signupSubmit"
@@ -255,7 +256,7 @@
               </button>
 
               <!-- Login Link -->
-              <p class="text-center text-sm text-gray-600">
+              <p id="signupFooter" class="text-center text-sm text-gray-600">
                 Already have an account?
                 <a
                   href="/sign-in"
@@ -278,10 +279,10 @@
     </div>
 
     <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="/scripts/api.js?v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&urls=20261103" defer></script>
+    <script src="/scripts/api.js?registration=20261104-v2&v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&urls=20261103" defer></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="/scripts/auth/client/signup-context.js?v=registration-review-20261029" defer></script>
-    <script src="/scripts/auth/client/signup.js?v=terms-20261101&urls=20261103" defer></script>
+    <script src="/scripts/auth/client/signup-context.js?registration=20261104-v2&v=registration-review-20261029" defer></script>
+    <script src="/scripts/auth/client/signup.js?registration=20261104-v2&v=terms-20261101&urls=20261103" defer></script>
   </body>
 </html>

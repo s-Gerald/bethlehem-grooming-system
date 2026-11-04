@@ -53,7 +53,7 @@ class EmailVerificationController extends Controller
                 }
                 if ($pending && CustomerRegistrationService::trustsBrowser($pending, $request)
                     && CustomerRegistrationService::hasCurrentTerms($pending)
-                    && ! $request->boolean('review') && ! CustomerRegistrationService::wantsReview($pending, $request)) {
+                    && ! $request->boolean('review')) {
                     return app(CustomerRegistrationService::class)->complete($pending);
                 }
                 // Foreign browsers and legacy accounts must discard the pending
@@ -65,24 +65,12 @@ class EmailVerificationController extends Controller
         }
     }
 
-    public function requestReview(Request $request)
-    {
-        $data = $request->validate(['email' => 'required|email|max:150']);
-        $browser = $request->cookie(CustomerRegistrationService::BROWSER_COOKIE);
-        if (is_string($browser) && preg_match('/^[A-Za-z0-9]{64}$/D', $browser)) {
-            Cache::put(CustomerRegistrationService::reviewIntentKey(hash('sha256', $browser), $data['email']), now()->timestamp, 3600);
-        }
-        // Same response without an account lookup, including unknown addresses.
-        return response()->json(['success' => true,
-            'message' => 'Use your latest verification link to review your details.'], 202)->header('Cache-Control', 'no-store');
-    }
-
     private function invalidLink(bool $expired = false)
     {
         return response()->json(['success' => false, 'expired' => $expired,
             'code' => $expired ? 'registration_link_expired' : 'registration_link_invalid',
             'message' => $expired ? 'This link has expired. Request a new one.'
-                : 'This link is invalid or has already been used.'], 422)->header('Cache-Control', 'no-store');
+                : 'This verification link is no longer valid.'], 422)->header('Cache-Control', 'no-store');
     }
 
     private function expiredRegistration()
