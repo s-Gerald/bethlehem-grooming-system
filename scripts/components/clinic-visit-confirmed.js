@@ -48,7 +48,7 @@ export async function initClinicVisitConfirmation() {
     typeof appointment.terms_agreed === "boolean" ? confirmationSection("Clinic Visit Agreement", confirmationFields([
       ["Clinic visit terms", appointment.terms_agreed ? "Agreed" : "Not agreed"],
     ])) : "",
-    !walkIn ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
+    !walkIn ? confirmationSection("What Happens Next", "<p>Your queue number will be assigned after check-in.</p>") : "",
   ].join("");
   renderConfirmation(root, {
     title: walkIn ? "Clinic Walk-in Checked In" : "Queue Registration Received",

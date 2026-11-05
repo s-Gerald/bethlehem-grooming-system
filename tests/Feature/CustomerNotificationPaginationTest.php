@@ -88,6 +88,43 @@ class CustomerNotificationPaginationTest extends TestCase
         }
     }
 
+    public function test_saved_registration_reminders_remove_only_the_obsolete_instruction_on_read(): void
+    {
+        foreach ([
+            ['reminder_24h', 'Reminder: Your grooming registration for Helio is valid tomorrow.'],
+            ['reminder_3h', 'Reminder: Your grooming registration for Helio is valid today.'],
+            ['clinic_reminder_24h', 'Reminder: Your clinic registration for Helio is valid tomorrow.'],
+            ['clinic_reminder_3h', 'Reminder: Your clinic registration for Helio is valid today.'],
+        ] as [$type, $expected]) {
+            $stored = $expected.' Show your registration reference when you arrive.';
+            DB::table('customer_notifications')->where('user_id', 1)->update(['type' => $type, 'message' => $stored]);
+
+            $payload = (new CustomerNotificationController)->index($this->customerRequest())->getData(true);
+            foreach ($payload['notifications'] as $item) {
+                $this->assertSame($expected, $item['message']);
+                $this->assertSame($expected, $item['display_message']);
+            }
+            $this->assertSame(18, $payload['unread_count']);
+            $this->assertSame(35, DB::table('customer_notifications')->where('user_id', 1)->where('message', $stored)->count());
+            $this->assertSame(18, DB::table('customer_notifications')->where('user_id', 1)->where('is_read', false)->count());
+        }
+    }
+
+    public function test_reminder_formatting_preserves_arrival_details_references_and_unrelated_content(): void
+    {
+        foreach ([
+            ['reminder_24h', "Reminder: You planned Helio's grooming drop-off tomorrow around 10:00 AM - 11:00 AM. Your pet joins the queue after check-in."],
+            ['clinic_reminder_3h', "Reminder: You planned Helio's clinic arrival today around 10:00 AM - 11:00 AM. Your pet joins the queue after check-in."],
+            ['reminder_24h', 'Reminder: Your grooming registration for Helio is valid tomorrow. Registration reference: BAC-TEST-1.'],
+            ['custom_notice', 'Show your registration reference when you arrive.'],
+        ] as [$type, $stored]) {
+            DB::table('customer_notifications')->where('user_id', 1)->update(['type' => $type, 'message' => $stored]);
+            $item = (new CustomerNotificationController)->index($this->customerRequest())->getData(true)['notifications'][0];
+            $this->assertSame($stored, $item['message']);
+            $this->assertSame($stored, $item['display_message']);
+        }
+    }
+
     private function customerRequest(array $query = []): Request
     {
         $request = Request::create('/api/customer/notifications', 'GET', $query);

@@ -66,7 +66,7 @@ class SendAppointmentReminders extends Command
         ], [
             'message' => $window
                 ? "Reminder: You planned {$pets}'s {$plan} {$when} around {$window}. Your pet joins the queue after check-in."
-                : "Reminder: Your {$service} registration for {$pets} is valid {$when}. Show your registration reference when you arrive.",
+                : "Reminder: Your {$service} registration for {$pets} is valid {$when}.",
             'is_read' => false,
             'created_at' => now(),
         ]);

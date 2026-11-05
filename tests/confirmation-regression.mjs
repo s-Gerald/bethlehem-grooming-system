@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
+import { groomingPetConfirmation, initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
 import { initClinicVisitConfirmation } from "../scripts/components/clinic-visit-confirmed.js";
 import {
   clinicReasonConfirmation, confirmationFields, ownerConfirmationFields, formatConfirmationTimestamp,
@@ -84,7 +84,8 @@ assert.match(root.innerHTML, /Entry source<\/dt><dd>Online Queue Registration/);
 assert.match(root.innerHTML, /Registration reference<\/dt><dd>CL-ONLINE-1/);
 assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
 assert.match(root.innerHTML, /Waiting to Arrive/);
-assert.match(root.innerHTML, /Your queue number is assigned after check-in/);
+assert.match(root.innerHTML, /Your queue number will be assigned after check-in\./);
+assert.doesNotMatch(root.innerHTML, /Show your registration reference/);
 printCallback();
 restoreTitle();
 assert.equal(document.title, 'Queue Registration Received');
@@ -94,4 +95,14 @@ assert.match(root.innerHTML, /href="\.\/appointments\.html">Go to Grooming<\/a>/
 assert.match(root.innerHTML, /Print Confirmation/);
 assert.equal((root.innerHTML.match(/class="confirmation-button\b/g) || []).length, 2);
 assert.doesNotMatch(root.innerHTML, /Register Another Walk-in|confirmation-another|walk-in-booking\.html/);
+sessionStorage.getItem = (key) => key === 'bookingConfirmation' ? JSON.stringify({
+  booking_reference: 'GR-ONLINE-1', booking_date: '2026-11-06', status: 'waiting_to_arrive',
+  submitted_at: '2026-11-06T02:30:00Z', owner: { name: 'Ana Santos' },
+  pets: [{ petName: 'Mochi', petType: 'cat' }],
+}) : null;
+await initBookingConfirmedStep();
+assert.match(root.innerHTML, /Registration reference<\/dt><dd>GR-ONLINE-1/);
+assert.match(root.innerHTML, /Queue number<\/dt><dd>Not assigned/);
+assert.match(root.innerHTML, /Your queue number will be assigned after check-in\./);
+assert.doesNotMatch(root.innerHTML, /Show your registration reference/);
 console.log("Confirmation regression checks passed.");

@@ -1008,10 +1008,18 @@ class QueuePreRegistrationModelTest extends TestCase
         $this->artisan('reminders:send')->assertSuccessful();
         $this->artisan('reminders:send')->assertSuccessful();
         $this->assertDatabaseCount('customer_notifications', 2);
-        foreach (DB::table('customer_notifications')->pluck('message') as $message) {
-            $this->assertStringContainsString('valid tomorrow', $message);
-            $this->assertStringNotContainsString('around', $message);
-            $this->assertStringNotContainsString('AM', $message);
-        }
+        $this->assertSame([
+            'reminder_24h' => 'Reminder: Your grooming registration for Bella is valid tomorrow.',
+            'clinic_reminder_24h' => 'Reminder: Your clinic registration for Bella is valid tomorrow.',
+        ], DB::table('customer_notifications')->pluck('message', 'type')->all());
+
+        Carbon::setTestNow('2026-10-10 05:00:00');
+        $this->artisan('reminders:send')->assertSuccessful();
+        $this->artisan('reminders:send')->assertSuccessful();
+        $this->assertDatabaseCount('customer_notifications', 4);
+        $this->assertSame([
+            'reminder_3h' => 'Reminder: Your grooming registration for Bella is valid today.',
+            'clinic_reminder_3h' => 'Reminder: Your clinic registration for Bella is valid today.',
+        ], DB::table('customer_notifications')->whereIn('type', ['reminder_3h', 'clinic_reminder_3h'])->pluck('message', 'type')->all());
     }
 }

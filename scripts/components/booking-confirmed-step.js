@@ -94,7 +94,7 @@ export async function initBookingConfirmedStep() {
         ${totalPrice.isEstimate ? `<span class="confirmation-badge">Estimate Only</span>
         <p class="confirmation-estimate-note">${escapeHtml(totalPrice.disclaimer)}</p>` : ""}
       </div>`),
-    !isWalkInConfirmation ? confirmationSection("What Happens Next", "<p>Show your registration reference when you arrive. Your queue number is assigned after check-in.</p>") : "",
+    !isWalkInConfirmation ? confirmationSection("What Happens Next", "<p>Your queue number will be assigned after check-in.</p>") : "",
   ].join("");
 
   renderConfirmation(root, {

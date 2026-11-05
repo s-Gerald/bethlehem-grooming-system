@@ -59,7 +59,7 @@ class CustomerNotificationController extends Controller
                         CustomerNotification::TYPE_BOOKING_CANCELLED => $this->cancellationContent($n)['title'],
                         default => null,
                     },
-                    'message' => $n->type === CustomerNotification::TYPE_BOOKING_CANCELLED ? $this->cancellationContent($n)['body'] : $this->formatNotificationMessage($n->message),
+                    'message' => $n->type === CustomerNotification::TYPE_BOOKING_CANCELLED ? $this->cancellationContent($n)['body'] : $this->formatNotificationMessage($n),
                     'display_message' => $this->formatCustomerNotificationMessage($n, $petNames),
                     'pet_names' => $petNames,
                     'pet_types' => $petTypes,
@@ -95,7 +95,7 @@ class CustomerNotificationController extends Controller
             'has_more' => $hasMore,
             'pickup_alert' => $pickupNotif ? [
                 'id' => $pickupNotif->id,
-                'message' => $this->formatNotificationMessage($pickupNotif->message),
+                'message' => $this->formatNotificationMessage($pickupNotif),
                 'display_message' => $this->formatCustomerNotificationMessage($pickupNotif, $pickupPetNames),
                 'pet_names' => $pickupPetNames,
                 'pet_types' => $pickupPetTypes,
@@ -223,7 +223,7 @@ class CustomerNotificationController extends Controller
                 'grooming_started' => "Great news! Your pet has Started Grooming. We'll let you know as soon as they're ready for pickup!",
                 'grooming_finished' => "Your pet is Finished with grooming. We'll keep you updated on the rest of the visit.",
                 'ready_for_pickup' => 'Your pet is now Ready for Pickup and looking fabulous! Please come to the clinic to pick them up.',
-                default => $this->formatNotificationMessage($notification->message),
+                default => $this->formatNotificationMessage($notification),
             };
         }
 
@@ -239,11 +239,11 @@ class CustomerNotificationController extends Controller
             'picked_up' => "{$subject} ".($isPlural ? 'have' : 'has').' been released. Thank you for visiting Bethlehem Animal Clinic!',
             'reminder_24h' => $timeLabel
                 ? "Reminder: {$subject}'s planned grooming drop-off is tomorrow around {$timeLabel}. Your pet joins the queue after check-in."
-                : $this->formatNotificationMessage($notification->message),
+                : $this->formatNotificationMessage($notification),
             'reminder_3h' => $timeLabel
                 ? "Heads up! {$subject}'s planned grooming drop-off is in about 3 hours around {$timeLabel}. Your pet joins the queue after check-in."
-                : $this->formatNotificationMessage($notification->message),
-            default => $this->formatNotificationMessage($notification->message),
+                : $this->formatNotificationMessage($notification),
+            default => $this->formatNotificationMessage($notification),
         };
     }
 
@@ -262,9 +262,13 @@ class CustomerNotificationController extends Controller
         }));
     }
 
-    private function formatNotificationMessage(?string $message): string
+    private function formatNotificationMessage(CustomerNotification $notification): string
     {
-        $text = (string) $message;
+        $text = (string) $notification->message;
+
+        if (in_array($notification->type, ['reminder_24h', 'reminder_3h', 'clinic_reminder_24h', 'clinic_reminder_3h'], true)) {
+            $text = trim(str_replace('Show your registration reference when you arrive.', '', $text));
+        }
 
         $text = preg_replace(
             '/\bNew booking\s+(BAC-[A-Za-z0-9-]+)/i',
