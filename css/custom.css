@@ -1243,13 +1243,6 @@ body.customer-detail-modal-open {
   font-weight: 700;
 }
 
-.payment-service-description {
-  margin-top: 0.15rem;
-  color: #64748b;
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
 .payment-service-hint {
   margin-top: 0.35rem;
   color: #315b7e;

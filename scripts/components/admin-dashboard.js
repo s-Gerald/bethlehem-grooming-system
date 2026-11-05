@@ -3662,12 +3662,6 @@ function adminDashboard() {
             serviceDefinition?.name ??
             "Grooming Service",
         ),
-        description: this.toStringValue(
-          rawService?.description ??
-            rawService?.notes ??
-            serviceDefinition?.descriptionItems?.[0] ??
-            (serviceDefinition?.kind === "package" ? "Package service" : "A la carte service"),
-        ),
         minAmount: pricing.minAmount,
         maxAmount: pricing.maxAmount ?? pricing.selectedPriceOption?.maxAmount ?? null,
         ...getPaymentPriceSafetyRules(pricing, serviceDefinition, pet.sizeKey),
@@ -4136,7 +4130,7 @@ function adminDashboard() {
             lines: (response.checkout_summary.pets[index].service_breakdown || []).map(line => ({
               id: line.booking_service_id, bookingServiceId: line.booking_service_id, name: line.label,
               amount: line.price_at_booking, pricingType: 'fixed', isFixedPriceLocked: true,
-              priceHint: this.formatPeso(line.price_at_booking), description: '', priceTouched: false,
+              priceHint: this.formatPeso(line.price_at_booking), priceTouched: false,
             })),
           }));
           modal.products = (response.checkout_products || []).map(line => ({
