@@ -95,7 +95,7 @@ class GroomingPricingController extends Controller
             'includedServiceIds' => ['sometimes', 'array', 'max:100'],
             'includedServiceIds.*' => ['integer', 'distinct', \Illuminate\Validation\Rule::exists('services', 'service_id')->where('kind', 'ala_carte')],
             'isActive' => ['required', 'boolean'],
-            'timeConfiguration' => ['sometimes', 'array:estimates,haircuts,replaceLegacy'],
+            'timeConfiguration' => ['sometimes', 'array:estimates,haircuts'],
         ]);
         if (! $created && $service->kind !== $data['kind']) {
             throw \Illuminate\Validation\ValidationException::withMessages(['kind' => 'Service type cannot be changed.']);
@@ -245,7 +245,6 @@ class GroomingPricingController extends Controller
             'timeEstimates' => $service->time_estimates ?? new \stdClass,
             'haircutOptions' => $service->haircut_options ?? [],
             'supportsHaircuts' => $service->supportsHaircuts(),
-            'legacyCompleteEstimates' => $service->legacy_complete_estimates,
             'priceOptions' => $this->priceOptions($service, $resolver),
             'defaultPriceOptions' => config("grooming_services.services.{$service->slug}")
                 ? $this->priceOptions(new Service(['slug' => $service->slug]), $resolver) : []];

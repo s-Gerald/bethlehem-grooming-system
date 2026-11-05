@@ -12,7 +12,6 @@ class GroomingTimeConfiguration
     public function values(array $input, Service $service, array $sizes): array
     {
         Validator::make($input, [
-            'replaceLegacy'=>['sometimes','boolean'],
             'estimates'=>['present','array:'.implode(',', $sizes)],
             'haircuts'=>['present','array','max:100'],
             'haircuts.*'=>['array:id,name,isActive,estimates'],
@@ -36,7 +35,7 @@ class GroomingTimeConfiguration
             if (! in_array($existing['id'], array_column($options, 'id'), true)) $options[] = [...$existing, 'isActive'=>false];
         }
         return ['time_estimates'=>$this->estimates($input['estimates'], 'estimates'),
-            'haircut_options'=>$options, 'legacy_complete_estimates'=>($input['replaceLegacy'] ?? true) ? null : $service->legacy_complete_estimates];
+            'haircut_options'=>$options];
     }
 
     private function estimates(array $rows, string $field): array

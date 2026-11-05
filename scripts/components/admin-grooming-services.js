@@ -5,7 +5,7 @@ function adminGroomingServices() {
     rows: [], priceLimits: null, loading: false, loaded: false, error: '', busyId: null,
     groups: [{kind: 'package', label: 'Grooming Packages', action: 'Add Grooming Package'},
       {kind: 'ala_carte', label: 'Ala carte', action: 'Add Ala carte Service'}],
-    form: null, editingId: null, saving: false, formError: '', fieldErrors: {}, editorTab: 'details', timeDirty: false,
+    form: null, editingId: null, saving: false, formError: '', fieldErrors: {}, editorTab: 'details', timeDirty: false, priceNotice: '',
     init() {},
     get canManageServices() { return this.$store.clinicAccess.user?.role === 'admin'; },
     get catalogueEndpoint() { return this.canManageServices ? '/admin/grooming/services' : '/admin/grooming/services/catalogue'; },
@@ -39,6 +39,7 @@ function adminGroomingServices() {
       this.formError = '';
       this.editorTab = 'details';
       this.timeDirty = false;
+      this.priceNotice = '';
       const priceRows = kind === 'package' ? sizes.map((sizeKey, index) => {
         const saved = service?.priceOptions.find(option => option.sizeKey === sizeKey);
         return {sizeKey, label: labels[index], enabled: !service || !!saved,
@@ -53,11 +54,9 @@ function adminGroomingServices() {
         nextDescriptionKey: service?.descriptionItems?.length || 1,
         includedServiceIds: [...(service?.includedServiceIds || [])],
         isActive: service?.isActive ?? true,
-        priceRows, defaultPrices: service?.defaultPriceOptions || [],
+        priceRows, defaultPrices: (service?.defaultPriceOptions || []).map(option => ({...option})),
         timeRows: this.durationRows(service?.timeEstimates),
         supportsHaircuts: service?.supportsHaircuts || false,
-        legacy: service?.legacyCompleteEstimates || null,
-        replaceLegacy: !service?.legacyCompleteEstimates,
         haircuts: (service?.haircutOptions || []).map((cut, index) => ({...cut, key: cut.id,
           timeRows: this.durationRows(cut.estimates)})), nextHaircutKey: 0};
       this.$refs.editor.showModal();
@@ -67,6 +66,7 @@ function adminGroomingServices() {
       if (this.saving) return;
       this.$refs.editor.close();
       this.form = null;
+      this.priceNotice = '';
     },
     addDescription() {
       this.form.descriptionItems.push({key: this.form.nextDescriptionKey++, text: ''});
@@ -87,6 +87,7 @@ function adminGroomingServices() {
       }
       this.formError = '';
       this.fieldErrors = {};
+      this.priceNotice = 'Defaults selected. Save changes to apply.';
     },
     priceKey(row, field) { return (this.form.kind === 'package' ? `sizes.${row.sizeKey}.` : '') + field; },
     durationRows(estimates = {}) {
@@ -119,7 +120,6 @@ function adminGroomingServices() {
     timeErrors() {
       const errors = [];
       for (const cut of this.form.haircuts) if (!cut.name.trim()) errors.push('Enter a haircut name.');
-      if (this.form.legacy && !this.form.replaceLegacy) return errors;
       for (const group of this.timeGroups) for (const row of this.supportedTimeRows(group.rows)) {
         if (!row.enabled) continue;
         const total = pair => /^[0-9]{1,2}$/.test(pair.hours) && /^[0-9]{1,2}$/.test(pair.minutes)
@@ -134,13 +134,8 @@ function adminGroomingServices() {
     timePayload() {
       const estimates = rows => Object.fromEntries(this.supportedTimeRows(rows).map(row => [row.sizeKey,
         row.enabled ? {enabled:true,mode:row.mode,min:{...row.min},...(row.mode === 'range' ? {max:{...row.max}} : {})} : {enabled:false}]));
-      return {replaceLegacy:this.form.replaceLegacy, estimates:estimates(this.form.timeRows),
+      return {estimates:estimates(this.form.timeRows),
         haircuts:this.form.haircuts.map(cut => ({...(cut.id ? {id:cut.id} : {}),name:cut.name.trim(),isActive:cut.isActive,estimates:estimates(cut.timeRows)}))};
-    },
-    durationLabel(row) {
-      if (!row.enabled) return 'No estimated time';
-      const minutes = pair => Number(pair.hours)*60 + Number(pair.minutes);
-      return globalThis.GroomingForecastPresentation.duration({min_minutes:minutes(row.min),max_minutes:row.mode === 'range' ? minutes(row.max) : minutes(row.min)});
     },
     pricingErrors() {
       const limits = this.priceLimits?.[this.form.kind];

@@ -47,6 +47,19 @@ async function sharedReads() {
   e.API.setAdminToken('2|other-admin');
   await e.API.getAdminBookings('2026-10-18');
   assert.equal(e.calls.filter(c => c.method === 'GET').length, 3, 'Account changes never reuse protected data');
+
+  const cms = apiEnvironment();
+  let version=1;
+  cms.respond((_url,options)=> {if(options.method==='PUT') version++; return {version};});
+  await cms.API.getAdminBookings('2026-10-31');
+  await cms.API.adminRequest('GET','/admin/grooming/services');
+  const before=cms.calls.length;
+  await cms.API.getAdminBookings('2026-10-31');
+  await cms.API.adminRequest('GET','/admin/grooming/services');
+  assert.equal(cms.calls.length,before,'Catalogue and board reuse fresh data before a mutation');
+  await cms.API.adminRequest('PUT','/admin/grooming/services/17',{timeConfiguration:{estimates:{},haircuts:[]}});
+  assert.equal((await cms.API.getAdminBookings('2026-10-31')).version,2,'Saving time configuration invalidates board forecasts');
+  assert.equal((await cms.API.adminRequest('GET','/admin/grooming/services')).version,2,'Saving time configuration invalidates the Services catalogue');
 }
 async function mutationRace() {
   const e = apiEnvironment(), old = deferred();

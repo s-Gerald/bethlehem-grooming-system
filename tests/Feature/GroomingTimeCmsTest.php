@@ -33,6 +33,7 @@ class GroomingTimeCmsTest extends TestCase
         });
         DB::table('booking_pets')->insert(['grooming_preference' => 'summer_cut']);
         (require database_path('migrations/2026_11_05_000001_manage_grooming_times_and_haircuts.php'))->up();
+        (require database_path('migrations/2026_11_05_000002_retire_legacy_grooming_estimates.php'))->up();
         Sanctum::actingAs(new User(['role' => 'admin']));
     }
 
@@ -58,24 +59,24 @@ class GroomingTimeCmsTest extends TestCase
     private function saveConfig(Service $service, array $config)
     { return $this->putJson('/api/admin/grooming/services/'.$service->service_id, $this->payload($service, $config)); }
 
-    public function test_migration_preserves_complete_estimates_and_historical_names(): void
+    public function test_retirement_preserves_haircut_history_without_inventing_component_times(): void
     {
         $regular = $this->service();
-        $this->assertSame([75, 90], $regular->legacy_complete_estimates['semi_kalbo']['small'] ?? null);
+        $this->assertFalse(Schema::hasColumn('services','legacy_complete_estimates'));
         $this->assertEmpty($regular->time_estimates);
         $this->assertSame('Summer Cut', BookingPet::first()->grooming_preference_label);
         $estimate = app(GroomingDuration::class)->estimate(['size'=>'small','grooming_preference'=>'semi_kalbo',
             'services'=>['package'=>$regular->slug]], Service::all());
-        $this->assertSame(['min_minutes'=>75,'max_minutes'=>90], $estimate);
+        $this->assertNull($estimate);
     }
 
-    public function test_component_times_override_legacy_and_unset_stays_unset(): void
+    public function test_component_times_are_additive_and_unset_stays_unset(): void
     {
         $service = $this->service();
         $config = ['estimates'=>['small'=>$this->time('0','10',['0','20'])], 'haircuts'=>[
             ['id'=>'kalbo','name'=>'Kalbo','isActive'=>true,'estimates'=>['small'=>$this->time('0','30',['0','45'])]],
         ]];
-        $this->saveConfig($service, $config)->assertOk()->assertJsonPath('data.legacyCompleteEstimates', null);
+        $this->saveConfig($service, $config)->assertOk()->assertJsonMissingPath('data.legacyCompleteEstimates');
         $pet = ['size'=>'small','grooming_preference'=>'kalbo','services'=>['package'=>$service->slug]];
         $this->assertSame(['min_minutes'=>40,'max_minutes'=>65], app(GroomingDuration::class)->estimate($pet, Service::all()));
         $config['haircuts'][0]['estimates']['small'] = ['enabled'=>false];
@@ -105,11 +106,12 @@ class GroomingTimeCmsTest extends TestCase
     public function test_invalid_time_components_are_rejected_atomically(): void
     {
         $service = $this->service();
+        $before = $service->getAttributes();
         foreach ([['-1','10'],['0','60'],['100','0'],['1.5','0'],['0','abc'],['0','0'],['0','123'],['1e1','0']] as [$h,$m]) {
             $this->saveConfig($service, ['estimates'=>['small'=>$this->time($h,$m)],'haircuts'=>[]])->assertUnprocessable();
         }
         $this->saveConfig($service, ['estimates'=>['small'=>$this->time('1','0',['1','0'])],'haircuts'=>[]])->assertUnprocessable();
-        $this->assertNotEmpty($service->fresh()->legacy_complete_estimates);
+        $this->assertSame($before,$service->fresh()->getAttributes());
         $this->saveConfig($service, ['estimates'=>['small'=>$this->time('1','0')],'haircuts'=>[]])->assertOk();
     }
 
@@ -143,7 +145,7 @@ class GroomingTimeCmsTest extends TestCase
     public function test_haircut_rename_and_deactivation_preserve_ids_and_historical_names(): void
     {
         $regular = $this->service();
-        $config = ['replaceLegacy'=>false,'estimates'=>[], 'haircuts'=>[
+        $config = ['estimates'=>[], 'haircuts'=>[
             ['id'=>'summer_cut','name'=>'Summer style','isActive'=>false,'estimates'=>[]],
         ]];
         $this->saveConfig($regular, $config)->assertOk();
@@ -151,7 +153,7 @@ class GroomingTimeCmsTest extends TestCase
         $this->assertSame('Summer style', $regular->fresh()->haircut('summer_cut')['name']);
         $this->assertNull($regular->fresh()->haircut('summer_cut', true));
         $this->assertCount(4, $regular->fresh()->haircut_options);
-        $this->assertNotEmpty($regular->fresh()->legacy_complete_estimates);
+        $this->assertEmpty($regular->fresh()->time_estimates);
         $this->getJson('/api/grooming/services')->assertOk()->assertJsonPath('groomingPreferences.regular_dog_grooming', []);
     }
 
@@ -182,5 +184,23 @@ class GroomingTimeCmsTest extends TestCase
         $this->saveConfig($cat, ['estimates'=>['extra_large'=>$this->time('0','10')],'haircuts'=>[]])->assertUnprocessable();
         $this->saveConfig($regular, ['estimates'=>['small'=>$this->time('99','59')],'haircuts'=>[]])->assertOk()
             ->assertJsonPath('data.timeEstimates.small', [5999,5999]);
+    }
+
+    public function test_saving_only_prices_preserves_managed_times_and_cannot_restore_legacy_estimates(): void
+    {
+        $service=$this->service();
+        $this->saveConfig($service,['estimates'=>['small'=>$this->time('0','45')], 'haircuts'=>[
+            ['id'=>'kalbo','name'=>'Kalbo','isActive'=>true,'estimates'=>['small'=>$this->time('0','30')]]]])->assertOk();
+        $before=$service->fresh();
+        $payload=$this->payload($before,[]); unset($payload['timeConfiguration']);
+        $payload['sizes']['small']['amount']='600';
+        $this->putJson('/api/admin/grooming/services/'.$service->service_id,$payload)->assertOk()->assertJsonMissingPath('data.legacyCompleteEstimates');
+        $saved=$service->fresh();
+        $this->assertSame($before->time_estimates,$saved->time_estimates);
+        $this->assertSame($before->haircut_options,$saved->haircut_options);
+        $this->assertSame($before->included_ala_carte_ids,$saved->included_ala_carte_ids);
+        $this->assertFalse(Schema::hasColumn('services','legacy_complete_estimates'));
+        $this->assertSame(['min_minutes'=>75,'max_minutes'=>75],(new GroomingDuration)->estimate([
+            'size'=>'small','grooming_preference'=>'kalbo','services'=>['package'=>$service->slug]],Service::all()));
     }
 }

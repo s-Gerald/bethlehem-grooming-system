@@ -348,6 +348,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         (require database_path('migrations/2026_10_26_000001_add_haircut_requested_to_booking_pets.php'))->up();
         (require database_path('migrations/2026_10_29_000001_add_grooming_intake_sequences.php'))->up();
         (require database_path('migrations/2026_11_05_000001_manage_grooming_times_and_haircuts.php'))->up();
+        (require database_path('migrations/2026_11_05_000002_retire_legacy_grooming_estimates.php'))->up();
     }
 
     protected function tearDown(): void
@@ -3897,6 +3898,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->seedGroomingTimeCatalogue();
         DB::table('services')->insert(['service_id' => 92, 'slug' => 'deluxe_dog_grooming', 'service_name' => 'Deluxe', 'base_price' => 650]);
         $this->seedGroomingTimeCatalogue();
+        // Explicit managed fixture: base work + selected haircut, with no legacy total.
+        DB::table('services')->where('service_id',92)->update(['time_estimates'=>json_encode(['extra_large'=>[60,60]]),
+            'haircut_options'=>json_encode([['id'=>'puppy_cut','name'=>'Puppy Cut','isActive'=>true,'estimates'=>['extra_large'=>[90,120]]]])]);
         DB::table('booking_services')->update(['service_id' => 91]);
         DB::table('booking_pets')->where('booking_pet_id', 1)->update(['confirmed_size' => 'extra_large', 'groomer_id' => 1,
             'grooming_start_time' => now(), 'grooming_state' => 'in_progress']);
@@ -4058,6 +4062,53 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('staff');
         $this->postJson('/api/admin/bookings/1/pets/1/start-grooming',['grooming_preference'=>'summer_cut'])->assertOk();
         $this->assertSame('Summer Cut',BookingPet::findOrFail(1)->grooming_preference_label);
+    }
+
+    public function test_saved_component_times_refresh_customer_staff_and_live_queue_forecasts(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-31 13:00','Asia/Manila'));
+        $this->setPetGroomersOnDuty(1);
+        $this->seedMultiPetBooking();
+        DB::table('pets')->update(['species'=>'dog']);
+        DB::table('services')->insert(['service_id'=>91,'slug'=>'regular_dog_grooming','service_name'=>'Regular Dog Grooming','base_price'=>550,
+            'price_small'=>550,'haircut_options'=>json_encode([['id'=>'kalbo','name'=>'Kalbo','isActive'=>true,'estimates'=>[]]])]);
+        (require database_path('migrations/2026_10_17_000001_add_grooming_catalog_management.php'))->up();
+        DB::table('booking_services')->update(['service_id'=>91]);
+        DB::table('booking_pets')->update(['confirmed_size'=>'small','groomer_id'=>1,'grooming_preference'=>'kalbo']);
+        DB::table('booking_pets')->where('booking_pet_id',1)->update(['grooming_state'=>'in_progress','grooming_start_time'=>now()]);
+        $service=\App\Models\Service::findOrFail(91);
+        $pair=fn(int $minutes)=>['hours'=>(string)intdiv($minutes,60),'minutes'=>(string)($minutes%60)];
+        $time=fn(int $min,int $max)=>['enabled'=>true,'mode'=>$min===$max ? 'fixed':'range','min'=>$pair($min),'max'=>$pair($max)];
+        $preview=['pets'=>[['species'=>'dog','size'=>'small','groomer_id'=>1,'grooming_preference'=>'kalbo','services'=>['package'=>$service->slug]]]];
+        foreach ([
+            [45,45,30,30,75,75,'14:15','15:30','16:45',false],
+            [45,60,30,45,75,105,'14:45','16:30','18:15',true],
+            [10,10,5,5,15,15,'13:15','13:30','13:45',false],
+            [null,null,5,5,null,null,null,null,null,false],
+        ] as [$baseMin,$baseMax,$cutMin,$cutMax,$min,$max,$activeEnd,$queueEnd,$previewEnd,$risk]) {
+            $this->authenticateAs('admin');
+            $this->putJson('/api/admin/grooming/services/91',['name'=>$service->service_name,'kind'=>'package','petType'=>'dog','descriptionItems'=>['Bath and trim'],
+                'includedServiceIds'=>[],'isActive'=>true,'sizes'=>['small'=>['pricing_type'=>'fixed','amount'=>'550']],
+                'timeConfiguration'=>['estimates'=>['small'=>$baseMin===null ? ['enabled'=>false] : $time($baseMin,$baseMax)],
+                    'haircuts'=>[['id'=>'kalbo','name'=>'Kalbo','isActive'=>true,'estimates'=>['small'=>$time($cutMin,$cutMax)]]]]])->assertOk();
+            foreach (['customer','staff'] as $role) {
+                $this->authenticateAs($role);
+                DB::flushQueryLog(); DB::enableQueryLog();
+                $response=$this->postJson($role==='customer' ? '/api/grooming/forecast' : '/api/admin/grooming/forecast',$preview)->assertOk();
+                $catalogueQueries=collect(DB::getQueryLog())->filter(fn($query)=>preg_match('/^select \* from ["`]services["`]$/i',$query['query']))->count();
+                DB::disableQueryLog();
+                $this->assertSame(1,$catalogueQueries,'A forecast reuses one catalogue for active, queued and proposed pets.');
+                $response->assertJsonPath('pets.0.duration',$min===null ? null : ['min_minutes'=>$min,'max_minutes'=>$max])
+                    ->assertJsonPath('pets.0.completion_at',$previewEnd===null ? null : '2026-10-31T'.$previewEnd.':00+08:00')
+                    ->assertJsonPath('closing_risk',$risk);
+            }
+            $board=$this->getJson('/api/admin/bookings')->assertOk()->json('inProgressList.0.pets');
+            $active=collect($board)->firstWhere('bookingPetId',1); $queued=collect($board)->firstWhere('bookingPetId',2);
+            $this->assertSame($activeEnd===null ? null : '2026-10-31T'.$activeEnd.':00+08:00',$active['groomingForecast']['completion_at']);
+            $this->assertSame($queueEnd===null ? null : '2026-10-31T'.$queueEnd.':00+08:00',$queued['groomingForecast']['completion_at']);
+            $this->assertDatabaseHas('booking_pets',['booking_pet_id'=>1,'grooming_start_time'=>'2026-10-31 13:00:00','grooming_end_time'=>null,'groomer_id'=>1,'pet_queue_number'=>1]);
+            $this->assertDatabaseHas('booking_pets',['booking_pet_id'=>2,'groomer_id'=>1,'pet_queue_number'=>2]);
+        }
     }
 
     private function authenticateAs(string $role, string $subrole = 'grooming_receptionist'): void

@@ -36,7 +36,6 @@ class Service extends Model
         'display_order',
         'time_estimates',
         'haircut_options',
-        'legacy_complete_estimates',
     ];
 
     protected $casts = [
@@ -49,7 +48,6 @@ class Service extends Model
         'display_order' => 'integer',
         'time_estimates' => 'array',
         'haircut_options' => 'array',
-        'legacy_complete_estimates' => 'array',
     ];
 
     public function getKindAttribute($value): ?string

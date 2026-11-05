@@ -12,34 +12,36 @@ class GroomingDurationTest extends TestCase
     private function catalog(): \Illuminate\Support\Collection
     {
         return collect([
-            $this->legacyTimeService(['service_id' => 1, 'slug' => 'partial_grooming', 'kind' => 'package', 'included_ala_carte_ids' => [2, 3]]),
-            $this->legacyTimeService(['service_id' => 2, 'slug' => 'nail_clipping', 'kind' => 'ala_carte']),
-            $this->legacyTimeService(['service_id' => 3, 'slug' => 'facial_trimming', 'kind' => 'ala_carte']),
-            $this->legacyTimeService(['service_id' => 4, 'slug' => 'anal_sac_draining', 'kind' => 'ala_carte']),
+            $this->configuredTimeService(['service_id' => 1, 'slug' => 'partial_grooming', 'kind' => 'package', 'included_ala_carte_ids' => [2, 3]]),
+            $this->configuredTimeService(['service_id' => 2, 'slug' => 'nail_clipping', 'kind' => 'ala_carte']),
+            $this->configuredTimeService(['service_id' => 3, 'slug' => 'facial_trimming', 'kind' => 'ala_carte']),
+            $this->configuredTimeService(['service_id' => 4, 'slug' => 'anal_sac_draining', 'kind' => 'ala_carte']),
         ]);
     }
 
-    public function test_historical_size_and_cut_ranges_are_preserved(): void
+    public function test_only_component_times_are_used_even_if_an_old_model_contains_legacy_values(): void
     {
-        $calculator = new GroomingDuration;
-        $cases = [
-            ['partial_grooming', null, [[45,60],[60,75],[75,90],[90,105]]],
-            ['bath_and_go', null, [[45,45],[60,60],[75,75],[90,90]]],
-            ['regular_dog_grooming', 'summer_cut', [[75,75],[75,90],[90,105],[105,120]]],
-            ['regular_dog_grooming', 'kalbo', [[75,75],[75,90],[90,105],[105,120]]],
-            ['regular_dog_grooming', 'semi_kalbo', [[75,90],[90,90],[105,120],[120,120]]],
-            ['regular_dog_grooming', 'regular_trim', [[90,90],[90,105],[120,120],[120,150]]],
-            ['deluxe_dog_grooming', 'puppy_cut', [[90,105],[105,120],[120,150],[150,180]]],
-            ['deluxe_dog_grooming', 'custom_hairstyle', [[120,150],[135,180],[150,210],[180,240]]],
-            ['cat_full_grooming', null, [[90,90],[105,105]]],
-        ];
-        foreach ($cases as [$package, $cut, $ranges]) {
-            foreach ($ranges as $i => [$min, $max]) {
-                $services = collect([$this->legacyTimeService(['service_id' => 1, 'slug' => $package, 'kind' => 'package'])]);
-                $this->assertSame(['min_minutes' => $min, 'max_minutes' => $max], $calculator->estimate([
-                    'size' => ['small','medium','large','extra_large'][$i], 'services' => ['package' => $package],
-                    'grooming_preference' => $cut,
-                ], $services));
+        $service=(new Service)->forceFill(['slug'=>'regular_dog_grooming','kind'=>'package',
+            'time_estimates'=>['small'=>[45,60]], 'haircut_options'=>[
+                ['id'=>'kalbo','name'=>'Kalbo','isActive'=>true,'estimates'=>['small'=>[30,45]]]],
+            'legacy_complete_estimates'=>['kalbo'=>['small'=>[999,999]]]]);
+        $pet=['size'=>'small','grooming_preference'=>'kalbo','services'=>['package'=>$service->slug]];
+        $this->assertSame(['min_minutes'=>75,'max_minutes'=>105],(new GroomingDuration)->estimate($pet,collect([$service])));
+        $service->time_estimates=[];
+        $this->assertNull((new GroomingDuration)->estimate($pet,collect([$service])));
+    }
+
+    public function test_configured_package_and_haircut_ranges_are_added_independently_for_each_size(): void
+    {
+        foreach (['regular_dog_grooming','deluxe_dog_grooming','cat_full_grooming'] as $slug) {
+            $base=['small'=>[45,60],'medium'=>[60,75],'large'=>[75,90],'extra_large'=>[90,105]];
+            $cuts=['small'=>[30,45],'medium'=>[35,45],'large'=>[40,50],'extra_large'=>[45,60]];
+            $service=new Service(['slug'=>$slug,'kind'=>'package','time_estimates'=>$base,'haircut_options'=>[
+                ['id'=>'configured_style','name'=>'Configured style','isActive'=>true,'estimates'=>$cuts]]]);
+            foreach (['small'=>[75,105],'medium'=>[95,120],'large'=>[115,140],'extra_large'=>[135,165]] as $size=>[$min,$max]) {
+                $this->assertSame(['min_minutes'=>$min,'max_minutes'=>$max],(new GroomingDuration)->estimate([
+                    'size'=>$size,'services'=>['package'=>$slug],'grooming_preference'=>'configured_style',
+                    'haircut_requested'=>$slug==='cat_full_grooming'],collect([$service])));
             }
         }
     }
@@ -77,9 +79,9 @@ class GroomingDurationTest extends TestCase
             $this->assertSame(['min_minutes' => $min, 'max_minutes' => $max], $calculator->estimate([
                 'size' => 'small',
                 'services' => ['ala_carte' => [$slug]],
-            ], collect([$this->legacyTimeService(['slug' => $slug, 'kind' => 'ala_carte'])])));
+            ], collect([$this->configuredTimeService(['slug' => $slug, 'kind' => 'ala_carte'])])));
         }
-        $services = collect([$this->legacyTimeService(['slug' => 'cat_full_grooming', 'kind' => 'package'])]);
+        $services = collect([$this->configuredTimeService(['slug' => 'cat_full_grooming', 'kind' => 'package'])]);
         $pet = ['size' => 'small', 'services' => ['package' => 'cat_full_grooming']];
         $this->assertSame(['min_minutes' => 90, 'max_minutes' => 90], $calculator->estimate($pet, $services));
         $this->assertNull($calculator->estimate($pet + ['haircut_requested' => true], $services));

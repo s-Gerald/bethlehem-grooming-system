@@ -29,7 +29,6 @@
 .services-editor-tabs { display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--pricing-border); }
 .services-editor-tabs button { padding: 12px 0; border-bottom: 2px solid transparent; color: var(--pricing-muted); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .services-editor-tabs button[aria-selected="true"] { color: var(--pricing-ink); border-bottom-color: var(--pricing-ink); }
-.services-legacy-time { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--pricing-border); border-radius: 8px; color: var(--pricing-ink); font-size: 13px; }
 .services-time-group { min-width: 0; border: 1px solid var(--pricing-border); border-radius: 8px; }
 .services-time-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; cursor: pointer; color: var(--pricing-ink); font-size: 14px; font-weight: 600; }
 .services-time-group > summary::after { content: '+'; font-size: 18px; }

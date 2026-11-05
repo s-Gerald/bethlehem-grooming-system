@@ -25,12 +25,10 @@ class GroomingDuration
                 : (bool) ($service?->activeHaircuts() || $preference);
             $option = $service?->haircut($preference, ! $historical);
             if ($preference && $haircutRequired && ! $option) return null;
-            $legacy = $service?->legacy_complete_estimates;
-            $range = $legacy !== null ? ($legacy[$preference ?? ''][$size] ?? null)
-                : ($service?->time_estimates[$size] ?? null);
+            $range = $service?->time_estimates[$size] ?? null;
             if (! $service || ! $range) return null;
             [$min, $max] = $range;
-            if ($haircutRequired && $legacy === null) {
+            if ($haircutRequired) {
                 $cutRange = $option['estimates'][$size] ?? null;
                 if (! $cutRange) return null;
                 $min += $cutRange[0]; $max += $cutRange[1];
