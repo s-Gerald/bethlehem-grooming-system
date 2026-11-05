@@ -1,13 +1,13 @@
-import "../services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import "../services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { hasRequiredGroomingPreference } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { hasRequiredGroomingPreference } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 
 const presentation = globalThis.GroomingForecastPresentation;
 
-export function groomingDurationValue(selection, duration = null, pending = false) {
+export function groomingDurationValue(selection, duration = null, pending = false, failed = false) {
   if (!selection?.servicePackage && !selection?.alaCarteServices?.length) return "Select a service";
   if (!hasRequiredGroomingPreference(selection)) return "Select a grooming preference";
-  return pending ? "Calculating…" : presentation.duration(duration);
+  return pending ? "Calculating…" : failed ? "Estimate unavailable — retry" : presentation.duration(duration);
 }
 
 export function confirmClosingWarning(forecast, staff = false, trigger = document.activeElement) {
@@ -61,16 +61,17 @@ export function createGroomingEstimateFlow({ getPets, getSelections, container, 
         species: String(pet.petType).toLowerCase(), size: normalizePetSize(pet.size) || null,
         ...(pet.weight !== "" && pet.weight != null ? { weight: Number(pet.weight) } : {}),
         groomer_id: selected.groomerId ?? null, grooming_preference: selected.groomingPreference || null,
+        haircut_requested: selected.haircutRequested === true,
         services: { package: selected.servicePackage || null, ala_carte: selected.alaCarteServices || [] } };
     }),
   });
   const signature = () => JSON.stringify(payload());
-  function display(forecast, pending = false) {
+  function display(forecast, pending = false, failed = false) {
     getPets().forEach((pet, index) => {
       const node = getContainer()?.querySelector(`[data-grooming-duration="${CSS.escape(String(pet.id))}"]`);
       const selected = getSelections().find(item => String(item.petId) === String(pet.id));
       if (!node) return;
-      node.querySelector('[data-grooming-duration-value]').textContent = groomingDurationValue(selected, forecast?.pets?.[index]?.duration, pending);
+      node.querySelector('[data-grooming-duration-value]').textContent = groomingDurationValue(selected, forecast?.pets?.[index]?.duration, pending, failed);
     });
   }
   return {
@@ -84,7 +85,7 @@ export function createGroomingEstimateFlow({ getPets, getSelections, container, 
         try {
           const forecast = await requestForecast(payload(true));
           if (revision === generation && key === signature() && isCurrent()) display(forecast);
-        } catch { if (revision === generation && key === signature() && isCurrent()) display(null); }
+        } catch { if (revision === generation && key === signature() && isCurrent()) display(null, false, true); }
       }, 250);
     },
     async next() {

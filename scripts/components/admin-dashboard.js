@@ -2155,6 +2155,7 @@ function adminDashboard() {
     },
 
     getGroomingPreferences(pet) {
+      if (String(pet.species || pet.petType).toLowerCase() === 'cat' && !pet.haircutRequested) return [];
       const booking = this.actionConfirmModal.booking;
       const service = (booking?.services || []).find((item) => String(item.bookingPetId) === String(pet.bookingPetId ?? pet.id) && this.groomingPreferences[item.slug]);
       return Object.entries(this.groomingPreferences[service?.slug] || {}).map(([value, label]) => ({ value, label }));
@@ -3246,7 +3247,7 @@ function adminDashboard() {
       this.paymentModal.error = "";
       this.paymentModal.petBreakdown = [];
       try {
-        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1");
+        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1");
         applyPaymentCatalogue(await loadGroomingCatalogue({includeInactive: true}));
       } catch (error) {
         this.paymentModal.busy = false;

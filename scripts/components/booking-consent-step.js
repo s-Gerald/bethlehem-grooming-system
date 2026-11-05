@@ -1,6 +1,6 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";

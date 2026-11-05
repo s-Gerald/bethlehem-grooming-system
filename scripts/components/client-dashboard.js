@@ -855,7 +855,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?v=visit-details-20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
+      visitSummaryModule = await import("./grooming-visit-summary.js?v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);

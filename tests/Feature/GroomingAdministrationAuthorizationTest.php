@@ -23,6 +23,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
 {
     use \Tests\Support\CreatesPetGroomers;
     use \Tests\Support\SubmitsSignedGrooming;
+    use \Tests\Support\SeedsGroomingTimeCatalogue;
 
     private bool $fixtureDatabaseVerified = false;
 
@@ -346,6 +347,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         (require database_path('migrations/2026_10_16_000005_create_grooming_consents.php'))->up();
         (require database_path('migrations/2026_10_26_000001_add_haircut_requested_to_booking_pets.php'))->up();
         (require database_path('migrations/2026_10_29_000001_add_grooming_intake_sequences.php'))->up();
+        (require database_path('migrations/2026_11_05_000001_manage_grooming_times_and_haircuts.php'))->up();
     }
 
     protected function tearDown(): void
@@ -472,6 +474,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         bool $phoneEnforced = false,
     ): void {
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         $this->authenticateAs('customer');
         if ($phoneEnforced) {
             config(['services.sms_verification.available' => true, 'services.sms_verification.enforced' => true]);
@@ -518,6 +521,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         $this->authenticateAs($walkin ? 'staff' : 'customer');
         DB::table('services')->insert(['slug' => $package, 'service_name' => $package, 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $pet = ['pet_name' => 'Helio', 'species' => $package === 'cat_full_grooming' ? 'cat' : 'dog',
@@ -593,6 +597,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'slug' => 'regular_dog_grooming',
             'base_price' => 0,
         ]);
+        $this->seedGroomingTimeCatalogue();
 
         $payload = [
             'booking_date' => now()->toDateString(),
@@ -625,6 +630,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public function test_booking_and_walkin_persist_the_shared_decimal_size(string $species, mixed $weight, string $size): void
     {
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $pet = ['pet_name' => 'Decimal pet', 'species' => $species, 'weight' => $weight,
@@ -669,6 +675,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public function test_custom_color_and_notes_persist_through_grooming_registration(): void
     {
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->seedGroomingTimeCatalogue();
         $this->authenticateAs('customer');
         DB::table('pets')->insert(['pet_id' => 777, 'user_id' => 3, 'pet_name' => 'Legacy coat', 'species' => 'Cat', 'color' => 'Brown123']);
         $this->submitSignedGrooming('/api/booking/store', ['number_of_pets' => 1, 'pets' => [[
@@ -715,6 +722,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 3, 'pet_name' => 'Historical cat',
             'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $pet = ['pet_id' => 101, 'color' => 'Brown123', 'pet_name' => 'Historical cat', 'species' => 'Cat', 'size' => 'small',
@@ -734,6 +742,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Historical cat',
             'species' => 'Cat', 'weight' => 4.999, 'size' => 'small', 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis', 'is_archived' => false]);
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->seedGroomingTimeCatalogue();
         $this->authenticateAs('staff');
         $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
@@ -755,6 +764,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew',
             'species' => 'Dog', 'weight' => 8, 'size' => 'small', 'is_archived' => false]);
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
+        $this->seedGroomingTimeCatalogue();
         $this->authenticateAs('staff');
         $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
@@ -777,6 +787,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'price_min' => 50,
             'price_max' => 100,
         ]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert([
             'window_id' => 1,
             'window_label' => '11:00 AM - 12:00 PM',
@@ -886,6 +897,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         DB::table('services')->insert(['service_id' => 4, 'service_name' => 'Nail Clipping',
             'slug' => 'nail_clipping', 'base_price' => 75, 'price_min' => 50, 'price_max' => 100]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $this->authenticateAs('admin');
@@ -939,6 +951,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         DB::table('services')->insert(['service_id' => 4, 'service_name' => 'Regular Dog Grooming',
             'slug' => 'regular_dog_grooming', 'base_price' => 650]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $this->authenticateAs('admin');
@@ -2171,6 +2184,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'slug' => 'regular_dog_grooming',
             'base_price' => 0,
         ]);
+        $this->seedGroomingTimeCatalogue();
 
         $registeredResponse = $this->submitSignedGrooming('/api/admin/walk-in', [
             'fname' => 'Ignored',
@@ -2836,6 +2850,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public function test_grooming_pre_registrations_share_preferred_times_without_reserving_capacity_or_queue(): void
     {
         DB::table('services')->insert(['slug' => 'nail_clipping', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('time_windows')->insert([
             'window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'is_active' => true,
@@ -2909,6 +2924,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             ['service_id' => 91, 'service_name' => 'Grooming', 'slug' => $package, 'base_price' => $packagePrice],
             ['service_id' => 92, 'service_name' => 'Facial Trimming', 'slug' => 'facial_trimming', 'base_price' => 150],
         ]);
+        $this->seedGroomingTimeCatalogue();
         (require database_path('migrations/2026_10_17_000001_add_grooming_catalog_management.php'))->up();
         (require database_path('migrations/2026_10_26_000002_include_facial_trimming_in_dog_packages.php'))->up();
         DB::table('services')->where('service_id', 91)->update(['price_small' => $packagePrice, 'price_medium' => $packagePrice,
@@ -2958,6 +2974,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public function test_grooming_legacy_availability_and_automatic_registration_day(string $time, string $date, ?string $restriction, bool $accepted): void
     {
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         Carbon::setTestNow("2026-10-09 {$time}");
         $this->authenticateAs('customer');
         DB::table('clinic_settings')->where('id', 1)->update([
@@ -3070,6 +3087,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         $this->seedMultiPetBooking();
         DB::table('services')->insert(['service_id' => 91, 'service_name' => 'Regular Dog Grooming', 'slug' => 'regular_dog_grooming', 'base_price' => 650]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('booking_services')->where('booking_pet_id', 1)->update(['service_id' => 91]);
         $this->authenticateAs('staff');
         $this->postJson('/api/admin/bookings/1/pets/1/start-grooming', ['grooming_preference' => 'invalid'])
@@ -3085,6 +3103,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('users')->insert(['user_id' => 3, 'first_name' => 'Saved', 'last_name' => 'Owner', 'role' => 'customer', 'phone' => '09171234567']);
         DB::table('pets')->insert(['pet_id' => 3, 'user_id' => 3, 'pet_name' => 'Rigby', 'species' => 'dog', 'weight' => 12, 'size' => 'medium']);
         DB::table('services')->insert(['service_id' => 91, 'service_name' => 'Small Dog Package', 'slug' => 'small_only', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         (require database_path('migrations/2026_10_17_000001_add_grooming_catalog_management.php'))->up();
         DB::table('services')->where('service_id', 91)->update(['kind' => 'package', 'pet_type' => 'dog', 'price_small' => 500]);
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM', 'start_time' => '11:00:00', 'end_time' => '12:00:00']);
@@ -3257,6 +3276,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         $payload = $this->prepareRegistrationDay();
         DB::table('services')->insert(['slug' => 'nail_clipping', 'service_name' => 'Nail Clipping', 'base_price' => 100]);
+        $this->seedGroomingTimeCatalogue();
         unset($payload['booking_date'], $payload['window_id']);
         Carbon::setTestNow('2026-10-16 09:00:00');
         Sanctum::actingAs(User::findOrFail(101));
@@ -3552,6 +3572,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         Carbon::setTestNow('2026-11-03 10:00:00');
         $this->authenticateAs('customer');
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         $pet = ['pet_name' => 'Mochi', 'species' => 'cat', 'birthdate' => $date, 'services' => ['package' => 'cat_full_grooming']];
         if ($saved) {
             DB::table('pets')->insert(['pet_id' => 42, 'user_id' => 3, 'pet_name' => 'Mochi', 'species' => 'cat', 'birthdate' => $blankSavedDate ? null : '1700-01-01']);
@@ -3590,6 +3611,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     public function test_customer_grooming_enforces_calendar_month_minimum_age(?string $birthdate, string $today, bool $eligible, bool $saved): void
     {
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         Carbon::setTestNow($today.' 10:00:00');
         $this->authenticateAs('customer');
         DB::table('time_windows')->insert([
@@ -3872,7 +3894,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->setPetGroomersOnDuty(1);
         $this->seedMultiPetBooking();
         DB::table('services')->insert(['service_id' => 91, 'slug' => 'bath_and_go', 'service_name' => 'Bath and Go', 'base_price' => 450]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('services')->insert(['service_id' => 92, 'slug' => 'deluxe_dog_grooming', 'service_name' => 'Deluxe', 'base_price' => 650]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('booking_services')->update(['service_id' => 91]);
         DB::table('booking_pets')->where('booking_pet_id', 1)->update(['confirmed_size' => 'extra_large', 'groomer_id' => 1,
             'grooming_start_time' => now(), 'grooming_state' => 'in_progress']);
@@ -3963,6 +3987,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         Carbon::setTestNow('2026-10-31 13:00:00');
         $this->setPetGroomersOnDuty(1);
         DB::table('services')->insert(['slug' => 'cat_full_grooming', 'service_name' => 'Cat Full Grooming', 'base_price' => 500]);
+        $this->seedGroomingTimeCatalogue();
         DB::table('clinic_settings')->delete();
         $this->authenticateAs('customer');
         $this->postJson('/api/grooming/forecast', ['pets' => [
@@ -3984,6 +4009,55 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ])->assertOk()->assertJsonPath('closing_risk', true);
         $this->postJson($walkIn ? '/api/admin/walk-in' : '/api/booking/store', $this->signedGroomingPayload($walkIn))->assertCreated();
         $this->assertDatabaseHas('bookings', ['status' => $walkIn ? 'checked_in' : 'waiting_to_arrive']);
+    }
+
+    #[DataProvider('reportSnapshotFlows')]
+    public function test_managed_cat_haircut_selection_forecast_and_name_snapshot_in_both_flows(bool $walkIn): void
+    {
+        $cat = \App\Models\Service::create(['slug'=>'cat_full_grooming','service_name'=>'Cat Full Grooming','base_price'=>500,
+            'time_estimates'=>['small'=>[10,10]], 'haircut_options'=>[
+                ['id'=>'owner_style','name'=>'Requested style','isActive'=>true,'estimates'=>['small'=>[30,45]]],
+                ['id'=>'inactive_style','name'=>'Inactive style','isActive'=>false,'estimates'=>[]],
+            ]]);
+        $this->authenticateAs($walkIn ? 'staff' : 'customer');
+        $payload = $this->signedGroomingPayload($walkIn);
+        $payload['pets'][0] = [...$payload['pets'][0], 'species'=>'cat', 'haircut_requested'=>true,
+            'special_instructions'=>'Keep the tail fluffy',
+            'services'=>$walkIn ? [['service_slug'=>$cat->slug]] : ['package'=>$cat->slug]];
+        $endpoint = $walkIn ? '/api/admin/walk-in' : '/api/booking/store';
+        foreach ([null,'kalbo','fabricated','inactive_style'] as $id) {
+            $payload['pets'][0]['grooming_preference'] = $id;
+            $this->postJson($endpoint, $payload)->assertUnprocessable()->assertJsonValidationErrors('pets.0.grooming_preference');
+        }
+        $payload['pets'][0]['grooming_preference'] = 'owner_style';
+        $forecast = ['durations_only'=>true,'pets'=>[['species'=>'cat','size'=>'small','haircut_requested'=>true,
+            'grooming_preference'=>'owner_style','services'=>['package'=>$cat->slug]]]];
+        $forecastEndpoint = $walkIn ? '/api/admin/grooming/forecast' : '/api/grooming/forecast';
+        $this->postJson($forecastEndpoint,$forecast)->assertOk()->assertJsonPath('pets.0.duration',['min_minutes'=>40,'max_minutes'=>55]);
+        $forecast['pets'][0]['haircut_requested']=false;
+        $this->postJson($forecastEndpoint,$forecast)->assertOk()->assertJsonPath('pets.0.duration',['min_minutes'=>10,'max_minutes'=>10]);
+        $options=$cat->haircut_options; $options[0]['estimates']=[]; $cat->update(['haircut_options'=>$options]);
+        $forecast['pets'][0]['haircut_requested']=true;
+        $this->postJson($forecastEndpoint,$forecast)->assertOk()->assertJsonPath('pets.0.duration',null);
+        // An intentionally unset estimate must not block registration.
+        $this->postJson($endpoint,$payload)->assertCreated();
+        $saved=BookingPet::firstOrFail();
+        $this->assertSame('Requested style',$saved->grooming_preference_name);
+        $options[0]['name']='Renamed style'; $options[0]['isActive']=false; $cat->update(['haircut_options'=>$options]);
+        $this->assertSame('Requested style',$saved->fresh()->grooming_preference_label);
+        $this->assertNull($saved->grooming_start_time); $this->assertNull($saved->grooming_end_time);
+    }
+
+    public function test_start_keeps_the_original_name_of_an_unchanged_deactivated_haircut(): void
+    {
+        $this->seedMultiPetBooking();
+        $service=\App\Models\Service::create(['slug'=>'regular_dog_grooming','service_name'=>'Regular Dog Grooming','base_price'=>650,
+            'haircut_options'=>[['id'=>'summer_cut','name'=>'Renamed summer style','isActive'=>false,'estimates'=>[]]]]);
+        DB::table('booking_services')->where('booking_pet_id',1)->update(['service_id'=>$service->service_id]);
+        DB::table('booking_pets')->where('booking_pet_id',1)->update(['grooming_preference'=>'summer_cut','grooming_preference_name'=>'Summer Cut']);
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/bookings/1/pets/1/start-grooming',['grooming_preference'=>'summer_cut'])->assertOk();
+        $this->assertSame('Summer Cut',BookingPet::findOrFail(1)->grooming_preference_label);
     }
 
     private function authenticateAs(string $role, string $subrole = 'grooming_receptionist'): void

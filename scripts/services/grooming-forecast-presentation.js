@@ -1,7 +1,7 @@
 // Shared presentation only. All durations and queue arithmetic come from PHP.
 globalThis.GroomingForecastPresentation = {
   duration(value) {
-    if (!value || !Number.isFinite(value.min_minutes) || !Number.isFinite(value.max_minutes)) return "Unavailable";
+    if (!value || !Number.isFinite(value.min_minutes) || !Number.isFinite(value.max_minutes)) return "No estimated time";
     const minutes = (number) => {
       const hours = Math.floor(number / 60), rest = number % 60;
       return [hours ? `${hours} ${hours === 1 ? "hr" : "hrs"}` : "", rest ? `${rest} min` : ""].filter(Boolean).join(" ");

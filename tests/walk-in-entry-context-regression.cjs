@@ -63,7 +63,7 @@ function ownerFlow(type, { fresh = true, draft = {}, verification = Promise.reso
 }
 
 async function checkStepNavigation(file, markupFunction, topId, bottomId, previousPage) {
-  const { createGroomingEstimateFlow } = await import('../scripts/components/grooming-estimates.js?v=20261031');
+  const { createGroomingEstimateFlow } = await import('../scripts/components/grooming-estimates.js?v=grooming-time-20261105');
   const nodes = new Map();
   const get = id => {
     if (!nodes.has(id)) nodes.set(id, element());

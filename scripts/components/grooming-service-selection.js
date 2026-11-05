@@ -1,14 +1,14 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
-import { groomingDurationValue } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
   getPackagesByPetType, getGroomingPreferences, requiresSpecialInstructions, specialInstructionsError,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 
 export function renderHaircutPreference(pet, selection) {
-  const choices = pet.petType === "cat" ? [] : getGroomingPreferences(selection.servicePackage);
+  const choices = selection.servicePackage === "cat_full_grooming" && !selection.haircutRequested ? [] : getGroomingPreferences(selection.servicePackage);
   if (!choices.length) return "";
   return `<fieldset class="grooming-preference-selection">
     <legend>Haircut Preference <span class="text-red-500">*</span></legend>
@@ -138,7 +138,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
           ${packageCards}
         </div>
         </fieldset>
-        ${renderHaircutPreference(pet, selection)}
+        ${selection.servicePackage === "cat_full_grooming" ? "" : renderHaircutPreference(pet, selection)}
 
       ${
         alaCarteServices.length > 0
@@ -230,7 +230,7 @@ export function renderPackageCard(pet, selection, service) {
           </div>
         </div>
       </label>
-      ${isChecked && service.id === "cat_full_grooming" ? renderCatHaircutOption(pet, selection) : ""}
+      ${isChecked && service.id === "cat_full_grooming" ? renderCatHaircutOption(pet, selection) + renderHaircutPreference(pet, selection) : ""}
     </div>
   `;
 }

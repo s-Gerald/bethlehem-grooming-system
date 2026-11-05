@@ -34,6 +34,9 @@ class Service extends Model
         'description_items',
         'included_ala_carte_ids',
         'display_order',
+        'time_estimates',
+        'haircut_options',
+        'legacy_complete_estimates',
     ];
 
     protected $casts = [
@@ -44,6 +47,9 @@ class Service extends Model
         'description_items' => 'array',
         'included_ala_carte_ids' => 'array',
         'display_order' => 'integer',
+        'time_estimates' => 'array',
+        'haircut_options' => 'array',
+        'legacy_complete_estimates' => 'array',
     ];
 
     public function getKindAttribute($value): ?string
@@ -59,5 +65,20 @@ class Service extends Model
         }
         return array_values(array_filter(['small', 'medium', 'large', 'extra_large'],
             fn ($size) => $this->{'price_'.$size} !== null));
+    }
+
+    public function supportsHaircuts(): bool
+    {
+        return in_array($this->slug, ['regular_dog_grooming', 'deluxe_dog_grooming', 'cat_full_grooming'], true);
+    }
+
+    public function activeHaircuts(): array
+    {
+        return array_values(array_filter($this->haircut_options ?? [], fn ($option) => $option['isActive']));
+    }
+
+    public function haircut(?string $id, bool $activeOnly = false): ?array
+    {
+        return collect($activeOnly ? $this->activeHaircuts() : ($this->haircut_options ?? []))->firstWhere('id', $id);
     }
 }

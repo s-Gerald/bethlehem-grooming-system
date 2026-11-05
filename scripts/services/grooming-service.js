@@ -13,8 +13,7 @@ const ALA_CARTE_MAP = new Map();
 let catalogueLoaded = false;
 let groomingPreferences = {};
 
-export function applyGroomingCatalogue(catalogue, preferences = groomingPreferences) {
-  groomingPreferences = preferences || {};
+export function applyGroomingCatalogue(catalogue, preferences = null) {
   if (!Array.isArray(catalogue) || catalogue.some((service) =>
     !service.id || !service.name || !['package', 'ala_carte'].includes(service.kind)
     || !service.priceOptions?.length || service.priceOptions.some((option) =>
@@ -28,6 +27,8 @@ export function applyGroomingCatalogue(catalogue, preferences = groomingPreferen
     priceOptions: service.priceOptions.map((option) => ({ ...option,
       pricingType: option.pricingType === 'starting_at' ? 'plus' : option.pricingType })),
   }));
+  groomingPreferences = preferences || Object.fromEntries(services.map(service => [service.id,
+    Object.fromEntries((service.haircutOptions || []).filter(cut => cut.isActive).map(cut => [cut.id, cut.name]))]));
   GROOMING_PACKAGES.splice(0, GROOMING_PACKAGES.length, ...services.filter((service) => service.kind === 'package' && service.isActive !== false));
   ALA_CARTE_SERVICES.splice(0, ALA_CARTE_SERVICES.length, ...services.filter((service) => service.kind === 'ala_carte' && service.isActive !== false));
   PACKAGE_MAP.clear();
@@ -171,6 +172,7 @@ export function sanitizePetServiceSelection(selection) {
   const choices = getGroomingPreferences(nextSelection.servicePackage);
   if (catalogueLoaded && !choices.some((choice) => choice.value === nextSelection.groomingPreference)) nextSelection.groomingPreference = "";
   if (nextSelection.servicePackage !== "cat_full_grooming") nextSelection.haircutRequested = false;
+  if (nextSelection.servicePackage === "cat_full_grooming" && !nextSelection.haircutRequested) nextSelection.groomingPreference = "";
 
   if (!nextSelection.servicePackage || nextSelection.alaCarteServices.length === 0) {
     return nextSelection;
@@ -550,6 +552,7 @@ export function getGroomingPreferences(packageId) {
 }
 
 export function hasRequiredGroomingPreference(selection) {
+  if (selection?.servicePackage === "cat_full_grooming" && !selection.haircutRequested) return true;
   const choices = getGroomingPreferences(selection?.servicePackage);
   return !choices.length || choices.some((choice) => choice.value === selection?.groomingPreference);
 }
@@ -576,7 +579,10 @@ export function updatePetServiceSelection(selection, target) {
   const role = target.dataset.role;
   if (role === "grooming-preference") selection.groomingPreference = target.value;
   if (role === "haircut-requested") selection.haircutRequested = target.checked;
-  if (role === "service-package") selection.servicePackage = target.value;
+  if (role === "service-package") {
+    if (selection.servicePackage !== target.value) selection.groomingPreference = "";
+    selection.servicePackage = target.value;
+  }
   if (role === "ala-carte") {
     const ids = new Set(selection.alaCarteServices);
     target.checked ? ids.add(target.value) : ids.delete(target.value);

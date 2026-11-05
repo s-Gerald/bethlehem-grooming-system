@@ -218,6 +218,8 @@ class BookingController extends Controller
                 app(\App\Services\GroomingServiceSelection::class)->validate([...$petData, 'size' => $pet->groomingSize()],
                     $petData['services']['package'] ?? null, $petData['services']['ala_carte'] ?? [],
                     $pet->species, "pets.{$index}");
+                $bookingPetAttributes['grooming_preference_name'] = app(\App\Services\GroomingServiceSelection::class)
+                    ->haircutName($petData['services']['package'] ?? null, $petData['grooming_preference'] ?? null);
                 $bookingPet = BookingPet::create($bookingPetAttributes);
 
                 // ── Save services for this pet ────────────────

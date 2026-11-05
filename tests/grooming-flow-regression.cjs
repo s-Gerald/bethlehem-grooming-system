@@ -47,7 +47,7 @@ async function main() {
   }
   global.sessionStorage = storage;
   const draft = await import('../scripts/services/booking-draft-service.js');
-  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006&grooming=actual-20261026&registration=fcfs-20261027-v1');
+  const grooming = await import('../scripts/services/grooming-service.js?v=grooming-pricing-20261006&grooming=cms-20261105&registration=fcfs-20261027-v1');
   const groomingAge = await import('../scripts/services/grooming-age.js');
   const catalogue = JSON.parse(read('tests/grooming-catalogue-fixture.json'));
   grooming.applyGroomingCatalogue(catalogue.data, catalogue.groomingPreferences);

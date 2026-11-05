@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
+import { groomingPetConfirmation } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
 import { initClinicVisitConfirmation } from "../scripts/components/clinic-visit-confirmed.js";
 import {
   clinicReasonConfirmation, confirmationFields, ownerConfirmationFields, formatConfirmationTimestamp,

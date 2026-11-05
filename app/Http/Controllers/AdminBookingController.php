@@ -203,7 +203,8 @@ class AdminBookingController extends Controller
             ]),
             'activeTodayCount' => $this->activeTodayCount(),
             'capacity' => app(\App\Services\OperationalCapacity::class)->snapshot(),
-            'groomingPreferences' => config('grooming_services.preferences'),
+            'groomingPreferences' => $estimates->catalog()->filter(fn ($service) => $service->activeHaircuts())->mapWithKeys(fn ($service) => [$service->slug =>
+                collect($service->activeHaircuts())->pluck('name', 'id')->all()])->all(),
             'groomerCapacity' => $this->groomerCapacitySnapshot(),
             'groomingForecast' => $estimates->snapshot(),
         ])->header('Cache-Control', 'no-store, private');
@@ -739,15 +740,19 @@ class AdminBookingController extends Controller
                 $booking->loadMissing('bookingServices.service');
                 $services = $booking->bookingServices->where('booking_pet_id', $bookingPet->booking_pet_id);
                 $package = $services->first(fn ($item) => $item->service?->kind === 'package')?->service?->slug;
-                $choices = config('grooming_services.preferences.'.$package, []);
                 $preference = $assessment['grooming_preference'];
-                if (! isset($choices[$preference])) {
+                $option = app(\App\Services\GroomingServiceSelection::class)->services()->firstWhere('slug', $package)
+                    ?->haircut($preference, $bookingPet->grooming_preference !== $preference);
+                if (! $option || ($package === 'cat_full_grooming' && ! $bookingPet->haircut_requested)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['grooming_preference' => 'Select a grooming preference for the selected package.']);
                 }
                 if ($preference === 'custom_hairstyle' && ! preg_match('/[^\s\p{Z}\x{FEFF}]/u', $bookingPet->special_instructions ?? '')) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['special_instructions' => 'Describe the custom hairstyle before starting grooming.']);
                 }
-                $bookingPet->grooming_preference = $preference;
+                if ($bookingPet->grooming_preference !== $preference) {
+                    $bookingPet->grooming_preference = $preference;
+                    $bookingPet->grooming_preference_name = $option['name'];
+                }
             }
             $startedAt = now();
             $bookingPet->update([

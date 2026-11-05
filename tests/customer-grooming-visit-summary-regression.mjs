@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { groomingVisitPresentation, openGroomingVisitSummary, openClinicVisitSummary, refreshOpenVisitSummary } from '../scripts/components/grooming-visit-summary.js?grooming=actual-20261026';
+import { groomingVisitPresentation, openGroomingVisitSummary, openClinicVisitSummary, refreshOpenVisitSummary } from '../scripts/components/grooming-visit-summary.js?grooming=cms-20261105';
 
 const booking = {
   booking_id: 71, booking_reference: 'BAC-71', status: 'waiting_to_arrive', paid: false,

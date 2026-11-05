@@ -13,6 +13,7 @@ $controller = new GroomingPricingController;
 $normalizer = new ReflectionMethod($controller, 'normalize');
 $resolver = new GroomingServicePriceResolver;
 $catalogue = [];
+$preferences = require database_path('data/grooming-legacy-haircuts.php');
 foreach (array_keys(config('grooming_services.services')) as $slug) {
     $name = match ($slug) {
         'cat_full_grooming' => 'Full Grooming', 'bath_and_go' => 'Bath and Go!',
@@ -22,9 +23,11 @@ foreach (array_keys(config('grooming_services.services')) as $slug) {
     $defaults = collect(json_decode(file_get_contents(database_path('data/grooming-catalog.json')), true))->firstWhere('id', $slug);
     $service->pet_type = $defaults['petType'] ?? 'all';
     $service->description_items = $defaults['descriptionItems'];
+    $service->is_active = true;
+    $service->haircut_options = collect($preferences[$slug] ?? [])->map(fn ($name, $id) => ['id'=>$id, 'name'=>$name, 'isActive'=>true, 'estimates'=>[]])->values()->all();
     $entry = $normalizer->invoke($controller, $service, $resolver);
     $entry['includedAlaCarteServiceIds'] = $defaults['includedAlaCarteServiceIds'] ?? [];
     $entry['serviceId'] = count($catalogue) + 1;
     $catalogue[] = $entry;
 }
-echo json_encode(['data' => $catalogue, 'priceLimits' => config('grooming_services.price_limits'), 'groomingPreferences' => config('grooming_services.preferences')], JSON_THROW_ON_ERROR);
+echo json_encode(['data' => $catalogue, 'priceLimits' => config('grooming_services.price_limits'), 'groomingPreferences' => $preferences], JSON_THROW_ON_ERROR);

@@ -1,4 +1,4 @@
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import { petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   escapeHtml,
@@ -13,7 +13,7 @@ import {
   getGroomingPricePresentation,
   formatPriceOption,
   getPackageById,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 import { renderWalkInConsentStep } from "./walk-in-consent-step.js?capacity=20261010&pet-weight=pet-weight-size-20261011-v3&groomers=named-20261016&consent=20261017&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=actual-20261026&pet-care=20261027-v1&intake-reliability=20261029&registration-actions=20261101-v1&urls=20261103";
 
 const state = {

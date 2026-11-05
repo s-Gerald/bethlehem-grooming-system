@@ -26,7 +26,32 @@
 .services-page :is(button, input, select, [tabindex="0"]):focus-visible { outline: 2px solid #315b7e; outline-offset: 2px; }
 .services-page button:disabled { cursor: not-allowed; opacity: .5; }
 .services-clinic > section > div { padding: 0; }
+.services-editor-tabs { display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--pricing-border); }
+.services-editor-tabs button { padding: 12px 0; border-bottom: 2px solid transparent; color: var(--pricing-muted); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.services-editor-tabs button[aria-selected="true"] { color: var(--pricing-ink); border-bottom-color: var(--pricing-ink); }
+.services-legacy-time { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--pricing-border); border-radius: 8px; color: var(--pricing-ink); font-size: 13px; }
+.services-time-group { min-width: 0; border: 1px solid var(--pricing-border); border-radius: 8px; }
+.services-time-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; cursor: pointer; color: var(--pricing-ink); font-size: 14px; font-weight: 600; }
+.services-time-group > summary::after { content: '+'; font-size: 18px; }
+.services-time-group[open] > summary::after { content: '−'; }
+.services-time-group > summary > span:first-child { flex: 1; overflow-wrap: anywhere; min-width: 0; }
+.services-time-content { display: grid; gap: 16px; padding: 0 12px 12px; }
+.services-haircut-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(100px, 1fr); gap: 12px; }
+.services-time-rows { display: grid; gap: 12px; min-width: 0; }
+.services-time-rows:disabled { opacity: .5; }
+.services-time-row + .services-time-row { padding-top: 12px; border-top: 1px solid var(--pricing-border); }
+.services-time-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 13px; color: var(--pricing-ink); }
+.services-time-heading strong { min-width: 84px; }
+.services-time-controls { display: grid; grid-template-columns: minmax(84px, .8fr) repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; margin-top: 12px; }
+.services-time-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.services-time-pair legend { margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--pricing-ink); }
+.services-time-pair input.grooming-pricing-control { padding-left: 10px; }
+.services-add-haircut { justify-self: start; }
 @media (max-width: 639px) {
+  .services-editor-tabs { padding: 0 16px; gap: 16px; }
+  .services-time-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .services-time-controls > label { grid-column: 1 / -1; }
+  .services-haircut-fields { grid-template-columns: minmax(0, 1fr); }
   .services-group-header { flex-direction: column; align-items: flex-start; }
   .services-price-row, .services-price-row--single { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
   .services-price-row > label:first-child { grid-column: 1 / -1; }

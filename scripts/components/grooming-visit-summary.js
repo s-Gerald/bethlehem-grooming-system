@@ -1,7 +1,7 @@
-import "../services/grooming-forecast-presentation.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1";
+import "../services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { formatBookingDate } from "../services/booking-format-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 import {
   clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,

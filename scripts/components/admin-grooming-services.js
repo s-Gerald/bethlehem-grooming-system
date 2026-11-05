@@ -5,7 +5,7 @@ function adminGroomingServices() {
     rows: [], priceLimits: null, loading: false, loaded: false, error: '', busyId: null,
     groups: [{kind: 'package', label: 'Grooming Packages', action: 'Add Grooming Package'},
       {kind: 'ala_carte', label: 'Ala carte', action: 'Add Ala carte Service'}],
-    form: null, editingId: null, saving: false, formError: '', fieldErrors: {},
+    form: null, editingId: null, saving: false, formError: '', fieldErrors: {}, editorTab: 'details', timeDirty: false,
     init() {},
     get canManageServices() { return this.$store.clinicAccess.user?.role === 'admin'; },
     get catalogueEndpoint() { return this.canManageServices ? '/admin/grooming/services' : '/admin/grooming/services/catalogue'; },
@@ -37,6 +37,8 @@ function adminGroomingServices() {
       this.editingId = service?.serviceId ?? null;
       this.fieldErrors = {};
       this.formError = '';
+      this.editorTab = 'details';
+      this.timeDirty = false;
       const priceRows = kind === 'package' ? sizes.map((sizeKey, index) => {
         const saved = service?.priceOptions.find(option => option.sizeKey === sizeKey);
         return {sizeKey, label: labels[index], enabled: !service || !!saved,
@@ -51,7 +53,13 @@ function adminGroomingServices() {
         nextDescriptionKey: service?.descriptionItems?.length || 1,
         includedServiceIds: [...(service?.includedServiceIds || [])],
         isActive: service?.isActive ?? true,
-        priceRows, defaultPrices: service?.defaultPriceOptions || []};
+        priceRows, defaultPrices: service?.defaultPriceOptions || [],
+        timeRows: this.durationRows(service?.timeEstimates),
+        supportsHaircuts: service?.supportsHaircuts || false,
+        legacy: service?.legacyCompleteEstimates || null,
+        replaceLegacy: !service?.legacyCompleteEstimates,
+        haircuts: (service?.haircutOptions || []).map((cut, index) => ({...cut, key: cut.id,
+          timeRows: this.durationRows(cut.estimates)})), nextHaircutKey: 0};
       this.$refs.editor.showModal();
       this.$nextTick(() => this.$refs.serviceName.focus());
     },
@@ -81,6 +89,59 @@ function adminGroomingServices() {
       this.fieldErrors = {};
     },
     priceKey(row, field) { return (this.form.kind === 'package' ? `sizes.${row.sizeKey}.` : '') + field; },
+    durationRows(estimates = {}) {
+      const pair = minutes => ({hours: String(Math.floor(minutes / 60)), minutes: String(minutes % 60)});
+      return sizes.map((sizeKey, index) => {
+        const range = estimates?.[sizeKey];
+        return {sizeKey, label: labels[index], enabled: !!range,
+          mode: range && range[0] !== range[1] ? 'range' : 'fixed',
+          min: pair(range?.[0] || 0), max: pair(range?.[1] || 0)};
+      });
+    },
+    get timeGroups() {
+      if (!this.form) return [];
+      return [{key:'base', label:this.form.kind === 'package' ? 'Base package time' : 'Service time', base:true, rows:this.form.timeRows},
+        ...this.form.haircuts.map(cut => ({key:cut.key, label:cut.name || 'New haircut', cut, rows:cut.timeRows}))];
+    },
+    supportedTimeRows(rows) {
+      return rows.filter(row => this.form.kind === 'ala_carte' || this.form.priceRows.some(price => price.sizeKey === row.sizeKey && price.enabled));
+    },
+    addHaircut() {
+      this.form.haircuts.push({key:'new-'+this.form.nextHaircutKey++, name:'',isActive:true,timeRows:this.durationRows()});
+      this.timeDirty = true;
+    },
+    timeInput(input, row, bound, unit) {
+      const value = input.value;
+      if (/^[0-9]{0,2}$/.test(value) && (unit !== 'minutes' || Number(value) <= 59)) {
+        row[bound][unit] = value; this.timeDirty = true;
+      } else input.value = row[bound][unit];
+    },
+    timeErrors() {
+      const errors = [];
+      for (const cut of this.form.haircuts) if (!cut.name.trim()) errors.push('Enter a haircut name.');
+      if (this.form.legacy && !this.form.replaceLegacy) return errors;
+      for (const group of this.timeGroups) for (const row of this.supportedTimeRows(group.rows)) {
+        if (!row.enabled) continue;
+        const total = pair => /^[0-9]{1,2}$/.test(pair.hours) && /^[0-9]{1,2}$/.test(pair.minutes)
+          && Number(pair.minutes) <= 59 ? Number(pair.hours)*60 + Number(pair.minutes) : null;
+        const min = total(row.min), max = row.mode === 'range' ? total(row.max) : min;
+        if (min === null || max === null || min <= 0 || (row.mode === 'range' && max <= min)) {
+          errors.push(`${group.label} · ${row.label}: enter a positive time${row.mode === 'range' ? ' with a maximum greater than the minimum' : ''}.`);
+        }
+      }
+      return errors;
+    },
+    timePayload() {
+      const estimates = rows => Object.fromEntries(this.supportedTimeRows(rows).map(row => [row.sizeKey,
+        row.enabled ? {enabled:true,mode:row.mode,min:{...row.min},...(row.mode === 'range' ? {max:{...row.max}} : {})} : {enabled:false}]));
+      return {replaceLegacy:this.form.replaceLegacy, estimates:estimates(this.form.timeRows),
+        haircuts:this.form.haircuts.map(cut => ({...(cut.id ? {id:cut.id} : {}),name:cut.name.trim(),isActive:cut.isActive,estimates:estimates(cut.timeRows)}))};
+    },
+    durationLabel(row) {
+      if (!row.enabled) return 'No estimated time';
+      const minutes = pair => Number(pair.hours)*60 + Number(pair.minutes);
+      return globalThis.GroomingForecastPresentation.duration({min_minutes:minutes(row.min),max_minutes:row.mode === 'range' ? minutes(row.max) : minutes(row.min)});
+    },
     pricingErrors() {
       const limits = this.priceLimits?.[this.form.kind];
       const valid = value => limits && /^\d+(?:\.\d{1,2})?$/.test(String(value))
@@ -118,15 +179,21 @@ function adminGroomingServices() {
     },
     async save() {
       if (!this.canManageServices) return;
-      if (this.saving || !this.$refs.form.reportValidity()) return;
-      if (!this.validatePricing()) { this.$nextTick(() => this.$refs.form.querySelector?.('[aria-invalid="true"]')?.focus()); return; }
+      if (this.saving) return;
+      if (!this.$refs.form.checkValidity()) {
+        this.editorTab = 'details'; this.$nextTick(() => this.$refs.form.reportValidity()); return;
+      }
+      if (!this.validatePricing()) { this.editorTab = 'details'; this.$nextTick(() => this.$refs.form.querySelector?.('[aria-invalid="true"]')?.focus()); return; }
+      const timeErrors = this.timeErrors();
+      if (timeErrors.length) { this.editorTab = 'time'; this.formError = timeErrors.join(' '); this.$nextTick(() => this.$refs.formError.focus()); return; }
       const f = this.form;
       const price = row => ({pricing_type: row.pricingType, amount: row.amount,
         ...(row.pricingType === 'range' ? {maximum: row.maximum} : {})});
       const payload = {name: f.name.trim(), kind: f.kind, isActive: f.isActive,
         ...(f.kind === 'package' ? {petType: f.petType, descriptionItems: f.descriptionItems.map(item => item.text.trim()),
           includedServiceIds: f.includedServiceIds, sizes: Object.fromEntries(f.priceRows.filter(row => row.enabled).map(row => [row.sizeKey, price(row)]))}
-          : price(f.priceRows[0]))};
+          : price(f.priceRows[0])),
+        ...(this.timeDirty || !this.editingId ? {timeConfiguration:this.timePayload()} : {})};
       this.saving = true;
       this.formError = '';
       this.fieldErrors = {};

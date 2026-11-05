@@ -1,6 +1,6 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -22,7 +22,7 @@ import {
   formatPriceOption,
   getPackageById,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 
 /**
  * Booking Review Step Controller

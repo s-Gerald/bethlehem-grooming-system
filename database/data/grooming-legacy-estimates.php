@@ -1,6 +1,6 @@
 <?php
 
-// Historical ranges in minutes. Package inclusions come from the live catalogue.
+// Migration-only historical ranges in minutes. Live estimates are persisted on services.
 return [
     'packages' => [
         'partial_grooming' => ['sizes' => ['small' => [45, 60], 'medium' => [60, 75], 'large' => [75, 90], 'extra_large' => [90, 105]]],

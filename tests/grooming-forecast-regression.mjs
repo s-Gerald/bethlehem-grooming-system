@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createGroomingEstimateFlow, confirmClosingWarning, groomingDurationValue } from '../scripts/components/grooming-estimates.js';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1';
-import { renderPetServiceCard } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1';
+import { renderPetServiceCard } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };
 const pet = { id: 'coco', petType: 'dog', size: 'small' };
@@ -31,7 +31,7 @@ grooming.applyGroomingCatalogue(fixture.data,fixture.groomingPreferences);
 assert.equal(groomingDurationValue({servicePackage:'',alaCarteServices:[]}),'Select a service');
 assert.equal(groomingDurationValue({...selection,servicePackage:'regular_dog_grooming',groomingPreference:''}),'Select a grooming preference');
 assert.equal(groomingDurationValue(selection,{min_minutes:105,max_minutes:120}),'1 hr 45 min–2 hrs');
-assert.equal(groomingDurationValue(selection,null),'Unavailable');
+assert.equal(groomingDurationValue(selection,null),'No estimated time');
 for(const walkIn of [false,true]){
   const card=renderPetServiceCard(pet,{...selection,specialInstructions:''},0,walkIn);
   assert.match(card,/Estimated grooming time/);assert.doesNotMatch(card,/Actual grooming time may vary/);
@@ -43,10 +43,11 @@ for(const walkIn of [false,true]){
 {
   let submitted;
   const flow = createGroomingEstimateFlow({getPets:()=>[{...pet,id:'42',petType:'Dog',size:'Extra Large'}],
-    getSelections:()=>[{...selection,petId:'42'}],requestForecast:async payload=>{submitted=payload;return {closing_risk:false};},onContinue:()=>{}});
+    getSelections:()=>[{...selection,petId:'42',haircutRequested:true}],requestForecast:async payload=>{submitted=payload;return {closing_risk:false};},onContinue:()=>{}});
   await flow.next();
   assert.equal(submitted.pets[0].size,'extra_large');
   assert.equal(submitted.pets[0].pet_id,42,'Customer saved-pet references use the same ID as submission');
+  assert.equal(submitted.pets[0].haircut_requested,true,'Forecast includes the explicit cat haircut flag');
 }
 for (const risk of [false,true]) {
   for (const choice of [false,true]) {

@@ -12,7 +12,7 @@ const ui = context.adminDashboard();
 
 async function main() {
 const catalogue = JSON.parse(fs.readFileSync(path.join(__dirname, "grooming-catalogue-fixture.json"), "utf8").replace(/^\uFEFF/, "")).data;
-const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+const catalogueModule = "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 for (const component of ["admin-dashboard", "booking-services-step", "booking-review-step", "booking-consent-step", "booking-confirmed-step", "grooming-service-selection", "grooming-pre-registration", "walk-in-services-step", "walk-in-review-step"]) {
   const componentSource = fs.readFileSync(path.join(__dirname, `../scripts/components/${component}.js`), "utf8");
   assert.ok(componentSource.includes(`"${catalogueModule}"`), `${component} must share the same live catalogue module instance`);
@@ -211,7 +211,7 @@ const beforeSignature = grooming.selectedPricingSignature(draft, selection);
 grooming.applyGroomingCatalogue(catalogue);
 assert.notEqual(grooming.selectedPricingSignature(draft, selection), beforeSignature);
 let loads = 0;
-const groomingPreferences = JSON.parse(execFileSync("php", ["-r", "echo json_encode((require 'config/grooming_services.php')['preferences']);"], {
+const groomingPreferences = JSON.parse(execFileSync("php", ["-r", "echo json_encode(require 'database/data/grooming-legacy-haircuts.php');"], {
   cwd: path.resolve(__dirname, ".."), encoding: "utf8",
 }));
 global.API = { getGroomingCatalogue: async () => { loads++; return { data: updated, groomingPreferences }; } };
@@ -236,7 +236,7 @@ global.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 let verifications = 0, capacityReads = 0;
 global.API.waitForSessionVerification = async () => { verifications++; return true; };
 global.API.previewWalkInCapacity = async () => { capacityReads++; return { capacity: { fits: true } }; };
-const { renderWalkInReviewStep } = await import("../scripts/components/walk-in-review-step.js?grooming=actual-20261026");
+const { renderWalkInReviewStep } = await import("../scripts/components/walk-in-review-step.js?grooming=cms-20261105");
 await renderWalkInReviewStep({ pets: draft.pets, petSelections: selection });
 assert.equal(reviewElements.get("totalPriceText").textContent, "₱600");
 assert.ok(reviewElements.get("reviewSelections").innerHTML.includes("₱600"));

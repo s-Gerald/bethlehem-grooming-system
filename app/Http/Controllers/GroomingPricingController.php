@@ -67,7 +67,8 @@ class GroomingPricingController extends Controller
         })->values();
         return response()->json(['data' => $catalogue,
             'priceLimits' => config('grooming_services.price_limits'),
-            'groomingPreferences' => config('grooming_services.preferences')])->header('Cache-Control', 'no-store');
+            'groomingPreferences' => $visible->mapWithKeys(fn ($service) => [$service->slug =>
+                collect($service->activeHaircuts())->pluck('name', 'id')->all()])->all()])->header('Cache-Control', 'no-store');
     }
 
     public function store(Request $request, GroomingServicePriceResolver $resolver)
@@ -94,6 +95,7 @@ class GroomingPricingController extends Controller
             'includedServiceIds' => ['sometimes', 'array', 'max:100'],
             'includedServiceIds.*' => ['integer', 'distinct', \Illuminate\Validation\Rule::exists('services', 'service_id')->where('kind', 'ala_carte')],
             'isActive' => ['required', 'boolean'],
+            'timeConfiguration' => ['sometimes', 'array:estimates,haircuts,replaceLegacy'],
         ]);
         if (! $created && $service->kind !== $data['kind']) {
             throw \Illuminate\Validation\ValidationException::withMessages(['kind' => 'Service type cannot be changed.']);
@@ -105,7 +107,10 @@ class GroomingPricingController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['sizes' => 'Enter size pricing.']);
         }
         $prices = $this->priceValues($request, $package, $sizes);
-        DB::transaction(function () use ($service, $data, $created, $package, $prices) {
+        $times = array_key_exists('timeConfiguration', $data)
+            ? app(\App\Services\GroomingTimeConfiguration::class)->values($data['timeConfiguration'], $service,
+                $package ? $sizes : ['small', 'medium', 'large', 'extra_large']) : [];
+        DB::transaction(function () use ($service, $data, $created, $package, $prices, $times) {
             if ($created) $service->slug = 'grooming_'.(string) \Illuminate\Support\Str::uuid();
             $service->fill($prices + [
                 'service_name' => $data['name'], 'pet_type' => $package ? $data['petType'] : 'all',
@@ -114,7 +119,7 @@ class GroomingPricingController extends Controller
                 'included_ala_carte_ids' => $package ? ($data['includedServiceIds'] ?? []) : [],
                 'is_active' => $data['isActive'],
             ]);
-            // New services use the existing duration field for operational estimates.
+            $service->fill($times);
             $service->save();
         });
         return response()->json(['data' => $this->normalize($service->fresh(), $resolver)], $created ? 201 : 200);
@@ -237,6 +242,10 @@ class GroomingPricingController extends Controller
             'includedAlaCarteServiceIds' => $included,
             'allowsAlaCarteServices' => true, 'isActive' => $service->is_active,
             'displayOrder' => $service->display_order ?? 0,
+            'timeEstimates' => $service->time_estimates ?? new \stdClass,
+            'haircutOptions' => $service->haircut_options ?? [],
+            'supportsHaircuts' => $service->supportsHaircuts(),
+            'legacyCompleteEstimates' => $service->legacy_complete_estimates,
             'priceOptions' => $this->priceOptions($service, $resolver),
             'defaultPriceOptions' => config("grooming_services.services.{$service->slug}")
                 ? $this->priceOptions(new Service(['slug' => $service->slug]), $resolver) : []];

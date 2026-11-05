@@ -39,14 +39,16 @@ class GroomingServiceSelection
         if (array_intersect($included, array_map(fn ($slug) => $services->get($slug)->service_id, $alaCarte))) {
             throw ValidationException::withMessages([$field.'.services' => 'A service is already included in the package.']);
         }
-        $preferences = config('grooming_services.preferences.'.$package, []);
+        $service = $package ? $services->get($package) : null;
         $preference = $pet['grooming_preference'] ?? null;
-        if (($preferences && ! isset($preferences[$preference])) || ($preference && ! isset($preferences[$preference]))) {
-            throw ValidationException::withMessages([$field.'.grooming_preference' => 'Select a Haircut Preference.']);
-        }
         $haircut = (bool) ($pet['haircut_requested'] ?? false);
         if ($haircut && ($package !== 'cat_full_grooming' || strtolower($species) !== 'cat')) {
             throw ValidationException::withMessages([$field.'.haircut_requested' => 'Include haircut is only available with Cat Full Grooming.']);
+        }
+        $eligible = $package !== 'cat_full_grooming' || $haircut;
+        $required = $eligible && (bool) $service?->activeHaircuts();
+        if (($required && ! $service?->haircut($preference, true)) || ($preference && (! $eligible || ! $service?->haircut($preference, true)))) {
+            throw ValidationException::withMessages([$field.'.grooming_preference' => 'Select an active Haircut Preference for this package.']);
         }
         if (($haircut || ($package === 'deluxe_dog_grooming' && $preference === 'custom_hairstyle'))
             && ! preg_match('/[^\s\p{Z}\x{FEFF}]/u', $pet['special_instructions'] ?? '')) {
@@ -54,5 +56,10 @@ class GroomingServiceSelection
             throw ValidationException::withMessages([$field.'.special_instructions' => $haircut
                 ? "Describe the requested haircut for {$name}." : "Describe the custom hairstyle for {$name}."]);
         }
+    }
+
+    public function haircutName(?string $package, ?string $preference): ?string
+    {
+        return $this->services()->firstWhere('slug', $package)?->haircut($preference)['name'] ?? null;
     }
 }

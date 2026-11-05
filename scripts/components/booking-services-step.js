@@ -1,4 +1,4 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=actual-20261026&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -7,7 +7,7 @@ import {
   readSessionJson,
 } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
-import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import {
   buildStepThreeDraftPayload,
   hasCompletedRequiredServiceSelection,
@@ -16,7 +16,7 @@ import {
   selectedPricingSignature,
   createEmptyPetServiceSelection,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 
 const elements = {
   form: document.getElementById("bookingServicesForm"),
@@ -229,12 +229,12 @@ function handleSelectionChange(event) {
 
   if (target.dataset.role === "pet-groomer") selection.groomerId = target.value ? Number(target.value) : null;
   const guideToInstructions = updatePetServiceSelection(selection, target);
-  const card = elements.petServiceSelections.querySelector(`[data-pet-card="${CSS.escape(petId)}"]`);
-  if (["grooming-preference", "haircut-requested", "pet-groomer"].includes(target.dataset.role)) {
+  if (["grooming-preference", "pet-groomer"].includes(target.dataset.role)) {
+    const card = elements.petServiceSelections.querySelector(`[data-pet-card="${CSS.escape(petId)}"]`);
     updateSpecialInstructions(card, { id: petId }, selection);
     estimateFlow.selectionChanged();
   } else renderPetServiceSelections(petId);
-  if (guideToInstructions) focusSpecialInstructions(card);
+  if (guideToInstructions) focusSpecialInstructions(elements.petServiceSelections.querySelector(`[data-pet-card="${CSS.escape(petId)}"]`));
   updateServiceNotice();
   saveCurrentStepDraft();
 }

@@ -115,6 +115,9 @@ class WalkinController extends Controller
                         'haircut_requested' => (bool) ($item['petData']['haircut_requested'] ?? false),
                         'groomer_id' => $item['petData']['groomer_id'],
                         'grooming_preference' => $item['petData']['grooming_preference'] ?? null,
+                        'grooming_preference_name' => app(\App\Services\GroomingServiceSelection::class)->haircutName(
+                            $item['package'],
+                            $item['petData']['grooming_preference'] ?? null),
                     ]);
 
 
@@ -317,6 +320,7 @@ class WalkinController extends Controller
                 'pet' => $pet,
                 'petData' => $petData,
                 'size' => $size,
+                'package' => $selectedPackages[0] ?? null,
                 'services' => $this->resolveServices($petData['services'], $size),
             ];
         }, $pets, array_keys($pets));

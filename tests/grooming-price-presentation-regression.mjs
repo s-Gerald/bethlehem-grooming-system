@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import { createGroomingEstimateFlow } from "../scripts/components/grooming-estimates.js?v=20261031";
-import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=actual-20261026&registration=fcfs-20261027-v1";
+import { createGroomingEstimateFlow } from "../scripts/components/grooming-estimates.js?v=grooming-time-20261105";
+import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 import * as draft from "../scripts/services/booking-draft-service.js";
-import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=actual-20261026";
+import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
 import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
 import * as petGroomers from "../scripts/components/pet-groomer-selection.js?services=20261026";
 
-import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026&grooming=actual-20261026";
+import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./grooming-catalogue-fixture.json", import.meta.url), "utf8").replace(/^\uFEFF/, "")).data;
 const pet = (id) => ({ id, petName: id, petType: "dog", size: "small", sizeVerified: false, weight: 5 });

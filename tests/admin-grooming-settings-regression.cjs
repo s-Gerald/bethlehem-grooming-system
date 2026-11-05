@@ -175,7 +175,7 @@ async function main() {
   const services = context.adminGroomingServices();
   let opened = false;
   services.$refs = {editor: {showModal() {opened = true;}, close() {opened = false;}, querySelector: () => null},
-    form: {reportValidity: () => true}, serviceName: {focus() {}}, formError: {focus() {}}};
+    form: {checkValidity: () => true, reportValidity: () => true}, serviceName: {focus() {}}, formError: {focus() {}}};
   services.$nextTick = fn => fn();
   services.$store = {clinicAccess: {user: {role: 'admin'}}, clinicFeedback: {notify() {}}};
   await services.activate();

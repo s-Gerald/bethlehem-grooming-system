@@ -31,13 +31,18 @@
 
   <dialog x-show="canManageServices" x-ref="editor" class="services-editor grooming-pricing-dialog" aria-labelledby="grooming-editor-title" @cancel.prevent="closeEditor()" @click="if ($event.target === $el) closeEditor()">
     <template x-if="form">
-      <form x-ref="form" @submit.prevent="save()">
+      <form x-ref="form" @submit.prevent="save()" novalidate>
         <header class="grooming-pricing-modal-header">
           <h2 id="grooming-editor-title" x-text="(editingId ? 'Edit ' : 'Add ') + (form.kind === 'package' ? 'Grooming Package' : 'Ala carte Service')"></h2>
           <button type="button" @click="closeEditor()" :disabled="saving" class="grooming-pricing-close" aria-label="Close service editor">×</button>
         </header>
+        <div class="services-editor-tabs" role="tablist" aria-label="Service editor">
+          <button type="button" role="tab" id="service-details-tab" aria-controls="service-details-panel" :aria-selected="editorTab === 'details'" :tabindex="editorTab === 'details' ? 0 : -1" @click="editorTab = 'details'" @keydown.right.prevent="editorTab = 'time'; $refs.timeTab.focus()" x-ref="detailsTab">Details &amp; Pricing</button>
+          <button type="button" role="tab" id="service-time-tab" aria-controls="service-time-panel" :aria-selected="editorTab === 'time'" :tabindex="editorTab === 'time' ? 0 : -1" @click="editorTab = 'time'" @keydown.left.prevent="editorTab = 'details'; $refs.detailsTab.focus()" x-ref="timeTab">Time &amp; Haircuts</button>
+        </div>
         <div class="grooming-pricing-modal-body">
           <fieldset :disabled="saving" class="services-form">
+            <div x-show="editorTab === 'details'" id="service-details-panel" role="tabpanel" aria-labelledby="service-details-tab" class="services-form">
             <label class="services-field"><span>Service name</span><input x-ref="serviceName" x-model="form.name" type="text" maxlength="100" required class="grooming-pricing-control" /></label>
             <template x-if="form.kind === 'package'">
               <div class="services-form">
@@ -82,6 +87,49 @@
               </fieldset>
             </template>
             <label class="services-field"><span>Status</span><select x-model.boolean="form.isActive" class="grooming-pricing-control"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+            </div>
+            <div x-show="editorTab === 'time'" id="service-time-panel" role="tabpanel" aria-labelledby="service-time-tab" class="services-form" @change="timeDirty = true">
+              <div x-show="form.legacy" class="services-legacy-time">
+                <p>Legacy complete estimates are in use.</p>
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="form.replaceLegacy" class="h-4 w-4 accent-[#315b7e]" />Use base + haircut times</label>
+                <p class="text-xs">Switching replaces the complete estimates. Unset components show no estimated time.</p>
+                <details><summary>View current estimates</summary><template x-for="cut in form.haircuts.filter(cut => form.legacy?.[cut.id])" :key="cut.key"><div class="mt-2"><strong x-text="cut.name"></strong><template x-for="row in durationRows(form.legacy[cut.id])" :key="row.sizeKey"><p class="text-xs" x-text="row.label + ': ' + durationLabel(row)"></p></template></div></template></details>
+              </div>
+              <p x-show="form.supportsHaircuts &amp;&amp; form.replaceLegacy" class="text-sm text-slate-500">Base package time excludes the selected haircut.</p>
+              <template x-for="group in timeGroups" :key="group.key">
+                <details class="services-time-group" :open="group.base || !group.cut?.id">
+                  <summary><span x-text="group.label"></span><span x-show="group.cut" class="text-xs font-normal text-slate-500" x-text="group.cut?.isActive ? 'Active' : 'Inactive'"></span></summary>
+                  <div class="services-time-content">
+                    <template x-if="group.cut">
+                      <div class="services-haircut-fields">
+                        <label class="services-field"><span>Haircut name</span><input type="text" maxlength="100" x-model="group.cut.name" @input="timeDirty = true" class="grooming-pricing-control" /></label>
+                        <label class="services-field"><span>Status</span><select x-model.boolean="group.cut.isActive" class="grooming-pricing-control"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+                      </div>
+                    </template>
+                    <fieldset :disabled="form.legacy &amp;&amp; !form.replaceLegacy" class="services-time-rows">
+                      <template x-for="row in supportedTimeRows(group.rows)" :key="row.sizeKey">
+                        <div class="services-time-row">
+                          <div class="services-time-heading"><strong x-text="row.label"></strong><label class="flex items-center gap-2"><input type="checkbox" x-model="row.enabled" class="h-4 w-4 accent-[#315b7e]" />Set Time</label><span x-show="!row.enabled" class="text-xs text-slate-500">No estimated time</span></div>
+                          <div x-show="row.enabled" class="services-time-controls">
+                            <label class="services-field"><span>Time type</span><select x-model="row.mode" class="grooming-pricing-control"><option value="fixed">Fixed</option><option value="range">Range</option></select></label>
+                            <template x-for="bound in (row.mode === 'range' ? ['min', 'max'] : ['min'])" :key="bound">
+                              <fieldset class="services-time-pair"><legend x-text="row.mode === 'fixed' ? 'Time' : bound === 'min' ? 'Minimum Time' : 'Maximum Time'"></legend>
+                                <template x-for="unit in ['hours', 'minutes']" :key="unit">
+                                  <label class="services-field"><span x-text="unit === 'hours' ? 'Hours' : 'Minutes'"></span>
+                                    <input type="text" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" autocomplete="off" :value="row[bound][unit]" @input="timeInput($el, row, bound, unit)" @paste="const value = $event.clipboardData.getData('text'); if (!/^[0-9]{1,2}$/.test(value) || (unit === 'minutes' &amp;&amp; Number(value) > 59)) $event.preventDefault()" :disabled="!row.enabled" :aria-label="group.label + ' ' + row.label + ' ' + bound + ' ' + unit" class="grooming-pricing-control" />
+                                  </label>
+                                </template>
+                              </fieldset>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </fieldset>
+                  </div>
+                </details>
+              </template>
+              <button x-show="form.supportsHaircuts" type="button" @click="addHaircut()" :disabled="form.haircuts.length >= 100" class="grooming-pricing-button services-add-haircut">Add haircut</button>
+            </div>
             <p x-ref="formError" x-show="formError" x-text="formError" tabindex="-1" class="text-sm text-red-600" role="alert"></p>
           </fieldset>
         </div>

@@ -4,7 +4,7 @@ function adminServices() {
   function loadScript(name) {
     if (!scripts.has(name)) scripts.set(name, new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = `/scripts/components/${name}?urls=20261103&v=${name === 'admin-grooming-services.js' ? 'staff-access-20261024' : 'scoped-fetching-20261019'}`;
+      script.src = `/scripts/components/${name}?urls=20261103&v=${name === 'admin-grooming-services.js' ? 'grooming-time-20261105' : 'scoped-fetching-20261019'}`;
       script.onload = resolve;
       script.onerror = () => { scripts.delete(name); script.remove(); reject(new Error('Unable to load Services. Please retry.')); };
       document.head.appendChild(script);
@@ -122,7 +122,7 @@ function adminServices() {
       const revision = this._accessRevision;
       const request = pending[tab] = (async () => {
         const [response] = await Promise.all([
-          fetch(tab === 'clinic' ? '/pages/admin/clinic/sections/services.html?urls=20261103&v=services-20261017&icons=20261018' : '/pages/admin/services/sections/grooming.html?urls=20261103&v=services-20261017-followup&icons=20261018&staff-access=20261024'),
+          fetch(tab === 'clinic' ? '/pages/admin/clinic/sections/services.html?urls=20261103&v=services-20261017&icons=20261018' : '/pages/admin/services/sections/grooming.html?urls=20261103&v=grooming-time-20261105&icons=20261018&staff-access=20261024'),
           loadScript(tab === 'clinic' ? 'admin-clinic-services.js' : 'admin-grooming-services.js'),
           ...(tab === 'clinic' ? [loadScript('inventory-money-input.js')] : []),
         ]);

@@ -46,6 +46,7 @@ class BookingPet extends Model
         'cancellation_reason',
         'cancelled_by',
         'grooming_preference',
+        'grooming_preference_name',
     ];
 
     protected $casts = [
@@ -61,7 +62,8 @@ class BookingPet extends Model
 
     public function getGroomingPreferenceLabelAttribute(): ?string
     {
-        return collect(config('grooming_services.preferences'))->flatMap(fn ($choices) => $choices)->get($this->grooming_preference);
+        return $this->grooming_preference_name ?? ($this->grooming_preference
+            ? ucwords(str_replace('_', ' ', $this->grooming_preference)) : null);
     }
 
     // BookingPet belongs to a booking

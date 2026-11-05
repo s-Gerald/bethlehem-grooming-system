@@ -50,7 +50,7 @@ for (const file of ['cash-payment.js', 'online-payment.js', 'payment-invoice.js'
 }
 
 async function main() {
-  const { applyGroomingCatalogue } = await import('../scripts/services/grooming-service.js?grooming=actual-20261026&registration=fcfs-20261027-v1');
+  const { applyGroomingCatalogue } = await import('../scripts/services/grooming-service.js?grooming=cms-20261105&registration=fcfs-20261027-v1');
   const catalogue = JSON.parse(fs.readFileSync(`${__dirname}/grooming-catalogue-fixture.json`, 'utf8').replace(/^\uFEFF/, '')).data;
   context.applyPaymentCatalogue(applyGroomingCatalogue(catalogue));
   const ui = context.adminDashboard();

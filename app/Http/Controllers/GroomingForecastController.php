@@ -26,6 +26,7 @@ class GroomingForecastController extends Controller
             'pets.*.pet_id' => 'nullable|integer', 'pets.*.species' => 'required|in:dog,cat',
             'pets.*.size' => 'nullable|in:small,medium,large,extra_large', 'pets.*.weight' => 'nullable|numeric|min:0',
             'pets.*.groomer_id' => 'nullable|integer', 'pets.*.grooming_preference' => 'nullable|string|max:32',
+            'pets.*.haircut_requested' => 'sometimes|boolean',
             'pets.*.services' => 'sometimes|array', 'pets.*.services.package' => 'nullable|string|max:100',
             'pets.*.services.ala_carte' => 'sometimes|array|max:100', 'pets.*.services.ala_carte.*' => 'string|max:100',
         ]);
