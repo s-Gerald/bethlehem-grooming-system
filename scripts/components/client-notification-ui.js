@@ -124,7 +124,24 @@
     </section>`).join("");
   }
 
-  function ensureDropdownControls(dropdown, onTabChange) {
+  function positionDropdown(bell, dropdown) {
+    if (!bell || !dropdown) return;
+    // A backdrop-filtered sticky header creates a containing block for fixed children.
+    if (dropdown.parentElement !== document.body) document.body.appendChild(dropdown);
+    const bounds = bell.getBoundingClientRect();
+    const margin = 12;
+    const viewportWidth = document.documentElement.clientWidth;
+    const width = Math.min(384, viewportWidth - margin * 2);
+    const left = Math.max(margin, Math.min(bounds.right - width, viewportWidth - margin - width));
+    const top = bounds.bottom + 8;
+    dropdown.style.width = `${width}px`;
+    dropdown.style.left = `${left}px`;
+    dropdown.style.right = "auto";
+    dropdown.style.top = `${top}px`;
+    dropdown.style.maxHeight = `min(32rem, ${Math.max(0, window.innerHeight - top - margin)}px)`;
+  }
+
+  function ensureDropdownControls(dropdown, onTabChange, onClose) {
     const list = dropdown?.querySelector("#notifList");
     if (!list) return () => "all";
     const header = list.previousElementSibling;
@@ -138,6 +155,19 @@
     footer.className = "shrink-0 border-t border-portal-border px-4 py-3 text-center";
     footer.innerHTML = '<a href="/account/notifications" class="text-xs font-semibold text-portal-primary hover:underline">See all notifications</a>';
     list.after(footer);
+    const bell = document.getElementById("notifBellBtn");
+    const pageHeader = bell?.closest("header");
+    if (pageHeader && window.ResizeObserver) {
+      // Header wrapping can settle after the window resize event (including the sidebar transition).
+      new window.ResizeObserver(() => {
+        if (dropdown.style.display !== "none") positionDropdown(bell, dropdown);
+      }).observe(pageHeader);
+    }
+    if (onClose) document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || dropdown.style.display === "none") return;
+      onClose();
+      bell?.focus({ preventScroll: true });
+    });
     let status = "all";
     tabs.addEventListener("click", (event) => {
       const button = event.target.closest("[data-client-notification-tab]");
@@ -156,5 +186,5 @@
     label.classList.toggle("hidden", count === 0);
   }
 
-  window.ClientNotificationUI = { render, ensureDropdownControls, setUnreadCount, dateOf, dateKey, timeLabel };
+  window.ClientNotificationUI = { render, ensureDropdownControls, positionDropdown, setUnreadCount, dateOf, dateKey, timeLabel };
 })();

@@ -13,7 +13,7 @@ class CustomerPreRegistrationAccessInterfaceTest extends TestCase
 
         $this->assertStringContainsString('id="preRegisterButton"', $dashboard);
         $this->assertStringContainsString('data-pre-registration-button', $dashboard);
-        $this->assertStringContainsString('API.getPreRegistrationAccess()', $buttonScript);
+        $this->assertStringContainsString('API.getPreRegistrationAccess({ force })', $buttonScript);
         $this->assertStringNotContainsString('preRegistrationAccessNotice', $dashboard);
         $this->assertStringContainsString('"Queue registration ongoing"', $buttonScript);
         $this->assertStringContainsString('event.preventDefault()', $buttonScript);

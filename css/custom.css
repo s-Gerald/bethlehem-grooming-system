@@ -1914,3 +1914,20 @@ input.grooming-pricing-control { padding-left: 28px; }
   .grooming-pricing-button, .grooming-pricing-close, .grooming-pricing-control { min-height: 44px; }
   .grooming-pricing-currency { top: 12px; }
 }
+
+/* Customer headers share responsive action/search rows; desktop keeps its existing flow. */
+@media (max-width: 1180px) {
+  .customer-header-heading { padding-left: 3.5rem; }
+  .customer-header-actions { width: 100%; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .customer-header-actions > #notifBellWrapper { flex: none; }
+  .customer-header-actions > [data-pre-registration-button] {
+    flex: 0 1 auto;
+    max-width: calc(100% - 46px - 1rem);
+    white-space: normal;
+    text-align: center;
+  }
+  .customer-header-search { order: 3; flex: 0 0 100%; width: 100%; min-width: 0; }
+}
+@media (max-width: 639px) {
+  .customer-header-heading { padding-left: 62px; }
+}

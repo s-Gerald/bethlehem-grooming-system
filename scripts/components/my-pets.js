@@ -98,7 +98,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const markAllNotificationsRead = document.getElementById("notifMarkAllRead");
   const currentNotificationTab = window.ClientNotificationUI.ensureDropdownControls(notificationDropdown, () => {
     void loadNotifications({ force: true });
-  });
+  }, closeNotificationDropdown);
 
   const petTypeCombobox = createFixedOptionCombobox({
     root: document.getElementById("petSpeciesCombobox"),
@@ -292,16 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function positionNotificationDropdown() {
-    if (!notificationBell || !notificationDropdown) return;
-
-    const bellBounds = notificationBell.getBoundingClientRect();
-    const margin = 12;
-    const width = Math.min(384, window.innerWidth - (margin * 2));
-
-    notificationDropdown.style.top = `${bellBounds.bottom + 8}px`;
-    notificationDropdown.style.right = `${Math.max(margin, window.innerWidth - bellBounds.right)}px`;
-    notificationDropdown.style.left = "auto";
-    notificationDropdown.style.width = `${width}px`;
+    window.ClientNotificationUI.positionDropdown(notificationBell, notificationDropdown);
   }
 
   async function loadNotifications({ force = false } = {}) {

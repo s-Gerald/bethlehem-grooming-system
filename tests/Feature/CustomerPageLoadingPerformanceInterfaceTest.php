@@ -13,7 +13,7 @@ class CustomerPageLoadingPerformanceInterfaceTest extends TestCase
         foreach ([
             'function scheduleCustomerDashboardIdleTask(task)',
             'let notificationsLoading = false;',
-            'let appointmentsLoading = false;',
+            'let appointmentsLoading = null;',
             'let groomingCapacityLoading = false;',
             'document.visibilityState === "visible"',
         ] as $optimization) {

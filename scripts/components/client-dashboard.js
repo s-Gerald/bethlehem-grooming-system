@@ -171,7 +171,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const pickupDismiss  = document.getElementById("pickupDismissBtn");
   let notificationsLoading = false;
   let shownNotifications = [];
-  const currentTab = window.ClientNotificationUI.ensureDropdownControls(dropdown, () => renderNotifList(shownNotifications));
+  const currentTab = window.ClientNotificationUI.ensureDropdownControls(dropdown, () => renderNotifList(shownNotifications), closeDropdown);
 
   const SHOWN_PICKUPS_KEY = "shownPickupNotifs";
   const PICKUP_READY_STATUSES = new Set([
@@ -224,19 +224,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   function positionDropdown() {
-    const rect      = bellBtn.getBoundingClientRect();
-    const gap       = 8;
-    const margin    = 12;
-    const dropWidth = Math.min(384, window.innerWidth - margin * 2);
-
-    // Right-align to bell, clamped so it never clips the left edge
-    let right = window.innerWidth - rect.right;
-    right = Math.max(margin, right);
-
-    dropdown.style.top   = (rect.bottom + gap) + "px";
-    dropdown.style.right = right + "px";
-    dropdown.style.left  = "auto";
-    dropdown.style.width = dropWidth + "px";
+    window.ClientNotificationUI.positionDropdown(bellBtn, dropdown);
   }
 
   // ── Mark all read ──────────────────────────────────────────────────────────

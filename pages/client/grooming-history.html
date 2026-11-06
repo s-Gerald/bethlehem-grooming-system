@@ -7,7 +7,7 @@
     <title>History | Bethlehem Animal Clinic</title>
 
     <link rel="stylesheet" href="/css/output.css?health=20261029&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
-    <link rel="stylesheet" href="/css/custom.css?ui=20260915-session-modal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="/css/custom.css?ui=20260915-session-modal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3&customer-header=20261106-v2" />
 
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
@@ -162,13 +162,13 @@
 
         <!-- Header -->
         <header data-customer-session-shell inert class="sticky top-0 z-30 backdrop-blur border-b border-portal-border bg-white/[0.96]">
-          <div class="flex flex-col gap-5 px-6 py-5 min-[1181px]:flex-row min-[1181px]:items-center min-[1181px]:justify-between min-[1181px]:max-[1420px]:flex-wrap max-[1180px]:pl-20 max-[639px]:gap-[18px] max-[639px]:px-4 max-[639px]:py-[18px]">
-            <div class="min-w-0 max-[639px]:pl-[62px]">
+          <div class="customer-header-layout flex flex-col gap-5 px-6 py-5 min-[1181px]:flex-row min-[1181px]:items-center min-[1181px]:justify-between min-[1181px]:max-[1420px]:flex-wrap max-[639px]:gap-[18px] max-[639px]:px-4 max-[639px]:py-[18px]">
+            <div class="customer-header-heading min-w-0">
               <h2 class="text-3xl font-bold text-portal-text max-[639px]:text-[26px]">History</h2>
               <p class="text-portal-muted mt-1 text-[14px] leading-[1.5]">Review your pets' completed visits and grooming sessions.</p>
             </div>
-            <div class="flex items-center flex-none gap-4 min-[1181px]:max-[1420px]:ml-auto max-[1180px]:flex-wrap max-[639px]:gap-2.5">
-              <div class="flex min-h-[46px] w-[clamp(210px,18vw,300px)] items-center gap-2.5 rounded-full border border-portal-border bg-portal-surface-soft px-[15px] py-[11px] text-portal-primary focus-within:border-portal-accent max-[1180px]:w-auto max-[1180px]:flex-1 max-[639px]:order-3 max-[639px]:basis-full">
+            <div class="customer-header-actions flex items-center flex-none gap-4 min-[1181px]:max-[1420px]:ml-auto max-[639px]:gap-2.5">
+              <div class="customer-header-search flex min-h-[46px] w-[clamp(210px,18vw,300px)] items-center gap-2.5 rounded-full border border-portal-border bg-portal-surface-soft px-[15px] py-[11px] text-portal-primary focus-within:border-portal-accent">
                 <svg class="ph-icon w-4 h-4 shrink-0 text-portal-muted" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#magnifying-glass"></use></svg>
                 <input type="text" id="historySearch" placeholder="Search reference or pet name..." aria-label="Search reference or pet name"
                   class="w-full min-w-0 bg-transparent text-sm text-portal-text outline-none placeholder:text-portal-muted focus-visible:!outline-none" />
@@ -195,8 +195,8 @@
 
               <a id="preRegisterButton" data-pre-registration-button href="/account/registration"
                 aria-disabled="true" tabindex="-1" title="Checking availability"
-                class="portal-button-primary cursor-not-allowed font-semibold opacity-60 max-[639px]:flex-1">
-                Register Online
+                class="portal-button-primary cursor-not-allowed font-semibold opacity-60">
+                Start Queue Registration
               </a>
             </div>
           </div>
@@ -721,8 +721,8 @@
       void loadHistory();
       window.requestAnimationFrame(() => scheduleCustomerHistoryIdleTask(loadCustomerProfile));
     </script>
-    <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103"></script>
-    <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1"></script>
+    <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
+    <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@ const dropdown = document.getElementById("notifDropdown");
 const list = document.getElementById("notifList");
 const markAll = document.getElementById("notifMarkAllRead");
 let notifications = [];
-const currentTab = window.ClientNotificationUI?.ensureDropdownControls(dropdown, () => draw());
+const currentTab = window.ClientNotificationUI?.ensureDropdownControls(dropdown, () => draw(), closeDropdown);
 
 function closeDropdown() {
   if (!bell || !dropdown) return;
@@ -15,13 +15,7 @@ function closeDropdown() {
 }
 
 function positionDropdown() {
-  if (!bell || !dropdown) return;
-  const bounds = bell.getBoundingClientRect();
-  const margin = 12;
-  dropdown.style.top = `${bounds.bottom + 8}px`;
-  dropdown.style.right = `${Math.max(margin, window.innerWidth - bounds.right)}px`;
-  dropdown.style.left = "auto";
-  dropdown.style.width = `${Math.min(384, window.innerWidth - margin * 2)}px`;
+  window.ClientNotificationUI.positionDropdown(bell, dropdown);
 }
 
 function draw() {
@@ -87,7 +81,6 @@ markAll?.addEventListener("click", async () => {
 document.addEventListener("click", (event) => {
   if (dropdown?.style.display !== "none" && !dropdown.contains(event.target) && !bell?.contains(event.target)) closeDropdown();
 });
-document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDropdown(); });
 window.addEventListener("resize", () => { if (dropdown?.style.display !== "none") positionDropdown(); });
 document.addEventListener("client-notifications-changed", (event) => {
   if (event.detail?.source !== "header") void loadNotifications();
