@@ -223,7 +223,7 @@ function renderCachedAdminSidebar() {
   const text = {
     "isAdmin ? 'AD' : staffInitials": state.isAdmin ? 'AD' : state.staffInitials,
     "isAdmin ? 'Admin' : staffDisplayName": state.isAdmin ? 'Admin' : state.staffDisplayName,
-    "isAdmin ? 'Clinic Manager' : staffRoleLabel": state.isAdmin ? 'Clinic Manager' : state.staffRoleLabel,
+    "isAdmin ? 'Owner' : staffRoleLabel": state.isAdmin ? 'Owner' : state.staffRoleLabel,
   };
   aside.querySelectorAll('[x-text]').forEach(el => {
     const value = text[el.getAttribute('x-text')];

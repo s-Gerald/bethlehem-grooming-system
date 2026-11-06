@@ -106,6 +106,16 @@ async function visibleShell(page, active) {
     return icon && icon.getBBox().width > 0;
   });
 }
+async function accountLabels(page, profile) {
+  const expected = {
+    admin: ['AD', 'Admin', 'Owner'],
+    vet: ['LV', 'Local Vet', 'Veterinarian'],
+    grooming: ['LG', 'Local Groomer', 'Grooming Receptionist'],
+    clinic: ['LR', 'Local Receptionist', 'Clinic Receptionist'],
+  };
+  const account = page.locator('[data-admin-account]');
+  assert.deepEqual(await account.locator('[x-text]').allTextContents(), expected[profile], 'Account identity remains consistent before and after Alpine hydration');
+}
 async function walkInNavigation(browser) {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -255,7 +265,7 @@ async function coldPaint(browser) {
         assert.equal(await f.page.locator(`aside a[href$="${href}"]`).isVisible(), false, 'Cold role alone reveals no restricted area');
       }
       assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'true');
-      assert.equal(await f.page.locator('aside.admin-sidebar-menu').innerText().then(t => t.includes('Clinic Manager')), false);
+      assert.equal(await f.page.locator('[data-admin-account] [x-text]').allTextContents().then(labels => labels.every(label => label === '')), true, 'Unverified identity keeps every account label empty');
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       const icon = f.page.locator('aside nav a[href$="dashboard"] svg');
       assert.ok((await icon.locator('use').getAttribute('href')).includes('/assets/icons/phosphor.svg'));
@@ -269,6 +279,7 @@ async function cachedRefresh(browser, profile) {
   const f = await fixture(browser, profile);
   try {
     await visit(f.page, 'dashboard'); await ready(f.page);
+    await accountLabels(f.page, profile);
     const errors = [];
     f.page.on('pageerror', error => errors.push(error.message));
     f.state.locked = true;
@@ -304,7 +315,9 @@ async function cachedRefresh(browser, profile) {
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       assert.equal(await f.page.locator('.admin-sidebar-footer').evaluate(el => el.inert), true);
       assert.equal(await f.page.locator('[data-admin-account]').getAttribute('aria-busy'), 'false');
+      await accountLabels(f.page, profile);
       f.state.sessionHold.resolve(); await ready(f.page);
+      await accountLabels(f.page, profile);
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), false);
       assert.equal(count(), 1, 'Page navigation must reuse identity');
       console.log(`${profile} ${file}: cached pending-session shell passed`);
@@ -324,7 +337,9 @@ async function cachedRefresh(browser, profile) {
       assert.equal(await f.page.locator('#bethlehem-session-lock').isVisible(), false, 'Refresh keeps safe structure visible without a checking modal');
       assert.equal(await f.page.locator('aside nav').evaluate(el => el.inert), true);
       assert.equal(count(), 1, 'Valid cached reload avoids /me');
+      await accountLabels(f.page, profile);
       f.state.sessionHold.resolve(); await ready(f.page);
+      await accountLabels(f.page, profile);
     }
     assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
     assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profile === 'admin');
@@ -623,8 +638,8 @@ async function inventoryNavigation(browser) {
     console.log('Inventory direct/query/action/invalid routes, reloads, return from Clinic and mobile passed');
   } finally { await f.context.close(); }
 }
-async function cachedBeforeAlpine(browser) {
-  const f = await fixture(browser, 'vet');
+async function cachedBeforeAlpine(browser, profile) {
+  const f = await fixture(browser, profile);
   try {
     await visit(f.page, 'dashboard'); await ready(f.page);
     const hashes = ['overview', 'products?filter=expiry', 'sell-product', 'history', 'stock-in', 'stock-out', 'invalid'];
@@ -644,11 +659,10 @@ async function cachedBeforeAlpine(browser) {
         await f.page.goto(`${origin}/admin/${file}`, { waitUntil: 'commit' });
         await f.page.locator('.admin-sidebar-menu[data-admin-navigation-ready]').waitFor({ state: 'attached' });
         assert.equal(await f.page.evaluate(() => typeof window.Alpine), 'undefined', `${file}: cached highlight is painted before Alpine loads`);
-        assert.equal(await f.page.locator('[data-admin-account] p').first().innerText(), 'Local Vet');
-        assert.equal(await f.page.locator('[data-admin-account] p').last().innerText(), 'Veterinarian');
+        await accountLabels(f.page, profile);
         assert.equal(await f.page.locator('aside a[href$="clinic"]').isVisible(), true);
-        assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), false);
-        assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), false);
+        assert.equal(await f.page.locator('aside a[href$="grooming"]').isVisible(), profile === 'admin');
+        assert.equal(await f.page.locator('aside a[href$="reports"]').isVisible(), profile === 'admin');
         assert.equal(f.state.requests.filter(p => p === '/api/me').length, 1);
         if (section) await inventoryHighlight(f.page, section, true, contextual);
         if (section === 'overview' && !contextual) {
@@ -659,6 +673,7 @@ async function cachedBeforeAlpine(browser) {
         }
         alpine.resolve(); await ready(f.page);
         await f.page.waitForFunction(() => !!document.querySelector('[data-admin-shell]')._x_dataStack);
+        await accountLabels(f.page, profile);
         if (section) {
           await inventoryHighlight(f.page, section, true, contextual);
           if (contextual) {
@@ -764,7 +779,7 @@ async function canonicalUrlsAndLegacyBookmarks(browser) {
     if (cases.includes('security')) await securityTransitions(browser);
     if (cases.includes('session')) await sessionTabReturn(browser);
     if (cases.includes('invalid')) await invalidCaches(browser);
-    if (cases.includes('pre-alpine')) await cachedBeforeAlpine(browser);
+    if (cases.includes('pre-alpine')) for (const profile of ['admin', 'vet'].filter(profile => !process.env.LOCAL_REVIEW_PROFILES || process.env.LOCAL_REVIEW_PROFILES.split(',').includes(profile))) await cachedBeforeAlpine(browser, profile);
     if (cases.includes('inventory')) await inventoryNavigation(browser);
     if (cases.includes('services')) await servicesMobileBackdrop(browser);
     if (cases.includes('walk-in')) await walkInNavigation(browser);

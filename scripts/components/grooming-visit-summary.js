@@ -121,8 +121,20 @@ export function openGroomingVisitSummary(bookingId, trigger, statusFor, onCancel
   return openVisitSummary({ service: "grooming", id: bookingId, trigger, statusFor, onCancel, source });
 }
 
-export function openClinicVisitSummary(id, trigger, source) {
-  return openVisitSummary({ service: "clinic", id, trigger, source });
+export function openClinicVisitSummary(id, trigger, source, onCancel) {
+  return openVisitSummary({ service: "clinic", id, trigger, source, onCancel });
+}
+
+export async function refreshVisitSummary(target) {
+  if (currentVisit?.service !== target.service || String(currentVisit.id) !== String(target.id)) return false;
+  await loadVisitDetails(currentVisit, true);
+  return currentVisit?.registration?.can_cancel === true;
+}
+
+export function closeVisitSummary(target) {
+  if (currentVisit?.service === target.service && String(currentVisit.id) === String(target.id)) {
+    document.getElementById("groomingVisitSummary").close();
+  }
 }
 
 // No new polling: the dashboard calls this on its existing successful refresh.
@@ -158,14 +170,18 @@ function initializeVisitDialog() {
     requestId++;
     currentVisit = null;
     document.body.classList.remove("grooming-summary-open");
-    const target = returnTrigger?.isConnected ? returnTrigger : document.getElementById(returnTrigger?.id);
-    (target || document.getElementById("trackerHeading"))?.focus({ preventScroll: true });
+    if (document.getElementById("cancelModal").open) return;
+    const target = returnTrigger?.isConnected ? returnTrigger : returnTrigger?.id && document.getElementById(returnTrigger.id);
+    (target || document.getElementById("dashboardGreeting"))?.focus({ preventScroll: true });
   });
   document.getElementById("cancelVisitSummary").addEventListener("click", () => {
-    if (currentVisit?.booking?.can_cancel && currentVisit.onCancel) currentVisit.onCancel(currentVisit.booking);
+    if (currentVisit?.registration?.can_cancel && currentVisit.onCancel) currentVisit.onCancel({
+      service: currentVisit.service, id: currentVisit.id,
+      reference: currentVisit.registration.booking_reference || currentVisit.registration.reference,
+    });
   });
   document.getElementById("printVisitSummary").addEventListener("click", () => {
-    if (currentVisit?.service !== "grooming" || !currentVisit.booking) return;
+    if (currentVisit?.service !== "grooming" || !currentVisit.registration) return;
     document.body.classList.add("grooming-summary-printing");
     try { printConfirmation(); }
     finally { document.body.classList.remove("grooming-summary-printing"); }
@@ -196,7 +212,7 @@ async function loadVisitDetails(visit, refresh = false) {
   cancelButton.hidden = true;
   cancelButton.disabled = true;
   printRoot.innerHTML = "";
-  visit.booking = null;
+  visit.registration = null;
   if (!refresh) { content.innerHTML = '<p role="status">Loading visit summary…</p>'; content.scrollTop = 0; }
   content.setAttribute("aria-busy", "true");
   try {
@@ -215,6 +231,7 @@ async function loadVisitDetails(visit, refresh = false) {
     let summary;
     if (visit.service === "clinic") {
       summary = clinicVisitPresentation(data.visit);
+      visit.registration = data.visit;
     } else {
       const booking = data.booking;
       const statusBooking = { ...booking, pets: (booking.booking_pets || []).map((pet) => ({
@@ -223,12 +240,12 @@ async function loadVisitDetails(visit, refresh = false) {
         grooming_started_at: pet.grooming_start_time || null, grooming_started_timestamp: pet.grooming_start_time || null,
       })) };
       summary = groomingVisitPresentation(booking, visit.statusFor(statusBooking));
-      visit.booking = booking;
-      cancelButton.hidden = !(booking.can_cancel && visit.onCancel);
-      cancelButton.disabled = cancelButton.hidden;
+      visit.registration = booking;
       printRoot.innerHTML = summary.print;
       printButton.disabled = false;
     }
+    cancelButton.hidden = !(visit.registration.can_cancel && visit.onCancel);
+    cancelButton.disabled = cancelButton.hidden;
     document.getElementById("groomingVisitSummaryHeading").textContent = summary.title;
     content.innerHTML = summary.html;
   } catch {

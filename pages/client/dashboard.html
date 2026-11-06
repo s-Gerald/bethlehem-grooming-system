@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en" data-session-gate="checking">
   <head>
     <meta charset="UTF-8" />
@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/css/custom.css?v=20260806-reschedule-availability&ui=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="/css/components/confirmation.css?v=20261017&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="/css/components/grooming-visit-summary.css?v=visit-details-20261029&registration-ui=20261027-v3" />
+    <link rel="stylesheet" href="/css/components/toast.css?v=customer-cancellation-20261106" />
 
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
@@ -170,7 +171,7 @@
             class="flex flex-col gap-5 px-6 py-5 min-[1181px]:flex-row min-[1181px]:items-center lg:justify-between min-[1181px]:max-[1420px]:flex-wrap max-[1180px]:pl-20 max-[639px]:gap-[18px] max-[639px]:px-4 max-[639px]:py-[18px]"
           >
             <div class="min-w-0 max-[639px]:pl-[62px]">
-              <h2 id="dashboardGreeting" data-session-private class="text-3xl font-bold text-portal-text [overflow-wrap:anywhere] max-[639px]:text-[26px]">Welcome</h2>
+              <h2 id="dashboardGreeting" tabindex="-1" data-session-private class="text-3xl font-bold text-portal-text [overflow-wrap:anywhere] max-[639px]:text-[26px]">Welcome</h2>
               <p class="text-portal-muted mt-1 text-[14px] max-[639px]:leading-[1.5]">
                 Here’s what’s happening with your pets today.
               </p>
@@ -285,17 +286,17 @@
         </section>
 
         <!-- Cancel Confirmation Modal -->
-        <dialog id="cancelModal" class="visit-cancel-dialog" aria-labelledby="cancelVisitHeading">
+        <dialog id="cancelModal" class="visit-cancel-dialog" aria-labelledby="cancelVisitHeading" aria-describedby="cancelVisitDescription">
           <div class="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
             <div class="flex items-center justify-between mb-4">
-              <h4 id="cancelVisitHeading" class="text-lg font-bold text-portal-text">Cancel queue registration?</h4>
+              <h4 id="cancelVisitHeading" class="text-lg font-bold text-portal-text">Cancel grooming queue registration?</h4>
               <button type="button" id="closeCancelModal" aria-label="Close cancellation dialog" class="text-portal-muted hover:text-slate-600">
                 <svg class="ph-icon w-5 h-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#x"></use></svg>
               </button>
             </div>
             <p id="cancelBookingRef" class="mb-1 text-sm font-semibold text-portal-text"></p>
-            <p class="mb-5 text-sm text-portal-muted">Are you sure you want to cancel this visit?</p>
-            <div id="cancelMessage" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
+            <p id="cancelVisitDescription" class="mb-5 text-sm text-portal-muted">Are you sure you want to cancel this registration?</p>
+            <div id="cancelMessage" role="alert" class="hidden mb-4 rounded-xl border px-4 py-3 text-sm"></div>
             <div class="flex flex-col gap-3 sm:flex-row">
               <button type="button" id="keepBookingBtn"
                 class="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
@@ -321,7 +322,7 @@
         </header>
         <div id="groomingVisitSummaryContent" class="grooming-summary-content"></div>
         <footer class="grooming-summary-footer">
-          <button type="button" id="cancelVisitSummary" class="portal-button-secondary visit-summary-cancel" hidden disabled>Cancel registration</button>
+          <button type="button" id="cancelVisitSummary" class="portal-button-secondary visit-summary-cancel" hidden disabled>Cancel</button>
           <button type="button" id="printVisitSummary" class="portal-button-primary" disabled>Print Summary</button>
         </footer>
       </div>
@@ -350,10 +351,11 @@
       </div>
     </div>
 
-    <script src="/scripts/api.js?grooming-summary=visit-details-20261029&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&estimates=20261031&urls=20261103"></script>
+    <script src="/scripts/api.js?grooming-summary=visit-details-20261029&grooming-cancellation=20261016&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&estimates=20261031&urls=20261103&customer-cancellation=20261106"></script>
     <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103" defer></script>
-    <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
+    <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1&customer-cancellation=20261106"></script>
+    <script src="/scripts/components/success-toast.js?v=customer-cancellation-20261106"></script>
     <script src="/scripts/services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1"></script>
-    <script src="/scripts/components/client-dashboard.js?time-cms=20261105&v=visit-details-20261029&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&registration-rollover=20261027-v3&names=20261028-v2&mobile-format=20261029&dashboard-loading=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1" defer></script>
+    <script src="/scripts/components/client-dashboard.js?time-cms=20261105&v=visit-details-20261029&copy=grooming-terminology-20261016&catalog=services-20261017-2&grooming=actual-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&registration-rollover=20261027-v3&names=20261028-v2&mobile-format=20261029&dashboard-loading=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1&customer-cancellation=20261106" defer></script>
   </body>
 </html>

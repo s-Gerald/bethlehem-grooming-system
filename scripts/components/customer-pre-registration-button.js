@@ -55,11 +55,15 @@ export function bindPreRegistrationButton(button) {
 buttons.forEach(bindPreRegistrationButton);
 
 let accessRequest = null;
-async function loadPreRegistrationAccess() {
-  if (accessRequest) return accessRequest;
+async function loadPreRegistrationAccess({ force = false } = {}) {
+  if (accessRequest) {
+    if (!force) return accessRequest;
+    await accessRequest;
+    if (accessRequest) return accessRequest;
+  }
   accessRequest = (async () => {
     try {
-      const access = await API.getPreRegistrationAccess();
+      const access = await API.getPreRegistrationAccess({ force });
       accessState = access;
       buttons.forEach((button) => setButtonAccess(button, access.allowed));
     } catch (error) {
@@ -76,6 +80,7 @@ function scheduleAccessCheck() {
   window.setTimeout(start, 200);
 }
 if (buttons.length > 0) {
+  window.addEventListener("customer:registration-changed", () => loadPreRegistrationAccess({ force: true }));
   const cached = API.readCustomerCache("/pre-registration/access");
   if (cached?.fresh) {
     accessState = cached.data;

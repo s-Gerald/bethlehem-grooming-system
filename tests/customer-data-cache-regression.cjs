@@ -167,6 +167,7 @@ async function testServiceEligibilityCacheAfterMutationsAndExpiry() {
       if (endpoint === '/booking/store') active.grooming = true;
       if (endpoint === '/clinic/pre-register') active.clinic = true;
       if (endpoint === '/booking/cancel') active.grooming = false;
+      if (endpoint === '/clinic/registrations/17/cancel') active.clinic = false;
       return { success: true };
     }
     assert.equal(endpoint, '/pre-registration/access');
@@ -194,6 +195,11 @@ async function testServiceEligibilityCacheAfterMutationsAndExpiry() {
   access = await env.API.getPreRegistrationAccess();
   assert.equal(access.services.grooming.allowed, true);
   assert.equal(access.services.clinic.allowed, false);
+  await env.API.cancelClinicRegistration(17);
+  assert.equal(env.calls.at(-1).endpoint, '/clinic/registrations/17/cancel');
+  assert.equal(env.calls.at(-1).authorization, 'Bearer 1|synthetic-customer-secret');
+  access = await env.API.getPreRegistrationAccess();
+  assert.equal(access.services.clinic.allowed, true, 'Clinic cancellation immediately invalidates service eligibility');
   active.clinic = false;
   env.advance(5001);
   access = await env.API.getPreRegistrationAccess();
@@ -215,7 +221,7 @@ async function testInvalidation() {
     assert.equal(env.API.readCustomerCache("/booking/history"), null);
     assert.ok(env.API.readCustomerCache("/me"), "Pet/booking changes must preserve the profile cache.");
   }
-  for (const mutate of [() => env.API.cancelBooking(1), () => env.API.rescheduleBooking(1, "2026-10-06", 1), () => env.API.submitClinicPreRegistration({})]) {
+  for (const mutate of [() => env.API.cancelBooking(1), () => env.API.cancelClinicRegistration(17), () => env.API.rescheduleBooking(1, "2026-10-06", 1), () => env.API.submitClinicPreRegistration({})]) {
     await seed(env);
     await mutate();
     for (const endpoint of ["/booking/history", "/booking/history?history_limit=3", "/booking/grooming-capacity", "/pre-registration/access", "/customer/notifications"]) {

@@ -92,6 +92,7 @@ async function independentRendering() {
   sidebar.destroy();
 }
 async function rolesAndInvalidCache() {
+  await cachedAccountLabels();
   const cases = [
     [{ role: 'admin', staff_type: null, staff_subrole: null }, true, true, 'Staff'],
     [{ staff_type: 'clinic', staff_subrole: 'veterinarian' }, false, false, 'Veterinarian'],
@@ -124,6 +125,32 @@ async function rolesAndInvalidCache() {
   assert.equal(c.adminSidebar().sidebarReady, false);
   await c.API.getStaffIdentity();
   assert.equal(c.API.getCachedStaffIdentity().user.user_id, 7, 'Memory presentation works if storage is blocked');
+}
+async function cachedAccountLabels() {
+  for (const [user, expected] of [
+    [{ role: 'admin', staff_type: null, staff_subrole: null }, ['AD', 'Admin', 'Owner']],
+    [{ staff_subrole: 'veterinarian' }, ['TS', 'Test Staff', 'Veterinarian']],
+    [{ staff_subrole: 'clinic_receptionist' }, ['TS', 'Test Staff', 'Clinic Receptionist']],
+    [{ staff_type: 'grooming', staff_subrole: 'grooming_receptionist' }, ['TS', 'Test Staff', 'Grooming Receptionist']],
+  ]) {
+    const e = environment();
+    if (user.role === 'admin') e.c.API.setUserRole('admin');
+    e.respond(() => identity(user));
+    await e.c.API.getStaffIdentity();
+    // The pre-Alpine renderer must recognize the same bindings as the templates.
+    for (const c of [e.c, e.page()]) {
+      const labels = ["isAdmin ? 'AD' : staffInitials", "isAdmin ? 'Admin' : staffDisplayName", "isAdmin ? 'Owner' : staffRoleLabel"]
+        .map(expression => ({ textContent: '', getAttribute: () => expression }));
+      const account = { setAttribute(name, value) { this[name] = value; } };
+      const aside = { querySelector: () => account, closest: () => null, setAttribute() {}, removeAttribute() {},
+        querySelectorAll: selector => selector === '[x-text]' ? labels : [] };
+      c.document.querySelector = selector => selector === '.admin-sidebar-menu' ? aside : null;
+      c.renderCachedAdminSidebar();
+      assert.deepEqual(labels.map(label => label.textContent), expected, 'Cached identity paints the correct account labels before Alpine, including after navigation');
+      assert.equal(account['aria-busy'], 'false');
+    }
+    assert.equal(e.calls.length, 1, 'Rendering and navigation reuse the verified identity');
+  }
 }
 const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 function enableSession(c) {

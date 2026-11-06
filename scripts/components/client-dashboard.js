@@ -554,6 +554,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
   let dashboardPets = [];
   let dashboardBookings = [];
   let dashboardClinicVisits = [];
+  let dashboardAppointmentData = null;
   let lastGroomingAnnouncement = "";
   let lastAppointmentsMarkup = null;
   let lastTrackerMarkup = "";
@@ -569,9 +570,10 @@ function scheduleCustomerDashboardAfterPaint(task) {
   const keepBookingBtn           = document.getElementById("keepBookingBtn");
   const cancelMessageEl          = document.getElementById("cancelMessage");
 
-  let cancelTargetBooking = null;
+  let cancelTarget = null;
+  const cancellationRequests = new Set();
   let dashboardPetsLoadState = "idle";
-  let appointmentsLoading = false;
+  let appointmentsLoading = null;
   let appointmentsLoaded = false;
   let groomingCapacityLoading = false;
   let groomingCapacityLoaded = false;
@@ -611,25 +613,29 @@ function scheduleCustomerDashboardAfterPaint(task) {
   }
 
   async function loadAppointments({ force = false } = {}) {
-    if (appointmentsLoading) return;
-    appointmentsLoading = true;
-    try {
-      await API.loadCustomerData("/booking/history?history_limit=3",
-        () => API.getBookingHistory({ historyLimit: 3, force }), renderAppointmentData, { force });
-    } catch (error) {
-      if (appointmentsLoaded && (error.status === 0 || error.status >= 500)) return;
-      renderDashboardPanelError(appointmentsList, "Failed to load schedule. Please try again.");
-      renderDashboardPanelError(groomingTrackerEl, "Failed to load grooming status. Please try again.");
-      renderDashboardPanelError(groomingHistoryEl, "Failed to load grooming history. Please try again.");
-      trackerSection?.classList.remove("hidden");
-      upcomingSection?.classList.remove("hidden");
-      return;
-    } finally {
-      appointmentsLoading = false;
+    if (appointmentsLoading) {
+      if (!force) return;
+      await appointmentsLoading;
+      if (appointmentsLoading) return appointmentsLoading;
     }
+    appointmentsLoading = (async () => {
+      try {
+        await API.loadCustomerData("/booking/history?history_limit=3",
+          () => API.getBookingHistory({ historyLimit: 3, force }), renderAppointmentData, { force });
+      } catch (error) {
+        if (appointmentsLoaded && (error.status === 0 || error.status >= 500)) return;
+        renderDashboardPanelError(appointmentsList, "Failed to load schedule. Please try again.");
+        renderDashboardPanelError(groomingTrackerEl, "Failed to load grooming status. Please try again.");
+        renderDashboardPanelError(groomingHistoryEl, "Failed to load grooming history. Please try again.");
+        trackerSection?.classList.remove("hidden");
+        upcomingSection?.classList.remove("hidden");
+      }
+    })().finally(() => { appointmentsLoading = null; });
+    return appointmentsLoading;
   }
 
   function renderAppointmentData(data) {
+    dashboardAppointmentData = data;
     const active = Array.isArray(data?.bookings) ? data.bookings : [];
     const history = Array.isArray(data?.history) ? data.history : [];
     const scheduled = active.filter(isUpcomingAppointment);
@@ -855,11 +861,11 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
+      visitSummaryModule = await import("./grooming-visit-summary.js?customer-cancellation=20261106&v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);
-        if (visit) await visitSummaryModule.openClinicVisitSummary(visit.id, trigger, visit);
+        if (visit) await visitSummaryModule.openClinicVisitSummary(visit.id, trigger, visit, handleCancel);
       } else {
         const booking = dashboardBookings.find((item) => String(item.booking_id) === trigger.dataset.visitSummary);
         if (booking) await visitSummaryModule.openGroomingVisitSummary(booking.booking_id, trigger, groomingSummaryStatus, handleCancel, booking);
@@ -1136,23 +1142,19 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   // ── Cancellation confirmation ──────────────────────────────────────────────
 
-  function handleCancel(booking) {
-    openCancelModal(booking);
-  }
-
-  function openCancelModal(booking) {
-    cancelTargetBooking = booking;
-    cancelBookingRefEl.textContent = booking.booking_reference;
+  function handleCancel(target) {
+    cancelTarget = target;
+    cancelBookingRefEl.textContent = target.reference;
+    document.getElementById("cancelVisitHeading").textContent = `Cancel ${target.service} queue registration?`;
     hideCancelMessage();
-    confirmCancelBtn.disabled = false;
-    confirmCancelBtn.textContent = "Confirm cancellation";
+    confirmCancelBtn.disabled = cancellationRequests.has(`${target.service}:${target.id}`);
+    confirmCancelBtn.textContent = confirmCancelBtn.disabled ? "Cancelling..." : "Confirm cancellation";
     cancelModal.showModal();
     keepBookingBtn.focus({ preventScroll: true });
   }
 
   function closeCancelModal() {
     cancelModal.close();
-    cancelTargetBooking = null;
   }
 
   function showCancelMessage(type, text) {
@@ -1170,22 +1172,50 @@ function scheduleCustomerDashboardAfterPaint(task) {
   closeCancelModalBtn.addEventListener("click", closeCancelModal);
   keepBookingBtn.addEventListener("click", closeCancelModal);
   cancelModal.addEventListener("click", (e) => { if (e.target === cancelModal) closeCancelModal(); });
-  cancelModal.addEventListener("close", () => { cancelTargetBooking = null; });
+  cancelModal.addEventListener("close", () => {
+    cancelTarget = null;
+    const summary = document.getElementById("groomingVisitSummary");
+    const cancelButton = document.getElementById("cancelVisitSummary");
+    const focusTarget = summary.open
+      ? (!cancelButton.hidden && !cancelButton.disabled ? cancelButton : document.getElementById("closeVisitSummary"))
+      : document.getElementById("dashboardGreeting");
+    focusTarget?.focus({ preventScroll: true });
+  });
 
   confirmCancelBtn.addEventListener("click", async () => {
-    if (!cancelTargetBooking) return;
-    const booking = cancelTargetBooking;
+    const target = cancelTarget;
+    if (!target || confirmCancelBtn.disabled) return;
+    const key = `${target.service}:${target.id}`;
+    if (cancellationRequests.has(key)) return;
+    cancellationRequests.add(key);
+    const isCurrentTarget = () => cancelTarget?.service === target.service && cancelTarget.id === target.id;
     confirmCancelBtn.disabled = true;
     confirmCancelBtn.textContent = "Cancelling...";
+    hideCancelMessage();
     try {
-      await API.cancelBooking(booking.booking_id);
-      if (cancelTargetBooking === booking) closeCancelModal();
+      if (target.service === "clinic") await API.cancelClinicRegistration(target.id);
+      else await API.cancelBooking(target.id);
+      // Finish any older read before removing the confirmed cancellation locally.
+      // A failed follow-up refresh must not restore its Upcoming Visits card.
+      if (appointmentsLoading) await appointmentsLoading;
+      if (isCurrentTarget()) visitSummaryModule.closeVisitSummary(target);
+      renderAppointmentData({ ...dashboardAppointmentData,
+        bookings: dashboardBookings.filter(booking => target.service !== "grooming" || String(booking.booking_id) !== String(target.id)),
+        clinic_visits: dashboardClinicVisits.filter(visit => target.service !== "clinic" || String(visit.id) !== String(target.id)),
+      });
       await loadAppointments({ force: true });
+      if (isCurrentTarget()) closeCancelModal();
+      window.dispatchEvent(new CustomEvent("customer:registration-changed"));
+      window.showSuccessToast(`${target.service === "clinic" ? "Clinic" : "Grooming"} registration cancelled.`);
     } catch (error) {
-      if (cancelTargetBooking !== booking) return;
+      if (!isCurrentTarget()) return;
       showCancelMessage("error", error.message || "Cancellation failed. Please try again.");
-      confirmCancelBtn.disabled = false;
+      const eligible = await visitSummaryModule.refreshVisitSummary(target);
+      if (!isCurrentTarget()) return;
+      confirmCancelBtn.disabled = !eligible;
       confirmCancelBtn.textContent = "Confirm cancellation";
+    } finally {
+      cancellationRequests.delete(key);
     }
   });
 

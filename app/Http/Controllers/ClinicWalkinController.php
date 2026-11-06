@@ -22,17 +22,17 @@ use App\Services\CustomerPreRegistrationAccessService;
 use App\Support\ClinicConcerns;
 use App\Support\PetWeightSize;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ClinicWalkinController extends Controller
 {
     public function customerRegistration(Request $request, int $id)
     {
+        app(\App\Services\PreRegistrationExpiry::class)->expire($request->user()->user_id);
         $visit = ClinicAppointment::query()->whereKey($id)
             ->where('user_id', $request->user()->user_id)
             ->where('appointment_type', 'pre_registered')
-            ->select(['id', 'pet_id', 'appointment_reference', 'status', 'appointment_date', 'created_at',
-                'checked_in_at', 'queue_number', 'common_concerns', 'chief_complaint'])
             ->with('pet:pet_id,pet_name,species,breed')
             ->first();
 
@@ -49,7 +49,31 @@ class ClinicWalkinController extends Controller
             'common_concerns' => $visit->common_concerns,
             'chief_complaint' => $visit->chief_complaint,
             'pet' => $visit->pet,
+            'can_cancel' => $visit->canCustomerCancel(),
         ]]);
+    }
+
+    public function cancelCustomerRegistration(Request $request, int $id)
+    {
+        app(\App\Services\PreRegistrationExpiry::class)->expire($request->user()->user_id);
+
+        return DB::transaction(function () use ($request, $id) {
+            // Match intake/expiry lock order before rechecking persisted eligibility.
+            ClinicSetting::current(lockForUpdate: true);
+            $visit = ClinicAppointment::query()->whereKey($id)
+                ->where('user_id', $request->user()->user_id)->lockForUpdate()->firstOrFail();
+
+            if (! $visit->canCustomerCancel()) {
+                return response()->json(['success' => false, 'code' => 'clinic_registration_not_cancellable',
+                    'message' => 'This clinic registration can no longer be cancelled online. Refresh to see its current status.'], 409);
+            }
+
+            $visit->update(['status' => 'cancelled']);
+            Notification::createForClinic($visit, Notification::TYPE_CLINIC_CANCELLED,
+                "Clinic registration {$visit->appointment_reference} was cancelled by the customer.");
+
+            return response()->json(['success' => true, 'message' => 'Clinic registration cancelled.']);
+        }, 5);
     }
 
     public function timeslots(

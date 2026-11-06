@@ -151,6 +151,27 @@ class ClinicAppointment extends Model
             && $this->confinement()->whereNull('discharged_at')->exists();
     }
 
+    public function canCustomerCancel(): bool
+    {
+        if ($this->appointment_type !== 'pre_registered' || $this->status !== 'waiting_to_arrive'
+            || $this->walkin_id !== null || $this->checked_in_at !== null || $this->queue_number !== null
+            || $this->consultation_started_at !== null || $this->consultation_finished_at !== null
+            || $this->archived_at !== null || $this->paid || $this->paid_at !== null
+            || $this->cash_received !== null || $this->paid_by_user_id !== null || $this->payment_method !== null
+            || (float) $this->total_amount > 0) {
+            return false;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
+            && GatewayPayment::forPayable($this, 'clinic')
+                ->where(fn ($query) => $query->unresolved()->orWhere('status', 'paid'))->exists()) {
+            return false;
+        }
+
+        return ! $this->record()->exists() && ! $this->vitals()->exists()
+            && ! $this->charges()->exists() && ! $this->hasActiveConfinement();
+    }
+
     public function clinicalContentEditableFor(User $actor): bool
     {
         if (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')

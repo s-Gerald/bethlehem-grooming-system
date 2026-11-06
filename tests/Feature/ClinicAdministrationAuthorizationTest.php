@@ -1995,6 +1995,169 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/clinic/registrations/17')->assertUnauthorized();
     }
 
+    private function customerClinicRegistration(array $overrides = []): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi']);
+        DB::table('clinic_appointments')->insert(array_replace([
+            'id' => 17, 'appointment_reference' => 'CL-17', 'appointment_type' => 'pre_registered',
+            'status' => 'waiting_to_arrive', 'user_id' => 10, 'pet_id' => 101,
+            'appointment_date' => now()->toDateString(), 'chief_complaint' => 'Saved complaint',
+            'common_concerns' => '["Vomiting"]', 'created_at' => now(), 'updated_at' => now(),
+        ], $overrides));
+    }
+
+    public function test_customer_clinic_cancellation_preserves_registration_and_unlocks_access_once(): void
+    {
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        try {
+            $this->customerClinicRegistration();
+            $before = (array) DB::table('clinic_appointments')->where('id', 17)->first();
+            $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.can_cancel', true);
+            $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('services.clinic.allowed', false);
+            $this->postJson('/api/clinic/registrations/17/cancel')->assertOk()
+                ->assertJsonPath('message', 'Clinic registration cancelled.');
+            $after = (array) DB::table('clinic_appointments')->where('id', 17)->first();
+            unset($before['status'], $before['updated_at'], $after['status'], $after['updated_at']);
+            $this->assertSame($before, $after);
+            $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'cancelled']);
+            $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.can_cancel', false);
+            $this->getJson('/api/booking/history?history_limit=3')->assertOk()->assertJsonCount(0, 'clinic_visits');
+            $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('services.clinic.allowed', true);
+            $this->assertDatabaseHas('activity_logs', ['action' => 'pre_registration_cancelled', 'actor_id' => 10, 'actor_role' => 'Customer']);
+            $this->assertDatabaseHas('notifications', ['type' => 'clinic_cancelled', 'clinic_appointment_id' => 17]);
+            $this->assertStringContainsString('customer', DB::table('notifications')->value('message'));
+            $this->assertStringNotContainsString('staff', DB::table('notifications')->value('message'));
+            $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+            $this->assertDatabaseCount('notifications', 1);
+            $this->assertSame(1, DB::table('activity_logs')->where('action', 'pre_registration_cancelled')->count());
+        } finally {
+            Schema::dropIfExists('activity_logs');
+        }
+    }
+
+    public static function customerClinicCancellationLocks(): array
+    {
+        $cases = [];
+        foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled', 'no_show', 'expired', 'archived'] as $status) {
+            $cases[$status] = [['status' => $status]];
+        }
+        foreach (['checked_in_at', 'consultation_started_at', 'consultation_finished_at', 'archived_at', 'paid_at'] as $field) {
+            $cases[$field] = [[$field => '2026-11-06 09:00:00']];
+        }
+        foreach (['queue_number' => 1, 'paid' => true, 'cash_received' => 100, 'total_amount' => 100, 'walkin_id' => 1,
+            'payment_method' => 'cash', 'paid_by_user_id' => 1] as $field => $value) {
+            $cases[$field] = [[$field => $value]];
+        }
+        return $cases;
+    }
+
+    #[DataProvider('customerClinicCancellationLocks')]
+    public function test_customer_clinic_cancellation_and_details_share_operational_guards(array $changes): void
+    {
+        $this->customerClinicRegistration($changes);
+        $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.can_cancel', false);
+        $before = DB::table('clinic_appointments')->where('id', 17)->first();
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+        $this->assertEquals($before, DB::table('clinic_appointments')->where('id', 17)->first());
+        $this->assertDatabaseCount('notifications', 0);
+    }
+
+    public function test_customer_clinic_cancellation_requires_owner_online_registration_and_customer_role(): void
+    {
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertUnauthorized();
+        $this->customerClinicRegistration();
+        $this->authenticateAs('customer', 11);
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertNotFound();
+        $this->authenticateAs('staff');
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertForbidden();
+        $this->authenticateAs('admin');
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertForbidden();
+        $this->authenticateAs('customer', 10);
+        DB::table('clinic_appointments')->where('id', 17)->update(['appointment_type' => 'walk_in']);
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+        $this->postJson('/api/admin/clinic-appointments/17/cancel')->assertForbidden();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'waiting_to_arrive']);
+        $this->assertDatabaseCount('notifications', 0);
+    }
+
+    public function test_customer_clinic_cancellation_rechecks_check_in_and_expiry_after_details(): void
+    {
+        $this->customerClinicRegistration();
+        $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.can_cancel', true);
+        DB::table('clinic_appointments')->where('id', 17)->update(['status' => 'checked_in', 'checked_in_at' => now(), 'queue_number' => 3]);
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'checked_in', 'queue_number' => 3]);
+        DB::table('clinic_appointments')->where('id', 17)->update(['status' => 'waiting_to_arrive', 'checked_in_at' => null, 'queue_number' => null]);
+        Carbon::setTestNow(now()->setTime(18, 0));
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'no_show']);
+        $this->assertSame(0, DB::table('notifications')->where('type', 'clinic_cancelled')->count());
+    }
+
+    public static function customerClinicOperationalRecords(): array
+    {
+        return array_map(fn ($type) => [$type], ['record', 'vitals', 'charge', 'confinement', 'pending', 'paid', 'reconciled']);
+    }
+
+    #[DataProvider('customerClinicOperationalRecords')]
+    public function test_customer_clinic_cancellation_protects_saved_clinical_and_payment_workflows(string $type): void
+    {
+        $this->customerClinicRegistration();
+        try {
+            if (in_array($type, ['pending', 'paid', 'reconciled'], true)) {
+                Schema::create('gateway_payments', function (Blueprint $table) {
+                    $table->id(); $table->string('context'); $table->string('payable_type');
+                    $table->unsignedBigInteger('payable_id'); $table->string('status');
+                    $table->string('reconciliation_reason')->nullable();
+                });
+                DB::table('gateway_payments')->insert(['context' => 'clinic',
+                    'payable_type' => (new \App\Models\ClinicAppointment)->getMorphClass(),
+                    'payable_id' => 17, 'status' => $type === 'reconciled' ? 'paid' : $type,
+                    'reconciliation_reason' => $type === 'reconciled' ? 'Review required' : null]);
+            } elseif ($type === 'confinement') {
+                Schema::create('clinic_confinements', function (Blueprint $table) {
+                    $table->id(); $table->unsignedBigInteger('clinic_appointment_id'); $table->timestamp('discharged_at')->nullable();
+                });
+                DB::table('clinic_confinements')->insert(['clinic_appointment_id' => 17]);
+            } else {
+                DB::table(['record' => 'clinic_records', 'vitals' => 'clinic_vitals', 'charge' => 'clinic_charges'][$type])
+                    ->insert(['clinic_appointment_id' => 17] + ($type === 'charge'
+                        ? ['kind' => 'service', 'description' => 'Saved charge', 'unit_price' => 0, 'amount' => 0] : []));
+            }
+            $this->getJson('/api/clinic/registrations/17')->assertOk()->assertJsonPath('visit.can_cancel', false);
+            $this->postJson('/api/clinic/registrations/17/cancel')->assertConflict();
+            $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'waiting_to_arrive']);
+            $this->assertDatabaseCount('notifications', 0);
+        } finally {
+            Schema::dropIfExists('gateway_payments');
+            Schema::dropIfExists('clinic_confinements');
+        }
+    }
+
+    public function test_customer_clinic_cancellation_winning_the_race_prevents_subsequent_check_in(): void
+    {
+        $this->customerClinicRegistration();
+        $this->postJson('/api/clinic/registrations/17/cancel')->assertOk();
+        $this->authenticateAs('staff');
+        $this->postJson('/api/admin/clinic-appointments/17/check-in')->assertUnprocessable();
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 17, 'status' => 'cancelled', 'checked_in_at' => null, 'queue_number' => null]);
+        $this->assertDatabaseCount('notifications', 1);
+    }
+
+    public function test_customer_clinic_cancellation_has_no_grooming_cancellation_count_limit(): void
+    {
+        $this->customerClinicRegistration();
+        $registration = (array) DB::table('clinic_appointments')->where('id', 17)->first();
+        foreach ([17, 18, 19] as $id) {
+            if ($id !== 17) DB::table('clinic_appointments')->insert(array_replace($registration, ['id' => $id, 'appointment_reference' => "CL-{$id}"]));
+            $this->postJson("/api/clinic/registrations/{$id}/cancel")->assertOk();
+        }
+        $this->assertSame(3, DB::table('clinic_appointments')->where('status', 'cancelled')->count());
+        $this->assertDatabaseCount('notifications', 3);
+        $this->getJson('/api/pre-registration/access')->assertOk()->assertJsonPath('services.clinic.allowed', true);
+    }
+
     public function test_pre_registration_requires_common_concerns_and_allows_optional_details(): void
     {
         $this->authenticateAs('customer', 10);

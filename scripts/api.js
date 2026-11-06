@@ -489,7 +489,7 @@ var API = (() => {
     if (endpoint === "/phone-verification/verify") invalidateCustomerCache("profile", "access");
     else if (["/phone-verification/send", "/phone-verification/cancel"].includes(endpoint)) invalidateCustomerCache("profile");
     else if (/^\/pets(?:\/|$)/.test(endpoint)) invalidateCustomerCache("pets", "bookings", "notifications", "access");
-    else if (/^\/(?:booking\/(?:store|cancel|reschedule)|clinic\/pre-register)$/.test(endpoint)) {
+    else if (/^\/(?:booking\/(?:store|cancel|reschedule)|clinic\/(?:pre-register|registrations\/\d+\/cancel))$/.test(endpoint)) {
       invalidateCustomerCache("bookings", "capacity", "notifications", "access");
       // Grooming pre-registration can create pets inside the same transaction.
       if (endpoint === "/booking/store") invalidateCustomerCache("pets");
@@ -2778,6 +2778,10 @@ var API = (() => {
     return request("GET", `/clinic/registrations/${encodeURIComponent(id)}`, null, getCustomerToken(), { force: true });
   }
 
+  async function cancelClinicRegistration(id) {
+    return request("POST", `/clinic/registrations/${encodeURIComponent(id)}/cancel`, null, getCustomerToken());
+  }
+
   async function cancelBooking(bookingId, reason = null) {
     // POST /api/booking/cancel  (protected)
     return request("POST", "/booking/cancel", { booking_id: bookingId, reason }, getCustomerToken());
@@ -3777,6 +3781,7 @@ var API = (() => {
     getBookingHistory,
     getBooking,
     getClinicRegistration,
+    cancelClinicRegistration,
     getGroomingCapacity,
     cancelBooking,
     rescheduleBooking,

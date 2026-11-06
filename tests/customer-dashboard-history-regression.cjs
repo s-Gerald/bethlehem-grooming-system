@@ -98,7 +98,8 @@ async function runDashboard(getBookingHistory, { pets = [], capacity = {}, getUs
       callback();
       return 0;
     },
-    window: { location: {} },
+    window: { location: {}, dispatchEvent() {} },
+    CustomEvent: class { constructor(type) { this.type = type; } },
   };
 
   vm.createContext(context);
@@ -541,6 +542,8 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     requestIdleCallback(callback) { return callback(); },
     setInterval(callback, milliseconds) { timer = callback; if (milliseconds === 1000) countdowns.add(callback); return callback; },
     clearInterval(callback) { countdowns.delete(callback); },
+    listeners: {},
+    addEventListener(type, callback) { this.listeners[type] = callback; },
     dispatchEvent() {},
   };
   global.API = {
@@ -882,6 +885,12 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await scheduled[0](); await new Promise(resolve => setImmediate(resolve));
     await trigger.dispatch('click'); assert.equal(dialog.open, false, 'Ongoing registrations still block entry.');
     assert.equal(calls.access, 7, 'Modal actions add no eligibility polling.');
+    await global.window.listeners['customer:registration-changed']();
+    assert.equal(trigger.getAttribute('aria-disabled'),'true');
+    eligible = true; activeServices = [];
+    await global.window.listeners['customer:registration-changed']();
+    assert.equal(trigger.getAttribute('aria-disabled'),'false','A cancellation immediately refreshes registration access');
+    assert.equal(calls.access,9,'Each explicit registration change makes one eligibility read');
   } finally {
     Date.now = originalNow;
     Object.assign(global, previous);
@@ -945,7 +954,8 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     {booking_id: 202, status: 'checked_in', pets: [{pet_name:'Other session'}]},
   ];
   const savedBookings = new Map(bookings.map(booking => [booking.booking_id,booking]));
-  const dashboard = await runDashboard(async () => ({bookings, clinic_visits: [{id:101, pet_name:'Clinic pet', status:'waiting_to_arrive'}]}));
+  let clinicVisits = [{id:101, pet_name:'Clinic pet', status:'waiting_to_arrive'}];
+  const dashboard = await runDashboard(async () => ({bookings, clinic_visits: clinicVisits}));
   const cards = dashboard.element('appointmentsList').innerHTML;
   assert.match(cards, /data-visit-summary="101"/);
   assert.match(cards, /data-clinic-summary="101"/);
@@ -959,7 +969,10 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     const item = savedBookings.get(id);
     return {booking: {...item, booking_reference: `BAC-${id}`, can_cancel: item.status === 'waiting_to_arrive', booking_pets: item.pets.map(pet => ({pet}))}};
   };
-  context.API.getClinicRegistration = async id => { reads.push(['clinic', id]); return {visit:{id, reference:`CL-${id}`, status:'waiting_to_arrive', pet:{pet_name:'Clinic pet'}}}; };
+  let clinicEligible = true;
+  context.API.getClinicRegistration = async id => { reads.push(['clinic', id]); return {visit:{id, reference:`CL-${id}`, status:'waiting_to_arrive', can_cancel:clinicEligible, pet:{pet_name:'Clinic pet'}}}; };
+  const feedback = [];
+  context.window.showSuccessToast = message => feedback.push(message);
   let cancelled;
   context.API.cancelBooking = async id => { cancelled = id; savedBookings.get(id).status = 'cancelled'; bookings = bookings.filter(item => item.booking_id !== id); };
   Object.assign(global, {document:context.document, API:context.API, window:context.window});
@@ -1001,6 +1014,7 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     element('cancelVisitSummary').listeners.click();
     assert.equal(element('cancelModal').open,true);
     assert.equal(element('cancelBookingRef').textContent,'BAC-101');
+    assert.equal(element('cancelVisitHeading').textContent,'Cancel grooming queue registration?');
     assert.equal(context.document.activeElement,element('keepBookingBtn'));
     assert.equal(cancelled,undefined,'Opening confirmation does not cancel');
     element('keepBookingBtn').listeners.click();
@@ -1009,9 +1023,44 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     await element('confirmCancelBtn').listeners.click();
     assert.equal(cancelled,101);
     assert.doesNotMatch(element('appointmentsList').innerHTML,/Pending A/);
-    assert.equal(summary.open,true,'Cancellation leaves the detail modal stable');
-    summary.listeners.keydown({key:'Escape',preventDefault(){}});
+    assert.equal(summary.open,false,'Successful cancellation closes both dialogs');
+    assert.equal(feedback.at(-1),'Grooming registration cancelled.');
+    await clickAction('clinic',101,'appointmentsList');
+    element('cancelVisitSummary').listeners.click();
+    assert.equal(element('cancelVisitHeading').textContent,'Cancel clinic queue registration?');
+    assert.equal(element('cancelBookingRef').textContent,'CL-101');
+    let clinicCalls = 0;
+    let failClinic = true;
+    let finishClinic;
+    context.API.cancelClinicRegistration = async id => {
+      assert.equal(id,101);
+      clinicCalls++;
+      if (failClinic) throw Object.assign(new Error('Please try again.'), {status:503});
+      await new Promise(resolve => { finishClinic = resolve; });
+      clinicVisits = [];
+    };
+    element('keepBookingBtn').listeners.click();
+    assert.equal(clinicCalls,0);
+    assert.equal(context.document.activeElement,element('cancelVisitSummary'),'Dismissing confirmation restores summary focus');
+    element('cancelVisitSummary').listeners.click();
+    await element('confirmCancelBtn').listeners.click();
+    assert.equal(element('cancelMessage').textContent,'Please try again.');
+    assert.equal(element('cancelModal').open,true);
+    assert.equal(element('confirmCancelBtn').disabled,false,'A still-eligible registration can be retried');
+    failClinic = false;
+    const clinicCancellation = element('confirmCancelBtn').listeners.click();
+    assert.equal(element('confirmCancelBtn').disabled,true);
+    assert.equal(element('confirmCancelBtn').textContent,'Cancelling...');
+    await element('confirmCancelBtn').listeners.click();
+    assert.equal(clinicCalls,2,'A repeated click cannot submit twice');
+    const loadHistory = context.API.getBookingHistory;
+    context.API.getBookingHistory = async () => { throw Object.assign(new Error('Refresh temporarily unavailable'),{status:503}); };
+    finishClinic(); await clinicCancellation;
+    context.API.getBookingHistory = loadHistory;
+    assert.equal(element('cancelModal').open,false);
     assert.equal(summary.open,false);
+    assert.doesNotMatch(element('appointmentsList').innerHTML,/Clinic pet/,'A failed follow-up read cannot restore the cancelled card');
+    assert.equal(feedback.at(-1),'Clinic registration cancelled.');
     // A slow earlier cancellation cannot dismiss a different session's confirmation.
     let finishCancellation;
     context.API.cancelBooking = () => new Promise(resolve => { finishCancellation = resolve; });
@@ -1097,8 +1146,126 @@ async function testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty() {
   assert.equal(dashboard.element('upcomingSection').classList.contains('hidden'),false);
 }
 
+async function testForcedAppointmentRefreshWaitsForTheOlderRead() {
+  const dashboard = await runDashboard(async () => ({bookings:[]}));
+  let finishOld, reads = 0;
+  dashboard.context.API.getBookingHistory = () => { reads++; return new Promise(resolve => {finishOld=resolve;}); };
+  const old = dashboard.refresh();
+  const forced = dashboard.refresh({force:true});
+  assert.equal(reads,1);
+  dashboard.context.API.getBookingHistory = async () => {reads++; return {bookings:[]};};
+  finishOld({bookings:[{booking_id:17,status:'waiting_to_arrive',pets:[{pet_name:'Stale registration'}]}]});
+  await Promise.all([old,forced]);
+  assert.equal(reads,2,'The forced post-cancellation refresh runs after the pre-mutation read');
+  assert.doesNotMatch(dashboard.element('appointmentsList').innerHTML,/Stale registration/);
+}
+
+
+// Optional real-dialog checks, using the existing local app and synthetic API data only.
+async function testCancellationDialogsInBrowser() {
+  const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const origin = 'http://127.0.0.1:8000';
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const errors = [], submissions = [];
+  const state = { grooming: true, clinic: true, eligible: true, hold: null };
+  const day = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Manila', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date());
+  const booking = { booking_id: 17, booking_reference: 'BAC-17', booking_type: 'online', booking_date: day,
+    created_at: new Date().toISOString(), status:'waiting_to_arrive', pets:[{pet_name:'Grooming pet'}], booking_pets:[], booking_services:[], can_cancel:true };
+  const clinic = { id:17, reference:'CL-17', status:'waiting_to_arrive', service_day:day, created_at:new Date().toISOString(), pet_name:'Clinic pet', pet:{pet_name:'Clinic pet'} };
+  try {
+    await context.addInitScript(() => { localStorage.setItem('customer_token','1|customer-cancellation-fixture'); localStorage.setItem('user_role','customer'); });
+    await context.route('**/api/**', async route => {
+      const url = new URL(route.request().url());
+      assert.equal(url.origin, origin, 'Fixtures never contact a real API');
+      let data = {}, status = 200;
+      if (url.pathname.startsWith('/api/session')) data = {locked:false, role:'customer', user_id:1,
+        server_now:new Date().toISOString(), idle_at:new Date(Date.now()+1800000).toISOString(), expires_at:new Date(Date.now()+43200000).toISOString()};
+      else if (url.pathname === '/api/me') data = {user:{user_id:1, role:'customer', first_name:'Local', last_name:'Customer', phone_verification_status:'verified'}};
+      else if (url.pathname === '/api/booking/history') data = {bookings:state.grooming ? [booking] : [], clinic_visits:state.clinic ? [clinic] : [], history:[]};
+      else if (url.pathname === '/api/booking/17') data = {booking:{...booking,can_cancel:state.grooming}};
+      else if (url.pathname === '/api/clinic/registrations/17') data = {visit:{...clinic,can_cancel:state.eligible && state.clinic}};
+      else if (url.pathname === '/api/pets') data = {pets:[]};
+      else if (url.pathname === '/api/booking/grooming-capacity') data = {capacity:{max:20,used:0,remaining:20},queue:{active:0}};
+      else if (url.pathname === '/api/customer/notifications') data = {notifications:[],unread_count:0};
+      else if (url.pathname === '/api/pre-registration/access') data = {allowed:!state.grooming || !state.clinic,services:{grooming:{allowed:!state.grooming},clinic:{allowed:!state.clinic}},sms_verification:{available:false,enforced:false}};
+      else if (['/api/booking/cancel','/api/clinic/registrations/17/cancel'].includes(url.pathname)) {
+        submissions.push(url.pathname);
+        if (url.pathname === '/api/booking/cancel') { assert.equal(route.request().postDataJSON().booking_id,17); state.grooming = false; }
+        else if (!state.eligible) { status = 409; data = {message:'This clinic registration can no longer be cancelled online.'}; }
+        else { await state.hold; state.clinic = false; }
+      } else throw new Error(`Unexpected fixture endpoint: ${url.pathname}`);
+      await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+    });
+    const page = await context.newPage();
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`${origin}/account`, {waitUntil:'domcontentloaded'});
+    await page.locator('[data-clinic-summary="17"]').waitFor();
+    const summary = page.locator('#groomingVisitSummary');
+    const confirmation = page.locator('#cancelModal');
+    const cancel = page.locator('#cancelVisitSummary');
+    const openConfirmation = async service => {
+      await page.locator(`[data-${service === 'clinic' ? 'clinic' : 'visit'}-summary="17"]`).click();
+      await cancel.waitFor({state:'visible'});
+      assert.equal(await cancel.innerText(),'Cancel');
+      await cancel.click();
+      assert.equal(await page.locator('#cancelVisitHeading').innerText(),`Cancel ${service} queue registration?`);
+      assert.equal(await confirmation.getByText('Are you sure you want to cancel this registration?',{exact:true}).isVisible(),true);
+      assert.equal(await page.locator('#cancelBookingRef').innerText(),service === 'clinic' ? 'CL-17' : 'BAC-17');
+      assert.equal(await page.evaluate(()=>document.activeElement.id),'keepBookingBtn');
+    };
+    await openConfirmation('grooming');
+    for (const width of [320,375,414,768,1440]) {
+      await page.setViewportSize({width,height:1000});
+      assert.equal(await confirmation.evaluate(el=>{ const r=el.getBoundingClientRect(); return r.left>=0 && r.right<=innerWidth && el.scrollWidth<=el.clientWidth; }),true);
+      if (process.env.LOCAL_REVIEW_SCREENSHOTS && [375,1440].includes(width)) {
+        fs.mkdirSync(process.env.LOCAL_REVIEW_SCREENSHOTS,{recursive:true});
+        await page.screenshot({path:path.join(process.env.LOCAL_REVIEW_SCREENSHOTS,`grooming-cancellation-${width}.png`)});
+      }
+    }
+    await page.getByRole('button',{name:'Go Back',exact:true}).click();
+    assert.equal(submissions.length,0);
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'cancelVisitSummary');
+    await page.locator('#closeVisitSummary').click();
+    await openConfirmation('clinic');
+    await page.keyboard.press('Escape');
+    assert.equal(await summary.isVisible(),true);
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'cancelVisitSummary');
+    await cancel.click();
+    state.eligible = false;
+    await page.locator('#confirmCancelBtn').click();
+    await page.locator('#cancelMessage').getByText('This clinic registration can no longer be cancelled online.').waitFor();
+    await page.waitForFunction(()=>document.querySelector('#cancelVisitSummary').hidden && document.querySelector('#confirmCancelBtn').disabled);
+    await page.locator('#closeCancelModal').click();
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'closeVisitSummary');
+    await page.locator('#closeVisitSummary').click();
+    state.eligible = true;
+    await openConfirmation('clinic');
+    if (process.env.LOCAL_REVIEW_SCREENSHOTS) await page.screenshot({path:path.join(process.env.LOCAL_REVIEW_SCREENSHOTS,'clinic-cancellation-1440.png')});
+    let finish;
+    state.hold = new Promise(resolve=>{finish=resolve;});
+    await page.locator('#confirmCancelBtn').click();
+    assert.equal(await page.locator('#confirmCancelBtn').innerText(),'Cancelling...');
+    await page.evaluate(()=>document.querySelector('#confirmCancelBtn').click());
+    finish();
+    await page.getByText('Clinic registration cancelled.',{exact:true}).waitFor();
+    assert.equal(await confirmation.isVisible(),false);
+    assert.equal(await summary.isVisible(),false);
+    assert.equal(await page.locator('[data-clinic-summary="17"]').count(),0);
+    assert.equal(await page.locator('[data-visit-summary="17"]').count(),1,'Same ID in Grooming is unaffected');
+    assert.equal(await page.evaluate(()=>document.activeElement.id),'dashboardGreeting');
+    await openConfirmation('grooming');
+    await page.locator('#confirmCancelBtn').click();
+    await page.getByText('Grooming registration cancelled.',{exact:true}).waitFor();
+    assert.equal(await page.locator('[data-visit-summary="17"]').count(),0);
+    assert.deepEqual(submissions,['/api/clinic/registrations/17/cancel','/api/clinic/registrations/17/cancel','/api/booking/cancel']);
+    assert.deepEqual(errors,[]);
+    console.log('Real dialogs: both service targets, exact copy, mobile layout, dismissal/focus, operational conflict, duplicate prevention and successful refresh passed.');
+  } finally { await context.close(); await browser.close(); }
+}
 
 (async () => {
+  if (process.argv.includes('--browser')) return testCancellationDialogsInBrowser();
   await testSavedVisitDateUsesManilaSubmissionDay();
   await testClinicRegistrationUsesServerStatusAndCheckInNumber();
   await testPhoneVerificationUsesServerProofAndPreservesAccess();
@@ -1118,6 +1285,7 @@ async function testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty() {
   await testWholeCardRoutingAndExistingCancellationFlow();
   await testInitialLoadingWaitsForAllPrimaryData();
   await testLoadingAndTransientRefreshDoNotMasqueradeAsEmpty();
+  await testForcedAppointmentRefreshWaitsForTheOlderRead();
   console.log("Customer dashboard history regression tests passed.");
 })().catch((error) => {
   console.error(error);
