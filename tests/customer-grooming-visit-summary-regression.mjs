@@ -169,7 +169,7 @@ let clinicCancelTarget;
 await openClinicVisitSummary(17, replacementTrigger, { id: 17, status: 'waiting_to_arrive' }, target => { clinicCancelTarget = target; });
 assert.equal(element('cancelVisitSummary').hidden, false, 'Clinic uses server-confirmed cancellation eligibility');
 element('cancelVisitSummary').emit('click');
-assert.deepEqual(clinicCancelTarget, { service: 'clinic', id: 17, reference: 'CL-17' });
+assert.deepEqual(clinicCancelTarget, { service: 'clinic', id: 17 });
 modal.close();
 
 let cancelTarget;
@@ -178,7 +178,7 @@ API.getBooking = async () => ({ booking: cancellable });
 await openGroomingVisitSummary(71, replacementTrigger, () => 'Waiting to Arrive', value => { cancelTarget = value; });
 assert.equal(element('cancelVisitSummary').hidden, false);
 element('cancelVisitSummary').emit('click');
-assert.deepEqual(cancelTarget, { service: 'grooming', id: 71, reference: 'BAC-71' });
+assert.deepEqual(cancelTarget, { service: 'grooming', id: 71 });
 assert.equal(modal.open, true, 'The existing confirmation can layer over saved details');
 API.getBooking = async () => ({ booking: { ...booking, can_cancel: false, paid: true } });
 await openGroomingVisitSummary(71, replacementTrigger, () => 'Waiting to Arrive', () => { throw new Error('Ineligible cancellation'); });

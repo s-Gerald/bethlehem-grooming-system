@@ -177,7 +177,6 @@ function initializeVisitDialog() {
   document.getElementById("cancelVisitSummary").addEventListener("click", () => {
     if (currentVisit?.registration?.can_cancel && currentVisit.onCancel) currentVisit.onCancel({
       service: currentVisit.service, id: currentVisit.id,
-      reference: currentVisit.registration.booking_reference || currentVisit.registration.reference,
     });
   });
   document.getElementById("printVisitSummary").addEventListener("click", () => {

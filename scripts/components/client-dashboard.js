@@ -565,7 +565,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
   let lastHistoryMarkup = "";
   const cancelModal              = document.getElementById("cancelModal");
   const closeCancelModalBtn      = document.getElementById("closeCancelModal");
-  const cancelBookingRefEl       = document.getElementById("cancelBookingRef");
   const confirmCancelBtn         = document.getElementById("confirmCancelBtn");
   const keepBookingBtn           = document.getElementById("keepBookingBtn");
   const cancelMessageEl          = document.getElementById("cancelMessage");
@@ -861,7 +860,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
     if (!trigger) return;
     const currentOpenRequest = ++visitSummaryOpenRequest;
     try {
-      visitSummaryModule = await import("./grooming-visit-summary.js?customer-cancellation=20261106&v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
+      visitSummaryModule = await import("./grooming-visit-summary.js?cancellation-dialog=20261106-v2&customer-cancellation=20261106&v=grooming-time-20261105&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-v1");
       if (currentOpenRequest !== visitSummaryOpenRequest) return;
       if (trigger.dataset.clinicSummary) {
         const visit = dashboardClinicVisits.find((item) => String(item.id) === trigger.dataset.clinicSummary);
@@ -1144,7 +1143,6 @@ function scheduleCustomerDashboardAfterPaint(task) {
 
   function handleCancel(target) {
     cancelTarget = target;
-    cancelBookingRefEl.textContent = target.reference;
     document.getElementById("cancelVisitHeading").textContent = `Cancel ${target.service} queue registration?`;
     hideCancelMessage();
     confirmCancelBtn.disabled = cancellationRequests.has(`${target.service}:${target.id}`);

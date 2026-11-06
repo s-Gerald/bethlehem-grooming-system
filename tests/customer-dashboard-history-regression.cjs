@@ -1013,7 +1013,7 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     await clickAction('grooming',101,'appointmentsList');
     element('cancelVisitSummary').listeners.click();
     assert.equal(element('cancelModal').open,true);
-    assert.equal(element('cancelBookingRef').textContent,'BAC-101');
+    assert.match(element('groomingVisitSummaryContent').innerHTML,/BAC-101/);
     assert.equal(element('cancelVisitHeading').textContent,'Cancel grooming queue registration?');
     assert.equal(context.document.activeElement,element('keepBookingBtn'));
     assert.equal(cancelled,undefined,'Opening confirmation does not cancel');
@@ -1028,7 +1028,7 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     await clickAction('clinic',101,'appointmentsList');
     element('cancelVisitSummary').listeners.click();
     assert.equal(element('cancelVisitHeading').textContent,'Cancel clinic queue registration?');
-    assert.equal(element('cancelBookingRef').textContent,'CL-101');
+    assert.match(element('groomingVisitSummaryContent').innerHTML,/CL-101/);
     let clinicCalls = 0;
     let failClinic = true;
     let finishClinic;
@@ -1076,7 +1076,7 @@ async function testWholeCardRoutingAndExistingCancellationFlow() {
     element('cancelVisitSummary').listeners.click();
     finishCancellation(); await pendingCancellation;
     assert.equal(element('cancelModal').open,true,'Only the matching cancellation may dismiss its confirmation');
-    assert.equal(element('cancelBookingRef').textContent,'BAC-101');
+    assert.match(element('groomingVisitSummaryContent').innerHTML,/BAC-101/);
     element('closeCancelModal').listeners.click(); summary.close();
     assert.equal(dashboard.consoleErrors.length,0);
   } finally { Object.assign(global, originalGlobals); }
@@ -1208,10 +1208,16 @@ async function testCancellationDialogsInBrowser() {
       await page.locator(`[data-${service === 'clinic' ? 'clinic' : 'visit'}-summary="17"]`).click();
       await cancel.waitFor({state:'visible'});
       assert.equal(await cancel.innerText(),'Cancel');
+      assert.equal(await summary.getByText(service === 'clinic' ? 'CL-17' : 'BAC-17',{exact:true}).isVisible(),true,'Registration references remain in the visit summary');
       await cancel.click();
-      assert.equal(await page.locator('#cancelVisitHeading').innerText(),`Cancel ${service} queue registration?`);
-      assert.equal(await confirmation.getByText('Are you sure you want to cancel this registration?',{exact:true}).isVisible(),true);
-      assert.equal(await page.locator('#cancelBookingRef').innerText(),service === 'clinic' ? 'CL-17' : 'BAC-17');
+      const title = `Cancel ${service} queue registration?`;
+      assert.deepEqual((await confirmation.innerText()).split(/\n+/).map(text=>text.trim()).filter(Boolean),
+        [title,'Go Back','Confirm cancellation'],'The default confirmation contains only its title and actions');
+      assert.equal(await page.getByRole('dialog',{name:title,exact:true}).isVisible(),true);
+      assert.equal(await confirmation.getAttribute('aria-describedby'),null);
+      assert.equal(await confirmation.getByRole('button',{name:'Close cancellation dialog',exact:true}).isVisible(),true);
+      assert.equal(await page.locator('#cancelMessage').getAttribute('role'),'alert');
+      assert.equal(await page.locator('#cancelMessage').isVisible(),false);
       assert.equal(await page.evaluate(()=>document.activeElement.id),'keepBookingBtn');
     };
     await openConfirmation('grooming');
