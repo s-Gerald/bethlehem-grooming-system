@@ -52,9 +52,14 @@ function createPage(getMe, phoneApi = {}) {
         removeAttribute(name) { attributes.delete(name); },
         getAttribute(name) { return attributes.get(name) ?? null; },
         hasAttribute(name) { return attributes.has(name); },
-        addEventListener(name, callback) { listeners.set(name, callback); },
-        dispatch(name, event = { preventDefault() {} }) { return listeners.get(name)?.(event); },
-        dispatchEvent(event) { return listeners.get(event.type)?.(event); },
+        addEventListener(name, callback) { listeners.set(name, [...(listeners.get(name) || []), callback]); },
+        dispatch(name, event = { preventDefault() {} }) {
+          return Promise.all((listeners.get(name) || []).map(callback => callback(event)));
+        },
+        dispatchEvent(event) {
+          for (const callback of listeners.get(event.type) || []) callback(event);
+          return true;
+        },
         focus() {},
         querySelectorAll() { return []; },
       });
@@ -95,6 +100,7 @@ function createPage(getMe, phoneApi = {}) {
   context.Event = class { constructor(type) { this.type = type; } };
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/human-name.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/philippine-mobile.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/credential-policy.js'), 'utf8'), context);
   vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   return element;
@@ -121,14 +127,15 @@ async function testPasswordChangeSubmissionAndErrors() {
     changeCustomerPassword: async payload => {
       calls++;
       assert.equal(payload.current_password, 'old value');
-      assert.equal(payload.password, '  violet meadow river  ');
+      assert.equal(payload.password, 'violet meadow river');
+      assert.equal(payload.password_confirmation, 'violet meadow river');
       return pending.promise;
     },
     redirectToSignIn(options) { redirected = options.passwordChanged === true; },
   });
   await flush();
   element('currentPassword').value = 'old value';
-  element('newPassword').value = element('confirmNewPassword').value = '  violet meadow river  ';
+  element('newPassword').value = element('confirmNewPassword').value = 'violet meadow river';
   const submission = element('passwordForm').dispatch('submit');
   assert.equal(calls, 1);
   assert.equal(element('changePasswordSubmit').disabled, true);
@@ -158,19 +165,27 @@ async function testPasswordChangeSubmissionAndErrors() {
     assert.equal(attempts, 1);
     assert.equal(page('changePasswordSubmit').disabled, false);
     assert.equal(page('newPassword').value, 'long meadow river passphrase');
-    if (error.status === 422) assert.equal(page('currentPasswordError').textContent, 'Incorrect current password.');
+    if (error.status === 422) {
+      assert.equal(page('currentPasswordError').textContent, 'Incorrect current password.');
+      page('currentPassword').value = 'corrected current value';
+      await page('currentPassword').dispatch('input');
+      assert.equal(page('currentPasswordError').hidden, true);
+      assert.equal(page('currentPassword').getAttribute('aria-invalid'), 'false');
+    }
     if (error.status === 429) assert.match(page('settingsStatus').textContent, /300/);
     if (error.status === 0) assert.match(page('settingsStatus').textContent, /may have changed.*sign in again/i);
   }
 }
 
 async function testPasswordPolicyErrorsStayBesideTheirFields() {
-  for (const [old, password, confirmation, field] of [
-    ['', 'violet meadow river passphrase', 'violet meadow river passphrase', 'currentPassword'],
-    ['old', 'too short', 'too short', 'newPassword'],
-    ['same meadow river password', 'same meadow river password', 'same meadow river password', 'newPassword'],
-    ['old', 'violet meadow river passphrase', 'mismatch', 'confirmNewPassword'],
-    ['old', 'é'.repeat(37), 'é'.repeat(37), 'newPassword'],
+  for (const [old, password, confirmation, field, message] of [
+    ['', 'violet meadow river passphrase', 'violet meadow river passphrase', 'currentPassword', 'Enter your current password.'],
+    ['old', 'short', 'short', 'newPassword', 'Use at least 8 characters.'],
+    ['old', ' violet meadow river', ' violet meadow river', 'newPassword', 'Remove spaces at the beginning or end.'],
+    ['old', 'violet meadow river ', 'violet meadow river ', 'newPassword', 'Remove spaces at the beginning or end.'],
+    ['same meadow river password', 'same meadow river password', 'same meadow river password', 'newPassword', 'Choose a different password.'],
+    ['old', 'violet meadow river passphrase', 'mismatch', 'confirmNewPassword', 'Passwords do not match.'],
+    ['old', 'violet café', 'violet café', 'newPassword', 'Use English letters, numbers, or standard symbols only.'],
   ]) {
     let calls = 0;
     const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
@@ -184,8 +199,42 @@ async function testPasswordPolicyErrorsStayBesideTheirFields() {
     assert.equal(calls, 0);
     assert.equal(page(field).getAttribute('aria-invalid'), 'true');
     assert.equal(page(`${field}Error`).hidden, false);
+    assert.equal(page(`${field}Error`).textContent, message);
     assert.equal(page('newPassword').value, password);
   }
+}
+
+async function testPasswordInputCorrectionRefreshesInlineErrors() {
+  let calls = 0;
+  const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
+    changeCustomerPassword: async () => { calls++; return { success: true }; },
+  });
+  await flush();
+  page('newPassword').value = ' violet meadow river';
+  page('confirmNewPassword').value = 'mismatch';
+  await page('passwordForm').dispatch('submit');
+  assert.equal(calls, 0);
+  assert.equal(page('currentPasswordError').hidden, false);
+  assert.equal(page('newPasswordError').textContent, 'Remove spaces at the beginning or end.');
+  assert.equal(page('confirmNewPasswordError').textContent, 'Passwords do not match.');
+
+  page('currentPassword').value = 'old value';
+  await page('currentPassword').dispatch('input');
+  assert.equal(page('currentPasswordError').hidden, true);
+  assert.equal(page('currentPassword').getAttribute('aria-invalid'), 'false');
+
+  page('newPassword').value = 'violet meadow river';
+  await page('newPassword').dispatch('input');
+  assert.equal(page('newPasswordError').hidden, true);
+  assert.equal(page('newPassword').getAttribute('aria-invalid'), 'false');
+  assert.equal(page('confirmNewPasswordError').textContent, 'Passwords do not match.');
+
+  page('confirmNewPassword').value = 'violet meadow river';
+  await page('confirmNewPassword').dispatch('input');
+  assert.equal(page('confirmNewPasswordError').hidden, true);
+  assert.equal(page('confirmNewPassword').getAttribute('aria-invalid'), 'false');
+  await page('passwordForm').dispatch('submit');
+  assert.equal(calls, 1);
 }
 
 async function testSettingsWaitsForProfile() {
@@ -337,6 +386,7 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
   await testSettingsWaitsForProfile();
   await testPasswordChangeSubmissionAndErrors();
   await testPasswordPolicyErrorsStayBesideTheirFields();
+  await testPasswordInputCorrectionRefreshesInlineErrors();
   await testSettingsFailureKeepsFormHiddenUntilRetry();
   await testPhoneVerificationBadgesUseServerStatus();
   await testConfirmedPhoneRefreshUpdatesExistingSettingsFields();

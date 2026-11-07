@@ -420,6 +420,7 @@ function mountPage(env, page) {
   if (page === "my-pets.html") {
     script = fs.readFileSync(path.join(root, "scripts/components/my-pets.js"), "utf8").replace(/^import[\s\S]*?;\r?\n/gm, "");
   } else if (page === "settings.html") {
+    vm.runInContext(fs.readFileSync(path.join(root, "scripts/utils/credential-policy.js"), "utf8"), context);
     script = fs.readFileSync(path.join(root, "scripts/components/client-settings.js"), "utf8");
   } else if (page === "grooming-history.html") {
     const html = fs.readFileSync(path.join(root, "pages/client/grooming-history.html"), "utf8");
