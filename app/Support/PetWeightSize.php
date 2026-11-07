@@ -7,6 +7,7 @@ use App\Models\Pet;
 final class PetWeightSize
 {
     private const MAX_WEIGHT_KG = 155.6;
+    private const MIN_PROFILE_WEIGHT_KG = 0.5;
 
     private const PROFILES = [
         'dog' => [
@@ -39,23 +40,21 @@ final class PetWeightSize
         return null;
     }
 
-    public static function validationMessage(mixed $species, mixed $weight = null): string
-    {
-        return self::weightValidationMessage($weight) ?? 'Select Dog or Cat before entering a weight.';
-    }
-
     /** Validate submitted text before numeric conversion can discard decimal places. */
-    public static function weightValidationMessage(mixed $weight): ?string
+    public static function weightValidationMessage(mixed $weight, bool $clinical = false, ?float $existingWeight = null): ?string
     {
         if ($weight === null || $weight === '') return null;
         if (! is_scalar($weight) || is_bool($weight)) return 'Enter a valid weight in kilograms.';
         $text = trim((string) $weight);
         if (! preg_match('/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/D', $text)
             || ! is_finite((float) $text)) return 'Enter a valid weight in kilograms.';
+        $numericWeight = (float) $text;
         $fraction = explode('.', $text, 2)[1] ?? '';
+        if ($numericWeight === $existingWeight && (strlen($fraction) <= 2 || round($numericWeight, 2) !== $numericWeight)) return null;
         if (strlen($fraction) > 2) return 'Enter weight using no more than 2 decimal places.';
-        if ((float) $text <= 0) return 'Enter a weight greater than 0 kg.';
-        if ((float) $text > self::MAX_WEIGHT_KG) return 'Weight cannot be more than 155.6 kg.';
+        if ($numericWeight <= 0) return 'Enter a weight greater than 0 kg.';
+        if (! $clinical && $numericWeight < self::MIN_PROFILE_WEIGHT_KG) return 'Weight must be at least 0.5 kg.';
+        if ($numericWeight > self::MAX_WEIGHT_KG) return 'Weight cannot be more than 155.6 kg.';
         return null;
     }
 
@@ -85,7 +84,7 @@ final class PetWeightSize
     public static function withComputedSizeForUpdate(array $data, Pet $pet): array
     {
         $species = $data['species'] ?? $pet->species;
-        $weight = $data['weight'] ?? $pet->weight;
+        $weight = array_key_exists('weight', $data) ? $data['weight'] : $pet->weight;
         if (PetInformation::meaningful($pet->size)
             && PetInformation::matches('weight', $pet->weight, $weight)
             && PetInformation::matches('species', $pet->species, $species)) {

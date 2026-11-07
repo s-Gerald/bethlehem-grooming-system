@@ -86,6 +86,18 @@ class PetWeightSizeTest extends TestCase
         $this->assertSame('medium', $pet['size']);
     }
 
+    public function test_small_weights_are_valid_only_for_clinical_measurements_or_stored_size_estimation(): void
+    {
+        foreach (json_decode(file_get_contents(__DIR__.'/../Fixtures/weight-rules.json'), true)['below_profile_minimum'] as $weight) {
+            $data = ['species' => 'Dog', 'weight' => $weight];
+            $ordinary = Validator::make($data, ['weight' => [new ValidPetWeight]]);
+            $clinical = Validator::make($data, ['weight' => [new ValidPetWeight(clinical: true)]]);
+            $this->assertSame('Weight must be at least 0.5 kg.', $ordinary->errors()->first('weight'));
+            $this->assertFalse($clinical->fails());
+            $this->assertSame('small', PetWeightSize::sizeFor('Dog', $weight));
+        }
+    }
+
     public function test_missing_weight_preserves_manual_size_and_decimals_are_not_rounded(): void
     {
         $this->assertSame('large', PetWeightSize::withComputedSize(['species' => 'Dog', 'weight' => null, 'size' => 'large'])['size']);
@@ -145,7 +157,7 @@ class PetWeightSizeTest extends TestCase
 
         $this->assertTrue($validator->fails());
         $this->assertSame(
-            PetWeightSize::validationMessage('Cat', 155.61),
+            'Weight cannot be more than 155.6 kg.',
             $validator->errors()->first('pets.0.weight'),
         );
     }

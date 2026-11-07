@@ -609,7 +609,7 @@ class AdminClinicController extends Controller
             'finish_case' => ['sometimes', 'boolean'],
             'medicines' => ['prohibited'],
             // Vitals
-            'weight_kg' => ['nullable', 'required_if_accepted:finish_case', new \App\Rules\ValidPetWeight(requireSpecies: false)],
+            'weight_kg' => ['nullable', 'required_if_accepted:finish_case', new \App\Rules\ValidPetWeight(requireSpecies: false, clinical: true)],
             'temperature_c' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('temperature_c')],
             'heart_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('heart_rate_bpm')],
             'respiratory_rate_bpm' => ['nullable', 'required_if_accepted:finish_case', $vitalRule('respiratory_rate_bpm')],

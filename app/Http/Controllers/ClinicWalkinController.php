@@ -419,8 +419,9 @@ class ClinicWalkinController extends Controller
 
     private function updateWalkInPetDetails(Pet $pet, array $data): Pet
     {
-        \Illuminate\Support\Facades\Validator::make($data, [
+        \Illuminate\Support\Facades\Validator::make([...$data, 'species' => $pet->species], [
             'birthdate' => ['nullable', new ValidPetBirthdate($pet->birthdate)],
+            'weight' => ['nullable', new \App\Rules\ValidPetWeight(existingWeight: $pet->weight)],
         ])->validate();
         $data['color'] ??= $pet->color;
         $data = PetWeightSize::withComputedSizeForUpdate([...$data, 'species' => $pet->species], $pet);

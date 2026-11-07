@@ -1,4 +1,4 @@
-import { formatSavedWeight } from "../components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
+import { formatSavedWeight } from "../components/pet-weight-size.js?v=pet-weight-size-20261107-v1";
 export const CLINIC_VISIT_DRAFT_KEY = "clinicVisitDraft";
 export const CLINIC_VISIT_PETS_KEY = "clinicVisitPets";
 export const CLINIC_VISIT_CONFIRMATION_KEY = "clinicVisitConfirmation";

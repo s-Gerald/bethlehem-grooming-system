@@ -12,7 +12,7 @@ import {
   addPetToBooking as addStoredPet,
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
-} from "../services/pet-service.js?v=pet-weight-size-20261011-v3&pet-fields=20261030-v1&pet-sessions=20261031-v1";
+} from "../services/pet-service.js?v=pet-weight-size-20261107-v1&pet-fields=20261030-v1&pet-sessions=20261031-v1";
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
@@ -20,7 +20,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261011-v3&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -38,7 +38,7 @@ import {
   initializeWeightField,
   syncPetWeightAndSize as syncWeightSizeFields,
   showWeightValidationInField,
-} from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
+} from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 
 /**
  * Booking Pet Step Controller

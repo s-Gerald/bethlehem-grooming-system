@@ -12,6 +12,11 @@ for (const weight of cases.invalid_weights) {
   assert.equal(getSizeForWeight('Dog', weight), '');
   assert.ok(getWeightValidationMessage('Dog', weight));
 }
+for (const weight of cases.below_profile_minimum) {
+  assert.equal(getWeightValidationMessage('Dog', weight), 'Weight must be at least 0.5 kg.');
+  assert.equal(getWeightValidationMessage('Dog', weight, { clinical: true }), '');
+  assert.equal(getSizeForStoredWeight('Dog', weight), 'Small');
+}
 for (const [species, weight, size] of cases.historical_pets) {
   assert.equal(normalize(getSizeForStoredWeight(species, weight)), size);
   assert.equal(getSizeForWeight(species, weight), '');
@@ -50,6 +55,14 @@ for (const value of ['4.780', '4.200000', '10.555']) {
   assert.equal(error.textContent, 'Enter weight using no more than 2 decimal places.');
   assert.equal(input['aria-invalid'], 'true');
 }
+input.value = '0.49';
+syncPetWeightAndSize(input, 'Cat', control);
+assert.equal(input.value, '0.49');
+assert.equal(error.textContent, 'Weight must be at least 0.5 kg.');
+input.value = '0.50';
+syncPetWeightAndSize(input, 'Cat', control);
+assert.equal(error.textContent, '');
+assert.equal(control.getValue(), 'Small');
 input.value = '4.25';
 syncPetWeightAndSize(input, 'Cat', control);
 assert.equal(error.textContent, '');
@@ -86,7 +99,7 @@ for (const [file, id] of [['pages/client/my-pets.html', 'petWeight'], ['pages/ad
   assert.match(html, /text-slate-500">kg<\/span>/);
 }
 // Entries and changed dependencies need fresh URLs together; mixed cached versions cannot link.
-const release = 'pet-weight-size-20261011-v3';
+const release = 'pet-weight-size-20261107-v1';
 for (const file of ['my-pets', 'booking-pet-step', 'walk-in-pet-step', 'admin-customers']) {
   assert.ok(fs.readFileSync(`scripts/components/${file}.js`, 'utf8').includes(`./pet-weight-size.js?v=${release}`));
 }

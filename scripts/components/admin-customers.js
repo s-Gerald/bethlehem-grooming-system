@@ -7,7 +7,7 @@ function loadAdminCustomerPetFields() {
   import("./breed-coat-combobox.js?pet-fields=20261030-v1"),
   import("./fixed-option-combobox.js"),
   import("./color-combobox.js?pet-care=20261027-v1"),
-  import("./pet-weight-size.js?v=pet-weight-size-20261011-v3"),
+  import("./pet-weight-size.js?v=pet-weight-size-20261107-v1"),
   import("./pet-birthdate.js?v=20261103-v1"),
 ]).then(([
   bookingDraft,
@@ -33,7 +33,7 @@ function loadAdminCustomerPetFields() {
 let adminCustomerPetFields = null;
 let adminCustomerFormatWeight = null;
 
-function adminCustomers() {
+function adminCustomers({ clinicalPetEditor = false } = {}) {
   return {
     customers:    [],
     petSearchResults: [],
@@ -924,7 +924,7 @@ function adminCustomers() {
       tools.initializeWeightField(elements.weight);
       elements.weight.value = tools.formatSavedWeight(p.weight);
       this.syncPetWeightAndSize({ clearManualSize: true });
-      if (p.sizeVerified || !tools.getSizeForWeight(species, elements.weight.value)) this.setStoredPetSize(p.size);
+      if (p.sizeVerified || !tools.getSizeForWeight(species, elements.weight.value, this.petWeightValidation())) this.setStoredPetSize(p.size);
 
       await tools.breedCoatCatalogueReady;
       controls.furType.update({ preserveValue: true, autoSelect: false });
@@ -954,7 +954,7 @@ function adminCustomers() {
         controls.breed.showValidation();
         controls.furType.showValidation();
         const weightMessage = tools.getWeightFieldValidationMessage(elements.weight)
-          || tools.getWeightValidationMessage(payload.species, payload.weight);
+          || tools.getWeightValidationMessage(payload.species, payload.weight, this.petWeightValidation());
         if (weightMessage) {
           tools.showWeightValidationInField(elements.weight, weightMessage);
         }
@@ -979,7 +979,7 @@ function adminCustomers() {
               this.petModal.owner.id,
               payload,
             )
-          : await API.adminUpdatePet(this.petModal.pet.id, payload);
+          : await API.adminUpdatePet(this.petModal.pet.id, payload, { clinical: clinicalPetEditor });
 
         const savedPet = response.pet || payload;
         const updated = {
@@ -1089,7 +1089,7 @@ function adminCustomers() {
       if (furTypeValidationMessage) return furTypeValidationMessage;
 
       const weightValidationMessage = tools.getWeightFieldValidationMessage(elements.weight)
-        || tools.getWeightValidationMessage(payload.species, payload.weight);
+        || tools.getWeightValidationMessage(payload.species, payload.weight, this.petWeightValidation());
       if (weightValidationMessage) return weightValidationMessage;
 
       const allowedSizes = tools.getSizeOptions(payload.species).map(
@@ -1117,10 +1117,14 @@ function adminCustomers() {
       controls.size.setValue(matchingOption?.value || "");
     },
 
+    petWeightValidation() {
+      return { clinical: clinicalPetEditor, existingWeight: this.petModal.creating ? null : this.petModal.pet?.weight ?? null };
+    },
+
     syncPetWeightAndSize({ clearManualSize = false } = {}) {
       if (!adminCustomerPetFields) return;
       const { tools, elements, controls } = adminCustomerPetFields;
-      tools.syncPetWeightAndSize(elements.weight, elements.species.value, controls.size, { clearManualSize });
+      tools.syncPetWeightAndSize(elements.weight, elements.species.value, controls.size, { clearManualSize, ...this.petWeightValidation() });
     },
 
     validatePetWeightOnCommit() {

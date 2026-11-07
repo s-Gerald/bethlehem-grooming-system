@@ -138,7 +138,7 @@ class PetController extends Controller
         $validated = \Illuminate\Support\Facades\Validator::make($effective, $rules)->validate();
         $attributes = array_replace($attributes, array_intersect_key($validated, $attributes));
         $pet->fill($attributes);
-        $pet->save();
+        $pet->save($request->only('expected_medical_conditions'));
 
         return response()->json(['success' => true, 'message' => 'Pet updated successfully.', 'pet' => $pet]);
     }
@@ -170,7 +170,9 @@ class PetController extends Controller
             'deceased_date' => 'nullable|date',
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(existingPet: $pet)],
-            'weight' => ['nullable', new ValidPetWeight],
+            'weight' => ['nullable', new ValidPetWeight(
+                clinical: $request->routeIs('clinic.pets.update'), existingWeight: $pet->weight,
+            )],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
@@ -195,9 +197,9 @@ class PetController extends Controller
             'neutered_date' => $data['neutered_date'] ?? null,
             'is_deceased' => $data['is_deceased'] ?? false,
             'deceased_date' => $data['deceased_date'] ?? null,
-            'size' => $data['size'] ?? null,
+            'size' => array_key_exists('size', $data) ? $data['size'] : $pet->size,
             'fur_type' => $data['fur_type'] ?? null,
-            'weight' => $data['weight'] ?? null,
+            'weight' => array_key_exists('weight', $data) ? $data['weight'] : $pet->weight,
             'color' => ValidPetColor::validatedColor($data, $pet),
             'medical_conditions' => array_key_exists('medical_conditions', $data) ? $data['medical_conditions'] : $pet->medical_conditions,
         ];

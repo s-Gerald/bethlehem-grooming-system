@@ -522,7 +522,7 @@ async function testActualPageLoaders() {
 async function testMyPetsStaticModalsAndWorkflows() {
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const env = environment();
-  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 5, size: "small", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color"] };
+  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 0.1, size: "small", medical_conditions: "Sensitive skin", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color", "medical_conditions"] };
   const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
   const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
     ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
@@ -651,14 +651,35 @@ async function testMyPetsStaticModalsAndWorkflows() {
   const beforeUnchanged = writes().length;
   await el("petForm").dispatch("submit");
   assert.equal(writes().length, beforeUnchanged);
-  el("petMedical").value = "Use gentle shampoo";
+  el("petMedical").value = "";
   await el("petForm").dispatch("input");
   assert.equal(el("petFormSubmit").disabled, false);
   await accidentalDismissal(form);
+  env.respond((endpoint, options) => {
+    if (endpoint === "/pets/1" && options.method === "PUT") {
+      const changes = JSON.parse(options.body);
+      assert.deepEqual(changes, { medical_conditions: null, expected_medical_conditions: "Sensitive skin" });
+      activePet.medical_conditions = changes.medical_conditions;
+    }
+    return petResponse(endpoint);
+  });
+  await el("petForm").dispatch("submit");
+  assert.equal(el("petSaveWarning").hidden, true, "Clearing care notes saves directly");
+  assert.equal(open(form), false);
+  assert.equal(writes().at(-1).endpoint, "/pets/1");
+  env.respond(petResponse);
+
+  await el("edit-1").dispatch("click");
+  assert.equal(el("petMedical").disabled, false);
+  el("petGender").value = "male";
+  el("petMedical").value = "Use gentle shampoo";
+  await el("petForm").dispatch("input");
+  const beforeMixedEdit = writes().length;
   await el("petForm").dispatch("submit");
   assert.equal(open(confirmation), false, "Pet completion does not open an override confirmation");
-  assert.equal(open(form), true, "Save keeps edit form open for acknowledgment");
+  assert.equal(open(form), true, "A one-time field still requires acknowledgment alongside care notes");
   assert.equal(el("petFormSubmit").textContent, "Confirm");
+  assert.equal(writes().length, beforeMixedEdit);
   await el("petForm").dispatch("submit");
   assert.equal(open(form), false, "Confirm completes permitted new information");
   assert.equal(writes().at(-1).endpoint, "/pets/1");

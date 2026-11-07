@@ -95,6 +95,10 @@ async function preciseInvalidationAndCrossTab() {
   await seed(); await e.API.adminUpdatePet(1, {pet_name: 'Updated patient'});
   assert.equal(e.API.readAdminCache('/admin/bookings?date=2026-10-19&view=board'), null, 'Pet edits invalidate the patient presentation on the board');
   assert.equal(e.API.readAdminCache('/admin/dashboard/summary'), null, 'Queue preview patient information must update too');
+  await seed(); await e.API.adminUpdatePet(1, {weight: '0.10'}, {clinical: true});
+  assert.equal(e.calls.at(-1).endpoint, '/admin/clinic/pets/1');
+  assert.equal(e.API.readAdminCache('/admin/clinic-cases'), null, 'Clinical pet edits invalidate the patient list');
+  assert.equal(e.API.readAdminCache('/admin/bookings?date=2026-10-19&view=board'), null);
   await seed();
   await e.API.startClinicCase(1);
   for (const key of ['/admin/clinic-cases', '/admin/dashboard/summary']) assert.equal(e.API.readAdminCache(key), null);

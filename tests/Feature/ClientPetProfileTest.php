@@ -141,7 +141,7 @@ class ClientPetProfileTest extends TestCase
                     DB::table('pets')->where('pet_id', $id)->update(['color' => 'Brown123']);
                     $this->putJson($edit, [...$payload, 'color' => 'Brown123'])->assertOk()->assertJsonPath('pet.color', 'Brown123');
                     $this->putJson($edit, [...$payload, 'color' => null, 'medical_conditions' => null])
-                        ->assertUnprocessable()->assertJsonValidationErrors(['color', 'medical_conditions']);
+                        ->assertUnprocessable()->assertJsonValidationErrors('color');
                     continue;
                 }
                 $this->putJson($edit, ['pet_name' => "$role renamed", 'species' => 'Dog'])->assertOk()
@@ -308,7 +308,7 @@ class ClientPetProfileTest extends TestCase
                 $this->putJson($editUrl, [...$payload, 'size' => $size])->assertOk()->assertJsonPath('pet.size', $size);
                 $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => $weight, 'size' => $size]);
             }
-            foreach ($cases['invalid_weights'] as $index => $weight) {
+            foreach ([...$cases['invalid_weights'], ...$cases['below_profile_minimum']] as $index => $weight) {
                 $this->postJson($createUrl, ['pet_name' => 'Invalid '.$index, 'species' => 'Dog', 'weight' => $weight])
                     ->assertUnprocessable()->assertJsonValidationErrors('weight');
                 $this->putJson($editUrl, [...$payload, 'weight' => $weight])
@@ -341,6 +341,32 @@ class ClientPetProfileTest extends TestCase
         $before = DB::table('pets')->orderBy('pet_id')->get()->all();
         $migration->up();
         $this->assertEquals($before, DB::table('pets')->orderBy('pet_id')->get()->all());
+    }
+
+    public function test_clinic_patient_editor_accepts_small_weights_only_on_the_authorized_route(): void
+    {
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog',
+            'weight' => 0.25, 'size' => 'medium', 'clinic_verified_fields' => json_encode(['size'])]);
+        $ordinary = '/api/admin/pets/101';
+        $clinical = '/api/admin/clinic/pets/101';
+        $profile = ['pet_name' => 'Andrew', 'species' => 'Dog'];
+
+        $this->authenticateUser(20, 'staff');
+        $this->putJson($clinical, [...$profile, 'weight' => 0.1])->assertForbidden();
+        $this->putJson($ordinary, [...$profile, 'weight' => 0.1, 'clinical' => true])
+            ->assertUnprocessable()->assertJsonPath('errors.weight.0', 'Weight must be at least 0.5 kg.');
+        $this->putJson($ordinary, [...$profile, 'weight' => '0.25', 'medical_conditions' => 'Sensitive skin'])
+            ->assertOk()->assertJsonPath('pet.weight', 0.25)->assertJsonPath('pet.size', 'medium');
+
+        $this->authenticateUser(21, 'staff', 'clinic', 'veterinarian');
+        foreach (['0.10', '0.01'] as $weight) {
+            $this->putJson($clinical, [...$profile, 'weight' => $weight])
+                ->assertOk()->assertJsonPath('pet.weight', (float) $weight);
+        }
+        foreach (['155.61', '0.010', '1e-2', '0', '-1'] as $weight) {
+            $this->putJson($clinical, [...$profile, 'weight' => $weight])
+                ->assertUnprocessable()->assertJsonValidationErrors('weight');
+        }
     }
 
     public function test_pet_profile_requires_authentication(): void
@@ -494,11 +520,28 @@ class ClientPetProfileTest extends TestCase
             ->assertOk()->assertJsonPath('pet.size', 'medium');
         foreach (['pet_name' => 'Andy', 'species' => 'Cat', 'breed' => 'Beagle', 'fur_type' => null,
             'weight' => 14, 'size' => 'large', 'gender' => 'female', 'birthdate' => null,
-            'color' => null, 'medical_conditions' => null] as $field => $value) {
+            'color' => null] as $field => $value) {
             $this->putJson("/api/pets/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
         }
         $this->assertDatabaseHas('pets', ['pet_id' => $id, 'breed' => 'Golden Retriever', 'fur_type' => 'Unknown Fur Type', 'weight' => 12]);
         $this->assertDatabaseCount('customer_notifications', 0);
+    }
+
+    public function test_customer_can_repeatedly_edit_and_clear_care_notes_with_a_legacy_lock(): void
+    {
+        $this->authenticateCustomer(10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog',
+            'weight' => 0.1, 'customer_locked_fields' => json_encode(['medical_conditions', 'color'])]);
+        foreach (['Gentle handling', 'Shampoo allergy', null, 'Sensitive skin'] as $notes) {
+            $this->putJson('/api/pets/101', ['medical_conditions' => $notes, 'weight' => '0.10'])
+                ->assertOk()->assertJsonPath('pet.medical_conditions', $notes)->assertJsonPath('pet.weight', 0.1);
+        }
+        $this->putJson('/api/pets/101', ['medical_conditions' => str_repeat('x', 1001)])
+            ->assertUnprocessable()->assertJsonValidationErrors('medical_conditions');
+        $this->putJson('/api/pets/101', ['medical_conditions' => null, 'expected_medical_conditions' => null])
+            ->assertUnprocessable()->assertJsonValidationErrors('expected_medical_conditions');
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'medical_conditions' => 'Sensitive skin']);
+        $this->putJson('/api/pets/101', ['color' => 'White'])->assertUnprocessable()->assertJsonValidationErrors('color');
     }
 
     public function test_new_pets_require_explicit_species(): void
@@ -828,7 +871,7 @@ class ClientPetProfileTest extends TestCase
         $this->authenticateUser($userId, 'customer');
     }
 
-    private function authenticateUser(int $userId, string $role): void
+    private function authenticateUser(int $userId, string $role, ?string $staffType = null, ?string $staffSubrole = null): void
     {
         $user = new User;
         $user->forceFill([
@@ -836,6 +879,8 @@ class ClientPetProfileTest extends TestCase
             'first_name' => 'Jamie',
             'last_name' => 'Santos',
             'role' => $role,
+            'staff_type' => $staffType,
+            'staff_subrole' => $staffSubrole,
         ]);
         $user->exists = true;
 

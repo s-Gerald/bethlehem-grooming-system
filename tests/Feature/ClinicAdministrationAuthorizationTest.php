@@ -1037,7 +1037,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
 
     public function test_clinic_walkin_rejects_invalid_weight_text_for_admin_and_staff(): void
     {
-        $invalid = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true)['invalid_weights'];
+        $cases = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true);
+        $invalid = [...$cases['invalid_weights'], ...$cases['below_profile_minimum']];
         foreach (['admin', 'staff'] as $role) {
             $this->authenticateAs($role);
             foreach ($invalid as $weight) {
@@ -1062,7 +1063,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->postJson('/api/admin/clinic-walk-in', ['common_concerns' => ['Routine check-up'],
             'fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
             'owner_record_type' => 'registered', 'customer_user_id' => 10,
-            'pet_id' => 101, 'color' => $color, 'pet_name' => 'Historical dog', 'species' => 'Dog', 'terms_agreed' => true])->assertCreated();
+            'pet_id' => 101, 'color' => $color, 'pet_name' => 'Historical dog', 'species' => 'Dog',
+            'weight' => '10.999', 'terms_agreed' => true])->assertCreated();
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'color' => 'Brown123', 'medical_conditions' => 'Historical diagnosis']);
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'weight' => 10.999, 'size' => 'small']);
     }
@@ -1085,7 +1087,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
         $this->assertDatabaseCount('clinic_records', 0);
         $this->assertDatabaseCount('clinic_vitals', 0);
-        foreach (['4', '4.', '4.1', '4.20', '4.25', '0.50', '155.6'] as $weight) {
+        foreach (['4', '4.', '4.1', '4.20', '4.25', '0.01', '0.10', '0.50', '155.6'] as $weight) {
             $this->postJson('/api/admin/clinic-appointments/1/record', ['weight_kg' => $weight])->assertOk();
             $this->assertDatabaseHas('clinic_vitals', ['clinic_appointment_id' => 1, 'weight_kg' => (float) $weight]);
         }
@@ -3156,6 +3158,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public function test_every_clinic_administration_route_has_the_expected_role_middleware(): void
     {
         $expected = [
+            ['PUT', 'api/admin/clinic/pets/{id}', 'role:admin,staff'],
             ['GET', 'api/admin/pets/{petId}/clinic-case', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-walk-in', 'role:admin,staff'],
             ['GET', 'api/admin/clinic-records', 'role:admin,staff'],

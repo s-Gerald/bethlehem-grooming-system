@@ -30,6 +30,15 @@ class Pet extends Model
                 $verified = $this->clinic_verified_fields ?? [];
                 if ($actor?->role === 'customer') {
                     abort_unless((int) $current->user_id === (int) $actor->user_id, 403);
+                    $expectedNotes = array_key_exists('expected_medical_conditions', $options)
+                        ? $options['expected_medical_conditions'] : $this->getOriginal('medical_conditions');
+                    if (array_key_exists('medical_conditions', $changes)
+                        && ! PetInformation::matches('medical_conditions', $current->medical_conditions, $changes['medical_conditions'])
+                        && ! PetInformation::matches('medical_conditions', $current->medical_conditions, $expectedNotes)) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'expected_medical_conditions' => 'Care notes have changed. Reopen this pet and try again.',
+                        ]);
+                    }
                     $changes = PetInformation::customerAttributes($current, $changes);
                 }
                 $this->setRawAttributes($current->getAttributes(), true);

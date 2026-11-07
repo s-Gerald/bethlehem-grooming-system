@@ -272,7 +272,7 @@ var API = (() => {
     else if (path === "/admin/walk-in") groups = ["grooming", "dashboard", "notifications", "customers", "clinic-records"];
     else if (/^\/admin\/clinic\/(stop-today|reopen-today)$/.test(path)) groups = ["clinic-status", "availability", "dashboard", "grooming"];
     else if (/^\/admin\/(customers|customer-pets)(?:\/|$)/.test(path)) groups = ["customers", "clinic-records", "clinic-active"];
-    else if (/^\/admin\/pets\//.test(path)) {
+    else if (/^\/admin\/(?:clinic\/)?pets\//.test(path)) {
       groups = /\/vaccinations(?:\/|$)/.test(path) ? ["clinic-active"]
         : ["customers", "clinic-records", "clinic-active", "clinic-confined", "grooming", "dashboard"];
     } else if (/^\/admin\/(clinic-cases|clinic-appointments)(?:\/|$)/.test(path) || path === "/admin/clinic-walk-in") {
@@ -2667,9 +2667,9 @@ var API = (() => {
     return request("PUT", `/pets/${petId}`, payload, getCustomerToken());
   }
 
-  async function adminUpdatePet(petId, payload) {
-    // PUT /api/admin/pets/{id}  (admin/staff — updates any customer's pet)
-    return request("PUT", `/admin/pets/${petId}`, payload, getAdminToken());
+  async function adminUpdatePet(petId, payload, { clinical = false } = {}) {
+    const path = clinical ? "/admin/clinic/pets" : "/admin/pets";
+    return request("PUT", `${path}/${petId}`, payload, getAdminToken());
   }
 
   async function adminAddCustomerPet(ownerType, ownerId, payload) {

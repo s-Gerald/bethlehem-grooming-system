@@ -220,7 +220,7 @@ class ClinicAppointment extends Model
             if ($vitals?->{$field} === null) {
                 $errors[$field] = 'Save the required consultation vitals in the Medical Record before finishing this case.';
             } elseif ($field === 'weight_kg') {
-                if ($message = \App\Support\PetWeightSize::weightValidationMessage($vitals->{$field})) $errors[$field] = $message;
+                if ($message = \App\Support\PetWeightSize::weightValidationMessage($vitals->{$field}, clinical: true)) $errors[$field] = $message;
             } elseif (! \App\Support\ClinicClinicalRules::validVital($field, $vitals->{$field})
                 && ! \App\Support\ClinicClinicalRules::hasVerification($vitals, $field, $vitals->{$field})) {
                 $errors[$field] = 'Review this reading in Medical Record; veterinarian verification is required outside the entry limits.';

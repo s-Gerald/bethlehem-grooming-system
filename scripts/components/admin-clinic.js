@@ -4,7 +4,7 @@ const CLINIC_CLINICAL_RULES = {"vitals":{"temperature_c":{"min":25,"max":45,"pre
 // END GENERATED CLINIC CLINICAL RULES
 let clinicPetWeightToolsReady;
 function loadClinicPetWeightTools() {
-  return clinicPetWeightToolsReady ??= import("./pet-weight-size.js?v=pet-weight-size-20261011-v3");
+  return clinicPetWeightToolsReady ??= import("./pet-weight-size.js?v=pet-weight-size-20261107-v1");
 }
 
 function clinicValidNumber(value, precision, min, max) {
@@ -243,7 +243,7 @@ function adminClinicModal() {
     vitalFieldMessage(field) {
       const value = String(this.form[field] ?? '').trim();
       if (!value) return this.completionAttempted && field !== 'body_condition_score' ? 'Required' : '';
-      if (field === 'weight_kg') return this.weightTools?.getWeightValueValidationMessage(value) || '';
+      if (field === 'weight_kg') return this.weightTools?.getWeightValueValidationMessage(value, { clinical: true }) || '';
       if (field === 'body_condition_score') return clinicValidNumber(value, 0, 1, 9) ? '' : 'Select a score from 1 to 9.';
       if (this.vitalEntryValid(field, value)) return '';
       const verification = this.vitalExceptions[field];
@@ -289,7 +289,7 @@ function adminClinicModal() {
       }
       const name = key.split(".").at(-1);
       if (key.startsWith("additional_veterinarian_ids")) return "Select an available veterinarian.";
-      if (name === "weight_kg") return this.weightTools?.getWeightValueValidationMessage(this.form.weight_kg) || "Enter a valid weight.";
+      if (name === "weight_kg") return this.weightTools?.getWeightValueValidationMessage(this.form.weight_kg, { clinical: true }) || "Enter a valid weight.";
       return {
         primary_veterinarian_id: "Select an available veterinarian.",
         temperature_c: this.vitalFieldMessage('temperature_c') || 'Invalid temperature.',
@@ -1642,7 +1642,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '/scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261011-v3&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103';
+    script.src = '/scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);
@@ -1650,7 +1650,7 @@ function loadClinicPatientEditor() {
 }
 
 function adminClinicPatientEditor() {
-  const editor = adminCustomers();
+  const editor = adminCustomers({ clinicalPetEditor: true });
   const save = editor.saveEditPet;
   const cancel = editor.cancelEditPet;
   return Object.assign(editor, {

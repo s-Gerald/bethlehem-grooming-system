@@ -1,5 +1,5 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
-import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
+import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 const state = {
   reviewPayload: null,
   onBack: null,

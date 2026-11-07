@@ -11,6 +11,7 @@ const WEIGHT_PROFILES = Object.freeze({
   ],
 });
 const MAX_WEIGHT_KG = 155.6;
+const MIN_PROFILE_WEIGHT_KG = 0.5;
 
 function getProfile(petType) {
   const type = Object.keys(WEIGHT_PROFILES).find(
@@ -23,28 +24,32 @@ export function getSizeOptions(petType) {
   return getProfile(petType).map(({ size, label }) => ({ value: size, label: `${size}: ${label}` }));
 }
 
-export function getWeightValidationMessage(petType, rawWeight) {
-  const message = getWeightValueValidationMessage(rawWeight);
+export function getWeightValidationMessage(petType, rawWeight, options) {
+  const message = getWeightValueValidationMessage(rawWeight, options);
   if (message || String(rawWeight ?? "").trim() === "") return message;
   if (!getProfile(petType).length) return "Select Dog or Cat before entering a weight.";
   return "";
 }
 
-export function getWeightValueValidationMessage(rawWeight) {
+export function getWeightValueValidationMessage(rawWeight, { clinical = false, existingWeight = null } = {}) {
   if (String(rawWeight ?? "").trim() === "") return "";
   const text = String(rawWeight).trim();
   const weight = Number(rawWeight);
   if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text) || !Number.isFinite(weight)) {
     return "Enter a valid weight in kilograms.";
   }
-  if ((text.split(".")[1] || "").length > 2) return "Enter weight using no more than 2 decimal places.";
+  const precision = (text.split(".")[1] || "").length;
+  if (existingWeight !== null && weight === Number(existingWeight)
+    && (precision <= 2 || Number(weight.toFixed(2)) !== weight)) return "";
+  if (precision > 2) return "Enter weight using no more than 2 decimal places.";
   if (weight <= 0) return "Enter a weight greater than 0 kg.";
+  if (!clinical && weight < MIN_PROFILE_WEIGHT_KG) return "Weight must be at least 0.5 kg.";
   if (weight > MAX_WEIGHT_KG) return "Weight cannot be more than 155.6 kg.";
   return "";
 }
 
-export function getSizeForWeight(petType, rawWeight) {
-  if (String(rawWeight ?? "").trim() === "" || getWeightValidationMessage(petType, rawWeight)) return "";
+export function getSizeForWeight(petType, rawWeight, options) {
+  if (String(rawWeight ?? "").trim() === "" || getWeightValidationMessage(petType, rawWeight, options)) return "";
   return getSizeForStoredWeight(petType, rawWeight);
 }
 
@@ -97,11 +102,12 @@ export function getWeightFieldValidationMessage(input) {
 }
 
 // A disabled size still remains available through the combobox's getValue().
-export function syncPetWeightAndSize(input, petType, sizeControl, { clearManualSize = false } = {}) {
+export function syncPetWeightAndSize(input, petType, sizeControl, { clearManualSize = false, ...validation } = {}) {
   const options = getSizeOptions(petType);
   sizeControl.setOptions(options, { preserveValue: !clearManualSize });
-  const size = getSizeForWeight(petType, getEnteredWeight(input));
+  const weight = getEnteredWeight(input);
+  const size = getSizeForWeight(petType, weight, validation);
   if (size) sizeControl.setValue(size);
   sizeControl.setDisabled(Boolean(size) || options.length === 0);
-  showWeightValidationInField(input, getWeightValidationMessage(petType, getEnteredWeight(input)));
+  showWeightValidationInField(input, getWeightValidationMessage(petType, weight, validation));
 }

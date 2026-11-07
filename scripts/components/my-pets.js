@@ -16,7 +16,7 @@ import {
   initializeWeightField,
   syncPetWeightAndSize as syncWeightSizeFields,
   showWeightValidationInField,
-} from "./pet-weight-size.js?v=pet-weight-size-20261011-v3";
+} from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 
 // Connected to pages/client/my-pets.html
 // Depends on: api.js and the shared pre-registration pet field components
@@ -167,7 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
     size: petSize, color: document.getElementById("petColor"), medical_conditions: document.getElementById("petMedical"),
   };
   function fieldLocked(field) {
-    if (!editingPet) return false;
+    if (!editingPet || field === "medical_conditions") return false;
     const saved = editingPet[field];
     return ["pet_name", "species"].includes(field)
       || (saved !== null && saved !== undefined && String(saved).trim() !== "")
@@ -189,7 +189,6 @@ document.addEventListener("DOMContentLoaded", () => {
     breedCoatCombobox.setDisabled(fieldLocked("fur_type"));
     sizeCombobox.setDisabled(fieldLocked("size") || !petSpecies.value
       || (!fieldLocked("weight") && Boolean(getSizeForWeight(petSpecies.value, petWeight.value))));
-    document.getElementById("petSavedDetailsHelp")?.classList.toggle("hidden", !editingPet);
     syncConfirmState();
   }
   function permittedChanges(payload) {
@@ -199,9 +198,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function syncConfirmState() {
     if (petSaveConfirmation.saving) { petFormSubmit.disabled = true; return; }
     if (!editingPet) { petFormSubmit.disabled = false; return; }
-    const changed = Object.entries(profileInputs).some(([field, input]) =>
-      !fieldLocked(field) && input.value.trim() !== "");
-    petFormSubmit.disabled = !changed || Boolean(validatePetForm(readPetPayload()));
+    const payload = readPetPayload();
+    petFormSubmit.disabled = Object.keys(permittedChanges(payload)).length === 0
+      || Boolean(validatePetForm(payload));
   }
   function readPetPayload() {
     const payload = {
@@ -786,7 +785,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const changes = id ? permittedChanges(payload) : payload;
     if (id && Object.keys(changes).length === 0) { petSaveConfirmation.reset(); syncConfirmState(); return; }
 
-    if (!petSaveConfirmation.confirm(payload)) return;
+    const requiresConfirmation = !id || Object.keys(changes).some(field => field !== "medical_conditions");
+    if (requiresConfirmation && !petSaveConfirmation.confirm(payload)) return;
     petSaveConfirmation.setSaving(true);
     if (document.activeElement === petFormSubmit) {
       closePetModal.focus({ preventScroll: true });
@@ -794,6 +794,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       if (id) {
+        if ("medical_conditions" in changes) {
+          changes.expected_medical_conditions = editingPet.medical_conditions ?? null;
+        }
         await API.updatePet(id, changes);
       } else {
         await API.addPet(payload);
@@ -819,6 +822,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (err.errors?.weight?.[0]) showWeightValidationInField(petWeight, err.errors.weight[0]);
+      if (err.errors?.expected_medical_conditions?.[0]) {
+        invalidatePetCollections();
+        void loadPets({ force: true });
+      }
       showFormError(err.errors
         ? Object.values(err.errors).flat()[0]
         : (err.message || "Something went wrong."));

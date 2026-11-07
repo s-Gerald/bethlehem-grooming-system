@@ -8,7 +8,7 @@
  * On the pet step, call loadPetsFromApi() first to sync the user's pets
  * from the database into localStorage before rendering.
  */
-import { formatSavedWeight, getSizeForStoredWeight } from "../components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
+import { formatSavedWeight, getSizeForStoredWeight } from "../components/pet-weight-size.js?v=pet-weight-size-20261107-v1";
 
 const CLIENT_PETS_KEY = "clientPets";     // localStorage — persists across tabs/sessions
 const BOOKING_PETS_KEY = "bookingPets";   // sessionStorage — current booking draft only

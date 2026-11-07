@@ -137,7 +137,7 @@ function clinicConfinementWorkspace() {
       if (!Number.isFinite(Number(weight)) || Number(weight) <= 0) {
         errors.weight_kg = "Record the patient's weight in Medical Record first.";
       } else {
-        const error = this.weightTools?.getWeightValueValidationMessage(weight);
+        const error = this.weightTools?.getWeightValueValidationMessage(weight, { clinical: true });
         if (error) errors.weight_kg = error;
       }
       if (!errors.weight_kg && (!this.pricing || this.pricing.error)) errors.rate = this.pricing?.error || this.error || 'Resolve the confinement rate before admitting this patient.';

@@ -22,11 +22,11 @@ final class PetInformation
 
     public static function lockedFields(Pet $pet): array
     {
-        return array_values(array_unique([
+        return array_values(array_diff(array_unique([
             ...($pet->customer_locked_fields ?? []),
             ...array_keys(array_filter(self::CUSTOMER_FIELDS,
                 fn ($label, $field) => self::meaningful($pet->$field), ARRAY_FILTER_USE_BOTH)),
-        ]));
+        ]), ['medical_conditions']));
     }
 
     public static function meaningful(mixed $value): bool
@@ -63,10 +63,14 @@ final class PetInformation
         foreach (self::FIELDS as $field => $label) {
             if (! array_key_exists($field, $attributes)) continue;
             if (self::matches($field, $pet->$field, $attributes[$field])) {
+                if ($field === 'weight' && ($message = PetWeightSize::weightValidationMessage($attributes[$field], existingWeight: $pet->weight))) {
+                    $errors[$prefix.$field] = $message;
+                }
                 // Keep historical precision, spelling and casing for unchanged fields.
                 $attributes[$field] = $pet->$field;
                 continue;
             }
+            if ($field === 'medical_conditions') continue;
             if (in_array($field, ['pet_name', 'species'], true)
                 || in_array($field, $locked, true) || in_array($field, $verified, true)
                 || ($measurementsVerified && in_array($field, ['weight', 'size'], true))) {

@@ -42,7 +42,7 @@ class ClinicConfinementController extends Controller
 
     public function admissionPreview(Request $request, int $id, ClinicConfinementService $service)
     {
-        $data = $request->validate(['weight_kg' => ['nullable', new \App\Rules\ValidPetWeight(requireSpecies: false)]]);
+        $data = $request->validate(['weight_kg' => ['nullable', new \App\Rules\ValidPetWeight(requireSpecies: false, clinical: true)]]);
         $case = ClinicAppointment::with(['vitals', 'pet'])->findOrFail($id);
         if (array_key_exists('weight_kg', $data)) {
             $vitals = $case->vitals ? clone $case->vitals : new \App\Models\ClinicVital;

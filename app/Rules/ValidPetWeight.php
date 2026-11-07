@@ -2,6 +2,7 @@
 
 namespace App\Rules;
 
+use App\Support\PetInformation;
 use App\Support\PetWeightSize;
 use Closure;
 use Illuminate\Contracts\Validation\DataAwareRule;
@@ -11,7 +12,12 @@ class ValidPetWeight implements DataAwareRule, ValidationRule
 {
     private array $data = [];
 
-    public function __construct(private bool $requireSpecies = true) {}
+    public function __construct(
+        private bool $requireSpecies = true,
+        private bool $clinical = false,
+        private ?float $existingWeight = null,
+        private bool $allowExistingPetSelection = false,
+    ) {}
 
     public function setData(array $data): static
     {
@@ -26,22 +32,17 @@ class ValidPetWeight implements DataAwareRule, ValidationRule
             return;
         }
 
-        $species = $this->relatedSpecies($attribute);
+        $profile = preg_match('/^pets\.(\d+)\.weight$/', $attribute, $matches)
+            ? ($this->data['pets'][(int) $matches[1]] ?? []) : $this->data;
+        // Intake revalidates against the already loaded pet after checking ownership.
+        if ($this->allowExistingPetSelection && ! empty($profile['pet_id'])) return;
 
-        $message = PetWeightSize::weightValidationMessage($value);
+        $message = PetWeightSize::weightValidationMessage($value, $this->clinical, $this->existingWeight);
         if ($message !== null) {
             $fail($message);
-        } elseif ($this->requireSpecies && PetWeightSize::sizeFor($species, $value) === null) {
-            $fail(PetWeightSize::validationMessage($species, $value));
+        } elseif ($this->requireSpecies && ! PetInformation::matches('weight', $this->existingWeight, $value)
+            && PetWeightSize::sizeFor($profile['species'] ?? null, $value) === null) {
+            $fail('Select Dog or Cat before entering a weight.');
         }
-    }
-
-    private function relatedSpecies(string $attribute): mixed
-    {
-        if (preg_match('/^pets\.(\d+)\.weight$/', $attribute, $matches)) {
-            return $this->data['pets'][(int) $matches[1]]['species'] ?? null;
-        }
-
-        return $this->data['species'] ?? null;
     }
 }

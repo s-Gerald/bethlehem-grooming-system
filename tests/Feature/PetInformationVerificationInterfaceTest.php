@@ -51,7 +51,8 @@ class PetInformationVerificationInterfaceTest extends TestCase
     {
         $this->assertStringContainsString('>Verified</span>', $this->myPetsPage);
         $this->assertStringNotContainsString('Change clinic-verified information?', $this->myPetsComponent);
-        $this->assertStringContainsString('To change saved details, please visit Bethlehem Animal Clinic.', $this->myPetsPage);
+        $this->assertStringNotContainsString('To change saved details, please visit Bethlehem Animal Clinic.', $this->myPetsPage);
+        $this->assertStringNotContainsString('petMedicalLock', $this->myPetsPage);
     }
 
     public function test_pet_archive_and_restore_use_the_customer_custom_modal(): void

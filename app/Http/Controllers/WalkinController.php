@@ -301,7 +301,7 @@ class WalkinController extends Controller
     private function resolveAllPets(array $pets, ?User $user, ?UnregisteredCustomer $unregisteredCustomer): array
     {
         return array_map(function (array $petData, int|string $index) use ($user, $unregisteredCustomer) {
-            $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $petData);
+            $pet = $this->findOrCreatePet($user, $unregisteredCustomer, $petData, $index);
             $size = $pet->groomingSize();
             if ($size && PetWeightSize::isValidSize($pet->species, $size)) {
                 $pet->confirmClinicSize($size);
@@ -355,6 +355,7 @@ class WalkinController extends Controller
         ?User $user,
         ?UnregisteredCustomer $unregisteredCustomer,
         array $petData,
+        int|string $index,
     ): Pet {
         $petData['pet_name'] = Pet::normalizeName($petData['pet_name']);
         $ownerPetQuery = Pet::query()
@@ -375,6 +376,10 @@ class WalkinController extends Controller
                     'pets' => ['One of the selected pets does not belong to this customer.'],
                 ]);
             }
+
+            \Illuminate\Support\Facades\Validator::make(['pets' => [$index => [...$petData, 'species' => $existing->species]]], [
+                "pets.{$index}.weight" => ['nullable', new \App\Rules\ValidPetWeight(existingWeight: $existing->weight)],
+            ])->validate();
 
             return $this->updateWalkInPetDetails($existing, $petData);
         }

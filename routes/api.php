@@ -248,6 +248,8 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
 
     // Clinic administration — available only to the project's staff/admin roles.
     Route::middleware(['role:admin,staff', 'clinic:access'])->group(function () {
+        Route::put('/admin/clinic/pets/{id}', [PetController::class, 'adminUpdate'])
+            ->middleware('clinic:clinical')->name('clinic.pets.update');
         Route::get('/admin/clinic-services/options', [ClinicServiceController::class, 'options'])->middleware('clinic:services_view');
         Route::get('/admin/clinic-services', [ClinicServiceController::class, 'index'])->middleware('clinic:services_view');
         Route::post('/admin/clinic-services', [ClinicServiceController::class, 'store'])->middleware('clinic:services_manage');

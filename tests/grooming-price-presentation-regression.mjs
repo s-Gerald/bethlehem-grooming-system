@@ -5,7 +5,7 @@ import { createGroomingEstimateFlow } from "../scripts/components/grooming-estim
 import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
 import * as draft from "../scripts/services/booking-draft-service.js";
 import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
-import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261011-v3";
+import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261107-v1";
 import * as petGroomers from "../scripts/components/pet-groomer-selection.js?services=20261026";
 
 import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105";

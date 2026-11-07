@@ -701,7 +701,8 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
-        $invalid = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true)['invalid_weights'];
+        $cases = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true);
+        $invalid = [...$cases['invalid_weights'], ...$cases['below_profile_minimum']];
         foreach ($invalid as $weight) {
             $pet = ['pet_name' => 'Invalid decimal', 'species' => 'Dog', 'weight' => $weight];
             $this->authenticateAs('customer');
