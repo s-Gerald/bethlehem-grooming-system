@@ -19,6 +19,22 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
+    public function test_registration_review_cannot_claim_a_pending_username_with_different_case(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser([...$this->registrationPayload(), 'username' => 'Reserved.Name'])->assertAccepted();
+        $second = [...$this->registrationPayload(), 'username' => 'Other.Name', 'email' => 'othercustomer@gmail.com', 'phone' => '09171111222'];
+        $this->registerInBrowser($second)->assertAccepted();
+        $pending = PendingCustomerRegistration::where('email', $second['email'])->sole();
+        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
+        $this->putJson('/api/register/pending', [...$second, 'username' => 'reserved.name',
+            'registration_recovery_token' => $review->json('registration_recovery_token')])
+            ->assertUnprocessable()->assertJsonValidationErrors('username');
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('pending_customer_registrations', 2);
+        $this->assertSame('Other.Name', $pending->fresh()->username);
+    }
+
     public function test_pairing_approves_only_the_bound_original_tab_and_retries_the_same_session(): void
     {
         Notification::fake();
@@ -929,6 +945,8 @@ class EmailVerificationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
 
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
@@ -2020,7 +2038,7 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response),
             'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])->assertOk();
         $this->assertDatabaseHas('users', ['phone' => $phone, 'phone_verified_at' => null]);
-        \Illuminate\Support\Facades\Http::assertNothingSent();
+        \Illuminate\Support\Facades\Http::assertNotSent(fn ($request) => ! str_starts_with($request->url(), 'https://api.pwnedpasswords.com/range/'));
     }
 
     public static function validSignupPhones(): array

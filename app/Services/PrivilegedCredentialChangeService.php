@@ -7,6 +7,8 @@ use App\Models\PrivilegedCredentialChange;
 use App\Models\User;
 use App\Notifications\ConfirmPrivilegedCredentialChangeCodeNotification;
 use App\Support\AccountUsername;
+use App\Rules\AccountPassword;
+use Illuminate\Support\Facades\Validator;
 use App\Support\SecurityCode;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -33,7 +35,7 @@ class PrivilegedCredentialChangeService
             $newUsername = null;
         }
 
-        $changesPassword = filled($newPassword);
+        $changesPassword = $newPassword !== null && $newPassword !== '';
         if ($newUsername === null && ! $changesPassword) {
             throw ValidationException::withMessages([
                 'credentials' => 'Enter a different username or a new password.',
@@ -41,20 +43,36 @@ class PrivilegedCredentialChangeService
         }
 
         if ($newUsername !== null) {
+            Validator::make(['username' => $newUsername], ['username' => AccountUsername::rules()])->validate();
             $this->assertUsernameIsAvailable($newUsername, $target->getKey());
         }
 
         if ($changesPassword && Hash::check((string) $newPassword, $target->password_hash)) {
             throw ValidationException::withMessages([
-                'password' => 'Choose a password that is different from the current password.',
+                'password' => 'Choose a different password.',
             ]);
+        }
+
+        if ($changesPassword) {
+            Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules($target->role, $target->toArray() + ['new_username' => $newUsername])])->validate();
         }
 
         EmailVerificationController::assertMailCanBeDelivered();
 
         return DB::transaction(function () use ($requester, $target, $newUsername, $newPassword, $changesPassword): array {
-            $target = User::query()->whereKey($target->getKey())->lockForUpdate()->firstOrFail();
-            $this->assertRequesterAndTargetAreEligible($requester, $target);
+            $lockedRequester = User::query()->whereKey($requester->getKey())->lockForUpdate()->firstOrFail();
+            $session = $requester->currentAccessToken();
+            if ($session instanceof \Illuminate\Database\Eloquent\Model && $session->exists) {
+                $token = $lockedRequester->tokens()->whereKey($session->getKey())->lockForUpdate()->first();
+                abort_unless($token && app(AccountSessionService::class)->isUsable($token, $lockedRequester), 401, 'Please sign in again.');
+            }
+            $target = $target->is($lockedRequester) ? $lockedRequester
+                : User::query()->whereKey($target->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertRequesterAndTargetAreEligible($lockedRequester, $target);
+            abort_unless(hash_equals((string) $requester->password_hash, (string) $lockedRequester->password_hash), 401, 'Please sign in again.');
+            if ($changesPassword && Hash::check($newPassword, $target->password_hash)) {
+                throw ValidationException::withMessages(['password' => 'Choose a different password.']);
+            }
             $plainCode = $this->generateCode();
             $change = PrivilegedCredentialChange::query()->create([
                 'requested_by_user_id' => $requester->user_id,

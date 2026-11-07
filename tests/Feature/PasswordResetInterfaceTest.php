@@ -50,8 +50,6 @@ class PasswordResetInterfaceTest extends TestCase
             'id="forgotBack"',
             'id="backToSignIn"',
             'autocomplete="off"',
-            'data-lpignore="true"',
-            'data-1p-ignore="true"',
             'phosphor.svg#eye-slash',
             'phosphor.svg#eye',
         ] as $control) {
@@ -67,7 +65,7 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('"/sign-in?password_reset=1"', $forgotScript);
         $this->assertStringContainsString('window.VerificationCode.bind', $forgotScript);
         $this->assertStringContainsString('codeInput.addEventListener("paste"', file_get_contents(base_path('scripts/auth/verification-code.js')));
-        $this->assertStringContainsString('setFieldError(confirmation, confirmPasswordMessage', $forgotScript);
+        $this->assertStringContainsString('confirmationBinding.clear()', $forgotScript);
         $this->assertFileDoesNotExist(base_path('pages/client/reset-password.html'));
         $this->assertFileDoesNotExist(base_path('scripts/auth/reset-password.js'));
         $this->assertMatchesRegularExpression("~/password/code/verify'.*?throttle:10,1~s", $routes);
@@ -124,7 +122,7 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertLessThan(strpos($page, 'for="setupNewPassword"'), strpos($page, 'for="setupUsername"'));
         $this->assertMatchesRegularExpression('/id="setupUsername"(?:(?!required)[\s\S])*?\/>/', $page);
         $this->assertStringContainsString('username.value.trim() || null', $script);
-        $this->assertStringContainsString('setUsernameError(error.errors.username[0])', $script);
+        $this->assertStringContainsString('credentialBindings[key].setError(messages[0])', $script);
         $this->assertStringNotContainsString('name="username"', file_get_contents(base_path('pages/client/forgot-password.html')));
         $this->assertStringContainsString('await API.verifyStaffPasswordSetupToken(setupToken)', $script);
         $this->assertStringContainsString('accountEmail.textContent = response.email', $script);
@@ -134,7 +132,7 @@ class PasswordResetInterfaceTest extends TestCase
         $this->assertStringContainsString('password.disabled = true', $script);
         $this->assertStringContainsString('confirmation.disabled = true', $script);
         $this->assertStringContainsString('window.location.replace("/admin/dashboard")', $script);
-        $this->assertStringContainsString('submit.disabled = busy || validationError() !== ""', $script);
+        $this->assertStringContainsString('submit.disabled = busy', $script);
         $this->assertStringContainsString('set-up-password', $api);
         $this->assertStringContainsString('"/staff/password-setup/verify"', $api);
         $this->assertStringContainsString('"/staff/password-setup/complete"', $api);

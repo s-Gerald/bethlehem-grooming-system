@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let requestedEmail = "";
   let maskedEmail = "";
   let resetGrant = "";
+  let passwordMinimum = 15;
   let expiresAt = 0;
   let resendUntil = 0;
   let verifyUntil = 0;
@@ -50,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const saved = reloading ? JSON.parse(sessionStorage.getItem(recoveryKey) || "null") : null;
     if (saved && typeof saved.requestedEmail === "string" && ["email", "confirmation", "code", "password"].includes(saved.step)) {
       ({ requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step } = saved);
+      passwordMinimum = saved.passwordMinimum === 8 ? 8 : 15;
       emailInput.value = requestedEmail;
     } else {
       sessionStorage.removeItem(recoveryKey);
@@ -66,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (departed) return;
     try {
       sessionStorage.setItem(recoveryKey, JSON.stringify({
-        requestedEmail, maskedEmail, resetGrant, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step,
+        requestedEmail, maskedEmail, resetGrant, passwordMinimum, expiresAt, resendUntil, verifyUntil, resetUntil, failedAttempts, step,
       }));
     } catch { /* Continue in memory when storage is unavailable. */ }
   }
@@ -136,8 +138,8 @@ document.addEventListener("DOMContentLoaded", () => {
     password.value = "";
     confirmation.value = "";
     setError(passwordMessage);
-    setFieldError(password, newPasswordMessage);
-    setFieldError(confirmation, confirmPasswordMessage);
+    passwordBinding.clear();
+    confirmationBinding.clear();
     showStep("email");
     setError(emailMessage, message);
     createAccount.classList.toggle("hidden", true);
@@ -290,6 +292,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await API.verifyPasswordResetCode(requestedEmail, codeInput.value.trim());
       if (currentJourney !== journey) return;
       resetGrant = response.token;
+      passwordMinimum = response.password_min_length === 8 ? 8 : 15;
+      updatePasswordHelp();
       expiresAt = Date.now() + response.expires_in * 1000;
       otp.clear();
       password.value = "";
@@ -314,8 +318,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  password.addEventListener("input", () => setFieldError(password, newPasswordMessage));
-  confirmation.addEventListener("input", () => setFieldError(confirmation, confirmPasswordMessage));
+  newPasswordMessage.className = confirmPasswordMessage.className = "hidden verification-message text-left";
+  const passwordBinding = CredentialPolicy.bind(password, { feedback: newPasswordMessage, validate: () => CredentialPolicy.password(password.value, passwordMinimum) });
+  const confirmationBinding = CredentialPolicy.bind(confirmation, { feedback: confirmPasswordMessage, validate: () => CredentialPolicy.confirmation(confirmation.value, password.value) });
+  passwordForm.noValidate = true;
+  password.addEventListener('input', () => { setError(passwordMessage); confirmationBinding.refresh(); });
+  confirmation.addEventListener('input', () => setError(passwordMessage));
+  function updatePasswordHelp() {
+    document.getElementById('passwordRequirements').textContent = `${passwordMinimum}–64 characters. Use English letters, numbers, or symbols. No spaces at the start or end.`;
+  }
+  updatePasswordHelp();
   emailInput.addEventListener("input", () => {
     emailRevision++;
     setError(emailMessage);
@@ -333,12 +345,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     setError(passwordMessage);
-    setFieldError(password, newPasswordMessage);
-    setFieldError(confirmation, confirmPasswordMessage);
-    const validationError = validatePasswords(password.value, confirmation.value);
-    if (validationError) {
-      if (validationError.field === "confirmation") setFieldError(confirmation, confirmPasswordMessage, validationError.message);
-      else setFieldError(password, newPasswordMessage, validationError.message);
+    passwordBinding.clear();
+    confirmationBinding.clear();
+    const validPassword = passwordBinding.validate();
+    const validConfirmation = confirmationBinding.validate();
+    if (!validPassword || !validConfirmation) {
+      (validPassword ? confirmation : password).focus();
       return;
     }
     busy = true;
@@ -358,9 +370,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentJourney !== journey) return;
       const message = firstApiError(error);
       if (error?.expired) restartRecovery("Your reset session expired. Request a new code.");
-      else if (error?.errors?.password_confirmation) setFieldError(confirmation, confirmPasswordMessage, error.errors.password_confirmation[0] || message);
-      else if (error?.errors?.password || message === "Choose a password that is different from the current password.") {
-        setFieldError(password, newPasswordMessage, error?.errors?.password?.[0] || message);
+      else if (error?.errors?.password_confirmation) { confirmationBinding.setError(error.errors.password_confirmation[0] || message); confirmation.focus(); }
+      else if (error?.errors?.password || message === "Choose a different password.") {
+        passwordBinding.setError(error?.errors?.password?.[0] || message);
+        password.focus();
       } else setError(passwordMessage, error?.status === 429 ? "Too many attempts. Please wait before trying again." : message);
       if (error?.retryAfter) resetUntil = Date.now() + error.retryAfter * 1000;
       saveRecovery();
@@ -392,16 +405,6 @@ document.addEventListener("DOMContentLoaded", () => {
   showStep(resetGrant ? "password" : step);
   startTimer();
 
-  function validatePasswords(value, confirmationValue) {
-    if (!value) return { field: "password", message: "Complete both password fields." };
-    if (!confirmationValue) return { field: "confirmation", message: "Complete both password fields." };
-    if (value !== confirmationValue) return { field: "confirmation", message: "The passwords do not match." };
-    if (value.length < 12 || !/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
-      return { field: "password", message: "Use at least 12 characters with uppercase, lowercase, a number, and a symbol." };
-    }
-    return null;
-  }
-
   function firstApiError(error) {
     const messages = Object.values(error?.errors || {})[0];
     return Array.isArray(messages) && messages[0] ? messages[0] : error?.message || "The password could not be reset.";
@@ -412,12 +415,6 @@ document.addEventListener("DOMContentLoaded", () => {
       ? "verification-message"
       : "hidden verification-message";
     element.textContent = message;
-  }
-
-  function setFieldError(input, element, message = "") {
-    element.className = message ? "verification-message text-left" : "hidden";
-    element.textContent = message;
-    input.setAttribute("aria-invalid", message ? "true" : "false");
   }
 
   function installVisibilityToggle(buttonId, input, closedSelector, openSelector, label) {

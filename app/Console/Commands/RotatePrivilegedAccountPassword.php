@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rules\Password;
+use App\Rules\AccountPassword;
 
 class RotatePrivilegedAccountPassword extends Command
 {
@@ -34,18 +34,26 @@ class RotatePrivilegedAccountPassword extends Command
 
         $password = (string) $this->secret('New password');
         $confirmation = (string) $this->secret('Confirm new password');
+        if (Hash::check($password, $user->password_hash)) {
+            $this->error('Choose a different password.');
+            return self::FAILURE;
+        }
         $validator = Validator::make(
             ['password' => $password, 'password_confirmation' => $confirmation],
             [
-                'password' => [
-                    'required',
-                    'confirmed',
-                    Password::min(12)->mixedCase()->numbers()->symbols(),
-                ],
+                'password' => AccountPassword::rules($user->role, $user->toArray()),
+                'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
             ],
+            AccountPassword::messages(),
         );
 
-        if ($validator->fails()) {
+        try {
+            $invalid = $validator->fails();
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException) {
+            $this->error('Password safety checking is temporarily unavailable. Please try again later.');
+            return self::FAILURE;
+        }
+        if ($invalid) {
             foreach ($validator->errors()->all() as $message) {
                 $this->error($message);
             }

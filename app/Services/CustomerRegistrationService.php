@@ -73,14 +73,20 @@ class CustomerRegistrationService
                 $collisions = PendingCustomerRegistration::query()->where(function ($query) use ($details) {
                     $query->whereRaw(AccountEmail::lookupColumn().' = ?', [$details['email']]);
                     foreach (['phone', 'username'] as $field) {
-                        if (! empty($details[$field])) $query->orWhere($field, $details[$field]);
+                        if (! empty($details[$field])) {
+                            if ($field === 'username') $query->orWhereRaw('LOWER(username) = ?', [Str::lower($details[$field])]);
+                            else $query->orWhere($field, $details[$field]);
+                        }
                     }
                 })->lockForUpdate()->get();
                 foreach ($collisions as $pending) {
                     if (strcasecmp($pending->email, $details['email']) !== 0 || ! self::canContinue($pending, $request)) {
+                        $usernameTaken = ! empty($details['username']) && strcasecmp($pending->username ?? '', $details['username']) === 0;
                         throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                             'success' => false, 'code' => 'registration_pending',
-                            'message' => 'These details are reserved by an unfinished registration. Use its verification email or try again after it expires.',
+                            'message' => $usernameTaken ? 'That username is already in use.'
+                                : 'These details are reserved by an unfinished registration. Use its verification email or try again after it expires.',
+                            ...($usernameTaken ? ['errors' => ['username' => ['That username is already in use.']]] : []),
                             'retry_after' => max(1, ($pending->registration_recovery_expires_at ?? $pending->retentionExpiresAt())->timestamp - now()->timestamp),
                         ], 422)->header('Cache-Control', 'no-store'));
                     }

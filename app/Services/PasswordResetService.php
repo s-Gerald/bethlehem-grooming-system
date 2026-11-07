@@ -9,6 +9,7 @@ use App\Notifications\PasswordChangedNotification;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\SetUpStaffPasswordNotification;
 use App\Support\AccountUsername;
+use App\Rules\AccountPassword;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -101,6 +102,7 @@ class PasswordResetService
             ]);
             return [
                 'status' => 'valid',
+                'password_min_length' => AccountPassword::minimum($user->role),
                 'token' => $grant,
                 'expires_in' => max(0, $request->expires_at->timestamp - now()->timestamp),
             ];
@@ -109,7 +111,16 @@ class PasswordResetService
 
     public function reset(string $plainToken, string $newPassword): array
     {
-        return DB::transaction(function () use ($plainToken, $newPassword): array {
+        $grant = PasswordResetRequest::where('verified_token_hash', hash('sha256', $plainToken))->first();
+        $account = $grant?->user;
+        if (! $grant) return ['status' => 'invalid'];
+        $screened = false;
+        if ($account && $this->userIsEligible($account) && ! $account->requiresPasswordSetup() && now()->lt($grant->expires_at)) {
+            if (Hash::check($newPassword, $account->password_hash)) return ['status' => 'same_password'];
+            Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules($account->role, $account->toArray())])->validate();
+            $screened = true;
+        }
+        return DB::transaction(function () use ($plainToken, $newPassword, $screened): array {
             // Match authenticated identity changes: account before recovery grant.
             $userId = PasswordResetRequest::where('verified_token_hash', hash('sha256', $plainToken))->value('user_id');
             if ($userId) User::whereKey($userId)->lockForUpdate()->first();
@@ -139,10 +150,13 @@ class PasswordResetService
                 return ['status' => 'invalid'];
             }
 
+            if (! $screened) return ['status' => 'invalid'];
+
             if (Hash::check($newPassword, $user->password_hash)) {
                 return ['status' => 'same_password'];
             }
 
+            Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules($user->role, screen: false)])->validate();
             $user->password_hash = Hash::make($newPassword);
             $user->save();
             $user->tokens()->delete();
@@ -181,12 +195,18 @@ class PasswordResetService
         return [
             'status' => 'valid',
             'email' => $this->maskEmail($user->email),
+            'user' => $user,
         ];
     }
 
     public function completeStaffSetup(string $plainToken, string $newPassword, ?string $username = null): array
     {
+        $inspection = $this->inspectStaffSetup($plainToken);
+        if ($inspection['status'] !== 'valid') return $inspection;
+        $account = $inspection['user'];
         $username = trim($username ?? '');
+        if ($username !== '') $this->validateStaffUsername($username);
+        Validator::make(['password' => $newPassword], ['password' => AccountPassword::rules('staff', $account->toArray() + ['new_username' => $username])])->validate();
         while (true) {
             $selectedUsername = null;
             $staff = null;
@@ -211,7 +231,6 @@ class PasswordResetService
 
                     $staff = $user;
                     if ($username !== '') {
-                        $this->validateStaffUsername($username);
                         if (! $this->staffUsernameIsAvailable($username, $user)) {
                             throw ValidationException::withMessages([
                                 'username' => 'That username is already in use.',
@@ -253,8 +272,6 @@ class PasswordResetService
     {
         Validator::make(['username' => $username], [
             'username' => AccountUsername::rules(),
-        ], [
-            'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
         ])->validate();
     }
 
@@ -268,10 +285,11 @@ class PasswordResetService
         $asciiName = Str::ascii(mb_convert_case(mb_strtolower($staff->first_name), MB_CASE_TITLE, 'UTF-8').mb_convert_case(mb_strtolower($staff->last_name), MB_CASE_TITLE, 'UTF-8'));
         $base = preg_replace('/[^A-Za-z0-9._-]/', '', $asciiName) ?? '';
         $base = preg_replace('/^[^A-Za-z]+/', '', $base) ?? '';
-        $base = substr(str_pad($base === '' ? 'Staff' : $base, 3, '0'), 0, 50);
+        $base = rtrim($base, '._-');
+        $base = rtrim(substr(str_pad($base === '' ? 'Staff' : $base, 3, '0'), 0, 30), '._-');
         $username = $base;
         for ($suffix = 2; ! $this->staffUsernameIsAvailable($username, $staff); $suffix++) {
-            $username = substr($base, 0, 50 - strlen((string) $suffix)).$suffix;
+            $username = substr($base, 0, 30 - strlen((string) $suffix)).$suffix;
         }
         $this->validateStaffUsername($username);
 

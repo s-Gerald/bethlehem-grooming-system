@@ -19,7 +19,7 @@ class CustomerPasswordChangeTest extends TestCase
     private string $token;
     private string $deviceCookie;
     private const OLD = 'Existing meadow river password';
-    private const NEW = '  violet lantern meadow river  ';
+    private const NEW = 'violet lantern  meadow river';
 
     protected function setUp(): void
     {
@@ -126,7 +126,7 @@ class CustomerPasswordChangeTest extends TestCase
         $cases = [
             [['current_password' => null], 'current_password'], [['current_password' => 'wrong'], 'current_password'],
             [['password' => self::OLD, 'password_confirmation' => self::OLD], 'password'],
-            [['password' => 'Too short!', 'password_confirmation' => 'Too short!'], 'password'],
+            [['password' => 'orchard', 'password_confirmation' => 'orchard'], 'password'],
             [['password' => 'passwordpassword', 'password_confirmation' => 'passwordpassword'], 'password'],
             [['password_confirmation' => 'different'], 'password_confirmation'],
             [['user_id' => 999], 'user_id'],
@@ -173,6 +173,24 @@ class CustomerPasswordChangeTest extends TestCase
         $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
     }
 
+    public function test_legacy_password_is_verified_exactly_and_screening_holds_no_locks(): void
+    {
+        $legacy = '  café meadow legacy  ';
+        DB::table('users')->where('user_id', $this->customer->getKey())->update(['password_hash' => Hash::make($legacy)]);
+        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::fake(function () {
+            $this->assertSame(0, DB::transactionLevel());
+            return Http::response(str_repeat('A', 35).':0');
+        });
+        $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => trim($legacy)])->assertUnauthorized();
+        $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => $legacy])->assertAccepted();
+        $this->change(['current_password' => trim($legacy)])->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        Http::assertNothingSent();
+        $this->change(['current_password' => $legacy])->assertOk();
+        $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));
+        Http::assertSentCount(1);
+    }
+
     public function test_ip_throttle_limits_attempts_across_accounts(): void
     {
         for ($i = 0; $i < 20; $i++) {
@@ -192,7 +210,7 @@ class CustomerPasswordChangeTest extends TestCase
         foreach ([str_repeat('é', 37), str_repeat('a', 73), "null\0password value"] as $password) {
             $this->change(['password' => $password, 'password_confirmation' => $password])->assertUnprocessable()->assertJsonValidationErrors('password');
         }
-        $password = 'violet meadow '.str_repeat('x', 58); // Exactly 72 bytes.
+        $password = 'violet meadow '.str_repeat('x', 50); // Exactly 64 ASCII characters.
         $this->change(['password' => $password, 'password_confirmation' => $password])->assertOk();
         $this->assertTrue(Hash::check($password, $this->customer->fresh()->password_hash));
     }

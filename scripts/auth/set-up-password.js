@@ -59,37 +59,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  username.addEventListener("input", () => {
-    setUsernameError();
-    updateSubmitState();
-  });
-  username.addEventListener("blur", () => setUsernameError(usernameValidationError()));
-
-  [password, confirmation].forEach((input) => {
-    input.addEventListener("input", () => {
-      setMessage();
-      updateSubmitState();
-    });
-    input.addEventListener("blur", () => {
-      const error = validationError();
-      if (error) setMessage("error", error);
-    });
-  });
+  const credentialBindings = {
+    username: CredentialPolicy.bind(username, { feedback: usernameMessage, validate: () => CredentialPolicy.username(username.value.trim(), false) }),
+    password: CredentialPolicy.bind(password, { validate: () => CredentialPolicy.password(password.value, 15) }),
+    password_confirmation: CredentialPolicy.bind(confirmation, { validate: () => CredentialPolicy.confirmation(confirmation.value, password.value) }),
+  };
+  form.noValidate = true;
+  password.addEventListener('input', () => { setMessage(); credentialBindings.password_confirmation.refresh(); });
+  confirmation.addEventListener('input', () => setMessage());
+  submit.disabled = false;
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const usernameError = usernameValidationError();
-    setUsernameError(usernameError);
-    if (usernameError) {
-      username.focus();
-      return;
-    }
-    const error = validationError();
-    if (error) {
-      setMessage("error", error);
-      updateSubmitState();
-      return;
-    }
+    if (submit.dataset.busy === 'true') return;
+    let first;
+    const fields = { username, password, password_confirmation: confirmation };
+    for (const [key, binding] of Object.entries(credentialBindings)) if (!binding.validate()) first ||= fields[key];
+    if (first) { first.focus(); return; }
 
     setBusy(true);
     setMessage();
@@ -105,12 +91,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       window.location.replace("/admin/dashboard");
     } catch (error) {
-      if (error?.errors?.username?.[0]) {
-        setUsernameError(error.errors.username[0]);
-        setBusy(false);
-        username.focus();
-        return;
+      let first;
+      for (const [key, messages] of Object.entries(error?.errors || {})) {
+        if (!credentialBindings[key]) continue;
+        credentialBindings[key].setError(messages[0]); first ||= fields[key];
       }
+      if (first) { setBusy(false); first.focus(); return; }
       if (error?.expired) {
         showExpiredLink();
         return;
@@ -124,42 +110,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  function usernameValidationError() {
-    const value = username.value.trim();
-    return value && !/^[A-Za-z][A-Za-z0-9._-]{2,49}$/.test(value)
-      ? "Use 3–50 characters: letters, numbers, periods, underscores, or hyphens, beginning with a letter."
-      : "";
-  }
-
-  function setUsernameError(text = "") {
-    usernameMessage.className = text ? "mt-2 text-sm text-red-700" : "hidden";
-    usernameMessage.textContent = text;
-    username.setAttribute("aria-invalid", text ? "true" : "false");
-  }
-
-  function validationError() {
-    if (!password.value || !confirmation.value) return "Complete both password fields.";
-    if (password.value !== confirmation.value) return "The passwords do not match.";
-    if (
-      password.value.length < 12
-      || !/[a-z]/.test(password.value)
-      || !/[A-Z]/.test(password.value)
-      || !/\d/.test(password.value)
-      || !/[^A-Za-z0-9]/.test(password.value)
-    ) {
-      return "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
-    }
-    return "";
-  }
-
-  function updateSubmitState() {
-    if (submit.dataset.busy === "true") return;
-    submit.disabled = validationError() !== "";
-  }
-
   function setBusy(busy) {
     submit.dataset.busy = busy ? "true" : "false";
-    submit.disabled = busy || validationError() !== "";
+    submit.disabled = busy;
     if (submitLabel) submitLabel.textContent = busy ? "Creating Account..." : "Create Account";
   }
 

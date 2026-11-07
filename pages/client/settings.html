@@ -443,7 +443,7 @@
                           id="newPassword"
                           name="password"
                           autocomplete="new-password"
-                          aria-describedby="passwordStrength passwordRequirements newPasswordError"
+                          aria-describedby="newPasswordHelp newPasswordError"
                           class="custom-password-input w-full rounded-xl border border-portal-border px-4 py-3 pr-12 text-portal-text focus:border-portal-accent focus:outline-none"
                           required
                         />
@@ -458,15 +458,7 @@
                           <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#eye"></use></svg>
                         </button>
                       </div>
-                      <p id="passwordStrength" class="mt-2 text-xs font-medium text-portal-muted">
-                        Spaces and passphrases are welcome.
-                      </p>
-                      <ul id="passwordRequirements" class="mt-2 grid gap-1.5 text-xs text-portal-muted sm:grid-cols-2" aria-label="New password requirements">
-                        <li data-password-rule="length" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#check-circle"></use></svg><span>At least 15 characters</span></li>
-                        <li data-password-rule="bytes" class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#check-circle"></use></svg><span>At most 72 bytes (fewer Unicode characters)</span></li>
-                        <li class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#check-circle"></use></svg><span>Different from your current password</span></li>
-                        <li class="flex items-center gap-1.5"><svg class="ph-icon h-3.5 w-3.5 flex-none" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#check-circle"></use></svg><span>No common, predictable or breached passwords</span></li>
-                      </ul>
+                      <p id="newPasswordHelp" class="mt-2 text-xs font-medium text-portal-muted">8–64 characters. Use English letters, numbers, or symbols. No spaces at the start or end.</p>
                       <p id="newPasswordError" class="mt-2 text-xs font-medium text-red-700" hidden aria-live="polite"></p>
                     </div>
 
@@ -483,7 +475,7 @@
                           id="confirmNewPassword"
                           name="password_confirmation"
                           autocomplete="new-password"
-                          aria-describedby="confirmPasswordFeedback confirmNewPasswordError"
+                          aria-describedby="confirmNewPasswordError"
                           class="custom-password-input w-full rounded-xl border border-portal-border px-4 py-3 pr-12 text-portal-text focus:border-portal-accent focus:outline-none"
                           required
                         />
@@ -498,7 +490,6 @@
                           <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#eye"></use></svg>
                         </button>
                       </div>
-                      <p id="confirmPasswordFeedback" class="mt-2 text-xs text-portal-muted" aria-live="polite"></p>
                       <p id="confirmNewPasswordError" class="mt-2 text-xs font-medium text-red-700" hidden aria-live="polite"></p>
                     </div>
                   </div>
@@ -528,6 +519,7 @@
     <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
-    <script src="/scripts/components/client-settings.js?password-change=20261102&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103"></script>
+    <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
+    <script src="/scripts/components/client-settings.js?password-change=20261102&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103&credentials=20261107"></script>
   </body>
 </html>

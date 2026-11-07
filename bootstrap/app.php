@@ -58,7 +58,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 && ($response->getData(true)['code'] ?? null) === 'email_delivery_failed') {
                 return $response;
             }
-            if (request()->is('api/customer/password') && $response instanceof \Illuminate\Http\JsonResponse
+            if ($response instanceof \Illuminate\Http\JsonResponse
                 && ($response->getData(true)['code'] ?? null) === 'password_screening_unavailable') {
                 return $response;
             }

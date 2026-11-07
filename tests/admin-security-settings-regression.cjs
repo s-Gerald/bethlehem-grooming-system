@@ -161,6 +161,7 @@ global.API = {
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/auth/email-delivery.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/account-email.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/human-name.js'), 'utf8'));
+vm.runInThisContext(fs.readFileSync(path.join(root, 'scripts/utils/credential-policy.js'), 'utf8'));
 vm.runInThisContext(componentSource, {
   filename: "scripts/components/admin-settings.js",
 });
@@ -182,6 +183,30 @@ vm.runInThisContext(componentSource, {
   assert.equal(settings.pendingStaffCount, 1);
   assert.equal(settings.deactivatedStaffCount, 1);
   assert.equal(settings.staffAccounts[2].statusLabel, "Deactivated");
+
+  settings.staffPassword.password = 'short';
+  settings.credentialInput('staff', 'password', true);
+  assert.equal(settings.staffPassword.errors.password, 'Use at least 15 characters.');
+  settings.staffPassword.password = '';
+  settings.credentialInput('staff', 'password');
+  assert.equal(settings.staffPassword.errors.password, undefined, 'Deletion clears stale errors while editing');
+  settings.credentialInput('staff', 'password', true);
+  assert.equal(settings.staffPassword.errors.password, 'Enter a new password.');
+  settings.staffPassword.password = 'violet orchard meadow';
+  settings.credentialInput('staff', 'password');
+  assert.equal(settings.staffPassword.errors.password, undefined);
+  settings.staffPassword.confirmation = 'different';
+  settings.credentialInput('staff', 'confirmation', true);
+  assert.equal(settings.staffPassword.errors.confirmation, 'Passwords do not match.');
+  settings.staffPassword.password = 'different';
+  settings.credentialInput('staff', 'password');
+  assert.equal(settings.staffPassword.errors.confirmation, undefined, 'Confirmation uses the latest password');
+  settings.credentialApiError('staff', { errors: { password: ['This password is not safe. Choose another.'] } });
+  settings.staffPassword.password = 'another orchard meadow';
+  settings.credentialInput('staff', 'password');
+  assert.equal(settings.staffPassword.errors.password, undefined, 'Editing clears backend screening feedback');
+  settings.staffPassword.password = settings.staffPassword.confirmation = '';
+  settings.staffPassword.errors = {}; settings.staffPassword.touched = {};
 
   settings.adminPassword.current = "CurrentAdmin!234";
   settings.adminPassword.username = "ClinicAdmin";

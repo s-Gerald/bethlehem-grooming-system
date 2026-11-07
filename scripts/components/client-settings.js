@@ -28,10 +28,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const passwordLabel = document.getElementById('changePasswordLabel');
   const passwordSpinner = document.getElementById('changePasswordSpinner');
   let changingPassword = false;
+  const passwordBindings = {};
   const newPasswordInput = document.getElementById("newPassword");
   const confirmPasswordInput = document.getElementById("confirmNewPassword");
-  const passwordStrength = document.getElementById("passwordStrength");
-  const confirmPasswordFeedback = document.getElementById("confirmPasswordFeedback");
 
   const firstNameInput = document.getElementById("settingsFirstName");
   const lastNameInput = document.getElementById("settingsLastName");
@@ -288,13 +287,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setupForms() {
     logoutBtn?.addEventListener("click", handleLogout);
     for (const [field, input] of Object.entries(passwordFields())) {
-      input?.addEventListener('input', () => setPasswordFieldError(field));
+      passwordBindings[field] = CredentialPolicy.bind(input, {
+        feedback: document.getElementById(`${input.id}Error`),
+        validate: () => passwordFieldMessage(field),
+      });
     }
-    newPasswordInput?.addEventListener("input", () => {
-      updatePasswordStrength();
-      updateConfirmationFeedback();
-    });
-    confirmPasswordInput?.addEventListener("input", updateConfirmationFeedback);
+    newPasswordInput.addEventListener('input', () => passwordBindings.password_confirmation.refresh());
+    currentPasswordInput.addEventListener('input', () => passwordBindings.password.refresh());
 
     passwordForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -393,13 +392,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return { current_password: currentPasswordInput, password: newPasswordInput, password_confirmation: confirmPasswordInput };
   }
 
+  function passwordFieldMessage(field) {
+    if (field === 'current_password') return currentPasswordInput.value ? '' : 'Enter your current password.';
+    if (field === 'password_confirmation') return CredentialPolicy.confirmation(confirmPasswordInput.value, newPasswordInput.value);
+    return CredentialPolicy.password(newPasswordInput.value)
+      || (newPasswordInput.value === currentPasswordInput.value ? 'Choose a different password.' : '');
+  }
   function setPasswordFieldError(field, message = '') {
-    const input = passwordFields()[field];
-    const error = document.getElementById(`${input.id}Error`);
-    error.textContent = message;
-    error.hidden = !message;
-    input.setAttribute('aria-invalid', String(Boolean(message)));
-    input.classList.toggle('!border-red-400', Boolean(message));
+    passwordBindings[field].setError(message);
   }
 
   async function validatePasswordForm() {
@@ -407,19 +407,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     hideStatus();
     const fields = passwordFields();
     for (const field of Object.keys(fields)) setPasswordFieldError(field);
-    const errors = {};
-    if (!currentPasswordInput.value) errors.current_password = 'Enter your current password.';
-    const rules = getPasswordRules(newPasswordInput.value);
-    if (!rules.length) errors.password = 'Use at least 15 characters.';
-    else if (!rules.bytes) errors.password = 'Use at most 72 bytes. Unicode characters can use more than one byte.';
-    else if (newPasswordInput.value.includes('\0')) errors.password = 'Remove null characters from your password.';
-    else if (newPasswordInput.value === currentPasswordInput.value) errors.password = 'New password must be different from the current password.';
-    if (!confirmPasswordInput.value || newPasswordInput.value !== confirmPasswordInput.value) errors.password_confirmation = 'New password and confirmation do not match.';
-    if (Object.keys(errors).length) {
-      for (const [field, message] of Object.entries(errors)) setPasswordFieldError(field, message);
-      fields[Object.keys(errors)[0]].focus();
-      return;
+    let first;
+    for (const [field, binding] of Object.entries(passwordBindings)) {
+      if (!binding.validate()) first ||= fields[field];
     }
+    if (first) { first.focus(); return; }
 
     changingPassword = true;
     passwordForm.setAttribute('aria-busy', 'true');
@@ -457,60 +449,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       passwordLabel.textContent = 'Change Password';
       passwordSpinner.classList.add('hidden');
     }
-  }
-
-  function getPasswordRules(value) {
-    return {
-      length: Array.from(value).length >= 15,
-      bytes: new TextEncoder().encode(value).length <= 72,
-    };
-  }
-
-  function updatePasswordStrength() {
-    if (!passwordStrength || !newPasswordInput) return;
-
-    const value = newPasswordInput.value;
-    const rules = getPasswordRules(value);
-    const complete = Object.values(rules).every(Boolean);
-
-    document.querySelectorAll("[data-password-rule]").forEach((item) => {
-      const satisfied = Boolean(value && rules[item.dataset.passwordRule]);
-      item.classList.toggle("text-green-700", satisfied);
-      item.classList.toggle("text-portal-muted", !satisfied);
-    });
-
-    newPasswordInput.classList.toggle("border-green-500", Boolean(value && complete));
-    newPasswordInput.classList.toggle("border-red-400", Boolean(value && !complete));
-    newPasswordInput.classList.toggle("border-portal-border", !value);
-    newPasswordInput.setAttribute("aria-invalid", String(Boolean(value && !complete)));
-
-    passwordStrength.textContent = !value
-      ? "Spaces and passphrases are welcome."
-      : complete
-        ? "Length is valid. Password safety is checked when you submit."
-        : "Use at least 15 characters and no more than 72 bytes.";
-    passwordStrength.classList.toggle("text-green-700", Boolean(value && complete));
-    passwordStrength.classList.toggle("text-red-700", Boolean(value && !complete));
-    passwordStrength.classList.toggle("text-portal-muted", !value);
-  }
-
-  function updateConfirmationFeedback() {
-    if (!confirmPasswordInput || !confirmPasswordFeedback) return;
-
-    const value = confirmPasswordInput.value;
-    const matches = value === newPasswordInput.value;
-    confirmPasswordFeedback.textContent = !value
-      ? ""
-      : matches
-        ? "Passwords match."
-        : "Passwords do not match.";
-    confirmPasswordFeedback.classList.toggle("text-green-700", Boolean(value && matches));
-    confirmPasswordFeedback.classList.toggle("text-red-700", Boolean(value && !matches));
-    confirmPasswordFeedback.classList.toggle("text-portal-muted", !value);
-    confirmPasswordInput.classList.toggle("border-green-500", Boolean(value && matches));
-    confirmPasswordInput.classList.toggle("border-red-400", Boolean(value && !matches));
-    confirmPasswordInput.classList.toggle("border-portal-border", !value);
-    confirmPasswordInput.setAttribute("aria-invalid", String(Boolean(value && !matches)));
   }
 
   async function handleLogout() {

@@ -11,7 +11,7 @@ use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
 use App\Notifications\PasswordChangedNotification;
-use App\Rules\CustomerPassword;
+use App\Rules\AccountPassword;
 use App\Services\AccountSessionService;
 use App\Services\AuthenticationEmailPolicy;
 use App\Services\AuthenticationMailDelivery;
@@ -37,16 +37,22 @@ class CustomerController extends Controller
         }
         $data = $request->validate([
             'current_password' => ['required', 'string', 'max:4096'],
-            'password' => ['required', 'string', 'min:15', 'max:72'],
+            'password' => AccountPassword::rules('customer', screen: false),
             'password_confirmation' => ['required', 'string', 'same:password'],
-        ], [
+        ], AccountPassword::messages() + [
             'current_password.required' => 'Enter your current password.',
-            'password.min' => 'Use at least 15 characters.',
-            'password_confirmation.same' => 'New password and confirmation do not match.',
         ]);
 
-        // session.active holds account -> token locks for this mutation. Re-read
-        // both here as well: stale authenticated models must never authorize replay.
+        if (! Hash::check($data['current_password'], $request->user()->password_hash)) {
+            throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
+        }
+        if (Hash::check($data['password'], $request->user()->password_hash)) {
+            throw ValidationException::withMessages(['password' => 'Choose a different password.']);
+        }
+        Validator::make($data, ['password' => AccountPassword::rules('customer', $request->user()->toArray())])->validate();
+
+        // Screening runs before locks. Recheck account -> token authorization when
+        // saving so a revoked or replaced session cannot authorize a late change.
         DB::transaction(function () use ($request, $data): void {
             $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
             $policy = app(AccountSessionService::class);
@@ -58,11 +64,8 @@ class CustomerController extends Controller
                 throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
             }
             if (Hash::check($data['password'], $user->password_hash)) {
-                throw ValidationException::withMessages(['password' => 'New password must be different from the current password.']);
+                throw ValidationException::withMessages(['password' => 'Choose a different password.']);
             }
-            Validator::make(['password' => $data['password']], [
-                'password' => [new CustomerPassword($user)],
-            ])->validate();
 
             $user->password_hash = Hash::make($data['password']);
             $user->save(); // Existing User hook revokes all remembered devices once.

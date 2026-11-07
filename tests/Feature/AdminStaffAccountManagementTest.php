@@ -26,9 +26,35 @@ use Tests\TestCase;
 
 class AdminStaffAccountManagementTest extends TestCase
 {
+    public function test_failed_setup_screening_preserves_the_invitation_and_unmodified_account(): void
+    {
+        [$staff, $token] = $this->inviteStaff();
+        $placeholder = $staff->password_hash;
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+        \Illuminate\Support\Facades\Http::fake(function () {
+            $this->assertSame(0, \Illuminate\Support\Facades\DB::transactionLevel());
+            return \Illuminate\Support\Facades\Http::response('', 503);
+        });
+        $this->postJson('/api/staff/password-setup/complete', ['token' => $token,
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow'])
+            ->assertStatus(503)->assertJsonPath('code', 'password_screening_unavailable');
+        $this->assertSame($placeholder, $staff->fresh()->password_hash);
+        $this->assertFalse($staff->fresh()->is_active);
+        $this->assertNull($staff->fresh()->username);
+        $this->assertDatabaseHas('password_reset_requests', ['token_hash' => hash('sha256', $token)]);
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
+        $this->postJson('/api/staff/password-setup/complete', ['token' => $token,
+            'password' => 'violet orchards', 'password_confirmation' => 'violet orchards'])->assertOk();
+        $this->assertTrue(Hash::check('violet orchards', $staff->fresh()->password_hash));
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
 
         Schema::create('users', function (Blueprint $table): void {
             $table->increments('user_id');
@@ -465,21 +491,21 @@ class AdminStaffAccountManagementTest extends TestCase
         ];
     }
 
-    public function test_generated_username_reserves_room_for_suffix_within_fifty_characters(): void
+    public function test_generated_username_reserves_room_for_suffix_within_thirty_characters(): void
     {
         $firstName = str_repeat('a', 60);
-        $base = ucfirst(str_repeat('a', 50));
+        $base = ucfirst(str_repeat('a', 30));
         [$staff, $token] = $this->inviteStaff($firstName, 'Smith');
         $this->createUser('staff', 'existing@gmail.com', $base);
-        $this->createUser('staff', 'second@gmail.com', substr($base, 0, 49).'2');
+        $this->createUser('staff', 'second@gmail.com', substr($base, 0, 29).'2');
 
         $this->postJson('/api/staff/password-setup/complete', [
             'token' => $token,
             'username' => null,
             'password' => 'CreatedPassword!234',
             'password_confirmation' => 'CreatedPassword!234',
-        ])->assertOk()->assertJsonPath('user.username', substr($base, 0, 49).'3');
-        $this->assertSame(50, strlen($staff->fresh()->username));
+        ])->assertOk()->assertJsonPath('user.username', substr($base, 0, 29).'3');
+        $this->assertSame(30, strlen($staff->fresh()->username));
     }
 
     #[DataProvider('fallbackNames')]

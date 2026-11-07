@@ -3,6 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Rules\AccountPassword;
+use App\Support\AccountUsername;
+use Illuminate\Support\Facades\Validator;
 use App\Support\StaffRole;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -50,13 +53,23 @@ class StaffSeeder extends Seeder
         if (! $staff->exists) {
             $staff->fill(StaffRole::fields('grooming_receptionist'));
         }
+        Validator::make(['username' => $username], ['username' => AccountUsername::rules(unchanged: $staff->username)])->validate();
+        if ($username !== $staff->username && ! AccountUsername::isAvailable($username, $staff->getKey() ?? 0, staffEmail: $email)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['username' => 'That username is already in use.']);
+        }
+        $changesPassword = ! $staff->exists || ! Hash::check($credentials['password'], $staff->password_hash);
+        if ($changesPassword) {
+            Validator::make(['password' => $credentials['password']], [
+                'password' => AccountPassword::rules('staff', ['username' => $username, 'email' => $email]),
+            ])->validate();
+        }
         $staff->fill([
             'first_name' => 'Grooming',
             'last_name' => 'Staff',
             'username' => $username,
             'email' => $email,
             'phone' => $credentials['phone'],
-            'password_hash' => Hash::make($credentials['password']),
+            'password_hash' => $changesPassword ? Hash::make($credentials['password']) : $staff->password_hash,
             'role' => 'staff',
             'customer_tier' => 'new',
             'is_active' => 1,
@@ -75,20 +88,12 @@ class StaffSeeder extends Seeder
 
     private function validateCredentials(array $credentials): void
     {
-        if (! preg_match('/^[A-Za-z][A-Za-z0-9._-]{2,49}$/', trim($credentials['username']))) {
-            throw new InvalidArgumentException('STAFF_SEED_USERNAME must be a valid login username.');
-        }
-
         if (! filter_var($credentials['email'], FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('STAFF_SEED_EMAIL must be a valid email address.');
         }
 
         if (! preg_match('/^09\d{9}$/', $credentials['phone'])) {
             throw new InvalidArgumentException('STAFF_SEED_PHONE must be an 11-digit Philippine mobile number.');
-        }
-
-        if (strlen($credentials['password']) < 8) {
-            throw new InvalidArgumentException('STAFF_SEED_PASSWORD must contain at least 8 characters.');
         }
     }
 }

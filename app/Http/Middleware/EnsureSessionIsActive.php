@@ -27,9 +27,10 @@ class EnsureSessionIsActive
                 : response()->json(['message' => 'Please sign in again.'], 401);
         }
 
-        // Email changes revalidate account/session inside their own retryable
-        // transaction. Keep that transaction outside the HTTP exception renderer.
-        $ownsTransaction = $request->routeIs('staff.email-change.*', 'admin.staff-recovery.*');
+        // Credential changes revalidate account/session inside their own mutation
+        // transaction. Password screening must finish before those locks are held.
+        $ownsTransaction = $request->routeIs('staff.email-change.*', 'admin.staff-recovery.*')
+            || $request->is('api/customer/password', 'api/settings/security/password-change', 'api/admin/security/account/credential-change');
         $lockAccount = (! $request->isMethodSafe() && ! $ownsTransaction)
             || $request->attributes->get('lock_account_for_expiration', false);
         $response = DB::transaction(function () use ($request, $accessToken, $next, $ownsTransaction, $lockAccount) {

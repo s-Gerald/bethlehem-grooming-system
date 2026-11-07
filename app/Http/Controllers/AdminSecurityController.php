@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
+use App\Rules\AccountPassword;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -85,7 +85,7 @@ class AdminSecurityController extends Controller
 
         if (! Hash::check($data['current_password'], $admin->password_hash)) {
             throw ValidationException::withMessages([
-                'current_password' => 'The current password is incorrect.',
+                'current_password' => 'Incorrect current password.',
             ]);
         }
 
@@ -119,7 +119,7 @@ class AdminSecurityController extends Controller
                         throw ValidationException::withMessages(['current_password' => 'Enter your current password.']);
                     }
                     if (! Hash::check($data['current_password'], $staff->password_hash)) {
-                        throw ValidationException::withMessages(['current_password' => 'The current password is incorrect.']);
+                        throw ValidationException::withMessages(['current_password' => 'Incorrect current password.']);
                     }
                 }
 
@@ -168,11 +168,10 @@ class AdminSecurityController extends Controller
         return $request->validate([
             'first_name' => \App\Support\HumanName::rules(),
             'last_name' => \App\Support\HumanName::rules(),
-            'username' => AccountUsername::rules(),
+            'username' => AccountUsername::rules(unchanged: $request->user()->username),
             'current_password' => ['nullable', 'string'],
         ], [
             'username.required' => 'Enter a username.',
-            'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
         ]);
     }
 
@@ -189,25 +188,20 @@ class AdminSecurityController extends Controller
     ) {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => [
-                'required',
-                'string',
-                'confirmed',
-                Password::min(12)->mixedCase()->numbers()->symbols(),
-            ],
-            'password_confirmation' => ['required', 'string'],
+            'password' => AccountPassword::rules('staff', screen: false),
+            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
             'username' => ['prohibited'],
             'email' => ['prohibited'],
             'role' => ['prohibited'],
             'staff_type' => ['prohibited'],
             'staff_subrole' => ['prohibited'],
             'active' => ['prohibited'],
-        ]);
+        ], AccountPassword::messages());
         $staff = $request->user();
 
         if (! Hash::check($data['current_password'], $staff->password_hash)) {
             throw ValidationException::withMessages([
-                'current_password' => 'The current password is incorrect.',
+                'current_password' => 'Incorrect current password.',
             ]);
         }
 
@@ -579,6 +573,8 @@ class AdminSecurityController extends Controller
             throw $exception;
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
             throw $exception;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+            throw $exception;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -607,17 +603,10 @@ class AdminSecurityController extends Controller
             'current_password' => $requireCurrentPassword
                 ? ['required', 'string']
                 : ['prohibited'],
-            'username' => AccountUsername::rules('nullable'),
-            'password' => [
-                'nullable',
-                'string',
-                'confirmed',
-                Password::min(12)->mixedCase()->numbers()->symbols(),
-            ],
-            'password_confirmation' => ['nullable', 'string'],
-        ], [
-            'username.regex' => 'Use letters, numbers, periods, underscores, or hyphens, beginning with a letter.',
-        ]);
+            'username' => AccountUsername::rules('nullable', $request->user()->username),
+            'password' => AccountPassword::rules('admin', presence: 'nullable', screen: false),
+            'password_confirmation' => ['bail', 'required_with:password', 'nullable', 'string', 'same:password'],
+        ], AccountPassword::messages());
     }
 
     public function accountPayload(User $user): array

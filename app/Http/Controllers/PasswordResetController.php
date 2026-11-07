@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\PasswordResetService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\Password;
+use App\Rules\AccountPassword;
 use Throwable;
 
 class PasswordResetController extends Controller
@@ -77,6 +77,7 @@ class PasswordResetController extends Controller
             'success' => true,
             'token' => $result['token'],
             'expires_in' => $result['expires_in'],
+            'password_min_length' => $result['password_min_length'],
         ]);
     }
 
@@ -140,17 +141,16 @@ class PasswordResetController extends Controller
             'password' => [
                 'required',
                 'string',
-                'confirmed',
-                Password::min(12)->mixedCase()->numbers()->symbols(),
             ],
-            'password_confirmation' => ['required', 'string'],
-        ]);
+            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
+        ], AccountPassword::messages());
         $result = $passwordResets->reset($data['token'], $data['password']);
 
         if ($result['status'] === 'same_password') {
             return response()->json([
                 'success' => false,
-                'message' => 'Choose a password that is different from the current password.',
+                'message' => 'Choose a different password.',
+                'errors' => ['password' => ['Choose a different password.']],
             ], 422);
         }
 
@@ -176,11 +176,9 @@ class PasswordResetController extends Controller
             'password' => [
                 'required',
                 'string',
-                'confirmed',
-                Password::min(12)->mixedCase()->numbers()->symbols(),
             ],
-            'password_confirmation' => ['required', 'string'],
-        ]);
+            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
+        ], AccountPassword::messages());
         $result = $passwordResets->completeStaffSetup($data['token'], $data['password'], $data['username'] ?? null);
 
         if ($result['status'] === 'expired') {

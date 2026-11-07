@@ -14,6 +14,62 @@ use Tests\TestCase;
 
 class AdminCredentialChangeTest extends TestCase
 {
+    public function test_username_only_change_does_not_screen_a_password(): void
+    {
+        Notification::fake();
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170009123', 'Admin');
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/admin/security/account/credential-change', [
+            'current_password' => 'CurrentAdmin!234', 'username' => 'Another.Admin',
+        ])->assertAccepted();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        $this->assertFalse(PrivilegedCredentialChange::sole()->changes_password);
+    }
+
+    public function test_unchanged_legacy_usernames_do_not_block_other_credential_or_profile_updates(): void
+    {
+        Notification::fake();
+        $legacy = str_repeat('legacy', 6).' username.';
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170009123', $legacy);
+        Sanctum::actingAs($admin);
+        $this->postJson('/api/admin/security/account/credential-change', [
+            'current_password' => 'CurrentAdmin!234', 'username' => $legacy,
+            'password' => 'violet orchard meadow', 'password_confirmation' => 'violet orchard meadow',
+        ])->assertAccepted();
+        $this->assertSame($legacy, $admin->fresh()->username);
+        $this->assertNull(PrivilegedCredentialChange::sole()->new_username);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        $staff = $this->createUser('staff', 'staff@gmail.com', '09170009124', $legacy.'2');
+        $staff->update(['staff_type' => 'clinic', 'staff_subrole' => 'veterinarian']);
+        Sanctum::actingAs($staff);
+        $this->patchJson('/api/settings/security/profile', [
+            'first_name' => 'Updated', 'last_name' => $staff->last_name, 'username' => $staff->username,
+        ])->assertOk();
+        $this->assertSame($legacy.'2', $staff->fresh()->username);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
+    public function test_screening_failure_creates_no_pending_change_and_rechecks_session_after_lookup(): void
+    {
+        Notification::fake();
+        $admin = $this->createUser('admin', 'admin@gmail.com', '09170009123', 'Admin');
+        $token = $admin->createToken('auth_token')->plainTextToken;
+        $this->useEmailToken($token);
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+        \Illuminate\Support\Facades\Http::fake(function () use ($admin) {
+            $this->assertSame(0, \Illuminate\Support\Facades\DB::transactionLevel());
+            $admin->tokens()->delete(); // Session revoked while the external lookup is in flight.
+            return \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0');
+        });
+        $this->postJson('/api/admin/security/account/credential-change', [
+            'current_password' => 'CurrentAdmin!234', 'password' => 'violet orchard meadow',
+            'password_confirmation' => 'violet orchard meadow',
+        ])->assertUnauthorized();
+        $this->assertDatabaseCount('privileged_credential_changes', 0);
+        $this->assertTrue(Hash::check('CurrentAdmin!234', $admin->fresh()->password_hash));
+        Notification::assertNothingSent();
+    }
+
     public function test_login_challenge_forward_migration_preserves_expiry_and_independent_verification(): void
     {
         Notification::fake();
@@ -42,6 +98,8 @@ class AdminCredentialChangeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
         if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql'
             && (! preg_match('/\Abethlehem_email_test_[a-f0-9]{12}\z/', (string) config('database.connections.mysql.database'))
                 || ! in_array(config('database.connections.mysql.host'), ['localhost', '127.0.0.1', '::1'], true))) {
@@ -1252,7 +1310,8 @@ class AdminCredentialChangeTest extends TestCase
         $this->postJson('/api/sign-in', ['identifier' => 'current@gmail.com', 'password' => 'CurrentAdmin!234'])->assertUnauthorized();
         $this->postJson('/api/sign-in', ['identifier' => 'new@gmail.com', 'password' => 'CurrentAdmin!234'])->assertAccepted();
         Notification::assertSentTo($staff, \App\Notifications\ConfirmLoginNotification::class, fn ($notice, $channels, $recipient) => $recipient->email === 'new@gmail.com');
-        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertAccepted();
+        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertUnprocessable()
+            ->assertJsonPath('code', $staff->fresh()->hasEmailRecoveryHold() ? 'password_reset_unavailable' : 'account_not_found');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         $this->travel(61)->seconds();
         app(\App\Services\PasswordResetService::class)->sendCode('new@gmail.com');
@@ -1277,7 +1336,8 @@ class AdminCredentialChangeTest extends TestCase
         $staleChallenge->save();
         $this->postJson('/api/email/login/confirm', ['poll_token' => $login['poll_token'], 'code' => $loginCode])->assertForbidden();
         $this->travel(61)->seconds();
-        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertAccepted();
+        $this->postJson('/api/password/forgot', ['email' => 'current@gmail.com'])->assertUnprocessable()
+            ->assertJsonPath('code', $staff->fresh()->hasEmailRecoveryHold() ? 'password_reset_unavailable' : 'account_not_found');
         Notification::assertNotSentTo($staff, \App\Notifications\PasswordResetCodeNotification::class);
         try { app(\App\Services\AccountSessionService::class)->issue($staff); $this->fail('Hold allowed session issuance.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403, $error->getStatusCode()); }

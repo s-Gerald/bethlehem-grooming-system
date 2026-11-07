@@ -183,7 +183,7 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             'openSecurityVerification(response)',
             'password_setup_required',
             'statusLabel:',
-            'password.length < 12',
+            'CredentialPolicy.password(form.password, 15',
         ] as $behavior) {
             $this->assertStringContainsString($behavior, $component);
         }
@@ -210,11 +210,11 @@ class AdminSecuritySettingsInterfaceTest extends TestCase
             'x-show="isStaff" class="space-y-6"',
         );
 
-        $this->assertStringNotContainsString('autocomplete="current-password"', $adminSecurity);
-        $this->assertStringNotContainsString('autocomplete="new-password"', $adminSecurity);
-        $this->assertSame(12, substr_count($adminSecurity, 'data-lpignore="true"'));
-        $this->assertSame(12, substr_count($adminSecurity, 'data-1p-ignore'));
-        $this->assertSame(12, substr_count($adminSecurity, 'data-bwignore'));
+        $this->assertStringContainsString('autocomplete="current-password"', $adminSecurity);
+        $this->assertStringContainsString('autocomplete="new-password"', $adminSecurity);
+        $this->assertSame(8, substr_count($adminSecurity, 'data-lpignore="true"'));
+        $this->assertSame(8, substr_count($adminSecurity, 'data-1p-ignore'));
+        $this->assertSame(8, substr_count($adminSecurity, 'data-bwignore'));
 
         $this->assertStringContainsString('autocomplete="username"', $signIn);
         $this->assertStringContainsString('autocomplete="current-password"', $signIn);

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use App\Support\AccountEmail;
+use App\Support\AccountUsername;
+use App\Rules\AccountPassword;
 use App\Services\LoginEmailChallengeService;
 use App\Services\CustomerRegistrationService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -32,11 +34,10 @@ class AuthController extends Controller
         $browserToken = CustomerRegistrationService::browserToken($request);
 
         $phone = $request->input('phone');
+        $username = $request->input('username');
         $request->merge([
             'email' => AccountEmail::normalize((string) $request->input('email')),
-            'username' => filled($request->input('username'))
-                ? trim((string) $request->input('username'))
-                : null,
+            'username' => is_string($username) ? (trim($username) === '' ? null : trim($username)) : $username,
             'phone' => is_string($phone) && trim($phone) === '' ? null : \App\Support\PhilippineMobile::normalize($phone),
         ]);
 
@@ -60,6 +61,17 @@ class AuthController extends Controller
             }
         }
         PendingCustomerRegistration::pruneExpired();
+        $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
+        $reviewHash = hash('sha256', $credential['registration_recovery_token']);
+        $review = User::where('registration_recovery_token_hash', $reviewHash)->first()
+            ?? PendingCustomerRegistration::withActiveReview()->where('registration_recovery_token_hash', $reviewHash)->first();
+        abort_unless($review && $review->registration_recovery_expires_at && now()->lt($review->registration_recovery_expires_at)
+            && (! $review instanceof User || CustomerRegistrationService::recoverableUser($review)), 422, 'This registration review has expired. Verify your email again.');
+        abort_unless(strcasecmp($request->input('email'), $review->email) === 0, 422, 'Use the email address you verified.');
+        \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'password' => AccountPassword::rules('customer', $request->all()),
+            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
+        ], AccountPassword::messages())->validate();
 
         try {
             $result = DB::transaction(function () use ($request) {
@@ -100,12 +112,7 @@ class AuthController extends Controller
         $data = $request->validate([
             'first_name' => \App\Support\HumanName::rules(),
             'last_name' => \App\Support\HumanName::rules(),
-            'username' => [
-                'nullable',
-                'string',
-                'max:50',
-                ...($checkAvailability ? [Rule::unique('pending_customer_registrations', 'username')->ignore($pendingRegistration?->getKey())] : []),
-            ],
+            'username' => AccountUsername::rules('nullable', $legacy?->username),
             'phone' => [
                 'nullable',
                 ...\App\Support\PhilippineMobile::rules(required: false),
@@ -115,11 +122,17 @@ class AuthController extends Controller
                 ...(($existing && strcasecmp($existing->email, $request->input('email')) === 0)
                     ? ['required', 'email', 'max:150'] : AccountEmail::rules()),
             ],
-            'password' => 'required|string|min:8|max:100|confirmed',
+            'password' => AccountPassword::rules('customer', $request->all(), screen: ! $request->isMethod('put')),
+            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
             'terms_accepted' => ['required', 'accepted'],
-        ], ['terms_accepted.required' => 'Please agree to the Terms and Conditions.',
+        ], AccountPassword::messages() + ['terms_accepted.required' => 'Please agree to the Terms and Conditions.',
             'terms_accepted.accepted' => 'Please agree to the Terms and Conditions.']);
         unset($data['terms_accepted']);
+        if ($checkAvailability && ! empty($data['username']) && ! AccountUsername::isAvailable(
+            $data['username'], $legacy?->getKey() ?? 0, true, registration: $pendingRegistration,
+        )) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['username' => 'That username is already in use.']);
+        }
         $data['terms_accepted_version'] = CustomerRegistrationService::TERMS_VERSION;
         $data['terms_accepted_at'] = now()->toDateTimeString();
         foreach (['first_name', 'last_name'] as $field) {

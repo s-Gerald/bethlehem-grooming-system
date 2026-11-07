@@ -15,6 +15,8 @@ class PrivilegedCredentialSecurityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
 
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
@@ -63,12 +65,12 @@ class PrivilegedCredentialSecurityTest extends TestCase
         $this->artisan('account:rotate-privileged-password', [
             'identifier' => $admin->email,
         ])
-            ->expectsQuestion('New password', 'NewStrong!234')
-            ->expectsQuestion('Confirm new password', 'NewStrong!234')
+            ->expectsQuestion('New password', 'NewStrong!234567')
+            ->expectsQuestion('Confirm new password', 'NewStrong!234567')
             ->expectsOutput("Password rotated and active sessions revoked for {$admin->email}.")
             ->assertSuccessful();
 
-        $this->assertTrue(Hash::check('NewStrong!234', $admin->fresh()->password_hash));
+        $this->assertTrue(Hash::check('NewStrong!234567', $admin->fresh()->password_hash));
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -100,7 +102,7 @@ class PrivilegedCredentialSecurityTest extends TestCase
             'username' => 'Admin',
             'email' => 'old-admin@example.test',
             'phone' => '09170000103',
-            'password' => 'StrongAdmin!234',
+            'password' => 'StrongAdmin!2345',
         ]);
 
         $this->seed(AdminSeeder::class);
@@ -136,7 +138,7 @@ class PrivilegedCredentialSecurityTest extends TestCase
             'username' => 'groomingstaff',
             'email' => 'bethlehem.staff.test@gmail.com',
             'phone' => '09170000104',
-            'password' => 'StrongStaff!234',
+            'password' => 'StrongStaff!2345',
         ]);
 
         $this->seed(StaffSeeder::class);
@@ -154,7 +156,7 @@ class PrivilegedCredentialSecurityTest extends TestCase
             'staff_subrole' => 'grooming_receptionist',
         ]);
         $this->assertTrue(Hash::check(
-            'StrongStaff!234',
+            'StrongStaff!2345',
             $legacyStaff->fresh()->password_hash,
         ));
     }
@@ -163,7 +165,7 @@ class PrivilegedCredentialSecurityTest extends TestCase
     {
         config()->set('app.privileged_seed_accounts.staff', [
             'username' => 'groomingstaff', 'email' => 'seeded@example.test',
-            'phone' => '09170000104', 'password' => 'StrongStaff!234',
+            'phone' => '09170000104', 'password' => 'StrongStaff!2345',
         ]);
         $this->seed(StaffSeeder::class);
         $staff = User::query()->sole();

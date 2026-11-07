@@ -72,6 +72,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const credentialBindings = {
+    username: CredentialPolicy.bind(usernameInput, { feedback: fieldErrors.get('username'), validate: () => CredentialPolicy.username(usernameInput.value.trim(), false) }),
+    password: CredentialPolicy.bind(passwordInput, { feedback: fieldErrors.get('password'), validate: () => CredentialPolicy.password(passwordInput.value) }),
+    confirmPassword: CredentialPolicy.bind(confirmPasswordInput, { feedback: fieldErrors.get('confirmPassword'), validate: () => CredentialPolicy.confirmation(confirmPasswordInput.value, passwordInput.value) }),
+  };
+  passwordInput.addEventListener('input', () => credentialBindings.confirmPassword.refresh());
+  signupForm.noValidate = true;
+
   const originalEmail = recoveryToken ? emailInput.value : "";
   const emailField = AccountEmail.bind(emailInput, {
     isUnchanged: () => Boolean(originalEmail) && emailInput.value.trim().toLowerCase() === originalEmail.trim().toLowerCase(),
@@ -208,18 +216,14 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    let invalidCredential;
+    for (const [id, binding] of Object.entries(credentialBindings)) {
+      if (!binding.validate()) invalidCredential ||= document.getElementById(id);
+    }
+    if (invalidCredential) { invalidCredential.focus(); return; }
+
     if (!signupForm.checkValidity()) {
       signupForm.reportValidity();
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      showMessage("Passwords do not match.");
-      return;
-    }
-
-    if (password.length < 8) {
-      showMessage("Password must be at least 8 characters long.");
       return;
     }
 
@@ -305,6 +309,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (field === "first_name" || field === "last_name") HumanName.showError(input, text);
           else if (id === "email") emailField.setError(text, email);
           else if (id === "phone") phoneField.setError(text);
+          else if (credentialBindings[id]) credentialBindings[id].setError(text);
           else if (fieldErrors.has(id)) {
             fieldErrors.get(id).textContent = text;
             fieldErrors.get(id).classList.remove("hidden");

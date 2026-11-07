@@ -10,12 +10,18 @@ use Illuminate\Support\Str;
 
 class AccountUsername
 {
-    public static function rules(string $presence = 'required'): array
+    public static function rules(string $presence = 'required', ?string $unchanged = null): array
     {
-        return [$presence, 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z][A-Za-z0-9._-]{2,49}$/'];
+        return ['bail', $presence, 'string', function ($attribute, $value, $fail) use ($unchanged) {
+            if ($unchanged !== null && $value === $unchanged) return;
+            if (strlen($value) < 3 || strlen($value) > 30) $fail('Use 3–30 characters.');
+            elseif (preg_match('/[^A-Za-z0-9._-]/', $value)) $fail('Use letters, numbers, periods, underscores, or hyphens only.');
+            elseif (! preg_match('/\A[A-Za-z]/', $value)) $fail('Begin with a letter.');
+            elseif (! preg_match('/[A-Za-z0-9]\z/', $value)) $fail('End with a letter or number.');
+        }];
     }
 
-    public static function isAvailable(string $username, int $userId, bool $lockForUpdate = false): bool
+    public static function isAvailable(string $username, int $userId, bool $lockForUpdate = false, ?string $staffEmail = null, ?PendingCustomerRegistration $registration = null): bool
     {
         $normalized = Str::lower($username);
         $users = User::query()->whereRaw('LOWER(username) = ?', [$normalized])->whereKeyNot($userId);
@@ -26,10 +32,18 @@ class AccountUsername
             return false;
         }
 
+        if (Schema::hasTable('pending_staff_accounts')) {
+            $reserved = PendingStaffAccount::query()->whereRaw('LOWER(username) = ?', [$normalized]);
+            if ($staffEmail !== null) $reserved->whereRaw('LOWER(email) <> ?', [Str::lower($staffEmail)]);
+            if ($lockForUpdate) $reserved->lockForUpdate();
+            if ($reserved->exists()) return false;
+        }
+
         if (! Schema::hasTable('pending_customer_registrations')) {
             return true;
         }
         $pending = PendingCustomerRegistration::query()->unexpired()->whereRaw('LOWER(username) = ?', [$normalized]);
+        if ($registration) $pending->whereKeyNot($registration->getKey());
         if ($lockForUpdate) {
             $pending->lockForUpdate();
         }
@@ -39,20 +53,6 @@ class AccountUsername
 
     public static function isAvailableToStaff(string $username, User $staff, bool $lockForUpdate = false): bool
     {
-        if (! self::isAvailable($username, $staff->getKey(), $lockForUpdate)) {
-            return false;
-        }
-        if (! Schema::hasTable('pending_staff_accounts')) {
-            return true;
-        }
-
-        // Keep the same legacy reservation exception used by staff password setup.
-        $pending = PendingStaffAccount::query()->whereRaw('LOWER(username) = ?', [Str::lower($username)])
-            ->whereRaw('LOWER(email) <> ?', [Str::lower($staff->email)]);
-        if ($lockForUpdate) {
-            $pending->lockForUpdate();
-        }
-
-        return ! $pending->exists();
+        return self::isAvailable($username, $staff->getKey(), $lockForUpdate, $staff->email);
     }
 }

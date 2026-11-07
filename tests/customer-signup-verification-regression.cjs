@@ -109,7 +109,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
     element('terms').checked = true;
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
   }
-  for (const source of signup ? ['scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : magicLink ? 'scripts/auth/client/verify-email.js' : 'scripts/auth/client/signup-verification.js']) {
+  for (const source of signup ? ['scripts/utils/credential-policy.js', 'scripts/utils/human-name.js', 'scripts/utils/account-email.js', 'scripts/utils/philippine-mobile.js', 'scripts/auth/client/signup.js'] : ['scripts/auth/verification-code.js', 'scripts/auth/email-delivery.js', signIn ? 'scripts/auth/sign-in.js' : magicLink ? 'scripts/auth/client/verify-email.js' : 'scripts/auth/client/signup-verification.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, source), 'utf8'), context, { filename: source });
   }
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/auth/client/signup-context.js'), 'utf8'), context);
@@ -240,6 +240,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
   assert.equal(conflicts.element('terms').checked, true);
   assert.equal(conflicts.element('firstName').value, 'Test');
   assert.equal(conflicts.element('usernameServerError').textContent, 'That username is already in use.');
+  assert.equal(conflicts.element('usernameServerError').hidden, false, 'Backend username feedback remains visible after local validation passes');
   assert.equal(conflicts.activeElement()?.id, 'signupConflict');
   conflicts.element('email').value = 'changed@gmail.com';
   conflicts.dispatch('email','input');

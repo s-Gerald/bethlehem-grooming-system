@@ -2110,7 +2110,7 @@ async function testPasswordResetRecovery() {
       if (!elements.has(id)) {
         const classes = new Set();
         elements.set(id, {
-          value: "", textContent: "", innerHTML: "", disabled: false, type: "password",
+          id, value: "", textContent: "", innerHTML: "", disabled: false, type: "password",
           get className() { return [...classes].join(' '); },
           set className(value) { classes.clear(); value.split(/\s+/).filter(Boolean).forEach(c => classes.add(c)); },
           classList: {
@@ -2118,9 +2118,10 @@ async function testPasswordResetRecovery() {
             contains(name) { return classes.has(name); },
           },
           handlers: {},
-          addEventListener(name, handler) { this.handlers[name] = handler; },
+          addEventListener(name, handler) { const previous = this.handlers[name]; this.handlers[name] = previous ? event => { previous(event); return handler(event); } : handler; },
           attributes: {},
           setAttribute(name, value) { this.attributes[name] = value; },
+          getAttribute(name) { return this.attributes[name] || ""; },
           focus() { if (!this.disabled) { context.document.activeElement = this; this.handlers.focus?.(); } },
           setSelectionRange() {},
         });
@@ -2141,7 +2142,7 @@ async function testPasswordResetRecovery() {
           if (resetRequestError) throw resetRequestError;
           return { email: maskedResponse, resend_after: resetResendAfter, expires_in: 900 };
         },
-        async verifyPasswordResetCode() { return { token: 'g'.repeat(64), expires_in: 900 }; },
+        async verifyPasswordResetCode() { return { token: 'g'.repeat(64), expires_in: 900, password_min_length: 8 }; },
         async resetPassword() { return { success: true }; },
       },
       document: {
@@ -2158,6 +2159,7 @@ async function testPasswordResetRecovery() {
     };
     context.window.performance = context.performance;
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "scripts/auth/verification-code.js"), "utf8"), context);
+    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/utils/credential-policy.js'), 'utf8'), context);
     vm.runInNewContext(fs.readFileSync(path.join(projectRoot, script), "utf8"), context);
     return { getElement, location, API: context.API, lifecycle, intervals, activeElement: () => context.document.activeElement, advance(ms) { now += ms; for (const tick of [...intervals.values()]) tick(); } };
   }
@@ -2559,6 +2561,17 @@ async function testPasswordResetRecovery() {
   enterCode(verifyLimited);
   assert.equal(verifyLimited.getElement('verifyCodeSubmit').disabled, true, 'Resend cannot erase the verification endpoint retry delay');
 
+  for (const minimum of [8, 15]) {
+    const roleRecovery = await requestRecovery();
+    roleRecovery.API.verifyPasswordResetCode = async () => ({ token: 'g'.repeat(64), expires_in: 900, password_min_length: minimum });
+    enterCode(roleRecovery);
+    await roleRecovery.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
+    assert.match(roleRecovery.getElement('passwordRequirements').textContent, new RegExp(`^${minimum}–64 characters`));
+    const roleReload = openForgot();
+    assert.match(roleReload.getElement('passwordRequirements').textContent, new RegExp(`^${minimum}–64 characters`), 'Reload keeps the authorized policy');
+    roleRecovery.lifecycle.pagehide();
+  }
+
   const passwordErrors = await requestRecovery();
   enterCode(passwordErrors);
   await passwordErrors.getElement('verifyCodeForm').handlers.submit({ preventDefault() {} });
@@ -2768,11 +2781,12 @@ async function testStaffSetupUsernameForm() {
         const classes = new Set(["hidden"]);
         const attrs = new Map();
         elements.set(id, {
-          value: "", textContent: "", className: "", disabled: false, dataset: {}, focused: false,
+          id, parentElement: { insertAdjacentElement() {} }, value: "", textContent: "", className: "", disabled: false, dataset: {}, focused: false,
           handlers: {},
           classList: {
             add(name) { classes.add(name); }, remove(name) { classes.delete(name); },
             contains(name) { return classes.has(name); },
+            toggle(name, on) { on ? classes.add(name) : classes.delete(name); },
           },
           addEventListener(name, handler) { this.handlers[name] = handler; },
           setAttribute(name, value) { attrs.set(name, value); },
@@ -2788,7 +2802,7 @@ async function testStaffSetupUsernameForm() {
     let error = completionError;
     let scrubbed = false;
     const token = "a".repeat(64);
-    vm.runInNewContext(source, {
+    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/utils/credential-policy.js'), 'utf8') + '\n' + source, {
       URL, URLSearchParams,
       window: { location: {
         hash: `#token=${token}`, href: `http://localhost/set-up-password#token=${token}`,
@@ -2796,7 +2810,7 @@ async function testStaffSetupUsernameForm() {
       } },
       history: { replaceState() { scrubbed = true; } },
       document: {
-        getElementById: getElement, querySelector: () => null,
+        getElementById: getElement, createElement: () => getElement(`generated-${elements.size}`), querySelector: () => null,
         addEventListener(name, handler) { if (name === "DOMContentLoaded") onReady = handler; },
       },
       API: {
@@ -2854,7 +2868,7 @@ async function testStaffSetupUsernameForm() {
   const invalid = await loadPage();
   await invalid.submit("1bad username");
   assert.equal(invalid.requests.length, 0);
-  assert.match(invalid.getElement("setupUsernameMessage").textContent, /beginning with a letter/);
+  assert.equal(invalid.getElement("setupUsernameMessage").textContent, "Use letters, numbers, periods, underscores, or hyphens only.");
   assert.equal(invalid.getElement("setupUsername").getAttribute("aria-invalid"), "true");
 
   for (const expired of [true, false]) {

@@ -16,6 +16,43 @@ use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
 {
+    #[DataProvider('passwordResetRoles')]
+    public function test_policy_is_derived_from_grant_and_failed_screening_preserves_authorization(string $role): void
+    {
+        Notification::fake();
+        $user = $this->createUser($role);
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertAccepted()->assertJsonMissingPath('password_min_length');
+        $verified = $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $this->resetCodeSentTo($user)])
+            ->assertOk()->assertJsonPath('password_min_length', $role === 'customer' ? 8 : 15);
+        $grant = $verified->json('token');
+        $oldHash = $user->password_hash;
+        $bad = $role === 'customer' ? 'orchard' : 'violet orchard';
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => $bad, 'password_confirmation' => $bad,
+            'role' => 'customer', 'password_min_length' => 1, 'user_id' => 999])
+            ->assertUnprocessable()->assertJsonValidationErrors('password');
+        $this->assertDatabaseCount('password_reset_requests', 1);
+        $this->assertSame($oldHash, $user->fresh()->password_hash);
+
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+        \Illuminate\Support\Facades\Http::fake(function () {
+            $this->assertSame(0, \Illuminate\Support\Facades\DB::transactionLevel(), 'Screening must not hold database locks.');
+            return \Illuminate\Support\Facades\Http::response('', 503);
+        });
+        $password = 'violet orchard meadow';
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => $password, 'password_confirmation' => $password])
+            ->assertStatus(503)->assertJsonPath('code', 'password_screening_unavailable');
+        $this->assertDatabaseCount('password_reset_requests', 1);
+        $this->assertSame($oldHash, $user->fresh()->password_hash);
+
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory);
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
+        $password = $role === 'customer' ? 'orchards' : 'violet orchards';
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => $password, 'password_confirmation' => $password])->assertOk();
+        $this->assertTrue(Hash::check($password, $user->fresh()->password_hash));
+        $this->assertDatabaseCount('password_reset_requests', 0);
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
+
     public function test_unknown_recovery_stays_at_email_entry_without_issuing_code(): void
     {
         Notification::fake();
@@ -54,6 +91,8 @@ class PasswordResetTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
 
         Schema::create('users', function (Blueprint $table): void {
             $table->increments('user_id');
@@ -161,18 +200,18 @@ class PasswordResetTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath(
                 'message',
-                'Choose a password that is different from the current password.',
+                'Choose a different password.',
             );
 
         $this->postJson('/api/password/reset', [
             'token' => $grant,
-            'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234',
+            'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345',
         ])
             ->assertOk()
             ->assertJsonPath('message', 'Your password has been reset successfully.');
 
-        $this->assertTrue(Hash::check('UpdatedPass!234', $user->fresh()->password_hash));
+        $this->assertTrue(Hash::check('UpdatedPass!2345', $user->fresh()->password_hash));
         $this->assertSame($username, $user->fresh()->username);
         $this->assertDatabaseCount('password_reset_requests', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
@@ -207,8 +246,8 @@ class PasswordResetTest extends TestCase
             ->assertJsonPath('message', "Password reset isn't available for this account.");
         Notification::assertNothingSent();
         $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
-        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable();
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345'])->assertUnprocessable();
         $this->assertNull($user->fresh()->email_verified_at);
         $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
     }
@@ -319,8 +358,8 @@ class PasswordResetTest extends TestCase
 
         $this->postJson('/api/password/reset', [
             'token' => $grant,
-            'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234',
+            'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345',
         ])
             ->assertUnprocessable()
             ->assertJsonPath('expired', true);
@@ -337,7 +376,7 @@ class PasswordResetTest extends TestCase
             'password_confirmation' => 'different',
         ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('password');
+            ->assertJsonValidationErrors('password_confirmation');
     }
 
     public function test_forgot_password_does_not_send_a_code_or_replace_a_valid_staff_setup_link(): void
@@ -645,14 +684,14 @@ class PasswordResetTest extends TestCase
         $newCode = $this->resetCodeSentTo($user);
         $this->assertNotSame($code, $newCode);
         $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
-        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable()->assertJsonPath('expired', true);
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345'])->assertUnprocessable()->assertJsonPath('expired', true);
         Notification::assertNotSentTo($user, PasswordChangedNotification::class);
         $newGrant = $this->postJson('/api/password/code/verify', ['email' => $user->email, 'code' => $newCode])
             ->assertOk()->json('token');
-        $this->postJson('/api/password/reset', ['token' => $newGrant, 'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234'])->assertOk();
-        $this->assertTrue(Hash::check('UpdatedPass!234', $user->fresh()->password_hash));
+        $this->postJson('/api/password/reset', ['token' => $newGrant, 'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345'])->assertOk();
+        $this->assertTrue(Hash::check('UpdatedPass!2345', $user->fresh()->password_hash));
         $this->assertDatabaseCount('password_reset_requests', 0);
     }
 
@@ -677,7 +716,7 @@ class PasswordResetTest extends TestCase
             $this->assertSame(0, app(\App\Services\AuthenticationEmailPolicy::class)->status($user->email, 'password_recovery')['resend_after']);
         }
         Notification::fake();
-        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!2345')['status']);
     }
 
     public function test_verified_grant_expires_at_its_exact_deadline(): void
@@ -688,8 +727,8 @@ class PasswordResetTest extends TestCase
         $service->sendCode($user->email);
         $grant = $service->verifyCode($user->email, $this->resetCodeSentTo($user))['token'];
         $this->travelTo(PasswordResetRequest::query()->sole()->expires_at);
-        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234'])->assertUnprocessable()->assertJsonPath('expired', true);
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345'])->assertUnprocessable()->assertJsonPath('expired', true);
         $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
         Notification::assertNotSentTo($user, PasswordChangedNotification::class);
     }
@@ -727,12 +766,12 @@ class PasswordResetTest extends TestCase
         Notification::swap(new \Illuminate\Notifications\ChannelManager(app()));
         config()->set('mail.authentication.delivery', 'immediate');
         \Illuminate\Support\Facades\DB::beginTransaction();
-        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!2345')['status']);
         $this->assertSame(0, \Illuminate\Support\Facades\DB::table('jobs')->count(),
             'Confirmation must wait for the outer transaction to commit.');
         \Illuminate\Support\Facades\DB::rollBack();
         $this->assertTrue(Hash::check('CurrentPass!234', $user->fresh()->password_hash));
-        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!234')['status']);
+        $this->assertSame('reset', $service->reset($grant, 'UpdatedPass!2345')['status']);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
         $job = \Illuminate\Support\Facades\DB::table('jobs')->sole();
         $payload = json_decode($job->payload, true);
@@ -745,7 +784,7 @@ class PasswordResetTest extends TestCase
         $this->assertCount(1, $messages);
         $body = $messages[0]->getOriginalMessage()->getTextBody();
         $this->assertStringContainsString('Your password was changed', $body);
-        foreach ([$code, $grant, 'UpdatedPass!234', 'CurrentPass!234'] as $secret) {
+        foreach ([$code, $grant, 'UpdatedPass!2345', 'CurrentPass!234'] as $secret) {
             $this->assertStringNotContainsString($secret, $body);
         }
     }
@@ -760,9 +799,9 @@ class PasswordResetTest extends TestCase
         $grant = $service->verifyCode($user->email, $this->resetCodeSentTo($user))['token'];
         $this->mock(\Illuminate\Contracts\Notifications\Dispatcher::class, fn ($mock) =>
             $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('queue unavailable')));
-        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!234',
-            'password_confirmation' => 'UpdatedPass!234'])->assertOk();
-        $this->assertTrue(Hash::check('UpdatedPass!234', $user->fresh()->password_hash));
+        $this->postJson('/api/password/reset', ['token' => $grant, 'password' => 'UpdatedPass!2345',
+            'password_confirmation' => 'UpdatedPass!2345'])->assertOk();
+        $this->assertTrue(Hash::check('UpdatedPass!2345', $user->fresh()->password_hash));
         $this->assertDatabaseCount('password_reset_requests', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }

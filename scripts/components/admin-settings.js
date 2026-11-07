@@ -27,6 +27,8 @@ function adminSettings() {
       showConfirmation: false,
       submitting: false,
       error: "",
+      errors: {},
+      touched: {},
       success: "",
     },
     staffAccount: {
@@ -62,6 +64,8 @@ function adminSettings() {
       showConfirmation: false,
       submitting: false,
       error: "",
+      errors: {},
+      touched: {},
       success: "",
     },
     staffAccounts: [],
@@ -453,10 +457,8 @@ function adminSettings() {
         if (!values[field]) errors[field] = `Enter your ${label}.`;
         else if (nameError) errors[field] = nameError;
       }
-      if (!values.username) errors.username = 'Enter a username.';
-      else if (values.username.length < 3 || values.username.length > 50) errors.username = 'Use 3–50 characters.';
-      else if (!/^[A-Za-z]/.test(values.username)) errors.username = 'Begin with a letter.';
-      else if (!/^[A-Za-z][A-Za-z0-9._-]{2,49}$/.test(values.username)) errors.username = 'Use letters, numbers, periods, underscores, or hyphens.';
+      const usernameError = CredentialPolicy.username(values.username, true, this.staffAccount.username);
+      if (usernameError) errors.username = usernameError;
       return errors;
     },
 
@@ -484,13 +486,18 @@ function adminSettings() {
     },
 
     staffProfileInput(field) {
-      if (!['first_name', 'last_name'].includes(field)) delete this.staffProfile.errors[field];
+      if (!['first_name', 'last_name'].includes(field)) {
+        const hadError = Boolean(this.staffProfile.errors[field]);
+        delete this.staffProfile.errors[field];
+        if (field === 'username' && hadError && this.staffProfile.username) this.validateStaffProfileField(field);
+      }
       this.staffProfile.error = "";
     },
 
     validateStaffProfileField(field) {
       const error = this.staffProfileValidation()[field];
       if (error) this.staffProfile.errors[field] = error;
+      else delete this.staffProfile.errors[field];
     },
 
     cancelStaffProfileConfirmation() {
@@ -615,27 +622,54 @@ function adminSettings() {
       };
     },
 
-    passwordValidationError(password, confirmation, required = true) {
-      if (!required && !password && !confirmation) return "";
-      if (!password || !confirmation) {
-        return "Complete both new password fields.";
-      }
-      if (password !== confirmation) {
-        return "The new passwords do not match.";
-      }
-      if (
-        password.length < 12 ||
-        !/[a-z]/.test(password) ||
-        !/[A-Z]/.test(password) ||
-        !/\d/.test(password) ||
-        !/[^A-Za-z0-9]/.test(password)
-      ) {
-        return "Use at least 12 characters with uppercase, lowercase, a number, and a symbol.";
-      }
-
-      return "";
+    credentialFieldMessage(kind, field) {
+      const form = this[`${kind}Password`];
+      if (field === 'username') return CredentialPolicy.username(form.username.trim(), true, this.adminAccount.username);
+      if (field === 'current') return form.current ? '' : 'Enter your current password.';
+      if (field === 'confirmation') return CredentialPolicy.confirmation(form.confirmation, form.password, kind === 'staff' || Boolean(form.password));
+      return CredentialPolicy.password(form.password, 15, kind === 'staff' || Boolean(form.confirmation))
+        || (form.password && form.password === form.current ? 'Choose a different password.' : '');
     },
-
+    credentialInput(kind, field, blur = false) {
+      const form = this[`${kind}Password`];
+      const hadError = Boolean(form.errors[field]);
+      form.error = '';
+      if (blur) form.touched[field] = true;
+      delete form.errors[field];
+      if (blur || (form[field] && (hadError || form.touched[field]))) {
+        const message = this.credentialFieldMessage(kind, field);
+        if (message) form.errors[field] = message;
+      }
+      if (field === 'current' && form.errors.password) {
+        const message = form.password ? this.credentialFieldMessage(kind, 'password') : '';
+        if (message) form.errors.password = message;
+        else delete form.errors.password;
+      }
+      if (field === 'password' && form.confirmation) {
+        const message = this.credentialFieldMessage(kind, 'confirmation');
+        if (message) form.errors.confirmation = message;
+        else delete form.errors.confirmation;
+      }
+    },
+    validateCredentialForm(kind) {
+      const form = this[`${kind}Password`];
+      form.errors = {};
+      for (const field of kind === 'admin' ? ['username', 'current', 'password', 'confirmation'] : ['current', 'password', 'confirmation']) {
+        this.credentialInput(kind, field, true);
+      }
+      const first = Object.keys(form.errors)[0];
+      if (first) document.getElementById(`${kind}Credential_${first}`)?.focus();
+      return !first;
+    },
+    credentialApiError(kind, error) {
+      const form = this[`${kind}Password`], keys = { current_password: 'current', password: 'password', password_confirmation: 'confirmation', username: 'username' };
+      for (const [field, messages] of Object.entries(error?.errors || {})) {
+        if (keys[field]) form.errors[keys[field]] = [].concat(messages)[0];
+      }
+      const first = Object.keys(form.errors)[0];
+      if (first) document.getElementById(`${kind}Credential_${first}`)?.focus();
+      else form.error = this.firstApiError(error);
+    },
     firstApiError(error) {
       const validationErrors = error?.errors || {};
       const firstMessages = Object.values(validationErrors)[0];
@@ -648,24 +682,11 @@ function adminSettings() {
       this.adminPassword.error = "";
       this.adminPassword.success = "";
 
-      if (!this.adminPassword.current) {
-        this.adminPassword.error = "Enter your current password.";
-        return;
-      }
-
+      if (this.adminPassword.submitting || !this.validateCredentialForm('admin')) return;
       const username = this.adminPassword.username.trim();
       const usernameChanged = username !== this.adminAccount.username;
-      const validationError = this.passwordValidationError(
-        this.adminPassword.password,
-        this.adminPassword.confirmation,
-        false,
-      );
-      if (validationError) {
-        this.adminPassword.error = validationError;
-        return;
-      }
       if (!usernameChanged && !this.adminPassword.password) {
-        this.adminPassword.error = "Enter a different username or a new password.";
+        this.adminPassword.error = 'Enter a different username or a new password.';
         return;
       }
 
@@ -683,7 +704,7 @@ function adminSettings() {
         this.adminPassword.username = this.adminAccount.username;
         this.openSecurityVerification(response);
       } catch (error) {
-        this.adminPassword.error = this.firstApiError(error);
+        this.credentialApiError('admin', error);
       } finally {
         this.adminPassword.submitting = false;
       }
@@ -694,23 +715,7 @@ function adminSettings() {
       this.staffPassword.error = "";
       this.staffPassword.success = "";
 
-      if (!this.staffPassword.current) {
-        this.staffPassword.error = "Enter your current password.";
-        return;
-      }
-
-      const validationError = this.passwordValidationError(
-        this.staffPassword.password,
-        this.staffPassword.confirmation,
-      );
-      if (validationError) {
-        this.staffPassword.error = validationError;
-        return;
-      }
-      if (this.staffPassword.current === this.staffPassword.password) {
-        this.staffPassword.error = "Choose a password that is different from your current password.";
-        return;
-      }
+      if (this.staffPassword.submitting || !this.validateCredentialForm('staff')) return;
 
       this.staffPassword.submitting = true;
       try {
@@ -724,7 +729,7 @@ function adminSettings() {
         this.staffPassword.confirmation = "";
         this.openSecurityVerification(response);
       } catch (error) {
-        this.staffPassword.error = this.firstApiError(error);
+        this.credentialApiError('staff', error);
       } finally {
         this.staffPassword.submitting = false;
       }
