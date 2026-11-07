@@ -2271,57 +2271,24 @@ var API = (() => {
     return request("POST", "/staff/password-setup/request-new-link", { token });
   }
 
-  async function updatePendingRegistration(payload, recoveryToken) {
-    const data = await request("PUT", "/register/pending", { ...payload, registration_recovery_token: recoveryToken });
-    storeEmailDelivery("registration", data.email_delivery_token);
-    acceptRegistrationSession(data);
-    return data;
-  }
-
   async function cancelRegistration(token) {
-    return request("POST", "/register/cancel", {registration_token: token});
+    return request("POST", "/register/cancel", {registration_token:token});
   }
 
-  async function verifyEmail(token, review = false, confirmationCode) {
-    const data = await request("POST", "/email/verify", { token, review, confirmation_code: confirmationCode });
+  async function verifyEmail(token) {
+    // Approval never establishes a session on the verification device.
+    return request("POST", "/email/verify", {token});
+  }
+
+  function registrationStatus(token) {
+    return request("POST", "/email/registration/status", {registration_token:token}, null, {cache:"no-store"});
+  }
+
+  async function finalizeRegistration(payload, token) {
+    const revision=sessionRevision, previousToken=getAuthSession()?.token;
+    const data=await request("POST", "/register/finalize", {...payload,registration_token:token}, null, {cache:"no-store"});
+    if(revision!==sessionRevision || previousToken!==getAuthSession()?.token) throw new Error("Registration session changed. Please try again.");
     acceptRegistrationSession(data);
-    return data;
-  }
-
-  function registrationStatus(email) {
-    return request("POST", "/email/registration/status", {registration_token: pendingRegistrationToken(email)}, null, {cache:"no-store"});
-  }
-
-  async function redeemRegistration(email) {
-    const revision = sessionRevision, previousToken = getAuthSession()?.token;
-    const data = await request("POST", "/email/registration/redeem", {registration_token: pendingRegistrationToken(email)}, null, {cache:"no-store"});
-    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
-      throw new Error("Registration session changed. Please try again.");
-    }
-    acceptRegistrationSession(data);
-    return data;
-  }
-
-  const registrationSessionRequests = new Map();
-  function registrationSession(email = "", acknowledge = false) {
-    const key = JSON.stringify([email.toLowerCase(), acknowledge, sessionRevision]);
-    if (registrationSessionRequests.has(key)) return registrationSessionRequests.get(key);
-    const pending = checkRegistrationSession(email, acknowledge).finally(() => registrationSessionRequests.delete(key));
-    registrationSessionRequests.set(key, pending);
-    return pending;
-  }
-
-  async function checkRegistrationSession(email, acknowledge) {
-    const revision = sessionRevision, previousToken = getAuthSession()?.token;
-    const data = await request("POST", "/email/registration/session", { email, acknowledge: false }, null, {cache: "no-store"});
-    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
-      throw new Error("Registration session changed. Please try again.");
-    }
-    if (email && data?.user?.email?.toLowerCase() !== email.toLowerCase()) return null;
-    if (!data?.session_token || data?.user?.role !== "customer") return null;
-    acceptRegistrationSession({ ...data, token: data.session_token });
-    // Announce readiness only after this tab has accepted the server session.
-    if (acknowledge) await request("POST", "/email/registration/session", {email, acknowledge: true}, null, {cache: "no-store"});
     return data;
   }
 
@@ -2348,22 +2315,10 @@ var API = (() => {
     return request("GET", `/admin/pets/${encodeURIComponent(petId)}/cases/${encodeURIComponent(caseId)}/details${view ? '?view=' + encodeURIComponent(view) : ''}`, null, getAdminToken());
   }
 
-  async function resendVerification(email) {
-    // POST /api/email/resend  { email }
-    const data = await request("POST", "/email/resend", {
-      email,
-      registration_token: pendingRegistrationToken(email) || undefined,
-    });
+  async function resendVerification(token) {
+    const data=await request("POST", "/email/resend", {registration_token:token});
     storeEmailDelivery("registration", data.email_delivery_token);
     return data;
-  }
-
-  function pendingRegistrationToken(email) {
-    try {
-      const activeEmail = safeStorageGet(sessionStorage, "pendingVerificationEmail");
-      return activeEmail?.toLowerCase() === email?.toLowerCase()
-        ? safeStorageGet(sessionStorage, "pendingRegistrationEditToken") || "" : "";
-    } catch { return ""; }
   }
 
   function storeEmailDelivery(kind, receipt) {
@@ -3940,10 +3895,8 @@ var API = (() => {
     // Email verification
     verifyEmail,
     cancelRegistration,
-    registrationSession,
     registrationStatus,
-    redeemRegistration,
-    updatePendingRegistration,
+    finalizeRegistration,
     adminGetPetProfile,
     adminGetPetCaseDetails,
     resendVerification,

@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -55,18 +54,15 @@ final class AccountEmail
         return DB::getDriverName() === 'sqlite' ? 'email COLLATE NOCASE' : 'email';
     }
 
-    public static function assertAvailable(string $email, ?User $except = null, bool $lock = false, ?PendingCustomerRegistration $exceptPending = null): void
+    public static function assertAvailable(string $email, ?User $except = null, bool $lock = false): void
     {
         $column = self::lookupColumn();
-        $pending = PendingCustomerRegistration::query()->retained()->whereRaw($column.' = ?', [$email])
-            ->when($exceptPending, fn ($query) => $query->whereKeyNot($exceptPending->getKey()));
         $users = User::query()->whereRaw($column.' = ?', [$email])
             ->when($except, fn ($query) => $query->whereKeyNot($except->getKey()));
         if ($lock) {
-            $pending->lockForUpdate();
             $users->lockForUpdate();
         }
-        if ($pending->first(['id']) || $users->first(['user_id'])) {
+        if ($users->first(['user_id'])) {
             throw ValidationException::withMessages(['email' => 'This email is already in use.']);
         }
     }

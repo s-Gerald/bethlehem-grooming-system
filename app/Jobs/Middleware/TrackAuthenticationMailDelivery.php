@@ -51,7 +51,8 @@ class TrackAuthenticationMailDelivery
             $guard = $this->issuance;
             $current = $guard['model']::query()->find($guard['key']);
             if (! $current || ! $guard['hash']
-                || ($current instanceof \App\Models\PendingCustomerRegistration && $current->retentionExpired())
+                || ($current instanceof \App\Models\PendingCustomerRegistration
+                    && ($current->retentionExpired() || $current->registration_approved_at))
                 || $current->getAttribute('approved_at')
                 || $current->getAttribute('confirmed_at')
                 || $current->getAttribute('verified_token_hash')

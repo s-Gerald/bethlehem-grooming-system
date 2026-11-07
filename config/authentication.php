@@ -37,6 +37,4 @@ return [
             'security_alert' => ['cooldown' => 86400, 'day' => 1],
         ],
     ],
-    // Disabled by default. Any deliberate transition must have a fixed end.
-    'legacy_links_until' => env('REGISTRATION_LEGACY_LINKS_UNTIL'),
 ];

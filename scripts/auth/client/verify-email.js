@@ -1,13 +1,11 @@
 // Connected to pages/client/verify-email.html
-// Preserves already-issued signup links and the separate login confirmation flow.
+// Deliberate signup approval, and the separate existing login OTP interface.
 
 document.addEventListener("DOMContentLoaded", () => {
   const stateVerifying = document.getElementById("stateVerifying");
   const stateSuccess   = document.getElementById("stateSuccess");
-  const statePending   = document.getElementById("statePending");
   const stateLoginCode = document.getElementById("stateLoginCode");
   const stateError     = document.getElementById("stateError");
-  const resendSection  = document.getElementById("resendSection");
   const successTitle   = document.getElementById("successTitle");
   const successMessage = document.getElementById("successMessage");
   const errorTitle     = document.getElementById("errorTitle");
@@ -17,10 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginCodeInput = document.getElementById("loginCode");
   const loginCodeSubmit = document.getElementById("loginCodeSubmit");
   const loginCodeMessage = document.getElementById("loginCodeMessage");
-  const resendEmail    = document.getElementById("resendEmail");
-  const resendForm     = document.getElementById("resendForm");
-  const resendSubmit   = document.getElementById("resendSubmit");
-  const resendMessage  = document.getElementById("resendMessage");
   const loginCodeResendBtn       = document.getElementById("loginCodeResendBtn");
   const loginCodeResendCountdown = document.getElementById("loginCodeResendCountdown");
   const loginCodeResendLock = document.getElementById("loginCodeResendLock");
@@ -33,7 +27,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let transactionExpiresAt = 0;
   let transactionExpired = false;
   let loginBusy = false;
-  let resendBusy = false;
   let resendLimited = false;
   let stopDeliveryCheck = () => {};
 
@@ -49,16 +42,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function showState(name) {
-    [stateVerifying, stateSuccess, statePending, stateLoginCode, stateError, document.getElementById("stateLink"), document.getElementById("stateConfirmation")]
+    [stateVerifying, stateSuccess, stateLoginCode, stateError, document.getElementById("stateLink")]
       .forEach((element) => element.classList.add("hidden"));
     const element = {
       verifying: stateVerifying,
       success: stateSuccess,
-      pending: statePending,
       loginCode: stateLoginCode,
       error: stateError,
       link: document.getElementById("stateLink"),
-      confirmation: document.getElementById("stateConfirmation"),
     }[name];
     if (element) element.classList.remove("hidden");
   }
@@ -67,166 +58,44 @@ document.addEventListener("DOMContentLoaded", () => {
   let verificationToken = window.registrationMagicLinkToken || "";
   delete window.registrationMagicLinkToken;
   const loginCodeMode = queryParams.get("mode") === "login";
-  if (!verificationToken && !loginCodeMode) return;
+  if (!verificationToken && !loginCodeMode) {
+    errorTitle.textContent='Continue on your signup page';
+    errorMessage.textContent='Return to the device where you started, or start a fresh registration.';
+    const back=document.getElementById('verificationBackAction');back.textContent='Back to sign up';back.setAttribute('href','/sign-up');
+    showState('error');return;
+  }
 
   if (verificationToken) {
-    showState("link");
-    let verifying = false;
-    let departed = false;
-    window.SignupContext.bindExits(() => { departed = true; verificationToken = ""; }, () => verificationToken);
-    const verifyButton = document.getElementById("verifyLinkSubmit");
-    const editButton = document.getElementById("verifyLinkEdit");
-    const dashboard = document.getElementById("successDashboard");
-    const codeInput = document.getElementById("registrationCode");
-    const codeSubmit = document.getElementById("registrationCodeSubmit");
-    const codeMessage = document.getElementById("registrationCodeMessage");
-    const finishHere = document.getElementById("registrationFinishHere");
-    let confirmationRequired = false;
-    let confirmationExpired = false;
-    window.VerificationCode.bind(codeInput,
-      [...document.getElementById("stateConfirmation").querySelectorAll(".verification-code-cell")], () => {
-        codeInput.setAttribute("aria-invalid", "false");
-        if (!confirmationExpired) { codeMessage.textContent = ""; codeMessage.classList.add("hidden"); }
-      });
-    let channel;
-    try { channel = new BroadcastChannel("bethlehem-registration"); } catch { /* Dashboard fallback remains available. */ }
-    async function confirmHandoff() {
+    showState('link');
+    let verifying=false;
+    const button=document.getElementById('verifyLinkSubmit');
+    const feedback=document.getElementById('verifyLinkMessage');
+    const back=document.getElementById('verificationBackAction');
+    back.textContent='Back to sign up';back.setAttribute('href','/sign-up');
+    button.addEventListener('click',async()=>{
+      if(verifying || !verificationToken)return;
+      verifying=true;button.disabled=true;feedback.textContent='';feedback.classList.add('hidden');
+      showState('verifying');
       try {
-        const session = await API.registrationSession();
-        if (session?.original_tab_confirmed) {
-          successMessage.textContent = "You can close this page.";
-          dashboard.classList.add("hidden");
-        }
-      } catch { /* Keep the working dashboard entry point. */ }
-    }
-    if (channel) channel.onmessage = event => { if (event.data?.type === "registration-tab-ready") confirmHandoff(); };
-    async function verify(review = false, confirmationCode) {
-      if (verifying || !verificationToken) return;
-      verifying = true;
-      verifyButton.disabled = true;
-      editButton.disabled = true;
-      codeSubmit.disabled = true;
-      codeInput.disabled = true;
-      finishHere.disabled = true;
-      codeSubmit.textContent = "Confirming...";
-      document.getElementById("registrationConfirmationForm").setAttribute("aria-busy", "true");
-      verifyButton.textContent = "Verifying your email...";
-      verifyButton.setAttribute("aria-busy", "true");
-      if (!confirmationRequired || review) showState("verifying");
-      try {
-        const result = await API.verifyEmail(verificationToken, review, confirmationCode);
-        if (departed) return;
-        if (result?.requires_registration_confirmation) {
-          confirmationRequired = true;
-          showState("confirmation");
-          codeInput.disabled = false;
-          codeInput.focus();
-          return;
-        }
-        if (result?.registration_approved) {
-          verificationToken = "";
-          successTitle.textContent = "Email verified!";
-          successMessage.textContent = "You can close this page.";
-          dashboard.classList.add("hidden");
-          showState("success");
-          return;
-        }
-        verificationToken = "";
-        if (result?.requires_registration_review && result?.registration_recovery_token && result?.details) {
-          const details = result.details;
-          try {
-            sessionStorage.setItem("pendingRegistrationRecoveryToken", result.registration_recovery_token);
-            sessionStorage.setItem("pendingRegistrationRecoveryUntil", String(Date.parse(result.registration_recovery_expires_at)));
-            sessionStorage.setItem("pendingSignupDetails", JSON.stringify({firstName: details.first_name,
-              lastName: details.last_name, username: details.username || "", email: details.email, phone: details.phone || ""}));
-            sessionStorage.removeItem("pendingRegistrationEditToken");
-          } catch {
-            throw new Error("Email confirmed. Allow browser storage, then request a new link to review your account.");
-          }
-          window.location.replace("/sign-up?review=1");
-          return;
-        }
-        // A response marker alone is insufficient: confirm the HttpOnly cookie.
-        const session = await API.registrationSession();
-        if (!session) throw new Error("Email confirmed. Please sign in to continue.");
-        window.SignupContext.clear(session.user?.email);
-        successTitle.textContent = "Email verified!";
-        successMessage.textContent = "You can close this page.";
-        dashboard.classList.remove("hidden");
-        showState("success");
-        channel?.postMessage({type: "registration-verified"});
-        window.setTimeout(confirmHandoff, 1500);
-      } catch (error) {
-        if (departed) return;
-        if (confirmationRequired && !review && (error.code === "registration_confirmation_incorrect"
-            || error.code === "registration_confirmation_expired" || !error.status || error.status >= 500 || error.status === 429)) {
-          confirmationExpired = error.code === "registration_confirmation_expired";
-          showState("confirmation");
-          codeInput.setAttribute("aria-invalid", "true");
-          codeMessage.classList.remove("hidden");
-          codeMessage.textContent = !error.status || error.status >= 500 ? "Connection lost. Try again." : error.message;
-          return;
-        }
-        if (verificationToken && (!error.status || error.status >= 500)) {
-          // A lost response may have committed activation. Restore only using
-          // the server's usable account cookie; otherwise retain a retry.
-          try {
-            const session = await API.registrationSession();
-            if (session) {
-              verificationToken = "";
-              successTitle.textContent = "Email verified!";
-              successMessage.textContent = "You can close this page.";
-              dashboard.classList.remove("hidden");
-              showState("success");
-              channel?.postMessage({type: "registration-verified"});
-              return;
-            }
-          } catch { /* Retry the deliberate confirmation below. */ }
-          showState("link");
-          const feedback = document.getElementById("verifyLinkMessage");
-          feedback.classList.remove("hidden");
-          feedback.textContent = error.message || "Couldn't verify your email. Try again.";
+        const result=await API.verifyEmail(verificationToken);
+        if(!result?.registration_approved)throw new Error('Could not verify your email. Try again.');
+        verificationToken='';
+        successTitle.textContent='Email verified!';
+        successMessage.textContent='Return to the device where you started creating your account.';
+        showState('success');
+      } catch(error) {
+        if(error.code==='registration_link_consumed') {
+          verificationToken='';successTitle.textContent='Email already verified';
+          successMessage.textContent='Return to the device where you started creating your account.';showState('success');
+        } else if(!error.status || error.status>=500 || error.status===429) {
+          showState('link');feedback.textContent=error.message || 'Connection lost. Try again.';feedback.classList.remove('hidden');
         } else {
-          errorTitle.textContent = "Verification unavailable";
-          errorMessage.textContent = error.message || "This link is invalid or has already been used.";
-          showState("error");
-          const expiredRegistration = ["registration_expired", "registration_restart_required", "registration_link_invalid"].includes(error.code);
-          resendSection.classList.toggle("hidden", expiredRegistration);
-          if (expiredRegistration) {
-            const back = document.getElementById("verificationBackAction");
-            back.textContent = "Back to sign up";
-            back.setAttribute("href", "/sign-up");
-          }
+          errorTitle.textContent=error.code==='registration_link_expired' ? 'Link expired' : 'Link unavailable';
+          errorMessage.textContent=error.message || 'Return to your signup page to request a new link.';showState('error');
         }
-      } finally {
-        verifying = false;
-        verifyButton.disabled = false;
-        editButton.disabled = false;
-        codeSubmit.disabled = confirmationExpired;
-        codeInput.disabled = confirmationExpired;
-        finishHere.disabled = false;
-        codeSubmit.textContent = "Confirm Registration";
-        document.getElementById("registrationConfirmationForm").setAttribute("aria-busy", "false");
-        if (confirmationRequired && !confirmationExpired && !document.getElementById("stateConfirmation").classList.contains("hidden")) codeInput.focus();
-        verifyButton.textContent = "Verify Email Address";
-        verifyButton.setAttribute("aria-busy", "false");
-      }
-    }
-    verifyButton.addEventListener("click", () => verify());
-    editButton.addEventListener("click", () => verify(true));
-    finishHere.addEventListener("click", () => verify(true));
-    document.getElementById("registrationConfirmationForm").addEventListener("submit", event => {
-      event.preventDefault();
-      if (verifying || confirmationExpired) return;
-      if (!/^\d{6}$/.test(codeInput.value)) {
-        codeInput.setAttribute("aria-invalid", "true");
-        codeMessage.textContent = "Enter the 6-digit code.";
-        codeMessage.classList.remove("hidden");
-        codeInput.focus();
-        return;
-      }
-      return verify(false, codeInput.value);
+      } finally {verifying=false;button.disabled=false;}
     });
+    return;
   } else if (loginCodeMode) {
     document.title = "Verify your sign-in | Bethlehem Animal Clinic";
 
@@ -414,43 +283,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  resendForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (resendBusy) return;
-    clearResendMessage();
-
-    const email = resendEmail.value.trim();
-    if (!email) return;
-
-    setResendBusy(true);
-
-    try {
-      const result = await API.resendVerification(email);
-      sessionStorage.setItem("pendingVerificationEmail", email);
-      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(window.SignupContext.read(email)?.expiresAt || 0));
-      sessionStorage.setItem("pendingVerificationResendUntil", String(Date.now() + window.AuthenticationResend.seconds(result) * 1000));
-      sessionStorage.setItem("pendingVerificationResendLimited", window.AuthenticationResend.limited(result) ? "1" : "0");
-      sessionStorage.setItem("pendingVerificationState", result.registration_state === "requested" ? "requested" : result.email_delivery_token ? "queued" : "");
-      sessionStorage.removeItem("pendingVerificationDeliveryFailed");
-      window.location.replace("/verify-email");
-    } catch (error) {
-      if (error.status === 429) {
-        showResendMessage("error", error.message || "Too many requests. Please wait before trying again.");
-      } else {
-        showResendMessage("error", error.message || "Failed to resend. Please try again.");
-      }
-    } finally {
-      setResendBusy(false);
-    }
-  });
-
-  function setResendBusy(busy) {
-    resendBusy = busy;
-    resendSubmit.disabled = busy;
-    const label = document.getElementById("resendBtnLabel");
-    if (label) label.textContent = busy ? "Sending…" : "Resend Verification Email";
-  }
-
   function setLoginCodeBusy(busy) {
     loginBusy = busy;
     updateLoginControls();
@@ -472,18 +304,4 @@ document.addEventListener("DOMContentLoaded", () => {
     loginCodeInput.setAttribute("aria-invalid", "false");
   }
 
-  function showResendMessage(type, text) {
-    const styles = {
-      success: "border-green-200 bg-green-50 text-green-700",
-      error: "border-red-200 bg-red-50 text-red-700",
-    };
-    resendMessage.className = `mt-3 rounded-2xl border px-4 py-3 text-sm ${styles[type] || styles.error}`;
-    resendMessage.textContent = text;
-    resendMessage.classList.remove("hidden");
-  }
-
-  function clearResendMessage() {
-    resendMessage.className = "mt-3 hidden rounded-2xl border px-4 py-3 text-sm";
-    resendMessage.textContent = "";
-  }
 });

@@ -2,14 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\PendingCustomerRegistration;
 use App\Models\User;
 use App\Support\AccountEmail;
-use App\Support\AccountUsername;
-use App\Rules\AccountPassword;
 use App\Services\LoginEmailChallengeService;
 use App\Services\CustomerRegistrationService;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use App\Services\AuthenticationEmailPolicy;
@@ -18,7 +14,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Throwable;
 
 class AuthController extends Controller
@@ -28,123 +23,27 @@ class AuthController extends Controller
         return $registrations->cancel($request);
     }
 
-    // ── REGISTER ──────────────────────────────────────────
+    // Starting signup accepts only email and an opaque attempt credential.
     public function register(Request $request)
     {
+        $request->merge(['email' => AccountEmail::normalize((string) $request->input('email'))]);
+        $data = $request->validate(['email' => AccountEmail::rules(), 'registration_token' => 'required|string|size:64']);
         $browserToken = CustomerRegistrationService::browserToken($request);
-
-        $phone = $request->input('phone');
-        $username = $request->input('username');
-        $request->merge([
-            'email' => AccountEmail::normalize((string) $request->input('email')),
-            'username' => is_string($username) ? (trim($username) === '' ? null : trim($username)) : $username,
-            'phone' => is_string($phone) && trim($phone) === '' ? null : \App\Support\PhilippineMobile::normalize($phone),
-        ]);
-
-        $request->validate(['email' => $request->isMethod('put')
-            ? ['required', 'email', 'max:150'] : AccountEmail::rules()]);
-
-        if (! $request->isMethod('put')) {
-            $data = $this->registrationData($request, checkAvailability: false);
-            $registrations = app(CustomerRegistrationService::class);
-            $data['password_hash'] = Hash::make($data['password']);
-            unset($data['password']);
-            try {
-                return $registrations->start($request, $data, hash('sha256', $browserToken))
-                    ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
-            } catch (HttpResponseException $exception) {
-                throw $exception;
-            } catch (Throwable $exception) {
-                report($exception);
-                return response()->json(['success' => false, 'code' => 'email_delivery_failed',
-                    'message' => "Couldn't queue the verification email. Please try again."], 503)->header('Cache-Control', 'no-store');
-            }
-        }
-        PendingCustomerRegistration::pruneExpired();
-        $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
-        $reviewHash = hash('sha256', $credential['registration_recovery_token']);
-        $review = User::where('registration_recovery_token_hash', $reviewHash)->first()
-            ?? PendingCustomerRegistration::withActiveReview()->where('registration_recovery_token_hash', $reviewHash)->first();
-        abort_unless($review && $review->registration_recovery_expires_at && now()->lt($review->registration_recovery_expires_at)
-            && (! $review instanceof User || CustomerRegistrationService::recoverableUser($review)), 422, 'This registration review has expired. Verify your email again.');
-        abort_unless(strcasecmp($request->input('email'), $review->email) === 0, 422, 'Use the email address you verified.');
-        \Illuminate\Support\Facades\Validator::make($request->all(), [
-            'password' => AccountPassword::rules('customer', $request->all()),
-            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
-        ], AccountPassword::messages())->validate();
-
         try {
-            $result = DB::transaction(function () use ($request) {
-                $pendingRegistration = null;
-                $credential = $request->validate(['registration_recovery_token' => 'required|string|size:64']);
-                $hash = hash('sha256', $credential['registration_recovery_token']);
-                $legacy = User::query()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
-                $registrant = $legacy ?? PendingCustomerRegistration::query()
-                    ->withActiveReview()->where('registration_recovery_token_hash', $hash)->lockForUpdate()->first();
-                if (! $registrant || ! $registrant->registration_recovery_expires_at
-                    || now()->greaterThanOrEqualTo($registrant->registration_recovery_expires_at)
-                    || ($legacy && ! CustomerRegistrationService::recoverableUser($legacy))) {
-                    abort(422, 'This registration review has expired. Verify your email again.');
-                }
-                if (strcasecmp($request->input('email'), $registrant->email) !== 0) {
-                    abort(422, 'Use the email address you verified.');
-                }
-                $pendingRegistration = $legacy
-                    ? PendingCustomerRegistration::query()->whereRaw(AccountEmail::lookupColumn().' = ?', [$legacy->email])->lockForUpdate()->first()
-                    : $registrant;
-                $data = $this->registrationData($request, $pendingRegistration, $legacy);
-                unset($data['password']);
-                $data['password_hash'] = Hash::make($request->input('password'));
-                return app(CustomerRegistrationService::class)->complete($registrant, $data);
-            }, 3);
-        } catch (UniqueConstraintViolationException) {
-            return response()->json(['success' => false, 'message' => 'These details are already in use. Continue with email verification or update your details.'], 422);
+            return app(CustomerRegistrationService::class)->start($request, $data['email'], hash('sha256', $browserToken))
+                ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
+        } catch (HttpResponseException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['success' => false, 'code' => 'email_delivery_failed',
+                'message' => "Couldn't queue the verification email. Please try again."], 503)->header('Cache-Control', 'no-store');
         }
-        return $result;
     }
 
-    private function registrationData(Request $request, ?PendingCustomerRegistration $pendingRegistration = null, ?User $legacy = null, bool $checkAvailability = true): array
+    public function finalizeRegistration(Request $request, CustomerRegistrationService $registrations)
     {
-        $existing = $legacy ?? $pendingRegistration;
-        if ($existing && strcasecmp($existing->email, $request->input('email')) === 0) {
-            $request->merge(['email' => $existing->email]);
-        }
-        $data = $request->validate([
-            'first_name' => \App\Support\HumanName::rules(),
-            'last_name' => \App\Support\HumanName::rules(),
-            'username' => AccountUsername::rules('nullable', $legacy?->username),
-            'phone' => [
-                'nullable',
-                ...\App\Support\PhilippineMobile::rules(required: false),
-                ...($checkAvailability ? [Rule::unique('pending_customer_registrations', 'phone')->ignore($pendingRegistration?->getKey())] : []),
-            ],
-            'email' => [
-                ...(($existing && strcasecmp($existing->email, $request->input('email')) === 0)
-                    ? ['required', 'email', 'max:150'] : AccountEmail::rules()),
-            ],
-            'password' => AccountPassword::rules('customer', $request->all(), screen: ! $request->isMethod('put')),
-            'password_confirmation' => ['bail', 'required', 'string', 'same:password'],
-            'terms_accepted' => ['required', 'accepted'],
-        ], AccountPassword::messages() + ['terms_accepted.required' => 'Please agree to the Terms and Conditions.',
-            'terms_accepted.accepted' => 'Please agree to the Terms and Conditions.']);
-        unset($data['terms_accepted']);
-        if ($checkAvailability && ! empty($data['username']) && ! AccountUsername::isAvailable(
-            $data['username'], $legacy?->getKey() ?? 0, true, registration: $pendingRegistration,
-        )) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['username' => 'That username is already in use.']);
-        }
-        $data['terms_accepted_version'] = CustomerRegistrationService::TERMS_VERSION;
-        $data['terms_accepted_at'] = now()->toDateTimeString();
-        foreach (['first_name', 'last_name'] as $field) {
-            $data[$field] = $existing && $data[$field] === $existing->$field ? $data[$field] : User::normalizeName($data[$field]);
-        }
-        // Pending completion checks real/reserved accounts in complete(), under
-        // the same transaction. Legacy completion must exclude its own account.
-        if ($legacy) {
-            app(CustomerRegistrationService::class)->assertAccountAvailability($data, true, $legacy);
-            AccountEmail::assertAvailable($data['email'], $legacy, false, $pendingRegistration);
-        }
-        return $data;
+        return $registrations->finalize($request);
     }
 
     // ── UNIFIED SIGN-IN ───────────────────────────────────
@@ -197,9 +96,6 @@ class AuthController extends Controller
 
             $lookupColumn = $field === 'email' ? AccountEmail::lookupColumn() : $field;
             $user = User::whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
-            $pendingRegistration = $user
-                ? null
-                : PendingCustomerRegistration::query()->unexpired()->whereRaw($lookupColumn.' = ?', [$lookupIdentifier])->first();
 
             if ($user?->requiresPasswordSetup()) {
                 return response()->json([
@@ -210,11 +106,10 @@ class AuthController extends Controller
             }
 
             $passwordHash = $user?->password_hash
-                ?? $pendingRegistration?->password_hash
                 ?? '$2y$12$phAn9O3fw5n4sHb8YADptOZicYefzNF1mfQlOwFAKzEQ533R6y4iq';
             $passwordMatches = Hash::check($data['password'], $passwordHash);
 
-            if ((! $user && ! $pendingRegistration) || ! $passwordMatches) {
+            if (! $user || ! $passwordMatches) {
                 // Serialize only the short IP update, never password hashing or email delivery.
                 $ipLock = Cache::lock($ipThrottleKey.':lock', 5);
                 if (! $ipLock->get()) return $this->signInBusyResponse();
@@ -253,16 +148,6 @@ class AuthController extends Controller
             Cache::forget($throttleKey);
         } finally {
             $lock->release();
-        }
-
-        if ($pendingRegistration) {
-            return response()->json([
-                'success' => false,
-                'code' => 'email_not_verified',
-                'message' => 'Please verify your email address to finish registering your account.',
-                'email_not_verified' => true,
-                'email' => $pendingRegistration->email,
-            ], 403);
         }
 
         if (! $user->is_active || $user->is_archived || $user->hasEmailRecoveryHold()) {

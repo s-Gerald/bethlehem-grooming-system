@@ -1,62 +1,31 @@
-// Active verification lives only in this tab. Stored values never authorize an account session.
+// Only opaque credentials and deadlines survive reloads; never form values.
 window.SignupContext = (() => {
-  const keys = ["pendingVerificationEmail", "pendingVerificationPhone", "pendingVerificationState",
-    "pendingVerificationRegistrationUntil", "pendingVerificationResendUntil", "pendingVerificationLinkUntil",
-    "pendingVerificationResendLimited", "pendingVerificationDeliveryFailed", "pendingRegistrationEditToken",
-    "pendingRegistrationRecoveryToken", "pendingRegistrationRecoveryUntil", "pendingSignupDetails",
-    "pending_registration_email_delivery", "pendingSignupContext"];
-  const get = key => { try { return sessionStorage.getItem(key) || ""; } catch { return ""; } };
-  function read(email = "") {
-    const activeEmail = get("pendingVerificationEmail");
-    const expiresAt = Number(get("pendingVerificationRegistrationUntil"));
-    return activeEmail && expiresAt > Date.now() && expiresAt <= Date.now() + 3600000
-      && (!email || activeEmail.toLowerCase() === email.trim().toLowerCase()) ? {email: activeEmail, expiresAt} : null;
-  }
-  function remember(email, expiry) {
-    const value = {email, expiresAt: Date.parse(expiry) || Date.now() + 3600000};
+  const key = 'bethlehem_signup_attempt';
+  let active = null;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (/^[a-f0-9]{64}$/.test(saved?.token) && saved.expiresAt > Date.now()
+        && saved.expiresAt <= Date.now() + 3600000) active = saved;
+    else sessionStorage.removeItem(key);
+    // Remove obsolete signup drafts from earlier deployments.
+    for (const old of ['pendingSignupDetails', 'pendingVerificationEmail', 'pendingVerificationPhone',
+      'pendingRegistrationEditToken', 'pendingRegistrationRecoveryToken', 'pendingRegistrationRecoveryUntil',
+      'pendingVerificationRegistrationUntil', 'pendingVerificationResendUntil', 'pendingVerificationLinkUntil',
+      'pendingVerificationState', 'pendingVerificationResendLimited', 'pendingVerificationDeliveryFailed',
+      'registrationReplacement', 'pendingSignupContext']) sessionStorage.removeItem(old);
+    localStorage.removeItem('pendingSignupContext');
+  } catch { /* The active page can still register without storage. */ }
+  function save(value) {
+    active = value;
     try {
-      sessionStorage.setItem("pendingVerificationEmail", email);
-      sessionStorage.setItem("pendingVerificationRegistrationUntil", String(value.expiresAt));
-      sessionStorage.removeItem("registrationReplacement");
-    } catch { /* Server expiry remains authoritative. */ }
+      if (value) sessionStorage.setItem(key, JSON.stringify(value));
+      else sessionStorage.removeItem(key);
+    } catch { /* No persistent password fallback. */ }
     return value;
   }
-  function clear() {
-    for (const key of keys) { try { sessionStorage.removeItem(key); } catch { /* UX only. */ } }
-    try { localStorage.removeItem("pendingSignupContext"); } catch { /* Obsolete drafts. */ }
+  function create() {
+    const bytes = window.crypto.getRandomValues(new Uint8Array(32));
+    return save({token:Array.from(bytes, byte=>byte.toString(16).padStart(2,'0')).join(''), expiresAt:Date.now()+3600000, resendUntil:0});
   }
-  function fresh() {
-    const active = read();
-    const token = get("pendingRegistrationEditToken");
-    let replacement = null;
-    try {
-      replacement = active && token ? {...active, token} : JSON.parse(get("registrationReplacement") || "null");
-      if (!replacement || replacement.expiresAt <= Date.now() || replacement.expiresAt > Date.now() + 3600000) replacement = null;
-      if (replacement) sessionStorage.setItem("registrationReplacement", JSON.stringify(replacement));
-      else sessionStorage.removeItem("registrationReplacement");
-    } catch { /* Fresh signup remains available. */ }
-    clear();
-    return replacement;
-  }
-  async function abandon(scopedToken = "") {
-    const token = scopedToken || get("pendingRegistrationEditToken") || get("pendingRegistrationRecoveryToken");
-    clear();
-    try { sessionStorage.removeItem("registrationReplacement"); } catch { /* UX only. */ }
-    if (token) {
-      try { await API.cancelRegistration(token); } catch { /* Expiry is the fallback for network loss. */ }
-    }
-  }
-  function bindExits(onExit = () => {}, attemptToken = () => "") {
-    for (const link of document.querySelectorAll('a[href="/sign-up"], a[href="/sign-in"], a[href="/"]')) {
-      link.addEventListener("click", async event => {
-        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        const token = attemptToken();
-        onExit();
-        await abandon(token);
-        window.location.replace(link.getAttribute("href"));
-      });
-    }
-  }
-  return {read, remember, clear, fresh, abandon, bindExits};
+  return {read:()=>active, create, save, clear:()=>save(null)};
 })();

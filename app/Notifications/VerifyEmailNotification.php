@@ -8,8 +8,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\MailMessage;
 use App\Models\PendingCustomerRegistration;
-use App\Models\User;
-use App\Services\CustomerRegistrationService;
 use App\Services\RegistrationMagicLinkService;
 
 class VerifyEmailNotification extends Notification implements ShouldBeEncrypted, ShouldQueue
@@ -33,9 +31,8 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
     {
         // Old queued signup codes cannot be used by the new verification API.
         return isset($this->token) && strlen($this->token) === 64
-            && ($notifiable instanceof PendingCustomerRegistration || $notifiable instanceof User)
-            && ($notifiable instanceof PendingCustomerRegistration ? ! $notifiable->retentionExpired()
-                : CustomerRegistrationService::recoverableUser($notifiable))
+            && $notifiable instanceof PendingCustomerRegistration && ! $notifiable->retentionExpired()
+            && ! $notifiable->registration_approved_at && ! $notifiable->registration_completed_at
             && hash_equals((string) $notifiable->email_verification_token, hash('sha256', $this->token))
             && $notifiable->email_verification_last_sent_at
             && RegistrationMagicLinkService::expiresAt($notifiable)?->greaterThanOrEqualTo(now()->addSeconds(RegistrationMagicLinkService::MIN_DELIVERY_SECONDS));
@@ -48,7 +45,7 @@ class VerifyEmailNotification extends Notification implements ShouldBeEncrypted,
         if (! $expiry || ! $expiry->isFuture()) throw new \RuntimeException('Verification link has expired.');
         return (new MailMessage)
             ->subject('Verify your Bethlehem account')
-            ->line('Confirm your email to activate your Bethlehem account.')
+            ->line('Confirm your email to continue creating your Bethlehem account.')
             ->action('Verify Email Address', rtrim(config('app.frontend_url'), '/').'/verify-email#token='.rawurlencode($this->token))
             ->line('This link expires on '.$expiry->timezone('Asia/Manila')->format('F j, Y, g:i:s A').' (Asia/Manila, UTC+08:00).')
             ->line('If you did not start this registration, ignore this email.');

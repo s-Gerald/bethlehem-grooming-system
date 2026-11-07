@@ -20,7 +20,7 @@
     <title>Verify Your Email | Bethlehem Animal Clinic</title>
     <link rel="stylesheet" href="/css/output.css?auth-hardening=20261030" />
     <link rel="stylesheet" href="/css/custom.css?v=site-assets-20261001&release=20261001&grooming=actual-20261026" />
-    <link rel="stylesheet" href="/css/components/verification-code.css?pairing=20261104&v=magic-links-20261028&otp=progressive-20261030" />
+    <link rel="stylesheet" href="/css/components/verification-code.css?registration=20261107&v=magic-links-20261028&otp=progressive-20261030" />
   </head>
   <body class="verification-page">
     <main class="verification-layout">
@@ -44,67 +44,15 @@
             </div>
             <h2 id="successTitle" class="text-2xl font-bold text-slate-800">Account created successfully!</h2>
             <p id="successMessage" class="mt-2 text-sm text-slate-500">Redirecting to your account…</p>
-            <a id="successDashboard" href="/account" class="hidden verification-primary mt-6">Go to dashboard</a>
-          </div>
-
-          <div id="statePending" class="hidden">
-            <div class="verification-heading">
-              <h1 id="verificationTitle">Check your email</h1>
-              <p id="verificationDescription">Open the verification link to continue.</p>
-              <p id="verifyCodeEmail" class="verification-email"></p>
-              <p id="verificationInstruction"></p>
-            </div>
-            <div id="registrationConfirmation" class="hidden verification-confirmation" role="status" aria-live="polite">
-              <p>Confirmation code</p>
-              <p id="registrationConfirmationCode" class="verification-confirmation-code"></p>
-              <p>Enter this code on the verification page.</p>
-              <p>Only confirm if you started this sign-up.</p>
-            </div>
-            <p id="signupWaiting" class="verification-waiting" aria-label="Waiting for verification"><svg viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#spinner-gap"></use></svg></p>
-            <form id="signupLinkForm" class="space-y-5">
-              <div id="verificationEmailRecovery" class="hidden">
-                <label for="verificationEmail" class="mb-2 block text-sm font-semibold text-slate-800">Email address</label>
-                <input id="verificationEmail" type="email" autocomplete="email" class="w-full rounded-2xl border border-slate-300 px-4 py-3" />
-              </div>
-              <div id="signupLinkMessage" class="hidden" role="status" aria-live="polite"></div>
-              <div class="verification-resend">
-                <button id="signupResend" type="submit" class="verification-link">Resend link</button>
-              </div>
-            </form>
           </div>
 
           <div id="stateLink" class="hidden">
             <div class="verification-heading">
               <h1>Verify your email</h1>
-              <p>Confirm your email to activate your Bethlehem account.</p>
+              <p>Confirm your email to continue creating your Bethlehem account.</p>
             </div>
             <button id="verifyLinkSubmit" type="button" class="verification-primary">Verify Email Address</button>
-            <div class="verification-resend"><button id="verifyLinkEdit" type="button" class="verification-link">Edit registration details</button></div>
             <p id="verifyLinkMessage" class="hidden verification-message" role="alert"></p>
-          </div>
-
-          <!-- Login code state -->
-          <div id="stateConfirmation" class="hidden">
-            <div class="verification-heading">
-              <h1>Confirm registration</h1>
-              <p id="registrationCodeDescription">Enter the code shown on your sign-up page.</p>
-            </div>
-            <form id="registrationConfirmationForm" class="space-y-5" novalidate>
-              <label for="registrationCode" class="sr-only">Confirmation code</label>
-              <div class="verification-code-cells">
-                <input id="registrationCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]{6}" aria-describedby="registrationCodeDescription registrationCodeMessage registrationCodeWarning" required />
-                <span class="verification-code-cell" aria-hidden="true"></span>
-                <span class="verification-code-cell" aria-hidden="true"></span>
-                <span class="verification-code-cell" aria-hidden="true"></span>
-                <span class="verification-code-cell" aria-hidden="true"></span>
-                <span class="verification-code-cell" aria-hidden="true"></span>
-                <span class="verification-code-cell" aria-hidden="true"></span>
-              </div>
-              <p id="registrationCodeMessage" class="hidden verification-message" role="alert"></p>
-              <p id="registrationCodeWarning" class="verification-security">Only confirm if you started this sign-up.</p>
-              <button id="registrationCodeSubmit" type="submit" class="verification-primary">Confirm Registration</button>
-            </form>
-            <div class="verification-resend"><button id="registrationFinishHere" type="button" class="verification-link">Finish here instead</button></div>
           </div>
 
           <!-- Login code state -->
@@ -146,30 +94,6 @@
             <p id="errorMessage" class="mt-2 text-sm text-slate-500"></p>
           </div>
 
-          <!-- ── Resend form (shown in Pending and Error states) ── -->
-          <div id="resendSection" class="hidden mt-8 border-t border-slate-100 pt-6">
-            <p class="mb-3 text-center text-sm font-semibold text-slate-600">Didn't receive the email?</p>
-            <form id="resendForm" class="space-y-3">
-              <label for="resendEmail" class="sr-only">Email address</label>
-              <input
-                id="resendEmail"
-                type="email"
-                placeholder="Enter your registered email"
-                autocomplete="email"
-                class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/10"
-                required
-              />
-              <button
-                id="resendSubmit"
-                type="submit"
-                class="w-full rounded-2xl bg-[#315b7e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#274a66] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <span id="resendBtnLabel">Resend Verification Email</span>
-              </button>
-            </form>
-            <div id="resendMessage" class="mt-3 hidden rounded-2xl border px-4 py-3 text-sm"></div>
-          </div>
-
           <!-- Back to sign-in -->
           <div id="verificationBackLink" class="mt-6 text-center text-sm text-slate-500">
             <a id="verificationBackAction" href="/sign-in" class="font-semibold text-[#315b7e] transition hover:text-[#274a66]">
@@ -181,11 +105,9 @@
       </div>
     </main>
 
-    <script src="/scripts/api.js?registration=20261104-v3&v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&otp=progressive-20261030&urls=20261103" defer></script>
+    <script src="/scripts/api.js?registration=20261107-v1&v=registration-review-20261029&auth=session-scope-20261006&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&auth-feedback=20261028-v3&remember=20261029&auth-hardening=20261101&otp=progressive-20261030&urls=20261103" defer></script>
     <script src="/scripts/auth/email-delivery.js?v=magic-links-20261028&auth-feedback=20261028-v3" defer></script>
     <script src="/scripts/auth/verification-code.js?v=auth-speed-20261018&auth-feedback=20261028-v3&otp=progressive-20261030" defer></script>
-    <script src="/scripts/auth/client/signup-context.js?registration=20261104-v3&v=registration-review-20261029" defer></script>
-    <script src="/scripts/auth/client/signup-verification.js?registration=20261104-v3&v=registration-review-20261029&urls=20261103" defer></script>
-    <script src="/scripts/auth/client/verify-email.js?registration=20261104-v3&v=registration-review-20261029&otp=progressive-20261030&urls=20261103" defer></script>
+    <script src="/scripts/auth/client/verify-email.js?registration=20261107-v1&v=registration-review-20261029&otp=progressive-20261030&urls=20261103" defer></script>
   </body>
 </html>

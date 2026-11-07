@@ -825,7 +825,7 @@ class PhoneVerificationTest extends TestCase
         $this->assertNull($other->fresh()->phone_verified_at);
     }
 
-    public function test_six_digit_validation_and_pending_account_conflict_precede_provider_calls(): void
+    public function test_six_digit_validation_and_unreserved_phone_are_checked_before_provider_calls(): void
     {
         $this->fakeSend();
         $id = $this->send();
@@ -833,13 +833,14 @@ class PhoneVerificationTest extends TestCase
             $this->postJson('/api/phone-verification/verify', ['challenge_id' => $id, 'code' => $code])->assertUnprocessable();
         }
         Http::assertSentCount(1);
-        Schema::create('pending_customer_registrations', function (Blueprint $t) {
-            $t->id();
-            $t->string('phone');
-        });
-        DB::table('pending_customer_registrations')->insert(['phone' => '09911234567']);
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->up();
+        DB::table('pending_customer_registrations')->insert([
+            'email' => 'pending@gmail.com', 'registration_edit_token_hash' => str_repeat('e',64),
+            'registration_browser_token_hash' => str_repeat('b',64), 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->travel(60)->seconds();
-        $this->postJson('/api/phone-verification/send', ['phone' => '09911234567'])->assertUnprocessable();
+        $this->fakeSend(phone:'09911234567');
+        $this->postJson('/api/phone-verification/send', ['phone'=>'09911234567'])->assertOk();
         Http::assertSentCount(1);
     }
 

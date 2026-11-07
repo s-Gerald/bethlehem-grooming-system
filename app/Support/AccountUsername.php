@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\PendingCustomerRegistration;
 use App\Models\PendingStaffAccount;
 use App\Models\User;
 use Illuminate\Support\Facades\Schema;
@@ -21,7 +20,7 @@ class AccountUsername
         }];
     }
 
-    public static function isAvailable(string $username, int $userId, bool $lockForUpdate = false, ?string $staffEmail = null, ?PendingCustomerRegistration $registration = null): bool
+    public static function isAvailable(string $username, int $userId, bool $lockForUpdate = false, ?string $staffEmail = null): bool
     {
         $normalized = Str::lower($username);
         $users = User::query()->whereRaw('LOWER(username) = ?', [$normalized])->whereKeyNot($userId);
@@ -39,16 +38,7 @@ class AccountUsername
             if ($reserved->exists()) return false;
         }
 
-        if (! Schema::hasTable('pending_customer_registrations')) {
-            return true;
-        }
-        $pending = PendingCustomerRegistration::query()->unexpired()->whereRaw('LOWER(username) = ?', [$normalized]);
-        if ($registration) $pending->whereKeyNot($registration->getKey());
-        if ($lockForUpdate) {
-            $pending->lockForUpdate();
-        }
-
-        return ! $pending->exists();
+        return true;
     }
 
     public static function isAvailableToStaff(string $username, User $staff, bool $lockForUpdate = false): bool

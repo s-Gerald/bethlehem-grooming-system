@@ -1,401 +1,97 @@
-# Customer signup, verification, and recovery
+# Verify-first customer account creation
 
-> Current October 29 magic-link, one-hour pending retention, OTP and deployment behavior is documented in [customer-authentication.md](customer-authentication.md). The notes below are retained as history; their signup OTP, pre-proof PUT editing, recovery-panel UI, 48-hour/configurable retention, 45-second resend and repeatable-confirmation descriptions are superseded. Do not apply the historical retention environment settings below.
+Current implementation: November 7, 2026, branch `gerald-frontend`.
+This replaces the former pending-profile, registration review, pairing and session-handoff architecture. Historical migrations remain unchanged so existing databases can upgrade.
 
-Implemented against the latest local `gerald-frontend` branch on October 22, 2026.
-The working directory is `C:/bethlehem-clinic-frontend`; its configured remotes
-are `s-Gerald/bethlehem-clinic-frontend` and `rij-summit/bethlehem-grooming-system`.
-No remote was changed and no deployment was performed.
+## Workflow and boundaries
 
-## Root cause and investigation
+1. The existing signup form validates locally. Its submitted values, including password and confirmation, remain only in the active page's JavaScript memory.
+2. `POST /api/register` receives only `email` and a randomly generated 64-character `registration_token`. It creates an email-verification attempt, not a customer. `Check your email` appears inside the original signup card; the page does not unload.
+3. The verification email links to `/verify-email#token=...` using `FRONTEND_URL`. The fragment is captured in memory and removed before external resources load. The initial GET is inert. Clicking **Verify Email Address** posts the token to `/api/email/verify`.
+4. The POST locks and approves exactly that attempt. It consumes the link, issues no session, creates no user and discloses no profile or browser credential. The verification device sees **Email verified! Return to the device where you started creating your account.**
+5. The original page checks `/api/email/registration/status` about every five seconds. Checks pause when hidden and resume promptly on visibility/focus. Status and all attempt controls require both the opaque attempt token and the HttpOnly `bethlehem_registration_browser` cookie, plus the existing XHR/origin checks.
+6. On approval, the original page submits its retained values to `POST /api/register/finalize`. The backend revalidates names, optional username/Philippine mobile, exact approved email, current customer password policy and confirmation, and affirmative Terms acceptance. The server supplies the accepted Terms version/date. Password screening and hashing occur before acquiring the finalization row lock.
+7. A database transaction rechecks the binding, approval and one-hour deadline, checks completed/staff account reservations, creates the verified customer, and issues the first session through `AccountSessionService`. The existing middleware returns an HttpOnly account cookie and a public `id|cookie` reference. Signup accepts the session and opens `/account`; there is no immediate sign-in OTP.
 
-Current registration already stores new attempts in `pending_customer_registrations`.
-However, its unique validation blocked a second signup with the same email,
-username, or phone, and its private edit credential could only be recovered from
-the original browser tab. Public resend could issue a code, but verification
-previously activated the stored signup immediately, without a separate review
-step when the original edit credential had been lost.
+The verification page never finalizes an account, including when opened in the same browser or another tab. Sign-in's six-digit email OTP, Remember Me, account/session expiration, password reset, staff recovery and mobile verification remain independent.
 
-Legacy users are a real possibility, not just a hypothetical pending-row problem.
-The `AuthController` immediately before commit `7faf394` created a `users` row
-before sending verification. Existing unverified users can therefore reserve an
-email while `User::registeredCustomer()` excludes them from customer lists.
-Current sign-in already blocked unverified customers, but normal password-reset
-eligibility did not require a customer's verified email. Its generic response
-could also appear successful for a nonexistent/pending account, without sending
-anything. These distinct behaviors explain the reported combination.
+## Stored state and retry behavior
 
-The configured local database was unavailable, including a separate loopback
-MySQL connection probe. No actual customer's email, row state, or history was
-identified. Investigation established the source-code paths and reproduced both
-pending and legacy states in isolated tests; it did not establish which state
-held the reported address.
+`pending_customer_registrations` contains only: ID, email, hashed attempt/browser/link credentials, link issuance/expiry, approval/completion timestamps, completed session ID, and timestamps/indexes. It contains no name, username, phone, password/hash, Terms evidence or encrypted session secret. Pending email is indexed but not unique.
 
-## Database lifecycle and all five email states
+The browser's `bethlehem_signup_attempt` session-storage entry contains only the opaque token, absolute attempt deadline and resend deadline. Delivery tracking may store an opaque receipt separately. No password or form draft is written to browser storage. Existing obsolete signup drafts are removed. Without browser storage, the current page still completes normally; after reload the customer may need a fresh attempt.
 
-| State | Outcome |
-| --- | --- |
-| Neither table | Signup saves hashed credentials and details in pending only. No customer session. |
-| Pending only | Repeat signup continues to generic email verification without changing stored details. Email ownership proof permits the registration panel, review, and completion. |
-| Verified user only | Repeat signup uses the same public verification response as other existing emails. Resend sends no registration code; use sign-in or normal password recovery. |
-| Unverified user only | Eligible legacy customers receive a registration code. Ownership proof permits review; explicit completion updates the existing user ID. |
-| Both tables | The existing user takes precedence. Verified/disabled/deleted/noncustomer users cannot be activated through pending codes. An eligible legacy user's own code authorizes review; completion preserves its ID/history and removes the same-email pending row atomically. |
+Refresh, browser eviction or navigating away discards the password. With valid original binding, status supplies the attempt email and the customer re-enters missing details on signup. An existing approval can finalize without another verification. An expired/unavailable binding leads to a fresh attempt. Email alone cannot recover or redeem an approval.
 
-An inconsistent pending row beside an already verified/disabled account cannot
-overwrite that account and expires through normal pending retention. There is
-no blind account merge or bulk deletion of users. Legacy disabled, archived, or
-deleted accounts remain unavailable; the clinic must resolve their status.
-`unregistered_customers` and walk-in ownership/business logic remain separate.
+Duplicate starts with the same credential resume the same row without rotating a usable link or sending another email. Different browsers can create isolated attempts for the same email, subject to existing destination cooldowns and abuse limits; they receive no earlier credentials or grants. Changing email requires a new attempt. Other fields can change before finalization.
 
-`CustomerRegistrationService` centralizes completion and recovery authorization.
-New customer creation, consumed-pending deletion, verification state, and first
-session creation share one transaction. A failed session insert rolls all of it
-back. Legacy completion updates names/identifiers/password only after authorized
-review, preserves role/tier/IDs and linked pets/bookings, invalidates old sessions,
-and resets phone verification if the phone changes. Existing database uniqueness
-for email, username, and non-null phone remains intact.
+Finalization is idempotent under its attempt lock. A retry after a lost response returns the same usable first session. Its secret is derived using a domain-separated HMAC over both original browser credentials and the attempt ID; only its hash lives in Sanctum and only the session ID lives in the attempt. It cannot restore revoked/replaced/locked/expired sessions or issue a second session. A compromised database alone does not contain a recoverable session bearer. The application key is required for response recovery, so key rotation ends this limited recovery window.
 
-Registration locks matching identifiers in both tables before validation.
-Verification and completion lock their registrant row, recheck collisions, and
-retry database deadlocks up to three times. Uniqueness constraints remain the
-final protection against duplicate users.
+Completed-account uniqueness remains database-backed. Concurrent finalizations of independent attempts can create only one account for colliding email/username/mobile values; the losing attempt keeps its approval and can correct recoverable field conflicts. Staff reservations still apply. Unfinished customers reserve no username, mobile or email, including during staff/profile/mobile operations.
 
-## API and UI behavior
+## Links, delivery and retention
 
-- `POST /api/register` creates a pending row or returns HTTP 202 with the generic
-  `requires_verification` response. Public responses never claim recovery eligibility;
-  only the successful OTP's existing `requires_registration_review` grant permits
-  the conditional signup recovery panel. An email-only request cannot overwrite any
-  existing details/password, retrieve details, activate a user, or create a session.
-- Original-tab edits continue using the hashed private `registration_token` at
-  `PUT /api/register/pending`. Edits rotate that credential, invalidate the old
-  code, and preserve the current attempt budget/cooldown.
-- `POST /api/email/resend` reuses the existing rate-limited mail issuance service.
-  Public responses and delivery receipts remain generic; only the private edit
-  credential permits inspecting pending-mail delivery.
-- `POST /api/email/verify` with `{ email, code, registration_token }` completes an
-  original pending signup when the credential still matches and no user collides.
-- Without that matching edit credential, or for a legacy user, successful OTP
-  verification consumes the code and returns `requires_registration_review`,
-  minimal saved details, and a cryptographically random 64-character
-  `registration_recovery_token`. Only its SHA-256 hash is stored. Responses are
-  `no-store`. This is an authorization grant, never an authenticated session.
-- The grant lasts ten minutes, is single-use, and cannot outlive pending retention.
-  The existing signup form shows the owner-confirmed details, fixes the proven
-  email, and requires a newly entered password and explicit completion. The same
-  PUT endpoint accepts `registration_recovery_token`, revalidates uniqueness,
-  consumes the grant, and completes registration. Invalid submissions retain the
-  grant until expiry so the customer can correct their fields.
-- No password or OTP is stored in browser storage. Details/edit/review grants use
-  the existing tab-scoped session storage. Clearing that storage requires fresh
-  email proof, rather than losing access permanently. Browsers must permit
-  session storage for the cross-page review step.
-- Signup preserves entered fields on errors and focuses server-invalid fields.
-  Repeat signup uses the existing verification page without saving unproven input
-  as recovered account details. The permanent unfinished-registration signup link
-  is removed; recovery remains accessible through sign-in feedback and Forgot
-  Password. The conditional signup panel appears after email proof and reuses the
-  saved details. Code entry retains masked
-  email, autofill/paste support, visible focus, accessible alerts, resend cooldown,
-  and duplicate-submission guards. No extra expiry countdown, modal, or page was added.
-- Pending and unverified customer sign-in cannot issue sessions. Verified customer
-  and eligible admin/staff login confirmation remain unchanged.
-- Normal password-reset eligibility now requires verified email for customers at
-  request, code verification, and final reset. Pending customers do not qualify.
-  Legacy unverified customers must use registration recovery. Forgot Password
-  keeps its generic response and first shows neutral confirmation with an explicit
-  Enter code action; generic API success cannot automatically open reset OTP entry.
-  The registration recovery entry remains visible on the request and confirmation
-  screens. Signup verification no longer has a Use another email button or handler;
-  login verification and existing links retain their separate handlers. Eligible admin/staff
-  reset and staff setup behavior remain intact.
+Links last at most 30 minutes and never beyond the attempt's original one-hour deadline. Approval remains usable until the attempt's one-hour deadline even after the consumed link expires. Reopening a consumed link only reports that it has already been used; it cannot approve twice or create accounts/sessions. Invalid/replaced, expired, consumed and expired-attempt responses are distinct. An unknown hash cannot safely distinguish a random invalid link from a replaced one, so that response accurately says invalid or replaced.
 
-## OTP and queued mail policy
+Resends require both original credentials. The existing email policy enforces cooldown, destination/source/provider quotas and persistent shared locks. A rejected resend leaves the existing link intact. A successful resend rotates only that attempt's link. An approved attempt does not resend or discard approval. Failed queue insertion rolls back issuance and quota reservations. Expiry is security/cleanup policy, never a mandatory customer lockout.
 
-`RegistrationEmailCodeService::TTL_MINUTES` is **10**. Issuance records one server
-time for both `last_sent_at` and its ten-minute deadline. Validation and queued
-mail guards enforce both the stored deadline and ten minutes from issuance,
-including old OTPs whose stored deadline was fifteen minutes. Codes lacking
-issuance metadata must be replaced through resend. Already-issued legacy links
-retain their original deadline and single-use compatibility; no new links are issued.
+The existing Laravel/Brevo path is unchanged: encrypted notification work is durably inserted with the issuance transaction; `AUTH_MAIL_DELIVERY=immediate` attempts transport after commit/response termination, and the existing database worker provides fallback. No SMTP waits inside a database transaction. Receipt/issuance guards suppress stale, consumed, cancelled and expired jobs. Jobs cannot rotate links or recreate deleted attempts. The obsolete public-registration processing job is removed; old such jobs cannot authorize the new flow.
 
-Registration resend cooldown remains **45 seconds** and the maximum is **five
-invalid attempts**. Superseded codes cannot pass the current hash check. Correct
-but expired codes cannot authorize a grant or activate an account. Expiry-specific
-feedback for a code is shown only after it matches, limiting public disclosure.
-Route throttles remain in place. Incorrect code attempts do not reset on resend
-or edit during the current validity window.
+The existing `pending-customer-registrations:prune` scheduler removes expired metadata every five minutes. Account records and sessions are not deleted by this cleanup. Expiration checks reject attempts at the deadline even if scheduled cleanup has not run.
 
-Both HTML and plain-text emails render `This code expires in 10 minutes.` from
-the service constant, show the six-digit code, state its purpose, retain Bethlehem
-branding, and say an unrequested registration email may be ignored.
+## Upgrade and Hostinger deployment
 
-Login confirmation retains its configurable **15-minute default**
-(`LOGIN_CONFIRMATION_TTL_MINUTES`) and **60-second resend cooldown**. Password-reset
-codes retain their separate configurable **15-minute default**
-(`PASSWORD_RESET_TTL_MINUTES`) and **45-second cooldown**. Staff setup links retain
-24-hour validity. These expiration policies were not changed. A read-only check of the current local
-configuration confirmed registration 10 minutes / 45 seconds / five attempts,
-login 15 minutes, password reset 15 minutes, and pending retention 48 hours.
+No deployment, production environment edit, live email send, shared-cache flush or application database migration was performed by this refactor.
 
-The existing encrypted durable queue, transactional job insertion, retry/backoff,
-shared receipt locks, rollback on insertion failure, immediate-delivery fallback,
-and suppression of replaced/consumed/locked issuances remain in use. Registration
-jobs also check pending retention and the ten-minute maximum. Mail retries never
-restore an earlier hash. Existing bounded private delivery-status checks are
-reused; no background polling was introduced.
+Deploy backend, HTML, JavaScript and CSS together. Signup and verification asset URLs carry `registration=20261107-v1` / `v=20261107`. Do not serve old registration scripts against the new API. Have existing browsers refresh signup after deployment.
 
-## Retention, migration, and deployment
+Use the actual Hostinger PHP CLI path and application directory. Review the existing queue/scheduler configuration; do not add duplicate workers. In a maintenance window:
 
-The default is **48 hours from `created_at`**, independent of OTP expiry. Sending,
-editing, or incorrectly verifying does not extend it. Pending rows without a
-creation timestamp are considered expired. Expired rows are excluded from sign-in,
-resend, completion, and related staff identifier reservations. Fresh signup prunes
-them before validation, releasing email/username/phone immediately.
-
-One `PendingCustomerRegistration::pruneExpired()` implementation serves signup and
-the existing daily scheduled cleanup. No scheduler was added. The cleanup's
-indexed DELETE takes database row locks; it cannot remove users or customer history.
-
-Apply the forward migration
-`2026_10_22_000001_add_registration_recovery_grants.php`. It adds nullable unique
-hashed review grants and expiry timestamps to the two registrant tables, plus an
-index on pending `created_at`. It is repeatable after partial schema changes and
-has tested up/down behavior. Applied migrations were not rewritten.
-
-Deployment steps:
-
-1. Back up the database through the existing deployment process. Apply pending
-   migrations with `php artisan migrate --force` before serving the updated app.
-2. Set `PENDING_REGISTRATION_RETENTION_HOURS=48` explicitly for the new policy.
-   If hours is absent, an explicitly configured legacy
-   `PENDING_REGISTRATION_RETENTION_DAYS` is honored in days. Remove/replace the
-   legacy variable when adopting 48 hours; existing installations with `...DAYS=7`
-   otherwise deliberately retain their seven-day setting.
-3. Refresh configuration with `php artisan config:cache` and restart workers with
-   `php artisan queue:restart`. Publish the updated static auth pages/scripts and
-   registration templates together. Their changed asset versions invalidate old
-   browser script caches. The existing CSS classes are reused.
-4. Retain the existing Hostinger scheduler cron invoking `artisan schedule:run` and
-   current durable database queue/worker or supported immediate-mail setup. Check
-   `php artisan schedule:list` for exactly one `pending-customer-registrations:prune`.
-   Keep HTTPS frontend/sender and shared cache requirements from
-   `docs/hostinger-email-auth.md`.
-5. Legacy link handling and notification URL hydration are temporary compatibility
-   only. Remove them together after pre-code links expire and pre-release link
-   jobs drain. Do not remove historical migrations. OTPs without issuance metadata
-   require a fresh code rather than bypassing the maximum lifetime.
-
-## Code cleanup and performance
-
-Removed duplicate pending cleanup predicates, duplicated customer-creation/session
-responses and the now-unused customer payload helper from verification. Completion
-and clearing verification state have shared sources. Existing backend/frontend
-tests were updated for credentials, recovery responses, retained collision data,
-ten-minute expiry, and both rendered email formats; old activation expectations
-were replaced in their original tests. The normal password-reset interface tests
-were inspected and remain valid without changing their expectations.
-
-The extra work is bounded indexed identifier locks/lookups on registration and
-hashed grant lookups during recovery. Validation does not fetch customer lists.
-The locked identifier matches are reused for the recovery decision rather than
-queried again. Existing user verification adds an indexed email lookup so a legacy user wins a
-collision. Recovery sends only on explicit action, and reuses existing requests,
-queue code, and form. Unrelated customer/admin queries are unchanged; the full
-suite's existing growth probe still reported five queries for both three and
-thirteen customers. No N+1 query, new scheduler, cache invalidation scheme, or
-polling loop was added. Production Core Web Vitals were not measured.
-
-## Executed verification and limitations
-
-- Baseline: 109 existing email verification/password reset/interface tests passed
-  (1,135 assertions); the original frontend signup regression passed.
-- New regressions were observed failing for expiry, abandoned signup blocking,
-  missing ownership review, unverified reset eligibility, pre-release OTP lifetime,
-  and expiry disclosure before implementing their fixes.
-- Final focused authentication/customer suites: **220 tests passed, 2,682 assertions**.
-  The separate final overlapping-request/runtime-capability check also passed
-  (one test, 14 assertions).
-- `npm test`: **76/76** regression scripts passed. Signup and frontend auth/session
-  regressions were rerun successfully after the final JavaScript updates.
-- Full backend suite, PHP 8.4 with a process-only 512 MB memory limit:
-  **1,433 tests, 18,726 assertions; one failure, seven skips**. The first full run
-  reached the runtime's default 128 MB limit; application memory settings were
-  not changed. The one failure is
-  `AdminPetProfileTest::test_service_case_summary_uses_saved_line_totals_and_handles_empty_history`
-  (`0.04` expected, `0.02` returned). It also fails in isolation with HEAD versions
-  of every changed application class loaded from disposable copies. The existing
-  service-history rounding implementation and assertion were left intact.
-- Actual overlapping verification requests ran in separate PHP processes against
-  a disposable SQLite database using supported IMMEDIATE transactions. The second
-  process proved it observed the first process's writer lock. Results: HTTP 200
-  and 422, one user, one token, zero pending rows. This does not substitute for
-  MySQL/InnoDB concurrency testing on staging.
-- Queue insertion rollback, replaced/expired/locked mail suppression, transport
-  retries, legacy linked-history preservation, grant forgery/expiry/replay,
-  exact 600-second boundary, identifier uniqueness, and atomic completion are covered.
-- No live inbox/Hostinger deployment or production data mutation was performed.
-  Local MySQL was unavailable. The available browser timed out reaching localhost,
-  so responsive visual inspection was not completed; existing layout/CSS were retained.
-
-Commands (PowerShell; use the available PHP 8.4 executable on Windows):
-
-```powershell
-$authPhp = 'C:/Users/Gerald/AppData/Local/Programs/BethlehemTestTools/php84/php.exe'
-& $authPhp -d memory_limit=512M vendor/phpunit/phpunit/phpunit --filter 'EmailVerificationTest|PasswordResetTest|PasswordResetInterfaceTest|IndependentAuthenticationSessionsTest|SessionLockTest|TestingEnvironmentTest|AdminUnregisteredCustomerTest|AdminDashboardCustomerSearchTest|AdminCredentialChangeTest|AdminStaffAccountManagementTest' --no-progress
-npm test
-node tests/customer-signup-verification-regression.cjs
-node tests/frontend-auth-session-regression.cjs
-& $authPhp -d memory_limit=512M vendor/phpunit/phpunit/phpunit --no-progress
+```sh
+# Allow the existing bounded worker to finish; pause its cron during the code/schema switch.
+# Drain already-queued work with the old release before removing its obsolete job class.
+php artisan down
+# Install/upload the new release and its built assets.
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan queue:restart
+php artisan up
+# Resume the existing bounded worker cron.
+php artisan schedule:list
 ```
 
-## Manual testing checklist: localhost and Hostinger staging
+Build artifacts locally/CI with `npm ci` and `npm run build`, or build on hosting if Node is available. Include the generated `css/output.css`, versioned frontend files and `public/build` outputs used by the existing deployment layout.
 
-Use disposable test registrations and a controlled inbox in both environments.
-On localhost, start the existing frontend/API and configured queue worker. On
-Hostinger staging, apply the migration/config/worker steps above first.
+Migration `2026_11_07_000001_make_customer_registration_verify_first.php` replaces **only** the disposable pending-customer table. It invalidates old unfinished signup attempts, including old review/pairing tokens. It does not reset the database, migrate passwords into the new table or delete completed users/business records. The migration can resume if the temporary table is missing; a completed repeat invocation preserves new attempts. Run in maintenance because MySQL DDL is not fully transactional. Take the normal database backup first.
 
-1. Submit a new signup. Confirm only one pending row and no user/session; verify
-   absence from Admin Customers Active. Receive both HTML/text email versions.
-2. Abandon signup, open another browser/device or clear tab session storage, and
-   repeat signup with the same email. On the verification screen, request a code
-   if needed. Confirm
-   names/password are unchanged before proof, then review saved details, choose a
-   password, and explicitly complete. Confirm one verified active user and no pending row.
-3. Use an unrelated browser to POST the same email with different details/password
-   or a forged grant. Confirm no overwrite, protected details, activation, or session.
-4. Request a new code after 45 seconds; confirm the earlier code fails and the new
-   one succeeds once. Test just before ten minutes, at ten minutes, and after ten
-   minutes. Test five wrong codes and route throttling; request a fresh code after lockout.
-5. Let a review grant expire or replay a consumed grant. Confirm rejection. Correct
-   a validation error before grant expiry and verify that entered fields remain.
-6. On disposable fixtures, age pending `created_at` beyond configured retention
-   while keeping `updated_at` recent. Confirm resend/sign-in cannot revive it and
-   fresh signup can reuse its email, phone, and username. Verify scheduled pruning.
-7. Exercise an unverified legacy user with linked pet/booking records, and a
-   same-email pending collision. Confirm review uses the user's code/details,
-   completion preserves its user ID and relationships, and consumes the pending row.
-   Confirm a verified/disabled account cannot be replaced by pending credentials.
-8. Verify pending/unverified customers cannot use normal password reset or sign in.
-   Verify a completed customer, admin, and established staff member retain normal
-   sign-in confirmation and password recovery, with their independent expiry policies.
-9. Pause mail workers, issue and replace codes, then resume workers. Only the current
-   live issuance should send. Simulate delivery retry and verify it neither restores
-   an old code nor creates an extra account. Confirm existing delivery feedback.
-10. On staging MySQL, submit the same original verification or recovered-completion
-    request concurrently. Confirm one successful completion, one rejection, one user,
-    one session, and no pending row. Also overlap cleanup, edits, and verification.
-11. Use keyboard only, paste/autofill an OTP, and simulate network/server errors.
-    Confirm focus, alerts, preserved fields, disabled busy controls, and resend recovery.
-    Inspect at 320, 375, 414, and 768 px for clipping/overflow and readable actions.
+Rollback requires the old application release plus this migration's `down()`, which restores the old temporary table schema empty. Temporary attempts cannot be restored; completed account records remain. Do not run `migrate:fresh`, database reset, or shared authentication cache clearing.
 
-Design references applied selectively to the existing Bethlehem interface:
-[GOV.UK email confirmation](https://design-system.service.gov.uk/patterns/confirm-an-email-address/),
-[GOV.UK error messages](https://design-system.service.gov.uk/components/error-message/),
-[NN/g form errors](https://www.nngroup.com/articles/errors-forms-design-guidelines/),
-and [OWASP password recovery](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html).
+Preserve existing verified sender/Brevo credentials, HTTPS `APP_URL`/`FRONTEND_URL`, allowed origins, database queue and shared database/Redis cache. Keep `AUTH_MAIL_DELIVERY=immediate` where already configured. No always-running queue daemon is required. The existing bounded worker remains suitable:
 
-## Localhost browser follow-up — October 22, 2026
+```sh
+php artisan queue:work database --stop-when-empty --max-time=50 --timeout=45 --tries=3 --sleep=1
+php artisan schedule:run
+```
 
-This pass opened and interacted with the running application at
-`http://127.0.0.1:8000/index.html`, using the current uncommitted local code.
-No GitHub or Hostinger application was accessed. The user chose to keep the
-environment unchanged and limit this pass to UI validation after the local
-database/mail prerequisites were identified.
+These are examples for the existing worker/scheduler, not instructions to install duplicate cron entries. Any configured `AUTH_MAIL_QUEUE` must remain included in the current worker's queue list.
 
-Newly verified in the actual browser:
+## Verification
 
-- Signup required fields, invalid email, password mismatch and minimum length,
-  error announcements, and preservation of entered details. Invalid client-side
-  submission made no registration request.
-- Registration verification's ten-minute wording, readable masked email, six
-  code cells, numeric keyboard entry, formatted paste, disabled incomplete/busy
-  controls, loading text, and incorrect-code feedback against an unknown test email.
-- Double-clicking Verify produced one request. Resend cleared the old input,
-  displayed loading, and used the server's 45-second cooldown. Existing three-per-
-  ten-minute abuse limits subsequently extended the displayed interval as intended.
-- A fresh tab without prior verification state showed the email-entry recovery
-  screen. Its resend attempt received HTTP 429 and retained the server's retry
-  interval. This checks the entry UI and throttling, not recovery of a pending row.
-- Unknown-identity sign-in rejection, generic Forgot Password progression, masked
-  reset email, keyboard Enter submission of an invalid reset code, and navigation
-  from Forgot Password to unfinished-registration recovery.
-- Signup, verification, sign-in, and Forgot Password layouts at desktop 1280px,
-  tablet 768px, and mobile 375/320px; verification also at 414px. No horizontal
-  overflow or inaccessible primary controls were found after viewport settling.
-  Some full-page captures misrendered the layout; viewport captures and measured
-  element geometry confirmed the correct rendering without a layout code change.
+- Final affected backend run: **651 tests, 8,718 assertions, no failures/errors; one opt-in MySQL phone migration test skipped.** Focused backend security/workflow, queue and real concurrent SQLite tests are in `VerifyFirstRegistrationTest` and `EmailVerificationTest`. Shared schema and concurrency fixtures live in `tests/Support`.
+- Final delivery-guard follow-up: **194 tests, 2,511 assertions, all passing**, including registration, OTP, password recovery and privileged mail. A reproduced stale-recipient race is fixed: immediate delivery checks the current approval row even when its recipient object predates approval.
+- Existing OTP/security/session, password policy/reset/change, email/name/mobile and staff-account regressions remain in the affected test run. Obsolete pairing, profile reservation and foreign-device review expectations were replaced.
+- Frontend behavior is covered by `customer-signup-verification-regression.cjs`, `frontend-auth-session-regression.cjs` and `email-delivery-regression.cjs`, including original-page waiting, duplicate requests, edit/email changes, reload recovery, hidden-tab polling, storage denial, safe verifier behavior and stale-session response protection.
+- `npm run build` passes with the existing outdated Browserslist-data notice.
+- The full frontend run passed 94/96 scripts. The unchanged `client-settings-loading-regression.cjs` and `customer-data-cache-regression.cjs` harnesses fail because they do not load `CredentialPolicy` before executing the unchanged customer-settings module. Those unrelated harnesses were not modified.
 
-One confirmed UX defect was fixed: successful resend confirmation used red error
-styling and `role="alert"`. `scripts/auth/client/signup-verification.js` now marks
-that confirmation as `role="status"`; `css/components/verification-code.css` gives
-it the existing neutral text color. Failures keep their error alerts and styling.
-`pages/client/verify-email.html` versions the changed script and stylesheet.
-The existing `tests/customer-signup-verification-regression.cjs` now checks both
-the success status and failed-resend alert; no new test file or API was added.
+Backend tests use isolated in-memory/disposable SQLite, fake breach screening and non-sending mail. On this Windows environment use the repository's PHP 8.4 test runtime; the sandbox cannot read the tracked test bootstrap, so tests run through the authorized external PHP process. Logs: `storage/logs/verify-first-php-final.txt`, `verify-first-mail-final.txt`, `verify-first-frontend.txt`, `verify-first-build.txt`.
 
-The updated regression was observed failing before the fix and passed afterward:
-`node tests/customer-signup-verification-regression.cjs`. JavaScript syntax and
-`git diff --check` passed. The previously reported 220 backend tests and 76 frontend
-scripts were not rerun in this follow-up and remain historical results.
+Before deployment approval, manually verify on staging/Hostinger:
 
-Observed HTTP results were expected negative/generic responses: registration
-verification 422, resend 200/429, sign-in 401, password request 202, reset-code
-verification 422. No transport failures, unexpected 5xx responses, or application
-JavaScript console errors were observed. There was no signup POST, successful
-verification, customer-session issuance, or normal password reset in this pass.
-
-Remaining unverified: actual new registration and atomic completion, abandoned
-pending-row recovery/overwrite protection/duplicate counts, pending or legacy
-unverified eligibility, verified-customer sign-in/reset, actual expired-code
-responses, mail content/delivery, and MySQL concurrency. XAMPP PHP can reach the
-local MySQL database, but both registrant tables lack the new recovery-grant
-column. The existing additive migration is still unapplied; local mail uses
-external SMTP rather than a capture mailbox. No migration, database fixture,
-customer-data change, SMTP delivery, or environment configuration change was made.
-
-The temporary extra browser tab was closed, viewport overrides were reset, and
-the original tab was returned to the application's homepage. Source is suitable
-to push for review; this UI pass does not establish deployment readiness. Apply
-the existing migration and complete controlled end-to-end/mail and staging MySQL
-checks before treating deployment validation as complete.
-
-## Recovery eligibility and UI cleanup follow-up — October 22, 2026
-
-Public repeat signup no longer returns `requires_registration_recovery` for either
-verified or unfinished accounts. Both retain the same neutral response. The
-existing OTP-authorized review grant controls the conditional registration panel;
-unknown, expired, disabled, and verified accounts cannot obtain that grant.
-Repeat signup preserves stored account details and clears stale local edit/review
-credentials before generic verification. Losing the review grant returns to email
-verification. The original-tab signup/edit and legacy recovery paths are retained.
-
-Forgot Password preserves its initial description, blue styling, and shared OTP
-component. Generic success shows a neutral confirmation before explicit Enter code;
-reload, cooldown, change-email, keyboard focus, and OTP/reset states remain covered.
-The unfinished-registration entry remains available. The permanent signup recovery
-link and signup verification's Use another email control/handler were removed.
-The recovery link display selector now respects hidden controls, preventing the
-back action from appearing on the initial email screen.
-No endpoint, database migration, account-status polling, or additional request was
-introduced; existing asset caching remains in place with revised script versions.
-
-Current automated verification:
-
-- PHP 8.4: **152 tests, 1,851 assertions**, all passing, filtered to
-  `EmailVerificationTest`, `PasswordResetTest`, `PasswordResetInterfaceTest`,
-  `IndependentAuthenticationSessionsTest`, `SessionLockTest`, and
-  `TestingEnvironmentTest`. These use isolated SQLite and fake/test mail, including
-  the existing overlapping-verification regression.
-- `customer-signup-verification-regression.cjs`,
-  `frontend-auth-session-regression.cjs`, and `email-delivery-regression.cjs` passed.
-  Existing tests were updated for the removed public recovery flag, ownership-gated
-  panel, neutral reset confirmation, preserved cooldown/focus, and lost grants.
-- Changed JavaScript syntax checks and `git diff --check` passed.
-
-Browser work in this pass was limited to static desktop UI inspection. No forms,
-OTP submissions, actual registration, password reset, live email delivery, database
-migration, or viewport-based functional testing were performed. Those manual
-workflows remain with the user. Earlier full-suite and browser results above are
-historical and were not repeated in this pass. Work remains on `gerald-frontend`;
-no branch, commit, push, or deployment was created.
+- MySQL upgrade/rollback and concurrent finalization with the existing case-insensitive unique user email/username indexes and unique mobile index.
+- HTTPS cookie/origin behavior, same-device new tab and real separate-device approval. The verification device must receive no account cookie; the original signup page must open `/account` without another OTP.
+- Real Brevo transport acceptance, delayed worker retry and existing worker/scheduler cron execution.
+- Mobile page eviction/reload with approved email, corrected finalization conflicts and lost-response recovery.
+- Rendered signup/waiting/edit/error/verification states at 320, 375, 414 and 768px, keyboard focus and reduced motion. Browser inspection could not run here: the in-app browser could not reach the loopback preview, and native browser control stopped because it could not establish the current URL for policy enforcement. No rendered-layout or real-mail claim is made.

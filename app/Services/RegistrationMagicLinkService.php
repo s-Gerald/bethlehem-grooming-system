@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Http\Controllers\EmailVerificationController;
 use App\Models\PendingCustomerRegistration;
-use App\Models\User;
 use App\Notifications\VerifyEmailNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,39 +17,36 @@ class RegistrationMagicLinkService
         return min(30, max(1, (int) config('authentication.magic_link_minutes', 30)));
     }
 
-    // Also caps pre-deployment stored issuances without changing their tokens.
-    public static function expiresAt(User|PendingCustomerRegistration $registrant): ?\Illuminate\Support\Carbon
+    public static function expiresAt(PendingCustomerRegistration $registrant): ?\Illuminate\Support\Carbon
     {
         $expiry = $registrant->email_verification_expires_at?->copy();
         if ($expiry && $registrant->email_verification_last_sent_at) {
             $expiry = $expiry->min($registrant->email_verification_last_sent_at->copy()->addMinutes(self::lifetimeMinutes()));
         }
-        if ($expiry && $registrant instanceof PendingCustomerRegistration) {
+        if ($expiry) {
             $deadline = $registrant->retentionExpiresAt();
             return $deadline ? $expiry->min($deadline) : null;
         }
         return $expiry;
     }
 
-    public function send(User|PendingCustomerRegistration $registrant): string
+    public function send(PendingCustomerRegistration $registrant): string
     {
         EmailVerificationController::assertMailCanBeDelivered();
         return app(AuthenticationEmailPolicy::class)->send($registrant->email, fn () => $this->issue($registrant));
     }
 
-    // Public jobs already reserved their quota when their encrypted work was queued.
-    public function issue(User|PendingCustomerRegistration $registrant, bool $allowImmediate = true): string
+    private function issue(PendingCustomerRegistration $registrant): string
     {
         EmailVerificationController::assertMailCanBeDelivered();
-        return DB::transaction(function () use ($registrant, $allowImmediate) {
+        return DB::transaction(function () use ($registrant) {
             $locked = $registrant->newQuery()->whereKey($registrant->getKey())->lockForUpdate()->firstOrFail();
-            if (($locked instanceof User && ! CustomerRegistrationService::recoverableUser($locked))
-                || ($locked instanceof PendingCustomerRegistration && $locked->retentionExpired())) {
+            if ($locked->retentionExpired() || $locked->registration_approved_at || $locked->registration_completed_at) {
                 throw new \RuntimeException('Account is not eligible for verification.');
             }
             $issuedAt = now()->startOfSecond();
             $expiresAt = $issuedAt->copy()->addMinutes(self::lifetimeMinutes());
-            if ($locked instanceof PendingCustomerRegistration) $expiresAt = $expiresAt->min($locked->retentionExpiresAt());
+            $expiresAt = $expiresAt->min($locked->retentionExpiresAt());
             if ($expiresAt->lessThan($issuedAt->copy()->addSeconds(self::MIN_DELIVERY_SECONDS))) {
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                     'success' => false, 'code' => 'registration_restart_required',
@@ -59,16 +55,12 @@ class RegistrationMagicLinkService
             }
             $token = Str::random(64);
             $locked->update([
-                ...($locked instanceof PendingCustomerRegistration ? RegistrationPairingService::cleared() : []),
                 'email_verification_token' => hash('sha256', $token),
-                'email_verification_code_hash' => null,
                 'email_verification_expires_at' => $expiresAt,
                 'email_verification_last_sent_at' => $issuedAt,
-                'registration_recovery_token_hash' => null,
-                'registration_recovery_expires_at' => null,
             ]);
             return AuthenticationMailDelivery::queue($locked, new VerifyEmailNotification($token), $locked,
-                'email_verification_token', 'email_verification_expires_at', $allowImmediate);
+                'email_verification_token', 'email_verification_expires_at');
         });
     }
 

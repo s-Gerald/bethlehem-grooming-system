@@ -37,7 +37,7 @@ Route::post('/paymongo/webhook', \App\Http\Controllers\PayMongoWebhookController
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/register/cancel', [AuthController::class, 'cancelRegistration'])->middleware('throttle:20,1');
-Route::put('/register/pending', [AuthController::class, 'register'])->middleware('throttle:5,1');
+Route::post('/register/finalize', [AuthController::class, 'finalizeRegistration'])->middleware('throttle:10,1,registration-finalize');
 Route::post('/sign-in', [AuthController::class, 'signIn']);
 Route::post('/session/restore', [\App\Http\Controllers\SessionController::class, 'restore'])
     ->middleware('throttle:remembered-session')->name('session.restore');
@@ -61,9 +61,7 @@ Route::post('/staff/email-recovery/complete', [\App\Http\Controllers\StaffEmailR
     ->middleware('throttle:10,1,staff-recovery-complete');
 Route::post('/email/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:registration-verify');
 Route::post('/email/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:30,1,registration-send');
-Route::post('/email/registration/session', [EmailVerificationController::class, 'registrationSession'])->middleware('throttle:30,1,registration-session');
 Route::post('/email/registration/status', [EmailVerificationController::class, 'registrationStatus'])->middleware('throttle:30,1,registration-status');
-Route::post('/email/registration/redeem', [EmailVerificationController::class, 'redeemRegistration'])->middleware('throttle:10,1,registration-redeem');
 Route::post('/email/delivery-status', [EmailVerificationController::class, 'deliveryStatus'])
     ->middleware('throttle:email-delivery-status');
 Route::post('/email/login/confirm', [LoginEmailChallengeController::class, 'confirm'])

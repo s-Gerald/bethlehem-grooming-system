@@ -638,7 +638,7 @@ class AdminCredentialChangeTest extends TestCase
             ->assertOk()->assertJsonPath('account.username', 'profilestaff');
     }
 
-    public function test_staff_profile_rejects_case_insensitive_existing_and_pending_usernames_and_rechecks_on_save(): void
+    public function test_staff_profile_rejects_existing_usernames_but_allows_unreserved_customer_names(): void
     {
         $staff = $this->createUser('staff', 'profile@gmail.com', '09171111010', 'ProfileStaff');
         Sanctum::actingAs($staff);
@@ -648,12 +648,9 @@ class AdminCredentialChangeTest extends TestCase
         $this->patchJson('/api/settings/security/profile', $profile + ['current_password' => 'CurrentAdmin!234'])
             ->assertUnprocessable()->assertJsonValidationErrors('username');
         $this->assertSame('Staff', $staff->fresh()->first_name);
-        \App\Models\PendingCustomerRegistration::create([
-            'first_name' => 'Pending', 'last_name' => 'Customer', 'username' => 'Pending.Name',
-            'email' => 'pending@gmail.com', 'phone' => '09171111012', 'password_hash' => Hash::make('Customer!234'),
-        ]);
+        // Unverified customer attempts no longer reserve usernames.
         $profile['username'] = 'PENDING.NAME';
-        $this->postJson('/api/settings/security/profile/validate', $profile)->assertUnprocessable()->assertJsonValidationErrors('username');
+        $this->postJson('/api/settings/security/profile/validate', $profile)->assertOk();
     }
 
     public function test_staff_profile_honors_other_pending_staff_username_reservations(): void

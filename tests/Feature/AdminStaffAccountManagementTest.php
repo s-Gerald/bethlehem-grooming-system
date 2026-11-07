@@ -73,18 +73,7 @@ class AdminStaffAccountManagementTest extends TestCase
             $table->timestamp('email_verified_at')->nullable();
         });
 
-        Schema::create('pending_customer_registrations', function (Blueprint $table): void {
-            $table->id();
-            $table->string('first_name');
-            $table->string('last_name');
-            $table->string('username', 50)->nullable()->unique();
-            $table->string('email', 150)->unique();
-            $table->string('phone', 20)->unique();
-            $table->string('password_hash');
-            $table->string('email_verification_token', 64)->nullable();
-            $table->timestamp('email_verification_expires_at')->nullable();
-            $table->timestamps();
-        });
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->up();
 
         Schema::create('pending_staff_accounts', function (Blueprint $table): void {
             $table->id();
@@ -531,31 +520,14 @@ class AdminStaffAccountManagementTest extends TestCase
         ];
     }
 
-    public function test_staff_setup_respects_pending_customer_username_reservations(): void
+    public function test_staff_setup_can_choose_a_name_unreserved_by_customer_attempts(): void
     {
         [$staff, $token] = $this->inviteStaff();
-        DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Juan',
-            'last_name' => 'Dela Cruz',
-            'username' => 'JUANDELACRUZ',
-            'email' => 'pending.customer@gmail.com',
-            'phone' => '09170003001',
-            'password_hash' => Hash::make('CreatedPassword!234'),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
         $this->postJson('/api/staff/password-setup/complete', [
-            'token' => $token,
-            'username' => 'JuanDelaCruz',
-            'password' => 'CreatedPassword!234',
-            'password_confirmation' => 'CreatedPassword!234',
-        ])->assertUnprocessable()->assertJsonPath('errors.username.0', 'That username is already in use.');
-        $this->assertNull($staff->fresh()->username);
-        $this->postJson('/api/staff/password-setup/complete', [
-            'token' => $token,
-            'password' => 'CreatedPassword!234',
-            'password_confirmation' => 'CreatedPassword!234',
-        ])->assertOk()->assertJsonPath('user.username', 'JuanDelaCruz2');
+            'token' => $token, 'username' => 'JuanDelaCruz',
+            'password' => 'CreatedPassword!234', 'password_confirmation' => 'CreatedPassword!234',
+        ])->assertOk()->assertJsonPath('user.username', 'JuanDelaCruz');
+        $this->assertSame('JuanDelaCruz', $staff->fresh()->username);
     }
 
     public function test_failed_password_validation_does_not_assign_a_fallback_username(): void
@@ -1241,12 +1213,12 @@ class AdminStaffAccountManagementTest extends TestCase
         [, $staff, $token] = $this->pendingEmailFixture();
         $this->createUser('staff', 'USED@gmail.com', 'Used', 'clinic');
         DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Pending', 'last_name' => 'Customer', 'email' => 'reserved@gmail.com',
-            'phone' => '09170009999', 'password_hash' => 'unused',
-            'email_verification_expires_at' => now()->addMinutes(15),
+            'email' => 'reserved@gmail.com',
+            'registration_edit_token_hash' => hash('sha256', str_repeat('e', 64)),
+            'registration_browser_token_hash' => hash('sha256', str_repeat('b', 64)),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        foreach (['invalid@-example..com', 'invalid', str_repeat('a', 150).'@gmail.com', ' USED@gmail.com ', 'reserved@gmail.com', ' WRONG@gmail.com '] as $email) {
+        foreach (['invalid@-example..com', 'invalid', str_repeat('a', 150).'@gmail.com', ' USED@gmail.com ', ' WRONG@gmail.com '] as $email) {
             $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
                 'email' => $email, 'current_password' => 'CurrentAdmin!234',
             ])->assertUnprocessable()->assertJsonValidationErrors('email');
@@ -1352,9 +1324,10 @@ class AdminStaffAccountManagementTest extends TestCase
         [, $staff, $oldToken] = $this->pendingEmailFixture();
         PasswordResetRequest::query()->where('user_id', $staff->user_id)->update(['expires_at' => now()->subMinute()]);
         DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Expired', 'last_name' => 'Customer', 'email' => 'corrected@gmail.com',
-            'phone' => '09170009999', 'password_hash' => 'unused',
-            'created_at' => now()->subHour(), 'updated_at' => now(),
+            'email' => 'corrected@gmail.com',
+            'registration_edit_token_hash' => hash('sha256', str_repeat('e', 64)),
+            'registration_browser_token_hash' => hash('sha256', str_repeat('b', 64)),
+            'created_at' => now(), 'updated_at' => now(),
         ]);
         $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
             'email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234',
@@ -1363,22 +1336,16 @@ class AdminStaffAccountManagementTest extends TestCase
         $this->assertTrue(PasswordResetRequest::query()->sole()->expires_at->between(now()->addHours(23), now()->addHours(25)));
     }
 
-    public function test_email_proven_registration_review_reserves_email_only_until_its_grant_expires(): void
+    public function test_customer_attempt_does_not_reserve_an_email_during_staff_correction(): void
     {
-        $this->travelTo(now()->startOfSecond());
         [, $staff] = $this->pendingEmailFixture();
         DB::table('pending_customer_registrations')->insert([
-            'first_name' => 'Reviewing', 'last_name' => 'Customer', 'email' => 'corrected@gmail.com',
-            'phone' => '09170009999', 'password_hash' => 'unused',
-            'created_at' => now()->subMinutes(61), 'updated_at' => now(),
-            'registration_recovery_token_hash' => hash('sha256', str_repeat('r', 64)),
-            'registration_recovery_expires_at' => now()->addMinutes(8),
+            'email' => 'corrected@gmail.com', 'registration_edit_token_hash' => hash('sha256', str_repeat('e',64)),
+            'registration_browser_token_hash' => hash('sha256', str_repeat('b',64)), 'created_at'=>now(), 'updated_at'=>now(),
         ]);
-        $payload = ['email' => 'corrected@gmail.com', 'current_password' => 'CurrentAdmin!234'];
-        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", $payload)
-            ->assertUnprocessable()->assertJsonValidationErrors('email');
-        $this->travel(8)->minutes();
-        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", $payload)->assertOk();
+        $this->patchJson("/api/admin/security/staff/{$staff->user_id}/setup-email", [
+            'email'=>'corrected@gmail.com','current_password'=>'CurrentAdmin!234',
+        ])->assertOk();
     }
 
     public function test_correction_rejects_a_target_cancelled_after_the_details_were_loaded(): void

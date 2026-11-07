@@ -19,422 +19,6 @@ use Tests\TestCase;
 
 class EmailVerificationTest extends TestCase
 {
-    public function test_registration_review_cannot_claim_a_pending_username_with_different_case(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser([...$this->registrationPayload(), 'username' => 'Reserved.Name'])->assertAccepted();
-        $second = [...$this->registrationPayload(), 'username' => 'Other.Name', 'email' => 'othercustomer@gmail.com', 'phone' => '09171111222'];
-        $this->registerInBrowser($second)->assertAccepted();
-        $pending = PendingCustomerRegistration::where('email', $second['email'])->sole();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $this->putJson('/api/register/pending', [...$second, 'username' => 'reserved.name',
-            'registration_recovery_token' => $review->json('registration_recovery_token')])
-            ->assertUnprocessable()->assertJsonValidationErrors('username');
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 2);
-        $this->assertSame('Other.Name', $pending->fresh()->username);
-    }
-
-    public function test_pairing_approves_only_the_bound_original_tab_and_retries_the_same_session(): void
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $credential = $registration->json('registration_token');
-        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
-        $pending = PendingCustomerRegistration::sole();
-        $link = $this->verificationTokenSentTo($pending);
-        $payload = ['registration_token' => $credential];
-        $this->postJson('/api/email/registration/status', $payload)->assertOk()
-            ->assertJsonPath('state', 'pending')->assertJsonMissingPath('confirmation_code');
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()
-            ->assertJsonPath('requires_registration_confirmation', true)->assertJsonMissingPath('confirmation_code')
-            ->assertJsonMissingPath('token')->assertJsonMissingPath('details');
-        $this->postJson('/api/email/registration/status', $payload)->assertUnprocessable();
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $status = $this->postJson('/api/email/registration/status', $payload)->assertOk()->assertJsonPath('state', 'confirmation_required');
-        $code = $status->json('confirmation_code');
-        $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
-        $this->assertNotSame($code, $pending->fresh()->getRawOriginal('confirmation_code_ciphertext'));
-        $this->assertArrayNotHasKey('confirmation_code_ciphertext', $pending->fresh()->toArray());
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
-        $approval = $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertOk()
-            ->assertJsonPath('registration_approved', true)->assertJsonMissingPath('token');
-        $this->assertNull($this->accountSessionCookie($approval));
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        $this->postJson('/api/email/registration/session')->assertUnauthorized();
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $this->postJson('/api/email/registration/status', $payload)->assertOk()->assertJsonPath('state', 'approved');
-        $completed = $this->postJson('/api/email/registration/redeem', $payload)->assertOk()->assertJsonStructure(['token']);
-        $retry = $this->postJson('/api/email/registration/redeem', $payload)->assertOk();
-        $this->assertSame($completed->json('token'), $retry->json('token'));
-        $this->assertSame($this->accountSessionCookie($completed)->getValue(), $this->accountSessionCookie($retry)->getValue());
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
-        $this->withAccountSession($retry)->getJson('/api/me')->assertOk();
-    }
-
-    public function test_pairing_attempts_expire_and_cannot_be_reset_by_reopening_the_link(): void
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload());
-        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
-        $link = $this->verificationTokenSentTo(PendingCustomerRegistration::sole());
-        $payload = ['registration_token' => $registration->json('registration_token')];
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()->assertJsonPath('requires_registration_confirmation', true);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
-        $wrong = $code === '000000' ? '111111' : '000000';
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $wrong])->assertUnprocessable();
-        }
-        $this->postJson('/api/email/verify', ['token' => $link])->assertUnprocessable()->assertJsonPath('code', 'registration_confirmation_expired');
-        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-    }
-
-    public function test_pairing_expiry_and_resend_invalidate_approval_without_extending_deadlines(): void
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload());
-        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
-        $pending = PendingCustomerRegistration::sole();
-        $link = $this->verificationTokenSentTo($pending);
-        $payload = ['registration_token' => $registration->json('registration_token')];
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link])->assertOk();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
-        $this->travel(5)->minutes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertUnprocessable();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, ...$payload])->assertOk();
-        $newLink = $this->verificationTokenSentTo($pending);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $newLink])->assertOk();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $code = $this->postJson('/api/email/registration/status', $payload)->assertOk()->json('confirmation_code');
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $newLink, 'confirmation_code' => $code])->assertOk()->assertJsonPath('registration_approved', true);
-        $this->travel(61)->seconds();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, ...$payload])->assertOk();
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['token' => $newLink, 'confirmation_code' => $code])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_pairing_redemption_rolls_back_and_never_revives_a_revoked_session(): void
-    {
-        [$registration, $pending, $link, $code] = $this->approvedPairing();
-        $payload = ['registration_token' => $registration->json('registration_token')];
-        DB::statement("CREATE TRIGGER reject_pairing_session BEFORE INSERT ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'session unavailable'); END");
-        $this->postJson('/api/email/registration/redeem', $payload)->assertServerError();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertNull($pending->fresh()->registration_completed_at);
-        $this->assertNotNull($pending->fresh()->registration_approved_at);
-        DB::statement('DROP TRIGGER reject_pairing_session');
-        $completed = $this->postJson('/api/email/registration/redeem', $payload)->assertOk();
-        $this->assertNotSame($this->accountSessionCookie($completed)->getValue(), $pending->fresh()->getRawOriginal('registration_session_ciphertext'));
-        User::sole()->tokens()->delete();
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        $this->assertDatabaseCount('users', 1);
-    }
-
-    public static function pairingInvalidations(): array
-    {
-        return [['cancel'], ['replace'], ['review'], ['expire'], ['account_conflict']];
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('pairingInvalidations')]
-    public function test_pairing_cannot_redeem_an_invalidated_or_conflicting_registration(string $action): void
-    {
-        [$registration, $pending, $link, $code] = $this->approvedPairing();
-        $payload = ['registration_token' => $registration->json('registration_token')];
-        if ($action === 'cancel') $this->postJson('/api/register/cancel', $payload)->assertOk();
-        if ($action === 'replace') {
-            $this->travel(61)->seconds();
-            $this->postJson('/api/register', [...$this->registrationPayload(), ...$payload])->assertAccepted();
-        }
-        if ($action === 'review') {
-            $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-            $review = $this->postJson('/api/email/verify', ['token' => $link, 'review' => true])->assertOk()
-                ->assertJsonPath('requires_registration_review', true);
-            $this->assertNull($pending->fresh()->registration_approved_at);
-            $this->assertNull($pending->fresh()->confirmation_code_ciphertext);
-            $this->withUnencryptedCookie('bethlehem_registration_browser', $registration->getCookie('bethlehem_registration_browser', false)->getValue())->withCredentials();
-        }
-        if ($action === 'expire') $this->travel(5)->minutes();
-        if ($action === 'account_conflict') User::factory()->create(['email' => $pending->email, 'password_hash' => Hash::make('legitimate-password')]);
-        $this->postJson('/api/email/registration/redeem', $payload)->assertUnprocessable();
-        $this->assertDatabaseCount('users', $action === 'account_conflict' ? 1 : 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        if ($action === 'account_conflict') $this->assertTrue(Hash::check('legitimate-password', User::sole()->password_hash));
-        if ($action === 'review') {
-            $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'password' => 'fresh-owner-password',
-                'password_confirmation' => 'fresh-owner-password', 'registration_recovery_token' => $review->json('registration_recovery_token')])->assertOk();
-            $this->assertTrue(Hash::check('fresh-owner-password', User::sole()->password_hash));
-        }
-    }
-
-    public function test_pairing_status_and_redemption_enforce_origin_scope_and_rate_limits(): void
-    {
-        [$registration] = $this->approvedPairing();
-        $payload = ['registration_token' => $registration->json('registration_token')];
-        foreach (['status', 'redeem'] as $endpoint) {
-            $this->postJson('/api/email/registration/'.$endpoint, [])->assertUnprocessable();
-            $this->postJson('/api/email/registration/'.$endpoint, ['registration_token' => str_repeat('q', 64)])->assertUnprocessable();
-            $this->withHeader('Origin', 'https://attacker.example')->postJson('/api/email/registration/'.$endpoint, $payload)->assertStatus(419);
-            $this->withHeader('Origin', config('app.url'));
-        }
-        for ($attempt = 0; $attempt < 31; $attempt++) $response = $this->postJson('/api/email/registration/status', $payload);
-        $response->assertTooManyRequests();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_pairing_deadline_is_capped_by_the_original_registration_expiry(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload());
-        $pending = PendingCustomerRegistration::sole();
-        $pending->forceFill(['created_at' => now()->subMinutes(59), 'email_verification_expires_at' => now()->addMinutes(20)])->save();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
-        $this->assertSame($pending->retentionExpiresAt()->toIso8601String(), $pending->fresh()->confirmation_expires_at->toIso8601String());
-        $this->travel(60)->seconds();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $registration->getCookie('bethlehem_registration_browser', false)->getValue())->withCredentials();
-        $this->postJson('/api/email/registration/redeem', ['registration_token' => $registration->json('registration_token')])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_pairing_failed_resend_preserves_the_approved_issuance(): void
-    {
-        [$registration, $pending] = $this->approvedPairing();
-        $this->useDatabaseMailQueue();
-        Notification::swap(new \Illuminate\Notifications\ChannelManager($this->app));
-        $before = $pending->fresh()->getAttributes();
-        $this->travel(61)->seconds();
-        DB::statement("CREATE TRIGGER reject_pairing_mail BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $registration->json('registration_token')])->assertStatus(503);
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        DB::statement('DROP TRIGGER reject_pairing_mail');
-        $this->postJson('/api/email/registration/redeem', ['registration_token' => $registration->json('registration_token')])->assertOk();
-        $this->assertDatabaseCount('users', 1);
-    }
-
-    private function approvedPairing(): array
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $cookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
-        $link = $this->verificationTokenSentTo($pending);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link])->assertOk()->assertJsonPath('requires_registration_confirmation', true);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        $code = $this->postJson('/api/email/registration/status', ['registration_token' => $registration->json('registration_token')])->assertOk()->json('confirmation_code');
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['token' => $link, 'confirmation_code' => $code])->assertOk()->assertJsonPath('registration_approved', true);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials();
-        return [$registration, $pending, $link, $code];
-    }
-
-    public function test_email_proven_review_uses_the_same_account_conflict_contract(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo(PendingCustomerRegistration::sole()), 'review' => true])->assertOk();
-        User::factory()->create(['phone' => '09171234567']);
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'phone' => '+639171234567',
-            'registration_recovery_token' => $review->json('registration_recovery_token')])
-            ->assertUnprocessable()->assertJsonPath('conflicts.phone', 'account_exists');
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-    }
-
-    public function test_email_owner_can_cancel_pending_attempt_from_a_foreign_browser_without_activating_it(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $link = $this->verificationTokenSentTo($pending);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('z', 64))->withCredentials()
-            ->postJson('/api/register/cancel', ['registration_token' => $link])->assertOk();
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->postJson('/api/email/verify', ['token' => $link])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_legacy_staff_reservation_and_username_case_cannot_be_claimed_by_public_signup(): void
-    {
-        Notification::fake();
-        Schema::create('pending_staff_accounts', function (Blueprint $table) {
-            $table->id(); $table->string('email'); $table->string('username')->nullable(); $table->timestamp('expires_at');
-        });
-        try {
-            DB::table('pending_staff_accounts')->insert(['email' => 'reserved@gmail.com', 'username' => 'ReservedStaff', 'expires_at' => now()->addHour()]);
-            $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'RESERVED@gmail.com', 'username' => 'reservedstaff'])
-                ->assertUnprocessable()->assertJsonValidationErrors(['email', 'username'])->assertJsonPath('conflicts.email', 'account_exists');
-            $this->assertDatabaseCount('pending_customer_registrations', 0);
-            $this->assertDatabaseCount('pending_staff_accounts', 1);
-            Notification::assertNothingSent();
-        } finally { Schema::dropIfExists('pending_staff_accounts'); }
-    }
-
-    public function test_signup_returns_all_definitive_credential_conflicts_before_queueing(): void
-    {
-        Notification::fake();
-        foreach (['customer', 'admin', 'staff'] as $role) {
-            $user = User::factory()->create(['role' => $role, 'email' => $role.'@gmail.com',
-                'username' => $role.'name', 'phone' => '0912345678'.array_search($role, ['customer', 'admin', 'staff']),
-                'is_active' => $role !== 'staff', 'password_hash' => $role === 'staff' ? '!pending-setup' : Hash::make('password')]);
-            $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => strtoupper($user->email),
-                'phone' => '+63'.substr($user->phone, 1), 'username' => $user->username])
-                ->assertUnprocessable()->assertJsonValidationErrors(['email', 'phone', 'username'])
-                ->assertJsonPath('conflicts.email', 'account_exists')->assertJsonPath('conflicts.phone', 'account_exists');
-        }
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        Notification::assertNothingSent();
-    }
-
-    public function test_pending_attempt_can_be_cancelled_only_with_its_browser_and_scoped_credential(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $credential = $response->json('registration_token');
-        $this->assertNotEmpty($credential);
-        $pending = PendingCustomerRegistration::sole();
-        $link = $this->verificationTokenSentTo($pending);
-        $cookie = $response->getCookie('bethlehem_registration_browser', false)->getValue();
-        $this->postJson('/api/register/cancel', ['registration_token' => str_repeat('x', 64)])->assertOk();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('z', 64))->withCredentials()
-            ->postJson('/api/register/cancel', ['registration_token' => $credential])->assertOk();
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie)->withCredentials()
-            ->withHeader('Origin', 'https://attacker.example')->postJson('/api/register/cancel', ['registration_token' => $credential])->assertStatus(419);
-        $this->withHeader('Origin', config('app.url'))->postJson('/api/register/cancel', ['registration_token' => $credential])->assertOk();
-        $this->postJson('/api/register/cancel', ['registration_token' => $credential])->assertOk();
-        $this->postJson('/api/email/verify', ['token' => $link])->assertUnprocessable();
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_fresh_attempt_replaces_only_authorized_pending_details_and_invalidates_old_link(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $oldLink = $this->verificationTokenSentTo($pending);
-        $this->travel(61)->seconds();
-        $payload = [...$this->registrationPayload(), 'first_name' => 'Fresh', 'password' => 'fresh-password',
-            'password_confirmation' => 'fresh-password', 'registration_token' => $response->json('registration_token')];
-        $this->postJson('/api/register', $payload)->assertAccepted()->assertJsonPath('registration_state', 'queued');
-        $fresh = PendingCustomerRegistration::sole();
-        $this->assertNotSame($pending->id, $fresh->id);
-        $this->assertSame('Fresh', $fresh->first_name);
-        $this->assertTrue(Hash::check('fresh-password', $fresh->password_hash));
-        $this->postJson('/api/email/verify', ['token' => $oldLink])->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($fresh)])->assertOk();
-        $this->assertDatabaseCount('users', 1);
-    }
-
-    public function test_foreign_pending_collision_cannot_replace_details_using_only_email(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $before = $pending->getAttributes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('z', 64))->withCredentials()
-            ->postJson('/api/register', [...$this->registrationPayload(), 'first_name' => 'Attacker'])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_pending')->assertJsonMissingPath('details');
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_registration_requires_affirmative_terms_acceptance_before_queuing_work(): void
-    {
-        foreach ([null, false, 'no'] as $acceptance) {
-            $payload = $this->registrationPayload();
-            unset($payload['terms_accepted']);
-            if ($acceptance !== null) $payload['terms_accepted'] = $acceptance;
-            $this->postJson('/api/register', $payload)->assertUnprocessable()
-                ->assertJsonValidationErrors('terms_accepted');
-        }
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_terms_evidence_is_server_controlled_and_survives_email_verification(): void
-    {
-        Notification::fake();
-        $this->travelTo(now()->startOfSecond());
-        $acceptedAt = now()->copy();
-        $this->registerInBrowser([...$this->registrationPayload(), 'terms_accepted' => true,
-            'terms_accepted_version' => 'forged', 'terms_accepted_at' => '2000-01-01 00:00:00'])->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $this->assertSame('2026-11-01', $pending->terms_accepted_version);
-        $this->assertTrue($acceptedAt->equalTo($pending->terms_accepted_at));
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])
-            ->assertOk()->assertJsonStructure(['token']);
-        $user = User::sole();
-        $this->assertSame('2026-11-01', $user->terms_accepted_version);
-        $this->assertTrue($acceptedAt->equalTo($user->terms_accepted_at));
-    }
-
-    public function test_pre_policy_pending_registration_can_continue_but_requires_acceptance_on_review(): void
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser([...$this->registrationPayload(), 'terms_accepted' => true])->assertAccepted();
-        $credential = $this->authorizedEditCredential($registration);
-        $pending = PendingCustomerRegistration::sole();
-        DB::table('pending_customer_registrations')->where('id', $pending->id)
-            ->update(['terms_accepted_version' => null, 'terms_accepted_at' => null]);
-        $this->postJson('/api/register', ['email' => $pending->email, 'registration_token' => $credential])
-            ->assertUnprocessable()->assertJsonValidationErrors(['first_name', 'last_name', 'password', 'terms_accepted']);
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])
-            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
-        unset($payload['terms_accepted']);
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
-        $this->assertDatabaseCount('users', 0);
-        $this->putJson('/api/register/pending', [...$payload, 'terms_accepted' => true])->assertOk();
-        $this->assertSame('2026-11-01', User::sole()->terms_accepted_version);
-        $this->assertNotNull(User::sole()->terms_accepted_at);
-    }
-
-    public function test_legacy_recovery_requires_acceptance_and_preserves_the_existing_account(): void
-    {
-        $plain = str_repeat('k', 64);
-        $user = User::factory()->unverified()->create(['email' => 'new.customer@gmail.com',
-            'email_verification_token' => hash('sha256', $plain),
-            'email_verification_last_sent_at' => now(), 'email_verification_expires_at' => now()->addMinutes(30)]);
-        $review = $this->postJson('/api/email/verify', ['token' => $plain])->assertOk()
-            ->assertJsonPath('requires_registration_review', true);
-        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
-        unset($payload['terms_accepted']);
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
-        $this->assertNull($user->fresh()->email_verified_at);
-        $this->putJson('/api/register/pending', [...$payload, 'terms_accepted' => true])->assertOk();
-        $this->assertSame($user->getKey(), User::sole()->getKey());
-        $this->assertSame('2026-11-01', $user->fresh()->terms_accepted_version);
-        $this->assertNotNull($user->fresh()->terms_accepted_at);
-    }
-
     public function test_in_process_worker_drains_its_named_queue_above_laravels_default_memory_threshold(): void
     {
         $this->useDatabaseMailQueue();
@@ -763,157 +347,6 @@ class EmailVerificationTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.1'])->postJson('/api/sign-in', $payload)->assertTooManyRequests();
     }
 
-    public function test_deliberate_email_proven_review_can_set_fresh_details_and_password(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $token = $this->verificationTokenSentTo($pending);
-        $review = $this->postJson('/api/email/verify', ['token' => $token, 'review' => true])->assertOk()
-            ->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $this->assertDatabaseCount('users', 0);
-        $payload = [...$this->registrationPayload(), 'first_name' => 'John', 'password' => 'owner-password',
-            'password_confirmation' => 'owner-password', 'registration_recovery_token' => $review->json('registration_recovery_token')];
-        $this->putJson('/api/register/pending', $payload)->assertOk();
-        $this->assertDatabaseHas('users', ['first_name' => 'John']);
-        $this->assertTrue(Hash::check('owner-password', User::sole()->password_hash));
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
-    }
-
-    public function test_link_confirmation_can_deliberately_request_review_in_the_original_browser(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo(PendingCustomerRegistration::sole()),
-            'review' => true])->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_email_alone_cannot_cancel_a_pending_registration(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $before = $pending->getAttributes();
-        $this->postJson('/api/register/cancel', ['email' => $pending->email])->assertUnprocessable();
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_email_proven_pending_review_can_be_cancelled_without_creating_an_account(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $this->postJson('/api/register/cancel', ['registration_token' => $review->json('registration_recovery_token')])->assertOk();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_cancellation_before_the_mail_worker_runs_suppresses_old_mail(): void
-    {
-        $this->useDatabaseMailQueue();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->postJson('/api/register/cancel', ['registration_token' => $response->json('registration_token')])->assertOk();
-        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_pending_attempt_exists_before_mail_and_known_accounts_are_rejected_immediately(): void
-    {
-        \Illuminate\Support\Facades\Queue::fake();
-        $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()
-            ->assertJsonPath('registration_state', 'queued')->assertJsonStructure(['registration_token', 'email_delivery_token']);
-        User::factory()->create(['email' => 'existing@gmail.com']);
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'email' => 'existing@gmail.com'])
-            ->assertUnprocessable()->assertJsonPath('conflicts.email', 'account_exists');
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\ProcessPublicRegistration::class);
-    }
-
-    public function test_replacement_cannot_bypass_email_cooldown_or_destroy_the_previous_link(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $before = $pending->getAttributes();
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'first_name' => 'Changed',
-            'registration_token' => $response->json('registration_token')])->assertTooManyRequests();
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
-    }
-
-    public function test_pending_mail_is_encrypted_and_does_not_create_an_account(): void
-    {
-        $this->useDatabaseMailQueue();
-        $this->postJson('/api/register', $this->registrationPayload())->assertAccepted()->assertJsonStructure(['registration_token']);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
-        $this->assertStringNotContainsString('strong-password', $command);
-        $this->assertStringNotContainsString('new.customer@gmail.com', $command);
-        $job = unserialize(app('encrypter')->decrypt($command));
-        $this->assertInstanceOf(\Illuminate\Notifications\SendQueuedNotifications::class, $job);
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('jobs', 0);
-    }
-
-    public function test_an_edit_credential_in_another_browser_cannot_resume_or_inspect_delivery(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload());
-        $credential = $response->json('registration_token');
-        $before = PendingCustomerRegistration::sole()->getAttributes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('x', 64))->withCredentials();
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'registration_token' => $credential])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_pending')->assertJsonMissingPath('registration_token');
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com', 'registration_token' => $credential])
-            ->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->assertSame($before, PendingCustomerRegistration::sole()->getAttributes());
-    }
-
-    public function test_public_resend_never_looks_up_an_account_and_hides_destination_history(): void
-    {
-        \Illuminate\Support\Facades\Queue::fake();
-        $first = $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])->assertAccepted()->json();
-        User::factory()->create(['email' => 'existing@gmail.com']);
-        $queries = [];
-        DB::listen(function ($query) use (&$queries) { $queries[] = $query->sql; });
-        $this->postJson('/api/email/resend', ['email' => 'existing@gmail.com'])->assertAccepted()->assertExactJson($first);
-        $this->postJson('/api/email/resend', ['email' => 'existing@gmail.com'])->assertAccepted()->assertExactJson($first);
-        $this->assertSame([], array_values(array_filter($queries, fn ($sql) => preg_match('/(?:from|into) ["`]*(?:users|pending_customer_registrations)/i', $sql))));
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessPublicRegistration::class, 2);
-    }
-
-    public function test_magic_link_registration_issues_a_hashed_fragment_token_and_private_browser_cookie(): void
-    {
-        Notification::fake();
-        $this->travelTo(now()->startOfSecond());
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $cookie = $response->getCookie('bethlehem_registration_browser', false);
-        $this->assertNotNull($cookie);
-        $this->assertTrue($cookie->isHttpOnly());
-        $this->assertSame('lax', $cookie->getSameSite());
-        $pending = PendingCustomerRegistration::sole();
-        Notification::assertSentTo($pending, VerifyEmailNotification::class, function ($notification) use ($pending) {
-            $url = $notification->toMail($pending)->actionUrl;
-            parse_str(parse_url($url, PHP_URL_FRAGMENT), $fragment);
-            $this->assertSame(64, strlen($fragment['token']));
-            $this->assertSame(hash('sha256', $fragment['token']), $pending->email_verification_token);
-            $this->assertTrue($pending->email_verification_expires_at->equalTo(now()->addMinutes(30)));
-            $this->assertNull($pending->email_verification_code_hash);
-            return true;
-        });
-    }
-
     public function test_login_resend_does_not_extend_the_original_deadline(): void
     {
         Notification::fake();
@@ -927,135 +360,20 @@ class EmailVerificationTest extends TestCase
         $this->assertTrue(LoginEmailChallenge::sole()->expires_at->equalTo($deadline));
     }
 
-    public function test_signup_and_email_proven_review_share_unicode_name_validation_and_casing(): void
-    {
-        Notification::fake();
-        $payload = [...$this->registrationPayload(), 'first_name' => 'MARIA CLARA', 'last_name' => 'PEÑA'];
-        $this->registerInBrowser($payload)->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $this->assertSame('Maria Clara', $pending->first_name);
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $this->putJson('/api/register/pending', [...$payload, 'registration_recovery_token' => $review->json('registration_recovery_token'),
-            'first_name' => 'McDonald', 'last_name' => 'de la Cruz'])->assertOk();
-        $this->assertDatabaseHas('users', ['first_name' => 'McDonald', 'last_name' => 'de la Cruz']);
-        $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'numeric@gmail.com', 'first_name' => 'Gerald２'])
-            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
-    }
+    use \Tests\Support\CreatesAuthenticationSchema;
+    use \Tests\Support\ConcurrentAuthenticationRequests;
 
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Support\Facades\Http::preventStrayRequests();
-        \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0')]);
-
-        Schema::create('users', function (Blueprint $table) {
-            $table->increments('user_id');
-            $table->string('first_name', 100);
-            $table->string('last_name', 100);
-            $table->string('username', 50)->nullable()->unique();
-            $table->string('phone', 20)->nullable()->unique();
-            $table->string('email', 150)->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->timestamp('phone_verified_at')->nullable();
-            $table->string('email_verification_token', 64)->nullable()->unique();
-            $table->timestamp('email_verification_expires_at')->nullable();
-            $table->string('password_hash');
-            $table->string('role')->default('customer');
-            $table->string('customer_tier')->default('new');
-            $table->boolean('is_active')->default(true);
-            $table->boolean('is_archived')->default(false);
-            $table->timestamp('archived_at')->nullable();
-        });
-
-        Schema::create('pending_customer_registrations', function (Blueprint $table) {
-            $table->id();
-            $table->string('first_name', 100);
-            $table->string('last_name', 100);
-            $table->string('username', 50)->nullable()->unique();
-            $table->string('phone', 20)->nullable()->unique();
-            $table->string('email', 150)->unique();
-            $table->string('password_hash');
-            $table->string('email_verification_token', 64)->nullable()->unique();
-            $table->timestamp('email_verification_expires_at')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('login_email_challenges', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedInteger('user_id')->unique();
-            $table->string('token_hash', 64)->unique();
-            $table->string('poll_token_hash', 64)->nullable()->unique();
-            $table->boolean('remember_me')->default(true);
-            $table->timestamp('expires_at')->index();
-            $table->timestamp('approved_at')->nullable()->index();
-            $table->timestamps();
-        });
-        (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
-        (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
-
-        Schema::create('personal_access_tokens', function (Blueprint $table) {
-            $table->id();
-            $table->string('tokenable_type');
-            $table->unsignedBigInteger('tokenable_id');
-            $table->string('name');
-            $table->string('token', 64)->unique();
-            $table->text('abilities')->nullable();
-            $table->timestamp('last_used_at')->nullable();
-            $table->timestamp('expires_at')->nullable();
-            $table->timestamps();
-            $table->index(['tokenable_type', 'tokenable_id']);
-        });
-        (require base_path('database/migrations/2026_10_18_000001_add_token_session_state.php'))->up();
-        (require base_path('database/migrations/2026_10_25_000001_add_session_replacement.php'))->up();
-        (require base_path('database/migrations/2026_10_29_000003_create_remembered_devices.php'))->up();
-        (require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php'))->up();
-        (require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php'))->up();
-        (require base_path('database/migrations/2026_10_28_000002_add_registration_browser_binding.php'))->up();
-        (require base_path('database/migrations/2026_11_01_000001_add_customer_terms_acceptance.php'))->up();
-        (require base_path('database/migrations/2026_11_04_000001_add_registration_pairing.php'))->up();
+        $this->createAuthenticationSchema();
     }
 
     protected function tearDown(): void
     {
-        Schema::dropIfExists('account_security_incidents');
-        Schema::dropIfExists('remembered_device_credentials');
-        Schema::dropIfExists('remembered_devices');
-        Schema::dropIfExists('jobs');
-        Schema::dropIfExists('job_batches');
-        Schema::dropIfExists('failed_jobs');
-        Schema::dropIfExists('personal_access_tokens');
-        Schema::dropIfExists('bookings');
-        Schema::dropIfExists('pets');
-        Schema::dropIfExists('login_email_challenges');
-        Schema::dropIfExists('pending_customer_registrations');
-        Schema::dropIfExists('users');
-
+        $this->dropAuthenticationSchema();
         parent::tearDown();
     }
-
-
-    public function test_verification_creates_the_customer_account_and_logs_it_in(): void
-    {
-        Notification::fake();
-
-        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pendingRegistration = PendingCustomerRegistration::firstOrFail();
-        $plainToken = $this->verificationTokenSentTo($pendingRegistration);
-
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($registration), 'email' => $pendingRegistration->email, 'token' => $plainToken])
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('user.email', 'new.customer@gmail.com')
-            ->assertJsonPath('user.role', 'customer')
-            ->assertJsonStructure(['token']);
-
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $user = User::where('email', 'new.customer@gmail.com')->firstOrFail();
-        $this->assertNotNull($user->email_verified_at);
-        $this->assertTrue(Hash::check('strong-password', $user->password_hash));
-        $this->assertDatabaseCount('personal_access_tokens', 1);
-    }
-
 
     #[\PHPUnit\Framework\Attributes\DataProvider('mailDeliveryModes')]
     public function test_failed_initial_queueing_rolls_back_attempt_and_allows_retry(string $mode): void
@@ -1114,29 +432,6 @@ class EmailVerificationTest extends TestCase
         $this->withToken($token)->getJson('/api/me')
             ->assertForbidden()
             ->assertJsonPath('code', 'email_not_verified');
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-    }
-
-    public function test_pending_registration_gets_verification_message_instead_of_signing_in(): void
-    {
-        PendingCustomerRegistration::create([
-            'first_name' => 'Pending',
-            'last_name' => 'Customer',
-            'username' => 'pendingcustomer',
-            'phone' => '09120000000',
-            'email' => 'pending@gmail.com',
-            'password_hash' => Hash::make('strong-password'),
-        ]);
-
-        $this->postJson('/api/sign-in', [
-            'identifier' => 'pending@gmail.com',
-            'password' => 'strong-password',
-        ])
-            ->assertForbidden()
-            ->assertJsonPath('code', 'email_not_verified')
-            ->assertJsonPath('email_not_verified', true);
-
-        $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -1793,465 +1088,6 @@ class EmailVerificationTest extends TestCase
         }
     }
 
-    public function test_resend_is_generic_and_issues_a_link_for_existing_unverified_users(): void
-    {
-        Notification::fake();
-        $user = User::factory()->unverified()->create();
-
-        $this->postJson('/api/email/resend', ['email' => strtoupper($user->email)])
-            ->assertAccepted()
-            ->assertJsonPath('success', true);
-
-        $plainToken = $this->verificationTokenSentTo($user);
-        $this->assertSame(hash('sha256', $plainToken), $user->fresh()->email_verification_token);
-
-        Notification::fake();
-        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
-            ->assertAccepted()
-            ->assertJsonPath(
-                'message',
-                'Request received. Email delivery is not confirmed.',
-            );
-        Notification::assertNothingSent();
-    }
-
-    public function test_resend_issues_a_pending_registration_link(): void
-    {
-        Notification::fake();
-        $pendingRegistration = PendingCustomerRegistration::create([
-            'first_name' => 'Pending',
-            'last_name' => 'Customer',
-            'username' => 'pendingresend',
-            'phone' => '09120000001',
-            'email' => 'pending-resend@gmail.com',
-            'password_hash' => Hash::make('strong-password'),
-        ]);
-
-        $this->postJson('/api/email/resend', [
-            'email' => strtoupper($pendingRegistration->email),
-        ])->assertAccepted();
-
-        $plainToken = $this->verificationTokenSentTo($pendingRegistration);
-        $this->assertSame(hash('sha256', $plainToken), $pendingRegistration->fresh()->email_verification_token);
-        $this->assertNotNull($pendingRegistration->fresh()->email_verification_token);
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_failed_resend_queueing_does_not_invalidate_the_previous_link(): void
-    {
-        $this->useDatabaseMailQueue();
-        $oldTokenHash = hash('sha256', str_repeat('d', 64));
-        $oldExpiry = now()->addHour()->startOfSecond();
-        $user = User::factory()->unverified()->create([
-            'email_verification_token' => $oldTokenHash,
-            'email_verification_expires_at' => $oldExpiry,
-        ]);
-
-        $this->mock(Dispatcher::class, function ($mock) {
-            $mock->shouldReceive('send')
-                ->once()
-                ->andThrow(new \RuntimeException('Queue unavailable'));
-        });
-
-        $this->postJson('/api/email/resend', ['email' => $user->email])
-            ->assertAccepted()
-            ->assertJsonMissingPath('email_delivery_token');
-
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $user->refresh();
-        $this->assertSame($oldTokenHash, $user->email_verification_token);
-        $this->assertTrue($oldExpiry->equalTo($user->email_verification_expires_at));
-    }
-
-    public function test_resend_endpoint_is_rate_limited(): void
-    {
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
-            $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
-                ->assertAccepted();
-            $this->travel(61)->seconds();
-        }
-
-        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
-            ->assertAccepted();
-        $this->assertGreaterThan(0, app(\App\Services\AuthenticationEmailPolicy::class)->status('missing@gmail.com')['resend_after']);
-    }
-
-    public function test_signup_requires_email(): void
-    {
-        foreach ([null, '', 'invalid-email'] as $email) {
-            $payload = $this->registrationPayload();
-            $payload['email'] = $email;
-            $this->registerInBrowser($payload)->assertUnprocessable()->assertJsonValidationErrors('email');
-        }
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('optionalPhones')]
-    public function test_optional_phone_variants_complete_only_after_email_verification(array $phoneInput, ?string $expectedPhone): void
-    {
-        Notification::fake();
-        User::factory()->create(['phone' => null]);
-        $payload = $this->registrationPayload();
-        unset($payload['phone']);
-        $payload = [...$payload, ...$phoneInput];
-        $payload['email'] = 'new.customer@gmail.com';
-        $registration = $this->registerInBrowser($payload)->assertAccepted()
-            ->assertJsonPath('requires_verification', true)->assertJsonMissingPath('token');
-        $pending = PendingCustomerRegistration::where('email', $payload['email'])->firstOrFail();
-        $this->assertSame($expectedPhone, $pending->phone);
-        $this->assertDatabaseMissing('users', ['email' => $payload['email']]);
-        $this->postJson('/api/email/verify', ['email' => $pending->email])->assertUnprocessable();
-        $verified = $this->postJson('/api/email/verify', [
-            'registration_token' => $this->authorizedEditCredential($registration), 'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending),
-        ])->assertOk()->assertJsonStructure(['token']);
-        $user = User::where('email', $payload['email'])->firstOrFail();
-        $this->assertSame($expectedPhone, $user->phone);
-        $this->assertNull($user->phone_verified_at);
-        $this->assertNotNull($user->email_verified_at);
-        $this->withAccountSession($verified)->getJson('/api/me')
-            ->assertOk()->assertJsonPath('user.phone', $expectedPhone)
-            ->assertJsonPath('user.phone_verification_status', $expectedPhone ? 'unverified' : 'not_added');
-        $this->assertDatabaseCount('users', 2);
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('phoneVerificationStatuses')]
-    public function test_me_derives_phone_status_from_the_stored_phone_and_verification_timestamp(?string $phone, ?string $verifiedAt, string $expected): void
-    {
-        $user = User::factory()->create([
-            'phone' => $phone,
-            'phone_verified_at' => $verifiedAt,
-            'email_verified_at' => now(),
-        ]);
-        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
-        $this->getJson('/api/me')->assertOk()
-            ->assertJsonPath('user.phone_verification_status', $expected)
-            ->assertJsonMissingPath('user.phone_verified_at');
-        $this->assertSame($phone, $user->fresh()->phone);
-    }
-
-    public static function phoneVerificationStatuses(): array
-    {
-        return [
-            'missing' => [null, null, 'not_added'],
-            'missing with stale timestamp' => [null, '2026-10-20 00:00:00', 'not_added'],
-            'empty with stale timestamp' => ['', '2026-10-20 00:00:00', 'not_added'],
-            'unverified' => ['09171234567', null, 'unverified'],
-            'verified' => ['09171234567', '2026-10-20 00:00:00', 'verified'],
-        ];
-    }
-
-    public static function optionalPhones(): array
-    {
-        return [
-            'null' => [['phone' => null], null],
-            'empty' => [['phone' => ''], null],
-            'omitted' => [[], null],
-            'whitespace' => [['phone' => '   '], null],
-            'valid' => [['phone' => '09170000001'], '09170000001'],
-        ];
-    }
-
-    public function test_nullable_phone_migration_preserves_records_and_unique_indexes(): void
-    {
-        foreach (['users', 'pending_customer_registrations'] as $name) {
-            Schema::table($name, fn (Blueprint $table) => $table->string('phone', 20)->nullable(false)->change());
-        }
-        $user = User::factory()->create(['phone' => '09170000001']);
-        $pending = PendingCustomerRegistration::create([
-            'first_name' => 'Pending', 'last_name' => 'Customer', 'phone' => '09170000002',
-            'email' => 'pending@gmail.com', 'password_hash' => Hash::make('password'),
-        ]);
-        $migration = require base_path('database/migrations/2026_10_21_000001_make_customer_phone_nullable.php');
-        $migration->up();
-        $this->assertSame('09170000001', $user->fresh()->phone);
-        $this->assertSame('09170000002', $pending->fresh()->phone);
-        foreach (['users', 'pending_customer_registrations'] as $name) {
-            $this->assertTrue(Schema::hasIndex($name, ['phone'], 'unique'));
-            $this->assertTrue(Schema::hasIndex($name, ['email'], 'unique'));
-            foreach (['one', 'two'] as $suffix) {
-                DB::table($name)->insert([
-                    'first_name' => 'Optional', 'last_name' => 'Customer', 'phone' => null,
-                    'email' => "$name-$suffix@gmail.com", 'password_hash' => 'unchanged-hash',
-                ]);
-            }
-            try {
-                DB::table($name)->insert([
-                    'first_name' => 'Duplicate', 'last_name' => 'Customer',
-                    'phone' => $name === 'users' ? '09170000001' : '09170000002',
-                    'email' => "$name-duplicate@gmail.com", 'password_hash' => 'unchanged-hash',
-                ]);
-                $this->fail('Non-null phone uniqueness must remain enforced.');
-            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
-                $this->assertStringContainsString('phone', $exception->getMessage());
-            }
-        }
-        DB::table('users')->whereNull('phone')->delete();
-        try {
-            $migration->down();
-            $this->fail('Rollback must not destroy phone-less records.');
-        } catch (\RuntimeException $exception) {
-            $this->assertStringContainsString('NULL values exist', $exception->getMessage());
-        }
-        foreach (['users', 'pending_customer_registrations'] as $name) {
-            $this->assertTrue(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
-            DB::table($name)->whereNull('phone')->delete();
-        }
-        $migration->down();
-        foreach (['users', 'pending_customer_registrations'] as $name) {
-            $this->assertFalse(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
-        }
-    }
-
-    public function test_multiple_phone_less_registrations_can_remain_pending(): void
-    {
-        Notification::fake();
-        foreach (['first', 'second'] as $name) {
-            $this->registerInBrowser([
-                ...$this->registrationPayload(), 'email' => "$name@gmail.com", 'phone' => null, 'username' => null,
-            ])->assertAccepted();
-        }
-        $this->assertDatabaseCount('pending_customer_registrations', 2);
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('invalidSignupPhones')]
-    public function test_invalid_signup_phones_are_rejected(mixed $phone): void
-    {
-        $this->registerInBrowser([...$this->registrationPayload(), 'phone' => $phone])
-            ->assertUnprocessable()->assertJsonValidationErrors('phone');
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-    }
-
-    public static function invalidSignupPhones(): array
-    {
-        return [['09123'], ['56775675767'], ['12345678901'], ['08123456789'], ['09031234567'], ['07123456789'], ['091234567890'], ['not-a-phone'], [9123456789], [[]], [['09123456789']]];
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('validSignupPhones')]
-    public function test_mobile_registration_accepts_all_networks_without_phone_otp(string $phone): void
-    {
-        Notification::fake();
-        \Illuminate\Support\Facades\Http::fake();
-        $response = $this->registerInBrowser([...$this->registrationPayload(), 'phone' => $phone])->assertAccepted();
-        $pending = PendingCustomerRegistration::firstOrFail();
-        $this->assertSame($phone, $pending->phone);
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response),
-            'email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending)])->assertOk();
-        $this->assertDatabaseHas('users', ['phone' => $phone, 'phone_verified_at' => null]);
-        \Illuminate\Support\Facades\Http::assertNotSent(fn ($request) => ! str_starts_with($request->url(), 'https://api.pwnedpasswords.com/range/'));
-    }
-
-    public static function validSignupPhones(): array
-    {
-        return array_map(fn ($prefix) => [$prefix.'1234567'], ['0917', '0895', '0896', '0897', '0898', '0991', '0999', '0907', '0922', '0813', '0817', '0927', '0956', '0966', '0977']);
-    }
-
-    public function test_email_proven_review_can_remove_or_replace_the_optional_phone(): void
-    {
-        Notification::fake();
-        foreach (['', '08958889999'] as $index => $phone) {
-            $payload = [...$this->registrationPayload(), 'email' => "phone{$index}@gmail.com", 'username' => null];
-            $this->registerInBrowser($payload)->assertAccepted();
-            $pending = PendingCustomerRegistration::sole();
-            $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-            $completion = [...$payload, 'phone' => $phone, 'registration_recovery_token' => $review->json('registration_recovery_token')];
-            $this->putJson('/api/register/pending', $completion)->assertOk();
-            $this->putJson('/api/register/pending', $completion)->assertUnprocessable();
-            $this->assertDatabaseHas('users', ['email' => $payload['email'], 'phone' => $phone ?: null, 'phone_verified_at' => null]);
-            $this->travel(61)->seconds();
-        }
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('ditoLoginIdentifiers')]
-    public function test_registered_dito_number_can_start_existing_email_login_confirmation(string $identifier): void
-    {
-        Notification::fake();
-        User::factory()->create(['phone' => '08951234567', 'password_hash' => Hash::make('strong-password')]);
-        $this->postJson('/api/sign-in', ['identifier' => $identifier, 'password' => 'strong-password'])
-            ->assertAccepted()->assertJsonPath('code', 'login_confirmation_required');
-        $this->assertDatabaseCount('login_email_challenges', 1);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-    }
-
-    public static function ditoLoginIdentifiers(): array
-    {
-        return [['08951234567'], ['+638951234567']];
-    }
-
-
-    public function test_resend_cooldown_is_enforced_across_different_ips(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::firstOrFail();
-        $hash = $pending->email_verification_code_hash;
-        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.52']);
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $this->authorizedEditCredential($response)])
-            ->assertTooManyRequests()->assertHeader('Retry-After')
-            ->assertJsonPath('message', 'Please wait before requesting another email.');
-        $this->assertSame($hash, $pending->fresh()->email_verification_code_hash);
-    }
-
-    public function test_duplicate_contacts_and_username_are_still_protected(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->registerInBrowser($this->registrationPayload())->assertUnprocessable()->assertJsonPath('code', 'registration_pending');
-        $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'different@gmail.com'])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_pending');
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        PendingCustomerRegistration::query()->delete();
-        User::factory()->create(['email' => 'new.customer@gmail.com', 'phone' => '09123456789', 'username' => 'newcustomer']);
-        $this->registerInBrowser($this->registrationPayload())->assertUnprocessable()->assertJsonValidationErrors(['email', 'phone', 'username']);
-        $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'different@gmail.com'])
-            ->assertUnprocessable()->assertJsonValidationErrors(['phone', 'username']);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-    }
-
-    public function test_verification_rechecks_all_unique_registration_details(): void
-    {
-        Notification::fake();
-        foreach (['email', 'phone', 'username'] as $field) {
-            $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-            $pending = PendingCustomerRegistration::firstOrFail();
-            $code = $this->verificationTokenSentTo($pending);
-            $conflict = User::factory()->create([$field => $pending->$field]);
-            $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($registration), 'email' => $pending->email, 'token' => $code])
-                ->assertUnprocessable()->assertJsonMissingPath('token');
-            $this->assertDatabaseCount('users', 1);
-            $this->assertDatabaseCount('pending_customer_registrations', 1);
-            PendingCustomerRegistration::query()->delete();
-            $conflict->delete();
-            Notification::fake();
-            $this->travel(901)->seconds();
-        }
-    }
-
-    public function test_replacement_queue_failure_restores_old_attempt_and_allows_retry(): void
-    {
-        $this->useDatabaseMailQueue();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $original = $pending->getAttributes();
-        $this->travel(61)->seconds();
-        DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'first_name' => 'Fresh',
-            'registration_token' => $response->json('registration_token')])->assertStatus(503);
-        $this->assertSame($original, $pending->fresh()->getAttributes());
-        DB::statement('DROP TRIGGER reject_auth_job');
-        $this->postJson('/api/register', [...$this->registrationPayload(), 'first_name' => 'Fresh',
-            'registration_token' => $response->json('registration_token')])->assertAccepted();
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->assertSame('Fresh', PendingCustomerRegistration::sole()->first_name);
-    }
-
-    public function test_failed_resend_preserves_the_previous_link(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::firstOrFail();
-        $code = $this->verificationTokenSentTo($pending);
-        $pending->update(['email_verification_attempts' => 2]);
-        $hash = $pending->email_verification_token;
-        $this->travel(61)->seconds();
-        $this->mock(Dispatcher::class, function ($mock) {
-            $mock->shouldReceive('send')->once()->andThrow(new \RuntimeException('Queue unavailable'));
-        });
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $this->authorizedEditCredential($response)])->assertStatus(503);
-        $this->assertSame($hash, $pending->fresh()->email_verification_token);
-        $this->assertSame(2, $pending->fresh()->email_verification_attempts);
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => $pending->email, 'token' => $code])->assertOk();
-    }
-
-    public function test_browser_edit_credential_cannot_replace_details_before_email_proof(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $credential = $this->authorizedEditCredential($response);
-        $pending = PendingCustomerRegistration::sole();
-        $before = $pending->getAttributes();
-        $token = $this->verificationTokenSentTo($pending);
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Attacker',
-            'password' => 'changed-password', 'password_confirmation' => 'changed-password', 'registration_token' => $credential])
-            ->assertUnprocessable()->assertJsonValidationErrors('registration_recovery_token');
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonPath('user.first_name', 'New');
-        $this->assertTrue(Hash::check('strong-password', User::sole()->password_hash));
-    }
-
-    public function test_no_sms_endpoint_or_phone_payload_can_complete_registration(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->postJson('/api/email/verify', ['phone' => '09123456789', 'token' => '123456', 'channel' => 'sms'])->assertUnprocessable();
-        $this->postJson('/api/sms/verify', ['phone' => '09123456789', 'token' => '123456'])->assertNotFound();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-    }
-
-
-    public function test_log_mailer_cannot_record_signup_tokens(): void
-    {
-        $this->useDatabaseMailQueue();
-        Notification::fake();
-        foreach (['log', 'failover'] as $mailer) {
-            config()->set('mail.default', $mailer);
-            $this->registerInBrowser($this->registrationPayload())->assertStatus(503)
-                ->assertJsonMissingPath('email_delivery_queued')->assertJsonMissingPath('email_delivery_token');
-            Notification::assertNothingSent();
-            $this->assertDatabaseCount('pending_customer_registrations', 0);
-            $this->assertDatabaseCount('users', 0);
-            DB::table('jobs')->delete();
-            $this->travel(61)->seconds();
-        }
-    }
-
-    public function test_registration_migration_resumes_partial_schema_and_preserves_data(): void
-    {
-        $migration = require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php');
-        // Match MySQL's state after the original index-name failure: the new
-        // verification fields exist, but the unique index and phone field do not.
-        Schema::table('pending_customer_registrations', function (Blueprint $table) {
-            $table->dropUnique('pending_registration_edit_token_unique');
-        });
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('phone_verified_at');
-        });
-        $pending = PendingCustomerRegistration::create([
-            'first_name' => 'Pending',
-            'last_name' => 'Customer',
-            'phone' => '09123456789',
-            'email' => 'pending@gmail.com',
-            'password_hash' => Hash::make('strong-password'),
-            'email_verification_code_hash' => Hash::make('123456'),
-            'email_verification_attempts' => 2,
-            'registration_edit_token_hash' => hash('sha256', 'existing-edit-credential'),
-        ]);
-        $user = User::factory()->create();
-        $pendingBefore = $pending->fresh()->getAttributes();
-        $userBefore = $user->fresh()->getAttributes();
-
-        $migration->up();
-        $migration->up();
-
-        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', ['registration_edit_token_hash'], 'unique'));
-        $this->assertTrue(Schema::hasColumn('users', 'phone_verified_at'));
-        $this->assertSame($pendingBefore, $pending->fresh()->getAttributes());
-        $this->assertEquals($userBefore, $user->fresh()->only(array_keys($userBefore)));
-        $this->assertNull($user->fresh()->phone_verified_at);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->assertDatabaseCount('users', 1);
-
-        $migration->down();
-        $this->assertFalse(Schema::hasColumn('users', 'phone_verified_at'));
-        $this->assertFalse(Schema::hasColumn('pending_customer_registrations', 'registration_edit_token_hash'));
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        $this->assertDatabaseCount('users', 1);
-        $migration->up();
-        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', ['registration_edit_token_hash'], 'unique'));
-    }
-
     public static function loginResendFailureStates(): array
     {
         return ['usable code' => [false], 'exhausted code' => [true]];
@@ -2489,48 +1325,6 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
-    public function test_database_queue_delivers_registration_mail_and_reports_transport_acceptance(): void
-    {
-        $timings = [];
-        \Illuminate\Support\Facades\Event::listen(\Illuminate\Log\Events\MessageLogged::class,
-            function ($event) use (&$timings): void {
-                if ($event->message === 'Authentication mail delivery') $timings[] = $event->context;
-            });
-        $this->useDatabaseMailQueue();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $receipt = $this->privateDeliveryReceipt();
-        $this->assertIsString($receipt);
-        $this->assertDatabaseCount('jobs', 1);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
-            ->assertOk()->assertJsonPath('status', 'queued');
-        $payload = DB::table('jobs')->value('payload');
-        $command = json_decode($payload, true)['data']['command'];
-        $this->assertStringNotContainsString('VerifyEmailNotification', $command);
-
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $messages = app('mailer')->getSymfonyTransport()->messages();
-        $this->assertCount(1, $messages);
-        $email = $messages[0]->getOriginalMessage();
-        preg_match('/#token=([A-Za-z0-9]{64})/', $email->getTextBody(), $matches);
-        $this->assertNotEmpty($matches);
-        $this->assertStringNotContainsString($matches[1], $payload);
-        $this->assertSame(['queued', 'sending', 'sent'], array_column($timings, 'status'));
-        foreach ($timings as $timing) {
-            $this->assertSame([], array_diff(array_keys($timing), ['delivery_id', 'status', 'elapsed_ms', 'request_ms', 'transport_ms']));
-            $this->assertGreaterThanOrEqual(0, $timing['elapsed_ms']);
-            $this->assertStringNotContainsString($matches[1], json_encode($timing));
-            $this->assertStringNotContainsString($receipt, json_encode($timing));
-            $this->assertStringNotContainsString('new.customer@gmail.com', json_encode($timing));
-        }
-        $this->assertGreaterThanOrEqual(0, $timings[2]['transport_ms']);
-        $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
-            ->assertOk()->assertJsonPath('status', 'sent');
-        $this->postJson('/api/email/verify', ['registration_token' => $this->authorizedEditCredential($response), 'email' => 'new.customer@gmail.com', 'token' => $matches[1]])
-            ->assertOk()->assertJsonStructure(['token']);
-    }
-
     #[\PHPUnit\Framework\Attributes\DataProvider('mailDeliveryModes')]
     public function test_authentication_delivery_sends_one_otp_for_every_login_role(string $mode): void
     {
@@ -2607,25 +1401,6 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('login_email_challenges', 0);
     }
 
-    public function test_public_resend_delivery_status_does_not_enumerate_addresses(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com'])
-            ->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->postJson('/api/email/resend', ['email' => 'missing@gmail.com'])
-            ->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->travel(61)->seconds();
-        $resend = $this->postJson('/api/email/resend', [
-            'email' => 'new.customer@gmail.com', 'registration_token' => $this->authorizedEditCredential($response),
-        ])->assertOk();
-        $this->assertIsString($resend->json('email_delivery_token'));
-        $this->postJson('/api/email/delivery-status', ['delivery_token' => str_repeat('x', 64)])
-            ->assertOk()->assertJsonPath('status', 'unavailable')
-            ->assertJsonMissingPath('email')->assertJsonMissingPath('code');
-    }
-
     public function test_initial_registration_delivers_after_outer_commit_and_termination_without_duplicate_mail(): void
     {
         $this->useDatabaseMailQueue();
@@ -2671,108 +1446,6 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('jobs', 0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_public_recovery_worker_does_not_register_immediate_delivery(): void
-    {
-        $this->useDatabaseMailQueue();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        app('mailer')->getSymfonyTransport()->flush();
-        config()->set('mail.authentication.delivery', 'immediate');
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com'])
-            ->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 1);
-        $this->app->terminate();
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('invalidRegistrationIssuances')]
-    public function test_invalid_registration_is_suppressed_at_termination_and_by_the_worker(string $state): void
-    {
-        $this->useDatabaseMailQueue();
-        config()->set('mail.authentication.delivery', 'immediate');
-        DB::beginTransaction();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $receipt = $this->privateDeliveryReceipt();
-        $pending = PendingCustomerRegistration::sole();
-        if ($state === 'canceled') {
-            $this->postJson('/api/register/cancel', ['registration_token' => $this->authorizedEditCredential($response)])->assertOk();
-        } elseif ($state === 'expired') {
-            $this->travel(30)->minutes();
-        } else {
-            $command = json_decode(DB::table('jobs')->value('payload'), true)['data']['command'];
-            $job = unserialize(app('encrypter')->decrypt($command));
-            $this->postJson('/api/email/verify', [
-                'registration_token' => $this->authorizedEditCredential($response),
-                'email' => $pending->email, 'token' => $job->notification->token,
-            ])->assertOk()->assertJsonStructure(['token']);
-        }
-        DB::commit();
-        $this->app->terminate();
-        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($receipt));
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertDatabaseCount('failed_jobs', 0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public static function invalidRegistrationIssuances(): array
-    {
-        return ['canceled' => ['canceled'], 'expired' => ['expired'], 'consumed' => ['consumed']];
-    }
-
-    public function test_authorized_resend_supersedes_the_initial_immediate_attempt(): void
-    {
-        $this->useDatabaseMailQueue();
-        config()->set('mail.authentication.delivery', 'immediate');
-        DB::beginTransaction();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $receipt = $this->privateDeliveryReceipt();
-        $initialHash = PendingCustomerRegistration::sole()->email_verification_token;
-        DB::commit();
-        $this->travel(61)->seconds();
-        $resend = $this->postJson('/api/email/resend', [
-            'email' => 'new.customer@gmail.com', 'registration_token' => $this->authorizedEditCredential($response),
-        ])->assertOk();
-        $this->assertDatabaseCount('jobs', 2);
-        $this->app->terminate();
-        $messages = app('mailer')->getSymfonyTransport()->messages();
-        $this->assertCount(1, $messages);
-        preg_match('/#token=([A-Za-z0-9]{64})/', $messages[0]->getOriginalMessage()->getTextBody(), $matches);
-        $this->assertNotEmpty($matches);
-        $this->assertNotSame($initialHash, hash('sha256', $matches[1]));
-        $this->assertSame(PendingCustomerRegistration::sole()->email_verification_token, hash('sha256', $matches[1]));
-        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($receipt));
-        $this->assertSame('sent', \App\Services\AuthenticationMailDelivery::status($resend->json('email_delivery_token')));
-        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_replaced_and_expired_registration_jobs_do_not_send(): void
-    {
-        $this->useDatabaseMailQueue();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $receipt = $this->privateDeliveryReceipt();
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => 'new.customer@gmail.com', 'registration_token' => $this->authorizedEditCredential($response)])->assertOk();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->postJson('/api/email/delivery-status', ['delivery_token' => $receipt])
-            ->assertOk()->assertJsonPath('status', 'superseded');
-        // A queued issuance must not send after its deadline.
-        PendingCustomerRegistration::query()->update(['email_verification_expires_at' => now()->addMinutes(15)]);
-        $this->travel(16)->minutes();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->assertDatabaseCount('jobs', 0);
     }
 
     public function test_replaced_login_job_does_not_send_but_current_code_authenticates(): void
@@ -2863,34 +1536,6 @@ class EmailVerificationTest extends TestCase
         $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
     }
 
-    public function test_removed_pending_registration_is_skipped_without_a_failed_job(): void
-    {
-        $this->useDatabaseMailQueue();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        PendingCustomerRegistration::query()->delete();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertDatabaseCount('failed_jobs', 0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_queue_insert_failure_rolls_back_the_registration_issuance(): void
-    {
-        $this->useDatabaseMailQueue();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $before = $pending->getAttributes();
-        $this->travel(61)->seconds();
-        DB::statement("CREATE TRIGGER reject_auth_job BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
-        try {
-            DB::transaction(fn () => app(\App\Services\RegistrationMagicLinkService::class)->send($pending));
-            $this->fail('Queue submission should fail.');
-        } catch (\Illuminate\Database\QueryException) {
-            $this->assertSame($before, $pending->fresh()->getAttributes());
-            $this->assertDatabaseCount('jobs', 1);
-        }
-    }
-
     public function test_consumed_login_issuance_cannot_be_resent_or_mailed(): void
     {
         $this->useDatabaseMailQueue();
@@ -2932,600 +1577,12 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('jobs', 1);
     }
 
-    public function test_registration_link_has_exactly_thirty_minutes_of_server_validity(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $code = $this->verificationTokenSentTo($pending);
-        $this->assertTrue($pending->email_verification_expires_at->equalTo($pending->email_verification_last_sent_at->copy()->addMinutes(30)));
-        $this->travel(30)->minutes();
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code,
-            'registration_token' => $this->authorizedEditCredential($response)])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_signup_conflicts_never_overwrite_real_or_pending_credentials(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $before = $pending->getAttributes();
-        $payload = [...$this->registrationPayload(), 'first_name' => 'Attacker',
-            'password' => 'attacker-password', 'password_confirmation' => 'attacker-password'];
-        $this->registerInBrowser($payload)
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_pending')
-            ->assertJsonMissingPath('requires_registration_recovery')
-            ->assertJsonMissingPath('registration_token')->assertJsonMissingPath('details')->assertJsonMissingPath('token')->json();
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->assertDatabaseCount('users', 0);
-        PendingCustomerRegistration::query()->delete();
-
-        foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true], ['role' => 'staff']] as $attributes) {
-            $this->travel(61)->seconds();
-            $user = User::factory()->create(['email' => 'new.customer@gmail.com', ...$attributes]);
-            $before = $user->fresh()->getAttributes();
-            Notification::fake();
-            $this->registerInBrowser($payload)->assertUnprocessable()->assertJsonPath('conflicts.email', 'account_exists');
-            Notification::assertNothingSent();
-            $this->assertSame($before, $user->fresh()->getAttributes());
-            $this->assertDatabaseCount('pending_customer_registrations', 0);
-            $this->assertDatabaseCount('personal_access_tokens', 0);
-            $user->delete();
-        }
-    }
-
-    public function test_public_recovery_is_identical_for_unknown_expired_pending_and_existing_accounts(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHour()])->save();
-        $publicResponse = $this->postJson('/api/email/resend', ['email' => 'unknown@gmail.com'])->assertAccepted()->json();
-        foreach ([$pending->email, 'unknown@gmail.com'] as $email) {
-            $this->travel(901)->seconds();
-            Notification::fake();
-            $this->postJson('/api/email/resend', ['email' => $email])->assertAccepted()->assertJson(\Illuminate\Support\Arr::except($publicResponse, ['next_eligible_at']));
-            Notification::assertNothingSent();
-        }
-        foreach ([['email_verified_at' => null], [], ['is_active' => false], ['is_archived' => true]] as $index => $attributes) {
-            $this->travel(901)->seconds();
-            $user = User::factory()->create(['email' => "recovery{$index}@gmail.com", ...$attributes]);
-            $this->postJson('/api/email/resend', ['email' => $user->email])->assertAccepted()->assertJson(\Illuminate\Support\Arr::except($publicResponse, ['next_eligible_at']));
-        }
-    }
-
-    public function test_email_proof_is_required_before_recovery_guidance_and_saved_details_are_returned(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $this->registerInBrowser([...$this->registrationPayload(), 'first_name' => 'Attacker',
-            'password' => 'attacker-password', 'password_confirmation' => 'attacker-password'])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_pending')
-            ->assertJsonMissingPath('requires_registration_recovery')
-            ->assertJsonMissingPath('registration_token')->assertJsonMissingPath('details')->assertJsonMissingPath('token');
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => 'invalid'])
-            ->assertUnprocessable()->assertJsonMissingPath('requires_registration_recovery')->assertJsonMissingPath('details');
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending), 'review' => true])
-            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonPath('details.first_name', 'New')
-            ->assertJsonStructure(['registration_recovery_token'])->assertJsonMissingPath('token');
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_lost_edit_credential_requires_ownership_then_explicit_reviewed_completion(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $code = $this->verificationTokenSentTo($pending);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code, 'review' => true])
-            ->assertOk()->assertJsonPath('requires_registration_review', true)
-            ->assertJsonMissingPath('token')->assertJsonMissingPath('details.password_hash');
-        $grant = $review->json('registration_recovery_token');
-        $this->assertSame(64, strlen($grant));
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code])->assertUnprocessable();
-        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $grant];
-        $this->putJson('/api/register/pending', [...$payload, 'email' => 'other@gmail.com'])->assertUnprocessable();
-        $this->putJson('/api/register/pending', [...$payload, 'registration_recovery_token' => str_repeat('x', 64)])->assertUnprocessable();
-        $this->putJson('/api/register/pending', $payload)->assertOk()->assertJsonStructure(['token', 'user']);
-        $this->putJson('/api/register/pending', $payload)->assertUnprocessable();
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 1);
-    }
-
-    public function test_recovery_grant_expires_without_completing_or_deleting_registration(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['email' => $pending->email,
-            'token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $this->travel(10)->minutes();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-    }
-
-    public function test_retention_is_based_on_creation_and_expired_identifiers_are_released(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHour(), 'updated_at' => now()])->save();
-        $oldCode = $this->verificationTokenSentTo($pending);
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $oldCode])->assertUnprocessable();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->assertNotSame($pending->getKey(), PendingCustomerRegistration::query()->sole()->getKey());
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_legacy_recovery_prefers_existing_user_and_preserves_its_identity(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $legacy = User::factory()->unverified()->create(['email' => 'new.customer@gmail.com']);
-        $id = $legacy->getKey();
-        foreach (['pets', 'bookings'] as $table) {
-            Schema::create($table, function (Blueprint $schema) {
-                $schema->id();
-                $schema->unsignedInteger('user_id');
-                $schema->foreign('user_id')->references('user_id')->on('users');
-            });
-            DB::table($table)->insert(['user_id' => $id]);
-        }
-        $this->travel(61)->seconds();
-        Notification::fake();
-        $this->postJson('/api/email/resend', ['email' => $legacy->email])->assertAccepted();
-        $code = $this->verificationTokenSentTo($legacy);
-        $review = $this->postJson('/api/email/verify', ['email' => $legacy->email, 'token' => $code])
-            ->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $this->assertNull($legacy->fresh()->email_verified_at);
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])
-            ->assertOk()->assertJsonPath('user.user_id', $id);
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertNotNull($legacy->fresh()->email_verified_at);
-        $this->assertDatabaseHas('pets', ['user_id' => $id]);
-        $this->assertDatabaseHas('bookings', ['user_id' => $id]);
-    }
-
-    public function test_registration_link_works_just_before_thirty_minutes(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $this->travel(1799)->seconds();
-        $this->postJson('/api/email/verify', ['email' => $pending->email,
-            'registration_token' => $this->authorizedEditCredential($response),
-            'token' => $this->verificationTokenSentTo($pending)])->assertOk()->assertJsonStructure(['token']);
-    }
-
-    public function test_new_legacy_registration_links_expire_in_thirty_minutes(): void
-    {
-        Notification::fake();
-        $legacy = User::factory()->unverified()->create();
-        $this->postJson('/api/email/resend', ['email' => $legacy->email])->assertAccepted();
-        $legacy->refresh();
-        $this->assertSame(1800, $legacy->email_verification_expires_at->timestamp - $legacy->email_verification_last_sent_at->timestamp);
-        $code = $this->verificationTokenSentTo($legacy);
-        $this->travel(1801)->seconds();
-        $this->postJson('/api/email/verify', ['email' => $legacy->email, 'token' => $code])->assertUnprocessable();
-        $this->assertNull($legacy->fresh()->email_verified_at);
-    }
-
-    public function test_resend_does_not_extend_retention_and_expired_rows_are_not_mailed(): void
-    {
-        $this->useDatabaseMailQueue();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $pending->forceFill(['created_at' => now()->subHour()->addSeconds(70)])->save();
-        $created = $pending->created_at->timestamp;
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->assertSame($created, $pending->fresh()->created_at->timestamp);
-        $this->travel(15)->seconds();
-        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->assertDatabaseCount('jobs', 1);
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
-    }
-
-    public function test_verified_user_collision_never_uses_pending_credentials_or_deletes_the_user(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $code = $this->verificationTokenSentTo($pending);
-        $verified = User::factory()->create(['email' => $pending->email]);
-        $before = $verified->fresh()->getAttributes();
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'token' => $code])->assertUnprocessable();
-        Notification::fake();
-        $this->travel(61)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        Notification::assertNothingSent();
-        $this->assertSame($before, $verified->fresh()->getAttributes());
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-    }
-
-    public function test_pending_customers_are_not_listed_as_registered_and_cannot_reset_passwords(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->assertSame(0, User::registeredCustomer()->count());
-        $pending = PendingCustomerRegistration::query()->sole();
-        $code = $this->verificationTokenSentTo($pending);
-        Notification::fake();
-        $this->travel(61)->seconds();
-        $this->postJson('/api/password/forgot', ['email' => $pending->email])->assertUnprocessable()
-            ->assertJsonPath('message', 'No account found with this email.');
-        $this->postJson('/api/password/code/verify', ['email' => $pending->email,
-            'code' => $code])->assertUnprocessable()
-            ->assertJsonPath('message', 'Invalid or expired verification code.');
-        Notification::assertNothingSent();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_recovery_completion_rolls_back_if_session_creation_fails(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['email' => $pending->email,
-            'token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        DB::statement("CREATE TRIGGER reject_customer_session BEFORE INSERT ON personal_access_tokens BEGIN SELECT RAISE(ABORT, 'session unavailable'); END");
-        $payload = [...$this->registrationPayload(), 'registration_recovery_token' => $review->json('registration_recovery_token')];
-        $this->putJson('/api/register/pending', $payload)->assertServerError();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 1);
-        DB::statement('DROP TRIGGER reject_customer_session');
-        $this->putJson('/api/register/pending', $payload)->assertOk();
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-    }
-
-    public function test_recovery_migration_is_repeatable_and_reversible_without_losing_accounts(): void
-    {
-        $user = User::factory()->unverified()->create();
-        $migration = require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php');
-        $migration->up();
-        foreach (['users', 'pending_customer_registrations'] as $table) {
-            $this->assertTrue(Schema::hasIndex($table, ['registration_recovery_token_hash'], 'unique'));
-            foreach (Schema::getIndexes($table) as $index) {
-                $this->assertLessThanOrEqual(64, strlen($index['name']), 'Index names must fit MySQL identifiers.');
-            }
-        }
-        $migration->down();
-        $this->assertDatabaseHas('users', ['user_id' => $user->getKey(), 'email' => $user->email]);
-        foreach (['users', 'pending_customer_registrations'] as $table) {
-            $this->assertFalse(Schema::hasColumn($table, 'registration_recovery_token_hash'));
-            $this->assertFalse(Schema::hasColumn($table, 'registration_recovery_expires_at'));
-        }
-        $this->assertFalse(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
-        $migration->up();
-        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
-    }
-
-    public function test_recovery_migration_resumes_after_mysql_partial_schema_changes_without_losing_records(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        User::factory()->unverified()->create();
-        $migration = require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php');
-        $migration->down();
-        $usersBefore = DB::table('users')->get()->toArray();
-        $pendingBefore = DB::table('pending_customer_registrations')->get()->toArray();
-
-        // Match the committed DDL left by MySQL before the overlong index failed.
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('registration_recovery_token_hash', 64)->nullable()->unique();
-            $table->timestamp('registration_recovery_expires_at')->nullable();
-        });
-        Schema::table('pending_customer_registrations', function (Blueprint $table) {
-            $table->string('registration_recovery_token_hash', 64)->nullable();
-        });
-
-        $migration->up();
-        $migration->up();
-        $this->assertTrue(Schema::hasIndex('users', 'users_registration_recovery_token_hash_unique', 'unique'));
-        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_reg_recovery_token_uq', 'unique'));
-        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
-        foreach (['users', 'pending_customer_registrations'] as $table) {
-            $this->assertTrue(Schema::hasColumn($table, 'registration_recovery_token_hash'));
-            $this->assertTrue(Schema::hasColumn($table, 'registration_recovery_expires_at'));
-            $recoveryIndexes = array_filter(Schema::getIndexes($table), fn ($index) => $index['columns'] === ['registration_recovery_token_hash']);
-            $this->assertCount(1, $recoveryIndexes);
-        }
-
-        $migration->down();
-        $this->assertEquals($usersBefore, DB::table('users')->get()->toArray());
-        $this->assertEquals($pendingBefore, DB::table('pending_customer_registrations')->get()->toArray());
-    }
-
-    public static function simultaneousVerificationFlows(): array
-    {
-        return [['registration'], ['login'], ['pairing']];
-    }
-
-    #[\PHPUnit\Framework\Attributes\DataProvider('simultaneousVerificationFlows')]
-    public function test_overlapping_verification_requests_consume_only_one_issuance_on_sqlite(string $flow): void
-    {
-        Notification::fake();
-        if ($flow === 'login') {
-            $user = User::factory()->create();
-            $token = str_repeat('a', 64);
-            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
-                'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
-            $payload = json_encode(['poll_token' => $token, 'code' => '123456', '_verification_endpoint' => '/api/email/login/confirm'], JSON_THROW_ON_ERROR);
-        } else {
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::query()->sole();
-        $payload = json_encode(['email' => $pending->email, 'token' => $this->verificationTokenSentTo($pending),
-            'registration_token' => $this->authorizedEditCredential($response),
-            '_verification_endpoint' => $flow === 'pairing' ? '/api/email/registration/redeem' : '/api/email/verify',
-            'registration_browser' => $response->getCookie('bethlehem_registration_browser', false)->getValue()], JSON_THROW_ON_ERROR);
-        if ($flow === 'pairing') $pending->update(['confirmation_code_ciphertext' => '123456',
-            'confirmation_expires_at' => now()->addMinutes(5), 'registration_approved_at' => now()]);
-        }
-        $directory = sys_get_temp_dir().'/bethlehem-signup-'.bin2hex(random_bytes(6));
-        $this->assertTrue(mkdir($directory, 0700));
-        $database = $directory.'/registration.sqlite';
-        $owner = bin2hex(random_bytes(16));
-        file_put_contents($directory.'/owner', $owner);
-        $first = $second = $connection = $probe = $contender = null;
-        try {
-            // Match the existing SQLite concurrency tests: prove runtime support,
-            // rather than treating a PHP version or configuration flag as evidence.
-            $probePath = $directory.'/probe.sqlite';
-            $probe = new \Illuminate\Database\SQLiteConnection(new \PDO('sqlite:'.$probePath), $probePath, '', ['transaction_mode' => 'IMMEDIATE']);
-            $contender = new \PDO('sqlite:'.$probePath);
-            $contender->exec('PRAGMA busy_timeout=0');
-            $probe->beginTransaction();
-            $tracked = $probe->getPdo()->inTransaction();
-            $writerLocked = false;
-            try {
-                $contender->exec('BEGIN IMMEDIATE');
-                $contender->exec('ROLLBACK');
-            } catch (\PDOException $error) {
-                if (($error->errorInfo[1] ?? null) !== 5) throw $error;
-                $writerLocked = true;
-            }
-            $probe->rollBack();
-            $probe->disconnect();
-            $probe = $contender = null;
-            if (! $tracked || ! $writerLocked) {
-                $this->markTestSkipped('This Laravel/PDO SQLite runtime cannot enforce and track IMMEDIATE transactions. Use the documented compatible PHP runtime.');
-            }
-            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
-            $worker = <<<'PHP'
-                require 'tests/bootstrap.php';
-                [$script, $database, $role, $owner, $payload] = $argv;
-                $directory = realpath(dirname($database));
-                if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
-                    || !preg_match('/\Abethlehem-signup-[a-f0-9]{12}\z/', basename($directory))
-                    || basename($database) !== 'registration.sqlite' || !is_file($database)
-                    || !hash_equals(file_get_contents($directory.'/owner'), $owner)) {
-                    throw new RuntimeException('Worker requires its owned disposable registration database.');
-                }
-                $app = require 'bootstrap/app.php';
-                $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-                config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
-                    'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
-                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
-                Illuminate\Support\Facades\DB::purge('sqlite');
-                $connection = Illuminate\Support\Facades\DB::connection();
-                if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
-                    throw new RuntimeException('Worker opened an unexpected database.');
-                }
-                $wait = function ($file) {
-                    $deadline = microtime(true) + 5;
-                    while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
-                    if (!is_file($file)) throw new RuntimeException('Verification barrier timed out.');
-                };
-                $busy = false;
-                $connection->beforeStartingTransaction(function () use ($role, $directory, $database, $wait, &$busy) {
-                    if ($role !== 'second') return;
-                    $wait($directory.'/first-lock');
-                    $probe = new PDO('sqlite:'.$database);
-                    $probe->exec('PRAGMA busy_timeout=0');
-                    try {
-                        $probe->exec('BEGIN IMMEDIATE'); $probe->exec('ROLLBACK');
-                        throw new RuntimeException('The first verification must hold the writer lock.');
-                    } catch (PDOException $error) {
-                        if (($error->errorInfo[1] ?? null) !== 5) throw $error;
-                        $busy = true;
-                    }
-                    touch($directory.'/second-attempt');
-                });
-                $app['events']->listen(Illuminate\Database\Events\TransactionBeginning::class,
-                    function () use ($role, $directory, $wait) {
-                        if ($role !== 'first') return;
-                        touch($directory.'/first-lock');
-                        $wait($directory.'/second-attempt');
-                        usleep(200000);
-                    });
-                $parameters = json_decode($payload, true);
-                $request = Illuminate\Http\Request::create($parameters['_verification_endpoint'] ?? '/api/email/verify', 'POST', $parameters,
-                    ['bethlehem_registration_browser' => $parameters['registration_browser'] ?? ''],
-                    server: ['REMOTE_ADDR' => $role === 'first' ? '192.0.2.1' : '192.0.2.2',
-                        'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
-                $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
-                echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy]);
-                PHP;
-            $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
-                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
-                'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
-            $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $owner, $payload], base_path(), $environment);
-            $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $owner, $payload], base_path(), $environment);
-            $first->setTimeout(15); $second->setTimeout(15);
-            $first->start(); $second->start();
-            $first->wait(); $second->wait();
-            $this->assertTrue($first->isSuccessful(), $first->getErrorOutput());
-            $this->assertTrue($second->isSuccessful(), $second->getErrorOutput());
-            $one = json_decode($first->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-            $two = json_decode($second->getOutput(), true, flags: JSON_THROW_ON_ERROR);
-            $this->assertNotSame($one['pid'], $two['pid']);
-            $this->assertTrue($two['busy'], 'The requests must overlap while the first owns the database lock.');
-            $this->assertSame(200, $one['status']);
-            $this->assertSame($flow === 'pairing' ? 200 : 422, $two['status']);
-            $connection = new \PDO('sqlite:'.$database);
-            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM users')->fetchColumn());
-            $this->assertSame($flow === 'pairing' ? 1 : 0, (int) $connection->query('SELECT COUNT(*) FROM pending_customer_registrations')->fetchColumn());
-            $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM login_email_challenges')->fetchColumn());
-            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
-        } finally {
-            $first?->stop(); $second?->stop();
-            if ($probe?->transactionLevel()) $probe->rollBack();
-            $probe?->disconnect();
-            $connection = $probe = $contender = null;
-            foreach (['registration.sqlite', 'registration.sqlite-journal', 'registration.sqlite-wal', 'registration.sqlite-shm',
-                'probe.sqlite', 'probe.sqlite-journal', 'owner', 'first-lock', 'second-attempt'] as $file) {
-                if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
-            }
-            rmdir($directory);
-        }
-    }
-
-
-    public function test_unsupported_email_is_rejected_before_pending_registration_or_otp(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser([...$this->registrationPayload(), 'email' => '123@123.com'])
-            ->assertUnprocessable()->assertJsonValidationErrors('email')
-            ->assertJsonPath('errors.email.0', 'Use Gmail, Outlook, Hotmail, Live, Yahoo, or iCloud.');
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
-        Notification::assertNothingSent();
-    }
-
-    public function test_mixed_case_plus_alias_keeps_its_identity_through_verification_and_sign_in(): void
-    {
-        Notification::fake();
-        $response = $this->registerInBrowser([...$this->registrationPayload(), 'email' => '  Gerald+Clinic@GMAIL.COM '])
-            ->assertAccepted()->assertJsonPath('email', 'Gerald+Clinic@gmail.com');
-        $pending = PendingCustomerRegistration::query()->sole();
-        $this->assertSame('Gerald+Clinic@gmail.com', $pending->email);
-        $this->postJson('/api/email/verify', ['email' => 'gerald+clinic@gmail.com',
-            'registration_token' => $this->authorizedEditCredential($response), 'token' => $this->verificationTokenSentTo($pending)])
-            ->assertOk()->assertJsonPath('user.email', 'Gerald+Clinic@gmail.com');
-        $this->travel(61)->seconds();
-        $this->postJson('/api/sign-in', ['identifier' => 'GERALD+CLINIC@gmail.com', 'password' => 'strong-password'])
-            ->assertStatus(202)->assertJsonPath('requires_login_confirmation', true);
-    }
-
-    public function test_email_proven_review_preserves_the_verified_legacy_address(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $pending->update(['email' => 'ab@legacy.example']);
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $payload = [...$this->registrationPayload(), 'email' => 'ab@legacy.example', 'first_name' => 'Corrected',
-            'registration_recovery_token' => $review->json('registration_recovery_token')];
-        $this->putJson('/api/register/pending', [...$payload, 'email' => 'new@unsupported.example'])->assertUnprocessable();
-        $this->assertSame('ab@legacy.example', $pending->fresh()->email);
-        $this->putJson('/api/register/pending', $payload)->assertOk();
-        $this->assertDatabaseHas('users', ['email' => 'ab@legacy.example', 'first_name' => 'Corrected']);
-    }
-
-    public function test_changed_registration_email_cannot_duplicate_an_account_by_local_part_case(): void
-    {
-        Notification::fake();
-        User::factory()->create(['email' => 'Registered@gmail.com']);
-        $created = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'email' => 'registered@GMAIL.COM',
-            'registration_token' => $this->authorizedEditCredential($created)])->assertUnprocessable();
-        $this->assertSame('new.customer@gmail.com', PendingCustomerRegistration::query()->sole()->email);
-    }
-
     public function test_legacy_email_still_enters_the_existing_sign_in_challenge(): void
     {
         Notification::fake();
         User::factory()->create(['email' => 'ab@legacy.example', 'password_hash' => Hash::make('strong-password')]);
         $this->postJson('/api/sign-in', ['identifier' => 'ab@legacy.example', 'password' => 'strong-password'])
             ->assertAccepted()->assertJsonPath('requires_login_confirmation', true);
-    }
-
-    public function test_scanner_get_and_old_signup_codes_cannot_activate_accounts(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $token = $this->verificationTokenSentTo($pending);
-        $this->get('/verify-email?token='.$token)->assertOk();
-        $this->getJson('/api/email/verify?token='.$token)->assertStatus(405);
-        $this->postJson('/api/email/verify', ['email' => $pending->email, 'code' => '123456'])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('personal_access_tokens', 0);
-        $this->assertSame(hash('sha256', $token), $pending->fresh()->email_verification_token);
-    }
-
-    public function test_registration_link_is_single_use_and_does_not_verify_the_phone(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload());
-        $pending = PendingCustomerRegistration::sole();
-        $token = $this->verificationTokenSentTo($pending);
-        $verified = $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonStructure(['token']);
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
-        $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertNull(User::sole()->phone_verified_at);
-        $this->withAccountSession($verified)->getJson('/api/me')->assertOk();
-    }
-
-    public function test_foreign_browser_review_must_replace_password_and_cannot_authorize_the_original_browser(): void
-    {
-        Notification::fake();
-        $registration = $this->registerInBrowser($this->registrationPayload());
-        $pending = PendingCustomerRegistration::sole();
-        $originalCookie = $registration->getCookie('bethlehem_registration_browser', false)->getValue();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('f', 64))->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending),
-            'registration_token' => $this->authorizedEditCredential($registration), 'review' => true])->assertOk()
-            ->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $this->assertNull($pending->fresh()->registration_browser_token_hash);
-        $this->withUnencryptedCookie('bethlehem_registration_browser', $originalCookie)->withCredentials();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_token' => $this->authorizedEditCredential($registration)])->assertUnprocessable();
-        $this->postJson('/api/email/registration/session', ['email' => $pending->email])->assertUnauthorized();
-        $owner = [...$this->registrationPayload(), 'password' => 'owner-new-password', 'password_confirmation' => 'owner-new-password',
-            'registration_recovery_token' => $review->json('registration_recovery_token')];
-        $completed = $this->putJson('/api/register/pending', $owner)->assertOk()->assertJsonStructure(['token']);
-        $this->assertTrue(Hash::check('owner-new-password', User::sole()->password_hash));
-        $this->assertFalse(Hash::check('strong-password', User::sole()->password_hash));
-        $this->withAccountSession($completed)->getJson('/api/me')->assertOk();
-    }
-
-    public function test_resending_replaces_the_link_but_rejected_resends_preserve_it(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload());
-        $pending = PendingCustomerRegistration::sole();
-        $old = $this->verificationTokenSentTo($pending);
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted()->assertJsonMissingPath('email_delivery_token');
-        $this->assertSame(hash('sha256', $old), $pending->fresh()->email_verification_token);
-        $this->travel(60)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $new = $this->verificationTokenSentTo($pending);
-        $this->assertNotSame($old, $new);
-        $this->postJson('/api/email/verify', ['token' => $old])->assertUnprocessable();
-        $this->postJson('/api/email/verify', ['token' => $new])->assertOk();
     }
 
     public function test_restart_and_ip_change_do_not_reset_the_account_otp_budget(): void
@@ -3549,294 +1606,79 @@ class EmailVerificationTest extends TestCase
         $this->postJson('/api/sign-in', ['identifier' => $user->email, 'password' => 'strong-password'])->assertAccepted();
     }
 
-    public function test_handoff_requires_the_actual_cookie_and_a_matching_verified_customer(): void
-    {
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload());
-        $pending = PendingCustomerRegistration::sole();
-        $verified = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending)])->assertOk();
-        $this->postJson('/api/email/registration/session', ['acknowledge' => true])->assertUnauthorized();
-        $cookie = $this->accountSessionCookie($verified)->getValue();
-        $this->withUnencryptedCookie('bethlehem_account_session', $cookie)->withCredentials();
-        $this->postJson('/api/email/registration/session', ['email' => 'other@gmail.com', 'acknowledge' => true])->assertUnauthorized();
-        $this->postJson('/api/email/registration/session')->assertOk()->assertJsonPath('original_tab_confirmed', false)->assertJsonMissingPath('token');
-        $this->postJson('/api/email/registration/session', ['email' => $pending->email, 'acknowledge' => true])
-            ->assertOk()->assertJsonPath('original_tab_confirmed', true)->assertJsonPath('session_token', $verified->json('token'));
-        $this->withHeader('Origin', 'https://attacker.example')->postJson('/api/email/registration/session')->assertStatus(419);
-    }
-
-    public function test_plaintext_legacy_links_have_only_an_explicit_bounded_review_transition(): void
-    {
-        $token = str_repeat('b', 64);
-        $user = User::factory()->unverified()->create(['email_verification_token' => $token, 'email_verification_expires_at' => now()->addHour()]);
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
-        config()->set('authentication.legacy_links_until', now()->addMinutes(5)->toIso8601String());
-        $this->postJson('/api/email/verify', ['token' => $token])->assertOk()->assertJsonPath('requires_registration_review', true)->assertJsonMissingPath('token');
-        $this->assertNull($user->fresh()->email_verified_at);
-    }
-
-    public function test_old_queued_signup_notifications_without_magic_tokens_are_suppressed(): void
+    public function test_failed_bound_resend_preserves_issuance_and_retried_old_mail_cannot_replace_new_link(): void
     {
         $this->useDatabaseMailQueue();
-        $pending = PendingCustomerRegistration::create([...$this->registrationPayload(), 'password_hash' => Hash::make('strong-password')]);
-        $notification = (new \ReflectionClass(VerifyEmailNotification::class))->newInstanceWithoutConstructor();
-        $receipt = \App\Services\AuthenticationMailDelivery::queue($pending, $notification);
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
+        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $pending = PendingCustomerRegistration::sole();
+        $before = $pending->getAttributes();
+        $oldReceipt = $registration->json('email_delivery_token');
+        $this->travel(61)->seconds();
+        DB::statement("CREATE TRIGGER reject_registration_mail BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END");
+        $this->postJson('/api/email/resend', ['registration_token' => $registration->json('registration_token')])->assertStatus(503);
+        $this->assertSame($before, $pending->fresh()->getAttributes());
+        DB::statement('DROP TRIGGER reject_registration_mail');
+        $resend = $this->postJson('/api/email/resend', ['registration_token' => $registration->json('registration_token')])->assertOk();
+        $newHash = $pending->fresh()->email_verification_token;
+        $this->assertNotSame($before['email_verification_token'], $newHash);
+        $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
+        $this->assertSame($newHash, $pending->fresh()->email_verification_token);
+        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($oldReceipt));
+        $this->assertSame('sent', \App\Services\AuthenticationMailDelivery::status($resend->json('email_delivery_token')));
+        $this->assertCount(1, app('mailer')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public static function obsoleteRegistrationMailStates(): array
+    {
+        return [['approved'], ['expired'], ['cancelled']];
+    }
+
+    public function test_stale_immediate_recipient_snapshot_cannot_send_an_approved_registration_link(): void
+    {
+        $this->useDatabaseMailQueue();
+        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $stale = PendingCustomerRegistration::sole();
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $queued = unserialize(app('encrypter')->decrypt($command));
+        $notification = $queued->notification;
+        $this->postJson('/api/email/verify', ['token' => $notification->token])->assertOk();
+        // Immediate delivery retains its issued recipient object across commit;
+        // the middleware must consult the current row, not that stale snapshot.
+        $tracking = new \App\Jobs\Middleware\TrackAuthenticationMailDelivery($registration->json('email_delivery_token'), [
+            'model' => PendingCustomerRegistration::class, 'key' => $stale->getKey(),
+            'hash_column' => 'email_verification_token', 'hash' => $stale->email_verification_token,
+            'expiry_column' => 'email_verification_expires_at',
+        ]);
+        $tracking->handle(new \Illuminate\Notifications\SendQueuedNotifications($stale, $notification, ['mail']),
+            fn () => $stale->notifyNow($notification));
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($receipt));
+        $this->assertSame('superseded', \App\Services\AuthenticationMailDelivery::status($registration->json('email_delivery_token')));
+        $this->assertNotNull($stale->fresh()->registration_approved_at);
         $this->assertDatabaseCount('users', 0);
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('registrationLinkAges')]
-    public function test_registration_links_are_capped_by_the_original_hour(int $age, int $minutes): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('obsoleteRegistrationMailStates')]
+    public function test_obsolete_registration_jobs_cannot_send_or_create_accounts(string $state): void
     {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->useDatabaseMailQueue();
+        $registration = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
         $pending = PendingCustomerRegistration::sole();
-        $created = $pending->created_at->copy();
-        $credential = $this->authorizedEditCredential($response);
-        if ($age) {
-            $this->travel($age)->minutes();
-            $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
+        $command = json_decode(DB::table('jobs')->sole()->payload, true)['data']['command'];
+        $job = unserialize(app('encrypter')->decrypt($command));
+        $this->assertInstanceOf(VerifyEmailNotification::class, $job->notification);
+        $this->assertStringNotContainsString($job->notification->token, $command);
+        $serialized = serialize($job);
+        foreach (['strong-password', 'password_hash', 'first_name', 'last_name', '09123456789'] as $secret) {
+            $this->assertStringNotContainsString($secret, $serialized);
         }
-        $pending->refresh();
-        $this->assertTrue($pending->created_at->equalTo($created));
-        $this->assertSame($minutes * 60, $pending->email_verification_expires_at->timestamp - now()->timestamp);
-        $mail = Notification::sent($pending, VerifyEmailNotification::class)->last()->toMail($pending);
-        $this->assertContains('This link expires on '.$pending->email_verification_expires_at->copy()->timezone('Asia/Manila')
-            ->format('F j, Y, g:i:s A').' (Asia/Manila, UTC+08:00).', $mail->outroLines);
-        $this->assertTrue($pending->created_at->equalTo($created));
-    }
-
-    public static function registrationLinkAges(): array
-    {
-        return [[0, 30], [15, 30], [30, 30], [45, 15], [50, 10]];
-    }
-
-    public function test_registration_can_verify_one_second_before_the_hour_but_not_at_the_deadline(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $first = PendingCustomerRegistration::sole();
-        $this->travel(45)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $first->email])->assertAccepted();
-        $first->refresh();
-        $token = $this->verificationTokenSentTo($first);
-        $this->travel(899)->seconds();
-        $this->postJson('/api/email/verify', ['token' => $token])->assertOk();
-        $this->assertDatabaseCount('users', 1);
-
-        $this->registerInBrowser([...$this->registrationPayload(), 'email' => 'second@gmail.com', 'username' => 'second', 'phone' => null])->assertAccepted();
-        $second = PendingCustomerRegistration::sole();
-        $this->travel(45)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $second->email])->assertAccepted();
-        $token = $this->verificationTokenSentTo($second);
-        $this->travel(15)->minutes();
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()
-            ->assertJsonPath('code', 'registration_expired')->assertJsonPath('message', 'Registration expired. Start again.');
-        $this->assertDatabaseCount('users', 1);
-        $this->assertTrue($second->fresh()->retentionExpired());
-    }
-
-    public function test_pending_edit_and_old_stored_link_deadlines_cannot_extend_the_hour(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $credential = $this->authorizedEditCredential($response);
-        $created = $pending->created_at->copy();
-        $this->travel(45)->minutes();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(), 'first_name' => 'Edited',
-            'registration_token' => $credential])->assertUnprocessable();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
-        $pending->refresh();
-        $token = $this->verificationTokenSentTo($pending);
-        $this->assertTrue($pending->created_at->equalTo($created));
-        // Simulate an issuance stored under the previous deployment's policy.
-        $pending->update(['email_verification_expires_at' => now()->addMinutes(30)]);
-        $this->assertTrue(\App\Services\RegistrationMagicLinkService::expiresAt($pending->fresh())->equalTo($created->addHour()));
-        $this->travel(15)->minutes();
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_email_proven_review_survives_the_hour_only_until_its_original_grant_expires(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $this->travel(50)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $token = $this->verificationTokenSentTo($pending);
-        $this->travel(8)->minutes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $token, 'review' => true])->assertOk()->assertJsonPath('requires_registration_review', true);
-        $deadline = $pending->fresh()->registration_recovery_expires_at;
-        $this->travel(1)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->assertTrue($pending->fresh()->registration_recovery_expires_at?->equalTo($deadline) ?? false,
-            'An unauthenticated resend must not revoke an email-proven review grant.');
-        $this->travel(119)->seconds();
-        $this->assertSame(0, PendingCustomerRegistration::pruneExpired());
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->assertTrue($pending->fresh()->registration_recovery_expires_at->equalTo($deadline));
-        $this->postJson('/api/email/verify', ['token' => $token])->assertUnprocessable();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertOk();
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-    }
-
-    public function test_expired_review_is_pruned_and_cannot_complete_or_reserve_identifiers(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $this->travel(50)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->travel(9)->minutes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        $this->travel(10)->minutes();
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $this->assertNotSame($pending->getKey(), PendingCustomerRegistration::sole()->getKey());
-    }
-
-    public function test_delayed_verification_mail_states_the_exact_capped_manila_deadline(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        $this->useDatabaseMailQueue();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $deadline = $pending->created_at->copy()->addHour()->timezone('Asia/Manila')->format('F j, Y, g:i:s A');
-        $this->travel(45)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        // Drop the old issuance, then process the public request, delaying only mail delivery.
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->travel(7)->minutes();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $messages = app('mailer')->getSymfonyTransport()->messages();
-        $this->assertCount(1, $messages);
-        $body = $messages[0]->getOriginalMessage()->getTextBody();
-        $this->assertStringContainsString($deadline.' (Asia/Manila, UTC+08:00)', $body);
-        $this->assertStringNotContainsString('expires in 30 minutes', $body);
-    }
-
-    public function test_nearly_expired_resend_preserves_the_current_link_and_suppresses_late_delivery(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $credential = $this->authorizedEditCredential($response);
-        $pending = PendingCustomerRegistration::sole();
-        $this->travel(50)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertOk();
-        $before = $pending->fresh()->getAttributes();
-        $notification = Notification::sent($pending, VerifyEmailNotification::class)->last();
-        $this->travel(541)->seconds();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertUnprocessable()
-            ->assertJsonPath('code', 'registration_restart_required');
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-        $this->assertFalse($notification->shouldSend($pending->fresh(), 'mail'));
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-    }
-
-    public function test_replayed_public_work_cannot_recreate_an_expired_registration(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        $this->useDatabaseMailQueue();
-        $payload = $this->registrationPayload();
-        $job = new \App\Jobs\ProcessPublicRegistration($payload['email'], $payload, str_repeat('x', 64), now()->timestamp);
-        $this->postJson('/api/register', $payload)->assertAccepted();
-        $this->travel(60)->minutes();
-        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
-        $job->handle(app(\App\Services\CustomerRegistrationService::class));
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
-        $this->assertDatabaseCount('users', 0);
+        if ($state === 'approved') $this->postJson('/api/email/verify', ['token' => $job->notification->token])->assertOk();
+        if ($state === 'expired') $this->travel(60)->minutes();
+        if ($state === 'cancelled') $this->postJson('/api/register/cancel', ['registration_token' => $registration->json('registration_token')])->assertOk();
         $this->workQueue(['--stop-when-empty' => true, '--sleep' => 0])->assertExitCode(0);
         $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_only_the_bound_edit_credential_can_receive_expired_resend_feedback(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $response = $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $credential = $this->authorizedEditCredential($response);
-        $before = $pending->fresh()->getAttributes();
-        $this->travel(60)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])
-            ->assertUnprocessable()->assertJsonPath('code', 'registration_expired');
-        $this->withUnencryptedCookie('bethlehem_registration_browser', str_repeat('x', 64))->withCredentials();
-        $this->postJson('/api/email/resend', ['email' => $pending->email, 'registration_token' => $credential])->assertAccepted();
-        $this->assertSame($before, $pending->fresh()->getAttributes());
-    }
-
-    public function test_delayed_initial_public_work_is_discarded_at_one_hour(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        $this->useDatabaseMailQueue();
-        $this->postJson('/api/register', $this->registrationPayload())->assertAccepted();
-        $this->travel(60)->minutes();
-        $this->workQueue(['--once' => true, '--sleep' => 0])->assertExitCode(0);
-        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
-        $this->assertDatabaseCount('pending_customer_registrations', 0);
         $this->assertDatabaseCount('users', 0);
-        $this->assertDatabaseCount('jobs', 0);
-        $this->assertCount(0, app('mailer')->getSymfonyTransport()->messages());
-    }
-
-    public function test_cleanup_bounds_existing_review_grants_and_ignores_obsolete_retention_configuration(): void
-    {
-        $this->travelTo(now()->startOfSecond());
-        Notification::fake();
-        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
-        $pending = PendingCustomerRegistration::sole();
-        $user = User::factory()->create();
-        config()->set('app.pending_registration_retention_hours', 48);
-        $this->travel(50)->minutes();
-        $this->postJson('/api/email/resend', ['email' => $pending->email])->assertAccepted();
-        $this->travel(9)->minutes();
-        $this->withUnencryptedCookie('bethlehem_registration_browser', '')->withCredentials();
-        $review = $this->postJson('/api/email/verify', ['token' => $this->verificationTokenSentTo($pending), 'review' => true])->assertOk();
-        // An old/malformed stored grant cannot reserve identifiers indefinitely.
-        $pending->update(['registration_recovery_expires_at' => now()->addDay()]);
-        $this->travel(1)->minutes();
-        $this->assertTrue($pending->fresh()->retentionExpired());
-        $this->assertSame(0, PendingCustomerRegistration::pruneExpired());
-        $this->travel(10)->minutes();
-        $this->assertSame(1, PendingCustomerRegistration::pruneExpired());
-        $this->putJson('/api/register/pending', [...$this->registrationPayload(),
-            'registration_recovery_token' => $review->json('registration_recovery_token')])->assertUnprocessable();
-        $this->assertDatabaseCount('users', 1);
-        $this->assertNotNull($user->fresh()->email_verified_at);
-    }
-
-    // Pre-existing authorized contexts are fixtures, never public API output.
-    private ?\WeakMap $editCredentials = null;
-
-    private function authorizedEditCredential($response): ?string
-    {
-        if ($token = $response->json('registration_token')) return $token;
-        $this->editCredentials ??= new \WeakMap;
-        if (isset($this->editCredentials[$response])) return $this->editCredentials[$response];
-        $pending = PendingCustomerRegistration::query()->first();
-        if (! $pending) return null;
-        $token = str_repeat('e', 64);
-        if ($pending->registration_edit_token_hash) $pending->update(['registration_edit_token_hash' => hash('sha256', $token)]);
-        return $this->editCredentials[$response] = $token;
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
     private string $lastPrivateReceipt = '';
@@ -3851,7 +1693,7 @@ class EmailVerificationTest extends TestCase
 
     private function registerInBrowser(array $payload)
     {
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/register', ['email' => $payload['email'], 'registration_token' => \Illuminate\Support\Str::random(64)]);
         if ($cookie = $response->getCookie('bethlehem_registration_browser', false)) {
             $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie->getValue())->withCredentials();
         }
@@ -3900,4 +1742,259 @@ class EmailVerificationTest extends TestCase
 
         return $code;
     }
+    public function test_overlapping_login_requests_consume_only_one_issuance_on_sqlite(): void
+    {
+        Notification::fake();
+            $user = User::factory()->create();
+            $token = str_repeat('a', 64);
+            LoginEmailChallenge::create(['user_id' => $user->getKey(), 'poll_token_hash' => hash('sha256', $token),
+                'token_hash' => hash_hmac('sha256', '123456', $token), 'expires_at' => now()->addMinutes(10)]);
+            $payload = json_encode(['poll_token' => $token, 'code' => '123456', '_verification_endpoint' => '/api/email/login/confirm'], JSON_THROW_ON_ERROR);
+        $parameters=json_decode($payload,true,flags:JSON_THROW_ON_ERROR);
+        $this->assertConcurrentAuthenticationRequests($parameters,$parameters,422,0);
+    }
+    public function test_signup_requires_email(): void
+    {
+        foreach ([null, '', 'invalid-email'] as $email) {
+            $payload = $this->registrationPayload();
+            $payload['email'] = $email;
+            $this->registerInBrowser($payload)->assertUnprocessable()->assertJsonValidationErrors('email');
+        }
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+    }
+
+    public function test_unsupported_email_is_rejected_before_pending_registration_or_otp(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser([...$this->registrationPayload(), 'email' => '123@123.com'])
+            ->assertUnprocessable()->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'Use Gmail, Outlook, Hotmail, Live, Yahoo, or iCloud.');
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('users', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_log_mailer_cannot_record_signup_tokens(): void
+    {
+        $this->useDatabaseMailQueue();
+        Notification::fake();
+        foreach (['log', 'failover'] as $mailer) {
+            config()->set('mail.default', $mailer);
+            $this->registerInBrowser($this->registrationPayload())->assertStatus(503)
+                ->assertJsonMissingPath('email_delivery_queued')->assertJsonMissingPath('email_delivery_token');
+            Notification::assertNothingSent();
+            $this->assertDatabaseCount('pending_customer_registrations', 0);
+            $this->assertDatabaseCount('users', 0);
+            DB::table('jobs')->delete();
+            $this->travel(61)->seconds();
+        }
+    }
+
+    public static function phoneVerificationStatuses(): array
+    {
+        return [
+            'missing' => [null, null, 'not_added'],
+            'missing with stale timestamp' => [null, '2026-10-20 00:00:00', 'not_added'],
+            'empty with stale timestamp' => ['', '2026-10-20 00:00:00', 'not_added'],
+            'unverified' => ['09171234567', null, 'unverified'],
+            'verified' => ['09171234567', '2026-10-20 00:00:00', 'verified'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('phoneVerificationStatuses')]
+    public function test_me_derives_phone_status_from_the_stored_phone_and_verification_timestamp(?string $phone, ?string $verifiedAt, string $expected): void
+    {
+        $user = User::factory()->create([
+            'phone' => $phone,
+            'phone_verified_at' => $verifiedAt,
+            'email_verified_at' => now(),
+        ]);
+        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        $this->getJson('/api/me')->assertOk()
+            ->assertJsonPath('user.phone_verification_status', $expected)
+            ->assertJsonMissingPath('user.phone_verified_at');
+        $this->assertSame($phone, $user->fresh()->phone);
+    }
+
+    public function test_nullable_phone_migration_preserves_records_and_unique_indexes(): void
+    {
+        // Exercise historical DDL against its own pre-refactor schema.
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->down();
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            Schema::table($name, fn (Blueprint $table) => $table->string('phone', 20)->nullable(false)->change());
+        }
+        $user = User::factory()->create(['phone' => '09170000001']);
+        $pending = PendingCustomerRegistration::forceCreate([
+            'first_name' => 'Pending', 'last_name' => 'Customer', 'phone' => '09170000002',
+            'email' => 'pending@gmail.com', 'password_hash' => Hash::make('password'),
+        ]);
+        $migration = require base_path('database/migrations/2026_10_21_000001_make_customer_phone_nullable.php');
+        $migration->up();
+        $this->assertSame('09170000001', $user->fresh()->phone);
+        $this->assertSame('09170000002', $pending->fresh()->phone);
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertTrue(Schema::hasIndex($name, ['phone'], 'unique'));
+            $this->assertTrue(Schema::hasIndex($name, ['email'], 'unique'));
+            foreach (['one', 'two'] as $suffix) {
+                DB::table($name)->insert([
+                    'first_name' => 'Optional', 'last_name' => 'Customer', 'phone' => null,
+                    'email' => "$name-$suffix@gmail.com", 'password_hash' => 'unchanged-hash',
+                ]);
+            }
+            try {
+                DB::table($name)->insert([
+                    'first_name' => 'Duplicate', 'last_name' => 'Customer',
+                    'phone' => $name === 'users' ? '09170000001' : '09170000002',
+                    'email' => "$name-duplicate@gmail.com", 'password_hash' => 'unchanged-hash',
+                ]);
+                $this->fail('Non-null phone uniqueness must remain enforced.');
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+                $this->assertStringContainsString('phone', $exception->getMessage());
+            }
+        }
+        DB::table('users')->whereNull('phone')->delete();
+        try {
+            $migration->down();
+            $this->fail('Rollback must not destroy phone-less records.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('NULL values exist', $exception->getMessage());
+        }
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertTrue(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
+            DB::table($name)->whereNull('phone')->delete();
+        }
+        $migration->down();
+        foreach (['users', 'pending_customer_registrations'] as $name) {
+            $this->assertFalse(collect(Schema::getColumns($name))->firstWhere('name', 'phone')['nullable']);
+        }
+    }
+
+    public function test_registration_migration_resumes_partial_schema_and_preserves_data(): void
+    {
+        // Exercise historical DDL against its own pre-refactor schema.
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->down();
+        $migration = require base_path('database/migrations/2026_10_05_000001_add_registration_verification_codes.php');
+        // Match MySQL's state after the original index-name failure: the new
+        // verification fields exist, but the unique index and phone field do not.
+        Schema::table('pending_customer_registrations', function (Blueprint $table) {
+            $table->dropUnique('pending_registration_edit_token_unique');
+        });
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn('phone_verified_at');
+        });
+        $pending = PendingCustomerRegistration::forceCreate([
+            'first_name' => 'Pending',
+            'last_name' => 'Customer',
+            'phone' => '09123456789',
+            'email' => 'pending@gmail.com',
+            'password_hash' => Hash::make('strong-password'),
+            'email_verification_code_hash' => Hash::make('123456'),
+            'email_verification_attempts' => 2,
+            'registration_edit_token_hash' => hash('sha256', 'existing-edit-credential'),
+        ]);
+        $user = User::factory()->create();
+        $pendingBefore = $pending->fresh()->getAttributes();
+        $userBefore = $user->fresh()->getAttributes();
+
+        $migration->up();
+        $migration->up();
+
+        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', ['registration_edit_token_hash'], 'unique'));
+        $this->assertTrue(Schema::hasColumn('users', 'phone_verified_at'));
+        $this->assertSame($pendingBefore, $pending->fresh()->getAttributes());
+        $this->assertEquals($userBefore, $user->fresh()->only(array_keys($userBefore)));
+        $this->assertNull($user->fresh()->phone_verified_at);
+        $this->assertDatabaseCount('pending_customer_registrations', 1);
+        $this->assertDatabaseCount('users', 1);
+
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('users', 'phone_verified_at'));
+        $this->assertFalse(Schema::hasColumn('pending_customer_registrations', 'registration_edit_token_hash'));
+        $this->assertDatabaseCount('pending_customer_registrations', 1);
+        $this->assertDatabaseCount('users', 1);
+        $migration->up();
+        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', ['registration_edit_token_hash'], 'unique'));
+    }
+
+    public function test_recovery_migration_is_repeatable_and_reversible_without_losing_accounts(): void
+    {
+        // Exercise historical DDL against its own pre-refactor schema.
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->down();
+        $user = User::factory()->unverified()->create();
+        $migration = require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php');
+        $migration->up();
+        foreach (['users', 'pending_customer_registrations'] as $table) {
+            $this->assertTrue(Schema::hasIndex($table, ['registration_recovery_token_hash'], 'unique'));
+            foreach (Schema::getIndexes($table) as $index) {
+                $this->assertLessThanOrEqual(64, strlen($index['name']), 'Index names must fit MySQL identifiers.');
+            }
+        }
+        $migration->down();
+        $this->assertDatabaseHas('users', ['user_id' => $user->getKey(), 'email' => $user->email]);
+        foreach (['users', 'pending_customer_registrations'] as $table) {
+            $this->assertFalse(Schema::hasColumn($table, 'registration_recovery_token_hash'));
+            $this->assertFalse(Schema::hasColumn($table, 'registration_recovery_expires_at'));
+        }
+        $this->assertFalse(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
+        $migration->up();
+        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
+    }
+
+    public function test_recovery_migration_resumes_after_mysql_partial_schema_changes_without_losing_records(): void
+    {
+        // Exercise historical DDL against its own pre-refactor schema.
+        (require database_path('migrations/2026_11_07_000001_make_customer_registration_verify_first.php'))->down();
+        Notification::fake();
+        PendingCustomerRegistration::forceCreate(['first_name'=>'Old','last_name'=>'Signup','email'=>'old@gmail.com','password_hash'=>'unused']);
+        User::factory()->unverified()->create();
+        $migration = require base_path('database/migrations/2026_10_22_000001_add_registration_recovery_grants.php');
+        $migration->down();
+        $usersBefore = DB::table('users')->get()->toArray();
+        $pendingBefore = DB::table('pending_customer_registrations')->get()->toArray();
+
+        // Match the committed DDL left by MySQL before the overlong index failed.
+        Schema::table('users', function (Blueprint $table) {
+            $table->string('registration_recovery_token_hash', 64)->nullable()->unique();
+            $table->timestamp('registration_recovery_expires_at')->nullable();
+        });
+        Schema::table('pending_customer_registrations', function (Blueprint $table) {
+            $table->string('registration_recovery_token_hash', 64)->nullable();
+        });
+
+        $migration->up();
+        $migration->up();
+        $this->assertTrue(Schema::hasIndex('users', 'users_registration_recovery_token_hash_unique', 'unique'));
+        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_reg_recovery_token_uq', 'unique'));
+        $this->assertTrue(Schema::hasIndex('pending_customer_registrations', 'pending_registration_created_idx'));
+        foreach (['users', 'pending_customer_registrations'] as $table) {
+            $this->assertTrue(Schema::hasColumn($table, 'registration_recovery_token_hash'));
+            $this->assertTrue(Schema::hasColumn($table, 'registration_recovery_expires_at'));
+            $recoveryIndexes = array_filter(Schema::getIndexes($table), fn ($index) => $index['columns'] === ['registration_recovery_token_hash']);
+            $this->assertCount(1, $recoveryIndexes);
+        }
+
+        $migration->down();
+        $this->assertEquals($usersBefore, DB::table('users')->get()->toArray());
+        $this->assertEquals($pendingBefore, DB::table('pending_customer_registrations')->get()->toArray());
+    }
+
+    public function test_pending_customers_are_not_listed_as_registered_and_cannot_reset_passwords(): void
+    {
+        Notification::fake();
+        $this->registerInBrowser($this->registrationPayload())->assertAccepted();
+        $this->assertSame(0, User::registeredCustomer()->count());
+        $pending = PendingCustomerRegistration::query()->sole();
+        $code = $this->verificationTokenSentTo($pending);
+        Notification::fake();
+        $this->travel(61)->seconds();
+        $this->postJson('/api/password/forgot', ['email' => $pending->email])->assertUnprocessable()
+            ->assertJsonPath('message', 'No account found with this email.');
+        $this->postJson('/api/password/code/verify', ['email' => $pending->email,
+            'code' => $code])->assertUnprocessable()
+            ->assertJsonPath('message', 'Invalid or expired verification code.');
+        Notification::assertNothingSent();
+        $this->assertDatabaseCount('users', 0);
+    }
+
 }

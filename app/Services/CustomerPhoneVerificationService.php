@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -258,8 +257,7 @@ class CustomerPhoneVerificationService
 
     private function uniquePhone(int $userId, string $phone): void
     {
-        if (User::where('phone', $phone)->where('user_id', '!=', $userId)->exists()
-            || (Schema::hasTable('pending_customer_registrations') && DB::table('pending_customer_registrations')->where('phone', $phone)->exists())) {
+        if (User::where('phone', $phone)->where('user_id', '!=', $userId)->exists()) {
             throw ValidationException::withMessages(['phone' => 'This phone number is already associated with another account.']);
         }
     }

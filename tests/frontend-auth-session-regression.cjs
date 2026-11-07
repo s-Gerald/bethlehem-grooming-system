@@ -1285,7 +1285,6 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
   };
   const context = {
     API: {
-      async registrationSession() { return {session_token:'11|cookie',user:{role:'customer'}}; },
       verifyEmail(token, review = false) {
         events.push({ type: "verify", token, review });
         return new Promise(() => {});
@@ -1366,75 +1365,27 @@ function verificationPageHarness({ search, hash, pendingLogin = false, role = 'c
 }
 
 async function testVerificationCredentialsAreScrubbedBeforeUse() {
-  const expiredRegistration = verificationPageHarness({search: '', hash: '#token=expired-token'});
-  expiredRegistration.API.verifyEmail = async () => { throw {status:422, code:'registration_expired', message:'This registration has expired. Start again.'}; };
-  await expiredRegistration.dispatch('verifyLinkSubmit', 'click');
-  assert.equal(expiredRegistration.elements.get('errorMessage').textContent, 'This registration has expired. Start again.');
-  assert.equal(expiredRegistration.elements.get('resendSection').classList.contains('hidden'), true);
-  assert.equal(expiredRegistration.elements.get('verificationBackAction').href, '/sign-up');
-  assert.equal(expiredRegistration.elements.get('verificationBackAction').textContent, 'Back to sign up');
-
-  const expiredLink = verificationPageHarness({search:'', hash:'#token=old-token'});
-  expiredLink.API.verifyEmail = async () => { throw {status:422, code:'registration_link_expired', message:'This link has expired. Request a new one.'}; };
-  await expiredLink.dispatch('verifyLinkSubmit', 'click');
-  assert.equal(expiredLink.elements.get('errorMessage').textContent, 'This link has expired. Request a new one.');
-  assert.equal(expiredLink.elements.get('resendSection').classList.contains('hidden'), false);
-  let recoveryRequests = 0;
-  let finishRecovery;
-  expiredLink.elements.get('resendEmail').value = 'customer@gmail.com';
-  expiredLink.API.resendVerification = () => { recoveryRequests++; return new Promise(resolve => {finishRecovery = resolve;}); };
-  const recovering = expiredLink.dispatch('resendForm', 'submit');
-  await expiredLink.dispatch('resendForm', 'submit');
-  assert.equal(recoveryRequests, 1, 'Repeated recovery submissions must share the pending request.');
-  assert.equal(expiredLink.elements.get('resendSubmit').disabled, true);
-  finishRecovery({resend_after:60});
-  await recovering;
-  assert.equal(expiredLink.elements.get('resendSubmit').disabled, false);
-
-  const fragmentEvents = verificationPageHarness({
-    search: "?token=legacy-token&campaign=welcome",
-    hash: "#token=fragment-token",
-  });
-  assert.deepEqual(fragmentEvents.events, [
-    { type: "scrub", target: "/verify-email?campaign=welcome" },
-  ], 'Loading a link must scrub credentials without verifying');
-  fragmentEvents.dispatch('verifyLinkSubmit','click');
-  assert.deepEqual(fragmentEvents.events.at(-1), {type:'verify',token:'fragment-token', review:false});
-  fragmentEvents.dispatch('verifyLinkSubmit','click');
-  assert.equal(fragmentEvents.events.filter(event => event.type==='verify').length, 1);
-
-  const legacyEvents = verificationPageHarness({search:'?token=legacy-token',hash:''});
-  assert.deepEqual(legacyEvents.events, [{type:'scrub',target:'/verify-email'}]);
-  legacyEvents.dispatch('verifyLinkSubmit','click');
-  assert.deepEqual(legacyEvents.events.at(-1), {type:'verify',token:'legacy-token', review:false});
-
-  const deliberateReview = verificationPageHarness({search:'', hash:'#token=review-token'});
-  deliberateReview.dispatch('verifyLinkEdit', 'click');
-  deliberateReview.dispatch('verifyLinkSubmit', 'click');
-  assert.deepEqual(deliberateReview.events.filter(event => event.type === 'verify'), [{type:'verify', token:'review-token', review:true}]);
-
-  const success = verificationPageHarness({search:'',hash:'#token=valid-token'});
-  success.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
+  const fragment=verificationPageHarness({search:'?token=old-token&campaign=welcome',hash:'#token=fragment-token'});
+  assert.deepEqual(fragment.events,[{type:'scrub',target:'/verify-email?campaign=welcome'}]);
+  fragment.dispatch('verifyLinkSubmit','click');fragment.dispatch('verifyLinkSubmit','click');
+  assert.deepEqual(fragment.events.filter(e=>e.type==='verify'),[{type:'verify',token:'fragment-token',review:false}]);
+  const success=verificationPageHarness({search:'',hash:'#token=valid-token'});
+  success.API.verifyEmail=async()=>({registration_approved:true});
   await success.dispatch('verifyLinkSubmit','click');
   assert.equal(success.elements.get('successTitle').textContent,'Email verified!');
-  assert.equal(success.elements.get('successDashboard').classList.contains('hidden'),false);
-  assert.doesNotMatch(success.elements.get('successMessage').textContent,/close this tab/);
-
-  const foreign = verificationPageHarness({search:'',hash:'#token=foreign-token'});
-  foreign.API.verifyEmail = async () => ({requires_registration_review:true, registration_recovery_token:'private-grant', registration_recovery_expires_at:'1970-01-01T00:11:40.000Z',
-    details:{first_name:'Saved',last_name:'Owner',email:'owner@gmail.com'}});
-  await foreign.dispatch('verifyLinkSubmit','click');
-  assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryToken'),'private-grant');
-  assert.equal(foreign.storage.getItem('pendingRegistrationRecoveryUntil'),'700000');
-  assert.deepEqual(foreign.events.at(-1),{type:'redirect',target:'/sign-up?review=1'});
-
-  const unavailable = verificationPageHarness({search:'',hash:'#token=valid-token'});
-  unavailable.API.verifyEmail = async () => ({token:'11|cookie',user:{role:'customer'}});
-  unavailable.API.registrationSession = async () => {throw {status:401};};
-  await unavailable.dispatch('verifyLinkSubmit','click');
-  assert.equal(unavailable.elements.get('stateError').classList.contains('hidden'),false);
-  assert.equal(unavailable.elements.get('stateSuccess').classList.contains('hidden'),true);
-
+  assert.match(success.elements.get('successMessage').textContent,/Return to the device/);
+  assert.equal(success.events.filter(e=>e.type==='redirect').length,0);
+  assert.equal(success.storage.getItem('pendingRegistrationRecoveryToken'),null);
+  const expired=verificationPageHarness({search:'',hash:'#token=expired-token'});
+  expired.API.verifyEmail=async()=>{throw {status:422,code:'registration_link_expired',message:'This link has expired. Request a new one on your signup page.'};};
+  await expired.dispatch('verifyLinkSubmit','click');
+  assert.equal(expired.elements.get('errorTitle').textContent,'Link expired');
+  assert.equal(expired.elements.get('verificationBackAction').href,'/sign-up');
+  const lost=verificationPageHarness({search:'',hash:'#token=used-token'});
+  lost.API.verifyEmail=async()=>{throw {status:422,code:'registration_link_consumed'};};
+  await lost.dispatch('verifyLinkSubmit','click');
+  assert.equal(lost.elements.get('successTitle').textContent,'Email already verified');
+  assert.equal(lost.events.filter(e=>e.type==='redirect').length,0);
 }
 
 async function testLoginCodeIsEnteredOnTheOriginalTab() {
@@ -2631,8 +2582,6 @@ function testStaticAuthContracts() {
   assert.match(verifyHtml, /autocomplete="one-time-code"/);
   assert.match(verifyHtml, /maxlength="6"/);
   assert.match(signIn, /window\.location\.replace\("\/verify-email\?mode=login"\)/);
-  assert.match(signup, /email_delivery_queued === false/);
-  assert.match(signup, /pendingVerificationDeliveryFailed/);
   assert.match(webRoutes, /no-store, private, max-age=0, must-revalidate/);
   assert.match(webRoutes, /public, max-age=3600/);
 
@@ -2675,55 +2624,30 @@ function testStaticAuthContracts() {
   }
 }
 
-async function testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement() {
-  const calls = [];
-  const browser = createBrowser({fetchImpl: async (url, options) => {
-    const body = JSON.parse(options.body);
-    calls.push(body);
-    if (body.acknowledge) assert.equal(browser.API.getCustomerToken(), '11|cookie');
-    return jsonResponse(200, {session_token:'11|cookie', user:{user_id:7,role:'customer',email:'owner@gmail.com',first_name:'Owner',last_name:'Test'}});
+async function testRegistrationFinalizationAcceptsOnlyItsCurrentSession() {
+  const requests=[];
+  const browser=createBrowser({fetchImpl:async(url,options)=>{
+    requests.push({url,body:JSON.parse(options.body),options});
+    if(url.endsWith('/email/verify'))return jsonResponse(200,{registration_approved:true,token:'malformed-server-session',user:{role:'customer'}});
+    if(url.endsWith('/status'))return jsonResponse(200,{state:'approved'});
+    return jsonResponse(200,{token:'11|cookie',user:{user_id:7,role:'customer',email:'owner@gmail.com',first_name:'Owner',last_name:'Test'}});
   }});
-  await Promise.all([browser.API.registrationSession('owner@gmail.com', true), browser.API.registrationSession('owner@gmail.com', true)]);
-  assert.deepEqual(calls, [{email:'owner@gmail.com',acknowledge:false},{email:'owner@gmail.com',acknowledge:true}]);
-  const cacheGeneration = browser.localStorage.getItem('bethlehem.customer.cache_session');
-  assert.ok(cacheGeneration);
-  await browser.API.registrationSession('owner@gmail.com');
-  assert.equal(browser.localStorage.getItem('bethlehem.customer.cache_session'), cacheGeneration, 'Checking handoff must not reset customer caches');
-  const mismatch = createBrowser({fetchImpl: async () => jsonResponse(200, {session_token:'11|cookie',user:{role:'customer',email:'other@gmail.com'}})});
-  assert.equal(await mismatch.API.registrationSession('owner@gmail.com', true), null);
-  assert.equal(mismatch.API.getCustomerToken(), null);
-}
-
-async function testPairingApiKeepsApprovalSeparateAndRejectsStaleRedemption() {
-  const requests = [];
-  const browser = createBrowser({fetchImpl: async (url, options) => {
-    const body = JSON.parse(options.body);
-    requests.push({url,body,options});
-    if (url.endsWith('/email/verify')) return jsonResponse(200, {registration_approved:true});
-    if (url.endsWith('/status')) return jsonResponse(200, {state:'approved'});
-    return jsonResponse(200, {token:'11|cookie',user:{role:'customer',email:'owner@gmail.com'}});
-  }});
-  browser.sessionStorage.setItem('pendingVerificationEmail','owner@gmail.com');
-  browser.sessionStorage.setItem('pendingRegistrationEditToken','scoped-edit');
-  await browser.API.verifyEmail('email-link',false,'123456');
-  assert.equal(browser.API.getCustomerToken(),null,'Email approval does not create a verifier session');
-  assert.deepEqual(requests[0].body,{token:'email-link',review:false,confirmation_code:'123456'});
-  await browser.API.registrationStatus('owner@gmail.com');
-  assert.equal(browser.API.getCustomerToken(),null);
-  assert.deepEqual(requests[1].body,{registration_token:'scoped-edit'});
+  await browser.API.verifyEmail('email-link');
+  assert.equal(browser.API.getCustomerToken(),null,'Even an unexpected token from approval must not sign in the verifier');
+  assert.deepEqual(requests[0].body,{token:'email-link'});
+  await browser.API.registrationStatus('scoped-attempt');
+  assert.deepEqual(requests[1].body,{registration_token:'scoped-attempt'});
   assert.equal(requests[1].options.cache,'no-store');
-  await browser.API.redeemRegistration('owner@gmail.com');
+  const payload={email:'owner@gmail.com',password:'fresh-password',password_confirmation:'fresh-password',terms_accepted:true};
+  await browser.API.finalizeRegistration(payload,'scoped-attempt');
   assert.equal(browser.API.getCustomerToken(),'11|cookie');
-
-  let resolveRedemption;
-  const stale = createBrowser({fetchImpl: () => new Promise(resolve => {resolveRedemption=resolve;})});
-  stale.sessionStorage.setItem('pendingVerificationEmail','owner@gmail.com');
-  stale.sessionStorage.setItem('pendingRegistrationEditToken','scoped-edit');
-  const redeeming = stale.API.redeemRegistration('owner@gmail.com');
-  stale.localStorage.setItem('customer_token','12|cookie');
-  stale.localStorage.setItem('user_role','customer');
-  resolveRedemption(jsonResponse(200,{token:'11|cookie',user:{role:'customer',email:'owner@gmail.com'}}));
-  await assert.rejects(redeeming,/session changed/i);
+  assert.deepEqual(requests[2].body,{...payload,registration_token:'scoped-attempt'});
+  let resolveFinalization;
+  const stale=createBrowser({fetchImpl:()=>new Promise(resolve=>{resolveFinalization=resolve;})});
+  const finalizing=stale.API.finalizeRegistration(payload,'scoped-attempt');
+  stale.localStorage.setItem('customer_token','12|cookie');stale.localStorage.setItem('user_role','customer');
+  resolveFinalization(jsonResponse(200,{token:'11|cookie',user:{role:'customer',email:'owner@gmail.com'}}));
+  await assert.rejects(finalizing,/session changed/i);
   assert.equal(stale.API.getCustomerToken(),'12|cookie');
 }
 
@@ -2731,7 +2655,7 @@ async function testInitialCustomerBrowserSessionMarker() {
   const user = { user_id: 7, role: "customer", first_name: "Gerald", last_name: "Senining" };
   const browser = createBrowser({ fetchImpl: async url => jsonResponse(200,
     url.endsWith('/logout') ? {success: true} : { token: "session-token", user }) });
-  await browser.API.verifyEmail("verification-token");
+  await browser.API.finalizeRegistration({}, "registration-attempt");
   assert.equal(browser.document.cookie, "bethlehem_customer_initial_session_7=1; Path=/; SameSite=Lax");
   assert.doesNotMatch(browser.document.cookie, /Expires|Max-Age/i, "The greeting marker must end with the browser session.");
   await browser.API.logout("customer");
@@ -2994,8 +2918,8 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
     return;
   }
   await testInitialCustomerBrowserSessionMarker();
-  await testRegistrationHandoffAcceptsTheSessionBeforeAcknowledgement();
-  await testPairingApiKeepsApprovalSeparateAndRejectsStaleRedemption();
+  await testRegistrationFinalizationAcceptsOnlyItsCurrentSession();
+
   await testLoginCodeHonorsRememberMeStorage();
   await testTemporaryVerificationThrottlingPreservesTheBrowserChallenge();
   await testProfileNameLivesAndDiesWithTheSession();
