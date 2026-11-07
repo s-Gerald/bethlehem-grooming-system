@@ -10,8 +10,7 @@ window.SignupVerification = {
     let deliveryChecks = 0;
 
     function announce(text) {
-      message.textContent = text;
-      message.classList.toggle("hidden", !text);
+      if (message.textContent !== text) message.textContent = text;
     }
     function tick() {
       const seconds = Math.max(0, Math.ceil(((attempt?.resendUntil || 0) - Date.now()) / 1000));

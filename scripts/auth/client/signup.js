@@ -17,7 +17,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let busy = false, finalizing = false, departed = false, submitted = null;
   const context = window.SignupContext;
   let attempt = context.read(), attemptEmail = "", attemptStarted = Boolean(attempt);
-  const defaultDescription = document.getElementById("signupDescription").textContent;
+  const title = document.getElementById("signupTitle");
+  const description = document.getElementById("signupDescription");
+  const defaultDescription = description.textContent;
 
   function clearPasswords() {
     passwordInput.value = "";
@@ -34,10 +36,10 @@ document.addEventListener("DOMContentLoaded", () => {
     attemptEmail = "";
     context.clear();
   }
-  function showForm(description = defaultDescription) {
+  function showForm(helper = defaultDescription) {
     signupForm.classList.remove("hidden");
-    document.getElementById("signupTitle").textContent = "Sign Up";
-    document.getElementById("signupDescription").textContent = description;
+    title.textContent = "Sign Up";
+    description.textContent = helper;
     setBusyState(false);
   }
   const waiting = window.SignupVerification.create({
@@ -46,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
       restorePasswords();
       showForm();
       clearMessage();
+      title.focus();
     },
     onExpired(message = "Registration expired. Start again.") {
       restorePasswords();
@@ -56,11 +59,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   function showWaiting(data = {}) {
     signupForm.classList.add("hidden");
-    document.getElementById("signupTitle").textContent = "Check your email";
-    document.getElementById("signupDescription").textContent = "Open the verification link sent to your email to finish creating your account.";
+    title.textContent = "Check your email";
+    description.textContent = "Open the verification link sent to";
     setBusyState(false);
     clearPasswords();
-    return waiting.start(attempt, attemptEmail, data);
+    const result = waiting.start(attempt, attemptEmail, data);
+    title.focus();
+    return result;
   }
   async function finish() {
     if (finalizing || departed || !attempt) return;
@@ -70,8 +75,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     finalizing = true;
     setBusyState(true);
-    document.getElementById("signupTitle").textContent = "Creating your account...";
-    document.getElementById("signupDescription").textContent = "Your email is verified.";
+    title.textContent = "Creating your account...";
+    description.textContent = "Your email is verified.";
     try {
       const result = await API.finalizeRegistration(submitted, attempt.token);
       if (departed) return;
@@ -134,8 +139,12 @@ document.addEventListener("DOMContentLoaded", () => {
     feedback.id = `${id}ServerError`;
     feedback.className = "hidden mt-2 text-sm text-red-700";
     feedback.setAttribute("role", "alert");
-    const feedbackContainer = id === "terms" ? document.getElementById("termsAgreement") : input.parentElement;
-    feedbackContainer.appendChild(feedback);
+    if (input === passwordInput || input === confirmPasswordInput) {
+      input.parentElement.insertAdjacentElement("afterend", feedback);
+    } else {
+      const feedbackContainer = id === "terms" ? document.getElementById("termsAgreement") : input.parentElement;
+      feedbackContainer.appendChild(feedback);
+    }
     fieldErrors.set(id, feedback);
     const described = input.getAttribute("aria-describedby") || "";
     input.setAttribute("aria-describedby", `${described} ${feedback.id}`.trim());

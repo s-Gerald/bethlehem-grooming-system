@@ -37,7 +37,10 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
         getAttribute(name) { return this.attributes[name] || ''; },
         append(...children) { this.children = children; },
         appendChild(child) { elements.set(child.id, child); },
-        parentElement: {appendChild(child) { elements.set(child.id, child); }},
+        parentElement: {
+          appendChild(child) { elements.set(child.id, child); },
+          insertAdjacentElement(_where, child) { elements.set(child.id, child); },
+        },
         insertAdjacentElement(_where, el) { this.adjacent = el; },
         dispatchEvent(event) { handlers[event.type]?.call(this, event); },
         setAttribute(name, value) { this.attributes[name] = value; },
@@ -125,7 +128,9 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(Object.keys(started).sort(),['email','registration_token']);
   assert.equal(normal.element('signupWaitingState').classList.contains('hidden'),false);
   assert.equal(normal.element('signupTitle').textContent,'Check your email');
+  assert.equal(normal.element('signupDescription').textContent,'Open the verification link sent to');
   assert.equal(normal.element('signupMaskedEmail').textContent,'c***@gmail.com');
+  assert.equal(normal.activeElement(),normal.element('signupTitle'));
   assert.ok([...normal.storage.values()].every(value=>!value.includes('strong-password')&&!value.includes('Test')&&!value.includes('Customer')));
   normal.API.registrationStatus = async () => ({state:'approved'});
   await normal.windowHandlers.focus(); await flush();
@@ -156,9 +161,21 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(poll.calls.filter(c=>c[0]==='status').length,before+2);
 
   const edit=page(); await edit.dispatch('signupForm','submit');
+  assert.equal(edit.element('signupResend').disabled,true);
+  edit.advance(19000); await flush();
+  assert.equal(edit.element('signupResend').textContent,'Resend link in 41s');
+  await edit.dispatch('signupResend','click');
+  assert.equal(edit.calls.filter(c=>c[0]==='send').length,0);
+  edit.advance(41000); await flush();
+  assert.equal(edit.element('signupResend').disabled,false);
+  await edit.dispatch('signupResend','click');
+  assert.equal(edit.calls.filter(c=>c[0]==='send').length,1);
+  assert.equal(edit.element('signupResend').disabled,true);
   await edit.dispatch('signupEdit','click');
   assert.equal(edit.element('password').value,'strong-password');
   assert.equal(edit.element('signupForm').classList.contains('hidden'),false);
+  assert.equal(edit.element('signupWaitingState').classList.contains('hidden'),true);
+  assert.equal(edit.activeElement(),edit.element('signupTitle'));
   edit.element('username').value='changeduser';
   edit.API.registrationStatus=async()=>({state:'approved'});
   await edit.dispatch('signupForm','submit'); await flush();
@@ -204,13 +221,49 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(starts,2,'An initial failed issuance must be retryable with the same opaque credential');
   assert.equal(retry.element('signupWaitingState').classList.contains('hidden'),false);
 
+  const expired=page(); await expired.dispatch('signupForm','submit');
+  expired.API.registrationStatus=async()=>{throw {code:'registration_expired',message:'Registration expired. Start again.'};};
+  await expired.windowHandlers.focus();
+  assert.equal(expired.element('signupWaitingState').classList.contains('hidden'),true);
+  assert.equal(expired.element('signupForm').classList.contains('hidden'),false);
+  assert.equal(expired.element('signupMessage').textContent,'Registration expired. Start again.');
+
   const fieldFailure=page();await fieldFailure.dispatch('signupForm','submit');
   fieldFailure.API.registrationStatus=async()=>({state:'approved'});
-  fieldFailure.API.finalizeRegistration=async()=>{throw {errors:{username:['That username is already in use.']}};};
+  fieldFailure.API.finalizeRegistration=async()=>{throw {errors:{
+    username:['That username is already in use.'],
+    password:['Choose a different password.'],
+    password_confirmation:['Confirm your password again.'],
+  }};};
   await fieldFailure.windowHandlers.focus();await flush();
   assert.equal(fieldFailure.element('signupForm').classList.contains('hidden'),false);
+  assert.equal(fieldFailure.element('signupWaitingState').classList.contains('hidden'),true);
   assert.equal(fieldFailure.element('usernameServerError').textContent,'That username is already in use.');
   assert.equal(fieldFailure.element('password').value,'strong-password');
+  assert.equal(fieldFailure.element('passwordServerError').textContent,'Choose a different password.');
+  assert.equal(fieldFailure.element('confirmPasswordServerError').textContent,'Confirm your password again.');
+
+  const passwords=page();
+  for (const [id, value, message] of [
+    ['password','short','Use at least 8 characters.'],
+    ['confirmPassword','different','Passwords do not match.'],
+  ]) {
+    passwords.element(id).value=value;
+    passwords.dispatch(id,'blur');
+    assert.equal(passwords.element(`${id}ServerError`).textContent,message);
+    assert.equal(passwords.element(id).getAttribute('aria-invalid'),'true');
+    passwords.element(id).value='strong-password';
+    passwords.dispatch(id,'input');
+    assert.equal(passwords.element(`${id}ServerError`).hidden,true);
+  }
+  for (const id of ['password','confirmPassword']) passwords.element(id).type='password';
+  passwords.dispatch('togglePasswordVisibility','click');
+  assert.equal(passwords.element('password').type,'text');
+  assert.equal(passwords.element('confirmPassword').type,'password');
+  passwords.dispatch('togglePasswordVisibility','click');
+  passwords.dispatch('toggleConfirmPasswordVisibility','click');
+  assert.equal(passwords.element('password').type,'password');
+  assert.equal(passwords.element('confirmPassword').type,'text');
 
   const completed=page({initialStorage:{bethlehem_signup_attempt:JSON.stringify(saved)},resumeState:'completed'});
   await flush();
