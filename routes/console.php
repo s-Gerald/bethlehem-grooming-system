@@ -50,6 +50,9 @@ Schedule::call(function (): void {
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+Schedule::call(fn () => \App\Models\CustomerSecurityChange::where('expires_at', '<=', now())->delete())
+    ->name('customer-security-changes:prune')->everyFiveMinutes()->withoutOverlapping();
+
 Artisan::command('qr-payments:prune-orphans', function () {
     $this->info('Removed '.app(\App\Services\QrPaymentProofService::class)->pruneOrphans().' abandoned payment proofs.');
 })->purpose('Remove unreferenced payment uploads older than 24 hours; retain recorded proofs');

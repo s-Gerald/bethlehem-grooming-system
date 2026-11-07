@@ -269,6 +269,21 @@
   color: #1e293b;
 }
 .phone-verification-dialog::backdrop { background: rgba(15, 23, 42, .45); }
+.customer-settings-dialog {
+  box-sizing: border-box;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: clamp(1rem, 5vw, 1.5rem);
+  overflow-y: auto;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 1rem;
+  background: white;
+}
+.customer-settings-dialog::backdrop { background: rgba(15, 23, 42, .45); }
+.customer-settings-dialog :is(button, input):focus-visible { outline: 2px solid var(--portal-primary, #315b7e); outline-offset: 2px; }
+.customer-settings-dialog :is(#settingsCurrentEmail, #settingsVerificationInstruction) { overflow-wrap: anywhere; }
+.customer-settings-dialog .verification-code-cells:has(input[aria-invalid="true"]) .verification-code-cell { border-color: #b91c1c; }
 body:has(.phone-verification-dialog[open]) { overflow: hidden; }
 .phone-verification-dialog [hidden] { display: none; }
 .phone-verification-dialog .verification-heading { margin: .5rem 0 1.5rem; }

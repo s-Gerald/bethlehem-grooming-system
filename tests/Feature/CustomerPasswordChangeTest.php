@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Notifications\ConfirmLoginNotification;
 use App\Notifications\PasswordChangedNotification;
+use App\Notifications\VerifyCustomerSecurityChangeNotification;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -29,7 +30,8 @@ class CustomerPasswordChangeTest extends TestCase
         Http::fake(['api.pwnedpasswords.com/*' => Http::response(str_repeat('A', 35).":0\r\n", 200)]);
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id');
-            foreach (['first_name', 'last_name', 'username', 'email', 'phone', 'password_hash', 'role'] as $field) $table->string($field);
+            foreach (['first_name', 'last_name', 'username', 'phone', 'password_hash', 'role'] as $field) $table->string($field);
+            $table->string('email')->unique();
             $table->boolean('is_active')->default(true);
             $table->boolean('is_archived')->default(false);
             $table->timestamp('account_deleted_at')->nullable();
@@ -58,8 +60,12 @@ class CustomerPasswordChangeTest extends TestCase
         });
         (require base_path('database/migrations/2026_10_30_000001_isolate_login_email_challenges.php'))->up();
         (require base_path('database/migrations/2026_10_30_000002_create_account_security_incidents.php'))->up();
+        foreach (['2026_11_07_000001_create_customer_security_changes.php', '2026_08_28_000001_create_privileged_credential_changes_table.php',
+            '2026_10_25_000002_create_staff_email_changes.php'] as $migration) {
+            (require base_path('database/migrations/'.$migration))->up();
+        }
         $this->customer = User::create(['first_name' => 'River', 'last_name' => 'Customer', 'username' => 'river',
-            'email' => 'river@example.test', 'phone' => '09171234567', 'role' => 'customer',
+            'email' => 'river@gmail.com', 'phone' => '09171234567', 'role' => 'customer',
             'password_hash' => Hash::make(self::OLD), 'email_verified_at' => now()]);
         $this->token = app(\App\Services\AccountSessionService::class)->issue($this->customer, true);
         $this->deviceCookie = app(\App\Services\RememberedDeviceService::class)->issue($this->customer, $this->token)->getValue();
@@ -67,18 +73,35 @@ class CustomerPasswordChangeTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['cache_locks', 'cache', 'account_security_incidents', 'remembered_device_credentials', 'remembered_devices', 'personal_access_tokens', 'password_reset_requests', 'login_email_challenges', 'users'] as $table) Schema::dropIfExists($table);
+        foreach (['customer_security_changes', 'privileged_credential_changes', 'staff_email_changes', 'cache_locks', 'cache', 'account_security_incidents', 'remembered_device_credentials', 'remembered_devices', 'personal_access_tokens', 'password_reset_requests', 'login_email_challenges', 'users'] as $table) Schema::dropIfExists($table);
         parent::tearDown();
     }
 
     private function change(array $overrides = [], ?string $token = null)
     {
+        return $this->customerSession($token)->postJson('/api/customer/password', array_replace([
+            'current_password' => self::OLD, 'password' => self::NEW, 'password_confirmation' => self::NEW,
+        ], $overrides));
+    }
+
+    private function customerSession(?string $token = null): self
+    {
         $this->app['auth']->forgetGuards();
         $token ??= $this->token;
         return $this->withUnencryptedCookie('bethlehem_account_session', $token)->withCredentials()
-            ->withToken(explode('|', $token)[0].'|cookie')->postJson('/api/customer/password', array_replace([
-                'current_password' => self::OLD, 'password' => self::NEW, 'password_confirmation' => self::NEW,
-            ], $overrides));
+            ->withToken(explode('|', $token)[0].'|cookie');
+    }
+
+    private function code(): VerifyCustomerSecurityChangeNotification
+    {
+        return Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, VerifyCustomerSecurityChangeNotification::class)->last();
+    }
+
+    private function confirmChange($started, ?string $code = null, ?string $token = null)
+    {
+        $path = '/api/customer/security-changes/'.$started->json('challenge.kind').'/'.$started->json('challenge.id').'/confirm';
+
+        return $this->customerSession($token)->postJson($path, ['code' => $code ?? $this->code()->code]);
     }
 
     public function test_success_revokes_all_credentials_and_replay_and_old_password_cannot_sign_in(): void
@@ -89,7 +112,11 @@ class CustomerPasswordChangeTest extends TestCase
             'verified_token_hash' => hash('sha256', str_repeat('g', 64)), 'expires_at' => now()->addMinutes(15), 'last_sent_at' => now()]);
         $pendingOld = $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => self::OLD])->assertAccepted();
         $oldCode = Notification::sent($this->customer, ConfirmLoginNotification::class)->last()->code;
-        $response = $this->change()->assertOk()->assertJson(['success' => true]);
+        $started = $this->change()->assertAccepted()->assertJsonPath('status', 'pending');
+        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
+        $this->assertDatabaseCount('personal_access_tokens', 2);
+        Notification::assertNotSentTo($this->customer, PasswordChangedNotification::class);
+        $response = $this->confirmChange($started)->assertOk()->assertJson(['success' => true]);
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         foreach (['bethlehem_account_session', 'bethlehem_remembered_device'] as $cookie) {
             $response->assertCookieExpired($cookie);
@@ -106,6 +133,7 @@ class CustomerPasswordChangeTest extends TestCase
         $this->assertDatabaseCount('remembered_devices', 2);
         $this->assertSame(0, \App\Models\RememberedDevice::whereNull('revoked_at')->count());
         Notification::assertSentToTimes($this->customer, PasswordChangedNotification::class, 1);
+        $this->confirmChange($started)->assertUnauthorized();
         $this->change()->assertUnauthorized();
         $this->change([], $extra)->assertUnauthorized();
         $this->app['auth']->forgetGuards();
@@ -115,7 +143,10 @@ class CustomerPasswordChangeTest extends TestCase
         $this->postJson('/api/email/login/confirm', ['poll_token' => $pendingOld->json('login_poll_token'), 'code' => $oldCode])->assertUnprocessable();
         $this->postJson('/api/password/reset', ['token' => str_repeat('g', 64), 'password' => 'RecoveryPass!678', 'password_confirmation' => 'RecoveryPass!678'])->assertUnprocessable();
         $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => self::OLD])->assertUnauthorized();
-        $this->travel(61)->seconds(); // Preserve the existing login email resend cooldown.
+        // Login, the password-change code, and the notice share the destination limit.
+        $limited = $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => self::NEW])
+            ->assertTooManyRequests()->assertHeader('Retry-After');
+        $this->travel((int) $limited->headers->get('Retry-After') + 1)->seconds();
         $pending = $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => self::NEW])->assertAccepted();
         $code = Notification::sent($this->customer, ConfirmLoginNotification::class)->last()->code;
         $this->postJson('/api/email/login/confirm', ['poll_token' => $pending->json('login_poll_token'), 'code' => $code])->assertOk();
@@ -141,6 +172,94 @@ class CustomerPasswordChangeTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_email_change_resumes_and_notifies_only_the_correct_addresses(): void
+    {
+        $old = $this->customer->email;
+        $request = ['email' => 'new.customer@GMAIL.COM', 'current_password' => self::OLD];
+        $path = '/api/customer/security-changes/email';
+        $this->customerSession()->postJson($path, [...$request, 'email' => $old])
+            ->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->customerSession()->postJson($path, [...$request, 'current_password' => 'wrong'])
+            ->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $started = $this->customerSession()->postJson($path, $request)->assertAccepted()
+            ->assertJsonPath('challenge.email', 'new.customer@gmail.com')->assertJsonMissingPath('success');
+        $this->customerSession()->getJson($path)->assertOk()->assertJsonPath('challenge.id', $started->json('challenge.id'));
+        $this->customerSession()->postJson($path, $request)->assertAccepted()->assertJsonPath('challenge.id', $started->json('challenge.id'));
+        $this->assertSame($old, $this->customer->fresh()->email);
+        Notification::assertSentOnDemand(VerifyCustomerSecurityChangeNotification::class,
+            fn ($notification, $channels, $notifiable) => $notifiable->routeNotificationFor('mail') === 'new.customer@gmail.com');
+        $this->assertCount(1, Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, VerifyCustomerSecurityChangeNotification::class));
+
+        $pendingPassword = $this->change()->assertAccepted();
+        $emailCode = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable, VerifyCustomerSecurityChangeNotification::class)->first()->code;
+        $response = $this->confirmChange($started, $emailCode)->assertOk()->assertJsonPath('status', 'completed');
+        $response->assertCookieExpired('bethlehem_account_session')->assertCookieExpired('bethlehem_remembered_device');
+        $this->assertDatabaseCount('users', 1);
+        $this->assertSame('new.customer@gmail.com', $this->customer->fresh()->email);
+        $this->assertNotNull($this->customer->fresh()->email_verified_at);
+        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
+        $this->assertDatabaseCount('customer_security_changes', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertNotNull(\App\Models\RememberedDevice::sole()->revoked_at);
+        Notification::assertSentOnDemand(\App\Notifications\CustomerEmailChangedNotification::class,
+            fn ($notification, $channels, $notifiable) => $notifiable->routeNotificationFor('mail') === $old);
+        $this->confirmChange($pendingPassword)->assertUnauthorized();
+    }
+
+    public function test_email_confirmation_rechecks_availability_and_cancel_retains_the_cooldown(): void
+    {
+        $path = '/api/customer/security-changes/email';
+        $request = ['email' => 'reserved@gmail.com', 'current_password' => self::OLD];
+        $started = $this->customerSession()->postJson($path, $request)->assertAccepted();
+        $another = $this->customer->replicate();
+        $another->email = $request['email'];
+        $another->save();
+        $otherToken = $another->createToken('auth_token')->plainTextToken;
+        $this->customerSession($otherToken)->getJson($path)->assertOk()->assertJsonPath('challenge', null);
+        $this->confirmChange($started, token: $otherToken)->assertUnprocessable()->assertJsonPath('code', 'invalid');
+        $this->confirmChange($started)->assertUnprocessable()->assertJsonValidationErrors('email');
+        $this->assertSame('river@gmail.com', $this->customer->fresh()->email);
+
+        $this->customerSession()->deleteJson($path.'/'.$started->json('challenge.id'))->assertOk();
+        $this->customerSession()->getJson($path)->assertOk()->assertJsonPath('challenge', null);
+        $this->confirmChange($started)->assertUnprocessable()->assertJsonPath('code', 'invalid');
+        $this->customerSession()->postJson($path, [...$request, 'email' => 'different@gmail.com'])->assertTooManyRequests();
+    }
+
+    public function test_password_codes_expire_resend_and_lock_without_changing_the_password(): void
+    {
+        $started = $this->change()->assertAccepted();
+        $id = $started->json('challenge.id');
+        $path = '/api/customer/security-changes/password/'.$id;
+        $oldCode = $this->code()->code;
+        $change = \App\Models\CustomerSecurityChange::findOrFail($id);
+        $this->assertTrue(Hash::check(self::NEW, $change->new_password_hash));
+        $this->assertTrue(Hash::check($oldCode, $change->code_hash));
+        $this->assertStringNotContainsString(self::NEW, $started->getContent());
+        $this->customerSession()->postJson($path.'/resend')->assertTooManyRequests();
+        $this->travel(11)->minutes();
+        $this->confirmChange($started, $oldCode)->assertUnprocessable()->assertJsonPath('code', 'expired');
+        $this->customerSession()->postJson($path.'/resend')->assertOk();
+        $this->assertNotSame($oldCode, $this->code()->code);
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->confirmChange($started, $oldCode)->assertUnprocessable()
+                ->assertJsonPath('code', $attempt === 4 ? 'locked' : 'invalid_code');
+        }
+        $this->confirmChange($started)->assertUnprocessable()->assertJsonPath('code', 'locked');
+        $this->customerSession()->deleteJson($path)->assertOk();
+        $this->assertNull($change->fresh()->new_password_hash);
+        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
+    }
+
+    public function test_delivery_failure_cannot_commit_a_pending_password(): void
+    {
+        $started = $this->change()->assertAccepted();
+        \App\Services\AuthenticationMailDelivery::record($started->json('challenge.email_delivery_token'), 'failed');
+        $this->confirmChange($started)->assertUnprocessable()->assertJsonPath('code', 'delivery_failed');
+        $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
     public static function cacheStores(): array
     {
         return [['array'], ['database']];
@@ -156,7 +275,7 @@ class CustomerPasswordChangeTest extends TestCase
         $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
         $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
         $this->travel(301)->seconds();
-        $this->change()->assertOk();
+        $this->change()->assertAccepted();
     }
 
     public function test_compromised_and_unavailable_screening_fail_closed(): void
@@ -186,7 +305,7 @@ class CustomerPasswordChangeTest extends TestCase
         $this->postJson('/api/sign-in', ['identifier' => $this->customer->email, 'password' => $legacy])->assertAccepted();
         $this->change(['current_password' => trim($legacy)])->assertUnprocessable()->assertJsonValidationErrors('current_password');
         Http::assertNothingSent();
-        $this->change(['current_password' => $legacy])->assertOk();
+        $this->confirmChange($this->change(['current_password' => $legacy])->assertAccepted())->assertOk();
         $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));
         Http::assertSentCount(1);
     }
@@ -211,7 +330,7 @@ class CustomerPasswordChangeTest extends TestCase
             $this->change(['password' => $password, 'password_confirmation' => $password])->assertUnprocessable()->assertJsonValidationErrors('password');
         }
         $password = 'violet meadow '.str_repeat('x', 50); // Exactly 64 ASCII characters.
-        $this->change(['password' => $password, 'password_confirmation' => $password])->assertOk();
+        $this->confirmChange($this->change(['password' => $password, 'password_confirmation' => $password])->assertAccepted())->assertOk();
         $this->assertTrue(Hash::check($password, $this->customer->fresh()->password_hash));
     }
 
@@ -239,7 +358,7 @@ class CustomerPasswordChangeTest extends TestCase
     public function test_stale_password_verification_cannot_issue_a_new_sign_in_challenge(): void
     {
         $stale = $this->customer->fresh();
-        $this->change()->assertOk();
+        $this->confirmChange($this->change()->assertAccepted())->assertOk();
         try {
             app(\App\Services\LoginEmailChallengeService::class)->send($stale, true);
             $this->fail('An old password verification must not create a new login challenge.');
@@ -253,7 +372,7 @@ class CustomerPasswordChangeTest extends TestCase
     {
         $this->postJson('/api/password/forgot', ['email' => $this->customer->email])->assertAccepted();
         $code = Notification::sent($this->customer, \App\Notifications\PasswordResetCodeNotification::class)->last()->code;
-        $this->change()->assertOk();
+        $this->confirmChange($this->change()->assertAccepted())->assertOk();
         $this->withHeader('Authorization', '')->postJson('/api/password/code/verify', ['email' => $this->customer->email, 'code' => $code])->assertUnprocessable();
     }
 
@@ -281,9 +400,11 @@ class CustomerPasswordChangeTest extends TestCase
 
     public function test_queue_failure_does_not_roll_back_change_or_log_exception_payload(): void
     {
+        $started = $this->change()->assertAccepted();
+        $code = $this->code()->code;
         Notification::shouldReceive('send')->andThrow(new \RuntimeException('secret payload'));
         \Illuminate\Support\Facades\Log::spy();
-        $this->change()->assertOk();
+        $this->confirmChange($started, $code)->assertOk();
         $this->assertTrue(Hash::check(self::NEW, $this->customer->fresh()->password_hash));
         $this->assertDatabaseCount('personal_access_tokens', 0);
         \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->with('Customer password confirmation could not be queued.', ['user_id' => $this->customer->getKey()])->once();
@@ -291,16 +412,17 @@ class CustomerPasswordChangeTest extends TestCase
 
     public function test_storage_failure_rolls_back_every_credential_change_without_exposing_secrets(): void
     {
+        $started = $this->change()->assertAccepted();
         \Illuminate\Support\Facades\Log::spy();
         DB::listen(function ($query): void {
             if (str_starts_with($query->sql, 'delete from "password_reset_requests"')) throw new \RuntimeException('secret request payload');
         });
-        $response = $this->change()->assertStatus(500);
+        $response = $this->confirmChange($started)->assertStatus(500);
         $this->assertStringNotContainsString('secret request payload', $response->getContent());
         $this->assertTrue(Hash::check(self::OLD, $this->customer->fresh()->password_hash));
         $this->assertDatabaseCount('personal_access_tokens', 1);
         $this->assertNull(\App\Models\RememberedDevice::sole()->revoked_at);
-        Notification::assertNothingSent();
+        Notification::assertNotSentTo($this->customer, PasswordChangedNotification::class);
         \Illuminate\Support\Facades\Log::shouldHaveReceived('error')->with('Customer password change failed.',
             ['exception_type' => \RuntimeException::class, 'user_id' => $this->customer->getKey()])->once();
     }

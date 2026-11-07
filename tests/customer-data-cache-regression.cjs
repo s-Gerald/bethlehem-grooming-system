@@ -421,6 +421,9 @@ function mountPage(env, page) {
     script = fs.readFileSync(path.join(root, "scripts/components/my-pets.js"), "utf8").replace(/^import[\s\S]*?;\r?\n/gm, "");
   } else if (page === "settings.html") {
     vm.runInContext(fs.readFileSync(path.join(root, "scripts/utils/credential-policy.js"), "utf8"), context);
+    for (const file of ["utils/human-name.js", "auth/verification-code.js", "components/customer-settings-confirmation.js"]) {
+      vm.runInContext(fs.readFileSync(path.join(root, "scripts", file), "utf8"), context);
+    }
     script = fs.readFileSync(path.join(root, "scripts/components/client-settings.js"), "utf8");
   } else if (page === "grooming-history.html") {
     const html = fs.readFileSync(path.join(root, "pages/client/grooming-history.html"), "utf8");
@@ -462,7 +465,7 @@ async function testActualPageLoaders() {
   await flush(); // Settings waits for the shared authentication gate before rendering retained profile data.
   assert.equal(settings.element("settingsContent").hasAttribute("inert"), false);
   assert.equal(settings.element("settingsFirstName").value, "Test");
-  assert.equal(env.calls.length, count);
+  assert.deepEqual(env.calls.slice(count).map(call => call.endpoint), ["/customer/security-changes/email"]);
   const clinicPending = deferred();
   env.respond((endpoint) => endpoint === "/clinic/history" ? clinicPending.promise : bookings);
   const history = mountPage(env, "grooming-history.html");

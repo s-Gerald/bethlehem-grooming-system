@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const logoutBtn = document.getElementById("clientLogoutBtn");
 
   const statusBox = document.getElementById("settingsStatus");
+  const accountForm = document.getElementById('accountForm');
   const passwordForm = document.getElementById("passwordForm");
   const currentPasswordInput = document.getElementById('currentPassword');
   const passwordSubmit = document.getElementById('changePasswordSubmit');
@@ -38,89 +39,119 @@ document.addEventListener("DOMContentLoaded", async () => {
   const phoneAction = document.getElementById("settingsPhoneAction");
   const phoneCancel = document.getElementById("settingsPhoneCancel");
   const emailInput = document.getElementById("settingsEmail");
+  const emailAction = document.getElementById('settingsEmailAction');
+  const emailCancel = document.getElementById('settingsEmailCancel');
+  const emailPending = document.getElementById('settingsEmailPending');
+  const nameSave = document.getElementById('saveCustomerName');
+  const nameFields = { first_name: firstNameInput, last_name: lastNameInput };
   const accountInitials = document.getElementById("accountInitials");
   const accountDisplayName = document.getElementById("accountDisplayName");
   const accountMeta = document.getElementById("accountMeta");
 
   let serverUser = null;
   let profileLoadPromise = null;
-  let editingName = false;
-  let savingName = false;
-  const namePassword = document.getElementById('nameCurrentPassword');
-  const nameSave = document.getElementById('saveCustomerName');
-  const nameCancel = document.getElementById('cancelCustomerName');
-  const nameEdit = document.getElementById('editCustomerName');
-  const nameActions = document.getElementById('customerNameActions');
-  const namePasswordArea = document.getElementById('customerNamePasswordArea');
-  const namePasswordError = document.getElementById('nameCurrentPasswordError');
-
-  function passwordError(message = '') {
-    namePasswordError.textContent = message;
-    namePasswordError.hidden = !message;
-    namePassword.setAttribute('aria-invalid', String(Boolean(message)));
-    namePassword.classList.toggle('!border-red-400', Boolean(message));
-  }
-
-  function setNameEditing(editing) {
-    editingName = editing;
-    for (const [input, field] of [[firstNameInput, 'first_name'], [lastNameInput, 'last_name']]) {
-      input.value = serverUser[field] || '';
-      input.readOnly = !editing;
-      HumanName.reset(input);
-    }
-    namePassword.value = ''; namePassword.type = 'password'; passwordError();
-    const toggle = document.querySelector('[data-password-toggle="nameCurrentPassword"]');
-    toggle?.setAttribute('aria-label', 'Show password');
-    toggle?.setAttribute('title', 'Show password');
-    toggle?.querySelector('.password-icon-closed')?.classList.remove('hidden');
-    toggle?.querySelector('.password-icon-open')?.classList.add('hidden');
-    nameEdit.hidden = editing;
-    nameActions.hidden = !editing; namePasswordArea.hidden = !editing;
-    (editing ? firstNameInput : nameEdit).focus();
-  }
-
-  nameEdit?.addEventListener('click', () => { if (serverUser && !savingName) { hideStatus(); setNameEditing(true); } });
-  nameCancel?.addEventListener('click', () => { if (!savingName) setNameEditing(false); });
-  namePassword?.addEventListener('input', () => passwordError());
-  document.getElementById('accountForm')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    if (!editingName || savingName) return;
-    const firstValid = HumanName.finish(firstNameInput), lastValid = HumanName.finish(lastNameInput);
-    if (!firstValid || !lastValid) { (!firstValid ? firstNameInput : lastNameInput).focus(); return; }
-    if (firstNameInput.value === serverUser.first_name && lastNameInput.value === serverUser.last_name) {
-      setNameEditing(false); return;
-    }
-    if (!namePassword.value) { passwordError('Enter your current password.'); namePassword.focus(); return; }
-    savingName = true; hideStatus(); passwordError();
-    nameSave.disabled = true; nameCancel.disabled = true;
-    firstNameInput.disabled = true; lastNameInput.disabled = true; namePassword.disabled = true;
-    nameSave.textContent = 'Saving…'; nameSave.setAttribute('aria-busy', 'true');
-    try {
-      const { user } = await API.updateCustomerName({ first_name: firstNameInput.value,
-        last_name: lastNameInput.value, current_password: namePassword.value });
+  let displayedNames, emailChallenge, passwordChallenge, emailStateLoaded = false, emailStateRequest;
+  const confirmation = window.createCustomerSettingsConfirmation({
+    onNameSaved(user) {
       serverUser = { ...serverUser, ...user };
-      applyUserToAccount(serverUser); setNameEditing(false); showStatus('Name updated.', 'success');
-    } catch (error) {
+      applyUserToAccount(serverUser, true);
+      showStatus('Name updated.', 'success');
+    },
+    onNameErrors(errors) {
       let first;
-      for (const [field, messages] of Object.entries(error.errors || {})) {
-        const message = [].concat(messages)[0];
-        if (field === 'current_password') { passwordError(message); first ||= namePassword; }
-        else if (field === 'first_name' || field === 'last_name') {
-          const input = field === 'first_name' ? firstNameInput : lastNameInput;
-          HumanName.showError(input, message); first ||= input;
-        }
+      for (const [field, input] of Object.entries(nameFields)) {
+        if (!errors[field]) continue;
+        HumanName.showError(input, errors[field][0]);
+        first ||= input;
       }
-      if (!first) showStatus(error.message || 'Unable to save your name. Try again.', 'error');
-      // Focus after restoring enabled controls below.
-      if (first) window.setTimeout(() => first.focus(), 0);
+      first?.focus();
+    },
+    onChallenge(kind, challenge) {
+      if (kind === 'email') setEmailChallenge(challenge);
+      else passwordChallenge = challenge;
+    },
+    resetPassword: resetPasswordInput,
+  });
+
+  function nameChanges() {
+    const changes = {};
+    for (const [field, input] of Object.entries(nameFields)) {
+      const saved = serverUser?.[field] || '';
+      if (input.value !== saved) {
+        const value = HumanName.normalize(input.value);
+        if (value !== saved) changes[field] = value;
+      }
+    }
+    return changes;
+  }
+
+  function syncNameSave() {
+    const changes = Object.values(nameChanges());
+    nameSave.disabled = !serverUser || !changes.length || changes.some(value => Boolean(HumanName.validate(value)));
+  }
+
+  for (const input of Object.values(nameFields)) {
+    input.addEventListener('input', syncNameSave);
+    input.addEventListener('change', syncNameSave);
+  }
+  accountForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!serverUser) return;
+    const changed = Object.keys(nameChanges());
+    const invalid = changed.filter(field => !HumanName.finish(nameFields[field]));
+    if (invalid.length) { nameFields[invalid[0]].focus(); return; }
+    const changes = nameChanges();
+    if (!Object.keys(changes).length) return;
+    hideStatus();
+    confirmation.open('name', nameSave, { changes });
+  });
+
+  function setEmailChallenge(challenge) {
+    emailChallenge = challenge;
+    emailPending.hidden = !challenge;
+    emailAction.textContent = challenge ? 'Continue' : 'Change';
+  }
+
+  function loadEmailChallenge() {
+    if (!emailStateRequest) {
+      emailStateRequest = API.getCustomerSecurityChange('email').then(({ challenge }) => {
+        emailStateLoaded = true;
+        setEmailChallenge(challenge);
+      }).finally(() => { emailStateRequest = null; });
+    }
+    return emailStateRequest;
+  }
+
+  emailAction.addEventListener('click', async () => {
+    if (!serverUser || emailAction.disabled) return;
+    hideStatus();
+    if (!emailStateLoaded || (emailChallenge && Date.parse(emailChallenge.expires_at) <= Date.now())) {
+      emailAction.disabled = true;
+      try { await loadEmailChallenge(); }
+      catch (error) { showStatus(error.message || 'Unable to load email verification.', 'error'); return; }
+      finally { emailAction.disabled = false; }
+    }
+    confirmation.open('email', emailAction, { currentEmail: serverUser.email || '', challenge: emailChallenge });
+  });
+
+  emailCancel.addEventListener('click', async () => {
+    if (!emailChallenge || emailCancel.disabled) return;
+    emailCancel.disabled = emailAction.disabled = true;
+    hideStatus();
+    try {
+      await API.cancelCustomerSecurityChange('email', emailChallenge.id);
+      setEmailChallenge(null);
+    } catch (error) {
+      if (error.code === 'invalid') setEmailChallenge(null);
+      else showStatus(error.message || 'Unable to cancel email verification.', 'error');
     } finally {
-      savingName = false; nameSave.disabled = false; nameCancel.disabled = false;
-      firstNameInput.disabled = false; lastNameInput.disabled = false; namePassword.disabled = false;
-      nameSave.textContent = 'Save changes'; nameSave.setAttribute('aria-busy', 'false');
+      emailCancel.disabled = emailAction.disabled = false;
+      emailAction.focus();
     }
   });
+
   window.addEventListener("customer-phone:verified", (event) => {
-    serverUser = event.detail.user;
+    serverUser = { ...serverUser, ...event.detail.user };
     applyUserToAccount(serverUser);
     showStatus(event.detail.message || "Phone number verified.", "success");
   });
@@ -164,6 +195,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupHeaderSearch();
   setupPasswordToggles();
   setupForms();
+  window.addEventListener('pagehide', () => {
+    for (const input of Object.values(passwordFields())) resetPasswordInput(input);
+  });
   loadingRetry?.addEventListener("click", loadProfile);
   if (API.readCustomerCache("/me")) void loadProfile();
   else window.requestAnimationFrame(() => scheduleSettingsIdleTask(loadProfile));
@@ -271,17 +305,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         const input = document.getElementById(button.dataset.passwordToggle);
         if (!input) return;
 
-        const shouldShow = input.type === "password";
-        input.type = shouldShow ? "text" : "password";
-        button.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
-        button.setAttribute("title", shouldShow ? "Hide password" : "Show password");
-
-        const closedIcon = button.querySelector(".password-icon-closed");
-        const openIcon = button.querySelector(".password-icon-open");
-        closedIcon?.classList.toggle("hidden", shouldShow);
-        openIcon?.classList.toggle("hidden", !shouldShow);
+        setPasswordVisibility(input, button, input.type === 'password');
       });
     });
+  }
+
+  function setPasswordVisibility(input, button, visible) {
+    input.type = visible ? 'text' : 'password';
+    const label = visible ? 'Hide password' : 'Show password';
+    button?.setAttribute('aria-label', label);
+    button?.setAttribute('title', label);
+    button?.querySelector('.password-icon-closed')?.classList.toggle('hidden', visible);
+    button?.querySelector('.password-icon-open')?.classList.toggle('hidden', !visible);
+  }
+
+  function resetPasswordInput(input) {
+    input.value = '';
+    setPasswordVisibility(input, document.querySelector('[data-password-toggle="' + input.id + '"]'), false);
   }
 
   function setupForms() {
@@ -315,13 +355,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         await API.loadCustomerData("/me", () => API.getMe("customer"), ({ user }) => {
           if (!user) throw new Error("Account profile is unavailable.");
-          applyUserToAccount(user);
           serverUser = user;
+          applyUserToAccount(user);
           settingsContent?.removeAttribute("inert");
           settingsContent?.removeAttribute("aria-hidden");
           settingsContent?.classList.remove("hidden");
           loadingScreen?.classList.add("hidden");
         });
+        emailAction.disabled = false;
+        void loadEmailChallenge().catch(() => { /* Change retries the pending-state lookup. */ });
         return serverUser;
       } catch (error) {
         if (API.isAuthenticationError(error) || !API.hasAuthenticatedSession("customer")) {
@@ -342,11 +384,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     return profileLoadPromise;
   }
 
-  function applyUserToAccount(user) {
-    if (!editingName) {
-      firstNameInput.value = user.first_name || "";
-      lastNameInput.value = user.last_name || "";
+  function applyUserToAccount(user, resetNames = false) {
+    for (const [field, input] of Object.entries(nameFields)) {
+      if (resetNames || !displayedNames || input.value === displayedNames[field]) {
+        input.value = user[field] || '';
+        HumanName.reset(input);
+      }
     }
+    displayedNames = { first_name: user.first_name || '', last_name: user.last_name || '' };
+    syncNameSave();
     phoneInput.value = formatMobileNumber(user.phone) || "Not provided";
     const phoneStatus = document.getElementById("settingsPhoneStatus");
     if (phoneStatus) {
@@ -405,6 +451,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function validatePasswordForm() {
     if (changingPassword) return;
     hideStatus();
+    if (passwordChallenge && Date.parse(passwordChallenge.expires_at) > Date.now()) {
+      confirmation.open('password', passwordSubmit, { challenge: passwordChallenge });
+      return;
+    }
+    passwordChallenge = null;
     const fields = passwordFields();
     for (const field of Object.keys(fields)) setPasswordFieldError(field);
     let first;
@@ -417,17 +468,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     passwordForm.setAttribute('aria-busy', 'true');
     passwordSubmit.disabled = true;
     passwordSubmit.setAttribute('aria-busy', 'true');
-    passwordLabel.textContent = 'Changing Password...';
+    passwordLabel.textContent = 'Requesting code…';
     passwordSpinner.classList.remove('hidden');
     for (const input of Object.values(fields)) input.readOnly = true;
     try {
-      const result = await API.changeCustomerPassword({ current_password: currentPasswordInput.value,
+      const result = await API.requestCustomerPasswordChange({ current_password: currentPasswordInput.value,
         password: newPasswordInput.value, password_confirmation: confirmPasswordInput.value });
-      if (result.success !== true) throw Object.assign(new Error('Unconfirmed change'), { status: 0 });
-      for (const input of Object.values(fields)) { input.value = ''; input.type = 'password'; }
-      serverUser = null;
-      namePassword.value = '';
-      API.redirectToSignIn({ replace: true, passwordChanged: true });
+      if (!result.challenge?.id) throw new Error('Unable to request a verification code.');
+      passwordChallenge = result.challenge;
+      for (const input of Object.values(fields)) resetPasswordInput(input);
+      confirmation.open('password', passwordSubmit, { challenge: passwordChallenge });
     } catch (error) {
       let first;
       for (const [field, messages] of Object.entries(error.errors || {})) {
@@ -438,7 +488,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       else if (error.status === 429) showStatus(`Too many attempts. Try again in ${error.retryAfter || 60} seconds.`, 'error');
       else if (error.code === 'password_screening_unavailable') showStatus('Password safety checking is temporarily unavailable. Try again later.', 'error');
       else if (error.status === 401 || error.status === 403) API.redirectToSignIn();
-      else if (!error.status || error.status >= 500) showStatus('Unable to confirm the change. Your password may have changed. Please sign in again before trying another change.', 'error');
+      else if (!error.status || error.status >= 500) showStatus('Unable to request a verification code. Try again.', 'error');
       else showStatus(error.message || 'Unable to change your password. Please try again.', 'error');
     } finally {
       changingPassword = false;

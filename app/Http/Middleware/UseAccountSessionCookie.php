@@ -17,7 +17,8 @@ class UseAccountSessionCookie
     public static function isAuthenticationRequest(Request $request): bool
     {
         return $request->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/session*', 'api/logout',
-            'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*', 'api/customer/password');
+            'api/settings/security/*', 'api/admin/security/*', 'api/staff/password-setup/*', 'api/staff/email-recovery/*',
+            'api/customer/password', 'api/customer/security-changes/*');
     }
 
     public static function isPrivateRequest(Request $request): bool

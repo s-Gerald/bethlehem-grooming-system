@@ -101,8 +101,18 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     // Auth
     Route::post('/email/login/complete', [LoginEmailChallengeController::class, 'complete']);
     Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/customer/password', [CustomerController::class, 'changeOwnPassword'])
+    Route::post('/customer/password', [\App\Http\Controllers\CustomerSecurityChangeController::class, 'startPassword'])
         ->middleware(['role:customer', 'throttle:customer-password-change']);
+    Route::post('/customer/security-changes/email', [\App\Http\Controllers\CustomerSecurityChangeController::class, 'startEmail'])
+        ->middleware(['role:customer', 'throttle:customer-password-change']);
+    Route::prefix('/customer/security-changes/{kind}')->where(['kind' => 'email|password'])
+        ->middleware(['role:customer', 'throttle:30,1'])->controller(\App\Http\Controllers\CustomerSecurityChangeController::class)
+        ->group(function () {
+            Route::get('/', 'state');
+            Route::post('/{id}/confirm', 'confirm')->whereUuid('id');
+            Route::post('/{id}/resend', 'resend')->whereUuid('id');
+            Route::delete('/{id}', 'cancel')->whereUuid('id');
+        });
     Route::patch('/customer/profile/name', [CustomerController::class, 'updateOwnName'])
         ->middleware(['role:customer', 'throttle:10,1']);
     Route::middleware('role:customer')->prefix('phone-verification')->group(function () {

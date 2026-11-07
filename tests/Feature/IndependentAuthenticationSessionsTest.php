@@ -759,9 +759,16 @@ class IndependentAuthenticationSessionsTest extends TestCase
         if ($mode === 'password') {
             (require base_path('database/migrations/2026_08_28_000003_create_password_reset_requests_table.php'))->up();
             (require base_path('database/migrations/2026_09_28_000002_add_code_verification_to_password_reset_requests.php'))->up();
+            (require base_path('database/migrations/2026_11_07_000001_create_customer_security_changes.php'))->up();
             $public = $this->login('customer', true);
-            $payload = ['path' => '/api/customer/password', 'authorization' => 'Bearer '.$public,
-                'body' => ['current_password' => 'SessionTest!123', 'password' => 'violet lantern meadow river', 'password_confirmation' => 'violet lantern meadow river'],
+            \Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => \Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0', 200)]);
+            $started = $this->requestAs($public, 'POST', '/api/customer/password', [
+                    'current_password' => 'SessionTest!123', 'password' => 'violet lantern meadow river', 'password_confirmation' => 'violet lantern meadow river',
+                ])->assertAccepted();
+            $code = Notification::sent(new \Illuminate\Notifications\AnonymousNotifiable,
+                \App\Notifications\VerifyCustomerSecurityChangeNotification::class)->last()->code;
+            $payload = ['path' => '/api/customer/security-changes/password/'.$started->json('challenge.id').'/confirm',
+                'authorization' => 'Bearer '.$public, 'body' => ['code' => $code],
                 'cookies' => ['bethlehem_account_session' => $this->browserCookies[$public]]];
         } elseif ($mode !== 'restore') {
             $pending = $this->postJson('/api/sign-in', ['identifier' => 'admin@example.test', 'password' => 'SessionTest!123'])->assertAccepted();

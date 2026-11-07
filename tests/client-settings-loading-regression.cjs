@@ -61,6 +61,8 @@ function createPage(getMe, phoneApi = {}) {
           return true;
         },
         focus() {},
+        showModal() { this.open = true; },
+        close() { this.open = false; },
         querySelectorAll() { return []; },
       });
     }
@@ -72,6 +74,7 @@ function createPage(getMe, phoneApi = {}) {
     API: {
       hasAuthenticatedSession: () => true,
       getMe,
+      getCustomerSecurityChange: async () => ({ challenge: null }),
       readCustomerCache: () => null,
       loadCustomerData: (endpoint, load, render) => load().then(render),
       isAuthenticationError: () => false,
@@ -93,6 +96,8 @@ function createPage(getMe, phoneApi = {}) {
       requestAnimationFrame(callback) { callback(); },
       requestIdleCallback(callback) { callback(); },
       setTimeout(callback) { callback(); },
+      setInterval() { return 1; },
+      clearInterval() {},
     },
   };
 
@@ -101,6 +106,9 @@ function createPage(getMe, phoneApi = {}) {
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/human-name.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/philippine-mobile.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts/utils/credential-policy.js'), 'utf8'), context);
+  for (const file of ['utils/account-email.js', 'auth/verification-code.js', 'components/customer-settings-confirmation.js']) {
+    vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../scripts', file), 'utf8'), context);
+  }
   vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
   return element;
@@ -124,12 +132,16 @@ async function testPasswordChangeSubmissionAndErrors() {
   const pending = deferred();
   let calls = 0, redirected = false;
   const element = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
-    changeCustomerPassword: async payload => {
+    requestCustomerPasswordChange: async payload => {
       calls++;
       assert.equal(payload.current_password, 'old value');
       assert.equal(payload.password, 'violet meadow river');
       assert.equal(payload.password_confirmation, 'violet meadow river');
       return pending.promise;
+    },
+    async confirmCustomerSecurityChange(kind, id, code) {
+      assert.deepEqual([kind, id, code], ['password', 'challenge', '012345']);
+      return { status: 'completed' };
     },
     redirectToSignIn(options) { redirected = options.passwordChanged === true; },
   });
@@ -139,11 +151,16 @@ async function testPasswordChangeSubmissionAndErrors() {
   const submission = element('passwordForm').dispatch('submit');
   assert.equal(calls, 1);
   assert.equal(element('changePasswordSubmit').disabled, true);
-  assert.equal(element('changePasswordLabel').textContent, 'Changing Password...');
+  assert.equal(element('changePasswordLabel').textContent, 'Requesting code…');
   await element('passwordForm').dispatch('submit');
   assert.equal(calls, 1);
-  pending.resolve({ success: true });
+  pending.resolve({ status: 'pending', challenge: { id: 'challenge', email: 'river@gmail.com', expires_at: '2099-01-01' } });
   await submission;
+  assert.equal(redirected, false);
+  assert.equal(element('settingsConfirmationTitle').textContent, 'Verify password change');
+  element('settingsVerificationCode').value = '012345';
+  await element('settingsVerificationCode').dispatch('input');
+  await element('settingsConfirmationForm').dispatch('submit');
   assert.equal(redirected, true);
   assert.equal(element('currentPassword').value, '');
   assert.equal(element('newPassword').value, '');
@@ -156,7 +173,7 @@ async function testPasswordChangeSubmissionAndErrors() {
   ]) {
     let attempts = 0;
     const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
-      changeCustomerPassword: async () => { attempts++; throw error; },
+      requestCustomerPasswordChange: async () => { attempts++; throw error; },
     });
     await flush();
     page('currentPassword').value = 'old value';
@@ -173,8 +190,53 @@ async function testPasswordChangeSubmissionAndErrors() {
       assert.equal(page('currentPassword').getAttribute('aria-invalid'), 'false');
     }
     if (error.status === 429) assert.match(page('settingsStatus').textContent, /300/);
-    if (error.status === 0) assert.match(page('settingsStatus').textContent, /may have changed.*sign in again/i);
+    if (error.status === 0) assert.match(page('settingsStatus').textContent, /Unable to request a verification code/i);
   }
+}
+
+async function testEmailChangeCanResumeAndCancelWithoutStartingAnotherRequest() {
+  let starts = 0, cancels = 0, redirected = 0;
+  const challenge = { id: 'email-challenge', kind: 'email', email: 'new.customer@gmail.com', expires_at: '2099-01-01' };
+  const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer', email: 'old.customer@gmail.com' } }), {
+    async requestCustomerEmailChange(email, password) {
+      assert.equal(email, challenge.email);
+      assert.equal(password, 'current password');
+      starts++;
+      return { status: 'pending', challenge };
+    },
+    async cancelCustomerSecurityChange(kind, id) {
+      assert.deepEqual([kind, id], ['email', challenge.id]);
+      cancels++;
+    },
+    redirectToSignIn() { redirected++; },
+  });
+  await flush();
+  await page('settingsEmailAction').dispatch('click');
+  assert.equal(page('settingsConfirmationTitle').textContent, 'Change email address');
+  page('settingsNewEmail').value = 'old.customer@gmail.com';
+  page('settingsConfirmationPassword').value = 'current password';
+  await page('settingsConfirmationForm').dispatch('submit');
+  assert.equal(page('settingsNewEmailError').textContent, 'Enter a different email address.');
+  assert.equal(starts, 0);
+  page('settingsNewEmail').value = 'new.customer@GMAIL.COM';
+  await page('settingsConfirmationForm').dispatch('submit');
+  assert.equal(page('settingsConfirmationTitle').textContent, 'Verify new email');
+  assert.equal(page('settingsConfirmationPassword').value, '');
+  assert.equal(page('settingsEmail').value, 'old.customer@gmail.com');
+  assert.equal(page('settingsEmailPending').hidden, false);
+  assert.equal(redirected, 0);
+  await page('settingsConfirmationClose').dispatch('click');
+  assert.equal(page('settingsConfirmation').open, false);
+  assert.equal(cancels, 0);
+  assert.equal(page('settingsEmailAction').textContent, 'Continue');
+  await page('settingsEmailAction').dispatch('click');
+  assert.equal(page('settingsConfirmationTitle').textContent, 'Verify new email');
+  assert.equal(starts, 1);
+  await page('settingsConfirmationClose').dispatch('click');
+  await page('settingsEmailCancel').dispatch('click');
+  assert.equal(cancels, 1);
+  assert.equal(page('settingsEmailPending').hidden, true);
+  assert.equal(page('settingsEmailAction').textContent, 'Change');
 }
 
 async function testPasswordPolicyErrorsStayBesideTheirFields() {
@@ -189,7 +251,7 @@ async function testPasswordPolicyErrorsStayBesideTheirFields() {
   ]) {
     let calls = 0;
     const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
-      changeCustomerPassword: async () => { calls++; },
+      requestCustomerPasswordChange: async () => { calls++; },
     });
     await flush();
     page('currentPassword').value = old;
@@ -207,7 +269,7 @@ async function testPasswordPolicyErrorsStayBesideTheirFields() {
 async function testPasswordInputCorrectionRefreshesInlineErrors() {
   let calls = 0;
   const page = createPage(async () => ({ user: { first_name: 'River', last_name: 'Customer' } }), {
-    changeCustomerPassword: async () => { calls++; return { success: true }; },
+    requestCustomerPasswordChange: async () => { calls++; return { success: true }; },
   });
   await flush();
   page('newPassword').value = ' violet meadow river';
@@ -354,37 +416,43 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
     async updateCustomerName(payload) {
       saves++;
       if (payload.current_password !== 'correct') throw { errors: { current_password: ['Incorrect password.'] } };
-      return { user: { ...original, first_name: payload.first_name, last_name: payload.last_name } };
+      assert.equal(payload.last_name, undefined);
+      return { user: { ...original, first_name: payload.first_name } };
     },
   });
   await flush();
-  await element('editCustomerName').dispatch('click');
-  assert.equal(element('settingsFirstName').value, 'GERALD', 'Opening the editor preserves historical casing.');
-  assert.equal(element('settingsFirstName').readOnly, false);
+  assert.equal(element('settingsFirstName').value, 'GERALD', 'Loading the editor preserves historical casing.');
+  assert.equal(element('saveCustomerName').disabled, true);
   element('settingsFirstName').value = 'mcdonald';
+  await element('settingsFirstName').dispatch('input');
+  assert.equal(element('saveCustomerName').disabled, false);
   await element('accountForm').dispatch('submit');
+  assert.equal(element('settingsConfirmationTitle').textContent, 'Confirm changes');
+  await element('settingsConfirmationForm').dispatch('submit');
   assert.equal(saves, 0, 'Missing password is blocked locally.');
-  element('nameCurrentPassword').value = 'wrong';
-  await element('accountForm').dispatch('submit');
-  assert.equal(element('nameCurrentPasswordError').textContent, 'Incorrect password.');
+  element('settingsConfirmationPassword').value = 'wrong';
+  await element('settingsConfirmationForm').dispatch('submit');
+  assert.equal(element('settingsConfirmationPasswordError').textContent, 'Incorrect password.');
   assert.equal(element('settingsFirstName').value, 'McDonald');
-  element('nameCurrentPassword').value = 'correct';
-  await element('accountForm').dispatch('submit');
+  element('settingsConfirmationPassword').value = 'correct';
+  await element('settingsConfirmationForm').dispatch('submit');
   assert.equal(saves, 2);
   assert.equal(element('accountDisplayName').textContent, 'McDonald de la Cruz');
   assert.equal(element('accountInitials').textContent, 'MD');
-  assert.equal(element('nameCurrentPassword').value, '');
-  assert.equal(element('settingsFirstName').readOnly, true);
-  await element('editCustomerName').dispatch('click');
-  element('settingsFirstName').value = 'Discard'; element('nameCurrentPassword').value = 'secret';
-  await element('cancelCustomerName').dispatch('click');
-  assert.equal(element('settingsFirstName').value, 'McDonald');
-  assert.equal(element('nameCurrentPassword').value, '');
-  await element('editCustomerName').dispatch('click');
+  assert.equal(element('settingsConfirmationPassword').value, '');
+  assert.equal(element('saveCustomerName').disabled, true);
+  element('settingsFirstName').value = 'Keep';
+  await element('accountForm').dispatch('submit');
+  element('settingsConfirmationPassword').value = 'secret';
+  await element('settingsConfirmationCancel').dispatch('click');
+  assert.equal(element('settingsFirstName').value, 'Keep');
+  assert.equal(element('settingsConfirmationPassword').value, '');
+  element('settingsFirstName').value = 'McDonald';
   await element('accountForm').dispatch('submit');
   assert.equal(saves, 2, 'Cancel and unchanged saves do not send requests.');
   await testSettingsWaitsForProfile();
   await testPasswordChangeSubmissionAndErrors();
+  await testEmailChangeCanResumeAndCancelWithoutStartingAnotherRequest();
   await testPasswordPolicyErrorsStayBesideTheirFields();
   await testPasswordInputCorrectionRefreshesInlineErrors();
   await testSettingsFailureKeepsFormHiddenUntilRetry();

@@ -32,6 +32,7 @@ return [
             'login' => ['quarter_hour' => (int) env('AUTH_EMAIL_LOGIN_LIMIT', 3),
                 'source_quarter_hour' => (int) env('AUTH_EMAIL_LOGIN_SOURCE_LIMIT', 15)],
             'password_recovery' => ['quarter_hour' => (int) env('AUTH_EMAIL_RECOVERY_LIMIT', 3)],
+            'customer_security_change' => ['quarter_hour' => 3],
             'privileged_change' => ['quarter_hour' => (int) env('AUTH_EMAIL_PRIVILEGED_LIMIT', 3)],
             'security_notice' => ['cooldown' => 0, 'quarter_hour' => 3],
             'security_alert' => ['cooldown' => 86400, 'day' => 1],

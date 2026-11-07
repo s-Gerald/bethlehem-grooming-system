@@ -44,10 +44,11 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->report(function (\Throwable $exception) {
-            if (request()->is('api/customer/password')) {
+            if (request()->is('api/customer/password', 'api/customer/security-changes/*')) {
                 // Exception messages/traces can contain SQL bindings or HTTP
                 // payloads. Keep this credential endpoint's failure log allowlisted.
-                \Illuminate\Support\Facades\Log::error('Customer password change failed.', [
+                \Illuminate\Support\Facades\Log::error(request()->is('api/customer/password', 'api/customer/security-changes/password/*')
+                    ? 'Customer password change failed.' : 'Customer email change failed.', [
                     'exception_type' => $exception::class, 'user_id' => request()->user()?->getKey(),
                 ]);
                 return false;
@@ -65,7 +66,8 @@ return Application::configure(basePath: dirname(__DIR__))
             if (\App\Http\Middleware\UseAccountSessionCookie::isPrivateRequest(request())) {
                 $response->headers->set('Cache-Control', 'no-store');
             }
-            if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/customer/password') && $response->getStatusCode() >= 500) {
+            if (request()->is('api/register*', 'api/sign-in', 'api/email/*', 'api/password/*', 'api/customer/password', 'api/customer/security-changes/*')
+                && $response->getStatusCode() >= 500) {
                 return response()->json(['success' => false, 'message' => request()->is('api/register*')
                     ? "Couldn't create your account. Please try again."
                     : 'Something went wrong. Please try again.'], $response->getStatusCode())

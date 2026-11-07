@@ -900,7 +900,7 @@ var API = (() => {
       localStorage.setItem(
         AUTH_LOGOUT_EVENT_KEY,
         JSON.stringify({ role, reason, sessionId: logoutSessionId(session),
-          ...(reason === 'password_changed' ? { accountId: session?.accountId } : {}), at: Date.now() })
+          ...(role === 'customer' && ['password_changed', 'email_changed'].includes(reason) ? { accountId: session?.accountId } : {}), at: Date.now() })
       );
     } catch {
       // Non-fatal: removing the token still syncs logout in supported browsers.
@@ -931,12 +931,13 @@ var API = (() => {
       enforceProtectedPageAccess();
       return;
     }
-    const passwordRevoked = event?.reason === 'password_changed' && session.role === 'customer'
+    const credentialsChanged = ['password_changed', 'email_changed'].includes(event?.reason) && session.role === 'customer';
+    const credentialsRevoked = credentialsChanged
       && event.accountId && event.accountId === session.accountId
       && Number(event.sessionId?.split(':')[1]) >= Number(session.token?.split('|')[0]);
-    if (!event?.sessionId || (event.sessionId !== logoutSessionId(session) && !passwordRevoked)) return;
+    if (!event?.sessionId || (event.sessionId !== logoutSessionId(session) && !credentialsRevoked)) return;
 
-    if (event.reason === 'password_changed') {
+    if (credentialsChanged) {
       restoreBlocked = true;
       for (const storage of [localStorage, sessionStorage]) {
         try { storage.setItem(RESTORE_BLOCK_KEY, '1'); } catch { /* Memory still blocks restoration. */ }
@@ -2496,23 +2497,51 @@ var API = (() => {
     return response;
   }
 
-  async function changeCustomerPassword(payload) {
+  async function requestCustomerPasswordChange(payload) {
+    try {
+      return await request('POST', '/customer/password', payload, getCustomerToken(), { cache: 'no-store' });
+    } finally {
+      for (const field of ['current_password', 'password', 'password_confirmation']) payload[field] = '';
+    }
+  }
+
+  function requestCustomerEmailChange(email, password) {
+    return request('POST', '/customer/security-changes/email', { email, current_password: password }, getCustomerToken(), { cache: 'no-store' });
+  }
+
+  function customerSecurityChange(kind, id = '') {
+    return '/customer/security-changes/' + encodeURIComponent(kind) + (id ? '/' + encodeURIComponent(id) : '');
+  }
+
+  function getCustomerSecurityChange(kind) {
+    return request('GET', customerSecurityChange(kind), null, getCustomerToken(), { cache: 'no-store' });
+  }
+
+  function resendCustomerSecurityChange(kind, id) {
+    return request('POST', customerSecurityChange(kind, id) + '/resend', null, getCustomerToken(), { cache: 'no-store' });
+  }
+
+  function cancelCustomerSecurityChange(kind, id) {
+    return request('DELETE', customerSecurityChange(kind, id), null, getCustomerToken(), { cache: 'no-store' });
+  }
+
+  async function confirmCustomerSecurityChange(kind, id, code) {
     const session = getAuthSession();
     if (session?.role !== 'customer') throw new Error('Please sign in again.');
-    const endpoint = '/customer/password';
+    const endpoint = customerSecurityChange(kind, id) + '/confirm';
     let settle;
     const completing = { token: session.token, endpoint, settled: new Promise(resolve => { settle = resolve; }) };
     credentialSignOut = completing;
     try {
-      const response = await withAuthTransition(() => request('POST', endpoint, payload, session.token,
+      const response = await withAuthTransition(() => request('POST', endpoint, { code }, session.token,
         { cache: 'no-store', suppressAuthRedirect: true }));
-      if (response.success !== true) {
-        const error = new Error('Unable to confirm the password change.');
+      if (response.status !== 'completed') {
+        const error = new Error('Unable to confirm the change.');
         error.status = 0;
         throw error;
       }
       if (getAuthSession()?.token !== session.token) throw new Error('Your session changed. Please sign in again.');
-      passwordChangeConfirmed = true;
+      passwordChangeConfirmed = kind === 'password';
       restoreBlocked = true;
       for (const storage of [localStorage, sessionStorage]) {
         try { storage.setItem(RESTORE_BLOCK_KEY, '1'); } catch { /* Memory still blocks restoration. */ }
@@ -2520,10 +2549,9 @@ var API = (() => {
       clearAuthStorage();
       clearBookingDraft();
       if (isProtectedClientPage()) concealCustomerSession();
-      notifyLogout('customer', 'password_changed', session);
+      notifyLogout('customer', kind + '_changed', session);
       return response;
     } finally {
-      for (const field of ['current_password', 'password', 'password_confirmation']) payload[field] = '';
       if (credentialSignOut === completing) credentialSignOut = null;
       settle();
     }
@@ -3665,7 +3693,12 @@ var API = (() => {
     loadCustomerData,
     invalidateCustomerCache,
     updateCustomerName,
-    changeCustomerPassword,
+    requestCustomerPasswordChange,
+    requestCustomerEmailChange,
+    getCustomerSecurityChange,
+    resendCustomerSecurityChange,
+    cancelCustomerSecurityChange,
+    confirmCustomerSecurityChange,
     adminRequest,
     // Token access (used by other scripts that need to attach the token)
     getCustomerToken,

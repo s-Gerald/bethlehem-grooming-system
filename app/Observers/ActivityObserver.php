@@ -120,7 +120,7 @@ class ActivityObserver
             if ($created) {
                 $action = $model->role === 'staff' ? 'staff_created' : ($model->role === 'customer' && $model->email_verified_at ? 'customer_registered' : null);
             } elseif ($model->role === 'customer') {
-                $action = $model->wasChanged('email_verified_at') && $model->email_verified_at ? 'customer_registered'
+                $action = $model->wasChanged('email_verified_at') && $model->email_verified_at && ! $model->getOriginal('email_verified_at') ? 'customer_registered'
                     : ($model->wasChanged('is_archived') ? ($model->is_archived ? 'customer_archived' : 'customer_restored')
                     : ($model->wasChanged(['first_name', 'last_name', 'username', 'phone', 'email', 'is_active']) ? 'customer_updated' : null));
             } else {

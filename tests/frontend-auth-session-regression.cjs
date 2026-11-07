@@ -28,7 +28,8 @@ async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
   const requests = [];
   const profile = createBrowserProfile(async (url, options) => {
     requests.push({ url, options });
-    if (url.endsWith('/customer/password')) return jsonResponse(200, { success: true });
+    if (url.endsWith('/customer/password')) return jsonResponse(202, { status: 'pending', challenge: { id: 'challenge' } });
+    if (url.endsWith('/customer/security-changes/password/challenge/confirm')) return jsonResponse(200, { status: 'completed' });
     return jsonResponse(200, { user: { first_name: 'Private', last_name: 'Customer' } });
   });
   const first = profile.page();
@@ -39,14 +40,16 @@ async function testCustomerPasswordChangeClearsCachesAndBlocksRestoration() {
   await first.API.getMe();
   assert.ok(first.API.readCustomerCache('/me'));
   requests.length = 0;
-  await first.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  await first.API.requestCustomerPasswordChange({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  assert.equal(first.API.hasAuthenticatedSession('customer'), true);
+  await first.API.confirmCustomerSecurityChange('password', 'challenge', '012345');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(first.API.hasAuthenticatedSession('customer'), false);
   assert.equal(second.API.hasAuthenticatedSession('customer'), false);
   assert.equal(first.API.readCustomerCache('/me'), null);
   assert.equal(second.API.readCustomerCache('/me'), null);
   await first.API.checkRememberedSession();
-  assert.equal(requests.length, 1, 'Password change neither logs out again nor restores a remembered device.');
+  assert.equal(requests.length, 2, 'Only issuance and confirmation contact the server.');
   assert.equal(requests[0].options.cache, 'no-store');
   assert.match(second.replacements.at(-1), /sign-in$/);
 }
@@ -58,18 +61,18 @@ async function testPasswordSuccessSurvivesBackgroundRevocationAndNeverRetriesMut
   }, fetchImpl: url => url.endsWith('/me') ? new Promise(resolve => { resolveRead = resolve; })
     : new Promise(resolve => { resolveChange = resolve; }) });
   const reading = browser.API.getMe().catch(() => browser.API.redirectToSignIn());
-  const changing = browser.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  const changing = browser.API.confirmCustomerSecurityChange('password', 'challenge', '012345');
   resolveRead(jsonResponse(401, {}));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(browser.replacements.length, 0);
-  resolveChange(jsonResponse(200, { success: true }));
+  resolveChange(jsonResponse(200, { status: 'completed' }));
   await Promise.all([reading, changing]);
   assert.match(browser.replacements.at(-1), /password_changed=1$/, 'Background reads cannot hide confirmed success feedback.');
 
   let attempts = 0;
   const offline = createBrowser({ local: { customer_token: '603|cookie', user_role: 'customer' },
     fetchImpl: async () => { attempts++; throw new TypeError('Network lost'); } });
-  await assert.rejects(offline.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' }), error => error.status === 0);
+  await assert.rejects(offline.API.confirmCustomerSecurityChange('password', 'challenge', '012345'), error => error.status === 0);
   assert.equal(attempts, 1);
   assert.equal(offline.API.hasAuthenticatedSession('customer'), true, 'Uncertain transport failure is not success.');
 }
@@ -78,9 +81,9 @@ async function testPasswordSignOutDoesNotEraseNewerAccountsOrSessions() {
   let resolveChange;
   const browser = createBrowser({ local: { customer_token: '610|cookie', user_role: 'customer' },
     fetchImpl: () => new Promise(resolve => { resolveChange = resolve; }) });
-  const changing = browser.API.changeCustomerPassword({ current_password: 'old', password: 'new', password_confirmation: 'new' });
+  const changing = browser.API.confirmCustomerSecurityChange('password', 'challenge', '012345');
   browser.localStorage.setItem('customer_token', '611|cookie');
-  resolveChange(jsonResponse(200, { success: true }));
+  resolveChange(jsonResponse(200, { status: 'completed' }));
   await assert.rejects(changing, /session changed/);
   assert.equal(browser.API.getCustomerToken(), '611|cookie');
 

@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/components/verification-code.css?v=customer-security-20261107-v1" />
     <title>Settings | Bethlehem Animal Clinic</title>
 
-    <link rel="stylesheet" href="/css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1&password-change=20261102" />
+    <link rel="stylesheet" href="/css/output.css?v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&names=20261028-v2&auth-hardening=20261030&customer-ux=20261031-v1&customer-security=20261107-v1" />
     <link rel="stylesheet" href="/css/custom.css?ui=20260915-password-reveal&notif=20260915-client-notifications&release=20261001&grooming=actual-20261026&registration-ui=20261027-v3&customer-header=20261106-v2" />
 
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
@@ -286,7 +287,6 @@
                     </div>
                   </div>
 
-                  <button id="editCustomerName" type="button" class="rounded text-sm font-semibold text-portal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary">Edit name</button>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
                       <label
@@ -299,8 +299,6 @@
                         type="text"
                         id="settingsFirstName" required data-human-name maxlength="100" autocomplete="given-name" autocapitalize="words" spellcheck="false"
                         name="first_name"
-
-                        readonly
                         class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
                       />
                     </div>
@@ -316,28 +314,8 @@
                         type="text"
                         id="settingsLastName" required data-human-name maxlength="100" autocomplete="family-name" autocapitalize="words" spellcheck="false"
                         name="last_name"
-
-                        readonly
                         class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
                       />
-                    </div>
-                  </div>
-
-                  <div id="customerNamePasswordArea" hidden>
-                    <label for="nameCurrentPassword" class="mb-2 block text-sm font-semibold text-portal-text">Current password</label>
-                    <div class="relative">
-                      <input id="nameCurrentPassword" type="password" autocomplete="current-password" aria-describedby="nameCurrentPasswordError" class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 pr-12 text-portal-text focus:border-portal-primary focus:outline-none focus:ring-2 focus:ring-portal-primary" />
-                      <button type="button" data-password-toggle="nameCurrentPassword" aria-label="Show password" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-xl text-portal-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary">
-                        <svg class="password-icon-closed ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#eye-slash"></use></svg>
-                        <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#eye"></use></svg>
-                      </button>
-                    </div>
-                    <p id="nameCurrentPasswordError" class="mt-2 text-sm text-red-600" aria-live="polite" hidden></p>
-                  </div>
-                  <div id="customerNameActions" hidden>
-                    <div class="flex flex-wrap gap-3">
-                      <button id="saveCustomerName" type="submit" class="portal-button-primary text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">Save changes</button>
-                      <button id="cancelCustomerName" type="button" class="portal-button-secondary text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">Cancel</button>
                     </div>
                   </div>
 
@@ -364,12 +342,10 @@
                     </div>
 
                     <div>
-                      <label
-                        for="settingsEmail"
-                        class="mb-2 block text-sm font-semibold text-portal-text"
-                      >
-                        Email Address
-                      </label>
+                      <div class="mb-2 flex flex-wrap items-center gap-2">
+                        <label for="settingsEmail" class="text-sm font-semibold text-portal-text">Email Address</label>
+                        <button id="settingsEmailAction" type="button" class="ml-auto rounded text-sm font-semibold text-portal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary disabled:opacity-50" disabled>Change</button>
+                      </div>
                       <input
                         type="email"
                         id="settingsEmail"
@@ -378,7 +354,14 @@
                         readonly
                         class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none"
                       />
+                      <div id="settingsEmailPending" hidden class="mt-2 text-sm text-portal-muted">
+                        <span role="status">Verification pending</span>
+                        <button id="settingsEmailCancel" type="button" class="ml-2 rounded font-semibold text-portal-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-portal-primary disabled:opacity-50">Cancel</button>
+                      </div>
                     </div>
+                  </div>
+                  <div class="flex justify-end pt-1">
+                    <button id="saveCustomerName" type="submit" class="portal-button-primary w-full text-sm font-semibold sm:w-[240px] disabled:cursor-not-allowed disabled:opacity-50" disabled>Save changes</button>
                   </div>
                 </div>
               </form>
@@ -513,13 +496,70 @@
       </main>
     </div>
 
+    <dialog id="settingsConfirmation" class="customer-settings-dialog" aria-labelledby="settingsConfirmationTitle">
+      <form id="settingsConfirmationForm" novalidate class="space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="settingsConfirmationTitle" class="text-xl font-bold text-portal-text"></h2>
+          <button id="settingsConfirmationClose" type="button" class="rounded-lg p-2 text-portal-muted hover:bg-portal-active" aria-label="Close">
+            <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#x"></use></svg>
+          </button>
+        </div>
+        <div id="settingsEmailFields" hidden class="space-y-4">
+          <div>
+            <p class="mb-1 text-sm font-semibold text-portal-text">Current email</p>
+            <p id="settingsCurrentEmail" class="text-sm text-portal-muted"></p>
+          </div>
+          <div>
+            <label for="settingsNewEmail" class="mb-2 block text-sm font-semibold text-portal-text">New email address</label>
+            <input id="settingsNewEmail" type="email" autocomplete="email" aria-describedby="settingsNewEmailError" class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:border-portal-primary focus:outline-none focus:ring-2 focus:ring-portal-primary" />
+            <p id="settingsNewEmailError" class="mt-2 text-sm text-red-700" aria-live="polite" hidden></p>
+          </div>
+        </div>
+        <div id="settingsConfirmationPasswordArea" hidden>
+          <label for="settingsConfirmationPassword" class="mb-2 block text-sm font-semibold text-portal-text">Current password</label>
+          <div class="relative">
+            <input id="settingsConfirmationPassword" type="password" autocomplete="current-password" aria-describedby="settingsConfirmationPasswordError" class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 pr-12 text-portal-text focus:border-portal-primary focus:outline-none focus:ring-2 focus:ring-portal-primary" />
+            <button type="button" data-password-toggle="settingsConfirmationPassword" aria-label="Show password" class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-xl text-portal-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-portal-primary">
+              <svg class="password-icon-closed ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#eye-slash"></use></svg>
+              <svg class="password-icon-open ph-icon hidden h-5 w-5" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#eye"></use></svg>
+            </button>
+          </div>
+          <p id="settingsConfirmationPasswordError" class="mt-2 text-sm text-red-700" aria-live="polite" hidden></p>
+        </div>
+        <div id="settingsVerificationFields" hidden class="space-y-3">
+          <p id="settingsVerificationInstruction" class="text-sm text-portal-muted"></p>
+          <div class="verification-code-cells">
+            <input id="settingsVerificationCode" class="verification-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" aria-label="6-digit verification code" aria-describedby="settingsVerificationInstruction settingsVerificationCodeError" />
+            <span class="verification-code-cell" aria-hidden="true"></span>
+            <span class="verification-code-cell" aria-hidden="true"></span>
+            <span class="verification-code-cell" aria-hidden="true"></span>
+            <span class="verification-code-cell" aria-hidden="true"></span>
+            <span class="verification-code-cell" aria-hidden="true"></span>
+            <span class="verification-code-cell" aria-hidden="true"></span>
+          </div>
+          <p id="settingsVerificationCodeError" class="text-sm text-red-700" aria-live="polite" hidden></p>
+          <button id="settingsVerificationResend" type="button" class="verification-link text-sm">Resend code</button>
+          <p id="settingsVerificationDelivery" class="text-sm text-portal-muted" role="status" hidden></p>
+        </div>
+        <p id="settingsConfirmationError" class="text-sm text-red-700" role="alert" hidden></p>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button id="settingsConfirmationCancel" type="button" class="portal-button-secondary text-sm">Cancel</button>
+          <button id="settingsConfirmationSubmit" type="submit" class="portal-button-primary text-sm disabled:cursor-not-allowed disabled:opacity-50"></button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="/scripts/api.js?password-change=20261102&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
+    <script src="/scripts/api.js?customer-security=20261107-v1&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
-    <script src="/scripts/components/client-settings.js?password-change=20261102&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103&credentials=20261107"></script>
+    <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
+    <script src="/scripts/auth/verification-code.js?v=20261107"></script>
+    <script src="/scripts/auth/email-delivery.js?v=20261107"></script>
+    <script src="/scripts/components/customer-settings-confirmation.js?v=20261107-v1"></script>
+    <script src="/scripts/components/client-settings.js?customer-security=20261107-v1&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103&credentials=20261107"></script>
   </body>
 </html>
