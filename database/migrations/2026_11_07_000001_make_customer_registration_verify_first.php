@@ -6,28 +6,61 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const COLUMNS = [
+        'id', 'email', 'registration_edit_token_hash', 'registration_browser_token_hash',
+        'email_verification_token', 'email_verification_expires_at', 'email_verification_last_sent_at',
+        'registration_approved_at', 'registration_completed_at', 'completed_session_id', 'created_at', 'updated_at',
+    ];
+
+    private const INDEXES = [
+        'pending_reg_email_idx' => ['email', false],
+        'pending_reg_edit_token_uq' => ['registration_edit_token_hash', true],
+        'pending_reg_email_token_uq' => ['email_verification_token', true],
+        'pending_registration_created_idx' => ['created_at', false],
+    ];
+
     public function up(): void
     {
         // Only disposable signup attempts are invalidated. Deploy in maintenance.
-        if (Schema::hasTable('pending_customer_registrations')
-            && Schema::hasColumn('pending_customer_registrations', 'completed_session_id')
-            && ! Schema::hasColumn('pending_customer_registrations', 'password_hash')) return;
+        // MySQL can commit the table before failing to create its indexes.
+        if ($this->hasCompleteSchema()) return;
 
         Schema::dropIfExists('pending_customer_registrations');
         Schema::create('pending_customer_registrations', function (Blueprint $table) {
             $table->id();
-            $table->string('email', 150)->index();
-            $table->string('registration_edit_token_hash', 64)->unique();
+            $table->string('email', 150);
+            $table->string('registration_edit_token_hash', 64);
             $table->string('registration_browser_token_hash', 64);
-            $table->string('email_verification_token', 64)->nullable()->unique();
+            $table->string('email_verification_token', 64)->nullable();
             $table->timestamp('email_verification_expires_at')->nullable();
             $table->timestamp('email_verification_last_sent_at')->nullable();
             $table->timestamp('registration_approved_at')->nullable();
             $table->timestamp('registration_completed_at')->nullable();
             $table->unsignedBigInteger('completed_session_id')->nullable();
             $table->timestamps();
-            $table->index('created_at', 'pending_registration_created_idx');
+            foreach (self::INDEXES as $name => [$column, $unique]) {
+                if ($unique) $table->unique($column, $name);
+                else $table->index($column, $name);
+            }
         });
+    }
+
+    private function hasCompleteSchema(): bool
+    {
+        if (! Schema::hasTable('pending_customer_registrations')) return false;
+        $columns = Schema::getColumnListing('pending_customer_registrations');
+        if (count($columns) !== count(self::COLUMNS) || array_diff(self::COLUMNS, $columns)) return false;
+
+        $indexes = Schema::getIndexes('pending_customer_registrations');
+        if (count($indexes) !== count(self::INDEXES) + 1) return false;
+        $primary = array_filter($indexes, fn ($index) => $index['primary'] && $index['columns'] === ['id'] && $index['unique']);
+        if (count($primary) !== 1) return false;
+        $byName = array_column($indexes, null, 'name');
+        foreach (self::INDEXES as $name => [$column, $unique]) {
+            $index = $byName[$name] ?? null;
+            if (! $index || $index['columns'] !== [$column] || $index['unique'] !== $unique) return false;
+        }
+        return true;
     }
 
     public function down(): void
