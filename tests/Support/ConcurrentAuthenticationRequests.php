@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 trait ConcurrentAuthenticationRequests
 {
     // Two real processes must overlap under the writer lock, not merely run in order.
-    private function assertConcurrentAuthenticationRequests(array $firstParameters, array $secondParameters, int $secondStatus, int $pendingCount): void
+    private function assertConcurrentAuthenticationRequests(array $firstParameters, array $secondParameters, int $secondStatus, int $pendingCount, int $expectedAccounts = 1): array
     {
         $payload=json_encode($firstParameters,JSON_THROW_ON_ERROR);
         $secondPayload=json_encode($secondParameters,JSON_THROW_ON_ERROR);
@@ -52,10 +52,16 @@ trait ConcurrentAuthenticationRequests
                     throw new RuntimeException('Worker requires its owned disposable registration database.');
                 }
                 $app = require 'bootstrap/app.php';
+                // Keep route flood counters out of the writer-lock barrier. The
+                // email issuance policy below still uses the shared database cache.
+                $app->beforeBootstrapping(Illuminate\Foundation\Bootstrap\BootProviders::class,
+                    fn ($app) => $app['config']->set('cache.limiter', 'array'));
                 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
-                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+                    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE', 'cache.limiter' => 'array']);
+                Illuminate\Support\Carbon::setTestNow(getenv('BETHLEHEM_TEST_CLOCK'));
+                Illuminate\Support\Facades\Notification::fake();
                 Illuminate\Support\Facades\DB::purge('sqlite');
                 $connection = Illuminate\Support\Facades\DB::connection();
                 if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
@@ -95,10 +101,12 @@ trait ConcurrentAuthenticationRequests
                     server: ['REMOTE_ADDR' => $role === 'first' ? '192.0.2.1' : '192.0.2.2',
                         'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
-                echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy]);
+                echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy,
+                    'link_hash' => Illuminate\Support\Facades\DB::table('pending_customer_registrations')->value('email_verification_token')]);
                 PHP;
             $environment = ['APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => $directory.'/unused-config.php',
-                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => config('cache.default'),
+                'BETHLEHEM_TEST_CLOCK' => now()->toIso8601String(),
                 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array'];
             $first = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'first', $owner, $payload], base_path(), $environment);
             $second = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, 'second', $owner, $secondPayload], base_path(), $environment);
@@ -114,10 +122,12 @@ trait ConcurrentAuthenticationRequests
             $this->assertSame(200, $one['status']);
             $this->assertSame($secondStatus, $two['status']);
             $connection = new \PDO('sqlite:'.$database);
-            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM users')->fetchColumn());
+            $this->assertSame($expectedAccounts, (int) $connection->query('SELECT COUNT(*) FROM users')->fetchColumn());
             $this->assertSame($pendingCount, (int) $connection->query('SELECT COUNT(*) FROM pending_customer_registrations')->fetchColumn());
             $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM login_email_challenges')->fetchColumn());
-            $this->assertSame(1, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+            $this->assertSame($expectedAccounts, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
+            $pending = $connection->query('SELECT email_verification_token, registration_approved_at FROM pending_customer_registrations ORDER BY id')->fetch(\PDO::FETCH_ASSOC);
+            return ['first' => $one, 'second' => $two, 'pending' => $pending];
         } finally {
             $first?->stop(); $second?->stop();
             if ($probe?->transactionLevel()) $probe->rollBack();

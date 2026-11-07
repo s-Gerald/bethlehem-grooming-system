@@ -87,10 +87,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if(error.code==='registration_link_consumed') {
           verificationToken='';successTitle.textContent='Email already verified';
           successMessage.textContent='Return to the device where you started creating your account.';showState('success');
-        } else if(!error.status || error.status>=500 || error.status===429) {
+        } else if(!error.status || error.status>=500 || error.status===429 || error.status===419) {
           showState('link');feedback.textContent=error.message || 'Connection lost. Try again.';feedback.classList.remove('hidden');
         } else {
-          errorTitle.textContent=error.code==='registration_link_expired' ? 'Link expired' : 'Link unavailable';
+          errorTitle.textContent=error.code==='registration_expired' ? 'Registration expired'
+            : error.code==='registration_link_expired' ? 'Link expired' : 'Link unavailable';
           errorMessage.textContent=error.message || 'Return to your signup page to request a new link.';showState('error');
         }
       } finally {verifying=false;button.disabled=false;}

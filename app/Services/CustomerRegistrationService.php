@@ -176,6 +176,7 @@ class CustomerRegistrationService
     private function attemptState(PendingCustomerRegistration $pending): array
     {
         return ['success' => true, 'email' => $pending->email,
+            'server_now' => now()->toIso8601String(),
             'state' => $pending->registration_completed_at ? 'completed' : ($pending->registration_approved_at ? 'approved' : 'pending'),
             'registration_expires_at' => $pending->retentionExpiresAt()->toIso8601String(),
             'verification_link_expires_at' => RegistrationMagicLinkService::expiresAt($pending)?->toIso8601String()];

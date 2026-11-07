@@ -31,22 +31,25 @@ window.SignupVerification = {
     async function check() {
       if (!active || checking || busy || document.hidden) return;
       window.clearTimeout(timer);
-      if (attempt.expiresAt <= Date.now()) { stop(); onExpired(); return; }
       checking = true;
-      const current = attempt.token;
+      const current = attempt;
       try {
-        const result = await API.registrationStatus(current);
-        if (!active || attempt.token !== current) return;
+        const result = await API.registrationStatus(current.token);
+        if (!active || attempt !== current || busy) return;
         if (result.state === "approved" || result.state === "completed") {
           stop();
           await onApproved(result.state);
           return;
         }
         const linkDeadline = Date.parse(result.verification_link_expires_at);
-        if (linkDeadline && linkDeadline <= Date.now()) announce("This link has expired. Resend a link to continue.");
+        const serverNow = Date.parse(result.server_now);
+        if (linkDeadline && serverNow && linkDeadline <= serverNow) {
+          announce("This link has expired. Resend a link to continue.");
+          return;
+        }
         if (receipt && !deliveryFinished) {
           const delivery = await API.emailDeliveryStatus(receipt);
-          if (!active) return;
+          if (!active || attempt !== current || busy) return;
           deliveryChecks++;
           deliveryFinished = ["sent", "failed", "superseded"].includes(delivery.status);
           if (!deliveryFinished && deliveryChecks >= 24) {
@@ -60,7 +63,7 @@ window.SignupVerification = {
           }
         }
       } catch (error) {
-        if (!active || attempt.token !== current) return;
+        if (!active || attempt !== current || busy) return;
         if (["registration_expired", "registration_unavailable"].includes(error.code)) {
           stop();
           onExpired(error.message);

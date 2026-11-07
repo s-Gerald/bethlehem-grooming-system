@@ -121,6 +121,20 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
+  const clockChanged = page();
+  await clockChanged.dispatch('signupForm', 'submit');
+  clockChanged.API.registrationStatus = async () => ({state: 'approved'});
+  clockChanged.advance(2 * 3600000);
+  await flush();
+  assert.deepEqual(clockChanged.calls.at(-1), ['redirect', '/account'], 'Only the server may expire a registration after a device clock change');
+
+  const skewedReload = page({initialStorage: {bethlehem_signup_attempt: JSON.stringify({
+    token: 'a'.repeat(64), expiresAt: 1, resendUntil: 0,
+  })}, resumeState: 'approved'});
+  await flush();
+  assert.match(skewedReload.element('signupDescription').textContent, /Email verified/,
+    'A stored deadline must not discard a server-valid attempt on refresh');
+
   const normal = page();
   await normal.dispatch('signupForm','submit');
   assert.equal(normal.calls.filter(c=>c[0]==='redirect').length,0,'Waiting must stay on original page');
@@ -285,12 +299,41 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(deliveryChecks,24,'Delivery polling must retain the existing bounded feedback window');
   assert.match(delayed.element('signupWaitingMessage').textContent,/delayed/i);
 
+  const staleStatus = page();
+  await staleStatus.dispatch('signupForm','submit');
+  staleStatus.advance(60000);
+  await flush();
+  let returnStatus;
+  staleStatus.API.registrationStatus = () => new Promise(resolve => { returnStatus = resolve; });
+  const oldStatus = staleStatus.windowHandlers.focus();
+  await staleStatus.dispatch('signupResend','click');
+  returnStatus({state:'pending',verification_link_expires_at:'2026-11-07T00:30:00Z',server_now:'2026-11-07T00:31:00Z'});
+  await oldStatus;
+  assert.equal(staleStatus.element('signupWaitingMessage').textContent,'',
+    'A delayed status for the superseded link must not label the new link expired');
+
   const verifier=page({magicLink:true});
   assert.equal(verifier.calls.length,0,'GET must not approve');
   await verifier.dispatch('verifyLinkSubmit','click');
   assert.equal(verifier.element('successTitle').textContent,'Email verified!');
   assert.match(verifier.element('successMessage').textContent,/Return to the device/);
   assert.equal(verifier.calls.filter(c=>c[0]==='finalize'||c[0]==='redirect').length,0);
+
+  for (const [code,title] of [['registration_link_expired','Link expired'],['registration_expired','Registration expired'],
+    ['registration_link_invalid','Link unavailable'],['registration_link_consumed','Email already verified']]) {
+    const failed=page({magicLink:true});
+    failed.API.verifyEmail=async()=>{throw {status:422,code,message:'Server explanation'};};
+    await failed.dispatch('verifyLinkSubmit','click');
+    assert.equal(failed.element(code==='registration_link_consumed'?'successTitle':'errorTitle').textContent,title);
+  }
+  for (const status of [0,419,429,503]) {
+    const temporary=page({magicLink:true});let attempts=0;
+    temporary.API.verifyEmail=async()=>{if(++attempts===1)throw {status,message:'Please retry'};return {registration_approved:true};};
+    await temporary.dispatch('verifyLinkSubmit','click');
+    await temporary.dispatch('verifyLinkSubmit','click');
+    assert.equal(temporary.element('successTitle').textContent,'Email verified!');
+    assert.equal(temporary.element('errorTitle').textContent,'','Temporary errors must not claim the link is unavailable');
+  }
 
   console.log('Verify-first signup frontend regressions passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

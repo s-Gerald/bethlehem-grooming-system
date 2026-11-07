@@ -182,6 +182,17 @@ function createBrowser({
     window,
   };
 
+  const cookies = new Map();
+  context.document.cookieWrites = [];
+  Object.defineProperty(context.document, 'cookie', {
+    get: () => [...cookies.values()].join('; '),
+    set: value => {
+      context.document.cookieWrites.push(value);
+      const pair = value.split(';')[0], name = pair.split('=')[0];
+      if (/Max-Age=0(?:;|$)/i.test(value)) cookies.delete(name);
+      else cookies.set(name, pair);
+    },
+  });
   vm.createContext(context);
   vm.runInContext(apiSource, context, { filename: "scripts/api.js" });
 
@@ -995,8 +1006,8 @@ async function testIndependentBrowserContextsInBothLoginOrders() {
         assert.equal(calls.filter(url => url.endsWith('/me')).length, reads, 'Navigation restores owned identity without another /me');
         assert.equal(navigation.sidebar().staffRoleLabel, role === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
         const otherTab = profile.page(new MemoryStorage(), '/admin/services');
-        if (browser === normal) assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role);
-        else await assert.rejects(otherTab.API.getStaffIdentity(), /Session ended/);
+        assert.equal((await otherTab.API.getStaffIdentity()).user.staff_subrole, role,
+          'Persistent and temporary logins both select one account throughout their own profile');
       }
       await browser.API.getGroomingCatalogue();
       assert.deepEqual(browser.replacements, []);
@@ -2659,14 +2670,14 @@ async function testInitialCustomerBrowserSessionMarker() {
   const browser = createBrowser({ fetchImpl: async url => jsonResponse(200,
     url.endsWith('/logout') ? {success: true} : { token: "session-token", user }) });
   await browser.API.finalizeRegistration({}, "registration-attempt");
-  assert.equal(browser.document.cookie, "bethlehem_customer_initial_session_7=1; Path=/; SameSite=Lax");
-  assert.doesNotMatch(browser.document.cookie, /Expires|Max-Age/i, "The greeting marker must end with the browser session.");
+  assert.equal(browser.document.cookie, "bethlehem_customer_initial_session_7=1");
+  assert.doesNotMatch(browser.document.cookieWrites.find(value=>value.startsWith('bethlehem_customer_initial_session_')), /Expires|Max-Age/i, "The greeting marker must end with the browser session.");
   await browser.API.logout("customer");
   await browser.API.signIn("customer@example.com", "existing-password");
   assert.match(browser.document.cookie, /initial_session_7=1/, "Same-session sign-in must not turn the initial greeting into Welcome back.");
   const returning = createBrowser({ fetchImpl: async () => jsonResponse(200, { token: "later-token", user }) });
   await returning.API.signIn("customer@example.com", "existing-password");
-  assert.equal(returning.document.cookie, undefined, "Normal returning sign-in must not create an initial-session marker.");
+  assert.doesNotMatch(returning.document.cookie, /initial_session_/, "Normal returning sign-in must not create an initial-session marker.");
 }
 
 async function testStaffSetupUsernameAndResetApiContracts() {
@@ -2874,7 +2885,85 @@ async function testLegacyCredentialsLeaveBrowserStorageImmediately() {
   }
 }
 
+async function testScopedSelectionAndObsoleteLoginChallenges() {
+  let legacyRequest;
+  const legacy = createBrowser({local:{admin_token:'900|cookie',user_role:'admin'},
+    fetchImpl:async (_url,options)=>{
+      legacyRequest = {authorization: options.headers.Authorization, cookies: legacy.document.cookie};
+      return jsonResponse(200,{success:true});
+    }});
+  await legacy.API.logout();
+  assert.equal(legacyRequest.authorization,'Bearer 900|cookie');
+  assert.doesNotMatch(legacyRequest.cookies,/bethlehem_session_selection=/,
+    'Logout must still use the legacy cookie for a session issued before this release');
+
+  const browser = createBrowser({fetchImpl: async (url) => jsonResponse(200, url.endsWith('/sign-in')
+    ? {token:'901|cookie', session_transport:'scoped', user:{role:'admin',user_id:9}}
+    : {success:true})});
+  await browser.API.signIn('admin','password');
+  assert.match(browser.document.cookie, /bethlehem_session_selection=901(?:;|$)/);
+  await browser.API.logout();
+  assert.match(browser.document.cookie, /bethlehem_session_selection=0(?:;|$)/, 'Logout must prevent navigation from adopting an older cookie');
+
+  let firstResponse;
+  const racing = createBrowser({fetchImpl: async (_url, options) => {
+    const body = JSON.parse(options.body);
+    if (body.identifier === 'first') return new Promise(resolve => {firstResponse=resolve;});
+    return jsonResponse(202,{requires_login_confirmation:true,login_poll_token:'second-poll',email:'second@example.test'});
+  }});
+  const first = racing.API.signIn('first','password').catch(error=>error);
+  await racing.API.signIn('second','password');
+  firstResponse(jsonResponse(202,{requires_login_confirmation:true,login_poll_token:'first-poll',email:'first@example.test'}));
+  assert.match((await first).message,/changed/);
+  assert.equal(racing.API.getPendingLoginConfirmationEmail(),'second@example.test');
+
+  let queued, confirmations=0;
+  const waiting = createBrowser({locks:{request(_name,action){return new Promise(resolve=>{queued=()=>resolve(action());});}},
+    session:{pending_login_poll_token:'old-poll'},
+    fetchImpl:async()=>{confirmations++;return jsonResponse(200,{});}});
+  const confirmation=waiting.API.confirmLoginCode('123456').catch(error=>error);
+  waiting.sessionStorage.setItem('pending_login_poll_token','new-poll');
+  queued();
+  await confirmation;
+  assert.equal(confirmations,0,'Queued code must never be submitted against a different challenge');
+
+  let setupResponse;
+  const setup = createBrowser({fetchImpl: async (url) => url.endsWith('/staff/password-setup/complete')
+    ? new Promise(resolve=>{setupResponse=resolve;})
+    : jsonResponse(200,{token:'903|cookie',user:{role:'customer'}})});
+  const completing=setup.API.completeStaffPasswordSetup('setup-token','password','password').catch(error=>error);
+  await setup.API.signIn('customer','password');
+  setupResponse(jsonResponse(200,{completed_setup:true,token:'902|cookie',user:{role:'staff'}}));
+  assert.match((await completing).message,/changed/);
+  assert.equal(setup.API.getCustomerToken(),'903|cookie');
+}
+
+async function testAllSameProfileRememberCombinationsUseOneCurrentAccount() {
+  for (const firstRemember of [false, true]) for (const secondRemember of [false, true]) {
+    let id = 800;
+    const profile = createBrowserProfile(async (url, options) => {
+      if (url.endsWith('/sign-in')) {
+        const body = JSON.parse(options.body);
+        return jsonResponse(200, {token: `${++id}|cookie`, remember_me: body.remember,
+          user: {role: body.identifier === 'first' ? 'customer' : 'staff', user_id: id}});
+      }
+      return jsonResponse(200, {});
+    });
+    const first = profile.page();
+    await first.API.signIn('first', 'password', firstRemember);
+    const second = profile.page();
+    await second.API.signIn('second', 'password', secondRemember);
+    await new Promise(resolve => setImmediate(resolve));
+    for (const tab of [first, second, profile.page()]) {
+      assert.equal(tab.API.getCustomerToken(), null);
+      assert.equal(tab.API.getAdminToken(), '802|cookie', `Current account must reach every tab (${firstRemember}/${secondRemember})`);
+    }
+  }
+}
+
 (async () => {
+  await testScopedSelectionAndObsoleteLoginChallenges();
+  await testAllSameProfileRememberCombinationsUseOneCurrentAccount();
   await testRememberedStaffSignInValidatesExistingSessionWithoutRestoration();
   await testRememberedStaffFailuresKeepManualSignInAvailable();
   await testRememberedStaffSkipsNonpersistentAndBlockedSessions();

@@ -1,6 +1,45 @@
 # Single active session security
 
-Successful authentication now replaces earlier sessions for the same user ID across Admin, Customer, Grooming Receptionist, Clinic Receptionist, and Veterinarian accounts. Password checks and pending/failed/expired email codes do not replace sessions. Registration verification and staff password setup use the same session issuer.
+Successful authentication now replaces earlier sessions for the same user ID across Admin, Customer, Grooming Receptionist, Clinic Receptionist, and Veterinarian accounts. Password checks and pending/failed/expired email codes do not replace sessions. Registration finalization and staff password setup use the same session issuer; email verification alone never issues a session.
+
+## Reliability follow-up — November 7, 2026
+
+The following findings were reproduced locally; they are not a claim that the reported production incident was reproduced:
+
+- Session status unnecessarily rewrote the shared authentication cookie. A delayed response could overwrite a later account's cookie even when JavaScript correctly ignored its body.
+- Remembered restoration could fall through from an active admin cookie to a leftover customer's remembered credential.
+- Logout accepted a remembered credential's historical session association, allowing a predecessor reference to revoke the restored session.
+- Temporary sessions in separate normal tabs had separate current-account references. Switching accounts did not reliably supersede the older temporary tab.
+- Signup recovery and waiting trusted the device clock to discard/expire an attempt. A clock jump could invalidate a server-valid registration in the UI. An expired registration was also labelled as an unavailable link, and an HTTP 419 was treated as terminal.
+- Overlapping password requests could install an older OTP challenge; a queued OTP confirmation could read a different challenge at execution time; delayed staff setup could install its session over a newer login.
+
+The account-wide session issuer and revocation policy are unchanged. New browser sessions use the same HttpOnly credentials under names suffixed with their public session ID. A public selector cookie supports protected HTML navigation; it grants no authority without the matching secret cookie. Delayed issuance/logout responses cannot overwrite/delete a newer session's differently named cookie. Only older cookie names present in an issuance request are cleaned up. Existing Secure, host-only, SameSite, path, persistence and expiry policies remain. Legacy clients remain supported; cookie-authenticated status and active-session recovery no longer rewrite cookies.
+
+`bethlehem.auth.current` is the nonsecret profile-wide reference for both persistent and temporary sessions. It synchronizes normal tabs without sharing state with incognito or other profiles. Temporary authentication still requires a session-only HttpOnly cookie. Signing out of a scoped session records a public selector tombstone that blocks obsolete cookie restoration. Legacy sessions can still send their original cookies for sign-out. Logout using only a remembered credential must match the device's current session under the account lock. Restore retains the immediate predecessor credential in the browser for the existing bounded retry window if the response body is lost after its cookies arrive. Existing Web Locks, request revision checks, scoped logout feedback and server-side account locks remain in use. Initiating an OTP challenge preserves the existing authenticated session until confirmation succeeds.
+
+### Changed areas
+
+- `app/Http/Middleware/UseAccountSessionCookie.php`: cookie ownership, response ordering, selector and logout binding.
+- `app/Services/RememberedDeviceService.php`: reject cross-account remembered fallback and enforce logout ownership after restoration.
+- `app/Services/CustomerRegistrationService.php`: include server time in existing attempt status.
+- `scripts/api.js`: one current profile account, stale-operation guards, transport metadata, correct temporary first-registration session.
+- `scripts/auth/client/{signup,signup-context,signup-verification,verify-email}.js`: server-authoritative expiry, refresh recovery and accurate retry/error states, including stale status after resend.
+- Existing backend/frontend regression files and `tests/Support/ConcurrentAuthenticationRequests.php`: independent cookie jars, response ordering, clock skew, real overlapping resend/verification/finalization and all existing security behavior.
+- Existing HTML consumers under `pages/` and the two protected `resources/views/admin/` documents: authentication script URL version only (`auth-reliability=20261107`), including matching preloads. No visual/layout changes.
+
+### Deployment for this follow-up
+
+No new migration, dependency, deadline extension, environment variable, queue or cron job is required. The previous verify-first registration migration remains a prerequisite; see [customer signup deployment](customer-signup-verification.md). Deploy the PHP changes and the versioned raw JavaScript/HTML together through the existing release process, refresh PHP opcode caches as that process requires, and reload already-open pages. These scripts are served directly, not bundled by Vite; no additional asset compilation is required for this follow-up. Do not flush authentication caches or recreate keys. The older migration/release instructions below describe earlier changes, not an additional migration introduced here.
+
+Read-only inspection in the user's authenticated Brave hPanel confirmed web PHP **8.3** and existing once-per-minute scheduler/queue commands using `/opt/alt/php83/usr/bin/php`, with the Laravel root at `~/domains/bethlehem-ac.com/bethlehem-app`. The worker runs `queue:work database --stop-when-empty --max-time=50 --timeout=45 --tries=3 --sleep=1`; the other command runs `schedule:run`. The queue output panel was empty. No production setting, file, account or email was changed.
+
+Effective Laravel config cache, mail delivery mode, link lifetime overrides, database engine/locking and live cross-device behavior were **not** verified in production. Before release, use the selected-value diagnostic in [Hostinger email authentication](hostinger-email-auth.md) with the observed PHP binary from that Laravel root. Check `REGISTRATION_MAGIC_LINK_MINUTES`/its effective cached value, shared persistent cache and database queue selection; a lower configured lifetime plus queued delivery can leave little time, but this has not been established as this site's cause. Preserve the default 30-minute link and distinct 60-minute attempt deadlines. Configuration changes are unnecessary unless that read-only check demonstrates a mismatch; rebuild cached configuration only through the normal authorized deployment procedure.
+
+### Verification for this follow-up
+
+The final seven-suite backend run passed **291 tests / 5,021 assertions** on PHP 8.4.26 with isolated test databases. Frontend authentication/session, signup verification, inactivity, email delivery and admin navigation regressions passed. The concurrency fixtures still use separate processes. The exact cooldown test freezes the worker clock, and the password-change fixture disables Sanctum's incidental timestamp write so the request can reach the SQLite transaction barrier.
+
+Coverage includes no-cookie email approval from another IP/browser, no account/session on that device, original-browser completion, fresh-link success, separate error outcomes, refresh recovery, superseded jobs, duplicate/lost-response finalization, all roles, remembered/temporary combinations, same-account replacement, unsuccessful OTP, stale responses/logout, protected HTML and CSRF. Live Hostinger mail delivery and actual mobile/browser interoperability still require release smoke testing; local concurrency evidence uses separate PHP processes and SQLite.
 
 ## Enforcement and browser behavior
 

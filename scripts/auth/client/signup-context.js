@@ -4,8 +4,9 @@ window.SignupContext = (() => {
   let active = null;
   try {
     const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
-    if (/^[a-f0-9]{64}$/.test(saved?.token) && saved.expiresAt > Date.now()
-        && saved.expiresAt <= Date.now() + 3600000) active = saved;
+    // The server decides expiry. A device clock change must not discard the
+    // credential needed to resume an otherwise valid registration.
+    if (/^[a-f0-9]{64}$/.test(saved?.token)) active = saved;
     else sessionStorage.removeItem(key);
     // Remove obsolete signup drafts from earlier deployments.
     for (const old of ['pendingSignupDetails', 'pendingVerificationEmail', 'pendingVerificationPhone',

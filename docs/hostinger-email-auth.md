@@ -82,6 +82,11 @@ actual Laravel directory containing `artisan`; do not infer its path from the UR
    $cache = config('cache.stores.'.config('cache.default'), []);
    echo json_encode([
        'configuration_cached' => $app->configurationIsCached(),
+       'registration_magic_link_configured_minutes' => config('authentication.magic_link_minutes'),
+       'registration_magic_link_effective_minutes' => App\Services\RegistrationMagicLinkService::lifetimeMinutes(),
+       'pending_registration_retention_minutes' => 60,
+       'app_timezone' => config('app.timezone'),
+       'server_now' => now()->toIso8601String(),
        'auth_delivery' => config('mail.authentication.delivery'),
        'queue_default' => config('queue.default'),
        'database_queue_driver' => $queue['driver'] ?? null,

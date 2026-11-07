@@ -60,6 +60,8 @@ var API = (() => {
   const AUTH_SESSION_STATE_KEY = "bethlehem.auth.session_state";
   const SIGNOUT_REASON_KEY = "bethlehem.auth.signout_reason";
   const AUTH_ACCOUNT_KEY = "bethlehem.auth.account_id";
+  const AUTH_CURRENT_KEY = "bethlehem.auth.current";
+  let signInAttempt = 0;
   const LOGOUT_PENDING_KEY = "bethlehem.auth.logout_pending";
   const RESTORE_BLOCK_KEY = "bethlehem.auth.signed_out";
   let logoutPending = null;
@@ -612,6 +614,17 @@ var API = (() => {
   }
 
   function getAuthSession() {
+    const shared = safeStorageGet(localStorage, AUTH_CURRENT_KEY);
+    if (shared) {
+      try {
+        const current = JSON.parse(shared);
+        if (!current) return null;
+        if (current.token && (current.role === 'customer' || isAdminRole(current.role))) {
+          return {...current, tokenKey: isAdminRole(current.role) ? ADMIN_TOKEN_KEY : CUSTOMER_TOKEN_KEY};
+        }
+      } catch { return null; }
+      return null;
+    }
     const persistent = readAuthSessionFrom(localStorage, true);
     const temporary = readAuthSessionFrom(sessionStorage, false);
 
@@ -622,7 +635,7 @@ var API = (() => {
     return persistent || temporary;
   }
 
-  function clearAuthStorage(preserveWaiters = false) {
+  function clearAuthStorage(preserveWaiters = false, shared = true, preserveLogin = false) {
     legacyCredentials.clear();
     customerWaitingForInteraction = false;
     observedSession = null;
@@ -639,13 +652,18 @@ var API = (() => {
     if (!preserveWaiters) sessionWaiters.splice(0).forEach(({ reject }) => reject(new Error("Session ended.")));
     pausedSessionReads.clear();
     clearCustomerCache();
-    safeStorageRemove(localStorage, CUSTOMER_CACHE_SESSION_KEY);
+    if (shared) safeStorageRemove(localStorage, CUSTOMER_CACHE_SESSION_KEY);
     safeStorageRemove(sessionStorage, CUSTOMER_CACHE_SESSION_KEY);
     AUTH_STORAGE_KEYS.forEach((key) => {
-      safeStorageRemove(localStorage, key);
+      if (shared) safeStorageRemove(localStorage, key);
       safeStorageRemove(sessionStorage, key);
     });
-    clearPendingLoginConfirmation();
+    if (shared) {
+      try { localStorage.setItem(AUTH_CURRENT_KEY, 'null'); } catch { /* Legacy storage remains available. */ }
+      // Existing legacy sessions must still send their original cookie on logout.
+      if (/(?:^|;\s*)bethlehem_session_selection=/.test(document.cookie)) selectSessionCookie('0', true);
+    }
+    if (!preserveLogin) clearPendingLoginConfirmation();
     safeStorageRemove(sessionStorage, 'bethlehem.security.alert');
     pauseInactivityTracking();
   }
@@ -666,7 +684,7 @@ var API = (() => {
       throw new Error("The server did not return a valid login confirmation.");
     }
 
-    clearAuthStorage();
+    clearPendingLoginConfirmation();
     try {
       sessionStorage.setItem(LOGIN_POLL_TOKEN_KEY, pollToken);
       sessionStorage.setItem(LOGIN_CONFIRMATION_EMAIL_KEY, email);
@@ -684,7 +702,11 @@ var API = (() => {
     return safeStorageGet(sessionStorage, LOGIN_CONFIRMATION_EMAIL_KEY) || "";
   }
 
-  function setAuthSession(token, role, remember = false, accountId = null, restored = false) {
+  function selectSessionCookie(id, persistent) {
+    document.cookie = `bethlehem_session_selection=${id}; Path=${appBasePath() || ''}/; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}${id === '' ? '; Max-Age=0' : persistent ? '; Max-Age=1209600' : ''}`;
+  }
+
+  function setAuthSession(token, role, remember = false, accountId = null, restored = false, transport = null) {
     passwordChangeConfirmed = false;
     if (!token || (role !== "customer" && !isAdminRole(role))) {
       throw new Error("The server returned an invalid authentication session.");
@@ -702,6 +724,15 @@ var API = (() => {
       if (accountId) storage.setItem(AUTH_ACCOUNT_KEY, String(accountId));
       storage.setItem(tokenKey, token);
       storage.setItem(USER_ROLE_KEY, role);
+      // Atomic profile-wide selection contains only the public reference. A
+      // temporary login still needs its session-only HttpOnly cookie to work.
+      localStorage.setItem(AUTH_CURRENT_KEY, JSON.stringify({token, role, persistent,
+        accountId: accountId ? String(accountId) : null, transport}));
+      if (transport === 'scoped') {
+        const id = /^(\d+)\|cookie$/.exec(token)?.[1];
+        if (!id) throw new Error('Invalid session reference.');
+        selectSessionCookie(id, persistent);
+      } else selectSessionCookie('', false);
     } catch (error) {
       // Do not leave a half-written token without its matching role.
       clearAuthStorage();
@@ -765,6 +796,10 @@ var API = (() => {
   }
 
   function clearUserRole() {
+    if (getAuthSession()) {
+      clearAuthStorage();
+      return;
+    }
     safeStorageRemove(localStorage, USER_ROLE_KEY);
     safeStorageRemove(sessionStorage, USER_ROLE_KEY);
   }
@@ -910,7 +945,7 @@ var API = (() => {
   function invalidateSession(role = null, reason = "expired") {
     const session = getAuthSession();
     const resolvedRole = session?.role ?? role ?? "customer";
-    clearAuthStorage();
+    clearAuthStorage(false, true, true);
     if (resolvedRole === "customer") clearBookingDraft();
     notifyLogout(resolvedRole, reason, session);
     rememberSignoutReason(reason);
@@ -945,9 +980,10 @@ var API = (() => {
       if (isProtectedClientPage()) concealCustomerSession();
     }
 
-    clearAuthStorage();
+    const pendingLogin = hasPendingLoginConfirmation();
+    clearAuthStorage(false, true, true);
     if (session.role === "customer") clearBookingDraft();
-    rememberSignoutReason(event.reason);
+    if (!pendingLogin) rememberSignoutReason(event.reason);
 
     if (isAdminPage() || isProtectedClientPage()) {
       redirectToSignIn();
@@ -1009,7 +1045,7 @@ var API = (() => {
       return;
     }
     try {
-      const data = await networkRequest('POST', '/logout', null, pending.token, {suppressAuthRedirect: true});
+      const data = await networkRequest('POST', '/logout', null, pending.token, {suppressAuthRedirect: true, transport: pending.transport});
       if (data.success !== true) throw new Error('Unable to confirm sign-out. Try again.');
       clearPendingLogout(pending);
     } catch (error) {
@@ -1181,7 +1217,7 @@ var API = (() => {
         if (!unchanged() || restorationIsBlocked()) { obsolete = true; return false; }
         if (!restored.token || restored.user?.role !== 'customer'
           || (accountId && String(restored.user.user_id) !== String(accountId))) throw verificationError();
-        if (token !== restored.token) setAuthSession(restored.token, 'customer', restored.remember_me === true, restored.user.user_id, true);
+        if (token !== restored.token) setAuthSession(restored.token, 'customer', restored.remember_me === true, restored.user.user_id, true, restored.session_transport);
         token = restored.token;
         revision = sessionRevision;
         initialToken = token;
@@ -1771,6 +1807,30 @@ var API = (() => {
     observedSession = getAuthSession();
     window.addEventListener("storage", (event) => {
       if (event.storageArea !== localStorage) return;
+      if (event.key === AUTH_CURRENT_KEY) {
+        const previous = observedSession, current = getAuthSession();
+        if (current && current.token !== previous?.token) {
+          if (rememberedSignInCheck && current.role === 'customer'
+            && current.accountId === rememberedSignInCheck.accountId) {
+            observedSession = current;
+            clearCustomerCache();
+            return; // The queued check verifies this same account's new reference.
+          }
+          clearAuthStorage(false, false);
+          observedSession = current;
+          restoreBlocked = false;
+          safeStorageRemove(sessionStorage, RESTORE_BLOCK_KEY);
+          if (previous?.accountId !== current.accountId) clearBookingDraft();
+          if (isAdminPage() || isProtectedClientPage()) {
+            if (customerVerificationEnabled) concealCustomerSession();
+            if ((isAdminPage() && !isAdminRole(current.role)) || (isProtectedClientPage() && current.role !== 'customer')) redirectToSignIn();
+            else window.location.reload?.();
+          }
+        }
+        return;
+      }
+      // The atomic selection supersedes the intermediate legacy key writes.
+      if (AUTH_STORAGE_KEYS.includes(event.key) && safeStorageGet(localStorage, AUTH_CURRENT_KEY)) return;
       if (event.key === LOGOUT_PENDING_KEY) {
         try { logoutPending = event.newValue ? JSON.parse(event.newValue) : null; } catch { /* Ignore malformed signals. */ }
       }
@@ -1970,6 +2030,11 @@ var API = (() => {
       Accept: "application/json",
       "X-Requested-With": "XMLHttpRequest",
     };
+    const transport = requestOptions.transport || getAuthSession()?.transport;
+    if (transport === 'scoped' || ['/email/login/confirm', '/register/finalize', '/staff/password-setup/complete'].includes(endpoint)) {
+      headers['X-Session-Transport'] = 'scoped';
+      if (endpoint === '/session/restore' && getAuthSession()?.token) headers['X-Session-Reference'] = getAuthSession().token;
+    }
 
     if (!isFormData) {
       headers["Content-Type"] = "application/json";
@@ -2190,6 +2255,7 @@ var API = (() => {
   }
 
   async function signIn(identifier, password, remember = false) {
+    const attempt = ++signInAttempt;
     // POST /api/sign-in
     // Accepts email, local/international mobile phone, or username. Saves to the
     // correct public-reference key based on role. The backend owns cookie
@@ -2208,7 +2274,7 @@ var API = (() => {
       login_poll_token: safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY) || undefined,
     });
 
-    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
+    if (attempt !== signInAttempt || revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
       throw new Error('Sign-in changed while loading. Please try again.');
     }
 
@@ -2226,7 +2292,7 @@ var API = (() => {
 
     const role = data?.user?.role;
     if (role === "customer") clearBookingDraft();
-    setAuthSession(data?.token, role, data?.remember_me === true || (data?.remember_me === undefined && remember), data?.user?.user_id);
+    setAuthSession(data?.token, role, data?.remember_me === true || (data?.remember_me === undefined && remember), data?.user?.user_id, false, data?.session_transport);
     if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
     return data;
   }
@@ -2254,6 +2320,7 @@ var API = (() => {
   }
 
   async function completeStaffPasswordSetup(token, password, passwordConfirmation, username = null) {
+    const revision = sessionRevision, previousToken = getAuthSession()?.token;
     const data = await request("POST", "/staff/password-setup/complete", {
       token,
       username,
@@ -2261,8 +2328,12 @@ var API = (() => {
       password_confirmation: passwordConfirmation,
     });
 
+    if (revision !== sessionRevision || previousToken !== getAuthSession()?.token) {
+      throw new Error('Sign-in changed while completing setup. Please try again.');
+    }
+
     if (data?.completed_setup && data?.token && data?.user?.role === "staff") {
-      setAuthSession(data.token, "staff", true);
+      setAuthSession(data.token, "staff", true, data.user.user_id, false, data.session_transport);
     }
 
     return data;
@@ -2302,7 +2373,7 @@ var API = (() => {
         document.cookie = `bethlehem_customer_initial_session_${encodeURIComponent(data.user.user_id)}=1; Path=/; SameSite=Lax`;
       }
       clearBookingDraft();
-      setAuthSession(data.token, "customer", true);
+      setAuthSession(data.token, "customer", data.remember_me === true, data.user.user_id, false, data.session_transport);
       rememberCustomerProfileName(data.user.first_name, data.user.last_name);
     }
   }
@@ -2355,13 +2426,13 @@ var API = (() => {
   }
 
   async function confirmLoginCode(code) {
-    return withAuthTransition(() => confirmLoginCodeUnlocked(code));
+    const pollToken = safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY);
+    return withAuthTransition(() => confirmLoginCodeUnlocked(code, pollToken));
   }
 
-  async function confirmLoginCodeUnlocked(code) {
-    const pollToken = safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY);
+  async function confirmLoginCodeUnlocked(code, pollToken) {
     const revision = sessionRevision, previousToken = getAuthSession()?.token;
-    if (!pollToken) {
+    if (!pollToken || pollToken !== safeStorageGet(sessionStorage, LOGIN_POLL_TOKEN_KEY)) {
       throw new Error("This browser no longer has a pending sign-in. Please sign in again.");
     }
 
@@ -2387,6 +2458,8 @@ var API = (() => {
         role,
         data?.remember_me === true,
         data.user.user_id,
+        false,
+        data.session_transport,
       );
       if (role === "customer") rememberCustomerProfileName(data.user.first_name, data.user.last_name);
 
@@ -2429,13 +2502,13 @@ var API = (() => {
       ?? (isAdminRole(role) ? rawAdminToken() : rawCustomerToken());
 
     const revoke = () => networkRequest("POST", "/logout", null, token, {
-      suppressAuthRedirect: true, keepalive: logoutOptions.keepalive === true,
+      suppressAuthRedirect: true, keepalive: logoutOptions.keepalive === true, transport: currentSession?.transport,
     });
     // A nonsecret tombstone survives failed requests and prevents silent restoration.
     restoreBlocked = true;
     logoutPending = currentSession ? null : pendingLogout();
     logoutPending ||= { id: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
-      token: /^\d+\|cookie$/.test(token || '') ? token : null, role: resolvedRole, at: Date.now() };
+      token: /^\d+\|cookie$/.test(token || '') ? token : null, role: resolvedRole, transport: currentSession?.transport, at: Date.now() };
     const pendingMarker = logoutPending;
     for (const storage of [localStorage, sessionStorage]) {
       try { storage.setItem(RESTORE_BLOCK_KEY, '1'); storage.setItem(LOGOUT_PENDING_KEY, JSON.stringify(logoutPending)); } catch { /* Memory still blocks this document. */ }

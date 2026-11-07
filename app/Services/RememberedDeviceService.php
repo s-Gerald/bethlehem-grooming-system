@@ -78,21 +78,17 @@ class RememberedDeviceService
 
     public function logout(Request $request)
     {
-        $raw = $request->bearerToken() ?: $request->cookie(UseAccountSessionCookie::NAME);
+        $bearer = $request->bearerToken();
+        $raw = $bearer ?: $request->cookie(UseAccountSessionCookie::NAME);
         $token = is_string($raw) ? PersonalAccessToken::findToken($raw) : null;
         $parts = $this->credential($request);
         $credential = $parts && Schema::hasTable('remembered_device_credentials')
             ? DB::table('remembered_device_credentials')->where('selector', $parts[0])->first() : null;
         $device = $credential && hash_equals($credential->validator_hash, hash('sha256', $parts[1]))
             ? RememberedDevice::find($credential->remembered_device_id) : null;
-        $expectedId = $request->attributes->get('public_session_id');
-        $sameDeviceSession = $device && $expectedId && DB::table('remembered_device_credentials')
-            ->where('remembered_device_id', $device->getKey())->where('session_token_id', $expectedId)->exists();
-        if ($expectedId && ! $token && ! $sameDeviceSession) {
-            return response()->json(['success' => false, 'code' => 'session_changed', 'message' => 'Session changed. Please sign in again.'], 401);
-        }
+        $expectedId = $request->attributes->get('public_session_id') ?? $token?->getKey();
         $userId = $token?->tokenable_id ?? $device?->user_id;
-        return DB::transaction(function () use ($request, $token, $device, $userId) {
+        return DB::transaction(function () use ($request, $token, $device, $credential, $userId, $expectedId, $bearer) {
             if ($userId) User::whereKey($userId)->lockForUpdate()->first();
             $token = $token ? PersonalAccessToken::whereKey($token->getKey())->lockForUpdate()->first() : null;
             if ($token?->replaced_at) {
@@ -103,10 +99,20 @@ class RememberedDeviceService
                 RememberedDevice::where('user_id', $userId)->where('session_token_id', $token->getKey())
                     ->whereNull('revoked_at')->update(['revoked_at' => now()]);
             }
-            if ($device && (! $token || ((int) $device->user_id === (int) $userId && (int) $device->session_token_id === $token->getKey()))) {
-                $device = RememberedDevice::whereKey($device->getKey())->lockForUpdate()->first();
-                $device?->update(['revoked_at' => now()]);
-                if (! $token && $device) PersonalAccessToken::whereKey($device->session_token_id)->delete();
+            if (! $token) {
+                $currentDevice = $device ? RememberedDevice::whereKey($device->getKey())->lockForUpdate()->first() : null;
+                $credentialSessionId = $currentDevice ? (int) $credential->session_token_id : null;
+                $ownsCurrentSession = $currentDevice && ! $credential->consumed_at
+                    && (int) $currentDevice->session_token_id === $credentialSessionId
+                    && ($expectedId ? (int) $expectedId === $credentialSessionId : ! $bearer);
+                if (! $ownsCurrentSession && ($expectedId || $bearer || $currentDevice)) {
+                    return response()->json(['success' => false, 'code' => 'session_changed',
+                        'message' => 'Session changed. Please sign in again.'], 401);
+                }
+                if ($ownsCurrentSession) {
+                    $currentDevice->update(['revoked_at' => now()]);
+                    PersonalAccessToken::whereKey($credentialSessionId)->delete();
+                }
             }
             $token?->delete();
             return response()->json(['success' => true, 'message' => 'Logged out successfully'])
@@ -134,6 +140,12 @@ class RememberedDeviceService
                 return $this->rejected();
             }
             $policy = app(AccountSessionService::class);
+            $active = $request->cookie(UseAccountSessionCookie::NAME);
+            $activeToken = is_string($active) ? PersonalAccessToken::findToken($active) : null;
+            // A leftover remembered cookie cannot take over another account's
+            // current browser session, even when that session is locked/expired.
+            if ($activeToken && ((int) $activeToken->tokenable_id !== (int) $user->getKey()
+                || $activeToken->tokenable_type !== $user->getMorphClass())) return $this->rejected();
             $token = $user->tokens()->whereKey($device->session_token_id)->first();
             $lastActivity = $token?->last_interaction_at
                 ? $device->last_used_at->copy()->max(Carbon::parse($token->last_interaction_at)) : $device->last_used_at;

@@ -145,6 +145,170 @@ class IndependentAuthenticationSessionsTest extends TestCase
         return $this->json($method, $uri, $data, ['Authorization' => 'Bearer '.$token]);
     }
 
+    public function test_cookie_authenticated_status_does_not_rewrite_a_newer_browser_cookie(): void
+    {
+        $customer = $this->login('customer');
+        $status = $this->requestAs($customer, 'GET', '/api/session')->assertOk();
+        $admin = $this->login('admin');
+        // Applying an older read response after login must have no cookie mutation.
+        $status->assertCookieMissing('bethlehem_account_session');
+        $this->requestAs($admin, 'GET', '/api/me')->assertOk()->assertJsonPath('user.role', 'admin');
+        $this->requestAs($customer, 'GET', '/api/me')->assertOk()->assertJsonPath('user.role', 'customer');
+    }
+
+    private function scopedRequest(array $cookies, string $method, string $uri, array $data = [], ?string $reference = null)
+    {
+        $this->app['auth']->forgetGuards();
+        $server = ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+            'HTTP_X_SESSION_TRANSPORT' => 'scoped', 'REMOTE_ADDR' => '192.0.2.15'];
+        if ($reference) $server[$uri === '/api/session/restore' ? 'HTTP_X_SESSION_REFERENCE' : 'HTTP_AUTHORIZATION'] =
+            $uri === '/api/session/restore' ? $reference : 'Bearer '.$reference;
+        return $this->call($method, $uri, $data, $cookies, [], $server);
+    }
+
+    private function scopedLogin(string $role, bool $remember = true, array $cookies = []): array
+    {
+        $pending = $this->scopedRequest($cookies, 'POST', '/api/sign-in', [
+            'identifier' => "$role@example.test", 'password' => 'SessionTest!123', 'remember' => $remember,
+        ])->assertAccepted();
+        $this->assertCount(0, $pending->headers->getCookies());
+        $user = User::where('email', "$role@example.test")->firstOrFail();
+        $confirmed = $this->scopedRequest($cookies, 'POST', '/api/email/login/confirm', [
+            'poll_token' => $pending->json('login_poll_token'),
+            'code' => Notification::sent($user, ConfirmLoginNotification::class)->last()->code,
+        ])->assertOk()->assertJsonPath('session_transport', 'scoped');
+        $id = explode('|', $confirmed->json('token'))[0];
+        $session = $confirmed->getCookie('bethlehem_account_session_'.$id, false);
+        $this->assertNotNull($session);
+        $this->assertSame($id.'|cookie', $confirmed->json('token'));
+        $this->assertTrue($session->isHttpOnly());
+        $this->assertSame('/', $session->getPath());
+        $this->assertSame('lax', $session->getSameSite());
+        $this->assertSame(! $remember, $session->getExpiresTime() === 0);
+        $confirmed->assertCookieMissing('bethlehem_account_session')->assertCookieMissing('bethlehem_remembered_device');
+        foreach ($confirmed->headers->getCookies() as $cookie) {
+            if ($cookie->getExpiresTime() && $cookie->getExpiresTime() < time()) unset($cookies[$cookie->getName()]);
+            else $cookies[$cookie->getName()] = $cookie->getValue();
+        }
+        $cookies['bethlehem_session_selection'] = $id;
+        return [$confirmed->json('token'), $cookies];
+    }
+
+    public function test_scoped_profiles_keep_different_roles_independent_and_replace_only_the_same_account(): void
+    {
+        $profiles = [];
+        foreach (['customer', 'admin', 'clinic_receptionist', 'grooming_receptionist'] as $role) {
+            $profiles[$role] = $this->scopedLogin($role, $role !== 'clinic_receptionist');
+        }
+        foreach ($profiles as $role => [$reference, $cookies]) {
+            $this->scopedRequest($cookies, 'GET', '/api/me', [], $reference)->assertOk()->assertJsonPath('user.email', "$role@example.test");
+        }
+        $this->travel(61)->seconds();
+        [$replacement, $otherBrowser] = $this->scopedLogin('admin', false);
+        [$old, $oldBrowser] = $profiles['admin'];
+        $this->scopedRequest($oldBrowser, 'GET', '/api/me', [], $old)->assertUnauthorized()->assertJsonPath('code', 'session_replaced');
+        $this->scopedRequest($oldBrowser, 'POST', '/api/logout', [], $old)->assertUnauthorized();
+        $this->scopedRequest($otherBrowser, 'GET', '/api/me', [], $replacement)->assertOk();
+        foreach (array_diff_key($profiles, ['admin' => true]) as [$reference, $cookies]) {
+            $this->scopedRequest($cookies, 'GET', '/api/me', [], $reference)->assertOk();
+        }
+    }
+
+    public function test_scoped_restore_rotation_and_switch_do_not_recover_the_obsolete_account(): void
+    {
+        [$reference, $cookies] = $this->scopedLogin('customer');
+        $id = explode('|', $reference)[0];
+        unset($cookies['bethlehem_account_session_'.$id]); // Browser's shorter active cookie expired.
+        $this->travel(61)->minutes();
+        $restore = $this->scopedRequest($cookies, 'POST', '/api/session/restore', [], $reference)
+            ->assertOk()->assertJsonPath('session_transport', 'scoped')->assertJsonPath('user.role', 'customer');
+        $next = explode('|', $restore->json('token'))[0];
+        $this->assertNotSame($id, $next);
+        $this->assertNotNull($restore->getCookie('bethlehem_account_session_'.$next, false));
+        $this->assertNotNull($restore->getCookie('bethlehem_remembered_device_'.$next, false));
+        foreach ($restore->headers->getCookies() as $cookie) {
+            if ($cookie->getExpiresTime() < time()) unset($cookies[$cookie->getName()]);
+            else $cookies[$cookie->getName()] = $cookie->getValue();
+        }
+        // The browser received Set-Cookie, but the response body was lost. Its
+        // public reference is still the predecessor, so retry must find it.
+        $this->scopedRequest($cookies, 'POST', '/api/session/restore', [], $reference)->assertOk()
+            ->assertJsonPath('token', $restore->json('token'));
+        [$admin, $switched] = $this->scopedLogin('admin', false, $cookies);
+        $this->assertArrayNotHasKey('bethlehem_remembered_device_'.$next, $switched);
+        // Even an old remembered cookie delivered late is not selected by the current reference.
+        $switched += $cookies;
+        $this->scopedRequest($switched, 'POST', '/api/session/restore', [], $admin)->assertUnauthorized();
+        $this->scopedRequest($switched, 'GET', '/api/me', [], $admin)->assertOk()->assertJsonPath('user.role', 'admin');
+        $this->scopedRequest($cookies, 'GET', '/api/me', [], $restore->json('token'))->assertOk();
+    }
+
+    public function test_scoped_public_selector_does_not_authorize_html_or_restore_without_its_secret_cookie(): void
+    {
+        [$reference, $cookies] = $this->scopedLogin('admin');
+        $this->scopedRequest($cookies, 'GET', '/admin/availability')->assertOk();
+        $cookies['bethlehem_session_selection'] = '0';
+        $this->scopedRequest($cookies, 'POST', '/api/session/restore')->assertUnauthorized();
+        $this->scopedRequest($cookies, 'GET', '/api/admin/availability/page')->assertUnauthorized();
+        $this->scopedRequest(['bethlehem_session_selection' => explode('|', $reference)[0]], 'GET', '/api/me', [], $reference)->assertUnauthorized();
+    }
+
+    public function test_signed_out_selection_blocks_legacy_cookie_recovery_and_unbound_logout(): void
+    {
+        $legacy = $this->login('customer');
+        $this->app['auth']->forgetGuards();
+        $this->call('POST', '/api/session/restore', [], [
+            'bethlehem_session_selection' => '0',
+            'bethlehem_account_session' => $this->browserCookies[$legacy],
+            'bethlehem_remembered_device' => $this->rememberCookies[$legacy],
+        ], [], ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])->assertUnauthorized();
+        [$reference, $cookies] = $this->scopedLogin('admin');
+        $this->scopedRequest($cookies, 'POST', '/api/logout')->assertUnauthorized()->assertJsonPath('code', 'session_changed');
+        $this->scopedRequest($cookies, 'GET', '/api/me', [], $reference)->assertOk();
+    }
+
+    public function test_delayed_scoped_logout_response_cannot_erase_another_accounts_new_login(): void
+    {
+        $old = $this->login('customer');
+        $this->withHeader('X-Session-Transport', 'scoped');
+        // Upgrade once using the actual secret, just as a pre-cookie client does.
+        $this->app['auth']->forgetGuards();
+        $upgraded = $this->getJson('/api/session', ['Authorization' => 'Bearer '.$this->browserCookies[$old]])->assertOk();
+        $oldName = 'bethlehem_account_session_'.explode('|', $old)[0];
+        $oldCookie = $upgraded->getCookie($oldName, false);
+        $this->assertNotNull($oldCookie);
+        $this->withUnencryptedCookie($oldName, $oldCookie->getValue())->withCredentials();
+        $this->app['auth']->forgetGuards();
+        $logout = $this->postJson('/api/logout', [], ['Authorization' => 'Bearer '.$old])->assertOk();
+
+        $this->withHeader('X-Session-Transport', '');
+        $new = $this->login('admin');
+        $this->withHeader('X-Session-Transport', 'scoped');
+        $this->app['auth']->forgetGuards();
+        $login = $this->getJson('/api/session', ['Authorization' => 'Bearer '.$this->browserCookies[$new]])->assertOk();
+        $newName = 'bethlehem_account_session_'.explode('|', $new)[0];
+        $jar = [];
+        // Deliver the old logout AFTER the new session response.
+        foreach ([$login, $logout] as $response) foreach ($response->headers->getCookies() as $cookie) {
+            $jar[$cookie->getName()] = $cookie->getValue();
+        }
+        $this->assertNotEmpty($jar[$newName] ?? null);
+        $logout->assertCookieMissing('bethlehem_account_session');
+        $this->withUnencryptedCookie($newName, $jar[$newName]);
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/api/me', ['Authorization' => 'Bearer '.$new])->assertOk()->assertJsonPath('user.role', 'admin');
+    }
+
+    public function test_restore_cannot_fall_back_to_another_accounts_old_remembered_cookie(): void
+    {
+        $customer = $this->login('customer');
+        $admin = $this->login('admin', false);
+        $this->restoreDevice($this->rememberCookies[$customer], $this->browserCookies[$admin])
+            ->assertUnauthorized()->assertCookieMissing('bethlehem_account_session');
+        $this->requestAs($admin, 'GET', '/api/me')->assertOk();
+        $this->requestAs($customer, 'GET', '/api/me')->assertOk();
+    }
+
     public function test_unchecked_remember_me_is_nonpersistent_for_every_role(): void
     {
         foreach (['customer', 'admin', 'clinic_receptionist', 'grooming_receptionist'] as $role) {
@@ -283,17 +447,16 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $old = $this->login($role, $remember);
         $user = User::where('email', "$role@example.test")->firstOrFail();
         $deadline = now()->addHours(12)->toIso8601String();
-        $cookieExpiry = $remember ? now()->addHours(12)->timestamp : 0;
         $this->travel(29)->minutes();
         $active = $this->requestAs($old, 'GET', '/api/session')->assertOk()
             ->assertJsonPath('role', $user->role)->assertJsonPath('user_id', $user->user_id)
             ->assertJsonPath('locked', false)->assertJsonPath('expires_at', $deadline);
-        $this->assertSame($cookieExpiry, $this->accountSessionCookie($active)->getExpiresTime());
+        $active->assertCookieMissing('bethlehem_account_session'); // A read cannot reset a newer login cookie.
         $this->travel(1)->minutes();
         $locked = $this->requestAs($old, 'GET', '/api/session')->assertOk()
             ->assertJsonPath('role', $user->role)->assertJsonPath('user_id', $user->user_id)
             ->assertJsonPath('locked', true)->assertJsonPath('expires_at', $deadline);
-        $this->assertSame($cookieExpiry, $this->accountSessionCookie($locked)->getExpiresTime());
+        $locked->assertCookieMissing('bethlehem_account_session');
         $this->requestAs($old, 'GET', '/api/me')->assertStatus(423);
         $this->restoreDevice('', $this->browserCookies[$old])->assertUnauthorized();
         $this->requestAs($old, 'POST', '/api/session/unlock', ['password' => 'SessionTest!123'])->assertOk()
@@ -328,16 +491,21 @@ class IndependentAuthenticationSessionsTest extends TestCase
         $this->restoreDevice($this->rememberCookies[$old])->assertUnauthorized();
     }
 
-    public function test_logout_started_during_restoration_can_revoke_the_successor_on_the_same_device(): void
+    public function test_predecessor_logout_cannot_revoke_the_restored_session_on_the_same_device(): void
     {
         $old = $this->login('customer', true);
         $this->travel(31)->minutes();
         $restored = $this->restoreDevice($this->rememberCookies[$old])->assertOk();
         $rotated = $restored->getCookie('bethlehem_remembered_device', false)->getValue();
-        $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
-            ->withUnencryptedCookie('bethlehem_account_session', $this->accountSessionCookie($restored)->getValue())
-            ->withUnencryptedCookie('bethlehem_remembered_device', $rotated)->postJson('/api/logout')->assertOk();
-        $this->restoreDevice($rotated)->assertUnauthorized();
+        foreach ([$this->rememberCookies[$old], $rotated] as $credential) {
+            $this->withHeader('Authorization', 'Bearer '.$old)->withCredentials()
+                ->withUnencryptedCookie('bethlehem_account_session', $this->accountSessionCookie($restored)->getValue())
+                ->withUnencryptedCookie('bethlehem_remembered_device', $credential)->postJson('/api/logout')
+                ->assertUnauthorized()->assertJsonPath('code', 'session_changed')
+                ->assertCookieMissing('bethlehem_account_session')->assertCookieMissing('bethlehem_remembered_device');
+        }
+        $this->withAccountSession($restored)->getJson('/api/me')->assertOk()->assertJsonPath('user.role', 'customer');
+        $this->restoreDevice($rotated)->assertOk()->assertJsonPath('token', $restored->json('token'));
     }
 
     public function test_obsolete_logout_cannot_remove_a_new_full_login_cookie_or_device(): void
@@ -486,12 +654,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
         config(['app.url' => 'https://clinic.example']);
         $old = $this->login('customer', true);
         $response = $this->restoreDevice($this->rememberCookies[$old], $this->browserCookies[$old])->assertOk();
-        $cookie = $this->accountSessionCookie($response);
-        $this->assertTrue($cookie->isSecure());
-        $this->assertTrue($cookie->isHttpOnly());
-        $this->assertSame('lax', $cookie->getSameSite());
-        $this->assertNull($cookie->getDomain());
-        $this->assertSame('/', $cookie->getPath());
+        $response->assertCookieMissing('bethlehem_account_session'); // Active recovery does not rewrite credentials.
         $this->travel(31)->minutes();
         $remembered = $this->restoreDevice($this->rememberCookies[$old])->assertOk()->getCookie('bethlehem_remembered_device', false);
         $this->assertTrue($remembered->isSecure());
@@ -814,6 +977,10 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 Illuminate\Support\Facades\Notification::fake();
                 Illuminate\Support\Facades\Http::preventStrayRequests();
                 Illuminate\Support\Facades\Http::fake(['api.pwnedpasswords.com/*' => Illuminate\Support\Facades\Http::response(str_repeat('A', 35).':0', 200)]);
+                // The fixture pauses a SQLite writer until both requests enter
+                // the transaction. An earlier Sanctum bookkeeping write would
+                // block the second request before it could reach the barrier.
+                config(['sanctum.last_used_at' => false]);
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
@@ -822,10 +989,14 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) {
                     throw new RuntimeException('Unexpected database.');
                 }
-                $wait = function ($file) {
+                $timedOutAt = null;
+                $wait = function ($file) use (&$timedOutAt) {
                     $deadline = microtime(true) + 5;
                     while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
-                    if (!is_file($file)) throw new RuntimeException('Session test barrier timed out.');
+                    if (!is_file($file)) {
+                        $timedOutAt = basename($file);
+                        throw new RuntimeException('Session test barrier timed out.');
+                    }
                 };
                 $busy = false;
                 $connection->beforeStartingTransaction(function () use ($role, $directory, $database, $wait, &$busy) {
@@ -848,6 +1019,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
                     server: ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest', 'HTTP_AUTHORIZATION' => $input['authorization'] ?? '']);
                 $response = $app->make(Illuminate\Contracts\Http\Kernel::class)->handle($request);
                 echo json_encode(['pid' => getmypid(), 'status' => $response->getStatusCode(), 'busy' => $busy,
+                    'timed_out_at' => $timedOutAt,
                     'code' => json_decode($response->getContent(), true)['code'] ?? null,
                     'public_id' => json_decode($response->getContent(), true)['token'] ?? null,
                     'cookies' => array_map(fn ($cookie) => hash('sha256', $cookie->getValue()), $response->headers->getCookies())]);
@@ -868,7 +1040,7 @@ class IndependentAuthenticationSessionsTest extends TestCase
             $this->assertTrue($two['busy'], 'The second verified login must overlap the first transaction.');
             $connection = new \PDO('sqlite:'.$database);
             if ($mode === 'password') {
-                $this->assertSame(200, $one['status']);
+                $this->assertSame(200, $one['status'], 'Worker barrier timeout: '.($one['timed_out_at'] ?? 'none'));
                 $this->assertSame(401, $two['status']);
                 $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM personal_access_tokens')->fetchColumn());
                 $this->assertSame(0, (int) $connection->query('SELECT COUNT(*) FROM remembered_devices WHERE revoked_at IS NULL')->fetchColumn());
@@ -947,6 +1119,9 @@ class IndependentAuthenticationSessionsTest extends TestCase
                 config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
                     'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 5000,
                     'cache.default' => 'database']);
+                // Freeze the request clock so crossing a wall-clock second during
+                // the real process barrier does not change the exact TTL assertion.
+                Illuminate\Support\Carbon::setTestNow(Illuminate\Support\Carbon::now()->startOfSecond());
                 Illuminate\Support\Facades\DB::purge('sqlite');
                 $wait = function ($file) {
                     $deadline = microtime(true) + 5;

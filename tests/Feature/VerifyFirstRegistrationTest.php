@@ -85,15 +85,22 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
     {
         $this->start()->assertAccepted();
         $link = $this->link();
+        $this->travel(20)->seconds();
+        // A new device sends no original cookie, over a different network and browser.
+        $approval = $this->call('POST', '/api/email/verify', ['token' => $link], [], [], [
+            'HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+            'REMOTE_ADDR' => '198.51.100.20', 'HTTP_USER_AGENT' => 'Mobile Safari',
+        ])->assertOk()->assertJsonPath('registration_approved', true)->assertJsonMissingPath('token');
+        $this->assertCount(0, $approval->headers->getCookies());
         $this->withUnencryptedCookie(CustomerRegistrationService::BROWSER_COOKIE, str_repeat('c', 64))->withCredentials();
-        $approval = $this->postJson('/api/email/verify', ['token' => $link])->assertOk()->assertJsonPath('registration_approved', true);
-        $this->assertNull($this->accountSessionCookie($approval));
+        $this->postJson('/api/email/verify', ['token' => $link])->assertUnprocessable()->assertJsonPath('code', 'registration_link_consumed');
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('personal_access_tokens', 0);
         $this->postJson('/api/email/registration/status', ['registration_token' => $this->credential])->assertUnprocessable();
         $this->postJson('/api/register/finalize', $this->details())->assertUnprocessable();
         $this->originalBrowser();
-        $this->postJson('/api/email/registration/status', ['registration_token' => $this->credential])->assertOk()->assertJsonPath('state', 'approved');
+        $this->postJson('/api/email/registration/status', ['registration_token' => $this->credential])->assertOk()
+            ->assertJsonPath('state', 'approved')->assertJsonPath('server_now', now()->toIso8601String());
         $completed = $this->postJson('/api/register/finalize', $this->details())->assertOk()->assertJsonPath('user.role', 'customer');
         $this->assertNotNull($this->accountSessionCookie($completed));
         $this->assertDatabaseCount('users', 1);
@@ -304,6 +311,35 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
     public static function finalizationCollisions(): array
     {
         return [['same_attempt'], ['email'], ['username'], ['phone']];
+    }
+
+    public static function resendRaces(): array
+    {
+        return [['resend', 'resend', 429], ['resend', 'verify', 422], ['verify', 'resend', 200]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('resendRaces')]
+    public function test_overlapping_resend_and_verification_preserve_the_winning_link(string $first, string $second, int $status): void
+    {
+        (require database_path('migrations/0001_01_01_000001_create_cache_table.php'))->up();
+        config(['cache.default' => 'database']);
+        $this->start()->assertAccepted();
+        $link = $this->link();
+        $this->travel(61)->seconds();
+        $requests = [
+            'resend' => ['_verification_endpoint' => '/api/email/resend', 'registration_token' => $this->credential,
+                'registration_browser' => $this->browser],
+            'verify' => ['_verification_endpoint' => '/api/email/verify', 'token' => $link],
+        ];
+        $result = $this->assertConcurrentAuthenticationRequests($requests[$first], $requests[$second], $status, 1, 0);
+        $this->assertSame($result['first']['link_hash'], $result['pending']['email_verification_token']);
+        if ($first === 'resend') {
+            $this->assertNotSame(hash('sha256', $link), $result['pending']['email_verification_token']);
+            $this->assertNull($result['pending']['registration_approved_at']);
+        } else {
+            $this->assertSame(hash('sha256', $link), $result['pending']['email_verification_token']);
+            $this->assertNotNull($result['pending']['registration_approved_at']);
+        }
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('finalizationCollisions')]

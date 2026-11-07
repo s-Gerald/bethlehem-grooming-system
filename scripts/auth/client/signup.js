@@ -121,7 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
       showForm(data.state === "approved" ? "Email verified. Re-enter your details to finish creating your account."
-        : "Re-enter your details to continue. Your verification link still works.");
+        : "Re-enter your details to continue.");
     }).catch(error => {
       if (departed) return;
       if (["registration_expired", "registration_unavailable"].includes(error.code)) clearAttempt();
