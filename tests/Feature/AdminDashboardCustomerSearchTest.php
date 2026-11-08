@@ -29,7 +29,6 @@ class AdminDashboardCustomerSearchTest extends TestCase
             $table->id();
             $table->string('first_name');
             $table->string('last_name');
-            $table->string('middle_name')->nullable();
             $table->string('phone');
             $table->boolean('is_archived')->default(false);
         });
@@ -79,7 +78,6 @@ class AdminDashboardCustomerSearchTest extends TestCase
                 'id' => 100,
                 'first_name' => 'Andrew',
                 'last_name' => 'Hermosa',
-                'middle_name' => null,
                 'phone' => '09171111111',
                 'is_archived' => false,
             ],
@@ -87,7 +85,6 @@ class AdminDashboardCustomerSearchTest extends TestCase
                 'id' => 200,
                 'first_name' => 'Archived',
                 'last_name' => 'Guest',
-                'middle_name' => null,
                 'phone' => '09172222222',
                 'is_archived' => true,
             ],

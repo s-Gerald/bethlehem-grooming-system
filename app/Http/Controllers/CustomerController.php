@@ -227,7 +227,6 @@ class CustomerController extends Controller
                         foreach ($nameTerms as $term) {
                             $nameQuery->where(function ($termQuery) use ($term) {
                                 $termQuery->where('first_name', 'like', "%{$term}%")
-                                    ->orWhere('middle_name', 'like', "%{$term}%")
                                     ->orWhere('last_name', 'like', "%{$term}%");
                             });
                         }
@@ -297,8 +296,6 @@ class CustomerController extends Controller
 
     private function formatUnregisteredCustomer(UnregisteredCustomer $customer): array
     {
-        $fullName = $this->unregisteredCustomerFullName($customer);
-
         $pets = $customer->relationLoaded('pets')
             ? $customer->pets->map(fn (Pet $pet) => $this->formatPet($pet))->values()
             : collect();
@@ -309,8 +306,7 @@ class CustomerController extends Controller
             'status' => $customer->is_archived ? 'archived' : 'unregistered',
             'firstName' => $customer->first_name,
             'lastName' => $customer->last_name,
-            'middleName' => $customer->middle_name,
-            'fullName' => $fullName,
+            'fullName' => trim($customer->first_name.' '.$customer->last_name),
             'email' => $customer->email,
             'phone' => $customer->phone,
             'isActive' => false,
@@ -324,18 +320,6 @@ class CustomerController extends Controller
             'archivedAt' => $customer->archived_at,
             'joinedAt' => $customer->created_at,
         ];
-    }
-
-    private function unregisteredCustomerFullName(UnregisteredCustomer $customer): string
-    {
-        $middleName = trim((string) $customer->middle_name);
-        $displayMiddleName = $middleName !== '' ? rtrim($middleName, '.').'.' : '';
-
-        return trim(implode(' ', array_filter([
-            $customer->first_name,
-            $displayMiddleName,
-            $customer->last_name,
-        ])));
     }
 
     private function petSessionResponse($data, int $status = 200)
@@ -486,7 +470,6 @@ class CustomerController extends Controller
                     'recordType' => 'registered',
                     'firstName'  => $user->first_name,
                     'lastName'   => $user->last_name,
-                    'middleName' => null,
                     'fullName'   => trim($user->first_name.' '.$user->last_name),
                     'email'      => $user->email,
                     'phone'      => $user->phone,
@@ -507,7 +490,6 @@ class CustomerController extends Controller
                     'recordType' => 'unregistered',
                     'firstName'  => $customer->first_name,
                     'lastName'   => $customer->last_name,
-                    'middleName' => $customer->middle_name,
                     'fullName'   => trim($customer->first_name.' '.$customer->last_name),
                     'email'      => $customer->email,
                     'phone'      => $customer->phone,
@@ -559,7 +541,6 @@ class CustomerController extends Controller
             'recordType' => 'registered',
             'firstName' => $user->first_name,
             'lastName' => $user->last_name,
-            'middleName' => null,
             'fullName' => trim($user->first_name.' '.$user->last_name),
             'email' => $user->email,
             'phone' => $user->phone,
@@ -577,7 +558,6 @@ class CustomerController extends Controller
             'recordType' => 'unregistered',
             'firstName' => $customer->first_name,
             'lastName' => $customer->last_name,
-            'middleName' => $customer->middle_name,
             'fullName' => trim($customer->first_name.' '.$customer->last_name),
             'email' => $customer->email,
             'phone' => $customer->phone,
@@ -683,7 +663,6 @@ class CustomerController extends Controller
                         foreach ($nameTerms as $term) {
                             $nameQuery->where(function ($termQuery) use ($term) {
                                 $termQuery->where('first_name', 'like', "%{$term}%")
-                                    ->orWhere('middle_name', 'like', "%{$term}%")
                                     ->orWhere('last_name', 'like', "%{$term}%");
                             });
                         }
@@ -692,7 +671,7 @@ class CustomerController extends Controller
             ->orderBy('first_name')
             ->orderBy('last_name')
             ->limit(8)
-            ->get(['id', 'first_name', 'last_name', 'middle_name', 'phone'])
+            ->get(['id', 'first_name', 'last_name', 'phone'])
             ->map(fn (UnregisteredCustomer $customer) => [
                 'id' => $customer->id,
                 'recordType' => 'unregistered',

@@ -210,7 +210,6 @@ function buildApiPayload(owner, reviewPayload, consentPayload) {
   return {
     fname: owner.firstName,
     lname: owner.lastName,
-    mname: owner.middleInitial || null,
     email: owner.email || null,
     phone: owner.phone,
     owner_record_type: owner.ownerRecordType || "new",

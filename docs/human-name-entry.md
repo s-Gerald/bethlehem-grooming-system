@@ -17,7 +17,7 @@ Integrated entry points:
 - Named Pet Groomers: `resources/views/admin/availability.html`, `scripts/components/admin-availability.js`, `PetGroomerController`; existing POST/PATCH `/api/admin/pet-groomers` routes.
 - Customer Personal Information: `pages/client/settings.html`, `scripts/components/client-settings.js`, `scripts/api.js`, and `CustomerController::updateOwnName()`; PATCH `/api/customer/profile/name`.
 
-Middle initials and non-human-name inputs retain their existing behavior. Historical records are not normalized when read. Staff username generation retains its previous independent casing convention. Duplicate matching and account ownership are unchanged.
+Customer records use first and last names. Non-human-name inputs retain their existing behavior. Historical records are not normalized when read. Staff username generation retains its previous independent casing convention. Duplicate matching and account ownership are unchanged.
 
 ## Customer editing and cache behavior
 

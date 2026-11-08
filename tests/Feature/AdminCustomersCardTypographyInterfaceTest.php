@@ -357,7 +357,6 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
         foreach ([
             'id="addCustomerFirstName"',
             'id="addCustomerLastName"',
-            'id="addCustomerMiddleName"',
             'id="addCustomerPhone"',
             'id="addCustomerEmail"',
             '@submit.prevent="submitUnregisteredCustomer()"',

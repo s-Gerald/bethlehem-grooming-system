@@ -211,7 +211,6 @@ class ClinicWalkinController extends Controller
             $walkin = Walkin::create([
                 'fname' => $owner['fname'],
                 'lname' => $owner['lname'],
-                'mname' => $owner['mname'],
                 'email' => $owner['email'],
                 'phone' => $owner['phone'],
                 'sedation_consent' => false,
@@ -331,7 +330,6 @@ class ClinicWalkinController extends Controller
             ? [
                 'fname' => $user->first_name,
                 'lname' => $user->last_name,
-                'mname' => null,
                 'email' => $user->email,
                 'phone' => $user->phone ?? $data['phone'],
             ]
@@ -339,14 +337,12 @@ class ClinicWalkinController extends Controller
                 ? [
                     'fname' => $unregisteredCustomer->first_name,
                     'lname' => $unregisteredCustomer->last_name,
-                    'mname' => $unregisteredCustomer->middle_name,
                     'email' => $unregisteredCustomer->email,
                     'phone' => $unregisteredCustomer->phone,
                 ]
                 : [
                     'fname' => $data['fname'],
                     'lname' => $data['lname'],
-                    'mname' => $data['mname'] ?? null,
                     'email' => $data['email'] ?? null,
                     'phone' => $data['phone'],
                 ]);

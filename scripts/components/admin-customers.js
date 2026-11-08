@@ -59,7 +59,6 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       form: {
         first_name:  "",
         last_name:   "",
-        middle_name: "",
         phone:       "",
         email:       "",
       },
@@ -208,7 +207,6 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         form: {
           first_name:  "",
           last_name:   "",
-          middle_name: "",
           phone:       "",
           email:       "",
         },
@@ -281,7 +279,6 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       const payload = {
         first_name: String(form.first_name || "").trim(),
         last_name: String(form.last_name || "").trim(),
-        middle_name: String(form.middle_name || "").trim().replace(/\.+$/, "").toUpperCase() || null,
         phone: this.normalizeCustomerPhone(form.phone),
         email: AccountEmail.normalize(form.email) || null,
         confirm_similar_name: Boolean(confirmSimilarName),

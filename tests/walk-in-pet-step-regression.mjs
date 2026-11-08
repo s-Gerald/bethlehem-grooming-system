@@ -168,7 +168,8 @@ const savedPet = { id: 42, petName: "Mochi", species: "Dog", breed: "Poodle", si
 const registeredOwner = ownerDraft({ recordType: "registered", id: 7, pets: [savedPet] }, "grooming");
 assert.equal(registeredOwner.ownerRecordType, "registered");
 assert.equal(registeredOwner.customerUserId, 7);
-const registered = await runStep(registeredOwner);
+const registered = await runStep({ ...registeredOwner, middleInitial: "B", fullName: "A B. Customer" });
+assert.match(registered.ui("existingPetsOwnerText").textContent, /saved pet for A Customer,/);
 assert.deepEqual(registered.calls, [["registered", 7]]);
 assert.equal(registered.ui("petSelectionTabs").classList.contains("hidden"), false);
 assert.equal(registered.ui("existingPetsSection").classList.contains("hidden"), false);

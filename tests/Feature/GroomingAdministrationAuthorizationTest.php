@@ -105,7 +105,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->id();
             $table->string('first_name');
             $table->string('last_name');
-            $table->string('middle_name')->nullable();
             $table->string('phone');
             $table->string('email')->nullable();
             $table->unsignedInteger('created_by_user_id')->nullable();
@@ -157,7 +156,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->id();
             $table->string('fname');
             $table->string('lname');
-            $table->string('mname')->nullable();
             $table->string('email')->nullable();
             $table->string('phone');
             $table->boolean('sedation_consent')->default(false);
@@ -1327,6 +1325,17 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $payload['submission_key'] = '9a4a8c89-2785-4625-8e66-67cc30abb487';
         $first = $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated();
         $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated()->assertExactJson($first->json());
+
+        // Simulate an already accepted submission saved by the previous release.
+        $request = new \App\Http\Requests\StoreWalkinRequest;
+        $request->merge($payload);
+        $rules = $request->rules();
+        $legacyRules = array_slice($rules, 0, 3, true) + ['mname' => ['nullable']] + $rules;
+        $legacyData = validator([...$this->groomingConsentFixture(), ...$payload, 'mname' => null], $legacyRules)->validate();
+        DB::table('grooming_walkin_submissions')->where('submission_key', $payload['submission_key'])
+            ->update(['payload_hash' => hash('sha256', json_encode($legacyData, JSON_THROW_ON_ERROR))]);
+        $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated()->assertExactJson($first->json());
+
         $this->assertDatabaseCount('bookings', 1);
         $this->assertDatabaseCount('walkins', 1);
         $this->assertDatabaseCount('pets', 1);
@@ -2279,7 +2288,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $response = $this->submitSignedGrooming('/api/admin/walk-in', [
             'fname' => 'maria',
             'lname' => 'SANTOS',
-            'mname' => 'A',
             'email' => 'maria.walkin@gmail.com',
             'phone' => '09171234567',
             'owner_record_type' => 'new',
@@ -2328,7 +2336,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'id' => $customerId,
             'first_name' => 'Maria',
             'last_name' => 'Santos',
-            'middle_name' => 'A',
             'created_by_user_id' => 2,
         ]);
         $this->assertDatabaseHas('walkins', [

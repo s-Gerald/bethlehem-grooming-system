@@ -181,7 +181,7 @@ for (const walkIn of [false, true]) {
     const save = (key, value) => sessionStorage.setItem(key, JSON.stringify(value));
     save('bookingSchedule', { date: '2026-10-16', window_id: 1 });
     save('bookingPets', [{ id: 1, petName: 'Coco', petType: 'cat', size: 'Small', weight: 4 }]);
-    save('walkInOwnerStep', { firstName: 'Ana', lastName: 'Cruz', phone: '09171234567' });
+    save('walkInOwnerStep', { firstName: 'Ana', lastName: 'Cruz', middleInitial: 'L', phone: '09171234567' });
     save('walkInReviewStep', { items: [{ pet: { petName: 'Coco', petType: 'cat', size: 'Small' }, selection: {}, pricing: { lineItems: [{ serviceId: 'partial_grooming' }] } }] });
     let submitted, navigated, ready, submissions = 0;
     const api = {
@@ -255,8 +255,12 @@ for (const walkIn of [false, true]) {
     assert.equal(submitted.signer_name, 'Customer Representative');
     assert.equal(submitted.signature_strokes.length, 1);
     assert.equal(submitted.consent_version, terms.version);
-    if (walkIn) assert.match(context.window.location.href, /walk-in\/grooming\/confirmed/);
-    else assert.equal(navigated, 'confirmed');
+    if (walkIn) {
+      assert.equal(submitted.fname, 'Ana');
+      assert.equal(submitted.lname, 'Cruz');
+      assert.equal(Object.hasOwn(submitted, 'mname'), false);
+      assert.match(context.window.location.href, /walk-in\/grooming\/confirmed/);
+    } else assert.equal(navigated, 'confirmed');
   }
 }
 

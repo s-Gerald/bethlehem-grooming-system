@@ -57,7 +57,6 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->id();
             $table->string('first_name');
             $table->string('last_name');
-            $table->string('middle_name')->nullable();
             $table->string('phone');
             $table->string('email')->nullable();
             $table->unsignedInteger('created_by_user_id')->nullable();
@@ -95,7 +94,6 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $table->id();
             $table->string('fname');
             $table->string('lname');
-            $table->string('mname')->nullable();
             $table->string('email')->nullable();
             $table->string('phone');
             $table->boolean('sedation_consent')->default(false);

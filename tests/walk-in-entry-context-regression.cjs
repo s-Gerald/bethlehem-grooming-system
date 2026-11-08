@@ -166,22 +166,26 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(flow.window.location.href, "", "Invalid new owner stays on the owner page");
     assert.equal(flow.get("ownerFirstNameError").textContent, "First name is required.");
 
-    const values = { firstName: "Test", lastName: "Owner", middleInitial: "", phone: "09171234567", email: "" };
-    flow.context.values = values;
+    const values = { firstName: "Test", lastName: "Owner", phone: "09171234567", email: "" };
     for (const [id, value] of Object.entries({ ownerFirstName: values.firstName, ownerLastName: values.lastName, ownerPhoneNumber: values.phone })) flow.get(id).value = value;
     phoneInput.value = '9171234567'; phoneInput.events.input();
     assert.equal(flow.get('walkInOwnerNextBtn').disabled, true, 'New local input needs all 11 digits before continuing.');
     phoneInput.value = values.phone; phoneInput.events.input();
     flow.context.API.validateWalkInNewOwner = async () => { throw { code: "similar_customer_name", data: { similarCustomers: [{ fullName: "Test Owner" }] } }; };
-    await vm.runInContext("validateNewOwnerAndContinue(values)", flow.context);
+    await vm.runInContext("handleSubmit({ preventDefault() {} })", flow.context);
     assert.equal(flow.window.location.href, "", "Similar names require acknowledgement");
     assert.equal(flow.get("similarOwnerWarning").classList.contains("hidden"), false);
-    flow.context.API.validateWalkInNewOwner = async (payload) => { assert.equal(payload.confirm_similar_name, true); };
-    await vm.runInContext("validateNewOwnerAndContinue(values, true)", flow.context);
+    let validationPayload;
+    flow.context.API.validateWalkInNewOwner = async (payload) => { validationPayload = payload; };
+    await vm.runInContext("validateNewOwnerAndContinue(getFormValues(), true)", flow.context);
+    assert.deepEqual({ ...validationPayload }, {
+      first_name: "Test", last_name: "Owner", phone: "09171234567", email: null, confirm_similar_name: true,
+    });
     let owner = JSON.parse(flow.storage.get("walkInOwnerStep"));
     assert.equal(owner.appointmentType, type);
     assert.equal(owner.confirmSimilarName, true);
     assert.equal(owner.ownerRecordType, "new");
+    assert.equal(owner.fullName, "Test Owner");
     assert.equal(flow.window.location.href, "/admin/walk-in/pets");
 
     for (const recordType of ["registered", "unregistered"]) {
@@ -230,7 +234,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   assert.doesNotMatch(clinicSource + clinicPage, /addCustomer|openAddCustomer|closeAddCustomer|saveCustomerRecord|createUnregisteredCustomer|adminAddCustomerPet/);
   assert.match(read("routes/api.php"), /post\('\/admin\/clinic-walk-in',[^\n]+middleware\('clinic:intake'\)/);
 
-  // Exercise the unchanged dedicated Customers creation path with an API stub.
+  // Exercise the dedicated Customers creation path with an API stub.
   const customerElements = new Map();
   const customerContext = vm.createContext({ window: {}, document: {
     getElementById(id) { if (!customerElements.has(id)) customerElements.set(id, element()); return customerElements.get(id); }, addEventListener() {},
@@ -239,7 +243,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   vm.runInContext(read("scripts/utils/account-email.js"), customerContext);
   vm.runInContext(read("scripts/utils/philippine-mobile.js"), customerContext);
   const customerSource = read("scripts/components/admin-customers.js");
-  vm.runInContext(customerSource.slice(customerSource.indexOf("function adminCustomers()")), customerContext);
+  vm.runInContext(customerSource, customerContext);
   const customers = customerContext.adminCustomers();
   customers.refreshIcons = () => {};
   customers.setCustomerDetailScrollLock = () => {};
@@ -274,9 +278,9 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   }
   Object.assign(customers.addCustomerModal.form, { first_name: " Test ", last_name: " Customer ", phone: "0917 123 4567" });
   await customers.submitUnregisteredCustomer();
-  assert.equal(payload.first_name, "Test");
-  assert.equal(payload.last_name, "Customer");
-  assert.equal(payload.phone, '09171234567', 'Customer creation sends the canonical contact, never display spaces.');
+  assert.deepEqual({ ...payload }, {
+    first_name: "Test", last_name: "Customer", phone: "09171234567", email: null, confirm_similar_name: false,
+  });
   assert.equal(customers.addCustomerModal.open, false);
   assert.equal(customers.statusFilter, "unregistered");
   assert.equal(refreshed, true);

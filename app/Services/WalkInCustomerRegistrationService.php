@@ -46,7 +46,6 @@ class WalkInCustomerRegistrationService
             $owner = UnregisteredCustomer::create([
                 'first_name' => $walkin->fname,
                 'last_name' => $walkin->lname,
-                'middle_name' => $walkin->mname,
                 'phone' => $walkin->phone,
                 'email' => $walkin->email,
                 'created_by_user_id' => $createdByUserId,

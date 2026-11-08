@@ -2,7 +2,6 @@ const elements = {
   form: document.getElementById("walkInOwnerForm"),
   firstName: document.getElementById("ownerFirstName"),
   lastName: document.getElementById("ownerLastName"),
-  middleInitial: document.getElementById("ownerMiddleInitial"),
   phone: document.getElementById("ownerPhoneNumber"),
   email: document.getElementById("ownerEmailAddress"),
   message: document.getElementById("walkInOwnerMessage"),
@@ -56,10 +55,6 @@ function normalizeText(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
 
-function normalizeMiddleInitial(value) {
-  return normalizeText(value).replace(/\.+$/, "").toUpperCase();
-}
-
 function getAppointmentType() {
   return appointmentType;
 }
@@ -77,20 +72,13 @@ function getFormValues() {
   return {
     firstName: elements.firstName.value,
     lastName: elements.lastName.value,
-    middleInitial: normalizeMiddleInitial(elements.middleInitial.value),
     phone: PhilippineMobile.unformat(elements.phone.value),
     email: AccountEmail.normalize(elements.email.value),
   };
 }
 
 function getOwnerDisplayName(values) {
-  return [
-    values.firstName,
-    values.middleInitial ? `${values.middleInitial}.` : "",
-    values.lastName,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return [values.firstName, values.lastName].filter(Boolean).join(" ");
 }
 
 function clearWalkInContinuationDraft() {
@@ -197,7 +185,6 @@ function selectExistingCustomer(customer) {
   const values = {
     firstName: normalizeText(customer.firstName),
     lastName: normalizeText(customer.lastName),
-    middleInitial: normalizeMiddleInitial(customer.middleName),
     phone: PhilippineMobile.normalize(customer.phone),
     email: normalizeText(customer.email),
   };
@@ -207,7 +194,6 @@ function selectExistingCustomer(customer) {
   if (!values.phone) {
     elements.firstName.value = values.firstName;
     elements.lastName.value = values.lastName;
-    elements.middleInitial.value = values.middleInitial;
     elements.phone.value = "";
     elements.email.value = values.email;
     hideSimilarOwnerWarning();
@@ -361,7 +347,6 @@ function handleInput(event) {
 function continueToPetStep(values, confirmSimilarName = false) {
   elements.firstName.value = values.firstName;
   elements.lastName.value = values.lastName;
-  elements.middleInitial.value = values.middleInitial;
   elements.phone.value = PhilippineMobile.format(values.phone);
   elements.email.value = values.email;
 
@@ -382,7 +367,6 @@ async function validateNewOwnerAndContinue(values, confirmSimilarName = false) {
     await API.validateWalkInNewOwner({
       first_name: values.firstName,
       last_name: values.lastName,
-      middle_name: values.middleInitial || null,
       phone: values.phone,
       email: values.email || null,
       confirm_similar_name: Boolean(confirmSimilarName),
@@ -461,7 +445,6 @@ function bindEvents() {
   [
     elements.firstName,
     elements.lastName,
-    elements.middleInitial,
     elements.email,
   ].forEach((input) => {
     input.addEventListener("input", handleInput);

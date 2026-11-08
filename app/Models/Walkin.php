@@ -11,7 +11,6 @@ class Walkin extends Model
     protected $fillable = [
         'fname',
         'lname',
-        'mname',
         'email',
         'phone',
         'sedation_consent',

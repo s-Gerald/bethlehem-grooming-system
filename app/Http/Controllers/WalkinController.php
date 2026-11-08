@@ -42,7 +42,9 @@ class WalkinController extends Controller
                 if ($submissionKey) {
                     $previous = DB::table('grooming_walkin_submissions')->where('submission_key', $submissionKey)->first();
                     if ($previous) {
-                        if ((int) $previous->actor_user_id !== (int) $request->user()->user_id || ! hash_equals($previous->payload_hash, $payloadHash)) {
+                        if ((int) $previous->actor_user_id !== (int) $request->user()->user_id
+                            || (! hash_equals($previous->payload_hash, $payloadHash)
+                                && ! $this->matchesLegacySubmissionHash($previous->payload_hash, $data))) {
                             throw ValidationException::withMessages(['submission_key' => 'This submission has already been used. Start a new walk-in for another visit.']);
                         }
 
@@ -67,7 +69,6 @@ class WalkinController extends Controller
                 $walkin = Walkin::create([
                     'fname' => $owner['fname'],
                     'lname' => $owner['lname'],
-                    'mname' => $owner['mname'],
                     'email' => $owner['email'],
                     'phone' => $owner['phone'],
                     'sedation_consent' => $data['sedation_consent'],
@@ -242,7 +243,6 @@ class WalkinController extends Controller
             ? [
                 'fname' => $user->first_name,
                 'lname' => $user->last_name,
-                'mname' => null,
                 'email' => $user->email,
                 'phone' => $user->phone ?? $data['phone'],
             ]
@@ -250,19 +250,25 @@ class WalkinController extends Controller
                 ? [
                     'fname' => $unregisteredCustomer->first_name,
                     'lname' => $unregisteredCustomer->last_name,
-                    'mname' => $unregisteredCustomer->middle_name,
                     'email' => $unregisteredCustomer->email,
                     'phone' => $unregisteredCustomer->phone,
                 ]
                 : [
                     'fname' => $data['fname'],
                     'lname' => $data['lname'],
-                    'mname' => $data['mname'] ?? null,
                     'email' => $data['email'] ?? null,
                     'phone' => $data['phone'],
                 ]);
 
         return [$user, $unregisteredCustomer, $owner];
+    }
+
+    private function matchesLegacySubmissionHash(string $hash, array $data): bool
+    {
+        // Older hashes included a null placeholder after the submission key and both names.
+        $legacyData = array_slice($data, 0, 3, true) + ['mname' => null] + $data;
+
+        return hash_equals($hash, hash('sha256', json_encode($legacyData, JSON_THROW_ON_ERROR)));
     }
 
     private function validateNewOwner(array $data): void

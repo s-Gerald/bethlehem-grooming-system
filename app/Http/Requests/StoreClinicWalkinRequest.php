@@ -31,7 +31,6 @@ class StoreClinicWalkinRequest extends FormRequest
         $this->merge([
             'fname' => is_string($this->input('fname')) ? \App\Support\HumanName::normalize($this->input('fname')) : $this->input('fname'),
             'lname' => is_string($this->input('lname')) ? \App\Support\HumanName::normalize($this->input('lname')) : $this->input('lname'),
-            'mname' => $this->normalizeText($this->input('mname')) ?: null,
             'email' => $email !== '' ? $email : null,
             'phone' => $phone,
         ]);
@@ -46,7 +45,6 @@ class StoreClinicWalkinRequest extends FormRequest
                 ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
             'lname' => ($this->input('owner_record_type') ?? 'new') === 'new'
                 ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
-            'mname' => ['nullable', 'string', 'max:100'],
             'email' => ($this->input('owner_record_type') ?? 'new') === 'new'
                 ? AccountEmail::rules(required: false, maxLength: 255)
                 : ['nullable', 'string', 'max:255'],
@@ -98,10 +96,5 @@ class StoreClinicWalkinRequest extends FormRequest
             'common_concerns.*.in' => 'Select a valid common concern.',
             'phone.regex' => 'Phone number may only contain digits, spaces, +, -, and parentheses.',
         ];
-    }
-
-    private function normalizeText(mixed $value): string
-    {
-        return preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
     }
 }

@@ -3521,7 +3521,7 @@ var API = (() => {
 
   async function submitWalkIn(payload) {
     // POST /api/admin/walk-in  (protected — admin token)
-    // payload: { fname, lname, mname?, email?, phone, pets: [...], sedation_consent, terms_agreed }
+    // payload: { fname, lname, email?, phone, pets: [...], sedation_consent, terms_agreed }
     return request("POST", "/admin/walk-in", payload, getAdminToken());
   }
 

@@ -45,11 +45,10 @@ export function formatConfirmationPhone(value) {
 }
 
 export function ownerConfirmationFields(owner = {}) {
-  const name = owner.fullName || owner.name || [
-    owner.firstName || owner.first_name,
-    owner.middleInitial ? `${owner.middleInitial}.` : "",
-    owner.lastName || owner.last_name,
-  ].filter(Boolean).join(" ") || owner.username;
+  const firstName = owner.firstName || owner.first_name;
+  const lastName = owner.lastName || owner.last_name;
+  const name = (firstName && lastName && `${firstName} ${lastName}`)
+    || owner.fullName || owner.name || firstName || lastName || owner.username;
   return confirmationFields([
     ["Full name", name || "Not provided", "ownerName"],
     ["Contact number", formatConfirmationPhone(owner.phone) || "Not provided", "ownerPhone"],

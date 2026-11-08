@@ -561,22 +561,6 @@
                   </div>
 
                   <div>
-                    <label for="addCustomerMiddleName" class="mb-2 block text-sm font-medium text-slate-700">Middle initial (optional)</label>
-                    <input
-                      id="addCustomerMiddleName"
-                      x-model="addCustomerModal.form.middle_name"
-                      @input="clearAddCustomerFieldError('middle_name')"
-                      type="text"
-                      autocomplete="additional-name"
-                      maxlength="5"
-                      placeholder="A"
-                      :class="addCustomerModal.errors.middle_name ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : 'border-slate-300 focus:border-[#315b7e] focus:ring-[#315b7e]/20'"
-                      class="w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none transition focus:ring-2"
-                    />
-                    <p x-show="addCustomerModal.errors.middle_name" class="mt-2 text-sm text-red-600" x-text="addCustomerModal.errors.middle_name?.[0]"></p>
-                  </div>
-
-                  <div>
                     <label for="addCustomerPhone" class="mb-2 block text-sm font-medium text-slate-700">
                       Phone number <span class="text-red-500">*</span>
                     </label>
@@ -597,7 +581,7 @@
                     <p id="addCustomerPhoneError" x-show="addCustomerModal.errors.phone" class="mt-2 text-sm text-red-600" aria-live="polite" x-text="addCustomerModal.errors.phone?.[0]"></p>
                   </div>
 
-                  <div class="sm:col-span-2">
+                  <div>
                     <label for="addCustomerEmail" class="mb-2 block text-sm font-medium text-slate-700">Email address (optional)</label>
                     <input
                       id="addCustomerEmail"
@@ -774,10 +758,6 @@
                         <p class="text-xs font-medium text-slate-500">Username</p>
                         <p class="mt-1 font-semibold text-slate-800" x-text="formatTextValue(detailModal.customer?.username)"></p>
                       </div>
-                      <div x-show="detailModal.customer?.recordType === 'unregistered'" class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                        <p class="text-xs font-medium text-slate-500">Middle initial</p>
-                        <p class="mt-1 font-semibold text-slate-800" x-text="formatTextValue(detailModal.customer?.middleName)"></p>
-                      </div>
                       <div class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                         <p class="text-xs font-medium text-slate-500">Phone number</p>
                         <p class="mt-1 font-semibold text-slate-800" x-text="formatMobileNumber(detailModal.customer?.phone)"></p>
@@ -786,7 +766,7 @@
                         <p class="text-xs font-medium text-slate-500">Email address</p>
                         <p class="mt-1 break-words font-semibold text-slate-800" x-text="formatTextValue(detailModal.customer?.email)"></p>
                       </div>
-                      <div class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div :class="{ 'sm:col-span-2': detailModal.customer?.recordType === 'unregistered' && !detailModal.customer?.isArchived }" class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                         <p class="text-xs font-medium text-slate-500" x-text="detailModal.customer?.recordType === 'unregistered' ? 'Added' : 'Joined'"></p>
                         <p class="mt-1 font-semibold text-slate-800" x-text="formatDate(detailModal.customer?.joinedAt)"></p>
                       </div>
@@ -1140,7 +1120,7 @@
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029"></script>
-    <script src="/scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103"></script>
+    <script src="/scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

@@ -34,7 +34,6 @@ class AdminUnregisteredCustomerTest extends TestCase
             $table->id();
             $table->string('first_name', 100);
             $table->string('last_name', 100);
-            $table->string('middle_name', 5)->nullable();
             $table->string('phone', 20);
             $table->string('email', 150)->nullable();
             $table->unsignedInteger('created_by_user_id')->nullable();
@@ -237,21 +236,19 @@ class AdminUnregisteredCustomerTest extends TestCase
         $this->postJson('/api/admin/customers/unregistered', [
             'first_name' => '  maria  ',
             'last_name' => ' SANTOS ',
-            'middle_name' => 'a.',
             'phone' => '+63 917 123 4567',
             'email' => 'maria@GMAIL.COM',
         ])
             ->assertCreated()
             ->assertJsonPath('customer.recordType', 'unregistered')
             ->assertJsonPath('customer.status', 'unregistered')
-            ->assertJsonPath('customer.fullName', 'Maria A. Santos')
+            ->assertJsonPath('customer.fullName', 'Maria Santos')
             ->assertJsonPath('customer.phone', '09171234567')
             ->assertJsonPath('customer.email', 'maria@gmail.com');
 
         $this->assertDatabaseHas('unregistered_customers', [
             'first_name' => 'Maria',
             'last_name' => 'Santos',
-            'middle_name' => 'A',
             'phone' => '09171234567',
             'email' => 'maria@gmail.com',
             'created_by_user_id' => 1,
@@ -262,11 +259,12 @@ class AdminUnregisteredCustomerTest extends TestCase
             ->assertJsonPath('total', 1)
             ->assertJsonPath('petTotal', 0)
             ->assertJsonPath('customers.0.status', 'unregistered')
-            ->assertJsonPath('customers.0.fullName', 'Maria A. Santos');
+            ->assertJsonPath('customers.0.fullName', 'Maria Santos');
 
         $this->getJson('/api/admin/customers/unregistered/1')
             ->assertOk()
-            ->assertJsonPath('customer.middleName', 'A')
+            ->assertJsonPath('customer.fullName', 'Maria Santos')
+            ->assertJsonMissingPath('customer.middleName')
             ->assertJsonPath('customer.bookingCount', 0);
     }
 

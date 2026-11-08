@@ -13,7 +13,6 @@ class UnregisteredCustomer extends Model
     protected $fillable = [
         'first_name',
         'last_name',
-        'middle_name',
         'phone',
         'email',
         'created_by_user_id',

@@ -27,20 +27,20 @@ class PetClinicOwnersPetsSeeder extends Seeder
 
     public function run(): void
     {
-        // [first, last, middle_initial, phone, email]
+        // [first, last, phone, email]
         // Maria Santos's phone was changed from the source file's 09171234567,
         // which collides with the seeded test Admin account.
         $owners = [
-            1 => ['Maria', 'Santos', 'L', '09171234500', 'maria.santos@gmail.com'],
-            2 => ['Juan', 'Dela Cruz', 'P', '09228765432', 'juandelacruz@gmail.com'],
-            3 => ['Angelica', 'Reyes', null, '09051239876', 'angel.reyes@yahoo.com'],
-            4 => ['Mark', 'Villanueva', 'T', '09173456781', null],
-            5 => ['Kristine', 'Bautista', 'A', '09989871234', 'kristine.bautista@gmail.com'],
-            6 => ['Ronald', 'Garcia', null, '09221112233', 'ronald.garcia@outlook.com'],
-            7 => ['Jasmine', 'Mendoza', 'C', '09054445566', 'jasmine.mendoza@gmail.com'],
-            8 => ['Paolo', 'Fernandez', 'R', '09176667788', null],
-            9 => ['Cristina', 'Ramos', 'M', '09229998877', 'cristina.ramos@gmail.com'],
-            10 => ['Michael', 'Torres', null, '09051230000', 'mike.torres@gmail.com'],
+            1 => ['Maria', 'Santos', '09171234500', 'maria.santos@gmail.com'],
+            2 => ['Juan', 'Dela Cruz', '09228765432', 'juandelacruz@gmail.com'],
+            3 => ['Angelica', 'Reyes', '09051239876', 'angel.reyes@yahoo.com'],
+            4 => ['Mark', 'Villanueva', '09173456781', null],
+            5 => ['Kristine', 'Bautista', '09989871234', 'kristine.bautista@gmail.com'],
+            6 => ['Ronald', 'Garcia', '09221112233', 'ronald.garcia@outlook.com'],
+            7 => ['Jasmine', 'Mendoza', '09054445566', 'jasmine.mendoza@gmail.com'],
+            8 => ['Paolo', 'Fernandez', '09176667788', null],
+            9 => ['Cristina', 'Ramos', '09229998877', 'cristina.ramos@gmail.com'],
+            10 => ['Michael', 'Torres', '09051230000', 'mike.torres@gmail.com'],
         ];
 
         // Owners with no email become unregistered_customers instead of users.
@@ -73,7 +73,7 @@ class PetClinicOwnersPetsSeeder extends Seeder
 
         $userIds = [];
         foreach ($registeredOwnerIds as $id) {
-            [$first, $last, , $phone, $email] = $owners[$id];
+            [$first, $last, $phone, $email] = $owners[$id];
             $user = User::firstOrCreate(
                 ['email' => $email],
                 [
@@ -93,13 +93,12 @@ class PetClinicOwnersPetsSeeder extends Seeder
 
         $unregisteredIds = [];
         foreach ($unregisteredOwnerIds as $id) {
-            [$first, $last, $middle, $phone, $email] = $owners[$id];
+            [$first, $last, $phone, $email] = $owners[$id];
             $customer = UnregisteredCustomer::firstOrCreate(
                 ['phone' => $phone],
                 [
                     'first_name' => $first,
                     'last_name' => $last,
-                    'middle_name' => $middle,
                     'email' => $email,
                     'created_by_user_id' => null,
                 ],

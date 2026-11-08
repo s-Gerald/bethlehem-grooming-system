@@ -181,11 +181,11 @@ class AdminWalkInEntryPointInterfaceTest extends TestCase
             'id="reviewSimilarOwnerBtn"',
             'id="continueSimilarOwnerBtn"',
             'Continue anyway',
-            'api.js?v=session-inactivity-20260828',
         ] as $content) {
             $this->assertStringContainsString($content, $ownerPage);
         }
 
+        $this->assertMatchesRegularExpression('~src="/scripts/api\.js\?(?:[^"&]+&)*v=session-inactivity-20260828(?:&|")~', $ownerPage);
         $this->assertStringContainsString('API.validateWalkInNewOwner({', $ownerStep);
         $this->assertStringContainsString('error.code === "similar_customer_name"', $ownerStep);
         $this->assertStringContainsString('showSimilarOwnerWarning(values', $ownerStep);
