@@ -24,6 +24,7 @@
   "dosePrecision": 3,
   "doseMax": 99999.999,
   "doseUnitMaxLength": 30,
+  "injectionSiteRoutes": ["subcutaneous", "intramuscular"],
   "sources": [
     "https://www.merckvetmanual.com/multimedia/table/normal-rectal-temperature-ranges",
     "https://books.lib.uoguelph.ca/vetm3430/chapter/vital-parameters/"

@@ -275,7 +275,7 @@
 
     <script src="/scripts/api.js?auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&health=20261016&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
     <script type="module">
-      import { renderClinicVisitSections, healthDate } from "/scripts/components/customer-health-records.js?v=20261029";
+      import { renderClinicVisitSections, healthDate } from "/scripts/components/customer-health-records.js?v=visit-summary";
       function scheduleCustomerHistoryIdleTask(task) {
         if (typeof window.requestIdleCallback === "function") {
           window.requestIdleCallback(task, { timeout: 1200 });
@@ -555,7 +555,7 @@
             <div class="min-w-0">
               <h3 class="break-words text-xl font-bold text-portal-text [overflow-wrap:anywhere]">${escapeHistoryHtml(event.pet?.pet_name)}</h3>
               <p class="mt-2 text-sm text-portal-text">${escapeHistoryHtml(healthDate(event.date))}</p>
-              <p class="mt-1 break-words text-xs text-portal-muted [overflow-wrap:anywhere]">${escapeHistoryHtml(event.reference)}</p>
+              ${event.reference ? `<p class="mt-1 break-words text-xs text-portal-muted [overflow-wrap:anywhere]">${escapeHistoryHtml(event.reference)}</p>` : ""}
             </div>
             <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Completed</span>
           </div>
@@ -663,7 +663,7 @@
 
       function openHistoryModal(event, trigger) {
         historyModalTrigger = trigger;
-        document.getElementById("historyModalTitle").textContent = event.type === "clinic" ? "Clinic visit details" : "Grooming session details";
+        document.getElementById("historyModalTitle").textContent = event.type === "clinic" ? "Visit Summary" : "Grooming session details";
         historyModalContent.innerHTML = event.type === "clinic"
           ? buildClinicHistoryDetails(event) : buildHistoryModalContent(event.booking, event.pet);
         historyModal.classList.remove("hidden");

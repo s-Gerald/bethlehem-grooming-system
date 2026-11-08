@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\VaccinationRecord;
+
 /** Structural entry guardrails, never a drug-dose recommendation or diagnosis. */
 final class ClinicClinicalRules
 {
@@ -48,8 +50,8 @@ final class ClinicClinicalRules
         $errors = [];
         $amountPresent = $amount !== null && $amount !== '';
         $unitPresent = is_string($unit) && trim($unit) !== '';
-        if (($required || $unitPresent) && ! $amountPresent) $errors['dose_amount'] = 'Dose amount required.';
-        if (($required || $amountPresent) && ! $unitPresent) $errors['dose_unit'] = 'Dose unit required.';
+        if (($required || $unitPresent) && ! $amountPresent) $errors['dose_amount'] = 'Enter the dose amount.';
+        if (($required || $amountPresent) && ! $unitPresent) $errors['dose_unit'] = 'Select a dose unit.';
         $catalog = self::catalog();
         if ($amountPresent && (! self::validNumber($amount, $catalog['dosePrecision'], 0.001, $catalog['doseMax']))) {
             $errors['dose_amount'] = 'Enter 0.001–99,999.999, up to 3 decimals.';
@@ -58,6 +60,24 @@ final class ClinicClinicalRules
         if ($amountPresent && ($definition['whole'] ?? false) && is_numeric($amount) && floor((float) $amount) !== (float) $amount) {
             $errors['dose_amount'] = 'Use a whole-number count for this unit.';
         }
+        return $errors;
+    }
+
+    public static function administrationErrors(mixed $route, mixed $site, bool $required): array
+    {
+        $errors = [];
+        if (blank($route)) {
+            if ($required) {
+                $errors['route'] = 'Select an administration route.';
+            }
+        } elseif (! in_array($route, VaccinationRecord::ADMINISTRATION_ROUTES, true)) {
+            $errors['route'] = 'Choose a supported administration route.';
+        }
+
+        if ($required && in_array($route, self::catalog()['injectionSiteRoutes'], true) && blank($site)) {
+            $errors['administration_site'] = 'Enter the administration site.';
+        }
+
         return $errors;
     }
 }

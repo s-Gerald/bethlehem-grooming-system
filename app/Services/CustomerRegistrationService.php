@@ -6,6 +6,7 @@ use App\Support\AccountEmail;
 use App\Models\PendingCustomerRegistration;
 use App\Models\PendingStaffAccount;
 use App\Models\User;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
@@ -22,23 +23,27 @@ class CustomerRegistrationService
     public const BROWSER_COOKIE = 'bethlehem_registration_browser';
     public const TERMS_VERSION = '2026-11-01';
 
-    public function start(Request $request, string $email, string $browserHash): \Illuminate\Http\JsonResponse
+    public function start(Request $request, string $browserHash): \Illuminate\Http\JsonResponse
     {
         $credential = $request->validate(['registration_token' => 'required|string|size:64'])['registration_token'];
+        // Screen the password before taking locks. Only identifiers enter the issuance transaction.
+        $identifiers = Arr::only($this->registrationData($request), ['email', 'username', 'phone']);
+        $email = $identifiers['email'];
         $hash = hash('sha256', $credential);
         $lock = Cache::lock('registration-start:'.$hash, 15);
         if (! $lock->get()) return $this->json(['success' => false, 'message' => 'Registration is starting. Try again.'], 409);
         try {
-            return DB::transaction(function () use ($request, $email, $browserHash, $credential, $hash) {
+            return DB::transaction(function () use ($request, $identifiers, $email, $browserHash, $credential, $hash) {
                 $pending = PendingCustomerRegistration::where('registration_edit_token_hash', $hash)->lockForUpdate()->first();
                 if ($pending) {
                     $this->assertBound($pending, $request);
                     if ($pending->email !== $email) throw ValidationException::withMessages(['email' => 'Start a new verification for the changed email.']);
+                    if (! $pending->registration_completed_at) $this->assertAccountAvailability($identifiers, true);
                     return $this->json([...$this->attemptState($pending), 'requires_verification' => true,
                         'registration_state' => 'resumed', 'registration_token' => $credential,
                         ...app(AuthenticationEmailPolicy::class)->status($email)], 202);
                 }
-                $this->assertAccountAvailability(['email' => $email], true);
+                $this->assertAccountAvailability($identifiers, true);
                 $pending = PendingCustomerRegistration::create([
                     'email' => $email, 'registration_browser_token_hash' => $browserHash,
                     'registration_edit_token_hash' => $hash,
@@ -87,7 +92,9 @@ class CustomerRegistrationService
             $details = $this->registrationData($request);
             if ($details['email'] !== $pending->email) throw ValidationException::withMessages(['email' => 'Use the exact email address you verified.']);
             $details['password_hash'] = Hash::make($details['password']);
-            unset($details['password'], $details['password_confirmation']);
+            unset($details['password'], $details['password_confirmation'], $details['terms_accepted']);
+            $details['terms_accepted_version'] = self::TERMS_VERSION;
+            $details['terms_accepted_at'] = now();
         }
         try {
             return $this->bound($request, function ($pending) use ($request, $details) {
@@ -113,10 +120,11 @@ class CustomerRegistrationService
 
     private function registrationData(Request $request): array
     {
+        $email = $request->input('email');
         $phone = $request->input('phone');
         $username = $request->input('username');
         $request->merge([
-            'email' => AccountEmail::normalize((string) $request->input('email')),
+            'email' => is_string($email) ? AccountEmail::normalize($email) : $email,
             'username' => is_string($username) ? (trim($username) === '' ? null : trim($username)) : $username,
             'phone' => is_string($phone) && trim($phone) === '' ? null : \App\Support\PhilippineMobile::normalize($phone),
         ]);
@@ -133,9 +141,6 @@ class CustomerRegistrationService
             'terms_accepted.required' => 'Please agree to the Terms and Conditions.',
             'terms_accepted.accepted' => 'Please agree to the Terms and Conditions.',
         ]);
-        unset($data['terms_accepted']);
-        $data['terms_accepted_version'] = self::TERMS_VERSION;
-        $data['terms_accepted_at'] = now();
         foreach (['first_name', 'last_name'] as $field) $data[$field] = User::normalizeName($data[$field]);
         return $data;
     }

@@ -6,6 +6,7 @@ use App\Models\ClinicAppointment;
 use App\Models\InventoryItem;
 use App\Models\User;
 use App\Models\VaccinationRecord;
+use App\Support\ClinicClinicalRules;
 use Illuminate\Validation\ValidationException;
 
 class ClinicTreatmentFinalizer
@@ -43,8 +44,11 @@ class ClinicTreatmentFinalizer
         if ($usesInventory && $record->administered_date->toDateString() !== now()->toDateString()) {
             throw ValidationException::withMessages(['administered_date' => 'Review this treatment’s administration date before finalizing.']);
         }
-        $doseErrors = \App\Support\ClinicClinicalRules::doseErrors($record->dose_amount, $record->dose_unit, $usesInventory);
-        if ($doseErrors) throw ValidationException::withMessages($doseErrors);
+        $errors = ClinicClinicalRules::doseErrors($record->dose_amount, $record->dose_unit, $usesInventory)
+            + ClinicClinicalRules::administrationErrors($record->route, $record->administration_site, $usesInventory);
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
 
         $item = null;
         if ($usesInventory) {

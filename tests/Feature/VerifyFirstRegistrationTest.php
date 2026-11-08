@@ -8,6 +8,7 @@ use App\Notifications\VerifyEmailNotification;
 use App\Services\CustomerRegistrationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 
@@ -53,8 +54,7 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
 
     private function start(array $changes = [])
     {
-        return $this->postJson('/api/register', ['email' => 'new.customer@gmail.com',
-            'registration_token' => $this->credential, ...$changes]);
+        return $this->postJson('/api/register', $this->details($changes));
     }
 
     private function link(?PendingCustomerRegistration $pending = null): string
@@ -68,9 +68,80 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
             ->assertJsonPath('registration_approved', true)->assertJsonMissingPath('token')->assertJsonMissingPath('details');
     }
 
-    public function test_start_stores_only_email_and_verification_metadata_even_when_sent_full_details(): void
+    public static function invalidSignupDetails(): array
     {
-        $this->start($this->details())->assertAccepted()->assertJsonMissingPath('token');
+        return [
+            'missing name' => ['first_name', ['first_name' => null]],
+            'first name' => ['first_name', ['first_name' => 'Maria123']],
+            'last name' => ['last_name', ['last_name' => '123']],
+            'email format' => ['email', ['email' => 'invalid-email']],
+            'email policy' => ['email', ['email' => 'customer@example.com']],
+            'email type' => ['email', ['email' => ['customer@gmail.com']]],
+            'username' => ['username', ['username' => '12']],
+            'phone' => ['phone', ['phone' => '09123']],
+            'password length' => ['password', ['password' => 'short', 'password_confirmation' => 'short']],
+            'password characters' => ['password', ['password' => 'strong-passwörd', 'password_confirmation' => 'strong-passwörd']],
+            'confirmation' => ['password_confirmation', ['password_confirmation' => 'different']],
+            'predictable password' => ['password', ['password' => 'newcustomer123', 'password_confirmation' => 'newcustomer123']],
+            'terms declined' => ['terms_accepted', ['terms_accepted' => false]],
+            'terms missing' => ['terms_accepted', ['terms_accepted' => null]],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidSignupDetails')]
+    public function test_start_rejects_invalid_details_before_email_delivery(string $field, array $changes): void
+    {
+        $this->start($changes)->assertUnprocessable()->assertJsonValidationErrors($field);
+        $this->assertNoVerificationAttempt();
+    }
+
+    public static function signupConflicts(): array
+    {
+        return [
+            'email' => ['email', ['email' => 'NEW.Customer@GMAIL.COM']],
+            'same names and phone' => ['phone', ['email' => 'other@gmail.com', 'username' => null]],
+            'different names and phone' => ['phone', ['email' => 'other@gmail.com', 'username' => null, 'first_name' => 'Jane', 'last_name' => 'Doe']],
+            'username' => ['username', ['email' => 'other@gmail.com', 'phone' => null, 'username' => 'NEWCUSTOMER']],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('signupConflicts')]
+    public function test_start_rejects_existing_account_identifiers_before_email_delivery(string $field, array $changes): void
+    {
+        User::factory()->create(['first_name' => 'Maria Clara', 'last_name' => 'Peña',
+            'email' => 'new.customer@gmail.com', 'phone' => '09171234567', 'username' => 'newcustomer']);
+        $this->start($changes)->assertUnprocessable()->assertJsonValidationErrors($field);
+        $this->assertNoVerificationAttempt();
+    }
+
+    public function test_start_rejects_a_breached_password_before_email_delivery(): void
+    {
+        $digest = strtoupper(sha1('breached-example'));
+        Http::swap((new \Illuminate\Http\Client\Factory)->preventStrayRequests());
+        Http::fake(['api.pwnedpasswords.com/range/'.substr($digest, 0, 5) => Http::response(substr($digest, 5).':1')]);
+        $this->start(['password' => 'breached-example', 'password_confirmation' => 'breached-example'])
+            ->assertUnprocessable()->assertJsonPath('errors.password.0', 'This password is not safe. Choose another.');
+        $this->assertNoVerificationAttempt();
+    }
+
+    public function test_start_fails_closed_when_password_screening_is_unavailable(): void
+    {
+        Http::swap((new \Illuminate\Http\Client\Factory)->preventStrayRequests());
+        Http::fake(['api.pwnedpasswords.com/*' => Http::response('', 503)]);
+        $this->start()->assertServiceUnavailable()->assertJsonPath('code', 'password_screening_unavailable')
+            ->assertHeader('Retry-After', '60');
+        $this->assertNoVerificationAttempt();
+    }
+
+    private function assertNoVerificationAttempt(): void
+    {
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        Notification::assertNothingSent();
+    }
+
+    public function test_start_stores_only_email_and_verification_metadata(): void
+    {
+        $this->start()->assertAccepted()->assertJsonMissingPath('token');
         $row = DB::table('pending_customer_registrations')->sole();
         foreach (['first_name', 'last_name', 'username', 'phone', 'password', 'password_hash', 'password_confirmation', 'terms_accepted_at'] as $field) {
             $this->assertFalse(property_exists($row, $field), $field.' must not be persisted before approval');
@@ -101,7 +172,9 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
         $this->originalBrowser();
         $this->postJson('/api/email/registration/status', ['registration_token' => $this->credential])->assertOk()
             ->assertJsonPath('state', 'approved')->assertJsonPath('server_now', now()->toIso8601String());
+        Http::assertSentCount(1);
         $completed = $this->postJson('/api/register/finalize', $this->details())->assertOk()->assertJsonPath('user.role', 'customer');
+        Http::assertSentCount(2);
         $this->assertNotNull($this->accountSessionCookie($completed));
         $this->assertDatabaseCount('users', 1);
         $this->assertDatabaseCount('personal_access_tokens', 1);
@@ -171,6 +244,20 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
         $this->start()->assertAccepted()->assertJsonPath('state', 'approved');
         $this->postJson('/api/email/resend', ['registration_token' => $this->credential])->assertOk()->assertJsonPath('state', 'approved');
         $this->assertNotNull(PendingCustomerRegistration::sole()->registration_approved_at);
+    }
+
+    public function test_resubmitting_edited_details_revalidates_without_discarding_approval(): void
+    {
+        $this->start()->assertAccepted();
+        $this->approve();
+        User::factory()->create(['phone' => '09181111222', 'username' => 'takenusername']);
+        $this->start(['phone' => '09181111222', 'username' => 'takenusername'])->assertUnprocessable()
+            ->assertJsonValidationErrors(['phone', 'username']);
+        $this->start(['password' => 'password123', 'password_confirmation' => 'password123'])
+            ->assertUnprocessable()->assertJsonValidationErrors('password');
+        $this->start(['phone' => null, 'username' => 'changedcustomer'])->assertAccepted()
+            ->assertJsonPath('state', 'approved')->assertJsonMissingPath('email_delivery_token');
+        $this->assertCount(1, Notification::sent(PendingCustomerRegistration::sole(), VerifyEmailNotification::class));
     }
 
     public function test_same_email_attempts_are_independent_and_neither_reserves_profile_details(): void
@@ -301,6 +388,9 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
         });
         try {
             DB::table('pending_staff_accounts')->insert(['email' => 'staff@gmail.com', 'username' => 'NewCustomer', 'expires_at' => now()->addHour()]);
+            $this->start(['email' => 'staff@gmail.com', 'registration_token' => str_repeat('d', 64)])
+                ->assertUnprocessable()->assertJsonValidationErrors(['email', 'username']);
+            $this->assertDatabaseCount('pending_customer_registrations', 1);
             $this->postJson('/api/register/finalize', $this->details())->assertUnprocessable()->assertJsonValidationErrors('username');
             $this->postJson('/api/register/finalize', $this->details(['username' => null,
                 'terms_accepted_version' => 'spoofed', 'terms_accepted_at' => '2000-01-01']))->assertOk();
@@ -389,14 +479,20 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('optionalPhones')]
-    public function test_optional_mobile_is_normalized_only_when_approved_details_finalize(array $phoneInput, ?string $expectedPhone): void
+    public function test_matching_names_and_optional_identifiers_are_accepted_at_start_and_finalize(array $phoneInput, ?string $expectedPhone): void
     {
-        $this->start()->assertAccepted();
-        $this->approve();
-        $details=$this->details();
+        User::factory()->create(['first_name' => 'Maria Clara', 'last_name' => 'Maria Clara']);
+        $details = $this->details(['last_name' => 'MARIA CLARA', 'username' => ' ']);
         unset($details['phone']);
-        $completed=$this->postJson('/api/register/finalize', [...$details,...$phoneInput])->assertOk();
-        $this->assertSame($expectedPhone,User::sole()->phone);
+        $details = [...$details, ...$phoneInput];
+        $this->postJson('/api/register', $details)->assertAccepted();
+        $this->approve();
+        $completed=$this->postJson('/api/register/finalize', $details)->assertOk();
+        $user = User::where('email', $details['email'])->sole();
+        $this->assertSame($expectedPhone, $user->phone);
+        $this->assertNull($user->username);
+        $this->assertSame('Maria Clara', $user->first_name);
+        $this->assertSame('Maria Clara', $user->last_name);
         $this->withAccountSession($completed)->getJson('/api/me')->assertOk()
             ->assertJsonPath('user.phone_verification_status',$expectedPhone ? 'unverified':'not_added');
     }

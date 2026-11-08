@@ -2247,7 +2247,7 @@ var API = (() => {
 
   async function register(payload) {
     // POST /api/register
-    // payload: { first_name, last_name, username?, email, phone, password, password_confirmation }
+    // payload: { first_name, last_name, username?, email, phone?, password, password_confirmation, terms_accepted, registration_token }
     // Registration establishes a session only after deliberate magic-link verification.
     const data = await request("POST", "/register", payload);
     if (data.registration_token) storeEmailDelivery("registration", data.email_delivery_token);

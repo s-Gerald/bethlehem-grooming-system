@@ -39,7 +39,7 @@ function adminClinicVaccinations() {
     administrationRoutes: VACCINATION_ADMINISTRATION_ROUTES,
     doseUnits: CLINIC_CLINICAL_RULES.doseUnits,
     legacyDoseUnit: '',
-    doseCompletionAttempted: false,
+    completionAttempted: false,
 
     vaccineOptions: [],
     productDropdown: null,
@@ -77,28 +77,16 @@ function adminClinicVaccinations() {
       window.addEventListener('clinic-treatment-prepare', event => {
         const {id, finishCase} = event.detail;
         if (id !== this.appointment?.id) return;
-        event.detail.promise = finishCase
-          ? Promise.resolve(!this.hasUnfinishedTreatment())
-          : this.hasUnfinishedTreatment() ? this.saveTreatment(false) : Promise.resolve(true);
-      });
-      window.addEventListener('clinic-treatment-focus', event => {
-        if (event.detail.id !== this.appointment?.id) return;
-        const errors = Object.entries(event.detail.errors || {});
-        const recordId = errors[0]?.[0].split('.')[1];
-        const record = this.records.find(record => String(record.id) === recordId);
-        if (record?.state === 'draft') {
-          this.openEditForm(record);
-          this.doseCompletionAttempted = true;
-          this.formErrors = Object.fromEntries(errors.map(([field, messages]) => [field.split('.').slice(2).join('.'), messages.join(' ')]));
+        const unfinished = this.hasUnfinishedTreatment();
+        if (finishCase && !unfinished && !this.loading && !this.error) {
+          event.detail.errors = this.incompleteInventoryTreatmentErrors();
         }
-        this.formErrorSummary = event.detail.message;
-        this.$nextTick(() => {
-          this.$refs.treatmentForm?.scrollIntoView({block: 'start'});
-          this.focusValidationSummary();
-        });
+        event.detail.promise = finishCase ? Promise.resolve(!unfinished)
+          : unfinished ? this.saveTreatment(false) : Promise.resolve(true);
       });
+      window.addEventListener('clinic-treatment-focus', event => this.focusTreatmentValidation(event.detail));
       window.addEventListener("clinic-vaccinations-open", (event) => {
-        this.openForAppointment(event.detail?.appt);
+        event.detail.recordsReady = this.openForAppointment(event.detail.appt);
       });
       window.addEventListener('clinic-cases-loaded', (event) => {
         const current = event.detail?.find(item => item.id === this.appointment?.id);
@@ -113,6 +101,28 @@ function adminClinicVaccinations() {
         ++this._recordsRequest;
         this.closeChildDialogs();
         this.appointment = null; this.pet = null; this.records = [];
+      });
+    },
+
+    async focusTreatmentValidation({id, errors, message, recordsReady}) {
+      if (id !== this.appointment?.id) return;
+      const entries = Object.entries(errors || {});
+      const recordId = entries[0]?.[0].split('.')[1];
+      let record = this.records.find(record => String(record.id) === recordId);
+      if (recordId && !record && recordsReady) {
+        await recordsReady;
+        if (id !== this.appointment?.id) return;
+        record = this.records.find(record => String(record.id) === recordId);
+      }
+      if (record?.state === 'draft') {
+        this.openEditForm(record);
+        this.completionAttempted = true;
+        this.formErrors = Object.fromEntries(entries.map(([field, messages]) => [field.split('.').slice(2).join('.'), messages.join(' ')]));
+      }
+      this.formErrorSummary = message;
+      this.$nextTick(() => {
+        this.$refs.treatmentForm?.scrollIntoView({block: 'start'});
+        this.focusValidationSummary();
       });
     },
 
@@ -146,9 +156,10 @@ function adminClinicVaccinations() {
         this.closeChildDialogs();
       }
 
-      this.loadVaccinations();
+      const recordsReady = this.loadVaccinations();
       if (this.canEditClinical) this.loadOptions();
       if (this.inline && (changedCase || !this.formModal.open)) this.openCreateForm();
+      return recordsReady;
     },
 
     destroy() { this.productDropdown?.close(); clearTimeout(this._medicineTimer); ++this._medicineRequest; },
@@ -230,7 +241,7 @@ function adminClinicVaccinations() {
 
       this.form = emptyVaccinationDraftForm();
       this.legacyDoseUnit = '';
-      this.doseCompletionAttempted = false;
+      this.completionAttempted = false;
       this.treatmentType = "vaccine";
       this.clearMedicine();
       this.recordKind = "inventory";
@@ -280,7 +291,7 @@ function adminClinicVaccinations() {
       };
       this.treatmentType = record.treatment_type || "vaccine";
       this.legacyDoseUnit = record.dose_unit || '';
-      this.doseCompletionAttempted = false;
+      this.completionAttempted = false;
       this.clearMedicine();
       this.recordKind = record.inventory_item_id ? "inventory" : "historical";
       this.selectedVaccine = null;
@@ -401,7 +412,10 @@ function adminClinicVaccinations() {
     changeInventoryQuantity(delta) {
       const quantity = Number(this.form.inventory_quantity);
       const next = (Number.isInteger(quantity) ? quantity : 1) + delta;
-      if (next >= 1 && next <= Number(this.selectedProduct?.available_quantity)) this.form.inventory_quantity = next;
+      if (next >= 1 && next <= Number(this.selectedProduct?.available_quantity)) {
+        this.form.inventory_quantity = next;
+        this.revalidateFields("inventory_quantity");
+      }
     },
 
     selectVaccine(item, restoring = false) {
@@ -412,7 +426,7 @@ function adminClinicVaccinations() {
       this.form.inventory_item_id = String(item.item_id);
       if (!restoring) this.form.inventory_quantity = 1;
       this.formModal.unavailableVaccineName = "";
-      delete this.formErrors.inventory_item_id;
+      this.revalidateFields("inventory_item_id", "inventory_quantity");
     },
 
     clearVaccine() {
@@ -430,7 +444,7 @@ function adminClinicVaccinations() {
       this.clearMedicine();
       for (const field of ["vaccine_name", "product_name", "manufacturer", "batch_number", "product_expiry_date", "next_due_date", "dose_amount", "dose_unit", "dose_unit_other"]) this.form[field] = "";
       this.legacyDoseUnit = '';
-      this.doseCompletionAttempted = false;
+      this.completionAttempted = false;
       this.form.inventory_quantity = 1;
       this.formErrors = {};
       this.formErrorSummary = "";
@@ -441,6 +455,7 @@ function adminClinicVaccinations() {
       this.clearVaccine();
       this.clearMedicine();
       this.form.inventory_quantity = 1;
+      this.completionAttempted = false;
       if (this.recordKind === "inventory") this.form.administered_date = vaccinationToday();
       this.formErrors = {};
       this.formErrorSummary = "";
@@ -515,8 +530,16 @@ function adminClinicVaccinations() {
       if (!restoring) {
         this.form.inventory_quantity = 1;
       }
-      delete this.formErrors.inventory_item_id;
+      this.revalidateFields("inventory_item_id", "inventory_quantity");
     },
+
+    get inventoryClinicalRequired() { return this.recordKind === "inventory"; },
+    get siteRequired() {
+      return this.inventoryClinicalRequired && CLINIC_CLINICAL_RULES.injectionSiteRoutes.includes(this.form.route);
+    },
+    get customDoseUnitRequired() { return this.form.dose_unit === "other" && this.legacyDoseUnit !== "other"; },
+    get doseAmountRequired() { return this.inventoryClinicalRequired || Boolean(this.form.dose_unit); },
+    get doseUnitRequired() { return this.inventoryClinicalRequired || String(this.form.dose_amount ?? "").trim() !== ""; },
 
     get effectiveDoseUnit() {
       if (this.form.dose_unit === this.legacyDoseUnit) return this.legacyDoseUnit;
@@ -525,8 +548,8 @@ function adminClinicVaccinations() {
     },
     doseFieldErrors(required = false) {
       const errors = clinicDoseErrors(this.form.dose_amount, this.effectiveDoseUnit, required);
-      if (this.form.dose_unit === 'other' && this.legacyDoseUnit !== 'other' && (!this.form.dose_unit_other?.trim() || this.effectiveDoseUnit === 'other')) {
-        errors.dose_unit_other = 'Specify dose unit.';
+      if (this.customDoseUnitRequired && (!this.form.dose_unit_other?.trim() || this.effectiveDoseUnit === 'other')) {
+        errors.dose_unit_other = 'Specify the dose unit.';
         delete errors.dose_unit;
       }
       if (this.form.dose_unit && !this.doseUnits.some(unit => unit.value === this.form.dose_unit) && this.form.dose_unit !== this.legacyDoseUnit) errors.dose_unit = 'Select a dose unit.';
@@ -534,28 +557,65 @@ function adminClinicVaccinations() {
       return errors;
     },
     validateDoseFields(interaction = 'blur') {
-      const errors = this.doseFieldErrors(this.doseCompletionAttempted && this.recordKind === 'inventory');
-      for (const field of ['dose_amount', 'dose_unit', 'dose_unit_other']) {
-        if (interaction === 'input') {
-          if (this.formErrors[field] && !errors[field]) delete this.formErrors[field];
-        } else if (errors[field]) this.formErrors[field] = errors[field];
-        else delete this.formErrors[field];
+      const errors = this.doseFieldErrors(this.completionAttempted && this.inventoryClinicalRequired);
+      this.updateFieldErrors(['dose_amount', 'dose_unit', 'dose_unit_other'], errors, interaction === 'blur');
+    },
+    administrationFieldErrors(treatment, required) {
+      const errors = {};
+      const route = treatment.route;
+      const site = String(treatment.administration_site ?? "").trim();
+      if (route && !this.administrationRoutes.some((option) => option.value === route)) {
+        errors.route = "Choose a supported administration route.";
+      } else if (required && !route) {
+        errors.route = "Select an administration route.";
       }
+      if (site.length > 100) {
+        errors.administration_site = "Administration site must not exceed 100 characters.";
+      } else if (required && CLINIC_CLINICAL_RULES.injectionSiteRoutes.includes(route) && !site) {
+        errors.administration_site = "Enter the administration site.";
+      }
+      return errors;
+    },
+    validateAdministrationFields(field) {
+      const fields = field === "route" ? ["route", "administration_site"] : ["administration_site"];
+      this.updateFieldErrors(fields, this.administrationFieldErrors(this.form, this.completionAttempted && this.inventoryClinicalRequired));
+    },
+    incompleteInventoryTreatmentErrors() {
+      for (const record of this.records) {
+        if (record.state !== "draft" || !record.inventory_item_id) continue;
+        const errors = {
+          ...clinicDoseErrors(record.dose_amount, record.dose_unit, true),
+          ...this.administrationFieldErrors(record, true),
+        };
+        if (Object.keys(errors).length) {
+          return Object.fromEntries(Object.entries(errors).map(([field, message]) => [`treatments.${record.id}.${field}`, [message]]));
+        }
+      }
+      return null;
+    },
+    revalidateFields(...fields) {
+      if (fields.some((field) => this.formErrors[field])) {
+        this.updateFieldErrors(fields, this.formValidationErrors(this.completionAttempted));
+      }
+    },
+    updateFieldErrors(fields, errors, showNew = false) {
+      let changed = false;
+      for (const field of fields) {
+        if (this.formErrors[field] === errors[field] || (!showNew && !this.formErrors[field])) continue;
+        if (errors[field]) this.formErrors[field] = errors[field];
+        else delete this.formErrors[field];
+        changed = true;
+      }
+      if (!changed) return;
       this.formErrorSummary = Object.keys(this.formErrors).length ? 'Check the highlighted fields.' : '';
       window.dispatchEvent(new CustomEvent('clinic-treatment-validation', {detail: {
         id: this.appointment?.id, hasErrors: Object.keys(this.formErrors).length > 0,
       }}));
     },
-    validateForm(finalizing = false) {
+    formValidationErrors(complete) {
       const errors = {};
       const value = (field) => String(this.form[field] ?? "").trim();
-      const maxLength = (field, max, label) => {
-        if (value(field).length > max) {
-          errors[field] = `${label} must not exceed ${max} characters.`;
-        }
-      };
-
-      const usesInventory = this.recordKind === "inventory";
+      const usesInventory = this.inventoryClinicalRequired;
       const medicine = this.treatmentType === "medicine";
       if (usesInventory) {
         const quantity = value("inventory_quantity");
@@ -563,29 +623,21 @@ function adminClinicVaccinations() {
           errors.inventory_quantity = "Use a whole number of physical inventory units, at least 1.";
         } else if (this.selectedProduct && Number(quantity) > Number(this.selectedProduct.available_quantity)) {
           errors.inventory_quantity = "Quantity used exceeds available unexpired stock.";
-        } else if (finalizing && !quantity) errors.inventory_quantity = "required";
-        if (finalizing && (!this.selectedProduct || !this.productSelectable(this.selectedProduct))) errors.inventory_item_id = "required";
+        } else if (complete && !quantity) errors.inventory_quantity = "Enter the quantity used.";
+        if (complete && (!this.selectedProduct || !this.productSelectable(this.selectedProduct))) errors.inventory_item_id = "Select an available product.";
         if (medicine && this.selectedMedicine && this.medicineQuote?.error) errors.inventory_item_id = this.medicineQuote.error;
-        if (finalizing && medicine && !this.formModal.clinicAppointmentId) errors.clinic_appointment_id = "An ongoing Clinic case is required for a medicine treatment.";
+        if (complete && medicine && !this.formModal.clinicAppointmentId) errors.clinic_appointment_id = "An ongoing Clinic case is required for a medicine treatment.";
+        if (complete && !value("administered_date")) errors.administered_date = "Review this treatment’s missing administration date before saving.";
       }
 
-      this.doseCompletionAttempted = finalizing;
-      Object.assign(errors, this.doseFieldErrors(finalizing && usesInventory));
-      maxLength("administration_site", 100, "Administration site");
-
-      if (
-        value("route")
-        && !this.administrationRoutes.some((route) => route.value === value("route"))
-      ) {
-        errors.route = "Choose a supported administration route.";
-      }
+      Object.assign(errors, this.doseFieldErrors(complete && usesInventory), this.administrationFieldErrors(this.form, complete && usesInventory));
 
       if (!medicine && usesInventory && value("next_due_date") && value("next_due_date") < vaccinationToday()) {
         errors.next_due_date = "Next vaccination date cannot be before today.";
       }
       if (!usesInventory) {
-        if (finalizing && !value("vaccine_name")) errors.vaccine_name = "required";
-        if ((finalizing && !value("administered_date")) || (value("administered_date") && (!/^\d{4}-\d{2}-\d{2}$/.test(value("administered_date")) || Number.isNaN(new Date(value("administered_date")).getTime()) || value("administered_date") > vaccinationToday()))) {
+        if (complete && !value("vaccine_name")) errors.vaccine_name = "Enter the treatment name.";
+        if ((complete && !value("administered_date")) || (value("administered_date") && (!/^\d{4}-\d{2}-\d{2}$/.test(value("administered_date")) || Number.isNaN(new Date(value("administered_date")).getTime()) || value("administered_date") > vaccinationToday()))) {
           errors.administered_date = "Enter the actual administration date, on or before today.";
         }
         for (const field of medicine ? [] : ["next_due_date", "product_expiry_date"]) {
@@ -593,6 +645,12 @@ function adminClinicVaccinations() {
         }
       }
 
+      return errors;
+    },
+
+    validateForm(complete = false) {
+      this.completionAttempted = complete;
+      const errors = this.formValidationErrors(complete);
       this.formErrors = errors;
       this.formErrorSummary = Object.keys(errors).length ? "Check the highlighted fields." : "";
 
@@ -662,6 +720,7 @@ function adminClinicVaccinations() {
       try {
         const editing = this.formModal.mode === 'edit';
         const payload = this.buildPayload();
+        if (requireComplete) payload.complete_entry = true;
         const saved = await (editing
           ? API.updateAdminPetVaccination(petId, this.formModal.recordId, payload)
           : API.createAdminPetVaccination(petId, payload));
@@ -715,8 +774,7 @@ function adminClinicVaccinations() {
     },
 
     fieldError(field) {
-      const message = this.formErrors[field] || "";
-      return message === "required" || /(?:field is required|is required\.)/i.test(message) ? "" : message;
+      return this.formErrors[field] || "";
     },
 
     focusValidationSummary() {

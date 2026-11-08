@@ -7,6 +7,7 @@ use App\Models\InventoryItem;
 use App\Models\Pet;
 use App\Models\User;
 use App\Models\VaccinationRecord;
+use App\Support\ClinicClinicalRules;
 use App\Services\InventoryBatchBalanceService;
 use App\Services\ClinicBillingService;
 use Carbon\CarbonImmutable;
@@ -347,24 +348,25 @@ class AdminVaccinationController extends Controller
         $optional = $updating ? ['sometimes', 'nullable'] : ['nullable'];
         $required = $updating ? ['sometimes', 'required'] : ['required'];
         $usesInventory = filled($request->input('inventory_item_id', $record?->inventory_item_id));
+        $fillAdministrationDate = $usesInventory
+            && (! $record || ($record->inventory_item_id === null && $record->administered_date === null));
+        $completeEntry = $request->boolean('complete_entry');
         $type = $request->input('treatment_type', $record?->treatment_type ?? 'vaccine');
         $medicine = $type === 'medicine';
 
         $validator = Validator::make($request->all(), [
             'treatment_type' => ['sometimes', 'required', Rule::in(['vaccine', 'medicine'])],
+            'complete_entry' => ['sometimes', 'boolean'],
             'request_key' => [...$optional, 'uuid'],
             'inventory_quantity' => [...$optional, 'integer', 'min:1', 'max:99999999'],
             'expected_price' => [...$optional, 'numeric', 'decimal:0,2', 'min:0.01', 'max:999999.99'],
             'expected_weight_kg' => [...$optional, 'numeric', 'decimal:0,2', 'min:0.01', 'max:999999.99'],
             'strength_concentration' => ['prohibited'],
             'next_due_date' => [...$optional, 'date', ...($usesInventory ? ['after_or_equal:today'] : [])],
-            'dose_amount' => [...$optional, function ($attribute, $value, $fail) {
-                $errors = \App\Support\ClinicClinicalRules::doseErrors($value, null);
-                if (isset($errors['dose_amount'])) $fail($errors['dose_amount']);
-            }],
+            'dose_amount' => $optional,
             'dose_unit' => [...$optional, 'string', 'max:30'],
             'dose_unit_other' => ['sometimes', 'nullable', 'string', 'max:30'],
-            'route' => [...$optional, Rule::in(VaccinationRecord::ADMINISTRATION_ROUTES)],
+            'route' => [...$optional, 'string'],
             'administration_site' => [...$optional, 'string', 'max:100'],
             'clinic_appointment_id' => [
                 ...$optional,
@@ -392,10 +394,10 @@ class AdminVaccinationController extends Controller
             'next_due_date.after_or_equal' => 'The next vaccination date cannot be before today.',
         ]);
 
-        $validator->after(function ($validator) use ($request, $record): void {
+        $validator->after(function ($validator) use ($request, $record, $usesInventory, $completeEntry, $fillAdministrationDate): void {
             $amount = $request->input('dose_amount', $record?->dose_amount);
             $unit = $request->input('dose_unit', $record?->dose_unit);
-            $units = array_column(\App\Support\ClinicClinicalRules::catalog()['doseUnits'], 'value');
+            $units = array_column(ClinicClinicalRules::catalog()['doseUnits'], 'value');
             // Unchanged legacy units are not reinterpreted or normalized.
             $legacy = $record && $unit === $record->dose_unit;
             if (is_string($unit) && filled($unit) && ! $legacy && ! in_array($unit, $units, true)) {
@@ -403,21 +405,48 @@ class AdminVaccinationController extends Controller
             }
             if ($unit === 'other' && ! $legacy) {
                 $custom = $request->input('dose_unit_other');
-                if (! is_string($custom) || trim($custom) === '' || \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom) === 'other') {
-                    $validator->errors()->add('dose_unit_other', 'Specify dose unit.');
+                if (! is_string($custom) || trim($custom) === '' || ClinicClinicalRules::normalizeDoseUnit($custom) === 'other') {
+                    $validator->errors()->add('dose_unit_other', 'Specify the dose unit.');
                 }
-                $unit = is_string($custom) ? \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom) : null;
+                $unit = is_string($custom) ? ClinicClinicalRules::normalizeDoseUnit($custom) : null;
             }
-            foreach (\App\Support\ClinicClinicalRules::doseErrors($amount, $unit) as $field => $message) {
-                $validator->errors()->add($field, $message);
+            $required = $completeEntry && $usesInventory;
+            $route = $required || $request->has('route') ? $request->input('route', $record?->route) : null;
+            $errors = ClinicClinicalRules::doseErrors($amount, $unit, $required)
+                + ClinicClinicalRules::administrationErrors(
+                    $route,
+                    $request->input('administration_site', $record?->administration_site),
+                    $required,
+                );
+            if ($validator->errors()->has('dose_unit_other')) {
+                unset($errors['dose_unit']);
+            }
+            if ($required && blank($request->input('inventory_quantity', $record?->inventory_quantity))) {
+                $errors['inventory_quantity'] = 'Enter the quantity used.';
+            }
+            if ($required && ! $fillAdministrationDate && $record?->administered_date === null) {
+                $errors['administered_date'] = 'Review this treatment’s missing administration date before saving.';
+            }
+            if ($completeEntry && ! $usesInventory) {
+                if (blank($request->input('vaccine_name', $record?->vaccine_name))) {
+                    $errors['vaccine_name'] = 'Enter the treatment name.';
+                }
+                if (blank($request->input('administered_date', $record?->administered_date))) {
+                    $errors['administered_date'] = 'Enter the actual administration date, on or before today.';
+                }
+            }
+            foreach ($errors as $field => $message) {
+                if (! $validator->errors()->has($field)) {
+                    $validator->errors()->add($field, $message);
+                }
             }
         });
         $data = $validator->validate();
         if (($data['dose_unit'] ?? null) === 'other' && (! $record || $record->dose_unit !== 'other')) {
             $custom = trim($data['dose_unit_other']);
-            $data['dose_unit'] = \App\Support\ClinicClinicalRules::normalizeDoseUnit($custom);
+            $data['dose_unit'] = ClinicClinicalRules::normalizeDoseUnit($custom);
         }
-        unset($data['dose_unit_other']);
+        unset($data['dose_unit_other'], $data['complete_entry']);
         if (! $record) $data['treatment_type'] = $type;
         if ($medicine) {
             $data = [...$data, 'next_due_date' => null, 'product_name' => null,
@@ -435,7 +464,7 @@ class AdminVaccinationController extends Controller
                     throw ValidationException::withMessages([$field => 'This date must be on or after the administration date.']);
                 }
             }
-        } elseif (! $updating) {
+        } elseif ($fillAdministrationDate) {
             $data['administered_date'] = now()->toDateString();
         }
 

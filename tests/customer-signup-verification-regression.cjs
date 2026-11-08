@@ -95,6 +95,7 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
       removeItem(key) { if (noStorage) throw Error('blocked'); storage.delete(key); },
     },
   });
+  if (signup) element('signupForm').classList.remove('hidden');
   if (signup && !initialStorage.bethlehem_signup_attempt) {
     element('terms').checked = true;
     for (const [id, value] of Object.entries({ firstName: 'Test', lastName: 'Customer', email: 'customer@gmail.com', phone, password: 'strong-password', confirmPassword: 'strong-password' })) element(id).value = value;
@@ -139,7 +140,12 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   await normal.dispatch('signupForm','submit');
   assert.equal(normal.calls.filter(c=>c[0]==='redirect').length,0,'Waiting must stay on original page');
   const started = normal.calls.find(c=>c[0]==='register')[1];
-  assert.deepEqual(Object.keys(started).sort(),['email','registration_token']);
+  assert.match(started.registration_token, /^[a-f0-9]{64}$/);
+  assert.deepEqual({...started}, {
+    first_name:'Test', last_name:'Customer', username:null, email:'customer@gmail.com', phone:null,
+    password:'strong-password', password_confirmation:'strong-password', terms_accepted:true,
+    registration_token:started.registration_token,
+  });
   assert.equal(normal.element('signupWaitingState').classList.contains('hidden'),false);
   assert.equal(normal.element('signupTitle').textContent,'Check your email');
   assert.equal(normal.element('signupDescription').textContent,'Open the verification link sent to');
@@ -190,10 +196,24 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(edit.element('signupForm').classList.contains('hidden'),false);
   assert.equal(edit.element('signupWaitingState').classList.contains('hidden'),true);
   assert.equal(edit.activeElement(),edit.element('signupTitle'));
+  const editToken = edit.calls.find(c=>c[0]==='register')[1].registration_token;
+  edit.element('username').value='takenuser';
+  const resumeEdit = edit.API.register;
+  edit.API.register=async payload=>{
+    const result = await resumeEdit(payload);
+    assert.equal(payload.registration_token,editToken);
+    if (payload.username === 'takenuser') throw {errors:{username:['That username is already in use.']}};
+    return {...result,state:'approved',registration_state:'resumed'};
+  };
+  await edit.dispatch('signupForm','submit');
+  assert.equal(edit.element('usernameServerError').textContent,'That username is already in use.');
+  assert.equal(edit.element('signupWaitingState').classList.contains('hidden'),true);
+  assert.equal(edit.calls.filter(c=>c[0]==='finalize').length,0);
   edit.element('username').value='changeduser';
-  edit.API.registrationStatus=async()=>({state:'approved'});
+  edit.dispatch('username','input');
+  assert.equal(edit.element('usernameServerError').classList.contains('hidden'),true);
   await edit.dispatch('signupForm','submit'); await flush();
-  assert.equal(edit.calls.filter(c=>c[0]==='register').length,1);
+  assert.equal(edit.calls.filter(c=>c[0]==='register').length,3);
   assert.equal(edit.calls.find(c=>c[0]==='finalize')[1].username,'changeduser');
 
   const changed=page(); await changed.dispatch('signupForm','submit');
@@ -209,11 +229,14 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.match(recovery.element('signupDescription').textContent,/re-enter/i);
   assert.equal(recovery.element('password').value,'');
   assert.equal(recovery.calls.filter(c=>c[0]==='finalize').length,0);
-  recovery.API.registrationStatus=async()=>({state:'approved'});
+  const resumeRegister = recovery.API.register;
+  recovery.API.register=async payload=>({...await resumeRegister(payload),state:'approved',registration_state:'resumed'});
   recovery.element('firstName').value='Test';recovery.element('lastName').value='Customer';recovery.element('terms').checked=true;
   recovery.element('password').value='fresh-owner-password'; recovery.element('confirmPassword').value='fresh-owner-password';
   await recovery.dispatch('signupForm','submit'); await flush();
-  assert.equal(recovery.calls.filter(c=>c[0]==='register').length,0);
+  const recovered = recovery.calls.find(c=>c[0]==='register')[1];
+  assert.equal(recovered.registration_token,saved.token);
+  assert.equal(recovered.password,'fresh-owner-password');
   assert.equal(recovery.calls.find(c=>c[0]==='finalize')[1].password,'fresh-owner-password');
 
   const stopped=page(); await stopped.dispatch('signupForm','submit');
@@ -241,6 +264,36 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(expired.element('signupWaitingState').classList.contains('hidden'),true);
   assert.equal(expired.element('signupForm').classList.contains('hidden'),false);
   assert.equal(expired.element('signupMessage').textContent,'Registration expired. Start again.');
+
+  const rejected = page({phone:'09171234567'});
+  const rejection = {phone:['An account with this mobile number already exists.']};
+  rejected.API.register=async()=>{throw {errors:rejection,data:{conflicts:{phone:'account_exists'}}};};
+  await rejected.dispatch('signupForm','submit');
+  assert.equal(rejected.element('signupForm').classList.contains('hidden'),false);
+  assert.equal(rejected.element('signupWaitingState').classList.contains('hidden'),true);
+  assert.equal(rejected.element('phoneServerError').textContent,rejection.phone[0]);
+  assert.equal(rejected.element('phone').getAttribute('aria-invalid'),'true');
+  assert.equal(rejected.element('password').value,'strong-password');
+  assert.equal(rejected.activeElement(),rejected.element('phone'));
+  rejected.dispatch('phone','blur');
+  assert.equal(rejected.element('phoneServerError').textContent,rejection.phone[0]);
+  rejected.element('phone').value='09181234567';
+  rejected.dispatch('phone','input');
+  assert.equal(rejected.element('phoneServerError').classList.contains('hidden'),true);
+
+  const unsafe = page();
+  const unsafeMessage = 'This password is not safe. Choose another.';
+  unsafe.API.register=async()=>{throw {errors:{password:[unsafeMessage]}};};
+  await unsafe.dispatch('signupForm','submit');
+  assert.equal(unsafe.element('passwordServerError').textContent,unsafeMessage);
+  assert.equal(unsafe.activeElement(),unsafe.element('password'));
+  assert.equal(unsafe.element('signupWaitingState').classList.contains('hidden'),true);
+
+  const invalid = page();
+  invalid.element('password').value='short';
+  await invalid.dispatch('signupForm','submit');
+  assert.equal(invalid.element('passwordServerError').textContent,'Use at least 8 characters.');
+  assert.equal(invalid.calls.length,0);
 
   const fieldFailure=page();await fieldFailure.dispatch('signupForm','submit');
   fieldFailure.API.registrationStatus=async()=>({state:'approved'});

@@ -3,7 +3,7 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const { formatSavedWeight } = await import("./pet-weight-size.js?v=pet-weight-size-20261107-v1");
-  const { renderClinicVisitSections, healthDate } = await import("./customer-health-records.js?v=20261029");
+  const { renderClinicVisitSections, healthDate } = await import("./customer-health-records.js?v=visit-summary");
   if (!API.hasAuthenticatedSession("customer")) {
     API.redirectToSignIn();
     return;

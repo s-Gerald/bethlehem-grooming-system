@@ -136,6 +136,19 @@ class AdminVaccinationInterfaceTest extends TestCase
             $this->assertStringContainsString($message, $this->vaccinationComponent);
         }
 
+        foreach ([
+            'vaccination-dose-amount' => 'doseAmountRequired',
+            'vaccination-dose-unit' => 'doseUnitRequired',
+            'vaccination-dose-unit-other' => 'customDoseUnitRequired',
+            'vaccination-route' => 'inventoryClinicalRequired',
+            'vaccination-site' => 'siteRequired',
+        ] as $field => $requiredState) {
+            $this->assertMatchesRegularExpression(
+                '/<(?:input|select)\b[^>]*\bid="'.$field.'"[^>]*:aria-required="'.$requiredState.'"/',
+                $this->clinicPage,
+            );
+        }
+
         $payloadBuilder = $this->sourceBetween(
             $this->vaccinationComponent,
             'buildPayload() {',

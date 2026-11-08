@@ -1,6 +1,6 @@
 // BEGIN GENERATED CLINIC CLINICAL RULES
 // Source: resources/data/clinic-clinical-rules.json; run npm run build:clinical.
-const CLINIC_CLINICAL_RULES = {"vitals":{"temperature_c":{"min":25,"max":45,"precision":1,"storageMax":999.9},"heart_rate_bpm":{"min":1,"max":400,"precision":0,"storageMax":65535},"respiratory_rate_bpm":{"min":1,"max":200,"precision":0,"storageMax":65535}},"normalRanges":{"dog":{"temperature_c":[37.5,39.2],"heart_rate_bpm":[60,160],"respiratory_rate_bpm":[10,30]},"cat":{"temperature_c":[38.1,39.2],"heart_rate_bpm":[120,240],"respiratory_rate_bpm":[24,42]}},"doseUnits":[{"value":"mL","label":"mL"},{"value":"mg","label":"mg"},{"value":"mcg","label":"mcg"},{"value":"g","label":"g"},{"value":"international units","label":"International units"},{"value":"tablet","label":"Tablet(s)"},{"value":"capsule","label":"Capsule(s)","whole":true},{"value":"drop","label":"Drop(s)","whole":true},{"value":"puff","label":"Puff(s)","whole":true},{"value":"dose","label":"Dose(s)","whole":true},{"value":"other","label":"Other — specify"}],"dosePrecision":3,"doseMax":99999.999,"doseUnitMaxLength":30,"sources":["https://www.merckvetmanual.com/multimedia/table/normal-rectal-temperature-ranges","https://books.lib.uoguelph.ca/vetm3430/chapter/vital-parameters/"]};
+const CLINIC_CLINICAL_RULES = {"vitals":{"temperature_c":{"min":25,"max":45,"precision":1,"storageMax":999.9},"heart_rate_bpm":{"min":1,"max":400,"precision":0,"storageMax":65535},"respiratory_rate_bpm":{"min":1,"max":200,"precision":0,"storageMax":65535}},"normalRanges":{"dog":{"temperature_c":[37.5,39.2],"heart_rate_bpm":[60,160],"respiratory_rate_bpm":[10,30]},"cat":{"temperature_c":[38.1,39.2],"heart_rate_bpm":[120,240],"respiratory_rate_bpm":[24,42]}},"doseUnits":[{"value":"mL","label":"mL"},{"value":"mg","label":"mg"},{"value":"mcg","label":"mcg"},{"value":"g","label":"g"},{"value":"international units","label":"International units"},{"value":"tablet","label":"Tablet(s)"},{"value":"capsule","label":"Capsule(s)","whole":true},{"value":"drop","label":"Drop(s)","whole":true},{"value":"puff","label":"Puff(s)","whole":true},{"value":"dose","label":"Dose(s)","whole":true},{"value":"other","label":"Other — specify"}],"dosePrecision":3,"doseMax":99999.999,"doseUnitMaxLength":30,"injectionSiteRoutes":["subcutaneous","intramuscular"],"sources":["https://www.merckvetmanual.com/multimedia/table/normal-rectal-temperature-ranges","https://books.lib.uoguelph.ca/vetm3430/chapter/vital-parameters/"]};
 // END GENERATED CLINIC CLINICAL RULES
 let clinicPetWeightToolsReady;
 function loadClinicPetWeightTools() {
@@ -17,8 +17,8 @@ function clinicValidNumber(value, precision, min, max) {
 function clinicDoseErrors(amount, unit, required = false) {
   const errors = {}, catalog = CLINIC_CLINICAL_RULES;
   const hasAmount = amount != null && String(amount).trim() !== '', hasUnit = Boolean(unit);
-  if ((required || hasUnit) && !hasAmount) errors.dose_amount = 'Dose amount required.';
-  if ((required || hasAmount) && !hasUnit) errors.dose_unit = 'Dose unit required.';
+  if ((required || hasUnit) && !hasAmount) errors.dose_amount = 'Enter the dose amount.';
+  if ((required || hasAmount) && !hasUnit) errors.dose_unit = 'Select a dose unit.';
   if (hasAmount && !clinicValidNumber(amount, catalog.dosePrecision, 0.001, catalog.doseMax)) {
     errors.dose_amount = 'Enter 0.001–99,999.999, up to 3 decimals.';
   }
@@ -438,9 +438,11 @@ function adminClinicModal() {
     },
 
     syncTreatmentAppointment() {
-      window.dispatchEvent(new CustomEvent('clinic-vaccinations-open', {detail: {
+      const detail = {
         appt: {...this.currentAppt, vitals: {...this.currentAppt?.vitals, weight_kg: this.form.weight_kg}},
-      }}));
+      };
+      window.dispatchEvent(new CustomEvent('clinic-vaccinations-open', {detail}));
+      return detail.recordsReady;
     },
 
     caseTabKeydown(event) {
@@ -511,9 +513,13 @@ function adminClinicModal() {
     async saveRecord(finishCase = false) {
       if (!this.canEditClinical || this.saving || this.workspaceSaving || this.attachmentBusy || this.optionsLoading || (finishCase && !this.canFinish)) return;
       this.saving = true;
+      const preparation = {id: this.apptId, finishCase, promise: null, errors: null};
       try {
-        const preparation = {id: this.apptId, finishCase, promise: null};
         window.dispatchEvent(new CustomEvent('clinic-treatment-prepare', {detail: preparation}));
+        if (preparation.errors) {
+          this.showTreatmentValidation(preparation.errors);
+          return;
+        }
         const treatmentReady = await (preparation.promise || Promise.resolve(true));
         if (!treatmentReady) {
           this.activeSection = 'vaccinations';
@@ -582,17 +588,19 @@ function adminClinicModal() {
         window.dispatchEvent(new CustomEvent("clinic-case-updated"));
       } catch (e) {
         if (Object.keys(e.errors || {}).some(key => key.startsWith('treatments.'))) {
-          this.activeSection = 'vaccinations';
-          this.syncTreatmentAppointment();
-          const message = Object.values(e.errors).flat().join(' ');
-          this.modalError = message;
-          this.treatmentValidationError = true;
-          window.dispatchEvent(new CustomEvent('clinic-treatment-focus', {detail: {id: this.apptId, message, errors: e.errors}}));
+          this.showTreatmentValidation(e.errors, this.syncTreatmentAppointment());
         } else if (e.errors) this.showValidationErrors(e.errors);
         else this.modalError = e.message || "Unable to save the record. Try again.";
       } finally {
         this.saving = false;
       }
+    },
+    showTreatmentValidation(errors, recordsReady) {
+      this.activeSection = 'vaccinations';
+      const message = Object.values(errors).flat().join(' ');
+      this.modalError = message;
+      this.treatmentValidationError = true;
+      window.dispatchEvent(new CustomEvent('clinic-treatment-focus', {detail: {id: this.apptId, message, errors, recordsReady}}));
     },
   };
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import * as healthRecords from "../scripts/components/customer-health-records.js";
-const { clinicVisitFields, healthDate } = healthRecords;
+const { renderClinicVisitSections, healthDate } = healthRecords;
 
 const page = fs.readFileSync(new URL("../pages/client/grooming-history.html", import.meta.url), "utf8");
 const script = page.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
@@ -60,11 +60,11 @@ async function run({ failClinic = false, failGrooming = false, empty = false } =
   return { element, context, calls, restoreClinic() { clinicFails = false; } };
 }
 
-assert.deepEqual(clinicVisitFields({ vet_notes: "PRIVATE", vitals: { heart_rate_bpm: 120 } }), []);
+assert.equal(renderClinicVisitSections({ vet_notes: "PRIVATE", vitals: { heart_rate_bpm: 120 } }, String), "");
 assert.equal(healthDate(null), "Not recorded");
-assert.match(clinicVisitFields(clinic).find(([label]) => label === "Medications")[1], /Omeprazole[\s\S]*Frequency: Once daily/);
-assert.equal(clinicVisitFields({ diagnosis: "Possible gastritis", diagnosis_source: "working_diagnosis" })[0][0], "Working diagnosis");
-assert.equal(clinicVisitFields({ diagnosis: "Gastritis" })[0][0], "Diagnosis", "Old cached records remain supported");
+assert.match(renderClinicVisitSections(clinic, String), /Omeprazole[\s\S]*Frequency[\s\S]*Once daily/);
+assert.match(renderClinicVisitSections({ diagnosis: "Possible gastritis", diagnosis_source: "working_diagnosis" }, String), /Working diagnosis[\s\S]*Possible gastritis/);
+assert.match(renderClinicVisitSections({ diagnosis: "Gastritis" }, String), />Diagnosis</, "Old cached records remain supported");
 
 // Exercise the pet-focused renderers with sparse and complete clinic data.
 const profileSource = fs.readFileSync(new URL("../scripts/components/pet-details.js", import.meta.url), "utf8");
@@ -92,17 +92,30 @@ const fullRecord = {
   ...clinic, primary_veterinarian_name: "Dr. Ana Santos", diagnosis_source: "working_diagnosis",
   vitals: { weight_kg: "4.250", temperature_c: 38.5, heart_rate_bpm: 120 },
   follow_up_notes: "Return for reassessment.\nBring the medication.",
+  vaccinations: [
+    { vaccine_name: "Rabies", administered_date: "2026-10-15", next_due_date: "2027-10-15" },
+    { vaccine_name: "Bordetella", administered_date: "2026-10-15", next_due_date: "2027-04-15" },
+    { vaccine_name: "Leptospirosis", administered_date: "2026-10-15" },
+  ],
+  administered_medicines: [{ medicine_name: "Cerenia", dose_amount: "0.500", dose_unit: "mL", route: "subcutaneous", notes: "PRIVATE" }],
   prescriptions: [
     { medicine: "Omeprazole", strength_concentration: "10 mg", dose: "1 capsule", route: "Oral", frequency: "Once daily", duration: "5 days", instructions: "Before meals\nAs directed." },
     { medicine: "Second medication", instructions: "Exactly as recorded." },
   ],
 };
 const fullVisit = renderVisit(fullRecord);
+assert.ok(fullVisit.indexOf("Next steps") < fullVisit.indexOf("Visit overview"));
+assert.ok(fullVisit.indexOf("Visit overview") < fullVisit.indexOf("Care provided"));
+const nextSteps = fullVisit.slice(fullVisit.indexOf("Next steps"), fullVisit.indexOf("Visit overview"));
+assert.match(nextSteps, /Rabies[\s\S]*October 15, 2027[\s\S]*Bordetella[\s\S]*April 15, 2027/);
+assert.doesNotMatch(nextSteps, /Scheduled|Leptospirosis/);
+assert.match(fullVisit, /Vaccinations administered[\s\S]*Rabies[\s\S]*October 15, 2026[\s\S]*October 15, 2027/);
+assert.match(fullVisit, /Medicines administered[\s\S]*Cerenia[\s\S]*0\.5 mL[\s\S]*Subcutaneous[\s\S]*Prescribed medications/);
 for (const text of ["Visit overview", "Care provided", "Next steps", "Attending veterinarian", "Dr. Ana Santos", "Working diagnosis", "Gastritis", "Visit weight", "4.25 kg", "Fluids administered", "Prescribed medications", "Omeprazole", "10 mg", "Dose", "1 capsule", "Route", "Oral", "Frequency", "Once daily", "Duration", "5 days", "Before meals\nAs directed.", "Second medication", "Exactly as recorded.", "Follow-up date", "October 20, 2026", "Follow-up instructions", fullRecord.follow_up_notes]) {
   assert.ok(fullVisit.includes(text), `Full visit includes ${text}`);
 }
 assert.doesNotMatch(fullVisit, /38.5|120|PRIVATE|INTERNAL|radiograph|confirmed|Not recorded/);
-assert.equal((fullVisit.match(/<li\b/g) || []).length, 2, "Medications are separate readable groups");
+assert.equal((fullVisit.match(/<li\b/g) || []).length, 6, "Treatments and prescriptions have separate entries");
 const reasonOnly = renderVisit({ chief_complaint: "Vaccination" });
 assert.match(reasonOnly, /Visit overview[\s\S]*Reason for visit[\s\S]*Vaccination/);
 assert.doesNotMatch(reasonOnly, /Care provided|Next steps|Attending veterinarian|Diagnosis|Visit weight|medications|Not recorded/);
@@ -121,6 +134,7 @@ assert.doesNotMatch(hostile, /<script>|<img|<svg|<iframe>|<b>/);
 assert.match(hostile, /&lt;script&gt;|&lt;img|A &amp; B/);
 const sharedVisit = vm.runInContext(`renderMedicalRecord(${JSON.stringify(fullRecord)})`, profileContext);
 for (const text of ["Working diagnosis", "Attending veterinarian", "Dr. Ana Santos", "Care provided", "Omeprazole", "Second medication", "Next steps", "4.25 kg"]) assert.ok(sharedVisit.includes(text), `My Pets includes ${text}`);
+for (const text of ["Rabies", "October 15, 2027", "Bordetella", "April 15, 2027", "Cerenia", "0.5 mL", "Medicines administered", "Prescribed medications"]) assert.ok(sharedVisit.includes(text), `My Pets includes ${text}`);
 assert.match(sharedVisit, /<dd class="[^"]*text-xs leading-5/, "My Pets retains compact clinical values");
 const list = () => ui.element("historyList").innerHTML;
 assert.equal(ui.element("historySummary").textContent, "3 records found");
@@ -148,6 +162,7 @@ assert.doesNotMatch(list(), /Mochi/);
 
 const trigger = { dataset: { historyType: "clinic", historyKey: clinic.appointment_reference }, focus() { this.focused = true; } };
 ui.element("historyList").listeners.click({ target: { closest: () => trigger } });
+assert.equal(ui.element("historyModalTitle").textContent, "Visit Summary");
 assert.match(ui.element("historyModalContent").innerHTML, /Gastritis|Omeprazole/);
 assert.doesNotMatch(ui.element("historyModalContent").innerHTML, /PRIVATE|INTERNAL|radiograph|Full grooming|Bath|Vaccinations/);
 vm.runInContext("closeHistoryModal()", ui.context);

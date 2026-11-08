@@ -62,14 +62,36 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   context.API.createAdminPetVaccination = async (pet, payload) => {
     writes.push(['create',pet,payload]);
     if (failCreate) throw new Error('Lost response');
-    const vaccination = {id:10, state:'draft', ...payload}; savedRecords = [vaccination]; return {vaccination};
+    const vaccination = {id:10, state:'draft', administered_date: payload.inventory_item_id ? context.vaccinationToday() : null, ...payload};
+    savedRecords = [vaccination]; return {vaccination};
   };
   context.API.publishAdminPetVaccination = async () => {throw new Error('Individual treatments must not be published');};
   context.API.updateAdminPetVaccination = async (pet,id,payload) => {
-    writes.push(['update',pet,id,payload]); const vaccination = {id,state:'draft',...payload}; savedRecords = [vaccination]; return {vaccination};
+    writes.push(['update',pet,id,payload]);
+    const vaccination = {...savedRecords.find(record => record.id === id), id,state:'draft',...payload};
+    savedRecords = [vaccination]; return {vaccination};
   };
   state.selectVaccine(product);state.form.notes = 'Current visit';
   state.form.dose_amount = '0.5'; state.form.dose_unit = 'mL';
+  assert.equal(await state.saveTreatment(), false);
+  assert.equal(writes.length, 0);
+  assert.match(state.formErrors.route, /Select an administration route/);
+  state.form.route = 'subcutaneous';
+  state.validateAdministrationFields('route');
+  assert.equal(state.formErrors.route, undefined);
+  assert.equal(state.siteRequired, true);
+  assert.equal(await state.saveTreatment(), false);
+  assert.match(state.formErrors.administration_site, /Enter the administration site/);
+  state.form.route = 'intranasal';
+  state.validateAdministrationFields('route');
+  assert.equal(state.siteRequired, false);
+  assert.equal(state.formErrors.administration_site, undefined);
+  assert.equal(state.formErrorSummary, '');
+  state.form.administration_site = 'Left side';
+  state.form.route = 'intramuscular';
+  state.validateAdministrationFields('route');
+  assert.equal(state.siteRequired, true);
+  assert.equal(state.form.administration_site, 'Left side');
   assert.equal(state.hasUnfinishedTreatment(),true);
   await state.saveTreatment();
   assert.equal(state.formModal.open,true);
@@ -79,6 +101,7 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.deepEqual(writes.map(call => call[0]), ['create','create']);
   assert.equal(writes[1][2].request_key,retryKey,'Lost responses retry the same vaccine identity');
   assert.equal(writes[0][2].clinic_appointment_id,91);
+  assert.equal(writes[0][2].complete_entry,true);
   assert.equal(state.records.length,2,'Adding preserves existing treatments');
   assert.equal(state.appointment.status,'in_consultation');
   assert.equal(state.formModal.mode,'create');assert.equal(state.form.notes,'');assert.equal(state.selectedProduct,null);
@@ -131,6 +154,20 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   modal.form.weight_kg='12';state.form.notes='Unfinished draft';
   await modal.saveRecord();assert.equal(caseSaves.at(-1)[1].finish_case,false,'Draft saves never transition');
   assert.equal(writes.at(-1)[2].notes,'Unfinished draft','Save as Draft retains the current treatment entry');
+  assert.equal(writes.at(-1)[2].complete_entry,undefined);
+
+  state.openForAppointment(appt(91)); await settle(); modal.open = true;
+  state.records[0] = {...state.records[0], inventory_item_id: 5, dose_amount: '0.5', dose_unit: 'mL',
+    route: 'intramuscular', administration_site: null};
+  const finishCount = caseSaves.length;
+  await modal.saveRecord(true);
+  assert.equal(caseSaves.length, finishCount, 'An already loaded incomplete draft blocks payment before the API call');
+  assert.equal(state.formModal.recordId, state.records[0].id);
+  assert.match(state.formErrors.administration_site, /Enter the administration site/);
+  state.form.administration_site = 'Right thigh';
+  state.validateAdministrationFields('administration_site');
+  assert.equal(modal.modalError, '');
+  state.resetInlineForm();
 
   state.openForAppointment(appt(91));await settle();
   let confirmRemove=false;
@@ -140,6 +177,8 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   confirmRemove=true;await state.removeTreatment(state.records[0]);assert.equal(writes.at(-1)[0],'delete');
   assert.equal(state.records.length,0);
   state.recordKind='historical';state.changeSource();state.form.vaccine_name='External vaccine';state.form.administered_date='2020-01-01';
+  state.form.route = 'subcutaneous';
+  assert.equal(state.siteRequired, false, 'Historical documentation can retain an injectable route without a known site');
   await state.saveTreatment();assert.equal(writes.at(-1)[2].inventory_item_id,null);
   const count=writes.length;state.$store.clinicAccess.permissions.clinical=false;await state.saveTreatment();
   assert.equal(writes.length,count,'Read-only roles cannot add treatments');
@@ -150,6 +189,19 @@ const product = {is_active: true, category: "vaccine", item_id: 5, item_name: 'R
   assert.equal(context.clinicTreatmentSummary({route:'oral'}),'Oral');
   const fields = Object.fromEntries(context.clinicTreatmentDetails({treatment_type:'medicine',manufacturer:'Maker',batch_number:'LOT',product_expiry_date:'2027-01-01',notes:'Saved note',clinic_appointment_reference:'CL-91',inventory_quantity:'1.00',inventory_unit:'bottle'}).map(field => [field.label,field.value]));
   assert.equal(fields.Manufacturer,'Maker');assert.equal(fields['Batch / Lot'],'LOT');assert.equal(fields.Notes,'Saved note');assert.equal(fields.Case,'CL-91');assert.equal(fields.Quantity,'1 bottle');
+
+  const cold = attach(context.adminClinicVaccinations());
+  cold.inline = true; cold.init();
+  const coldRecords = deferred();
+  context.API.getAdminPetVaccinations = () => coldRecords.promise;
+  const recordsReady = cold.openForAppointment(appt(92));
+  context.window.dispatchEvent(new context.CustomEvent('clinic-treatment-focus', {detail: {
+    id: 92, message: 'Select an administration route.', errors: {'treatments.11.route': ['Select an administration route.']}, recordsReady,
+  }}));
+  coldRecords.resolve({vaccinations: [{id: 11, state: 'draft', clinic_appointment_id: 92, inventory_item_id: 5}]});
+  await settle();
+  assert.equal(cold.formModal.recordId, 11, 'Backend validation opens the draft even when treatments were still loading');
+  assert.match(cold.formErrors.route, /Select an administration route/);
 
   const profile = attach(context.adminClinicPage());
   const owner = {id:8,recordType:'registered',fullName:'Ana'};

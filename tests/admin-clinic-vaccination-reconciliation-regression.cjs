@@ -149,6 +149,7 @@ const draft = {
   loading.form.dose_amount = 2.5;
   assert.equal(loading.validateForm(), false);
   loading.form.dose_unit = "mL";
+  loading.form.route = "subcutaneous"; loading.form.administration_site = "Right shoulder";
   assert.equal(loading.validateForm(true), true);
   assert.equal(loading.buildPayload().inventory_quantity, "1");
   loading.form.dose_amount = 7.5;
@@ -220,6 +221,7 @@ const draft = {
   assert.equal(treatment.validateForm(), false, "Fractional stock use is rejected");
   treatment.form.inventory_quantity = 1;
   treatment.form.dose_unit = "mL";
+  treatment.form.route = "oral";
   assert.equal(treatment.validateForm(true), true);
   const medicinePayload = treatment.buildPayload();
   assert.equal(medicinePayload.treatment_type, "medicine");

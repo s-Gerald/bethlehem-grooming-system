@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ClinicAppointment;
 use App\Models\Pet;
+use App\Models\VaccinationRecord;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -66,6 +67,14 @@ class PetMedicalRecordController extends Controller
             ->with([
                 'vitals:id,clinic_appointment_id,weight_kg,temperature_c,heart_rate_bpm,respiratory_rate_bpm,body_condition_score',
                 'record:id,clinic_appointment_id,chief_complaint,diagnosis,working_diagnosis,primary_veterinarian_name,treatment_given,follow_up_date,follow_up_notes,prescriptions',
+                'vaccinationRecords' => fn ($query) => $query
+                    ->select('clinic_appointment_id', 'treatment_type', 'vaccine_name', 'administered_date', 'next_due_date', 'dose_amount', 'dose_unit', 'route')
+                    ->whereHas('clinicAppointment', fn (Builder $appointment) => $appointment
+                        ->whereColumn('clinic_appointments.pet_id', 'vaccination_records.pet_id'))
+                    ->where(fn (Builder $treatments) => $treatments->visibleToClients()
+                        ->orWhere(fn (Builder $medicines) => $medicines->where('treatment_type', 'medicine')->published()->notVoided()))
+                    ->orderByDesc('administered_date')
+                    ->orderBy('id'),
             ])
             ->orderByDesc('appointment_date')
             ->orderByDesc('id');
@@ -76,6 +85,7 @@ class PetMedicalRecordController extends Controller
         $record = $appointment->record;
         $vitals = $appointment->vitals;
         $diagnosis = $record->working_diagnosis ?? $record->diagnosis;
+        [$vaccinations, $medicines] = $appointment->vaccinationRecords->partition('treatment_type', 'vaccine');
 
         return [
             'appointment_reference' => $appointment->appointment_reference,
@@ -93,6 +103,17 @@ class PetMedicalRecordController extends Controller
                 ->map(fn (array $prescription) => \Illuminate\Support\Arr::only($prescription, [
                     'medicine', 'strength_concentration', 'dose', 'route', 'frequency', 'duration', 'instructions',
                 ]))->values()->all(),
+            'vaccinations' => $vaccinations->map(fn (VaccinationRecord $vaccine) => [
+                'vaccine_name' => $vaccine->vaccine_name,
+                'administered_date' => $vaccine->administered_date?->toDateString(),
+                'next_due_date' => $vaccine->next_due_date?->toDateString(),
+            ])->values()->all(),
+            'administered_medicines' => $medicines->map(fn (VaccinationRecord $medicine) => [
+                'medicine_name' => $medicine->vaccine_name,
+                'dose_amount' => $medicine->dose_amount,
+                'dose_unit' => $medicine->dose_unit,
+                'route' => $medicine->route,
+            ])->values()->all(),
             'vitals' => $vitals ? [
                 'weight_kg' => $vitals->weight_kg,
                 'temperature_c' => $vitals->temperature_c,

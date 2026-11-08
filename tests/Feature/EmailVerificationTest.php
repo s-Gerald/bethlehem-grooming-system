@@ -1693,7 +1693,7 @@ class EmailVerificationTest extends TestCase
 
     private function registerInBrowser(array $payload)
     {
-        $response = $this->postJson('/api/register', ['email' => $payload['email'], 'registration_token' => \Illuminate\Support\Str::random(64)]);
+        $response = $this->postJson('/api/register', [...$payload, 'registration_token' => \Illuminate\Support\Str::random(64)]);
         if ($cookie = $response->getCookie('bethlehem_registration_browser', false)) {
             $this->withUnencryptedCookie('bethlehem_registration_browser', $cookie->getValue())->withCredentials();
         }
@@ -1773,6 +1773,17 @@ class EmailVerificationTest extends TestCase
         $this->assertDatabaseCount('pending_customer_registrations', 0);
         $this->assertDatabaseCount('users', 0);
         Notification::assertNothingSent();
+    }
+
+    public function test_duplicate_signup_mobile_does_not_queue_verification_mail(): void
+    {
+        $this->useDatabaseMailQueue();
+        User::factory()->create(['phone' => '09123456789']);
+
+        $this->registerInBrowser($this->registrationPayload())->assertUnprocessable()->assertJsonValidationErrors('phone');
+
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        $this->assertDatabaseCount('jobs', 0);
     }
 
     public function test_log_mailer_cannot_record_signup_tokens(): void

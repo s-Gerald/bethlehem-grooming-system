@@ -16,7 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let busy = false, finalizing = false, departed = false, submitted = null;
   const context = window.SignupContext;
-  let attempt = context.read(), attemptEmail = "", attemptStarted = Boolean(attempt);
+  let attempt = context.read(), attemptEmail = "";
   const title = document.getElementById("signupTitle");
   const description = document.getElementById("signupDescription");
   const defaultDescription = description.textContent;
@@ -205,45 +205,36 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   const conflictArea = document.getElementById("signupConflict");
-  const conflictMessage = document.getElementById("signupConflictMessage");
   const recoveryLink = document.getElementById("signupConflictRecovery");
   const footer = document.getElementById("signupFooter");
-  const conflicts = new Set();
+  const serverErrors = new Map();
   const revisions = new Map();
   function renderConflict() {
-    const field = conflicts.has("email") ? "email" : conflicts.has("phone") ? "phone" : "";
-    conflictArea.classList.toggle("hidden", !field);
-    footer.classList.toggle("hidden", !!field);
-    recoveryLink.classList.toggle("hidden", field !== "email");
-    if (conflicts.has("phone")) phoneInput.classList.add("!border-red-400");
-    conflictMessage.textContent = field === "email" ? "An account with this email already exists."
-      : field === "phone" ? "An account with this mobile number already exists." : "";
-    for (const input of [emailInput, phoneInput]) {
-      const ids = (input.getAttribute("aria-describedby") || "").split(" ").filter(id => id && id !== "signupConflictMessage");
-      if (conflicts.has(input.id)) ids.push("signupConflictMessage");
-      input.setAttribute("aria-describedby", ids.join(" "));
-    }
+    const emailConflict = serverErrors.get("email")?.accountExists;
+    const hasConflict = emailConflict || serverErrors.get("phone")?.accountExists;
+    conflictArea.classList.toggle("hidden", !hasConflict);
+    footer.classList.toggle("hidden", Boolean(hasConflict));
+    recoveryLink.classList.toggle("hidden", !emailConflict);
   }
   for (const id of Object.values(fieldIds)) {
-    document.getElementById(id).addEventListener("input", () => {
+    const input = document.getElementById(id);
+    input.addEventListener("input", () => {
       clearMessage();
       revisions.set(id, (revisions.get(id) || 0) + 1);
-      if (conflicts.delete(id)) {
-        document.getElementById(id).setAttribute("aria-invalid", "false");
-        renderConflict();
+      if (id === "password") {
+        serverErrors.delete("confirmPassword");
+        revisions.set("confirmPassword", (revisions.get("confirmPassword") || 0) + 1);
       }
+      if (serverErrors.delete(id)) renderConflict();
+    });
+    input.addEventListener("blur", () => {
+      const feedback = serverErrors.get(id);
+      if (feedback) showFieldError(input, feedback.message);
     });
   }
   recoveryLink.addEventListener("click", () => {
-    if (!conflicts.has("email")) return;
+    if (!serverErrors.get("email")?.accountExists) return;
     try { sessionStorage.setItem("pendingPasswordResetEmail", emailInput.value.trim()); } catch { /* Prefill is optional. */ }
-  });
-  // Input utilities also validate on blur. Reapply a confirmed account conflict.
-  for (const input of [emailInput, phoneInput]) input.addEventListener("blur", () => {
-    if (conflicts.has(input.id)) {
-      input.setAttribute("aria-invalid", "true");
-      if (input === phoneInput) input.classList.add("!border-red-400");
-    }
   });
   renderConflict();
   window.addEventListener('pagehide',()=>{
@@ -300,6 +291,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    serverErrors.clear();
+    renderConflict();
     setBusyState(true);
     lastSubmittedRevisions = new Map(revisions);
     lastSubmittedEmail = email;
@@ -310,21 +303,14 @@ document.addEventListener("DOMContentLoaded", () => {
         first_name: firstName, last_name: lastName, username: username || null, email, phone: phone || null,
         password, password_confirmation: confirmPassword, terms_accepted: termsInput.checked,
       };
-      let data;
       if (attempt && !attemptEmail) {
         const restored = await API.registrationStatus(attempt.token);
         attemptEmail = restored.email;
       }
-      if (attempt && attemptEmail === email && attemptStarted) {
-        data = await API.registrationStatus(attempt.token);
-      } else {
-        if (!attempt || attemptEmail !== email) attempt = context.create();
-        attemptEmail = email;
-        attemptStarted = false;
-        data = await API.register({email, registration_token: attempt.token});
-      }
+      if (!attempt || attemptEmail !== email) attempt = context.create();
+      attemptEmail = email;
+      const data = await API.register({...submitted, registration_token: attempt.token});
       if (departed) return;
-      attemptStarted = true;
       attempt = context.save({...attempt,
         expiresAt: Date.parse(data.registration_expires_at) || attempt.expiresAt,
         resendUntil: data.resend_after === undefined ? attempt.resendUntil
@@ -343,6 +329,20 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   let lastSubmittedRevisions = new Map(), lastSubmittedEmail = "", lastSubmittedPhone = "";
+  function showFieldError(input, message) {
+    const id = input.id;
+    if (id === "firstName" || id === "lastName") HumanName.showError(input, message);
+    else if (id === "email") emailField.setError(message, lastSubmittedEmail);
+    else if (id === "phone") phoneField.setError(message);
+    else if (credentialBindings[id]) credentialBindings[id].setError(message);
+    else {
+      const feedback = fieldErrors.get(id);
+      feedback.textContent = message;
+      feedback.classList.remove("hidden");
+    }
+    input.setAttribute("aria-invalid", "true");
+  }
+
   function showErrors(error) {
     if (error.errors) {
       let firstInput;
@@ -352,25 +352,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (input && (revisions.get(id) || 0) !== (lastSubmittedRevisions.get(id) || 0)) continue;
         if (id === "email" && AccountEmail.normalize(emailInput.value) !== lastSubmittedEmail) continue;
         if (id === "phone" && PhilippineMobile.unformat(phoneInput.value) !== lastSubmittedPhone) continue;
-        const text = [].concat(messages)[0];
-        if ((field === "email" || field === "phone") && error.data?.conflicts?.[field] === "account_exists") {
-          conflicts.add(id);
-          input.setAttribute("aria-invalid", "true");
-          continue;
-        }
-        if (field === "first_name" || field === "last_name") HumanName.showError(input, text);
-        else if (id === "email") emailField.setError(text, lastSubmittedEmail);
-        else if (id === "phone") phoneField.setError(text);
-        else if (credentialBindings[id]) credentialBindings[id].setError(text);
-        else if (fieldErrors.has(id)) {
-          fieldErrors.get(id).textContent = text;
-          fieldErrors.get(id).classList.remove("hidden");
-        } else showMessage(text);
-        if (input) { input.setAttribute("aria-invalid", "true"); firstInput ||= input; }
+        const message = [].concat(messages)[0];
+        if (!input) { showMessage(message); continue; }
+        serverErrors.set(id, {message, accountExists: error.data?.conflicts?.[field] === "account_exists"});
+        showFieldError(input, message);
+        firstInput ||= input;
       }
       renderConflict();
-      if (conflicts.size) conflictArea.focus();
-      else firstInput?.focus();
+      firstInput?.focus();
     } else {
       showMessage(error.message || "Couldn't create your account. Please try again.");
     }

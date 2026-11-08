@@ -84,10 +84,29 @@ class ClientPetMedicalRecordsTest extends TestCase
             $table->string('label')->nullable();
             $table->dateTime('created_at')->nullable();
         });
+
+        Schema::create('vaccination_records', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('pet_id');
+            $table->unsignedBigInteger('clinic_appointment_id')->nullable();
+            $table->string('treatment_type')->default('vaccine');
+            $table->string('vaccine_name');
+            $table->date('administered_date');
+            $table->date('next_due_date')->nullable();
+            $table->decimal('dose_amount', 8, 3)->nullable();
+            $table->string('dose_unit')->nullable();
+            $table->string('route')->nullable();
+            $table->unsignedInteger('inventory_item_id')->nullable();
+            $table->string('batch_number')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamp('published_at')->nullable();
+            $table->timestamp('voided_at')->nullable();
+        });
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('vaccination_records');
         Schema::dropIfExists('clinic_attachments');
         Schema::dropIfExists('clinic_medications');
         Schema::dropIfExists('clinic_vitals');
@@ -162,6 +181,57 @@ class ClientPetMedicalRecordsTest extends TestCase
                 ->assertJsonMissingPath('medical_records.0.primary_veterinarian_id')
                 ->assertJsonMissingPath('medical_records.0.prescriptions.0.inventory_item_id')
                 ->assertJsonMissingPath('medical_records.0.prescriptions.0.notes');
+        }
+    }
+
+    public function test_both_owner_views_include_only_published_treatments_for_the_visit_and_pet(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Mochi');
+        $this->insertPet(202, 20, 'Luna');
+        $this->insertAppointment(1, 101, 'completed', 'CL-MOCHI', '2026-07-23');
+        $this->insertAppointment(2, 101, 'completed', 'CL-OLDER', '2026-07-20');
+        $this->insertAppointment(3, 202, 'completed', 'CL-LUNA', '2026-07-24');
+        $this->insertAppointment(4, 101, 'for_payment', 'CL-ACTIVE', '2026-07-25');
+
+        $base = [
+            'pet_id' => 101, 'clinic_appointment_id' => 1, 'administered_date' => '2026-07-23',
+            'published_at' => '2026-07-23 10:00:00', 'batch_number' => 'PRIVATE BATCH',
+            'notes' => 'PRIVATE TREATMENT NOTES', 'inventory_item_id' => 321,
+        ];
+        foreach ([
+            ['vaccine_name' => 'Rabies', 'next_due_date' => '2027-07-23'],
+            ['vaccine_name' => 'Bordetella', 'next_due_date' => '2027-03-11'],
+            ['vaccine_name' => 'Leptospirosis'],
+            ['vaccine_name' => 'Cerenia', 'treatment_type' => 'medicine', 'dose_amount' => 0.5, 'dose_unit' => 'mL', 'route' => 'subcutaneous'],
+            ['vaccine_name' => 'Draft vaccine', 'published_at' => null],
+            ['vaccine_name' => 'Draft medicine', 'treatment_type' => 'medicine', 'published_at' => null],
+            ['vaccine_name' => 'Voided vaccine', 'voided_at' => '2026-07-23 11:00:00'],
+            ['vaccine_name' => 'Voided medicine', 'treatment_type' => 'medicine', 'voided_at' => '2026-07-23 11:00:00'],
+            ['vaccine_name' => 'Unlinked vaccine', 'clinic_appointment_id' => null],
+            ['vaccine_name' => 'Older vaccine', 'clinic_appointment_id' => 2, 'administered_date' => '2026-07-20'],
+            ['vaccine_name' => 'Wrong pet vaccine', 'pet_id' => 202],
+            ['vaccine_name' => 'Wrong pet medicine', 'pet_id' => 202, 'treatment_type' => 'medicine'],
+            ['vaccine_name' => 'Another owner vaccine', 'pet_id' => 202, 'clinic_appointment_id' => 3],
+            ['vaccine_name' => 'Active visit vaccine', 'clinic_appointment_id' => 4],
+        ] as $treatment) {
+            DB::table('vaccination_records')->insert($treatment + $base);
+        }
+
+        foreach (['/api/clinic/history', '/api/pets/101/medical-records'] as $url) {
+            $response = $this->getJson($url)->assertOk()->assertJsonCount(2, 'medical_records')
+                ->assertJsonPath('medical_records.0.appointment_reference', 'CL-MOCHI')
+                ->assertJsonPath('medical_records.0.vaccinations', [
+                    ['vaccine_name' => 'Rabies', 'administered_date' => '2026-07-23', 'next_due_date' => '2027-07-23'],
+                    ['vaccine_name' => 'Bordetella', 'administered_date' => '2026-07-23', 'next_due_date' => '2027-03-11'],
+                    ['vaccine_name' => 'Leptospirosis', 'administered_date' => '2026-07-23', 'next_due_date' => null],
+                ])
+                ->assertJsonPath('medical_records.0.administered_medicines', [
+                    ['medicine_name' => 'Cerenia', 'dose_amount' => '0.500', 'dose_unit' => 'mL', 'route' => 'subcutaneous'],
+                ])
+                ->assertJsonPath('medical_records.1.vaccinations.0.vaccine_name', 'Older vaccine')
+                ->assertJsonPath('medical_records.1.administered_medicines', []);
+            $this->assertStringNotContainsString('PRIVATE', $response->getContent());
         }
     }
 
@@ -340,6 +410,8 @@ class ClientPetMedicalRecordsTest extends TestCase
             'follow_up_date',
             'follow_up_notes',
             'prescriptions',
+            'vaccinations',
+            'administered_medicines',
             'vitals',
         ], array_keys($visit));
         $this->assertSame([

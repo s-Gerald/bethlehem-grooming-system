@@ -881,7 +881,7 @@ class AdminVaccinationApiTest extends TestCase
             $id = $this->postJson('/api/admin/pets/101/vaccinations', [
                 'inventory_item_id' => null, 'vaccine_name' => 'External Rabies',
                 'administered_date' => $date, 'product_name' => 'Original product', 'manufacturer' => 'Original manufacturer',
-                'batch_number' => 'ORIGINAL', 'product_expiry_date' => '2026-08-01',
+                'batch_number' => 'ORIGINAL', 'product_expiry_date' => '2026-08-01', 'complete_entry' => true,
             ])->assertCreated()->json('vaccination.id');
             $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['notes' => 'Documented later.'])
                 ->assertOk()->assertJsonPath('vaccination.administered_date', $date);
@@ -1252,6 +1252,7 @@ class AdminVaccinationApiTest extends TestCase
             $id = $this->postJson('/api/admin/pets/101/vaccinations', [
                 'treatment_type' => 'vaccine', 'inventory_item_id' => 301, 'inventory_quantity' => 1,
                 'dose_amount' => $dose, 'dose_unit' => $dose === null ? null : 'mL',
+                'route' => 'subcutaneous', 'administration_site' => 'Right shoulder',
             ])->assertCreated()->json('vaccination.id');
             if ($dose !== null) {
                 $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_amount' => 7.5])
@@ -1337,6 +1338,8 @@ class AdminVaccinationApiTest extends TestCase
         $id = $this->postJson('/api/admin/pets/101/vaccinations', ['treatment_type' => 'medicine'])
             ->assertCreated()->json('vaccination.id');
         $this->postJson("/api/admin/pets/101/vaccinations/{$id}/publish")->assertUnprocessable();
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", $this->medicineTreatment(['complete_entry' => true]))
+            ->assertOk()->assertJsonPath('vaccination.administered_date', '2026-07-23');
         $id = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())
             ->assertCreated()->json('vaccination.id');
         $this->patchJson("/api/admin/pets/101/vaccinations/{$id}", ['dose_unit' => null])
@@ -1616,7 +1619,7 @@ class AdminVaccinationApiTest extends TestCase
         $medicine = $this->postJson('/api/admin/pets/101/vaccinations', $this->medicineTreatment())->assertCreated()->json('vaccination.id');
         $vaccine = $this->postJson('/api/admin/pets/101/vaccinations', [
             'inventory_item_id' => 302, 'inventory_quantity' => 1, 'clinic_appointment_id' => 201,
-            'dose_amount' => 0.5, 'dose_unit' => 'mL',
+            'dose_amount' => 0.5, 'dose_unit' => 'mL', 'route' => 'subcutaneous', 'administration_site' => 'Right shoulder',
         ])->assertCreated()->json('vaccination.id');
         $this->assertDatabaseCount('clinic_charges', 0);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
@@ -1648,6 +1651,66 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertDatabaseCount('clinic_charges', 0);
         $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
         $this->assertStockOnHand(301, '2');
+    }
+
+    public function test_inventory_completion_requires_route_and_injection_site_without_blocking_draft_saves(): void
+    {
+        $this->medicineStock();
+        $this->insertRabiesStock(302);
+        $url = '/api/admin/pets/101/vaccinations';
+        foreach ([
+            [$this->medicineTreatment(), 'oral'],
+            [['inventory_item_id' => 302, 'inventory_quantity' => 1, 'clinic_appointment_id' => 201], 'intranasal'],
+        ] as [$treatment, $nonInjectableRoute]) {
+            $payload = [...$treatment, 'dose_amount' => null, 'dose_unit' => null, 'route' => null];
+            $this->postJson($url, $payload + ['complete_entry' => true])->assertUnprocessable()
+                ->assertJsonValidationErrors(['dose_amount', 'dose_unit', 'route']);
+            $id = $this->postJson($url, $payload)->assertCreated()->json('vaccination.id');
+            $this->postJson("$url/$id/publish")->assertUnprocessable()
+                ->assertJsonValidationErrors(['dose_amount', 'dose_unit', 'route']);
+            $this->patchJson("$url/$id", [
+                'dose_amount' => '0.5', 'dose_unit' => 'other', 'route' => 'other', 'complete_entry' => true,
+            ])->assertUnprocessable()->assertJsonValidationErrors('dose_unit_other');
+            foreach (['subcutaneous', 'intramuscular'] as $route) {
+                $details = ['dose_amount' => '0.5', 'dose_unit' => 'mL', 'route' => $route];
+                $this->patchJson("$url/$id", $details + ['complete_entry' => true])->assertUnprocessable()
+                    ->assertJsonValidationErrors('administration_site');
+                $this->patchJson("$url/$id", $details)->assertOk();
+                $this->postJson("$url/$id/publish")->assertUnprocessable()
+                    ->assertJsonValidationErrors('administration_site');
+            }
+            DB::table('vaccination_records')->where('id', $id)->update(['administered_date' => null]);
+            $this->patchJson("$url/$id", ['route' => $nonInjectableRoute, 'complete_entry' => true])
+                ->assertUnprocessable()->assertJsonValidationErrors('administered_date');
+            DB::table('vaccination_records')->where('id', $id)->update(['administered_date' => '2026-07-23']);
+            $this->patchJson("$url/$id", ['route' => $nonInjectableRoute, 'complete_entry' => true])->assertOk()
+                ->assertJsonPath('vaccination.next_due_date', null);
+        }
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk()->assertJsonPath('case.status', 'for_payment');
+        $this->assertDatabaseCount('clinic_charges', 2);
+    }
+
+    public function test_a_missing_injection_site_rolls_back_other_treatments_and_the_payment_transition(): void
+    {
+        $this->medicineStock();
+        $url = '/api/admin/pets/101/vaccinations';
+        $this->postJson($url, $this->medicineTreatment())->assertCreated();
+        $id = $this->postJson($url, $this->medicineTreatment(['route' => 'intramuscular']))
+            ->assertCreated()->json('vaccination.id');
+
+        $this->postJson('/api/admin/clinic-cases/201/finish')->assertUnprocessable()
+            ->assertJsonValidationErrors("treatments.$id.administration_site");
+        $this->assertDatabaseHas('clinic_appointments', ['id' => 201, 'status' => 'in_consultation']);
+        $this->assertSame(0, DB::table('vaccination_records')->whereNotNull('published_at')->count());
+        $this->assertDatabaseCount('clinic_charges', 0);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('type', 'stock_out')->count());
+        $this->assertStockOnHand(301, '2');
+
+        $this->patchJson("$url/$id", ['administration_site' => 'Right thigh', 'complete_entry' => true])->assertOk();
+        $this->postJson('/api/admin/clinic-cases/201/finish')->assertOk()->assertJsonPath('case.status', 'for_payment');
+        $this->assertDatabaseCount('clinic_charges', 2);
     }
 
     public function test_current_visit_removal_is_scoped_and_has_no_billing_or_inventory_side_effects(): void
@@ -1845,6 +1908,8 @@ class AdminVaccinationApiTest extends TestCase
             'clinic_appointment_id' => $appointmentId,
             'dose_amount' => 1,
             'dose_unit' => 'mL',
+            'route' => 'subcutaneous',
+            'administration_site' => 'Right shoulder',
         ]);
     }
 

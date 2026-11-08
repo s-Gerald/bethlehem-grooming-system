@@ -121,6 +121,9 @@ class ClientPetVaccinationsTest extends TestCase
 
         $this->insertVaccination(101, 'Mochi Older', '2026-06-10');
         $this->insertVaccination(101, 'Mochi Newer', '2026-07-20');
+        $this->insertVaccination(101, 'Mochi Administered Medicine', '2026-07-23', [
+            'treatment_type' => 'medicine',
+        ]);
         $this->insertVaccination(101, 'Mochi Draft', '2026-07-22', [
             'published_at' => null,
         ]);
@@ -140,6 +143,7 @@ class ClientPetVaccinationsTest extends TestCase
         foreach ([
             'Mochi Draft',
             'Mochi Voided',
+            'Mochi Administered Medicine',
             'Sibling Pet Vaccine',
             'Other Customer Vaccine',
         ] as $hiddenRecord) {

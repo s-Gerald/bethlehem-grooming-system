@@ -12,8 +12,10 @@ use App\Services\AuthenticationEmailPolicy;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class AuthController extends Controller
@@ -23,19 +25,16 @@ class AuthController extends Controller
         return $registrations->cancel($request);
     }
 
-    // Starting signup accepts only email and an opaque attempt credential.
     public function register(Request $request)
     {
-        $request->merge(['email' => AccountEmail::normalize((string) $request->input('email'))]);
-        $data = $request->validate(['email' => AccountEmail::rules(), 'registration_token' => 'required|string|size:64']);
         $browserToken = CustomerRegistrationService::browserToken($request);
         try {
-            return app(CustomerRegistrationService::class)->start($request, $data['email'], hash('sha256', $browserToken))
+            return app(CustomerRegistrationService::class)->start($request, hash('sha256', $browserToken))
                 ->withCookie(CustomerRegistrationService::browserCookie($request, $browserToken));
-        } catch (HttpResponseException $exception) {
+        } catch (HttpResponseException|ValidationException $exception) {
             throw $exception;
         } catch (Throwable $exception) {
-            report($exception);
+            Log::error('Customer registration could not start.', ['exception_type' => $exception::class]);
             return response()->json(['success' => false, 'code' => 'email_delivery_failed',
                 'message' => "Couldn't queue the verification email. Please try again."], 503)->header('Cache-Control', 'no-store');
         }
