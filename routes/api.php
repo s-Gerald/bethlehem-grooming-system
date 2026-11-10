@@ -113,8 +113,6 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
             Route::post('/{id}/resend', 'resend')->whereUuid('id');
             Route::delete('/{id}', 'cancel')->whereUuid('id');
         });
-    Route::patch('/customer/profile/name', [CustomerController::class, 'updateOwnName'])
-        ->middleware(['role:customer', 'throttle:10,1']);
     Route::middleware('role:customer')->prefix('phone-verification')->group(function () {
         Route::get('/state', [\App\Http\Controllers\PhoneVerificationController::class, 'state'])->middleware('throttle:30,1');
         Route::post('/cancel', [\App\Http\Controllers\PhoneVerificationController::class, 'cancel'])->middleware('throttle:20,1');
@@ -158,12 +156,16 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::get('/admin/customers', [CustomerController::class, 'index']);
     Route::post('/admin/customers/unregistered', [CustomerController::class, 'storeUnregistered']);
     Route::get('/admin/customers/unregistered/{id}', [CustomerController::class, 'showUnregistered']);
+    Route::patch('/admin/customers/unregistered/{id}/name', [CustomerController::class, 'updateName'])
+        ->whereNumber('id')->defaults('recordType', 'unregistered')->middleware('role:admin,staff');
     Route::post('/admin/customers/unregistered/{id}/archive', [CustomerController::class, 'archiveUnregistered']);
     Route::post('/admin/customers/unregistered/{id}/restore', [CustomerController::class, 'restoreUnregistered']);
     Route::get('/admin/walk-in/customers', [CustomerController::class, 'walkInSearch']);
     Route::post('/admin/walk-in/customers/validate-new-owner', [CustomerController::class, 'validateWalkInOwner']);
     Route::post('/admin/customer-pets/{ownerType}/{ownerId}', [PetController::class, 'adminStore']);
     Route::get('/admin/customers/{id}', [CustomerController::class, 'show']);
+    Route::patch('/admin/customers/{id}/name', [CustomerController::class, 'updateName'])
+        ->whereNumber('id')->defaults('recordType', 'registered')->middleware('role:admin,staff');
     Route::post('/admin/customers/{id}/deactivate', [CustomerController::class, 'deactivate']);
     Route::post('/admin/customers/{id}/reactivate', [CustomerController::class, 'reactivate']);
     Route::post('/admin/customers/{id}/archive', [CustomerController::class, 'archive']);

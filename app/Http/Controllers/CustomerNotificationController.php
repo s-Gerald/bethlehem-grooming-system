@@ -41,19 +41,16 @@ class CustomerNotificationController extends Controller
                     && (int) $n->pet?->user_id === (int) $n->user_id
                         ? $n->pet
                         : null;
-                $destination = null;
-
-                if (! $destination && $updatedPet) {
-                    $destination = $this->petOverviewDestination(
-                        $updatedPet->pet_id,
-                    );
-                }
+                $destination = $n->type === CustomerNotification::TYPE_ACCOUNT_NAME_UPDATED
+                    ? '/account/settings'
+                    : $this->petOverviewDestination($updatedPet?->pet_id);
 
                 return [
                     'id' => $n->id,
                     'type' => $n->type,
                     'title' => match ($n->type) {
                         CustomerNotification::TYPE_PET_INFORMATION_UPDATED => 'Pet Information Updated',
+                        CustomerNotification::TYPE_ACCOUNT_NAME_UPDATED => 'Account name updated',
                         CustomerNotification::TYPE_GROOMING_PRE_REGISTRATION_EXPIRED => 'Grooming Queue Registration expired',
                         CustomerNotification::TYPE_GROOMING_NO_SHOW => 'Grooming Queue Registration — No Show',
                         CustomerNotification::TYPE_BOOKING_CANCELLED => $this->cancellationContent($n)['title'],
@@ -265,6 +262,9 @@ class CustomerNotificationController extends Controller
     private function formatNotificationMessage(CustomerNotification $notification): string
     {
         $text = (string) $notification->message;
+        if ($notification->type === CustomerNotification::TYPE_ACCOUNT_NAME_UPDATED) {
+            return $text;
+        }
 
         if (in_array($notification->type, ['reminder_24h', 'reminder_3h', 'clinic_reminder_24h', 'clinic_reminder_3h'], true)) {
             $text = trim(str_replace('Show your registration reference when you arrive.', '', $text));

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreUnregisteredCustomerRequest;
 use App\Models\Booking;
+use App\Models\CustomerNotification;
 use App\Models\Pet;
 use App\Models\UnregisteredCustomer;
 use App\Models\User;
@@ -11,44 +12,97 @@ use App\Services\CustomerIdentityService;
 use App\Support\HumanName;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
 {
-    public function updateOwnName(Request $request)
+    public function updateName(Request $request, int $id, string $recordType)
     {
-        $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'current_password']);
+        abort_unless($this->canCorrectName($request->user()), 403);
+        $unexpected = array_diff(array_keys($request->all()), ['first_name', 'last_name', 'name_version']);
         if ($unexpected) {
             throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
         }
         $data = $request->validate([
             'first_name' => ['sometimes', ...HumanName::rules()],
             'last_name' => ['sometimes', ...HumanName::rules()],
-            'current_password' => ['required', 'string', 'max:4096'],
-        ], ['current_password.required' => 'Enter your current password.']);
+            'name_version' => ['required', 'string', 'size:64'],
+        ]);
 
-        $user = DB::transaction(function () use ($request, $data): User {
-            $user = User::query()->lockForUpdate()->findOrFail($request->user()->getKey());
-            abort_unless($user->role === 'customer' && $user->is_active && ! $user->is_archived
-                && ! $user->account_deleted_at && $user->email_verified_at, 403);
-            if (! Hash::check($data['current_password'], $user->password_hash)) {
-                throw ValidationException::withMessages(['current_password' => 'Incorrect password.']);
+        return DB::transaction(function () use ($id, $recordType, $data) {
+            $query = $recordType === 'unregistered'
+                ? UnregisteredCustomer::query()->availableCustomer()
+                : User::registeredCustomer();
+            $customer = $query->lockForUpdate()->findOrFail($id);
+            if ($customer->is_archived) {
+                return response()->json([
+                    'message' => 'Restore the customer before editing their name.',
+                    'customer' => [...$this->nameDetails($customer, $recordType), 'isArchived' => true, 'nameVersion' => null],
+                ], 409);
             }
-            foreach (['first_name', 'last_name'] as $field) {
-                if (isset($data[$field]) && $data[$field] !== $user->$field) $user->$field = User::normalizeName($data[$field]);
+            if ($data['name_version'] !== $this->nameVersion($customer)) {
+                return response()->json([
+                    'message' => 'This customer’s name changed. Close and reopen Edit name to review it.',
+                    'customer' => $this->nameDetails($customer, $recordType),
+                ], 409);
             }
-            if ($user->isDirty()) $user->save();
 
-            return $user;
+            $previous = $customer->only(['first_name', 'last_name']);
+            foreach ($previous as $field => $value) {
+                if (isset($data[$field]) && $data[$field] !== $value) {
+                    $customer->$field = HumanName::normalize($data[$field]);
+                }
+            }
+            if ($customer->isDirty()) {
+                $customer->save();
+                if ($customer instanceof User) {
+                    $this->notifyNameCorrection($customer, $previous);
+                }
+            }
+
+            return response()->json(['success' => true, 'customer' => $this->nameDetails($customer, $recordType)]);
         }, 3);
+    }
 
-        $request->setUserResolver(fn () => $user);
-        $response = app(AuthController::class)->me($request);
-        $response->setData([...$response->getData(true), 'message' => 'Name updated.']);
+    private function canCorrectName(User $actor): bool
+    {
+        return $actor->role === 'admin' || $actor->isReceptionist();
+    }
 
-        return $response;
+    private function nameVersion(User|UnregisteredCustomer $customer): string
+    {
+        return hash('sha256', serialize([$customer->getTable(), $customer->getKey(), $customer->first_name, $customer->last_name]));
+    }
+
+    private function nameDetails(User|UnregisteredCustomer $customer, string $recordType): array
+    {
+        return [
+            'id' => $customer->getKey(),
+            'recordType' => $recordType,
+            'firstName' => $customer->first_name,
+            'lastName' => $customer->last_name,
+            'fullName' => trim($customer->first_name.' '.$customer->last_name),
+            'nameVersion' => $this->nameVersion($customer),
+        ];
+    }
+
+    private function notifyNameCorrection(User $customer, array $previous): void
+    {
+        $firstChanged = $customer->wasChanged('first_name');
+        $lastChanged = $customer->wasChanged('last_name');
+        $message = match (true) {
+            $firstChanged && $lastChanged => "Bethlehem updated your name: First name {$previous['first_name']} → {$customer->first_name}; Last name {$previous['last_name']} → {$customer->last_name}.",
+            $firstChanged => "Bethlehem updated your first name from {$previous['first_name']} to {$customer->first_name}.",
+            default => "Bethlehem updated your last name from {$previous['last_name']} to {$customer->last_name}.",
+        };
+        CustomerNotification::create([
+            'user_id' => $customer->getKey(),
+            'type' => CustomerNotification::TYPE_ACCOUNT_NAME_UPDATED,
+            'message' => $message,
+            'is_read' => false,
+            'created_at' => now(),
+        ]);
     }
 
     // ── ADMIN GUARD ───────────────────────────────────────
@@ -290,7 +344,10 @@ class CustomerController extends Controller
 
         return $this->petSessionResponse([
             'success' => true,
-            'customer' => $this->formatUnregisteredCustomer($customer),
+            'customer' => [
+                ...$this->formatUnregisteredCustomer($customer),
+                ...($this->canCorrectName($request->user()) && ! $customer->is_archived ? ['nameVersion' => $this->nameVersion($customer)] : []),
+            ],
         ]);
     }
 
@@ -794,6 +851,8 @@ class CustomerController extends Controller
             'success' => true,
             'customer' => [
                 'id' => $user->user_id,
+                'recordType' => 'registered',
+                ...($this->canCorrectName($request->user()) && ! $user->is_archived ? ['nameVersion' => $this->nameVersion($user)] : []),
                 'firstName' => $user->first_name,
                 'lastName' => $user->last_name,
                 'fullName' => trim($user->first_name.' '.$user->last_name),

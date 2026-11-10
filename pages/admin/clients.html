@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1" />
+    <link rel="preload" as="script" href="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
   </head>
@@ -124,7 +124,7 @@
         </div>
       </aside>
       <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="/scripts/api.js?auth-reliability=20261107&clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1"></script>
+    <script src="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&clinical-history=20261029&customer-records=20261029&v=admin-navigation-20261018-3&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106"></script>
 
       <!-- Main Content -->
@@ -682,10 +682,10 @@
             x-transition
             class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-6 py-6 sm:px-12 md:px-16"
             @click.self="closeCustomerDetails()"
-            :inert="petModal.open || confirmModal.open"
-            :aria-hidden="petModal.open || confirmModal.open"
+            :inert="petModal.open || confirmModal.open || nameModal.open"
+            :aria-hidden="petModal.open || confirmModal.open || nameModal.open"
           >
-            <div x-ref="ownerDialog" role="dialog" :aria-modal="!petModal.open && !confirmModal.open" aria-labelledby="customerProfileTitle" tabindex="-1" class="customer-profile-dialog flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl" style="height:90vh">
+            <div x-ref="ownerDialog" role="dialog" :aria-modal="!petModal.open && !confirmModal.open && !nameModal.open" aria-labelledby="customerProfileTitle" tabindex="-1" class="customer-profile-dialog flex max-h-[90vh] w-full max-w-8xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl" style="height:90vh">
                 <!-- Owner profile header -->
                 <section class="customer-profile-header relative shrink-0 bg-[#315b7e] text-white">
                   <div class="flex items-center justify-between gap-4 px-5 py-4">
@@ -740,9 +740,14 @@
                       <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef5fb] text-[#315b7e]">
                         <svg class="ph-icon h-5 w-5" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#user"></use></svg>
                       </div>
-                      <div>
+                      <div class="min-w-0 flex-1">
                         <h4 class="text-lg font-semibold text-[#1f3850]" x-text="detailModal.customer?.recordType === 'unregistered' ? 'Customer information' : 'Account information'"></h4>
                       </div>
+                      <button x-show="canEditCustomerName" @click="openNameEditor($event.currentTarget)" type="button"
+                        class="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#315b7e] hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315b7e]">
+                        <svg class="ph-icon h-4 w-4" aria-hidden="true" viewBox="0 0 256 256" fill="currentColor" focusable="false"><use href="/assets/icons/phosphor.svg?v=admin-icons-20261018#pencil-simple"></use></svg>
+                        Edit name
+                      </button>
                     </div>
 
                     <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -857,6 +862,41 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <div x-cloak x-show="nameModal.open" x-transition @click.self="closeNameEditor()"
+            class="fixed inset-0 flex items-center justify-center bg-slate-900/50 p-4" style="z-index:300">
+            <section x-ref="nameDialog" role="dialog" aria-modal="true" aria-labelledby="customerNameEditorTitle" tabindex="-1"
+              class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6">
+              <h3 id="customerNameEditorTitle" class="text-lg font-semibold text-[#1f3850]">Edit customer name</h3>
+              <form class="mt-4 space-y-4" @submit.prevent="saveCustomerName()" novalidate>
+                <fieldset :disabled="nameModal.saving" class="space-y-4">
+                  <div>
+                    <label for="customerNameFirst" class="mb-1 block text-sm font-semibold text-slate-700">First Name <span class="text-red-600" aria-hidden="true">*</span></label>
+                    <input x-ref="nameFirst" id="customerNameFirst" type="text" required autocomplete="given-name" autocapitalize="words" spellcheck="false"
+                      :value="nameModal.form?.first_name" @input="updateNameField('first_name', $event.target.value)"
+                      :aria-invalid="Boolean(nameModal.errors?.first_name)" aria-describedby="customerNameFirstError"
+                      class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:border-[#315b7e]"
+                      :class="nameModal.errors?.first_name ? 'border-red-400' : 'border-slate-300'" />
+                    <p id="customerNameFirstError" x-show="nameModal.errors?.first_name" x-text="nameModal.errors?.first_name" role="alert" class="mt-1 text-xs text-red-600"></p>
+                  </div>
+                  <div>
+                    <label for="customerNameLast" class="mb-1 block text-sm font-semibold text-slate-700">Last Name <span class="text-red-600" aria-hidden="true">*</span></label>
+                    <input x-ref="nameLast" id="customerNameLast" type="text" required autocomplete="family-name" autocapitalize="words" spellcheck="false"
+                      :value="nameModal.form?.last_name" @input="updateNameField('last_name', $event.target.value)"
+                      :aria-invalid="Boolean(nameModal.errors?.last_name)" aria-describedby="customerNameLastError"
+                      class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:border-[#315b7e]"
+                      :class="nameModal.errors?.last_name ? 'border-red-400' : 'border-slate-300'" />
+                    <p id="customerNameLastError" x-show="nameModal.errors?.last_name" x-text="nameModal.errors?.last_name" role="alert" class="mt-1 text-xs text-red-600"></p>
+                  </div>
+                </fieldset>
+                <p x-show="nameModal.error" x-text="nameModal.error" role="alert" class="text-sm text-red-600"></p>
+                <div class="flex flex-wrap justify-end gap-2">
+                  <button type="button" @click="closeNameEditor()" :disabled="nameModal.saving" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                  <button type="submit" :disabled="!canSaveCustomerName" x-text="nameModal.saving ? 'Saving…' : 'Save changes'" class="rounded-xl bg-[#315b7e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#274b69] disabled:opacity-50"></button>
+                </div>
+              </form>
+            </section>
           </div>
 
         <!-- Pet Detail Modal -->
@@ -1120,7 +1160,7 @@
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029"></script>
-    <script src="/scripts/components/admin-customers.js?clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108"></script>
+    <script src="/scripts/components/admin-customers.js?name-correction=20261108&clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

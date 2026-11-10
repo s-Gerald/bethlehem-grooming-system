@@ -22,7 +22,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const logoutBtn = document.getElementById("clientLogoutBtn");
 
   const statusBox = document.getElementById("settingsStatus");
-  const accountForm = document.getElementById('accountForm');
   const passwordForm = document.getElementById("passwordForm");
   const currentPasswordInput = document.getElementById('currentPassword');
   const passwordSubmit = document.getElementById('changePasswordSubmit');
@@ -33,8 +32,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const newPasswordInput = document.getElementById("newPassword");
   const confirmPasswordInput = document.getElementById("confirmNewPassword");
 
-  const firstNameInput = document.getElementById("settingsFirstName");
-  const lastNameInput = document.getElementById("settingsLastName");
+  const firstNameValue = document.getElementById("settingsFirstName");
+  const lastNameValue = document.getElementById("settingsLastName");
   const phoneInput = document.getElementById("settingsPhone");
   const phoneAction = document.getElementById("settingsPhoneAction");
   const phoneCancel = document.getElementById("settingsPhoneCancel");
@@ -42,68 +41,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const emailAction = document.getElementById('settingsEmailAction');
   const emailCancel = document.getElementById('settingsEmailCancel');
   const emailPending = document.getElementById('settingsEmailPending');
-  const nameSave = document.getElementById('saveCustomerName');
-  const nameFields = { first_name: firstNameInput, last_name: lastNameInput };
   const accountInitials = document.getElementById("accountInitials");
   const accountDisplayName = document.getElementById("accountDisplayName");
   const accountMeta = document.getElementById("accountMeta");
 
   let serverUser = null;
   let profileLoadPromise = null;
-  let displayedNames, emailChallenge, passwordChallenge, emailStateLoaded = false, emailStateRequest;
+  let emailChallenge, passwordChallenge, emailStateLoaded = false, emailStateRequest;
   const confirmation = window.createCustomerSettingsConfirmation({
-    onNameSaved(user) {
-      serverUser = { ...serverUser, ...user };
-      applyUserToAccount(serverUser, true);
-      showStatus('Name updated.', 'success');
-    },
-    onNameErrors(errors) {
-      let first;
-      for (const [field, input] of Object.entries(nameFields)) {
-        if (!errors[field]) continue;
-        HumanName.showError(input, errors[field][0]);
-        first ||= input;
-      }
-      first?.focus();
-    },
     onChallenge(kind, challenge) {
       if (kind === 'email') setEmailChallenge(challenge);
       else passwordChallenge = challenge;
     },
     resetPassword: resetPasswordInput,
-  });
-
-  function nameChanges() {
-    const changes = {};
-    for (const [field, input] of Object.entries(nameFields)) {
-      const saved = serverUser?.[field] || '';
-      if (input.value !== saved) {
-        const value = HumanName.normalize(input.value);
-        if (value !== saved) changes[field] = value;
-      }
-    }
-    return changes;
-  }
-
-  function syncNameSave() {
-    const changes = Object.values(nameChanges());
-    nameSave.disabled = !serverUser || !changes.length || changes.some(value => Boolean(HumanName.validate(value)));
-  }
-
-  for (const input of Object.values(nameFields)) {
-    input.addEventListener('input', syncNameSave);
-    input.addEventListener('change', syncNameSave);
-  }
-  accountForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (!serverUser) return;
-    const changed = Object.keys(nameChanges());
-    const invalid = changed.filter(field => !HumanName.finish(nameFields[field]));
-    if (invalid.length) { nameFields[invalid[0]].focus(); return; }
-    const changes = nameChanges();
-    if (!Object.keys(changes).length) return;
-    hideStatus();
-    confirmation.open('name', nameSave, { changes });
   });
 
   function setEmailChallenge(challenge) {
@@ -156,7 +106,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     showStatus(event.detail.message || "Phone number verified.", "success");
   });
   window.addEventListener('customer-profile:updated', event => {
-    if (serverUser) { serverUser = { ...serverUser, ...event.detail.user }; applyUserToAccount(serverUser); }
+    renderAccountProfile({ ...serverUser, ...event.detail.user });
+    if (!emailStateLoaded) void loadEmailChallenge().catch(() => { /* Change retries the pending-state lookup. */ });
   });
   window.addEventListener("customer-phone:pending", () => {
     if (serverUser) { serverUser = { ...serverUser, phone_change_pending: true }; applyUserToAccount(serverUser); }
@@ -276,7 +227,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const query = search.value.trim().toLowerCase();
       if (!query) return;
       const matches = document.querySelectorAll(
-        "[data-settings-tab], [data-settings-panel] h3, [data-settings-panel] label",
+        "[data-settings-tab], [data-settings-panel] h3, [data-settings-panel] label, [data-settings-panel] dt",
       );
       const match = Array.from(matches).find((item) =>
         item.textContent.trim().toLowerCase().includes(query),
@@ -353,16 +304,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     profileLoadPromise = (async () => {
       try {
-        await API.loadCustomerData("/me", () => API.getMe("customer"), ({ user }) => {
+        await API.loadCustomerData("/me", () => API.getMe("customer", { force: true }), ({ user }) => {
           if (!user) throw new Error("Account profile is unavailable.");
-          serverUser = user;
-          applyUserToAccount(user);
-          settingsContent?.removeAttribute("inert");
-          settingsContent?.removeAttribute("aria-hidden");
-          settingsContent?.classList.remove("hidden");
-          loadingScreen?.classList.add("hidden");
-        });
-        emailAction.disabled = false;
+          renderAccountProfile(user);
+        }, { force: true });
         void loadEmailChallenge().catch(() => { /* Change retries the pending-state lookup. */ });
         return serverUser;
       } catch (error) {
@@ -370,6 +315,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           API.redirectToSignIn();
           return null;
         }
+        if (serverUser) return serverUser;
 
         loadingScreen?.setAttribute("role", "alert");
         if (loadingMessage) loadingMessage.textContent = "Unable to load settings right now. Please try again.";
@@ -384,15 +330,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     return profileLoadPromise;
   }
 
-  function applyUserToAccount(user, resetNames = false) {
-    for (const [field, input] of Object.entries(nameFields)) {
-      if (resetNames || !displayedNames || input.value === displayedNames[field]) {
-        input.value = user[field] || '';
-        HumanName.reset(input);
-      }
-    }
-    displayedNames = { first_name: user.first_name || '', last_name: user.last_name || '' };
-    syncNameSave();
+  function renderAccountProfile(user) {
+    if (!serverUser) emailAction.disabled = false;
+    serverUser = user;
+    applyUserToAccount(user);
+    settingsContent?.removeAttribute("inert");
+    settingsContent?.removeAttribute("aria-hidden");
+    settingsContent?.classList.remove("hidden");
+    loadingScreen?.classList.add("hidden");
+  }
+
+  function applyUserToAccount(user) {
+    firstNameValue.textContent = user.first_name || "Not provided";
+    lastNameValue.textContent = user.last_name || "Not provided";
     phoneInput.value = formatMobileNumber(user.phone) || "Not provided";
     const phoneStatus = document.getElementById("settingsPhoneStatus");
     if (phoneStatus) {

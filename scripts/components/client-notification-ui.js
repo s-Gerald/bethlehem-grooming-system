@@ -28,6 +28,7 @@
 
   function iconFor(notification) {
     const type = String(notification?.type || "").toLowerCase();
+    if (type === "account_name_updated") return "user";
     if (type.includes("cancel") || type.includes("expired")) return "x-circle";
     if (type.includes("pet_information")) return "paw-print";
     if (type.includes("reminder")) return "clock-counter-clockwise";
@@ -77,8 +78,9 @@
 
   function row(notification, index, large = false, formatMessage = messageMarkup) {
     const background = notification.is_read ? "bg-white" : "bg-portal-active";
-    const formattedMessage = notification.type === "pet_information_updated"
-      ? messageMarkup(notification) : formatMessage(notification);
+    const formattedMessage = notification.type === "account_name_updated"
+      ? escapeHtml(notification.display_message || notification.message)
+      : notification.type === "pet_information_updated" ? messageMarkup(notification) : formatMessage(notification);
     return `<button type="button" data-client-notification-index="${index}" class="flex w-full items-start gap-3 border-b border-portal-border px-4 py-3 text-left transition hover:bg-portal-surface-soft ${background} ${large ? "sm:px-6 sm:py-4" : ""}">
       ${iconMarkup(notification, large)}
       <span class="min-w-0 flex-1">

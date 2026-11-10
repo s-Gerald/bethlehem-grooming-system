@@ -72,6 +72,18 @@ ui.render(updates, [{ type: "pet_information_updated", pet_names: ["Andy"],
   message: "Bethlehem Animal Clinic changed your pet's name from Andrew to Andy.", is_read: false }]);
 assert.match(updates.innerHTML, /<strong class="client-notification-emphasis">Andrew<\/strong> to <strong class="client-notification-emphasis">Andy<\/strong>/);
 
+for (const isDropdown of [true, false]) {
+  ui.render(updates, [{
+    type: 'account_name_updated', title: 'Account name updated', is_read: false,
+    message: 'Bethlehem updated your last name from <Reyes> to O’Peña.',
+    created_at: `${today} 09:30:00`, destination: '/account/settings',
+  }], 'all', isDropdown, () => 'Legacy dashboard formatter');
+  assert.match(updates.innerHTML, /phosphor\.svg#user/);
+  assert.match(updates.innerHTML, /Account name updated/);
+  assert.match(updates.innerHTML, /from &lt;Reyes&gt; to O’Peña\./);
+  assert.doesNotMatch(updates.innerHTML, /<Reyes>|Legacy dashboard formatter/);
+}
+
 // Optional localhost browser coverage; all API traffic uses synthetic customer fixtures.
 async function testCustomerHeadersInBrowser() {
   const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');

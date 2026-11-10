@@ -111,6 +111,8 @@ function createPage(getMe, phoneApi = {}) {
   }
   vm.runInContext(source, context);
   element.emitVerified = (user) => windowEvents.get('customer-phone:verified')({ detail: { user } });
+  element.pageHtml = pageHtml;
+  element.emit = (type, detail) => windowEvents.get(type)({ detail });
   return element;
 }
 
@@ -312,7 +314,7 @@ async function testSettingsWaitsForProfile() {
   await flush();
 
   assert.equal(element("accountDisplayName").textContent, "Gerald Senining");
-  assert.equal(element("settingsFirstName").value, "Gerald");
+  assert.equal(element("settingsFirstName").textContent, "Gerald");
   assert.equal(element("settingsPhone").value, "Not provided");
   assert.equal(element("settingsContent").hasAttribute("inert"), false);
   assert.equal(element("settingsContent").classList.contains("hidden"), false);
@@ -410,46 +412,18 @@ async function testConfirmedPhoneRefreshUpdatesExistingSettingsFields() {
 }
 
 (async () => {
-  let saves = 0;
   const original = { first_name: 'GERALD', last_name: 'de la Cruz', role: 'customer' };
-  const element = createPage(async () => ({ user: original }), {
-    async updateCustomerName(payload) {
-      saves++;
-      if (payload.current_password !== 'correct') throw { errors: { current_password: ['Incorrect password.'] } };
-      assert.equal(payload.last_name, undefined);
-      return { user: { ...original, first_name: payload.first_name } };
-    },
-  });
+  const element = createPage(async () => ({ user: original }));
   await flush();
-  assert.equal(element('settingsFirstName').value, 'GERALD', 'Loading the editor preserves historical casing.');
-  assert.equal(element('saveCustomerName').disabled, true);
-  element('settingsFirstName').value = 'mcdonald';
-  await element('settingsFirstName').dispatch('input');
-  assert.equal(element('saveCustomerName').disabled, false);
-  await element('accountForm').dispatch('submit');
-  assert.equal(element('settingsConfirmationTitle').textContent, 'Confirm changes');
-  await element('settingsConfirmationForm').dispatch('submit');
-  assert.equal(saves, 0, 'Missing password is blocked locally.');
-  element('settingsConfirmationPassword').value = 'wrong';
-  await element('settingsConfirmationForm').dispatch('submit');
-  assert.equal(element('settingsConfirmationPasswordError').textContent, 'Incorrect password.');
-  assert.equal(element('settingsFirstName').value, 'McDonald');
-  element('settingsConfirmationPassword').value = 'correct';
-  await element('settingsConfirmationForm').dispatch('submit');
-  assert.equal(saves, 2);
-  assert.equal(element('accountDisplayName').textContent, 'McDonald de la Cruz');
-  assert.equal(element('accountInitials').textContent, 'MD');
-  assert.equal(element('settingsConfirmationPassword').value, '');
-  assert.equal(element('saveCustomerName').disabled, true);
-  element('settingsFirstName').value = 'Keep';
-  await element('accountForm').dispatch('submit');
-  element('settingsConfirmationPassword').value = 'secret';
-  await element('settingsConfirmationCancel').dispatch('click');
-  assert.equal(element('settingsFirstName').value, 'Keep');
-  assert.equal(element('settingsConfirmationPassword').value, '');
-  element('settingsFirstName').value = 'McDonald';
-  await element('accountForm').dispatch('submit');
-  assert.equal(saves, 2, 'Cancel and unchanged saves do not send requests.');
+  assert.equal(element('settingsFirstName').textContent, 'GERALD');
+  assert.equal(element('settingsLastName').textContent, 'de la Cruz');
+  assert.doesNotMatch(element.pageHtml, /id="saveCustomerName"|<input[^>]+id="settings(?:First|Last)Name"/);
+  assert.match(element.pageHtml, /To correct your name, please contact Bethlehem Animal Clinic\./);
+  await element.emit('customer-profile:updated', { user: { first_name: 'María', last_name: 'Peña' } });
+  assert.equal(element('settingsFirstName').textContent, 'María');
+  assert.equal(element('accountDisplayName').textContent, 'María Peña');
+  assert.equal(element('accountInitials').textContent, 'MP');
+
   await testSettingsWaitsForProfile();
   await testPasswordChangeSubmissionAndErrors();
   await testEmailChangeCanResumeAndCancelWithoutStartingAnotherRequest();

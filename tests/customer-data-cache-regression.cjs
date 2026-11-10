@@ -31,19 +31,20 @@ function response(data, status = 200) {
 
 function environment() {
   const localStorage = new Storage(), sessionStorage = new Storage();
-  const calls = [];
+  const calls = [], profileUpdates = [];
   let now = 1000000;
   let handler = (endpoint) => endpoint === "/me" ? profile : endpoint.startsWith("/pets?") ? pets : bookings;
   function documentContext(page = "dashboard.html") {
     const events = new Map();
     const context = vm.createContext({
       Date: class extends Date { static now() { return now; } },
-      Math, JSON, URLSearchParams, AbortController,
+      Math, JSON, URLSearchParams, AbortController, CustomEvent,
       setTimeout, clearTimeout, console, localStorage, sessionStorage,
       document: { getElementById: () => null, querySelector: () => null, addEventListener() {} },
       window: {
         location: { protocol: "http:", origin: "http://127.0.0.1:8000", hostname: "127.0.0.1", port: "8000", pathname: `/pages/client/${page}`, replace() {} },
         addEventListener: (name, callback) => events.set(name, callback),
+        dispatchEvent: (event) => { if (event.type === "customer-profile:updated") profileUpdates.push(event.detail); },
       },
       fetch: async (url, options) => {
         const endpoint = url.replace("http://127.0.0.1:8000/api", "");
@@ -58,7 +59,7 @@ function environment() {
   const initial = documentContext("sign-in.html");
   initial.API.setCustomerToken("1|synthetic-customer-secret");
   return {
-    ...initial, documentContext, calls, localStorage, sessionStorage,
+    ...initial, documentContext, calls, profileUpdates, localStorage, sessionStorage,
     advance: (milliseconds) => { now += milliseconds; },
     respond: (callback) => { handler = callback; },
   };
@@ -288,6 +289,9 @@ async function testSessionIsolationAndFreshness() {
   assert.equal(env.API.readCustomerCache("/me"), null);
   await seed(env);
   env.localStorage.setItem("customer_token", "4|cross-tab-customer-secret");
+  env.localStorage.setItem("bethlehem.auth.current", JSON.stringify({
+    token: "4|cross-tab-customer-secret", role: "customer", persistent: true,
+  }));
   assert.equal(env.documentContext().API.readCustomerCache("/me"), null);
   await seed(env);
   env.respond(() => response({ message: "Expired" }, 401));
@@ -461,11 +465,14 @@ async function testActualPageLoaders() {
   assert.equal(cachedPets.element("petsContent").hasAttribute("inert"), false);
   assert.match(cachedPets.element("petsGrid").innerHTML, /Mochi/);
   assert.equal(env.calls.length, count, "Actual My Pets loader must reuse the shared active list.");
+  env.respond(endpoint => endpoint === "/me"
+    ? { user: { ...profile.user, first_name: "Updated", last_name: "Owner" } } : bookings);
   const settings = mountPage(env, "settings.html");
   await flush(); // Settings waits for the shared authentication gate before rendering retained profile data.
   assert.equal(settings.element("settingsContent").hasAttribute("inert"), false);
-  assert.equal(settings.element("settingsFirstName").value, "Test");
-  assert.deepEqual(env.calls.slice(count).map(call => call.endpoint), ["/customer/security-changes/email"]);
+  assert.equal(settings.element("settingsFirstName").textContent, "Updated");
+  assert.equal(settings.element("accountInitials").textContent, "UO");
+  assert.deepEqual(env.calls.slice(count).map(call => call.endpoint), ["/me", "/customer/security-changes/email"]);
   const clinicPending = deferred();
   env.respond((endpoint) => endpoint === "/clinic/history" ? clinicPending.promise : bookings);
   const history = mountPage(env, "grooming-history.html");
@@ -711,41 +718,57 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("notifDropdown").style.display, "none", "Notification outside-click dismissal remains active");
 }
 
+async function testStaffNameNotificationRefreshesOnlyTheCurrentProfile(persistent) {
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  const env = environment();
+  if (!persistent) env.API.setCustomerToken('1|temporary-customer-secret', false);
+  const profileStorage = persistent ? env.localStorage : env.sessionStorage;
+  await Promise.all([env.API.getMe(), env.API.getUserPets(), env.API.getBookingHistory()]);
+  const older = deferred();
+  const fresh = deferred();
+  const notification = { id: 21, type: 'account_name_updated', message: 'Bethlehem updated your name.' };
+  let reads = 0;
+  env.respond(endpoint => endpoint === '/me' ? (++reads === 1 ? older.promise : fresh.promise)
+    : { notifications: [notification] });
+  const stale = assert.rejects(env.API.getMe('customer', { force: true }), /changed while loading/);
+  await Promise.all([env.API.getCustomerNotifications(), env.API.getCustomerNotifications({ sort: 'recent' })]);
+  await flush();
+  assert.equal(reads, 2, 'One notification triggers one replacement request across notification variants.');
+  const confirmed = { ...profile, user: { ...profile.user, first_name: 'María', last_name: 'Peña' } };
+  fresh.resolve(confirmed);
+  await flush();
+  older.resolve(profile);
+  await stale;
+  assert.equal((await env.API.getMe()).user.first_name, 'María');
+  assert.equal(env.profileUpdates.at(-1)?.user.last_name, 'Peña');
+  assert.equal(JSON.parse(profileStorage.getItem('bethlehem.customer.profile_name')).last, 'Peña');
+  const before = env.calls.length;
+  await Promise.all([env.API.getUserPets(), env.API.getBookingHistory()]);
+  assert.equal(env.calls.length, before, 'A name refresh retains pet and booking caches.');
+
+  const next = env.documentContext('settings.html').API;
+  assert.equal((await next.getMe()).user.last_name, 'Peña');
+  await next.getCustomerNotifications({ force: true });
+  assert.equal(reads, 2, 'Repeated notifications and navigation reuse the confirmed profile.');
+  const pending = deferred();
+  notification.id = 22;
+  env.respond(endpoint => endpoint === '/me' ? pending.promise : { notifications: [notification] });
+  await next.getCustomerNotifications({ force: true });
+  next.clearCustomerToken();
+  next.setCustomerToken('2|other-synthetic-customer', persistent);
+  const second = { user: { user_id: 2, first_name: 'Second', last_name: 'Customer' } };
+  env.respond(() => second);
+  await next.getMe();
+  pending.resolve(confirmed);
+  await flush();
+  assert.equal((await next.getMe()).user.first_name, 'Second');
+  assert.equal(JSON.parse(profileStorage.getItem('bethlehem.customer.profile_name')).first, 'Second');
+}
+
 async function main() {
-  {
-    const env = environment();
-    await env.API.getMe(); await env.API.getUserPets();
-    const beforeUpdateCache = env.sessionStorage.getItem('bethlehem.customer.data.v1');
-    const older = deferred();
-    const saved = { ...profile, user: { ...profile.user, first_name: 'Gerald', last_name: 'McDonald' } };
-    env.respond(endpoint => endpoint === '/me' ? older.promise : saved);
-    const stale = env.API.getMe('customer', { force: true });
-    const staleResult = stale.then(() => false, () => true);
-    await env.API.updateCustomerName({ first_name: 'Gerald', last_name: 'McDonald', current_password: 'secret' });
-    older.resolve(profile);
-    assert.equal(await staleResult, true, 'An older /me response cannot replace a saved identity.');
-    assert.equal((await env.API.getMe()).user.first_name, 'Gerald');
-    assert.equal(JSON.parse(env.localStorage.getItem('bethlehem.customer.profile_name')).last, 'McDonald');
-    const count = env.calls.length;
-    await env.API.getUserPets();
-    assert.equal(env.calls.length, count, 'Name changes retain the pet cache.');
-    const next = env.documentContext('settings.html');
-    assert.equal((await next.API.getMe()).user.last_name, 'McDonald', 'Saved profile survives page navigation.');
-    assert.equal(env.calls.length, count);
-    env.sessionStorage.setItem('bethlehem.customer.data.v1', beforeUpdateCache);
-    const missedSignal = env.documentContext('settings.html');
-    assert.equal((await missedSignal.API.getMe()).user.last_name, 'McDonald', 'A tab opening after the storage event cannot restore its older profile snapshot.');
-    assert.equal(env.calls.length, count);
-    const crossTab = env.documentContext('dashboard.html');
-    env.respond(() => older.promise);
-    const olderTabRequest = crossTab.API.getMe('customer', { force: true });
-    const before = env.calls.length;
-    crossTab.events.get('storage')({ storageArea: env.localStorage, key: 'bethlehem.customer.profile_changed',
-      newValue: JSON.stringify({ owner: 'customer:1', first_name: 'Maria', last_name: 'Peña' }) });
-    assert.equal(crossTab.API.readCustomerCache('/me').data.user.first_name, 'Maria');
-    await assert.rejects(olderTabRequest, /changed while loading/);
-    assert.equal(env.calls.length, before, 'Cross-tab name synchronization reuses cached profile data.');
-  }
+  await testStaffNameNotificationRefreshesOnlyTheCurrentProfile(true);
+  await testStaffNameNotificationRefreshesOnlyTheCurrentProfile(false);
+
   healthRecordTools = await import('../scripts/components/customer-health-records.js');
   petWeightTools = await import('../scripts/components/pet-weight-size.js');
   ({ normalizePetSize } = await import('../scripts/services/booking-draft-service.js'));
@@ -770,7 +793,6 @@ function serveBrowserFixture() {
   const baselinePath = process.argv.find((arg) => arg.startsWith("--baseline="))?.slice("--baseline=".length);
   const baseline = baselinePath ? JSON.parse(fs.readFileSync(baselinePath, "utf8")) : {};
   const requests = [];
-  let fixtureProfile = JSON.parse(JSON.stringify(profile));
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     if (url.pathname === "/__requests") {
@@ -779,24 +801,9 @@ function serveBrowserFixture() {
     }
     if (url.pathname.startsWith("/api/")) {
       requests.push({ endpoint: url.pathname + url.search, at: Date.now() });
-      if (url.pathname === '/api/customer/profile/name' && req.method === 'PATCH') {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
-          const payload = JSON.parse(body);
-          res.setHeader('Content-Type', 'application/json');
-          if (payload.current_password !== 'fixture-password') {
-            res.statusCode = 422;
-            return res.end(JSON.stringify({ errors: { current_password: ['Incorrect password.'] } }));
-          }
-          fixtureProfile = { ...fixtureProfile, user: { ...fixtureProfile.user, first_name: payload.first_name, last_name: payload.last_name } };
-          res.end(JSON.stringify(fixtureProfile));
-        });
-        return;
-      }
       let data;
       switch (url.pathname) {
-        case "/api/me": data = fixtureProfile; break;
+        case "/api/me": data = profile; break;
         case "/api/pets": data = url.searchParams.get("archived") === "1" ? { pets: [] } : pets; break;
         case "/api/booking/history": data = bookings; break;
         case "/api/clinic/history": data = { medical_records: [] }; break;

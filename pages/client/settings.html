@@ -258,8 +258,7 @@
               class="max-w-[680px] space-y-4"
             >
               <h3 class="text-xl font-bold text-portal-text">Personal Information</h3>
-              <form
-                id="accountForm" novalidate
+              <div
                 class="rounded-3xl border border-portal-border bg-white p-5 shadow-portal sm:p-6"
               >
                 <div class="space-y-6">
@@ -287,37 +286,17 @@
                     </div>
                   </div>
 
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <dl class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <label
-                        for="settingsFirstName"
-                        class="mb-2 block text-sm font-semibold text-portal-text"
-                      >
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        id="settingsFirstName" required data-human-name maxlength="100" autocomplete="given-name" autocapitalize="words" spellcheck="false"
-                        name="first_name"
-                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
-                      />
+                      <dt class="mb-2 text-sm font-semibold text-portal-text">First Name</dt>
+                      <dd id="settingsFirstName" class="break-words text-portal-text"></dd>
                     </div>
-
                     <div>
-                      <label
-                        for="settingsLastName"
-                        class="mb-2 block text-sm font-semibold text-portal-text"
-                      >
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        id="settingsLastName" required data-human-name maxlength="100" autocomplete="family-name" autocapitalize="words" spellcheck="false"
-                        name="last_name"
-                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-3 text-portal-text focus:outline-none focus:border-portal-primary focus:ring-2 focus:ring-portal-primary"
-                      />
+                      <dt class="mb-2 text-sm font-semibold text-portal-text">Last Name</dt>
+                      <dd id="settingsLastName" class="break-words text-portal-text"></dd>
                     </div>
-                  </div>
+                  </dl>
+                  <p class="text-sm text-portal-muted">To correct your name, please contact Bethlehem Animal Clinic.</p>
 
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
@@ -360,11 +339,8 @@
                       </div>
                     </div>
                   </div>
-                  <div class="flex justify-end pt-1">
-                    <button id="saveCustomerName" type="submit" class="portal-button-primary w-full text-sm font-semibold sm:w-[240px] disabled:cursor-not-allowed disabled:opacity-50" disabled>Save changes</button>
-                  </div>
                 </div>
-              </form>
+              </div>
             </section>
 
             <section
@@ -549,17 +525,16 @@
       </form>
     </dialog>
 
-    <script src="/scripts/utils/human-name.js?v=20261028-names-v2"></script>
-    <script src="/scripts/api.js?auth-reliability=20261107&customer-security=20261107-v1&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
+    <script src="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&customer-security=20261107-v1&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
-    <script src="/scripts/components/client-notification-ui.js?v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
+    <script src="/scripts/components/client-notification-ui.js?name-correction=20261108&v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-header-notifications.js?v=customer-cache-20261005-v1&customer-header=20261106-v2"></script>
     <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
     <script src="/scripts/utils/credential-policy.js?v=20261107"></script>
     <script src="/scripts/utils/account-email.js?v=email-entry-20261028"></script>
     <script src="/scripts/auth/verification-code.js?v=20261107"></script>
     <script src="/scripts/auth/email-delivery.js?v=20261107"></script>
-    <script src="/scripts/components/customer-settings-confirmation.js?v=20261107-v1"></script>
-    <script src="/scripts/components/client-settings.js?customer-security=20261107-v1&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103&credentials=20261107"></script>
+    <script src="/scripts/components/customer-settings-confirmation.js?name-correction=20261108&v=20261107-v1"></script>
+    <script src="/scripts/components/client-settings.js?name-correction=20261108&customer-security=20261107-v1&v=mobile-format-20261029&names=20261028-v2&auth-feedback=20261028-v3&mobile-format=20261029&remember=20261029&urls=20261103&credentials=20261107"></script>
   </body>
 </html>

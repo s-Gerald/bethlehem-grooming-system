@@ -296,7 +296,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
           await API.markCustomerNotificationRead(id);
 
           if (
-            ["pet_information_updated"].includes(
+            ["pet_information_updated", "account_name_updated"].includes(
               notification?.type,
             )
             && notification.destination

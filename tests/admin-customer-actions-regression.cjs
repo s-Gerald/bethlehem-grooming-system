@@ -4,17 +4,18 @@ const vm = require('node:vm');
 
 const classes = new Set();
 const element = () => ({ isConnected: true, focus(options) { this.focusOptions = options; document.activeElement = this; }, querySelectorAll: () => [] });
-const document = { activeElement: element(), documentElement: { classList: { toggle(name, on) { on ? classes.add(name) : classes.delete(name); } } }, body: { classList: { toggle() {} } } };
+const document = { activeElement: element(), addEventListener() {}, documentElement: { classList: { toggle(name, on) { on ? classes.add(name) : classes.delete(name); } } }, body: { classList: { toggle() {} } } };
 let role = 'admin', calls = 0, resolveRequest;
 const context = vm.createContext({ document, window: {}, console, API: {
   getUserRole: () => role,
   unarchiveCustomer: () => { calls++; return new Promise(resolve => { resolveRequest = resolve; }); },
   restoreUnregisteredCustomer: async () => { calls++; throw new Error('Restore failed'); },
 } });
+vm.runInContext(fs.readFileSync('scripts/utils/human-name.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('scripts/components/admin-customers.js', 'utf8'), context);
 const ui = context.adminCustomers();
 ui.$nextTick = callback => callback();
-ui.$refs = Object.fromEntries(['confirmDialog', 'confirmCancel', 'ownerDialog', 'petDialog', 'ownerActionsButton', 'ownerActionsMenu', 'petKeepEditing', 'petClose'].map(name => [name, element()]));
+ui.$refs = Object.fromEntries(['confirmDialog', 'confirmCancel', 'ownerDialog', 'petDialog', 'ownerActionsButton', 'ownerActionsMenu', 'petKeepEditing', 'petClose', 'nameFirst', 'nameLast'].map(name => [name, element()]));
 ui.loadCustomers = async () => {};
 const portal = { id: 1, fullName: 'Owner', isActive: true, recordType: 'registered' };
 const manual = { ...portal, recordType: 'unregistered' };
@@ -128,5 +129,49 @@ const manual = { ...portal, recordType: 'unregistered' };
   assert.equal(document.activeElement, lastControl, 'Shift+Tab wraps within the dialog');
   ui.closeCustomerDetails();
   assert.equal(classes.has('customer-detail-modal-open'), false);
+
+  const edit = element();
+  const online = { ...portal, firstName: 'Jhon', lastName: 'Peña', nameVersion: 'old' };
+  ui.customers = [online, manual];
+  ui.detailModal = { open: true, customer: online };
+  assert.equal(ui.canEditCustomerName, true);
+  ui.openNameEditor(edit);
+  assert.equal(document.activeElement, ui.$refs.nameFirst);
+  assert.equal(ui.canSaveCustomerName, false);
+  ui.updateNameField('first_name', 'Jhon2');
+  await ui.saveCustomerName();
+  assert.match(ui.nameModal.errors.first_name, /Numbers/);
+  ui.updateNameField('first_name', ' john ');
+  assert.equal(ui.nameModal.errors.first_name, '');
+  let finish;
+  context.API.correctCustomerName = (type, id, payload) => {
+    assert.equal(type, 'registered'); assert.equal(id, online.id);
+    assert.equal(payload.name_version, 'old'); assert.equal(payload.first_name, 'John');
+    assert.equal(payload.last_name, undefined);
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const save = ui.saveCustomerName();
+  ui.closeNameEditor();
+  assert.equal(ui.nameModal.open, true);
+  finish({ customer: { ...online, firstName: 'John', fullName: 'John Peña', nameVersion: 'new' } });
+  await save;
+  assert.equal(ui.detailModal.customer.fullName, 'John Peña');
+  assert.equal(ui.customers[0].firstName, 'John');
+  assert.equal(ui.customers[1].fullName, 'Owner', 'Same numeric ID on the manual record stays separate');
+  assert.equal(document.activeElement, edit);
+
+  ui.openNameEditor(edit);
+  ui.updateNameField('last_name', 'Santos');
+  context.API.correctCustomerName = async () => { throw { status: 409, message: 'Name changed.', data: {
+    customer: { ...online, firstName: 'Juan', fullName: 'Juan Peña', nameVersion: 'latest' },
+  } }; };
+  await ui.saveCustomerName();
+  assert.equal(ui.nameModal.open, true);
+  assert.equal(ui.nameModal.form.last_name, 'Santos');
+  assert.equal(ui.canSaveCustomerName, false);
+  assert.equal(ui.detailModal.customer.firstName, 'Juan');
+  ui.closeNameEditor();
+  ui.detailModal.customer = manual;
+  assert.equal(ui.canEditCustomerName, false);
   console.log('Customer actions, restore submission, nested focus, and scroll locks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -85,6 +85,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       loading:  false,
       error:    "",
     },
+    nameModal: { open: false },
 
     petModal: {
       open:      false,
@@ -420,6 +421,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
     handleCustomerEscape(event) {
       if (this.petDiscardOpen) this.keepPetEditing();
       else if (this.petModal.open) this.closePetDetails();
+      else if (this.nameModal.open) this.closeNameEditor();
       else if (this.confirmModal.open) this.closeConfirm();
       else if (this.ownerActionsOpen) this.closeOwnerActions();
       else if (this.detailModal.open) this.closeCustomerDetails();
@@ -431,6 +433,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
     trapDialogFocus(event) {
       const dialog = this.petDiscardOpen ? this.$refs.petDiscardDialog
         : this.petModal.open ? this.$refs.petDialog
+        : this.nameModal.open ? this.$refs.nameDialog
         : this.confirmModal.open ? this.$refs.confirmDialog
         : this.detailModal.open ? this.$refs.ownerDialog : null;
       if (!dialog) return;
@@ -1164,7 +1167,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
     },
 
     closeCustomerDetails() {
-      if (this.petModal.open || this.confirmModal.open) return;
+      if (this.petModal.open || this.confirmModal.open || this.nameModal.open) return;
       this._detailRequest = (this._detailRequest || 0) + 1;
       this.ownerActionsOpen = false;
       this.detailModal.open = false;
@@ -1177,6 +1180,100 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       locked = locked || this.detailModal.open || this.petModal.open || this.confirmModal.open || this.addCustomerModal.open;
       document.documentElement.classList.toggle("customer-detail-modal-open", locked);
       document.body.classList.toggle("customer-detail-modal-open", locked);
+    },
+
+    get canEditCustomerName() {
+      const customer = this.detailModal.customer;
+      return Boolean(customer?.nameVersion && !customer.isArchived);
+    },
+
+    openNameEditor(trigger) {
+      if (!this.canEditCustomerName || this.nameModal.open) return;
+      const customer = this.detailModal.customer;
+      const original = { first_name: customer.firstName ?? "", last_name: customer.lastName ?? "" };
+      this.nameModal = {
+        open: true, saving: false, conflict: false, error: "", errors: {},
+        target: { id: customer.id, recordType: customer.recordType, version: customer.nameVersion },
+        original, form: { ...original },
+      };
+      this._nameReturnFocus = trigger;
+      this.$nextTick(() => this.$refs.nameFirst.focus());
+    },
+
+    closeNameEditor() {
+      if (this.nameModal.saving) return;
+      this.nameModal = { open: false };
+      this.$nextTick(() => {
+        const target = this.canEditCustomerName ? this._nameReturnFocus : this.$refs.ownerClose;
+        target?.focus({ preventScroll: true });
+      });
+    },
+
+    customerNameChanges() {
+      const { form, original } = this.nameModal;
+      const changes = {};
+      for (const field of ["first_name", "last_name"]) {
+        if (form[field] === original[field]) continue;
+        const normalized = HumanName.normalize(form[field]);
+        if (normalized !== original[field]) changes[field] = normalized;
+      }
+      return changes;
+    },
+
+    get canSaveCustomerName() {
+      const modal = this.nameModal;
+      return modal.open && !modal.saving && !modal.conflict && Object.keys(this.customerNameChanges()).length > 0;
+    },
+
+    updateNameField(field, value) {
+      this.nameModal.form[field] = value;
+      if (this.nameModal.errors[field]) this.nameModal.errors[field] = HumanName.validate(value);
+    },
+
+    applyCustomerName(customer) {
+      const matches = (record) => String(record?.id) === String(customer.id) && record.recordType === customer.recordType;
+      if (matches(this.detailModal.customer)) Object.assign(this.detailModal.customer, customer);
+      const row = this.customers.find(matches);
+      if (row) Object.assign(row, customer);
+      // This page's pet search only returns pets linked to online accounts.
+      if (customer.recordType === "registered") {
+        for (const pet of this.petSearchResults) {
+          if (String(pet.ownerId) === String(customer.id)) pet.ownerName = customer.fullName;
+        }
+      }
+    },
+
+    async saveCustomerName() {
+      if (!this.canSaveCustomerName) return;
+      const modal = this.nameModal;
+      const fields = ["first_name", "last_name"];
+      const focusField = (field) => this.$nextTick(() => this.$refs[field === "first_name" ? "nameFirst" : "nameLast"].focus());
+      modal.error = "";
+      modal.errors = Object.fromEntries(fields.map(field => [field,
+        modal.form[field] === modal.original[field] && modal.original[field].trim() ? "" : HumanName.validate(modal.form[field])]));
+      const invalid = fields.find(field => modal.errors[field]);
+      if (invalid) { focusField(invalid); return; }
+      modal.saving = true;
+      try {
+        const { id, recordType, version } = modal.target;
+        const { customer } = await API.correctCustomerName(recordType, id, {
+          name_version: version, ...this.customerNameChanges(),
+        });
+        this.applyCustomerName(customer);
+        this.successMessage = "Customer name updated.";
+        modal.saving = false;
+        this.closeNameEditor();
+      } catch (error) {
+        modal.saving = false;
+        const invalid = fields.filter(field => error.errors?.[field]?.length);
+        for (const field of invalid) modal.errors[field] = error.errors[field][0];
+        if (invalid.length) focusField(invalid[0]);
+        else modal.error = error.message || "Unable to save the customer’s name.";
+        if (error.status === 409) {
+          modal.conflict = true;
+          if (error.data?.customer) this.applyCustomerName(error.data.customer);
+        }
+      }
     },
 
     // ── Avatar helpers ────────────────────────────────────

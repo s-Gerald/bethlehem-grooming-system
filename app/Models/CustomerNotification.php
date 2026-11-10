@@ -11,6 +11,7 @@ class CustomerNotification extends Model
     public const TYPE_GROOMING_NO_SHOW = 'grooming_no_show';
 
     public const TYPE_PET_INFORMATION_UPDATED = 'pet_information_updated';
+    public const TYPE_ACCOUNT_NAME_UPDATED = 'account_name_updated';
 
     protected $table = 'customer_notifications';
 

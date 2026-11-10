@@ -1,5 +1,5 @@
 // The three Settings confirmations share one dialog and one verification input.
-window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameErrors, onChallenge, resetPassword }) {
+window.createCustomerSettingsConfirmation = function ({ onChallenge, resetPassword }) {
   const get = (id) => document.getElementById(id);
   const dialog = get('settingsConfirmation');
   const form = get('settingsConfirmationForm');
@@ -46,7 +46,7 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
     }
     const label = challenge
       ? (view.kind === 'email' ? 'Verify email' : 'Confirm change')
-      : (view.kind === 'name' ? 'Save changes' : 'Continue');
+      : 'Continue';
     submit.textContent = busy ? 'Please wait…' : label;
     submit.disabled = busy || view.ended || Boolean(challenge && (expired || locked || code.value.length !== 6));
     close.disabled = cancel.disabled = busy;
@@ -73,7 +73,7 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
   function render() {
     stopWatching();
     const { kind, challenge, currentEmail } = view;
-    title.textContent = kind === 'name' ? 'Confirm changes' : kind === 'password' ? 'Verify password change'
+    title.textContent = kind === 'password' ? 'Verify password change'
       : challenge ? 'Verify new email' : 'Change email address';
     get('settingsEmailFields').hidden = kind !== 'email' || Boolean(challenge);
     get('settingsConfirmationPasswordArea').hidden = Boolean(challenge);
@@ -105,7 +105,7 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
     (challenge ? code : kind === 'email' ? newEmail : password).focus();
   }
 
-  function dismiss(restoreFocus = true) {
+  function dismiss() {
     if (busy || !view) return;
     const trigger = view.trigger;
     stopWatching();
@@ -114,7 +114,7 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
     newEmail.value = '';
     digits.clear();
     dialog.close();
-    if (restoreFocus) (trigger.disabled ? get('settingsFirstName') : trigger).focus();
+    trigger.focus();
   }
 
   function challengeError(error, field) {
@@ -141,7 +141,7 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!view || busy || view.ended) return;
-    const { kind, challenge, changes, currentEmail } = view;
+    const { kind, challenge, currentEmail } = view;
     const submittedView = view;
     if (challenge && (code.value.length !== 6 || challenge.attempts_remaining === 0)) return;
     const email = kind === 'email' && !challenge ? AccountEmail.normalize(newEmail.value) : '';
@@ -167,16 +167,11 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
         digits.clear();
         stopWatching();
         API.redirectToSignIn({ replace: true, passwordChanged: kind === 'password' });
-      } else if (kind === 'email') {
+      } else {
         const result = await API.requestCustomerEmailChange(email, password.value);
         if (view !== submittedView) return;
         setChallenge(result.challenge);
         after = render;
-      } else {
-        const { user } = await API.updateCustomerName({ ...changes, current_password: password.value });
-        if (view !== submittedView) return;
-        onNameSaved(user);
-        after = dismiss;
       }
     } catch (error) {
       if (view !== submittedView) return;
@@ -187,8 +182,6 @@ window.createCustomerSettingsConfirmation = function ({ onNameSaved, onNameError
       } else if (!challenge && errors.email) {
         feedback(errors.email[0], newEmail);
         focus = newEmail;
-      } else if (kind === 'name' && (errors.first_name || errors.last_name)) {
-        after = () => { dismiss(false); onNameErrors(errors); };
       } else {
         challengeError(error, challenge ? code : undefined);
         if (challenge) focus = code;
