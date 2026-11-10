@@ -18,9 +18,9 @@ const identity = (overrides = {}, revision = 'revision-1') => ({
 function environment() {
   const localStorage = new Storage(), sessionStorage = new Storage(), calls = [];
   let response = () => identity(), status = 200;
-  function page() {
+  function page(tabSessionStorage = sessionStorage) {
     const listeners = new Map();
-    const c = vm.createContext({ localStorage, sessionStorage, URL, URLSearchParams, Date, console,
+    const c = vm.createContext({ localStorage, sessionStorage: tabSessionStorage, URL, URLSearchParams, Date, console,
       AbortController, setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
       CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
       document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null,
@@ -72,8 +72,33 @@ async function isolationAndRaces() {
   assert.equal(sidebar.staffRoleLabel, 'Grooming Receptionist');
   assert.equal(sidebar.isAdmin, false);
   assert.equal(sidebar.activePage, 'clinic');
-  e.localStorage.setItem('admin_token', '19|third-secret');
-  assert.equal(e.page().API.getCachedStaffIdentity(), null, 'Token switches cannot reuse another account presentation');
+  const nextIdentity = identity({ user_id: 9, first_name: 'New', last_name: 'Veterinarian', username: 'new.vet' }, 'revision-3');
+  const loginTab = e.page(new Storage());
+  e.respond(() => ({ ...nextIdentity, token: '19|cookie', remember_me: true, session_transport: 'scoped' }));
+  await loginTab.API.signIn('new.vet', 'password', true);
+  assert.equal(JSON.parse(e.localStorage.getItem('bethlehem.auth.current')).token, '19|cookie');
+  assert.equal(loginTab.sessionStorage.getItem('bethlehem.admin.navigation.v1'), null, 'Another tab has its own navigation cache');
+  const next = e.page(), nextSidebar = next.adminSidebar();
+  assert.equal(next.API.getCachedStaffIdentity(), null, 'Atomic session switches cannot reuse another account presentation');
+  assert.equal(nextSidebar.sidebarReady, false, 'The next page cannot paint the previous account before verification');
+  assert.equal(nextSidebar.staffDisplayName, '');
+  assert.equal(nextSidebar.staffRoleLabel, '');
+  assert.equal(nextSidebar.canAccessGrooming, false);
+  assert.deepEqual(Object.keys(nextSidebar.clinicPermissions), []);
+  let verifyIdentity;
+  e.respond(() => new Promise(resolve => { verifyIdentity = resolve; }));
+  nextSidebar.$nextTick = callback => callback();
+  const pending = nextSidebar.init();
+  assert.equal(nextSidebar.sidebarReady, false, 'Identity remains unresolved while the new account /me request is pending');
+  verifyIdentity(nextIdentity);
+  await pending;
+  assert.equal(next.API.getCachedStaffIdentity().user.user_id, 9);
+  assert.equal(nextSidebar.staffDisplayName, 'New Veterinarian');
+  assert.equal(nextSidebar.staffRoleLabel, 'Veterinarian');
+  assert.equal(nextSidebar.canAccessGrooming, false, 'The former receptionist permissions cannot survive the switch');
+  const navigation = e.sessionStorage.getItem('bethlehem.admin.navigation.v1');
+  for (const secret of ['test-secret', 'other-secret', 'Bearer ']) assert.equal(navigation.includes(secret), false, 'Navigation cache never persists bearer secrets');
+  nextSidebar.destroy();
 }
 async function independentRendering() {
   const e = environment();
@@ -237,22 +262,65 @@ async function cachedIdentityLogoutRace() {
 async function sharedReceptionistSwitchReplacesTheFormerAccountDocument() {
   for (const subroles of [['clinic_receptionist', 'grooming_receptionist'], ['grooming_receptionist', 'clinic_receptionist']]) {
     const e = environment();
-    e.respond(() => identity({staff_subrole: subroles[0], staff_type: subroles[0] === 'clinic_receptionist' ? 'clinic' : 'grooming'}));
+    const staffIdentity = (subrole, userId, firstName) => identity({ user_id: userId, first_name: firstName,
+      last_name: 'Receptionist', staff_subrole: subrole, staff_type: subrole === 'clinic_receptionist' ? 'clinic' : 'grooming',
+      clinic_permissions: {access: subrole === 'clinic_receptionist'}, staff_permissions: {grooming: subrole === 'grooming_receptionist'},
+    }, `revision-${userId}`);
+    e.respond(() => staffIdentity(subroles[0], 7, 'Former'));
     await e.c.API.getStaffIdentity();
     await e.c.API.adminRequest('GET', '/inventory/items?page=1');
+    const sidebar = e.c.adminSidebar();
+    sidebar.$nextTick = callback => callback();
+    await sidebar.init();
+    assert.equal(sidebar.staffDisplayName, 'Former Receptionist');
+    assert.ok(e.c.API.readAdminCache('/inventory/items?page=1'));
+    const cachedNavigation = e.sessionStorage.getItem('bethlehem.admin.navigation.v1');
     let reloads = 0;
     e.c.window.location.reload = () => { reloads++; };
     // Another normal tab finishes a new staff login while this document still
     // contains the previous account's workspace and cached identity.
-    e.localStorage.setItem('admin_token', '18|replacement-session');
+    const oldSelection = e.localStorage.getItem('bethlehem.auth.current');
+    const loginTab = e.page(new Storage());
+    const replacement = staffIdentity(subroles[1], 8, 'New');
+    e.respond(url => url.endsWith('/sign-in')
+      ? {...replacement, token: '18|cookie', remember_me: true, session_transport: 'scoped'} : replacement);
+    await loginTab.API.signIn('new.receptionist', 'password', true);
+    const newSelection = e.localStorage.getItem('bethlehem.auth.current');
+    assert.equal(JSON.parse(newSelection).accountId, '8');
+    assert.equal(e.sessionStorage.getItem('bethlehem.admin.navigation.v1'), cachedNavigation, 'Signing in elsewhere does not share tab-local navigation storage');
     e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
-      key: 'admin_token', oldValue: '17|test-secret', newValue: '18|replacement-session'});
+      key: 'admin_token', oldValue: '17|test-secret', newValue: '18|cookie'});
+    assert.equal(reloads, 0, 'Intermediate legacy writes do not replace the workspace before the atomic event');
+    e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
+      key: 'bethlehem.auth.current', oldValue: oldSelection, newValue: newSelection});
     assert.equal(e.c.API.getCachedStaffIdentity(), null);
     assert.equal(e.c.API.readAdminCache('/inventory/items?page=1'), null);
+    assert.equal(e.sessionStorage.getItem('bethlehem.admin.navigation.v1'), null);
+    assert.equal(e.sessionStorage.getItem('bethlehem.admin.presentation.v3'), null);
+    assert.equal(sidebar.sidebarReady, false);
+    assert.equal(sidebar.staffDisplayName, '');
+    assert.equal(sidebar.staffRoleLabel, '');
+    assert.equal(sidebar.canAccessGrooming, false);
+    assert.deepEqual(Object.keys(sidebar.clinicPermissions), [], 'The former account permissions are cleared from the existing sidebar');
     assert.equal(reloads, 1, 'A confirmed shared-profile account switch replaces the former account workspace');
     e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
+      key: 'admin_token', oldValue: '17|test-secret', newValue: '18|cookie'});
+    e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
       key: 'user_role', oldValue: null, newValue: 'staff'});
-    assert.equal(reloads, 1, 'The matching role event does not request a duplicate reload');
+    e.c.window.dispatchEvent({type: 'storage', storageArea: e.localStorage,
+      key: 'bethlehem.auth.current', oldValue: oldSelection, newValue: newSelection});
+    assert.equal(reloads, 1, 'Related legacy writes and repeated atomic events do not request duplicate reloads');
+    const next = e.page();
+    assert.equal(next.adminSidebar().staffDisplayName, '');
+    await next.API.getStaffIdentity();
+    const nextSidebar = next.adminSidebar();
+    assert.equal(nextSidebar.staffDisplayName, 'New Receptionist');
+    assert.equal(nextSidebar.staffRoleLabel, subroles[1] === 'clinic_receptionist' ? 'Clinic Receptionist' : 'Grooming Receptionist');
+    assert.equal(nextSidebar.canAccessGrooming, subroles[1] === 'grooming_receptionist');
+    assert.equal(nextSidebar.clinicPermissions.access, subroles[1] === 'clinic_receptionist');
+    assert.equal(next.API.getCachedStaffIdentity().user.user_id, 8);
+    assert.equal(next.API.readAdminCache('/inventory/items?page=1'), null, 'The new account cannot restore the old page-data cache after reload');
+    sidebar.destroy();
   }
 }
 async function profileIdentitySynchronization() {
