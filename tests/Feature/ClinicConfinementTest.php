@@ -563,8 +563,12 @@ class ClinicConfinementTest extends TestCase
 
     public function test_failed_discharge_rolls_back_episode_service_charge_and_total(): void
     {
-        $this->admit(); DB::table('clinic_vitals')->update(['temperature_c' => null]);
-        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertUnprocessable();
+        $this->admit();
+        DB::table('clinic_records')->update(['primary_veterinarian_id' => null]);
+        DB::table('clinic_vitals')->update(['temperature_c' => null, 'heart_rate_bpm' => 401, 'respiratory_rate_bpm' => null]);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertUnprocessable()
+            ->assertJsonValidationErrors(['primary_veterinarian_id', 'temperature_c', 'heart_rate_bpm', 'respiratory_rate_bpm'])
+            ->assertJsonMissingValidationErrors('weight_kg');
         $this->assertNull(ClinicConfinement::first()->discharged_at); $this->assertSame('ordered', ClinicCaseService::first()->status);
         $this->assertDatabaseCount('clinic_charges', 0); $this->assertDatabaseCount('notifications', 0);
         $this->assertDatabaseHas('clinic_appointments', ['status' => 'in_consultation', 'total_amount' => 0]);

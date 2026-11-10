@@ -6,17 +6,27 @@ const {webcrypto} = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const storage = new Map(), requests = [], events = [];
 let episode = null, timeout = false, variable = false, confirmResult = true, saveFails = false;
+let saveGate, dischargeGate, saveFieldErrors, dischargeFieldErrors, prepareTreatment;
+let previewDays = 2, refreshDaysAfterSave;
+let previewCharges = [], refreshedPreviewCharges;
 const confirmations = [], prerequisiteSaves = [];
 const service = {id: 10, name: 'Inpatient care', pricing_method: 'fixed', price: '500.00', billing_unit: 'day'};
 const pricing = () => ({requires_final_price: variable, min_price: 500, max_price: 900, resolved_price: variable ? null : '500.00', error: null});
 const sandbox = {console, crypto: webcrypto, Date, setTimeout, clearTimeout, document: {addEventListener() {}},
   sessionStorage: {setItem: (k, v) => storage.set(k, v), getItem: k => storage.get(k), removeItem: k => storage.delete(k)},
   CustomEvent: class {constructor(type, options) {this.type = type; this.detail = options?.detail;}},
-  window: {dispatchEvent: e => events.push(e)},
+  window: {dispatchEvent(e) {
+    events.push(e);
+    if (e.type === 'clinic-treatment-prepare') prepareTreatment?.(e.detail);
+  }},
   API: {
     clinicSaveRecord: async (id, payload) => {
       prerequisiteSaves.push({id, payload: {...payload}});
+      if (saveGate) await saveGate;
       if (saveFails) throw Error('Record save unavailable');
+      if (saveFieldErrors) throw Object.assign(Error('Invalid record (and 2 more errors)'), {status: 422, errors: saveFieldErrors});
+      if (refreshDaysAfterSave) previewDays = refreshDaysAfterSave;
+      if (refreshedPreviewCharges) previewCharges = refreshedPreviewCharges;
       return {record: {primary_veterinarian_id: payload.primary_veterinarian_id, primary_veterinarian_name: 'Angela Santiago'}};
     },
     adminRequest: async (method, url, payload) => {
@@ -34,8 +44,11 @@ const sandbox = {console, crypto: webcrypto, Date, setTimeout, clearTimeout, doc
       return {data: episode};},
     getClinicConfinementObservations: async () => ({data: [], current_page: 1, last_page: 1}),
     clinicRecordConfinementObservation: async (id, payload) => {requests.push({id, kind: 'monitoring', payload: {...payload}}); if (timeout) throw Error('timeout'); return {data: {}};},
-    clinicConfinementDischargePreview: async () => ({service: {...service, pricing_method: variable ? 'range' : 'fixed'}, pricing: pricing(), quantity: 2}),
+    clinicConfinementDischargePreview: async () => ({service: {...service, pricing_method: variable ? 'range' : 'fixed'},
+      pricing: pricing(), quantity: previewDays, charges: previewCharges}),
     clinicDischargeConfinement: async (id, payload) => {requests.push({id, kind: 'discharge', payload: {...payload}});
+      if (dischargeGate) await dischargeGate;
+      if (dischargeFieldErrors) throw Object.assign(Error('Invalid discharge (and 2 more errors)'), {status: 422, errors: dischargeFieldErrors});
       if (timeout) throw Error('timeout'); episode = {...episode, discharged_at: '2026-10-14T10:01:00+08:00'}; return {data: episode};},
   },
 };
@@ -43,14 +56,26 @@ vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../scripts/components/clinic-record-presentation.js'), 'utf8'), sandbox);
 for (const file of ['admin-clinic.js', 'admin-clinic-case-workspace.js', 'admin-clinic-confinement.js'])
   vm.runInContext(fs.readFileSync(path.join(root, 'scripts/components', file), 'utf8'), sandbox);
+vm.runInContext("clinicPetWeightToolsReady = importWeightTools()", Object.assign(sandbox, {
+  importWeightTools: () => import('../scripts/components/pet-weight-size.js'),
+}));
 function component(permission = true, id = 1) {
-  const state = sandbox.clinicConfinementWorkspace();
+  const modal = sandbox.adminClinicModal();
+  const state = sandbox.clinicConfinementWorkspace(
+    () => modal.saveRecord(false, {forDischarge: true}),
+    errors => modal.showValidationErrors(errors),
+  );
+  state.notifications = [];
   state.$store = {clinicAccess: {permissions: {clinical: permission, billing: true}, user: {user_id: 7}},
-    clinicFeedback: {notify() {}, confirm: async dialog => {confirmations.push(dialog); return confirmResult;}}};
+    clinicFeedback: {notify(...args) {state.notifications.push(args);}, confirm: async dialog => {confirmations.push(dialog); return confirmResult;}}};
   state.selectSection = section => {state.section = section;};
   state.confinementCase = {id, status: 'in_consultation', paid: false, pet: {name: 'Mochi'}}; state.confinementCaseId = id;
-  const modal = sandbox.adminClinicModal(); modal.apptId = id; modal.currentAppt = state.confinementCase; modal.open = true;
-  modal.form.primary_veterinarian_id = '9'; modal.form.weight_kg = '18.4';
+  modal.apptId = id; modal.currentAppt = state.confinementCase; modal.open = true;
+  modal.$store = state.$store; modal.activeSection = 'confinement';
+  const setBusy = state.setConfinementBusy.bind(state);
+  state.setConfinementBusy = (saving, id) => {setBusy(saving, id); modal.workspaceSaving = saving;};
+  Object.assign(modal.form, {primary_veterinarian_id: '9', weight_kg: '18.4', temperature_c: '38.5',
+    heart_rate_bpm: '80', respiratory_rate_bpm: '20'});
   state.medicalForm = modal.form; state.selectedVeterinarians = [{user_id: 9, name: 'Angela Santiago'}];
   state.persistConfinementPrerequisites = () => modal.persistConfinementPrerequisites();
   state.modal = modal;
@@ -135,15 +160,54 @@ function component(permission = true, id = 1) {
   assert.equal(reload.billableDays('2026-10-13T00:00:00Z', '2026-10-14T00:01:00Z'), 2);
 
   await reload.openDischarge(); assert.equal(reload.dischargePreview.quantity, 2);
+  Object.assign(reload.modal.form, {chief_complaint: 'Updated complaint', working_diagnosis: 'Updated during confinement',
+    physical_exam_findings: 'Improved hydration', follow_up_notes: 'Recheck after discharge', body_condition_score: '5',
+    additional_veterinarian_ids: ['12'], prescriptions: [{medicine: 'Prescribed medicine', dose: '1 tablet'}]});
+  refreshDaysAfterSave = 3;
+  const savesBeforeDischarge = prerequisiteSaves.length;
   confirmResult = false; const beforeCancel = requests.length; await reload.submitDischarge();
+  assert.equal(prerequisiteSaves.length, savesBeforeDischarge + 1, 'Discharge saves the unsaved Medical Record before asking for confirmation');
+  assert.equal(prerequisiteSaves.at(-1).payload.finish_case, false);
+  assert.equal(prerequisiteSaves.at(-1).payload.temperature_c, '38.5');
+  assert.equal(prerequisiteSaves.at(-1).payload.working_diagnosis, 'Updated during confinement');
+  assert.equal(prerequisiteSaves.at(-1).payload.chief_complaint, 'Updated complaint');
+  assert.equal(prerequisiteSaves.at(-1).payload.physical_exam_findings, 'Improved hydration');
+  assert.equal(prerequisiteSaves.at(-1).payload.follow_up_notes, 'Recheck after discharge');
+  assert.equal(prerequisiteSaves.at(-1).payload.body_condition_score, 5);
+  assert.deepEqual(Array.from(prerequisiteSaves.at(-1).payload.additional_veterinarian_ids), ['12']);
+  assert.equal(prerequisiteSaves.at(-1).payload.prescriptions[0].dose, '1 tablet');
+  assert.equal(reload.modal.open, true);
+  assert.equal(reload.modal.activeSection, 'confinement');
   assert.equal(requests.length, beforeCancel); assert.equal(reload.dischargePending, null); assert.equal(reload.activeConfinement, true);
-  assert.equal(confirmations.at(-1).title, 'Discharge patient?'); assert.match(confirmations.at(-1).message, /Billable days: 2/);
+  assert.equal(confirmations.at(-1).title, 'Discharge patient?'); assert.match(confirmations.at(-1).message, /Billable days: 3/);
+  assert.match(confirmations.at(-1).message, /Estimated confinement amount: ₱1,500\.00/);
   confirmResult = true;
-  reload.dischargeForm.applied_price = '1'; timeout = true; await reload.submitDischarge();
+  let finishDraft, finishDischarge;
+  saveGate = new Promise(resolve => {finishDraft = resolve;});
+  dischargeGate = new Promise(resolve => {finishDischarge = resolve;});
+  reload.dischargeForm.applied_price = '1'; timeout = true;
+  const pending = reload.submitDischarge();
+  await new Promise(resolve => setImmediate(resolve));
+  await reload.submitDischarge();
+  await reload.modal.saveRecord();
+  assert.equal(prerequisiteSaves.length, savesBeforeDischarge + 2, 'Only one save runs during the discharge submission');
+  assert.equal(requests.length, beforeCancel, 'Discharge waits for the record save');
+  assert.equal(reload.modal.open, true);
+  finishDraft(); await new Promise(resolve => setImmediate(resolve));
+  await reload.submitDischarge();
+  assert.equal(requests.length, beforeCancel + 1, 'Only one discharge request is sent while busy');
+  finishDischarge(); await pending;
+  saveGate = null; dischargeGate = null; refreshDaysAfterSave = null;
   assert.equal('quantity' in requests.at(-1).payload, false); assert.equal('applied_price' in requests.at(-1).payload, false, 'Fixed never sends a manual price');
-  const discharge = JSON.stringify(requests.at(-1).payload); timeout = false; await reload.submitDischarge();
-  assert.equal(JSON.stringify(requests.at(-1).payload), discharge); assert.equal(reload.section, 'billing');
-  assert.equal(reload.confinementCase.status, 'for_payment'); assert.equal(reload.activeConfinement, false);
+  const discharge = JSON.stringify(requests.at(-1).payload);
+  const retry = component(); await retry.loadConfinement();
+  retry.modal.form.temperature_c = '';
+  timeout = false; await retry.submitDischarge();
+  assert.equal(prerequisiteSaves.length, savesBeforeDischarge + 2, 'Retained discharge retries skip Medical Record persistence');
+  assert.equal(JSON.stringify(requests.at(-1).payload), discharge); assert.equal(retry.section, 'billing');
+  assert.equal(retry.confinementCase.status, 'for_payment'); assert.equal(retry.activeConfinement, false);
+  assert.equal(retry.modal.open, true);
+  assert.deepEqual(retry.notifications.at(-1), ['Patient discharged. The case is ready for Billing.', 'success']);
 
   episode = {...episode, discharged_at: null}; variable = true;
   const range = component(true, 2); range.episode = episode; await range.openDischarge();
@@ -152,7 +216,89 @@ function component(permission = true, id = 1) {
     assert.equal(confirmations.length, dialogsBefore, 'Invalid discharge never asks for confirmation');
     assert.equal(requests.length, before); assert.ok(range.priceError); assert.equal(range.dischargeForm.applied_price, value);
   }
-  range.dischargeForm.applied_price = '700'; await range.submitDischarge(); assert.equal(requests.at(-1).payload.applied_price, '700');
+  previewCharges = [
+    {id: 1, service: {name: 'Weight-based care'}, pricing: {error: 'No tier for the saved weight.'}},
+    {id: 2, service: {name: 'Range-priced care'}, pricing: pricing()},
+  ];
+  refreshedPreviewCharges = [
+    {...previewCharges[0], pricing: {resolved_price: '200.00'}}, previewCharges[1],
+  ];
+  await range.openDischarge();
+  range.dischargeForm.applied_price = '700';
+  range.dischargeForm.charge_prices[2] = '550';
+  const beforeUpdatedWeight = requests.length;
+  await range.submitDischarge();
+  assert.equal(requests.length, beforeUpdatedWeight + 1, 'A pricing error based on the old weight is rechecked after saving the current weight');
+  assert.equal(requests.at(-1).payload.applied_price, '700');
+  assert.equal(requests.at(-1).payload.charge_prices[2], '550');
+  previewCharges = []; refreshedPreviewCharges = null;
+
+  episode = {...episode, discharged_at: null};
+  const correction = component(true, 3); correction.episode = episode;
+  const form = correction.modal.form;
+  Object.assign(form, {temperature_c: '', heart_rate_bpm: '', respiratory_rate_bpm: ''});
+  correction.modal._clinicalOptionsLoaded = true;
+  let focused, scrolled;
+  const target = name => ({focus() {focused = name;}, scrollIntoView() {scrolled = name;}});
+  correction.$nextTick = correction.modal.$nextTick = callback => callback();
+  correction.$refs = {dischargeValidationSummary: target('discharge summary')};
+  correction.modal.$el = {querySelector(selector) {
+    if (selector.includes('[aria-invalid="true"]')) return target(Object.keys(correction.modal.formErrors)[0]);
+  }};
+  await correction.openDischarge();
+  Object.assign(correction.dischargeForm, {applied_price: '750', discharge_note: 'Continue monitoring at home'});
+  const priorSaves = prerequisiteSaves.length, priorRequests = requests.length, priorDialogs = confirmations.length;
+  await correction.submitDischarge();
+  assert.deepEqual(Array.from(correction.dischargeMedicalItems), ['Temperature', 'Heart rate', 'Respiratory rate']);
+  assert.equal(correction.error, '');
+  assert.equal(focused, 'discharge summary'); assert.equal(scrolled, 'discharge summary');
+  assert.equal(prerequisiteSaves.length, priorSaves); assert.equal(requests.length, priorRequests);
+  assert.equal(confirmations.length, priorDialogs);
+  correction.focusDischargeMedicalRecord();
+  assert.equal(correction.modal.activeSection, 'medical');
+  assert.equal(focused, 'temperature_c'); assert.equal(scrolled, 'temperature_c');
+  assert.equal(correction.dischargeForm.applied_price, '750');
+  assert.equal(correction.dischargeForm.discharge_note, 'Continue monitoring at home');
+
+  correction.modal.activeSection = 'confinement';
+  Object.assign(form, {temperature_c: '38.5', heart_rate_bpm: '80', respiratory_rate_bpm: '20', primary_veterinarian_id: ''});
+  await correction.submitDischarge();
+  assert.deepEqual(Array.from(correction.dischargeMedicalItems), ['Primary Attending Veterinarian']);
+  Object.assign(form, {primary_veterinarian_id: '9', heart_rate_bpm: '401'});
+  await correction.submitDischarge();
+  assert.match(correction.dischargeMedicalItems[0], /^Heart rate .* requires veterinarian verification/);
+  assert.equal(requests.length, priorRequests); assert.equal(prerequisiteSaves.length, priorSaves);
+  Object.assign(correction.$store.clinicAccess.user, {role: 'staff', staff_subrole: 'veterinarian'});
+  correction.modal.startVitalVerification('heart_rate_bpm');
+  correction.modal.vitalExceptions.heart_rate_bpm.reason = 'Repeated manual reading';
+
+  prepareTreatment = detail => {detail.promise = Promise.resolve(false);};
+  await correction.submitDischarge();
+  assert.match(correction.error, /current treatment in the Treatment tab/);
+  assert.equal(correction.modal.activeSection, 'confinement');
+  assert.equal(prerequisiteSaves.length, priorSaves); assert.equal(requests.length, priorRequests);
+  prepareTreatment = null;
+
+  saveFails = true; await correction.submitDischarge(); saveFails = false;
+  assert.match(correction.error, /Record save unavailable/);
+  assert.equal(requests.length, priorRequests); assert.equal(correction.dischargePending, null);
+  saveFieldErrors = {primary_veterinarian_id: ['Select an available veterinarian.']};
+  await correction.submitDischarge(); saveFieldErrors = null;
+  assert.deepEqual(Array.from(correction.dischargeMedicalItems), ['Primary Attending Veterinarian — Select an available veterinarian.']);
+  assert.equal(correction.error, ''); assert.equal(requests.length, priorRequests);
+
+  dischargeFieldErrors = {temperature_c: ['Save the required consultation vitals in the Medical Record before finishing this case.'],
+    respiratory_rate_bpm: ['Save the required consultation vitals in the Medical Record before finishing this case.'],
+    charges: ['Check the pending charges.']};
+  await correction.submitDischarge(); dischargeFieldErrors = null;
+  assert.deepEqual(Array.from(correction.dischargeMedicalItems), ['Temperature', 'Respiratory rate']);
+  assert.equal(correction.error, 'Check the pending charges.');
+  assert.equal(correction.dischargePending, null); assert.equal(correction.activeConfinement, true);
+  await correction.submitDischarge();
+  assert.equal(prerequisiteSaves.at(-1).payload.vital_exceptions.heart_rate_bpm.reason, 'Repeated manual reading');
+  assert.equal(requests.at(-1).payload.applied_price, '750');
+  assert.equal(requests.at(-1).payload.discharge_note, 'Continue monitoring at home');
+  assert.equal(correction.section, 'billing');
 
   const reception = component(false); reception.episode = {...episode, discharged_at: null};
   const before = requests.length; await reception.openAdmission(); reception.openMonitoring(); await reception.openDischarge();
@@ -193,7 +339,10 @@ function component(permission = true, id = 1) {
   assert.equal(state.cataloguePrice({pricing_method: 'fixed', price: '500.00'}), state.money(500));
   const page = fs.readFileSync(path.join(root, 'pages/admin/clinic.html'), 'utf8');
   assert.match(page, /Confined <span[^>]+x-text="confinedCount"/);
-  assert.match(page, /clinicConfinementWorkspace\(\)/); assert.match(page, /charge\.vaccination_record_id \? 'Treatment'/);
+  assert.match(page, /x-data="clinicConfinementWorkspace\(/); assert.match(page, /charge\.vaccination_record_id \? 'Treatment'/);
+  assert.match(page, /<p x-show="activeConfinement" class="text-xs text-slate-600">Final confinement charge is calculated at discharge\.<\/p>/);
+  assert.doesNotMatch(page, /Confinement charge pending discharge/);
+  assert.match(page, /x-ref="dischargeValidationSummary" role="alert" tabindex="-1"/);
   assert.match(page, />Admission Charges<\/h4>/);
   assert.match(page, />Additional Confinement Charges<\/h4>/);
   assert.doesNotMatch(page, /extra in visibleConfinementCharges/);

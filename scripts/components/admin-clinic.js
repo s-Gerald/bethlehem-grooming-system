@@ -247,9 +247,11 @@ function adminClinicModal() {
       if (field === 'body_condition_score') return clinicValidNumber(value, 0, 1, 9) ? '' : 'Select a score from 1 to 9.';
       if (this.vitalEntryValid(field, value)) return '';
       const verification = this.vitalExceptions[field];
-      if (this.vitalEntryValid(field, value, true) && (this.hasSavedVitalVerification(field)
+      const exceptional = this.vitalEntryValid(field, value, true);
+      if (exceptional && (this.hasSavedVitalVerification(field)
         || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && verification.reason.length <= 200))) return '';
       if (verification?.value === value) return 'Enter a clinical reason (5–200 characters).';
+      if (exceptional) return 'This reading requires veterinarian verification.';
       return field === 'temperature_c' ? 'Use 25–45 °C, up to 1 decimal.'
         : `Use a whole number from 1 to ${CLINIC_CLINICAL_RULES.vitals[field].max}.`;
     },
@@ -315,8 +317,9 @@ function adminClinicModal() {
     },
     focusInvalidField() {
       this.$nextTick?.(() => {
-        const field = this.$el.querySelector('#medical-record-form [aria-invalid="true"]')
-          || this.$el.querySelector('#medical-validation-summary');
+        const modal = this.$el.closest?.('[x-data="adminClinicModal()"]') || this.$el;
+        const field = modal.querySelector('#medical-record-form [aria-invalid="true"]')
+          || modal.querySelector('#medical-validation-summary');
         field?.focus();
         field?.scrollIntoView?.({ block: "nearest" });
       });
@@ -510,48 +513,52 @@ function adminClinicModal() {
       });
     },
 
-    async saveRecord(finishCase = false) {
-      if (!this.canEditClinical || this.saving || this.workspaceSaving || this.attachmentBusy || this.optionsLoading || (finishCase && !this.canFinish)) return;
+    async validateRecordForSave(requireCompletion) {
+      this.formErrors = {};
+      this.modalError = "";
+      this.weightTools ??= await loadClinicPetWeightTools();
+      this.completionAttempted = requireCompletion;
+      if (requireCompletion && !String(this.form.primary_veterinarian_id ?? '').trim()) {
+        this.formErrors.primary_veterinarian_id = ['Required'];
+      }
+      for (const field of ['weight_kg', ...Object.keys(CLINIC_CLINICAL_RULES.vitals), 'body_condition_score']) {
+        this.validateVitalField(field, 'save');
+      }
+      const followUp = this.form.follow_up_date;
+      if (followUp && (followUp < this.followUpMinDate || followUp > this.followUpMaxDate)) {
+        this.formErrors.follow_up_date = ['Invalid date'];
+      }
+      if (Object.keys(this.formErrors).length) {
+        throw Object.assign(new Error('Check the highlighted fields.'), {errors: {...this.formErrors}});
+      }
+    },
+
+    async saveRecord(finishCase = false, {forDischarge = false} = {}) {
+      if (!this.canEditClinical || this.saving || (this.workspaceSaving && !forDischarge)
+          || this.attachmentBusy || this.optionsLoading || (finishCase && !this.canFinish)) {
+        if (forDischarge) throw new Error('The Medical Record is unavailable for saving. Try again.');
+        return;
+      }
       this.saving = true;
       const preparation = {id: this.apptId, finishCase, promise: null, errors: null};
       try {
+        if (forDischarge) await this.validateRecordForSave(true);
         window.dispatchEvent(new CustomEvent('clinic-treatment-prepare', {detail: preparation}));
         if (preparation.errors) {
+          if (forDischarge) throw Object.assign(new Error('Check the current treatment before discharging.'), {errors: preparation.errors});
           this.showTreatmentValidation(preparation.errors);
           return;
         }
         const treatmentReady = await (preparation.promise || Promise.resolve(true));
         if (!treatmentReady) {
+          if (forDischarge) throw new Error('Check the current treatment in the Treatment tab before discharging.');
           this.activeSection = 'vaccinations';
           this.syncTreatmentAppointment();
           window.dispatchEvent(new CustomEvent('clinic-treatment-focus', {detail: {id: this.apptId,
             message: finishCase ? 'Add or discard the current treatment before sending this case to payment.' : 'Check the current treatment before saving.'}}));
           return;
         }
-        this.formErrors = {};
-        this.modalError = "";
-        this.weightTools = await loadClinicPetWeightTools();
-        this.completionAttempted = finishCase;
-        for (const field of ['weight_kg', ...Object.keys(CLINIC_CLINICAL_RULES.vitals), 'body_condition_score']) this.validateVitalField(field, 'save');
-        if (Object.keys(this.formErrors).length) {
-          this.showValidationErrors({...this.formErrors});
-          return;
-        }
-        if (finishCase) {
-          const errors = {};
-          for (const field of ["primary_veterinarian_id", "weight_kg", "temperature_c", "heart_rate_bpm", "respiratory_rate_bpm"]) {
-            if (String(this.form[field] ?? "").trim() === "") errors[field] = ["Required"];
-          }
-          if (Object.keys(errors).length) {
-            this.showValidationErrors(errors);
-            return;
-          }
-        }
-        const followUp = this.form.follow_up_date;
-        if (followUp && (followUp < this.followUpMinDate || followUp > this.followUpMaxDate)) {
-          this.showValidationErrors({ follow_up_date: ["Invalid date"] });
-          return;
-        }
+        if (!forDischarge) await this.validateRecordForSave(finishCase);
         if (finishCase) {
           const confirmed = await this.$store.clinicFeedback.confirm({title: 'Send case to payment?',
             message: 'Confirm administered doses against the prescription and product concentration. This will finalize the visit and move it to For Payment.',
@@ -581,12 +588,20 @@ function adminClinicModal() {
           body_condition_score: numberOrNull(this.form.body_condition_score),
           finish_case:          finishCase,
         };
-        await API.clinicSaveRecord(this.apptId, payload);
+        const response = await API.clinicSaveRecord(this.apptId, payload);
+        if (forDischarge) {
+          const {weight_kg, temperature_c, heart_rate_bpm, respiratory_rate_bpm, body_condition_score} = payload;
+          this.currentAppt = {...this.currentAppt, record: response.record,
+            vitals: {...this.currentAppt.vitals, weight_kg, temperature_c, heart_rate_bpm, respiratory_rate_bpm, body_condition_score}};
+          this.recordedByName = response.record.recorded_by_name;
+          return;
+        }
         this.open = false;
         this.returnFocus?.focus();
         window.dispatchEvent(new CustomEvent('clinic-record-closed'));
         window.dispatchEvent(new CustomEvent("clinic-case-updated"));
       } catch (e) {
+        if (forDischarge) throw e;
         if (Object.keys(e.errors || {}).some(key => key.startsWith('treatments.'))) {
           this.showTreatmentValidation(e.errors, this.syncTreatmentAppointment());
         } else if (e.errors) this.showValidationErrors(e.errors);

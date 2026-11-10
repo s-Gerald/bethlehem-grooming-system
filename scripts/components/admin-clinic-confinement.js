@@ -1,4 +1,25 @@
-function clinicConfinementWorkspace() {
+const CLINIC_DISCHARGE_MEDICAL_FIELDS = {
+  primary_veterinarian_id: 'Primary Attending Veterinarian',
+  additional_veterinarian_ids: 'Additional veterinarians',
+  weight_kg: 'Weight',
+  temperature_c: 'Temperature',
+  heart_rate_bpm: 'Heart rate',
+  respiratory_rate_bpm: 'Respiratory rate',
+  body_condition_score: 'Body condition score',
+  chief_complaint: 'Chief complaint',
+  relevant_history: 'Relevant history',
+  reported_signs: 'Reported signs',
+  physical_exam_findings: 'Physical exam findings',
+  differential_diagnoses: 'Differential diagnoses',
+  working_diagnosis: 'Working diagnosis',
+  prescriptions: 'Prescriptions',
+  treatment_given: 'Treatment given',
+  vet_notes: 'Veterinarian notes',
+  follow_up_date: 'Follow-up date',
+  follow_up_notes: 'Follow-up notes',
+};
+
+function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMedicalErrors) {
   const {money, methodLabel, sizeLabel, cataloguePrice} = clinicCaseWorkspace();
   return {
     money, methodLabel, sizeLabel, cataloguePrice,
@@ -9,7 +30,7 @@ function clinicConfinementWorkspace() {
     medicalForm: null, admissionErrors: {}, confirming: false,
     monitoringOpen: false, monitoringForm: null, monitoringPending: null,
     observations: [], observationPage: 0, observationLastPage: 1, observationsLoading: false,
-    dischargeForm: null, dischargePending: null, dischargePreview: null, priceError: '',
+    dischargeForm: null, dischargePending: null, dischargePreview: null, priceError: '', dischargeMedicalErrors: {},
     _generation: 0, _pricingRequest: 0, _visible: false,
     get clinicalConfinement() {
       const appt = this.confinementCase;
@@ -38,6 +59,7 @@ function clinicConfinementWorkspace() {
         this.extraForm = null; this.extraPending = null; this.extraPricing = null; this.episodePricing = null;
       }
       this.admissionErrors = {};
+      this.dischargeMedicalErrors = {};
       this._visible = true;
       this.loadConfinement();
     },
@@ -323,49 +345,89 @@ function clinicConfinementWorkspace() {
       this.pricingLoading = true;
       try {
         const response = await API.clinicConfinementDischargePreview(this.confinementCaseId);
-        if (generation === this._generation) this.dischargePreview = response;
+        if (generation !== this._generation) return false;
+        this.dischargePreview = response;
+        return true;
       } catch (error) { if (generation === this._generation) this.error = error.message || 'Could not preview discharge billing.'; }
       finally { if (generation === this._generation) this.pricingLoading = false; }
     },
     async openDischarge() {
       if (!this.canCareForConfinement || this.busy) return;
-      this.error = ''; this.priceError = ''; this.dischargePreview = null;
+      this.error = ''; this.priceError = ''; this.dischargePreview = null; this.dischargeMedicalErrors = {};
       this.dischargeForm ||= {applied_price: '', discharge_note: '', charge_prices: {}};
       this.persistDischarge(); await this.loadDischargePreview();
     },
-    async submitDischarge() {
-      if (!this.canCareForConfinement || this.busy || this.confirming || !this.dischargeForm || this.pricingLoading) return;
+    validateDischargePricing(refreshed = false) {
       const pricing = this.dischargePreview?.pricing;
-      if (!this.dischargePending && (!pricing || pricing.error)) return;
-      if (!this.dischargePending) {
-        for (const extra of this.dischargePreview?.charges || []) {
-          const error = extra.pricing.error || (extra.pricing.requires_final_price
-            ? clinicFinalPriceError(this.dischargeForm.charge_prices?.[extra.id], extra.pricing, this.money) : '');
-          if (error) { this.error = extra.service.name + ': ' + error; return; }
-        }
+      if (!pricing || pricing.error) return false;
+      for (const extra of this.dischargePreview.charges || []) {
+        const error = (refreshed && extra.pricing.error) || (extra.pricing.requires_final_price
+          ? clinicFinalPriceError(this.dischargeForm.charge_prices?.[extra.id], extra.pricing, this.money) : '');
+        if (error) { this.error = extra.service.name + ': ' + error; return false; }
       }
-      this.priceError = !this.dischargePending && pricing.requires_final_price
+      this.priceError = pricing.requires_final_price
         ? clinicFinalPriceError(this.dischargeForm.applied_price, pricing, this.money) : '';
-      if (this.priceError) return;
-      const payload = this.dischargePending || {discharge_note: this.dischargeForm.discharge_note,
-        charge_prices: this.dischargeForm.charge_prices || {},
-        ...(pricing.requires_final_price ? {applied_price: this.dischargeForm.applied_price.trim()} : {})};
+      return !this.priceError;
+    },
+    dischargeMedicalField(key) {
+      const [field, detail] = key.split('.');
+      return field === 'vital_exceptions' ? detail : field;
+    },
+    get dischargeMedicalItems() {
+      return [...new Set(Object.entries(this.dischargeMedicalErrors).map(([key, [message]]) => {
+        const label = CLINIC_DISCHARGE_MEDICAL_FIELDS[this.dischargeMedicalField(key)];
+        if (/^required$|\bis required\b|^Save the required consultation vitals|^Select a Primary Attending Veterinarian/i.test(message)) return label;
+        return label + ' — ' + message;
+      }))];
+    },
+    focusDischargeMedicalRecord() {
+      showDischargeMedicalErrors(this.dischargeMedicalErrors);
+    },
+    handleDischargeError(error, fallback) {
+      const other = [];
+      for (const [key, messages] of Object.entries(error.errors || {})) {
+        if (Object.hasOwn(CLINIC_DISCHARGE_MEDICAL_FIELDS, this.dischargeMedicalField(key))) {
+          this.dischargeMedicalErrors[key] = messages;
+        } else other.push(...messages);
+      }
+      const hasMedicalErrors = Object.keys(this.dischargeMedicalErrors).length > 0;
+      this.error = [...new Set(other)].join(' ') || (hasMedicalErrors ? '' : error.message || fallback);
+      if (hasMedicalErrors) this.$nextTick?.(() => {
+        const summary = this.$refs.dischargeValidationSummary;
+        summary?.focus(); summary?.scrollIntoView?.({block: 'nearest'});
+      });
+    },
+    async submitDischarge() {
+      if (!this.canCareForConfinement || this.busy || this.confirming || this.saving || this.attachmentBusy
+          || !this.dischargeForm || this.pricingLoading) return;
+      this.error = ''; this.priceError = ''; this.dischargeMedicalErrors = {};
+      if (!this.dischargePending && !this.validateDischargePricing()) return;
       const id = this.confinementCaseId, generation = this._generation;
-      this.confirming = true;
-      let confirmed;
+      this.setConfinementBusy(true, id);
+      let succeeded = false;
       try {
+        if (!this.dischargePending) {
+          try { await saveDischargeMedicalRecord(); }
+          catch (error) {
+            if (generation === this._generation) this.handleDischargeError(error, 'Could not save the Medical Record.');
+            return;
+          }
+          if (generation !== this._generation || !this.canCareForConfinement) return;
+          if (!await this.loadDischargePreview() || !this.validateDischargePricing(true)) return;
+        }
+        const pricing = this.dischargePreview?.pricing;
+        const payload = this.dischargePending || {discharge_note: this.dischargeForm.discharge_note,
+          charge_prices: {...this.dischargeForm.charge_prices},
+          ...(pricing.requires_final_price ? {applied_price: this.dischargeForm.applied_price.trim()} : {})};
         const rate = pricing?.requires_final_price ? payload.applied_price : pricing?.resolved_price;
-        confirmed = await this.$store.clinicFeedback.confirm({title: 'Discharge patient?',
+        const confirmed = await this.$store.clinicFeedback.confirm({title: 'Discharge patient?',
           message: ['Discharge this patient from confinement and send the finalized charges to billing?',
             this.dischargePreview ? `Billable days: ${this.dischargePreview.quantity}` : '',
             rate != null ? `Estimated confinement amount: ${this.money(Number(rate) * this.dischargePreview.quantity)}` : ''].filter(Boolean).join('\n'),
           cancelLabel: 'Cancel', confirmLabel: 'Discharge & Send to Billing', danger: false});
-      } finally { this.confirming = false; }
-      if (!confirmed || generation !== this._generation || !this.canCareForConfinement) return;
-      this.dischargePending = payload;
-      if (!this.retain('discharge', {form: this.dischargeForm, pending: payload})) { this.dischargePending = null; return; }
-      this.setConfinementBusy(true, id); this.error = ''; let succeeded = false;
-      try {
+        if (!confirmed || generation !== this._generation || !this.canCareForConfinement) return;
+        if (!this.retain('discharge', {form: this.dischargeForm, pending: payload})) return;
+        this.dischargePending = payload;
         const response = await API.clinicDischargeConfinement(id, payload);
         if (generation !== this._generation) return;
         this.clearRetained('discharge');
@@ -375,7 +437,7 @@ function clinicConfinementWorkspace() {
       } catch (error) {
         if (generation !== this._generation) return;
         if (error.errors || error.status === 422) { this.dischargePending = null; this.persistDischarge(); }
-        this.error = error.message || 'Discharge could not be confirmed. Retry to check this episode safely.';
+        this.handleDischargeError(error, 'Discharge could not be confirmed. Retry to check this episode safely.');
       } finally { this.setConfinementBusy(false, id); }
       if (succeeded) this.selectSection?.('billing');
     },
