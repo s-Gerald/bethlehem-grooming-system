@@ -452,7 +452,7 @@ class PhoneVerificationTest extends TestCase
         $this->assertNotNull($this->customer->fresh()->phone_verified_at);
         Http::assertSent(fn ($r) => $r->url() === 'https://www.iprogsms.com/api/v1/otp/send_otp'
             && $r['api_token'] === 'test-token' && $r['phone_number'] === '09171234567' && $r['expires_in_minutes'] === 5
-            && $r['message'] === "Bethlehem Animal Clinic\nYour verification code is :otp. Valid for 5 minutes.\nDo not share.");
+            && $r['message'] === "Your verification code is :otp. Valid for 5 minutes.\nDo not share.");
         Http::assertSent(fn ($r) => $r->url() === 'https://www.iprogsms.com/api/v1/otp/verify_otp'
             && $r['api_token'] === 'test-token' && $r['phone_number'] === '09171234567' && $r['otp'] === '123456');
         Http::assertSentCount(2);

@@ -7,11 +7,12 @@ use PHPUnit\Framework\TestCase;
 
 class ClinicSmsMessageTest extends TestCase
 {
-    public function test_otp_has_one_header_its_own_footer_and_one_segment(): void
+    public function test_otp_has_no_clinic_header_and_keeps_its_security_footer_in_one_segment(): void
     {
         $text = str_replace(':otp', '482913', ClinicSmsMessage::otp());
-        $this->assertSame("Bethlehem Animal Clinic\nYour verification code is 482913. Valid for 5 minutes.\nDo not share.", $text);
-        $this->assertSame(92, ClinicSmsMessage::units($text));
+        $this->assertSame("Your verification code is 482913. Valid for 5 minutes.\nDo not share.", $text);
+        $this->assertStringNotContainsString('Bethlehem Animal Clinic', ClinicSmsMessage::otp());
+        $this->assertSame(68, ClinicSmsMessage::units($text));
     }
 
     public function test_single_pet_is_dynamic_and_multiple_pets_are_not_concatenated(): void

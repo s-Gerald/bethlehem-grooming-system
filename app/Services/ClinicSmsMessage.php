@@ -9,7 +9,7 @@ class ClinicSmsMessage
 
     public static function otp(): string
     {
-        return self::HEADER."\nYour verification code is :otp. Valid for 5 minutes.\nDo not share.";
+        return "Your verification code is :otp. Valid for 5 minutes.\nDo not share.";
     }
 
     /** @param array<int, ?string> $petNames */
