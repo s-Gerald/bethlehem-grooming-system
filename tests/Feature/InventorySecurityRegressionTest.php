@@ -1499,11 +1499,14 @@ class InventorySecurityRegressionTest extends TestCase
                 ->assertUnprocessable()->assertJsonValidationErrors('items.0.stock_in_reference');
             $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_number' => 'LOT-REAL', 'batch_unavailable_reason' => 'Not supplied']]])
                 ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_unavailable_reason');
-            $receipt = $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => 'Manufacturer label has no lot']]])
+            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => str_repeat('x', 301)]]])
+                ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_unavailable_reason');
+            $reason = str_repeat('x', 300);
+            $receipt = $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => $reason]]])
                 ->assertCreated()->json('data.0');
-            $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipt['transaction_id'], 'batch_number' => null, 'batch_unavailable_reason' => 'Manufacturer label has no lot']);
-            $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.current_batches.0.batch_unavailable_reason', 'Manufacturer label has no lot');
-            $this->getJson('/api/inventory/transactions?item_id='.$id)->assertOk()->assertJsonPath('data.0.batch_unavailable_reason', 'Manufacturer label has no lot');
+            $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipt['transaction_id'], 'batch_number' => null, 'batch_unavailable_reason' => $reason]);
+            $this->getJson('/api/inventory/items/'.$id)->assertOk()->assertJsonPath('data.current_batches.0.batch_unavailable_reason', $reason);
+            $this->getJson('/api/inventory/transactions?item_id='.$id)->assertOk()->assertJsonPath('data.0.batch_unavailable_reason', $reason);
         }
     }
 

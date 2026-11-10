@@ -85,7 +85,7 @@
       ${iconMarkup(notification, large)}
       <span class="min-w-0 flex-1">
         ${notification.title ? `<span class="block text-sm font-semibold text-portal-text">${escapeHtml(notification.title)}</span>` : ""}
-        <span class="block text-sm leading-snug text-portal-text">${formattedMessage}</span>
+        <span class="block whitespace-pre-wrap text-sm leading-snug [overflow-wrap:anywhere] text-portal-text">${formattedMessage}</span>
         <span class="mt-1 block text-xs text-portal-muted">${escapeHtml(timeLabel(notification.created_at, !large))}</span>
       </span>
       <span class="mt-2 h-2 w-2 shrink-0 rounded-full ${notification.is_read ? "bg-transparent" : "bg-portal-primary"}" aria-hidden="true"></span>

@@ -2,7 +2,7 @@
 const InventorySections = {
   overview: { script: "admin-inventory-dashboard.js", factory: "adminInventoryDashboard", dependencies: ["inventory-alerts.js", "inventory-movement.js"] },
   products: { script: "admin-inventory-items.js", factory: "adminInventoryItems", dependencies: ["product-form.js", "inventory-alerts.js", "success-toast.js"] },
-  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "recorded-product-pricing.js", "payment-invoice.js", "product-sale-invoice.js"] },
+  "sell-product": { script: "admin-pos.js", factory: "adminPos", dependencies: ["cash-payment.js", "online-payment.js", "product-form.js", "recorded-product-pricing.js", "payment-invoice.js?short-notes=20261110", "product-sale-invoice.js"] },
   "stock-in": { script: "admin-stock-in.js", factory: "adminStockIn", dependencies: ["product-form.js", "success-toast.js"] },
   "stock-out": { script: "admin-stock-out.js", factory: "adminStockOut", dependencies: ["product-form.js", "success-toast.js"] },
   history: { script: "admin-inventory-transactions.js", factory: "adminInventoryTransactions", dependencies: ["inventory-movement.js"] },

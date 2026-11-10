@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="/css/components/confirmation.css?v=20261010&registration-ui=20261027-v3" />
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
     <link rel="stylesheet" href="/css/components/registration-actions.css?v=20261101-v2" />
+    <link rel="stylesheet" href="/css/short-notes.css" />
+    <script defer src="/scripts/utils/short-notes.js"></script>
   </head>
   <body data-grooming-flow="single-page" class="min-h-screen bg-[#f6fafd] text-slate-800">
     <div data-grooming-step="pets" class="hidden" hidden>
@@ -136,7 +138,7 @@
               </p>
             </div>
 
-            <form id="addPetForm" class="space-y-5">
+            <form data-check-notes id="addPetForm" class="space-y-5">
               <div class="grid gap-5 md:grid-cols-2">
                 <div>
                   <label
@@ -376,10 +378,10 @@
                   >
                     Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
-                  <textarea
+                  <textarea data-short-note
                     id="medicalNotes"
                     name="medicalNotes"
-                    rows="3" maxlength="1000"
+                    rows="3"
                     placeholder="e.g. sensitive to shampoo, needs gentle handling"
                     class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active resize-none"></textarea>
                 </div>
@@ -660,6 +662,6 @@
     <main id="confirmationRoot" class="confirmation-page"></main>
     </div>
     <script src="/scripts/api.js?auth-reliability=20261107&v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&urls=20261103"></script>
-    <script type="module" src="/scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-v1&registration-reference=20261106-v1&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2"></script>
+    <script type="module" src="/scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-v1&registration-reference=20261106-v1&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=20261110"></script>
   </body>
 </html>

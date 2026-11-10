@@ -28,7 +28,7 @@ class StoreClinicPreRegistrationRequest extends FormRequest
             ],
             'common_concerns' => ['required', 'array', 'min:1', 'max:11'],
             'common_concerns.*' => ['required', 'string', 'distinct', Rule::in(ClinicConcerns::OPTIONS)],
-            'chief_complaint' => ['nullable', 'string', 'max:1000'],
+            'chief_complaint' => ['nullable', 'string', 'max:300'],
         ];
     }
 

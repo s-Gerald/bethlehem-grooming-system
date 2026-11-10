@@ -569,6 +569,7 @@ export function requiresSpecialInstructions(selection) {
 }
 
 export function specialInstructionsError(pet, selection) {
+  if (Array.from(selection?.specialInstructions || "").length > 300) return "Maximum 300 characters allowed.";
   if (!requiresSpecialInstructions(selection) || selection.specialInstructions?.trim()) return "";
   return selection.haircutRequested
     ? `Describe the requested haircut for ${pet.petName || "this pet"}.`

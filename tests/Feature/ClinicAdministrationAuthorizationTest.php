@@ -1090,7 +1090,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'pet_name' => 'Coat color', 'species' => 'Dog', 'terms_agreed' => true];
         foreach (['admin', 'staff'] as $role) {
             $this->authenticateAs($role);
-            foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 1001)]] as [$field, $value]) {
+            foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 301)]] as [$field, $value]) {
                 $this->postJson('/api/admin/clinic-walk-in', [...$payload, $field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
             }
         }
@@ -2287,6 +2287,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns.0');
         $this->postJson('/api/clinic/pre-register', $payload + [
+            'common_concerns' => ['Routine check-up'], 'chief_complaint' => str_repeat('x', 301),
+        ])->assertUnprocessable()->assertJsonValidationErrors('chief_complaint');
+        $this->postJson('/api/clinic/pre-register', $payload + [
             'common_concerns' => ['Routine check-up', 'Vaccination'],
         ])
             ->assertCreated()
@@ -2690,11 +2693,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $startDate = now()->addDay()->toDateString();
         $endDate = now()->addDays(2)->toDateString();
 
-        $this->postJson('/api/admin/clinic/blocked-dates', [
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-            'reason' => 'Team training',
-        ])
+        $dates = ['start_date' => $startDate, 'end_date' => $endDate];
+        $reason = str_repeat('x', 300);
+        $this->postJson('/api/admin/clinic/blocked-dates', $dates + ['reason' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('reason');
+        $this->postJson('/api/admin/clinic/blocked-dates', $dates + ['reason' => $reason])
             ->assertCreated()
             ->assertJsonPath('success', true);
 
@@ -2706,7 +2709,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/clinic/blocked-dates')
             ->assertOk()
             ->assertJsonPath('blocked_dates.0.id', $blockedDateId)
-            ->assertJsonPath('blocked_dates.0.reason', 'Team training');
+            ->assertJsonPath('blocked_dates.0.reason', $reason);
 
         $this->deleteJson("/api/admin/clinic/blocked-dates/{$blockedDateId}")
             ->assertOk()
@@ -3597,6 +3600,23 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         }
     }
 
+    public function test_medical_record_limits_each_narrative_independently_and_preserves_omitted_legacy_values(): void
+    {
+        $this->authenticateAs('staff');
+        $this->insertClinicAppointment('in_consultation');
+        DB::table('clinic_appointments')->where('id', 1)->update(['appointment_type' => 'walk_in']);
+        $legacy = str_repeat('x', 500);
+        DB::table('clinic_records')->insert(['clinic_appointment_id' => 1, 'vet_notes' => $legacy]);
+        $fields = ['chief_complaint', 'relevant_history', 'reported_signs', 'physical_exam_findings',
+            'differential_diagnoses', 'working_diagnosis', 'diagnosis', 'findings', 'treatment_given', 'follow_up_notes', 'vet_notes'];
+        $url = '/api/admin/clinic-appointments/1/record';
+        $this->postJson($url, array_fill_keys($fields, str_repeat('x', 301)))
+            ->assertUnprocessable()->assertJsonValidationErrors($fields);
+        $this->postJson($url, array_fill_keys(array_diff($fields, ['vet_notes']), str_repeat('x', 300)))
+            ->assertOk()->assertJsonPath('record.relevant_history', str_repeat('x', 300))
+            ->assertJsonPath('record.vet_notes', $legacy);
+    }
+
     public function test_medical_record_prescriptions_persist_without_stock_queries_or_charges(): void
     {
         $this->authenticateAs('staff');
@@ -3604,7 +3624,12 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $prescription = ['medicine' => 'Amoxicillin-clavulanate', 'strength_concentration' => '250 mg/tablet',
             'dose' => '250 mg', 'route' => 'oral', 'frequency' => 'Every 12 hours', 'duration' => '7 days',
             'quantity' => '14 tablets', 'instructions' => 'Give after food'];
-        $this->postJson('/api/admin/clinic-appointments/1/record', ['prescriptions' => [$prescription]])->assertOk();
+        $this->postJson('/api/admin/clinic-appointments/1/record', [
+            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 301)]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('prescriptions.0.instructions');
+        $this->postJson('/api/admin/clinic-appointments/1/record', [
+            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 300)]],
+        ])->assertOk()->assertJsonPath('record.prescriptions.0.instructions', str_repeat('x', 300));
         $this->getJson('/api/admin/clinic-appointments')->assertOk()
             ->assertJsonPath('in_consultation.0.record.prescriptions.0.medicine', 'Amoxicillin-clavulanate')
             ->assertJsonPath('in_consultation.0.record.prescriptions.0.quantity', '14 tablets');

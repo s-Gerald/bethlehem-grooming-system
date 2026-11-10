@@ -44,8 +44,8 @@ export function validateClinicVisitReason(concerns, details = "") {
       new Set(concerns).size !== concerns.length) {
     return "Select valid common concerns.";
   }
-  if (String(details).trim().length > 1000) {
-    return "Tell us more must not exceed 1,000 characters.";
+  if (Array.from(String(details)).length > 300) {
+    return "Maximum 300 characters allowed.";
   }
   return "";
 }

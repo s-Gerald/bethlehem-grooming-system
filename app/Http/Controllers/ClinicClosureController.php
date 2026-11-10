@@ -82,7 +82,7 @@ class ClinicClosureController extends Controller
         $request->validate([
             'start_date' => 'required|date|after_or_equal:' . $today,
             'end_date'   => 'required|date|after_or_equal:start_date',
-            'reason'     => 'nullable|string|max:255',
+            'reason'     => 'nullable|string|max:300',
         ]);
 
         $start = Carbon::parse($request->start_date);

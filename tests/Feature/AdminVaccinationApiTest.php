@@ -606,10 +606,11 @@ class AdminVaccinationApiTest extends TestCase
             'recorded_by_user_id' => 2,
         ]);
 
-        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", [
-            'notes' => 'Updated while still a draft.',
-        ])
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('notes');
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 300)])
             ->assertOk()
+            ->assertJsonPath('vaccination.notes', str_repeat('x', 300))
             ->assertJsonPath('vaccination.state', 'draft');
 
         $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", [
@@ -645,7 +646,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertDatabaseHas('vaccination_records', [
             'id' => $draftId,
             'pet_id' => 101,
-            'notes' => 'Updated while still a draft.',
+            'notes' => str_repeat('x', 300),
         ]);
     }
 
@@ -833,6 +834,8 @@ class AdminVaccinationApiTest extends TestCase
         ]);
         $draftId = $this->insertVaccination(101, 'FVRCP', '2026-07-23');
 
+        $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", ['void_reason' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('void_reason');
         $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", [
             'void_reason' => '',
         ])

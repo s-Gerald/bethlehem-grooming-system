@@ -1,12 +1,12 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
-import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=20261110";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
   getPackagesByPetType, getGroomingPreferences, requiresSpecialInstructions, specialInstructionsError,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
 
 export function renderHaircutPreference(pet, selection) {
   const choices = selection.servicePackage === "cat_full_grooming" && !selection.haircutRequested ? [] : getGroomingPreferences(selection.servicePackage);
@@ -28,7 +28,7 @@ function renderCatHaircutOption(pet, selection) {
       ${selection.haircutRequested ? "checked" : ""}>Include haircut</label>`;
 }
 
-function renderSpecialInstructions(pet, selection, maxLength) {
+function renderSpecialInstructions(pet, selection) {
   const required = requiresSpecialInstructions(selection);
   const id = `special_instructions_${escapeHtml(pet.id)}`;
   return `<div>
@@ -36,7 +36,7 @@ function renderSpecialInstructions(pet, selection, maxLength) {
       ${instructionsLabel(required)}
     </label>
     <textarea id="${id}" data-role="special-instructions" data-pet-id="${escapeHtml(pet.id)}"
-      rows="4" maxlength="${maxLength}" ${required ? 'required aria-required="true"' : 'aria-required="false"'}
+      rows="4" data-short-note ${required ? 'required aria-required="true"' : 'aria-required="false"'}
       class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"
     >${escapeHtml(selection.specialInstructions || "")}</textarea>
     <p id="${id}_error" data-role="instructions-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
@@ -75,7 +75,10 @@ export function validateSpecialInstructions(container, pets, selections) {
   for (const pet of pets) {
     const selection = selections.find((item) => item.petId === pet.id);
     const card = container.querySelector(`[data-pet-card="${CSS.escape(pet.id)}"]`);
-    if (card && updateSpecialInstructions(card, pet, selection, true)) firstInvalid ||= card;
+    if (!card) continue;
+    const field = card.querySelector('[data-role="special-instructions"]');
+    if (globalThis.ShortNotes?.validate(field) === false) return false;
+    if (updateSpecialInstructions(card, pet, selection, true)) firstInvalid ||= card;
   }
   if (firstInvalid) focusSpecialInstructions(firstInvalid);
   return !firstInvalid;
@@ -169,7 +172,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
       </div>
 
       <section class="mt-8 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] md:items-stretch">
-        ${renderSpecialInstructions(pet, selection, walkIn ? 1000 : 500)}
+        ${renderSpecialInstructions(pet, selection)}
 
         <aside
           data-role="selection-summary"

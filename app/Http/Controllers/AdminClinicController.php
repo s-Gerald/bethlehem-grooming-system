@@ -212,7 +212,7 @@ class AdminClinicController extends Controller
         $data = $request->validate([
             'pet_id' => ['required', 'integer', 'exists:pets,pet_id'],
             'case_type' => ['required', 'in:consultation,vaccination'],
-            'chief_complaint' => ['nullable', 'string', 'max:1000'],
+            'chief_complaint' => ['nullable', 'string', 'max:300'],
         ]);
 
         app(\App\Services\PreRegistrationExpiry::class)->expire();
@@ -592,7 +592,7 @@ class AdminClinicController extends Controller
                             && is_scalar($verification['value'] ?? null)
                             && trim((string) $verification['value']) === trim((string) $value)
                             && is_string($verification['reason'] ?? null)
-                            && mb_strlen(trim($verification['reason'])) >= 5 && mb_strlen($verification['reason']) <= 200))) return;
+                            && mb_strlen(trim($verification['reason'])) >= 5 && mb_strlen($verification['reason']) <= 300))) return;
                 $fail($field === 'temperature_c' ? 'Invalid temperature. Enter 25–45 °C with up to 1 decimal, or obtain veterinarian verification.'
                     : 'Invalid value. Enter a positive whole number within the entry limit, or obtain veterinarian verification.');
             };
@@ -601,11 +601,11 @@ class AdminClinicController extends Controller
             'primary_veterinarian_id' => ['nullable', 'required_if_accepted:finish_case', 'integer', Rule::in($veterinarians->keys()->all())],
             'additional_veterinarian_ids' => ['sometimes', 'array', 'list', 'max:20'],
             'additional_veterinarian_ids.*' => ['required', 'integer', 'distinct', Rule::in($veterinarians->keys()->all()), 'different:primary_veterinarian_id'],
-            'relevant_history' => ['nullable', 'string', 'max:2000'],
-            'reported_signs' => ['nullable', 'string', 'max:2000'],
-            'physical_exam_findings' => ['nullable', 'string', 'max:2000'],
-            'differential_diagnoses' => ['nullable', 'string', 'max:2000'],
-            'working_diagnosis' => ['nullable', 'string', 'max:2000'],
+            'relevant_history' => ['nullable', 'string', 'max:300'],
+            'reported_signs' => ['nullable', 'string', 'max:300'],
+            'physical_exam_findings' => ['nullable', 'string', 'max:300'],
+            'differential_diagnoses' => ['nullable', 'string', 'max:300'],
+            'working_diagnosis' => ['nullable', 'string', 'max:300'],
             'diagnostics' => ['prohibited'],
             'prescriptions' => ['sometimes', 'array', 'list', 'max:100'],
             'prescriptions.*' => ['required', 'array:medicine,strength_concentration,dose,route,frequency,duration,quantity,instructions'],
@@ -619,14 +619,14 @@ class AdminClinicController extends Controller
                 function ($attribute, $value, $fail) {
                     if ((float) $value <= 0 || (float) $value > 99999999.99) $fail('Quantity must be a positive amount, optionally followed by a unit (e.g. 14 tablets).');
                 }],
-            'prescriptions.*.instructions' => ['nullable', 'string', 'max:2000'],
-            'chief_complaint' => [Rule::excludeIf($appointment->appointment_type === 'pre_registered'), 'nullable', 'string', 'max:1200'],
-            'diagnosis' => ['nullable', 'string', 'max:2000'],
-            'findings' => ['nullable', 'string', 'max:2000'],
-            'treatment_given' => ['nullable', 'string', 'max:2000'],
+            'prescriptions.*.instructions' => ['nullable', 'string', 'max:300'],
+            'chief_complaint' => [Rule::excludeIf($appointment->appointment_type === 'pre_registered'), 'nullable', 'string', 'max:300'],
+            'diagnosis' => ['nullable', 'string', 'max:300'],
+            'findings' => ['nullable', 'string', 'max:300'],
+            'treatment_given' => ['nullable', 'string', 'max:300'],
             'follow_up_date' => ['nullable', 'date', 'after_or_equal:today', 'before_or_equal:'.now()->addMonths(3)->toDateString()],
-            'follow_up_notes' => ['nullable', 'string', 'max:1000'],
-            'vet_notes' => ['nullable', 'string', 'max:2000'],
+            'follow_up_notes' => ['nullable', 'string', 'max:300'],
+            'vet_notes' => ['nullable', 'string', 'max:300'],
             'finish_case' => ['sometimes', 'boolean'],
             'medicines' => ['prohibited'],
             // Vitals
@@ -638,7 +638,7 @@ class AdminClinicController extends Controller
             'vital_exceptions' => [Rule::prohibitedIf(! $actor->isVeterinarian()), 'sometimes', 'array:temperature_c,heart_rate_bpm,respiratory_rate_bpm'],
             'vital_exceptions.*' => ['required', 'array:value,reason'],
             'vital_exceptions.*.value' => ['required', 'string', 'max:20'],
-            'vital_exceptions.*.reason' => ['required', 'string', 'min:5', 'max:200'],
+            'vital_exceptions.*.reason' => ['required', 'string', 'min:5', 'max:300'],
 
         ], [
             'diagnostics.prohibited' => 'Add diagnostic services through Billing > Clinic Services. Record imaging in Diagnostic Imaging.',
@@ -708,8 +708,10 @@ class AdminClinicController extends Controller
                     'primary_veterinarian_name' => $primary ? $name($primary) : null,
                     'recorded_by_user_id' => $actor->user_id,
                     'recorded_by_name' => $name($actor),
-                    'diagnosis' => $clinical['working_diagnosis'],
-                    'findings' => $clinical['physical_exam_findings'],
+                    'diagnosis' => array_key_exists('working_diagnosis', $data) || array_key_exists('diagnosis', $data)
+                        ? $clinical['working_diagnosis'] : $existing?->diagnosis,
+                    'findings' => array_key_exists('physical_exam_findings', $data) || array_key_exists('findings', $data)
+                        ? $clinical['physical_exam_findings'] : $existing?->findings,
                     'treatment_given' => array_key_exists('treatment_given', $data) ? $data['treatment_given'] : $existing?->treatment_given,
                     'follow_up_date' => array_key_exists('follow_up_date', $data) ? $data['follow_up_date'] : $existing?->follow_up_date,
                     'follow_up_notes' => array_key_exists('follow_up_notes', $data) ? $data['follow_up_notes'] : $existing?->follow_up_notes,

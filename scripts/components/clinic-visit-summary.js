@@ -1,5 +1,5 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1&short-notes=20261110";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import {
   CLINIC_VISIT_CONFIRMATION_KEY,
@@ -9,7 +9,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   validateClinicVisitReason,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=20261110";
 
 const elements = {
   details: document.getElementById("clinicVisitSummaryDetails"),

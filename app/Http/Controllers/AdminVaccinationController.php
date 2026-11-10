@@ -295,7 +295,7 @@ class AdminVaccinationController extends Controller
             $record = $this->findScopedRecord($petId, $vaccinationId, lockForUpdate: true);
 
             $validated = $request->validate([
-                'void_reason' => ['required', 'string', 'max:500'],
+                'void_reason' => ['required', 'string', 'max:300'],
                 'pet_id' => ['prohibited'],
                 'recorded_by_user_id' => ['prohibited'],
                 'published_at' => ['prohibited'],
@@ -380,7 +380,7 @@ class AdminVaccinationController extends Controller
                 Rule::exists('inventory_items', 'item_id')
                     ->where(fn ($query) => $query->where('category', $type)->where('is_active', 1)),
             ],
-            'notes' => [...$optional, 'string'],
+            'notes' => [...$optional, 'string', 'max:300'],
             ...$this->serverManagedRules(),
             ...($usesInventory ? $this->systemFilledRules() : [
                 'vaccine_name' => [...$optional, 'string', 'max:150'],

@@ -187,7 +187,7 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
           message: [`Admit ${this.confinementCase?.pet?.name || 'this patient'} for confinement?`,
             `Attending veterinarian: ${this.admissionVeterinarianName}`,
             this.pricing?.resolved_price != null ? `Confinement rate: ${this.money(this.pricing.resolved_price)}/day` : '',
-            `Reason: ${payload.reason.length > 240 ? payload.reason.slice(0, 240).trimEnd() + '…' : payload.reason}`].filter(Boolean).join('\n'),
+            `Reason: ${payload.reason}`].filter(Boolean).join('\n'),
           cancelLabel: 'Cancel', confirmLabel: 'Admit Patient', danger: false});
       } finally { this.confirming = false; }
       if (!confirmed || generation !== this._generation || !this.canAdmitConfinement) return;

@@ -249,7 +249,7 @@ function adminClinicModal() {
       const verification = this.vitalExceptions[field];
       const exceptional = this.vitalEntryValid(field, value, true);
       if (exceptional && (this.hasSavedVitalVerification(field)
-        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && verification.reason.length <= 200))) return '';
+        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && Array.from(verification.reason).length <= 300))) return '';
       if (verification?.value === value) return 'Enter a clinical reason (5–200 characters).';
       if (exceptional) return 'This reading requires veterinarian verification.';
       return field === 'temperature_c' ? 'Use 25–45 °C, up to 1 decimal.'
@@ -413,6 +413,7 @@ function adminClinicModal() {
         respiratory_rate_bpm: v.respiratory_rate_bpm ?? "",
         body_condition_score: v.body_condition_score ?? "",
       };
+      globalThis.ShortNotes?.reset(this.$el.querySelector('#medical-record-form'));
       this.open = true;
       if (this.canEditClinical) {
         if (this.isVeterinarian) {
@@ -513,6 +514,14 @@ function adminClinicModal() {
       });
     },
 
+    clearRecordNoteError(field) {
+      const key = field.dataset.recordNote;
+      const notes = globalThis.ShortNotes;
+      if (key && notes && this.formErrors[key]?.[0] === notes.shortenMessage && !notes.tooLong(field.value)) {
+        delete this.formErrors[key];
+      }
+    },
+
     async validateRecordForSave(requireCompletion) {
       this.formErrors = {};
       this.modalError = "";
@@ -539,9 +548,34 @@ function adminClinicModal() {
         if (forDischarge) throw new Error('The Medical Record is unavailable for saving. Try again.');
         return;
       }
+      const notes = globalThis.ShortNotes;
+      const original = this.currentAppt?.record || {};
+      const narratives = {};
+      for (const field of ['chief_complaint', 'relevant_history', 'reported_signs', 'physical_exam_findings',
+        'differential_diagnoses', 'working_diagnosis', 'treatment_given', 'vet_notes', 'follow_up_notes']) {
+        if (field === 'chief_complaint' && this.isPreRegistered) continue;
+        const previous = original[field] ?? (field === 'chief_complaint' ? this.currentAppt?.chief_complaint
+          : field === 'working_diagnosis' ? original.diagnosis : field === 'physical_exam_findings' ? original.findings : null);
+        if (!notes?.unchangedLegacy(this.form[field], previous)) narratives[field] = this.form[field] || null;
+      }
+      const prescriptions = this.form.prescriptions;
+      if (!prescriptions.some(row => notes?.tooLong(row.instructions))
+        || JSON.stringify(prescriptions) !== JSON.stringify(original.prescriptions || [])) {
+        narratives.prescriptions = prescriptions;
+      }
       this.saving = true;
       const preparation = {id: this.apptId, finishCase, promise: null, errors: null};
       try {
+        if (notes) {
+          const errors = {};
+          for (const [field, value] of Object.entries(narratives)) {
+            if (notes.tooLong(value)) errors[field] = [notes.shortenMessage];
+          }
+          narratives.prescriptions?.forEach((row, index) => {
+            if (notes.tooLong(row.instructions)) errors[`prescriptions.${index}.instructions`] = [notes.shortenMessage];
+          });
+          if (Object.keys(errors).length) throw Object.assign(new Error('Check the highlighted fields.'), {errors});
+        }
         if (forDischarge) await this.validateRecordForSave(true);
         window.dispatchEvent(new CustomEvent('clinic-treatment-prepare', {detail: preparation}));
         if (preparation.errors) {
@@ -567,19 +601,10 @@ function adminClinicModal() {
         }
         const numberOrNull = (value) => value === "" || value == null ? null : Number(value);
         const payload = {
-          ...(!this.isPreRegistered ? { chief_complaint: this.form.chief_complaint || null } : {}),
-          relevant_history: this.form.relevant_history || null,
-          reported_signs: this.form.reported_signs || null,
-          physical_exam_findings: this.form.physical_exam_findings || null,
-          differential_diagnoses: this.form.differential_diagnoses || null,
-          working_diagnosis: this.form.working_diagnosis || null,
+          ...narratives,
           primary_veterinarian_id: this.form.primary_veterinarian_id || null,
           additional_veterinarian_ids: this.form.additional_veterinarian_ids,
-          prescriptions: this.form.prescriptions,
-          treatment_given:      this.form.treatment_given       || null,
-          vet_notes:            this.form.vet_notes             || null,
           follow_up_date:       this.form.follow_up_date        || null,
-          follow_up_notes:      this.form.follow_up_notes       || null,
           weight_kg:            String(this.form.weight_kg ?? "").trim() || null,
           temperature_c:        String(this.form.temperature_c ?? '').trim() || null,
           heart_rate_bpm:       String(this.form.heart_rate_bpm ?? '').trim() || null,
@@ -1672,7 +1697,7 @@ let clinicPatientEditorScript;
 function loadClinicPatientEditor() {
   return clinicPatientEditorScript ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '/scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&pet-birthdate=20261103-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&name-policy=20261110';
+    script.src = '/scripts/components/admin-customers.js?v=customer-actions-20260927&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261110&pet-birthdate=20261103-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&name-policy=20261110&short-notes=20261110';
     script.onload = resolve;
     script.onerror = () => { clinicPatientEditorScript = null; script.remove(); reject(new Error('Could not load patient editing. Please try again.')); };
     document.head.appendChild(script);

@@ -19,9 +19,11 @@
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
     <script src="/scripts/components/product-search-dropdown.js?v=20261029-v2"></script>
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
-    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
+    <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <script type="module" src="/scripts/components/pet-body-condition.js?v=20261110-v2"></script>
+    <link rel="stylesheet" href="/css/short-notes.css" />
+    <script defer src="/scripts/utils/short-notes.js"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -221,7 +223,7 @@
           </button>
         </div>
       </aside>
-      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110"></script>
+      <script src="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1&clinic-activity=20261110&short-notes=20261110"></script>
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
       <script src="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110"></script>
 
@@ -1031,10 +1033,9 @@
 
                 <div>
                   <label class="mb-1 block text-xs font-semibold text-slate-500">Notes <span class="font-normal text-slate-400">(optional)</span></label>
-                  <input
+                  <input data-short-note
                     type="text"
-                    x-model="paymentModal.notes"
-                    maxlength="500"
+                    id="groomingPaymentNotes" x-model="paymentModal.notes"
                     @input="clearPaymentError()"
                     placeholder="Add optional remarks"
                     class="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 outline-none focus:border-[#315b7e]"
@@ -1064,7 +1065,7 @@
                 </button>
                 <button
                   type="button"
-                  @click="submitPayment()"
+                  data-check-note="groomingPaymentNotes" @click="submitPayment()"
                   x-show="!paymentModal.onlinePayment"
                   :disabled="!canSubmitPayment"
                   class="flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white transition btn-confirm-payment"
@@ -1169,7 +1170,7 @@
                     <template x-if="receiptModal.qrPayment"><div><dt>Recorded at</dt><dd x-text="formatQrDate(receiptModal.paidAt)"></dd></div></template>
                     <template x-if="receiptModal.qrPayment?.transaction_at"><div><dt>Original transaction time</dt><dd x-text="formatQrDate(receiptModal.qrPayment.transaction_at)"></dd></div></template>
                     <template x-if="receiptModal.qrPayment"><div><dt>Verified by</dt><dd x-text="receiptModal.qrPayment.verified_by_name"></dd></div></template>
-                    <div x-show="receiptModal.notes"><dt>Notes</dt><dd x-text="receiptModal.notes"></dd></div>
+                    <div x-show="receiptModal.notes"><dt>Notes</dt><dd class="note-text" x-text="receiptModal.notes"></dd></div>
                   </dl>
                 </section>
               </div>
@@ -1263,7 +1264,7 @@
                   </div>
                   <div class="admin-checkin-note">
                     <label class="block text-xs font-semibold text-slate-700" for="checkInInternalStaffNote">Internal Staff Note <span class="font-normal text-slate-400">(optional)</span></label>
-                    <textarea id="checkInInternalStaffNote" x-model="actionConfirmModal.internalStaffNote" :disabled="actionConfirmModal.busy" rows="2" maxlength="5000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Add information for clinic staff"></textarea>
+                    <textarea data-short-note id="checkInInternalStaffNote" x-model="actionConfirmModal.internalStaffNote" :disabled="actionConfirmModal.busy" rows="2" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Add information for clinic staff"></textarea>
                   </div>
                 </div>
                 <template x-if="actionConfirmModal.action === 'startPetGrooming' && actionConfirmModal.booking?.bookingType !== 'Walk-In' && actionConfirmModal.booking?.actionPet">
@@ -1285,12 +1286,11 @@
                   >
                     Cancellation reason
                   </label>
-                  <textarea
+                  <textarea data-short-note
                     id="bookingCancellationReason"
                     :required="['cancel', 'cancelPet'].includes(actionConfirmModal.action)"
                     x-model="actionConfirmModal.cancellationReason"
                     :disabled="actionConfirmModal.busy"
-                    maxlength="500"
                     rows="3"
                     placeholder="Add a short cancellation reason"
                     class="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/15 disabled:cursor-not-allowed disabled:bg-slate-50"
@@ -1425,18 +1425,18 @@
                       <section x-show="pet.medicalConditions || pet.specialInstructions || canEditGroomingVisitNotes()" class="grooming-details-section">
                         <h5>Notes</h5>
                       <template x-if="pet.medicalConditions">
-                        <p class="mt-2 text-sm"><span class="text-slate-400">Allergies &amp; Special Care Notes:</span> <span class="text-slate-700" x-text="pet.medicalConditions"></span></p>
+                        <p class="mt-2 text-sm"><span class="text-slate-400">Allergies &amp; Special Care Notes:</span> <span class="note-text text-slate-700" x-text="pet.medicalConditions"></span></p>
                       </template>
                       <div x-show="pet.specialInstructions || canEditGroomingVisitNotes()" class="mt-2 text-sm">
                         <p class="font-semibold text-slate-500" x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Grooming & Visit Notes' : 'Customer Note'"></p>
                         <template x-if="noteEditor.kind !== 'pet' || noteEditor.bookingPetId !== pet.bookingPetId">
                           <div>
-                            <p x-show="pet.specialInstructions" class="whitespace-pre-wrap text-slate-700" x-text="pet.specialInstructions"></p>
+                            <p x-show="pet.specialInstructions" class="note-text text-slate-700" x-text="pet.specialInstructions"></p>
                             <button x-show="canEditGroomingVisitNotes()" type="button" @click="beginNoteEdit('pet', pet)" class="mt-1 font-semibold text-[#315b7e]" x-text="pet.specialInstructions ? 'Edit' : '+ Add note'"></button>
                           </div>
                         </template>
-                        <form x-show="noteEditor.kind === 'pet' && noteEditor.bookingPetId === pet.bookingPetId" @submit.prevent="saveNoteEdit()" class="mt-2 space-y-2">
-                          <textarea x-model="noteEditor.value" maxlength="1000" rows="3" placeholder="Add grooming, handling, or owner-specific notes for this visit." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></textarea>
+                        <form x-show="noteEditor.kind === 'pet' && noteEditor.bookingPetId === pet.bookingPetId" data-check-notes @submit.prevent="saveNoteEdit()" class="mt-2 space-y-2">
+                          <textarea data-short-note x-model="noteEditor.value" rows="3" placeholder="Add grooming, handling, or owner-specific notes for this visit." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></textarea>
                           <p x-show="noteEditor.error" x-text="noteEditor.error" class="text-red-600"></p>
                           <div class="flex gap-3"><button type="button" @click="cancelNoteEdit()" :disabled="noteEditor.busy">Cancel</button><button type="submit" :disabled="noteEditor.busy" class="font-semibold text-[#315b7e]" x-text="noteEditor.busy ? 'Saving...' : 'Save note'"></button></div>
                         </form>
@@ -1469,12 +1469,12 @@
                   <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Internal Staff Note</p>
                   <template x-if="noteEditor.kind !== 'staff'">
                     <div>
-                      <p x-show="detailsBooking?.internalStaffNote" class="whitespace-pre-wrap text-sm text-slate-700" x-text="detailsBooking?.internalStaffNote"></p>
+                      <p x-show="detailsBooking?.internalStaffNote" class="note-text text-sm text-slate-700" x-text="detailsBooking?.internalStaffNote"></p>
                       <button x-show="canEditInternalStaffNote()" type="button" @click="beginNoteEdit('staff')" class="mt-2 text-sm font-semibold text-[#315b7e]" x-text="detailsBooking?.internalStaffNote ? 'Edit' : '+ Add note'"></button>
                     </div>
                   </template>
-                  <form x-show="noteEditor.kind === 'staff'" @submit.prevent="saveNoteEdit()" class="space-y-2">
-                    <textarea x-model="noteEditor.value" maxlength="5000" rows="3" placeholder="Add an internal note for staff" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></textarea>
+                  <form x-show="noteEditor.kind === 'staff'" data-check-notes @submit.prevent="saveNoteEdit()" class="space-y-2">
+                    <textarea data-short-note x-model="noteEditor.value" rows="3" placeholder="Add an internal note for staff" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></textarea>
                     <p x-show="noteEditor.error" x-text="noteEditor.error" class="text-sm text-red-600"></p>
                     <div class="flex gap-3"><button type="button" @click="cancelNoteEdit()" :disabled="noteEditor.busy" class="text-sm text-slate-600">Cancel</button><button type="submit" :disabled="noteEditor.busy" class="text-sm font-semibold text-[#315b7e]" x-text="noteEditor.busy ? 'Saving...' : 'Save note'"></button></div>
                   </form>
@@ -1519,7 +1519,7 @@
                 <template x-if="detailsBooking?.specialNotes">
                   <div>
                     <p class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">Customer Note</p>
-                    <p class="text-sm text-slate-700" x-text="detailsBooking.specialNotes"></p>
+                    <p class="note-text text-sm text-slate-700" x-text="detailsBooking.specialNotes"></p>
                   </div>
                 </template>
 
@@ -1607,10 +1607,10 @@
 
     <!-- Shared dashboard content script -->
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103"></script>
+    <script src="/scripts/components/payment-invoice.js?v=shared-invoice-20261003&copy=grooming-terminology-20261016&payments=combined-20261023&qr-workflow=20261023&presentation=20261024&mobile-format=20261110&invoice-products=20261029&references=20261031&urls=20261103&short-notes=20261110"></script>
     <script src="/scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="/scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="/scripts/services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1"></script>
-    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261110&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2"></script>
+    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261110&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=20261110"></script>
   </body>
 </html>

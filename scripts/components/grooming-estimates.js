@@ -1,6 +1,6 @@
 import "../services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1";
 import { normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { hasRequiredGroomingPreference } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
+import { hasRequiredGroomingPreference } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
 
 const presentation = globalThis.GroomingForecastPresentation;
 

@@ -1,6 +1,6 @@
 import { formatBookingDate } from "../services/booking-format-service.js";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
 import {
   confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, formatConfirmationPhone, ownerConfirmationFields,

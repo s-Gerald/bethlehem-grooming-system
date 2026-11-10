@@ -23,6 +23,8 @@
       .admin-availability dialog { width: min(28rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); }
     </style>
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/short-notes.css" />
+    <script defer src="/scripts/utils/short-notes.js"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -283,8 +285,7 @@
                       <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Reason</span>
                       <input
                         type="text"
-                        x-model="blockForm.reason"
-                        maxlength="255"
+                        data-short-note id="blockedDateReason" x-model="blockForm.reason"
                         placeholder="e.g. Clinic holiday"
                         class="w-full rounded-xl border border-slate-200 bg-[#f8fbfe] px-4 py-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400 transition focus:border-[#315b7e] focus:ring-4 focus:ring-[#315b7e]/10"
                       />
@@ -305,7 +306,7 @@
                     </button>
                     <button
                       type="button"
-                      @click="submitBlockedDate()"
+                      data-check-note="blockedDateReason" @click="submitBlockedDate()"
                       :disabled="blockForm.busy"
                       class="flex items-center justify-center gap-2 rounded-xl bg-[#315b7e] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#284a67] disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -328,7 +329,7 @@
                               <span x-text="blockedDate.start_date"></span>
                               <span x-show="blockedDate.end_date !== blockedDate.start_date"> to <span x-text="blockedDate.end_date"></span></span>
                             </p>
-                            <p class="mt-0.5 text-sm text-slate-500" x-text="blockedDate.reason || 'No reason provided'"></p>
+                            <p class="note-text mt-0.5 text-sm text-slate-500" x-text="blockedDate.reason || 'No reason provided'"></p>
                           </div>
                           <button
                             x-show="canManage"

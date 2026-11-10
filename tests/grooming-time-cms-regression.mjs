@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110';
 import {renderHaircutPreference, renderPackageCard} from '../scripts/components/grooming-service-selection.js';
 import {groomingDurationValue} from '../scripts/components/grooming-estimates.js';
 

@@ -73,9 +73,9 @@
       <dl class="pos-summary-values"><div><dt>Change</dt><dd x-text="'₱' + fmt(changeAmount)"></dd></div></dl>
       </div>
       <label for="pos-notes">Notes <span class="pos-helper">(optional)</span></label>
-      <input id="pos-notes" x-model="notes" maxlength="500" type="text" />
+      <input data-short-note id="pos-notes" x-model="notes" type="text" />
       <p x-show="totalAmount > 999999.99" class="pos-error">The total exceeds ₱999,999.99. Reduce the cart before continuing.</p>
-      <button x-show="!onlinePayment || openingCheckout" type="button" @click="processSale()" :disabled="submitting || !canProcess" class="pos-button pos-primary" x-text="validating ? 'Checking stock and prices…' : submitting ? (paymentMethod === 'cash' ? 'Processing…' : 'Opening checkout…') : paymentMethod === 'cash' ? 'Complete Sale' : 'Create Online Payment'"></button>
+      <button x-show="!onlinePayment || openingCheckout" type="button" data-check-note="pos-notes" @click="processSale()" :disabled="submitting || !canProcess" class="pos-button pos-primary" x-text="validating ? 'Checking stock and prices…' : submitting ? (paymentMethod === 'cash' ? 'Processing…' : 'Opening checkout…') : paymentMethod === 'cash' ? 'Complete Sale' : 'Create Online Payment'"></button>
       </fieldset>
       <div x-ref="paymentStatus" tabindex="-1" x-cloak x-show="onlinePayment && !openingCheckout" class="pos-payment-status" :aria-busy="submitting">
         <div role="status" aria-live="polite" aria-atomic="true">

@@ -1,7 +1,7 @@
 import { WalkInOwnerValidation } from "../utils/walk-in-owner-validation.js?v=names-20261110";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
-import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
-import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1&short-notes=20261110";
+import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=20261110";
 
 const WALK_IN_OWNER_KEY = "walkInOwnerStep";
 const WALK_IN_CLINIC_CONFIRMED_KEY = "walkInClinicConfirmation";
@@ -194,7 +194,8 @@ async function handleSubmit(event) {
     size:              normalizeSizeForApi(state.pet?.size),
     ...(!state.pet?.petId && state.pet?.bodyCondition ? { body_condition: state.pet.bodyCondition } : {}),
     color:             state.pet?.color || null,
-    medical_conditions: state.pet?.medicalNotes || null,
+    ...(state.pet?.petId && Array.from(state.pet.medicalNotes || "").length > 300
+      ? {} : {medical_conditions: state.pet?.medicalNotes || null}),
     chief_complaint:   state.chiefComplaint,
     common_concerns:   state.commonConcerns,
     terms_agreed:      true,

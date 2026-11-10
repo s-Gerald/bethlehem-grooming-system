@@ -298,7 +298,7 @@ class ClientPetProfileTest extends TestCase
                 $this->assertDatabaseHas('pets', ['pet_id' => $id, 'color' => 'Brown123', 'medical_conditions' => $payload['medical_conditions']]);
                 $this->putJson($edit, [...$payload, 'color' => null, 'medical_conditions' => null])->assertOk()
                     ->assertJsonPath('pet.color', null)->assertJsonPath('pet.medical_conditions', null);
-                $this->putJson($edit, [...$payload, 'medical_conditions' => str_repeat('x', 1001)])->assertUnprocessable()->assertJsonValidationErrors('medical_conditions');
+                $this->putJson($edit, [...$payload, 'medical_conditions' => str_repeat('x', 301)])->assertUnprocessable()->assertJsonValidationErrors('medical_conditions');
             }
         } finally {
             Schema::drop('users');
@@ -682,16 +682,20 @@ class ClientPetProfileTest extends TestCase
         $this->authenticateCustomer(10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Andrew', 'species' => 'Dog',
             'weight' => 0.1, 'customer_locked_fields' => json_encode(['medical_conditions', 'color'])]);
-        foreach (['Gentle handling', 'Shampoo allergy', null, 'Sensitive skin'] as $notes) {
+        foreach ([str_repeat('🐾', 300), 'Shampoo allergy', null, 'Sensitive skin'] as $notes) {
             $this->putJson('/api/pets/101', ['medical_conditions' => $notes, 'weight' => '0.10'])
                 ->assertOk()->assertJsonPath('pet.medical_conditions', $notes)->assertJsonPath('pet.weight', 0.1);
         }
-        $this->putJson('/api/pets/101', ['medical_conditions' => str_repeat('x', 1001)])
+        $this->putJson('/api/pets/101', ['medical_conditions' => str_repeat('x', 301)])
             ->assertUnprocessable()->assertJsonValidationErrors('medical_conditions');
         $this->putJson('/api/pets/101', ['medical_conditions' => null, 'expected_medical_conditions' => null])
             ->assertUnprocessable()->assertJsonValidationErrors('expected_medical_conditions');
         $this->assertDatabaseHas('pets', ['pet_id' => 101, 'medical_conditions' => 'Sensitive skin']);
         $this->putJson('/api/pets/101', ['color' => 'White'])->assertUnprocessable()->assertJsonValidationErrors('color');
+        $legacy = str_repeat('x', 500);
+        DB::table('pets')->where('pet_id', 101)->update(['medical_conditions' => $legacy]);
+        $this->putJson('/api/pets/101', ['pet_name' => 'Andrew'])->assertOk()
+            ->assertJsonPath('pet.medical_conditions', $legacy);
     }
 
     public function test_new_pets_require_explicit_species(): void

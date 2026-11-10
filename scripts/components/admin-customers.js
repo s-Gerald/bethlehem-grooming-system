@@ -780,7 +780,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1&body-condition=20261110-v2&pet-edit-layout=v1');
+            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1&body-condition=20261110-v2&pet-edit-layout=v1&short-notes=20261110');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -814,6 +814,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
           furType: document.getElementById("adminPetFurType"),
           weight: document.getElementById("adminPetWeight"),
           color: document.getElementById("adminPetColor"),
+          medicalNotes: document.getElementById("adminPetMedical"),
         };
         const controls = {
           birthdate: tools.createPetBirthdateField({
@@ -955,6 +956,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       await tools.breedCoatCatalogueReady;
       controls.furType.update({ preserveValue: true, autoSelect: false });
 
+      globalThis.ShortNotes?.reset(adminCustomerPetFields.elements.medicalNotes);
       this.petModal.editing   = true;
       this.petModal.saveError = "";
     },
@@ -972,7 +974,11 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       this.petModal.saveError = "";
       if (!adminCustomerPetFields.controls.birthdate.validate({ focus: true })) return;
 
+      const originalNote = this.petModal.pet?.medicalConditions;
+      const noteField = adminCustomerPetFields.elements.medicalNotes;
+      if (globalThis.ShortNotes?.validate(noteField, originalNote) === false) return;
       const payload = this.buildPetEditPayload();
+      if (globalThis.ShortNotes?.unchangedLegacy(noteField?.value, originalNote)) delete payload.medical_conditions;
       const validationMessage = this.validatePetEditPayload(payload);
       if (validationMessage) {
         const { tools, elements, controls } = adminCustomerPetFields;
@@ -1109,7 +1115,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
 
       const colorMessage = controls.color.getValidationMessage();
       if (colorMessage) return colorMessage;
-      if ((payload.medical_conditions || "").length > 1000) return "Care notes must be 1,000 characters or fewer.";
+
 
       const breedValidationMessage = controls.breed.getValidationMessage();
       if (breedValidationMessage) return breedValidationMessage;

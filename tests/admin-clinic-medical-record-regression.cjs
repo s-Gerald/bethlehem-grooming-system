@@ -246,7 +246,7 @@ function component(user) {
     }
   }
   const html = fs.readFileSync(path.join(__dirname, '../pages/admin/clinic.html'), 'utf8');
-  const complaintField = html.match(/<textarea id="medical-chief_complaint"[^>]*>/)[0];
+  const complaintField = html.match(/<textarea\b[^>]*\bid="medical-chief_complaint"[^>]*>/)[0];
   assert.ok(complaintField.includes(':readonly="isPreRegistered"'));
   assert.ok(complaintField.includes(':disabled="!isPreRegistered && (!canEditClinical || saving)"'));
   assert.ok(html.includes('Provided by the pet owner during queue registration.'));

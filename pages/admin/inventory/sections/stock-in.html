@@ -341,7 +341,7 @@
 
           <div x-show="needsManufacturerLot && batchUnavailable" x-cloak>
             <label for="stock-in-lot-reason" class="mb-1 block text-xs font-semibold text-slate-600">Why is the lot unavailable?</label>
-            <input id="stock-in-lot-reason" x-model="batchUnavailableReason" type="text" maxlength="255" :required="needsManufacturerLot && batchUnavailable"
+            <input data-short-note id="stock-in-lot-reason" x-model="batchUnavailableReason" type="text" :required="needsManufacturerLot && batchUnavailable"
               class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
           </div>
 
@@ -351,7 +351,7 @@
               Notes
               <span class="font-normal text-slate-400">(optional)</span>
             </label>
-            <input x-model="notes" type="text" placeholder="Any additional info…"
+            <input data-short-note id="stock-in-notes" x-model="notes" type="text" placeholder="Any additional info…"
               class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
           </div>
 
@@ -359,7 +359,7 @@
           <p x-show="entryError" style="display:none;color:#b91c1c" class="text-xs font-semibold" x-text="entryError"></p>
 
           <!-- Add button -->
-          <button type="button" @click="addToPending()" :disabled="!canAdd" :style="!canAdd ? 'background-color:#315b7e;opacity:0.5;cursor:not-allowed' : 'background-color:#315b7e'"
+          <button type="button" data-check-note="stock-in-lot-reason stock-in-notes" @click="addToPending()" :disabled="!canAdd" :style="!canAdd ? 'background-color:#315b7e;opacity:0.5;cursor:not-allowed' : 'background-color:#315b7e'"
             class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition"
             style="background-color:#315b7e">
 
@@ -401,7 +401,7 @@
               </span>
               <span class="capitalize" x-text="'· ' + p.reason"></span>
               <span x-show="p.batch_number" style="display:none" x-text="'· Batch: ' + p.batch_number"></span>
-              <span x-show="p.batch_unavailable_reason" x-text="'· Lot unavailable: ' + p.batch_unavailable_reason"></span>
+              <span class="note-text" x-show="p.batch_unavailable_reason" x-text="'· Lot unavailable: ' + p.batch_unavailable_reason"></span>
               <span x-show="p.expiry_date" style="display:none" x-text="'· Exp: ' + p.expiry_date"></span>
             </div>
           </div>

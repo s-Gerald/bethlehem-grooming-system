@@ -67,4 +67,5 @@ assert.match(restored.innerHTML, /What brings &lt;Mochi&gt; in today\?/);
 assert.deepEqual(restoredFields.concerns(), ["Vaccination", "Other"]);
 assert.equal(restoredFields.details.value, "Started today");
 assert.equal(validateClinicVisitReason(["Other", "Other"]), "Select valid common concerns.");
-assert.equal(validateClinicVisitReason(["Other"], "x".repeat(1001)), "Tell us more must not exceed 1,000 characters.");
+assert.equal(validateClinicVisitReason(["Other"], "🐾".repeat(300)), "");
+assert.equal(validateClinicVisitReason(["Other"], "x".repeat(301)), "Maximum 300 characters allowed.");

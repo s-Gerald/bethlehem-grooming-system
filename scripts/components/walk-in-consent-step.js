@@ -239,7 +239,8 @@ export function buildWalkInPets(reviewPayload) {
       size:                 normalizeSizeForApi(item.pet.size),
       ...(!item.pet.petId && item.pet.bodyCondition ? { body_condition: item.pet.bodyCondition } : {}),
       color:                item.pet.color || null,
-      medical_conditions:   item.pet.medicalNotes || null,
+      ...(item.pet.petId && Array.from(item.pet.medicalNotes || "").length > 300
+        ? {} : {medical_conditions: item.pet.medicalNotes || null}),
       special_instructions: item.selection.specialInstructions?.trim() || null,
       grooming_preference: item.selection.groomingPreference || null,
       groomer_id: item.selection.groomerId ?? null,

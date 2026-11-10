@@ -1,7 +1,7 @@
 import {
   CLINIC_CONCERNS,
   validateClinicVisitReason,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=20261110";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -32,7 +32,7 @@ export function mountClinicVisitReasonFields(container, petName, initialConcerns
     </fieldset>
     <div>
       <label for="clinicVisitDetails" class="mb-2 block text-sm font-medium text-slate-700">Tell us more</label>
-      <textarea id="clinicVisitDetails" name="chief_complaint" rows="5" maxlength="1000"
+      <textarea id="clinicVisitDetails" name="chief_complaint" rows="5" data-short-note
         placeholder="Describe when it started, how often it happens, or anything else the clinic should know."
         class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"></textarea>
     </div>
@@ -76,6 +76,7 @@ export function mountClinicVisitReasonFields(container, petName, initialConcerns
     details,
     concerns: () => CLINIC_CONCERNS.filter((concern) => selected.has(concern)),
     validate() {
+      if (globalThis.ShortNotes?.validate(details) === false) return false;
       const message = validateClinicVisitReason(this.concerns(), details.value);
       showError(message);
       if (message) (selected.size ? details : buttons[0]).focus();

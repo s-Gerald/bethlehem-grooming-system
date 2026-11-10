@@ -124,13 +124,13 @@
             <label class="mb-1 block text-xs font-semibold text-slate-600">
               Notes <span class="font-normal text-slate-400">(optional)</span>
             </label>
-            <input x-model="notes" type="text" placeholder="Any additional info…"
+            <input data-short-note id="stock-out-notes" x-model="notes" type="text" placeholder="Any additional info…"
               class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30" />
           </div>
 
           <p x-show="entryError" style="display:none;color:#b91c1c" class="text-xs font-semibold" x-text="entryError"></p>
 
-          <button type="button" @click="addToPending()" :disabled="!canAdd" :style="!canAdd ? 'background-color:#315b7e;opacity:0.5;cursor:not-allowed' : 'background-color:#315b7e'"
+          <button type="button" data-check-note="stock-out-notes" @click="addToPending()" :disabled="!canAdd" :style="!canAdd ? 'background-color:#315b7e;opacity:0.5;cursor:not-allowed' : 'background-color:#315b7e'"
             class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition"
             style="background-color:#315b7e">
 
@@ -167,7 +167,7 @@
               <span x-show="p.selling_price" style="display:none">
                 · ₱<span x-text="parseFloat(p.selling_price).toFixed(2)"></span>
               </span>
-              <span x-show="p.notes" style="display:none" x-text="'· ' + p.notes"></span>
+              <span class="note-text" x-show="p.notes" style="display:none" x-text="'· ' + p.notes"></span>
             </div>
           </div>
           <button type="button" @click="removePending(idx)"

@@ -272,7 +272,9 @@ class ClinicConfinementTest extends TestCase
     public function test_discharge_finalizes_one_service_one_charge_and_one_payment_due_transition(): void
     {
         $this->admit(); Carbon::setTestNow(now()->addHours(6));
-        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['applied_price' => 1])->assertOk()
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['discharge_note' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('discharge_note');
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['applied_price' => 1, 'discharge_note' => str_repeat('x', 300)])->assertOk()
             ->assertJsonPath('data.case_service.applied_price', '500.00')->assertJsonPath('data.case_service.quantity', '1.00');
         $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
         $this->assertDatabaseCount('clinic_charges', 1); $this->assertDatabaseCount('notifications', 1);

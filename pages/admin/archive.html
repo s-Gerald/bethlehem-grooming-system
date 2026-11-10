@@ -142,7 +142,6 @@
       .clinic-patient h4 { font-size: var(--admin-record-text-size); font-weight: var(--admin-record-emphasis-weight); }
       .clinic-owner, .clinic-reference, .clinic-row .history-label { font-size: var(--admin-record-secondary-size); color: var(--history-muted); }
       .clinic-reference { margin-top: 0.2rem; }
-      .clinic-row-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
       .clinic-row-action { grid-column: -2 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
       .clinic-status { display: inline-flex; border-width: 1px; border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
       .clinic-row .history-details-button { padding-inline: 12px; }
@@ -208,6 +207,7 @@
     <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&fetching=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261110&remember=20261029&auth-hardening=20261101&urls=20261103&services-access=20261103-v1&clinic-activity=20261110" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106&clinic-activity=20261110" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
+    <link rel="stylesheet" href="/css/short-notes.css" />
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -534,8 +534,8 @@
                           <p class="clinic-owner" x-show="clinicText(booking.ownerName)" x-text="clinicText(booking.ownerName)"></p>
                           <p class="clinic-reference" x-text="booking.appointment_reference"></p>
                         </div>
-                        <div class="clinic-reason" x-show="clinicReason(booking)"><p class="history-label">Reason for visit</p><p class="clinic-row-summary" x-text="clinicReason(booking)"></p></div>
-                        <div class="clinic-outcome" x-show="clinicDiagnosis(booking)"><p class="history-label">Working diagnosis</p><p class="clinic-row-summary" x-text="clinicDiagnosis(booking)"></p></div>
+                        <div class="clinic-reason" x-show="clinicReason(booking)"><p class="history-label">Reason for visit</p><p class="note-text" x-text="clinicReason(booking)"></p></div>
+                        <div class="clinic-outcome" x-show="clinicDiagnosis(booking)"><p class="history-label">Working diagnosis</p><p class="note-text" x-text="clinicDiagnosis(booking)"></p></div>
                         <div class="clinic-care" x-show="clinicCareSummary(booking)"><p class="history-label">Care provided</p><p x-text="clinicCareSummary(booking)"></p></div>
                         <div class="clinic-row-payment" x-show="clinicHasPayment(booking)"><p class="history-amount" x-show="clinicMoney(booking.total_amount)" x-text="clinicMoney(booking.total_amount)"></p><p class="history-label" x-text="booking.payment_status_label"></p></div>
                         <div class="clinic-row-action">
@@ -589,7 +589,7 @@
                   <h5 id="history-session-title">Session Details</h5>
                   <dl class="history-record-fields">
                     <template x-for="field in groomingSessionFields" :key="field.label">
-                      <div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div>
+                      <div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div>
                     </template>
                   </dl>
                 </section>
@@ -636,12 +636,12 @@
                             <div x-show="groomingText(pet.weight)"><dt>Weight</dt><dd x-text="pet.weight"></dd></div>
                             <div x-show="groomingText(pet.furType)"><dt>Fur Type</dt><dd x-text="pet.furType"></dd></div>
                           </dl>
-                          <p x-show="groomingText(pet.medicalConditions)" class="history-medical"><span class="history-note-label">Allergies &amp; Special Care Notes: </span><span x-text="pet.medicalConditions"></span></p>
+                          <p x-show="groomingText(pet.medicalConditions)" class="history-medical"><span class="history-note-label">Allergies &amp; Special Care Notes: </span><span class="note-text" x-text="pet.medicalConditions"></span></p>
                           <div x-show="groomingTimelineFields(pet).length" class="history-pet-timing">
                             <h6 class="history-pet-subheading">Grooming Timeline</h6>
                             <dl class="history-pet-timeline">
                               <template x-for="field in groomingTimelineFields(pet)" :key="field.label">
-                                <div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div>
+                                <div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div>
                               </template>
                             </dl>
                           </div>
@@ -659,7 +659,7 @@
                               </div>
                             </template>
                           </div>
-                          <p x-show="groomingText(pet.specialInstructions)" class="history-pet-note"><span class="history-note-label" x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Grooming &amp; Visit Notes: ' : 'Pet Instructions: '"></span><span x-text="pet.specialInstructions"></span></p>
+                          <p x-show="groomingText(pet.specialInstructions)" class="history-pet-note"><span class="history-note-label" x-text="detailsBooking?.bookingType === 'Walk-In' ? 'Grooming &amp; Visit Notes: ' : 'Pet Instructions: '"></span><span class="note-text" x-text="pet.specialInstructions"></span></p>
                         </div>
                       </article>
                     </template>
@@ -694,8 +694,8 @@
                 <section x-show="groomingText(detailsBooking?.specialNotes) || groomingText(detailsBooking?.internalStaffNote)" class="history-record-section" aria-labelledby="history-notes-title">
                   <h5 id="history-notes-title">Notes</h5>
                   <div class="history-notes">
-                    <div x-show="groomingText(detailsBooking?.specialNotes)"><h6 class="history-note-label">Customer Note</h6><p x-text="detailsBooking?.specialNotes"></p></div>
-                    <div x-show="groomingText(detailsBooking?.internalStaffNote)"><h6 class="history-note-label">Internal Staff Note</h6><p x-text="detailsBooking?.internalStaffNote"></p></div>
+                    <div x-show="groomingText(detailsBooking?.specialNotes)"><h6 class="history-note-label">Customer Note</h6><p class="note-text" x-text="detailsBooking?.specialNotes"></p></div>
+                    <div x-show="groomingText(detailsBooking?.internalStaffNote)"><h6 class="history-note-label">Internal Staff Note</h6><p class="note-text" x-text="detailsBooking?.internalStaffNote"></p></div>
                   </div>
                 </section>
               </div>
@@ -728,7 +728,7 @@
                 <section class="clinic-visit-section" x-show="clinicSummaryFields.length || clinicMedicalAttachments.length" aria-labelledby="clinic-summary-title">
                   <h5 id="clinic-summary-title">Visit Summary</h5>
                   <dl class="clinic-visit-fields">
-                    <template x-for="field in clinicSummaryFields" :key="field.label"><div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div></template>
+                    <template x-for="field in clinicSummaryFields" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template>
                   </dl>
                   <div x-show="clinicMedicalAttachments.length">
                     <p class="clinic-visit-muted" style="margin-top: 1rem">Medical Record Attachments</p>
@@ -743,7 +743,7 @@
                 </section>
                 <section class="clinic-visit-section" x-show="clinicVitals.length" aria-labelledby="clinic-vitals-title">
                   <h5 id="clinic-vitals-title">Vitals</h5>
-                  <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals" :key="field.label"><div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div></template></dl>
+                  <dl class="clinic-visit-vitals"><template x-for="field in clinicVitals" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
                 </section>
                 <admin-loader x-cloak x-show="clinicCareLoading"></admin-loader>
                 <div role="alert" x-show="clinicCareError" style="margin-top: 1rem"><p class="clinic-visit-note" x-text="clinicCareError"></p><button type="button" class="history-details-button" @click="loadClinicCare()">Retry care details</button></div>
@@ -751,11 +751,11 @@
                   <h5 id="clinic-care-title">Care Provided</h5>
                   <div class="clinic-care-block" x-show="clinicCare?.treatments.length || clinicText(detailsClinicRecord?.record?.treatment_given)">
                     <h6>Treatment</h6>
-                    <p class="clinic-visit-note" x-show="clinicText(detailsClinicRecord?.record?.treatment_given)" x-text="detailsClinicRecord?.record?.treatment_given"></p>
+                    <p class="note-text clinic-visit-note" x-show="clinicText(detailsClinicRecord?.record?.treatment_given)" x-text="detailsClinicRecord?.record?.treatment_given"></p>
                     <template x-for="item in clinicCare?.treatments || []" :key="item.id">
                       <article class="clinic-treatment">
                         <p class="clinic-visit-note"><strong x-text="item.treatment_name || item.vaccine_name"></strong> <span class="clinic-visit-muted" x-text="item.treatment_type === 'medicine' ? 'Medicine' : 'Vaccine'"></span></p>
-                        <dl class="clinic-visit-fields"><template x-for="field in clinicTreatmentFields(item)" :key="field.label"><div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div></template></dl>
+                        <dl class="clinic-visit-fields"><template x-for="field in clinicTreatmentFields(item)" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
                       </article>
                     </template>
                   </div>
@@ -774,7 +774,7 @@
                                 </template>
                               </div>
                             </td>
-                            <td x-text="clinicText(entry.notes)"></td><td x-text="clinicServicePrice(entry)"></td>
+                            <td class="note-text" x-text="clinicText(entry.notes)"></td><td x-text="clinicServicePrice(entry)"></td>
                           </tr>
                         </template>
                       </tbody>
@@ -782,15 +782,15 @@
                   </div>
                   <div class="clinic-care-block" x-show="clinicDiagnostics.length">
                     <h6>Diagnostics</h6>
-                    <template x-for="(entry, index) in clinicDiagnostics" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note" x-show="clinicText(entry.diagnostic)"><strong x-text="entry.diagnostic"></strong></p><p class="clinic-visit-note" x-show="clinicText(entry.result)" x-text="entry.result"></p><p class="clinic-visit-note" x-show="clinicText(entry.notes)" x-text="entry.notes"></p></div></template>
+                    <template x-for="(entry, index) in clinicDiagnostics" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note" x-show="clinicText(entry.diagnostic)"><strong x-text="entry.diagnostic"></strong></p><p class="clinic-visit-note" x-show="clinicText(entry.result)" x-text="entry.result"></p><p class="note-text clinic-visit-note" x-show="clinicText(entry.notes)" x-text="entry.notes"></p></div></template>
                   </div>
                   <div class="clinic-care-block" x-show="clinicPrescriptions.length">
                     <h6>Prescriptions</h6>
-                    <template x-for="(entry, index) in clinicPrescriptions" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note"><strong x-text="entry.medicine"></strong></p><p class="clinic-visit-note" x-show="clinicPrescriptionText(entry)" x-text="clinicPrescriptionText(entry)"></p></div></template>
+                    <template x-for="(entry, index) in clinicPrescriptions" :key="index"><div class="clinic-prescription"><p class="clinic-visit-note"><strong x-text="entry.medicine"></strong></p><p class="note-text clinic-visit-note" x-show="clinicPrescriptionText(entry)" x-text="clinicPrescriptionText(entry)"></p></div></template>
                   </div>
                   <div class="clinic-care-block" x-show="clinicCare?.confinement && clinicConfinementFields.length">
                     <h6>Confinement</h6>
-                    <dl class="clinic-visit-fields"><template x-for="field in clinicConfinementFields" :key="field.label"><div><dt x-text="field.label"></dt><dd x-text="field.value"></dd></div></template></dl>
+                    <dl class="clinic-visit-fields"><template x-for="field in clinicConfinementFields" :key="field.label"><div><dt x-text="field.label"></dt><dd class="note-text" x-text="field.value"></dd></div></template></dl>
                   </div>
                 </section>
                 <p role="alert" class="clinic-visit-note" x-show="clinicAttachmentError" x-text="clinicAttachmentError" style="margin-top: 1rem"></p>
@@ -798,7 +798,7 @@
                   <h5 id="clinic-followup-title">Follow-up &amp; Discharge</h5>
                   <dl class="clinic-visit-fields">
                     <div x-show="clinicText(detailsClinicRecord?.record?.follow_up_date)"><dt>Follow-up date</dt><dd x-text="formatAppointmentDate(detailsClinicRecord?.record?.follow_up_date, '')"></dd></div>
-                    <div x-show="clinicText(detailsClinicRecord?.record?.follow_up_notes)"><dt>Instructions</dt><dd x-text="detailsClinicRecord?.record?.follow_up_notes"></dd></div>
+                    <div x-show="clinicText(detailsClinicRecord?.record?.follow_up_notes)"><dt>Instructions</dt><dd class="note-text" x-text="detailsClinicRecord?.record?.follow_up_notes"></dd></div>
                   </dl>
                 </section>
                 <section class="clinic-visit-section clinic-visit-payment" x-show="clinicHasPayment(detailsClinicRecord)" aria-labelledby="clinic-payment-title">

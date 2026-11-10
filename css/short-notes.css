@@ -1,0 +1,9 @@
+.note-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+[data-short-note][data-note-invalid] {
+  border-color: #f87171;
+}

@@ -236,6 +236,7 @@ function adminClinicVaccinations() {
     },
 
     openCreateForm() {
+      globalThis.ShortNotes?.reset(this.$refs.treatmentForm);
       if (!this.canEditClinical) return;
       if (!this.pet?.id || !this.caseOngoing()) return;
 
@@ -259,6 +260,7 @@ function adminClinicVaccinations() {
     },
 
     openEditForm(record) {
+      globalThis.ShortNotes?.reset(this.$refs.treatmentForm);
       if (!this.canEditClinical) return;
       if (record?.state !== "draft") return;
       if (this.inline && (!this.caseOngoing() || String(record.clinic_appointment_id) !== String(this.appointment?.id))) return;
@@ -651,6 +653,7 @@ function adminClinicVaccinations() {
     validateForm(complete = false) {
       this.completionAttempted = complete;
       const errors = this.formValidationErrors(complete);
+      if (globalThis.ShortNotes?.validate(this.$refs.treatmentForm?.querySelector('#vaccination-notes'), this.originalNotes()) === false) return false;
       this.formErrors = errors;
       this.formErrorSummary = Object.keys(errors).length ? "Check the highlighted fields." : "";
 
@@ -660,6 +663,10 @@ function adminClinicVaccinations() {
       }
 
       return true;
+    },
+
+    originalNotes() {
+      return this.formModal.mode === 'edit' ? this.records.find(record => record.id === this.formModal.recordId)?.notes : undefined;
     },
 
     buildPayload() {
@@ -699,7 +706,7 @@ function adminClinicVaccinations() {
         clinic_appointment_id: this.formModal.clinicAppointmentId
           ? Number(this.formModal.clinicAppointmentId)
           : null,
-        notes: nullableText("notes"),
+        ...(!globalThis.ShortNotes?.unchangedLegacy(this.form.notes, this.originalNotes()) ? {notes: nullableText("notes")} : {}),
       };
     },
 

@@ -66,8 +66,8 @@ class StoreWalkinRequest extends FormRequest
             'pets.*.body_condition' => PetBodyCondition::rules(),
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
-            'pets.*.medical_conditions' => ['nullable', 'string', 'max:1000'],
-            'pets.*.special_instructions' => ['nullable', 'string', 'max:1000'],
+            'pets.*.medical_conditions' => ['nullable', 'string', 'max:300'],
+            'pets.*.special_instructions' => ['nullable', 'string', 'max:300'],
             'pets.*.haircut_requested' => ['sometimes', 'boolean'],
 
             'pets.*.grooming_preference' => ['nullable', 'string', 'max:32'],

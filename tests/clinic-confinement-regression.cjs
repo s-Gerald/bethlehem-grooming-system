@@ -92,9 +92,10 @@ function component(permission = true, id = 1) {
   confirmResult = false; await invalid.submitAdmission();
   assert.equal(requests.length, 0); assert.equal(prerequisiteSaves.length, 0); assert.equal(invalid.admissionPending, null);
   assert.equal(confirmations.at(-1).danger, false); assert.match(confirmations.at(-1).message, /Angela Santiago/);
-  invalid.admissionForm.reason = 'Observation '.repeat(150); await invalid.submitAdmission();
-  assert.ok(confirmations.at(-1).message.length < 600, 'Confirmation summarizes long reasons so actions remain reachable');
-  assert.equal(invalid.admissionForm.reason.length, 1800, 'Confirmation keeps the complete admission reason');
+  const admissionReason = 'Observation '.repeat(25);
+  invalid.admissionForm.reason = admissionReason; await invalid.submitAdmission();
+  assert.ok(confirmations.at(-1).message.includes(admissionReason), 'Confirmation shows the complete 300-character admission reason');
+  assert.equal(invalid.admissionForm.reason, admissionReason);
   invalid.admissionForm.reason = 'Observation';
   confirmResult = true; saveFails = true; await invalid.submitAdmission();
   assert.equal(requests.length, 0); assert.match(invalid.error, /Could not save the admission information/);

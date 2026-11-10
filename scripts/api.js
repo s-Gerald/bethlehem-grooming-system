@@ -2858,9 +2858,9 @@ var API = (() => {
     return request("GET", "/admin/grooming/activity", null, getAdminToken(), { force });
   }
 
-  async function adminCheckIn(bookingId, petSizes = [], internalStaffNote = null) {
+  async function adminCheckIn(bookingId, petSizes = [], internalStaffNote = null, preserveStaffNote = false) {
     // POST /api/admin/bookings/{id}/check-in  (protected — admin token)
-    return request("POST", `/admin/bookings/${bookingId}/check-in`, { pet_sizes: petSizes, internal_staff_note: internalStaffNote }, getAdminToken());
+    return request("POST", `/admin/bookings/${bookingId}/check-in`, { pet_sizes: petSizes, ...(!preserveStaffNote ? { internal_staff_note: internalStaffNote } : {}) }, getAdminToken());
   }
 
   async function adminUpdateInternalStaffNote(bookingId, note) {

@@ -552,7 +552,7 @@ function adminDashboard() {
       this.mergeConfig({
         handlers: {
           checkIn: async ({ booking, petSizes, internalStaffNote }) => {
-            await API.adminCheckIn(booking.id, petSizes, internalStaffNote);
+            await API.adminCheckIn(booking.id, petSizes, internalStaffNote, internalStaffNote === undefined);
             await this.loadAdminBookings();
             this.setTab("queued");
           },
@@ -1343,6 +1343,11 @@ function adminDashboard() {
         return;
       }
 
+      const noteFieldId = action === "checkIn" ? "checkInInternalStaffNote"
+        : ["cancel", "cancelPet"].includes(action) ? "bookingCancellationReason" : null;
+      if (noteFieldId && globalThis.ShortNotes?.validate(document.getElementById(noteFieldId),
+        action === "checkIn" ? booking.internalStaffNote : undefined) === false) return;
+
       if (["cancel", "cancelPet"].includes(action) && !this.actionConfirmModal.cancellationReason.trim()) {
         this.actionConfirmModal.error = "Enter a cancellation reason.";
         return;
@@ -1388,7 +1393,8 @@ function adminDashboard() {
           size: pet.size,
           ...(pet.confirmBodyCondition ? { body_condition: pet.bodyCondition } : {}),
         })),
-        internalStaffNote,
+        internalStaffNote: globalThis.ShortNotes?.unchangedLegacy(internalStaffNote, booking.internalStaffNote)
+          ? undefined : internalStaffNote,
       });
     },
 
@@ -3243,6 +3249,7 @@ function adminDashboard() {
     },
 
     async openPaymentModal(booking, isEarlyPayment = false, attemptId = null, restoredResponse = null) {
+      globalThis.ShortNotes?.reset(document.getElementById('groomingPaymentNotes'));
       if (this.paymentModal.open) return;
       if (!isEarlyPayment && booking?.paymentReady === false) {
         alert(booking?.paymentBlockedReason || "This visit is not ready for final payment.");
@@ -3254,7 +3261,7 @@ function adminDashboard() {
       this.paymentModal.error = "";
       this.paymentModal.petBreakdown = [];
       try {
-        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1");
+        const { loadGroomingCatalogue } = await import("../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110");
         applyPaymentCatalogue(await loadGroomingCatalogue({includeInactive: true}));
       } catch (error) {
         this.paymentModal.busy = false;
@@ -4391,6 +4398,7 @@ function adminDashboard() {
     },
 
     cancelNoteEdit() {
+      this.$el?.querySelectorAll('form[data-check-notes]').forEach(form => globalThis.ShortNotes?.reset(form));
       this.noteEditor = { kind: "", bookingPetId: null, value: "", busy: false, error: "" };
     },
 

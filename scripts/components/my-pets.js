@@ -182,7 +182,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function permittedChanges(payload) {
     return Object.fromEntries(Object.entries(payload).filter(([field, value]) =>
-      !fieldLocked(field) && !petFieldValuesMatch(editingPet?.[field] ?? null, value)));
+      !fieldLocked(field) && !petFieldValuesMatch(editingPet?.[field] ?? null, value)
+      && !(field === "medical_conditions" && globalThis.ShortNotes?.unchangedLegacy(profileInputs.medical_conditions.value, editingPet?.medical_conditions))));
   }
   function syncConfirmState() {
     if (petSaveConfirmation.saving) { petFormSubmit.disabled = true; return; }
@@ -569,7 +570,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? rows.map(([label, val]) => `
           <div class="flex items-start justify-between gap-4 text-sm">
             <span class="shrink-0 text-portal-muted">${label}</span>
-            <span class="min-w-0 break-words text-right font-semibold text-portal-text">${escHtml(String(val))}${label === "Size" ? (isClinicVerified(pet, "size") ? '<span class="sr-only"> Size verified</span>' : "") + renderBodyConditionChip(pet.body_condition, isClinicVerified(pet, "body_condition")) : ""}</span>
+            <span class="note-text text-right font-semibold text-portal-text">${escHtml(String(val))}${label === "Size" ? (isClinicVerified(pet, "size") ? '<span class="sr-only"> Size verified</span>' : "") + renderBodyConditionChip(pet.body_condition, isClinicVerified(pet, "body_condition")) : ""}</span>
           </div>`).join("")
       : `<p class="text-sm text-portal-muted">No additional details.</p>`;
 
@@ -662,6 +663,7 @@ document.addEventListener("DOMContentLoaded", () => {
     breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
     colorCombobox.setValue(pet.color, { preserveLegacy: true });
     document.getElementById("petMedical").value = pet.medical_conditions || "";
+    globalThis.ShortNotes?.reset(profileInputs.medical_conditions);
 
     updateSizeOptions();
     setStoredSize(pet.size);
@@ -743,6 +745,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const id = document.getElementById("petId").value;
     const payload = readPetPayload();
 
+    if (globalThis.ShortNotes?.validate(profileInputs.medical_conditions, editingPet?.medical_conditions) === false) return;
     const validationMessage = validatePetForm(payload);
     if (validationMessage) {
       petSaveConfirmation.reset();
@@ -971,7 +974,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const colorMessage = colorCombobox.getValidationMessage();
     if (colorMessage) return colorMessage;
-    if ((payload.medical_conditions || "").length > 1000) return "Care notes must be 1,000 characters or fewer.";
+
 
     const breedValidationMessage = fieldLocked("breed") ? "" : breedCombobox.getValidationMessage();
     if (breedValidationMessage) {

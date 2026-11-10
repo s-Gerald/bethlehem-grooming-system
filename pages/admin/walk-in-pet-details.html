@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="/css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/components/registration-actions.css?v=20261101-v2" />
+    <link rel="stylesheet" href="/css/short-notes.css" />
+    <script defer src="/scripts/utils/short-notes.js"></script>
   </head>
 
   <body class="min-h-screen bg-[#f6fafd] text-slate-800">
@@ -101,7 +103,7 @@
               Persist these fields as draft pet records before final booking
               submission once the database flow is connected.
             -->
-            <form id="addPetForm" class="space-y-5" novalidate>
+            <form data-check-notes id="addPetForm" class="space-y-5" novalidate>
               <div class="grid gap-5 md:grid-cols-2">
                 <div>
                   <label
@@ -347,10 +349,10 @@
                   >
                     Allergies &amp; Special Care Notes <span class="text-slate-400 font-normal">(optional)</span>
                   </label>
-                  <textarea
+                  <textarea data-short-note
                     id="medicalNotes"
                     name="medicalNotes"
-                    rows="3" maxlength="1000"
+                    rows="3"
                     placeholder="e.g. sensitive to shampoo, needs gentle handling"
                     class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#315b7e] focus:ring-2 focus:ring-[#315b7e]/20"></textarea>
                 </div>
@@ -417,7 +419,7 @@
     <script src="/scripts/api.js?auth-reliability=20261107&v=session-inactivity-20260828&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261010&clinic=roles-20261010&groomers=named-20261016&session=lock-20261018&navigation=20261018&admin-perf=20261019&session-presentation=walk-in-20261021&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1"></script>
     <script
       type="module"
-      src="/scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&pet-fields=20261030-v1&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1&intake-reliability=20261029&pet-sessions=20261031-v1&same-service=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&name-policy=20261110"
+      src="/scripts/components/walk-in-pet-step.js?v=walk-in-owner-mode-20260924&walk-in=entry-context-20261015&release=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&consent=20261017&catalog=services-20261017-2&icons=20261018&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&pet-fields=20261030-v1&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1&intake-reliability=20261029&pet-sessions=20261031-v1&same-service=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&name-policy=20261110&short-notes=20261110"
     ></script>
   </body>
 </html>

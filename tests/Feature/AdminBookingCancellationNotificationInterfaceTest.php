@@ -17,10 +17,11 @@ class AdminBookingCancellationNotificationInterfaceTest extends TestCase
             ':required=',
             'id="bookingCancellationReason"',
             'x-model="actionConfirmModal.cancellationReason"',
-            'maxlength="500"',
         ] as $contract) {
             $this->assertStringContainsString($contract, $appointments);
         }
+
+        $this->assertMatchesRegularExpression('/<textarea\b[^>]*\bdata-short-note\b[^>]*\bid="bookingCancellationReason"/s', $appointments);
 
         $this->assertStringNotContainsString(
             'If left blank, the customer will be told that the grooming online registration was cancelled by the clinic.',

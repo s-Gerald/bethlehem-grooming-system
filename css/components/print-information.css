@@ -432,6 +432,7 @@
   }
 
   .pet-grooming-print-notes {
+    overflow-wrap: anywhere;
     white-space: pre-wrap;
   }
 

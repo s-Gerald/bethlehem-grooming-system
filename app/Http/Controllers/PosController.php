@@ -46,7 +46,7 @@ class PosController extends Controller
             'payment_method' => 'sometimes|in:cash',
             'amount_tendered' => 'required|numeric|decimal:0,2|min:0',
             'change_amount' => 'sometimes|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,
-            'notes' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:300',
         ], [
             'amount_tendered.required' => 'Amount paid is required.',
             'items.*.quantity.integer' => 'Quantity must be a whole number.',

@@ -544,6 +544,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $saved = BookingPet::firstOrFail();
             $this->assertSame($haircut, $saved->haircut_requested);
             $this->assertSame($preference, $saved->grooming_preference);
+            $this->assertSame($notes, $saved->special_instructions);
             $this->assertSame($haircut, $response->json($walkin ? 'pets.0.haircut_requested' : 'booking.pets.0.haircut_requested'));
         }
     }
@@ -556,7 +557,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 $cases[] = [$walkin, 'deluxe_dog_grooming', 'custom_hairstyle', false, $notes, 'special_instructions'];
                 $cases[] = [$walkin, 'cat_full_grooming', null, true, $notes, 'special_instructions'];
             }
-            $cases[] = [$walkin, 'cat_full_grooming', null, true, 'Trim the body, leave the tail fluffy.', null];
+            $cases[] = [$walkin, 'cat_full_grooming', null, true, str_repeat('x', 300), null];
             $cases[] = [$walkin, 'cat_full_grooming', null, false, 'Sensitive skin', null];
             $cases[] = [$walkin, 'deluxe_dog_grooming', 'puppy_cut', false, null, null];
             $cases[] = [$walkin, 'deluxe_dog_grooming', 'custom_hairstyle', false, 'Short body, rounded face', null];
@@ -674,7 +675,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
     {
         foreach ([false, true] as $walkin) {
             $this->authenticateAs($walkin ? 'staff' : 'customer');
-            foreach ([['color', 'Brown123'], ['color', '123'], ['color', '---'], ['color', str_repeat('x', 51)], ['medical_conditions', str_repeat('x', 1001)]] as [$field, $value]) {
+            foreach ([['color', 'Brown123'], ['color', '123'], ['color', '---'], ['color', str_repeat('x', 51)], ['medical_conditions', str_repeat('x', 301)], ['special_instructions', str_repeat('x', 301)]] as [$field, $value]) {
                 $pet = ['pet_name' => 'Invalid color', 'species' => 'Dog', $field => $value];
                 $this->submitSignedGrooming($walkin ? '/api/admin/walk-in' : '/api/booking/store', $walkin
                     ? ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567', 'pets' => [[...$pet, 'services' => [['service_slug' => 'partial_grooming']]]]]
@@ -1108,6 +1109,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ]);
         $this->authenticateAs('staff');
 
+        $this->patchJson('/api/admin/bookings/1/internal-staff-note', ['internal_staff_note' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('internal_staff_note');
+
         foreach (['waiting_to_arrive', 'checked_in', 'in_progress'] as $status) {
             DB::table('bookings')->where('booking_id', 1)->update(['status' => $status]);
             $this->patchJson('/api/admin/bookings/1/internal-staff-note', [
@@ -1148,8 +1152,10 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('staff');
 
         $this->patchJson('/api/admin/bookings/1/pets/1/grooming-visit-notes', [
-            'grooming_visit_notes' => 'Nervous around dryers',
-        ])->assertOk()->assertJsonPath('grooming_visit_notes', 'Nervous around dryers');
+            'grooming_visit_notes' => str_repeat('x', 300),
+        ])->assertOk()->assertJsonPath('grooming_visit_notes', str_repeat('x', 300));
+        $this->patchJson('/api/admin/bookings/1/pets/1/grooming-visit-notes', ['grooming_visit_notes' => str_repeat('x', 301)])
+            ->assertUnprocessable()->assertJsonValidationErrors('grooming_visit_notes');
 
         DB::table('bookings')->where('booking_id', 1)->update(['status' => 'in_progress']);
         $this->patchJson('/api/admin/bookings/1/pets/1/grooming-visit-notes', [
@@ -2575,7 +2581,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         ]);
 
         $this->postJson('/api/admin/bookings/60/cancel', [
-            'cancellation_reason' => str_repeat('a', 501),
+            'cancellation_reason' => str_repeat('a', 301),
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('cancellation_reason');

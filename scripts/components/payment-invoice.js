@@ -185,7 +185,7 @@ window.PaymentInvoice = (() => {
     </div>
     ${clinic ? '' : `<div x-show="receiptModal.notes" class="payment-invoice-notes">
       <p class="payment-invoice-notes-label">Notes</p>
-      <p x-text="receiptModal.notes"></p>
+      <p class="note-text" x-text="receiptModal.notes"></p>
     </div>`}
   </section>
 </section>`;

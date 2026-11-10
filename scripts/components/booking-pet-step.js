@@ -20,7 +20,7 @@ import {
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
-} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
+} from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=20261110";
 import { createBreedCombobox } from "./breed-combobox.js?pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
@@ -312,7 +312,7 @@ function buildPetSummaryHtml(pet) {
       <p><span class="font-semibold text-slate-700">Size:</span> ${escapeHtml(
         pet.size ? formatPetSizeLabel(pet.size) : "Not specified",
       )}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}</p>
-      <p><span class="font-semibold text-slate-700">Allergies &amp; Special Care Notes:</span> ${escapeHtml(
+      <p class="note-text"><span class="font-semibold text-slate-700">Allergies &amp; Special Care Notes:</span> ${escapeHtml(
         pet.medicalNotes || "None",
       )}</p>
     </div>
@@ -617,7 +617,7 @@ function validatePetForm(values) {
 
   const colorMessage = colorCombobox.getValidationMessage();
   if (colorMessage) return colorMessage;
-  if (values.medicalNotes.length > 1000) return "Care notes must be 1,000 characters or fewer.";
+
 
   const breedValidationMessage = breedCombobox.getValidationMessage();
   if (breedValidationMessage) {
@@ -752,6 +752,8 @@ function handleBack() {
 }
 
 function handleNext() {
+  if (globalThis.ShortNotes && elements.medicalNotes?.getClientRects().length
+    && !globalThis.ShortNotes.validate(elements.medicalNotes)) return;
   if (savedPetsLoading || petAvailabilityFailed || getBookingPets().some(pet => petSessionRestriction(pet))) return;
   const bookingPets = getBookingPets();
 
