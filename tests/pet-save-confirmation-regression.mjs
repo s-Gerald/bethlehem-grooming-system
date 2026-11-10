@@ -3,6 +3,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { createPetSaveConfirmation } from "../scripts/components/pet-save-confirmation.js";
 import { createPetBirthdateField } from "../scripts/components/pet-birthdate.js";
+import { renderBodyConditionChip } from "../scripts/components/pet-body-condition.js";
 import * as weightTools from "../scripts/components/pet-weight-size.js";
 import * as petService from "../scripts/services/pet-service.js";
 import * as clinicService from "../scripts/services/clinic-visit-service.js";
@@ -48,7 +49,7 @@ function mount(clinic) {
   globalThis.localStorage = storage();
   globalThis.sessionStorage = storage();
   const form = get("addPetForm");
-  for (const id of ["petType", "petName", "gender", "birthdate", "breed", "color", "weight", "furType", "size", "medicalNotes"]) form[id] = get(id);
+  for (const id of ["petType", "petName", "gender", "birthdate", "breed", "color", "furType", "size", "medicalNotes"]) form[id] = get(id);
   get("birthdate").form = form;
   form.reset = () => { for (const value of Object.values(form)) if (value?.value !== undefined) value.value = ""; };
   const combobox = ({ input }) => ({
@@ -59,8 +60,8 @@ function mount(clinic) {
   let writes = 0, save = async payload => ({ pet: { pet_id: 1, ...payload } });
   const context = vm.createContext({
     ...weightTools, ...clinicService, ...ageTools, ...selectionTools,
-    normalizePetSize, formatPetSizeLabel, createPetSaveConfirmation, createPetBirthdateField,
-    syncWeightSizeFields: weightTools.syncPetWeightAndSize,
+    normalizePetSize, formatPetSizeLabel, createPetSaveConfirmation, createPetBirthdateField, renderBodyConditionChip,
+    normalizeApiPet: petService.normalizeApiPet,
     GROOMING_MAX_PETS: petService.MAX_PETS_PER_BOOKING,
     getSavedPets: petService.getSavedPets, getStoredBookingPets: petService.getBookingPets,
     saveStoredBookingPets: petService.saveBookingPets, addStoredPet: petService.addPetToBooking,

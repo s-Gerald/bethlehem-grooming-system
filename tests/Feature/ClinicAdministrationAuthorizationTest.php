@@ -1191,12 +1191,14 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     }
 
     #[DataProvider('receptionistRoles')]
-    public function test_receptionist_cannot_edit_existing_patients_through_the_api(string $subrole): void
+    public function test_receptionist_can_edit_the_ordinary_profile_but_not_clinical_records(string $subrole): void
     {
         DB::table('pets')->insert(['pet_id' => 1, 'pet_name' => 'Mochi', 'species' => 'cat']);
         $this->authenticateAs('staff', subrole: $subrole);
-        $this->putJson('/api/admin/pets/1', ['pet_name' => 'Changed'])->assertForbidden();
-        $this->assertDatabaseHas('pets', ['pet_id' => 1, 'pet_name' => 'Mochi']);
+        $this->putJson('/api/admin/pets/1', ['pet_name' => 'Changed'])->assertOk();
+        $this->assertDatabaseHas('pets', ['pet_id' => 1, 'pet_name' => 'Changed']);
+        $this->putJson('/api/admin/clinic/pets/1', ['pet_name' => 'Blocked'])->assertForbidden();
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['body_condition_score' => 8, 'weight_kg' => 4])->assertForbidden();
     }
 
     #[DataProvider('receptionistRoles')]
@@ -1271,7 +1273,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->assertSame(['size', 'weight'], json_decode(DB::table('pets')->where('pet_id', 501)->value('clinic_verified_fields'), true));
     }
 
-    public function test_customer_weight_sets_estimated_size_even_if_a_different_size_is_sent(): void
+    public function test_customer_size_is_saved_even_if_weight_is_submitted(): void
     {
         $this->authenticateAs('customer', 10);
 
@@ -1282,7 +1284,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'size' => 'small',
         ])
             ->assertCreated()
-            ->assertJsonPath('pet.size', 'medium')
+            ->assertJsonPath('pet.size', 'small')
             ->assertJsonPath('pet.clinic_verified_fields', null);
     }
 
@@ -1305,7 +1307,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'weight' => 20,
             'size' => 'medium',
         ])
-            ->assertUnprocessable()->assertJsonValidationErrors(['weight', 'size']);
+            ->assertUnprocessable()->assertJsonValidationErrors('size');
 
         $this->assertDatabaseHas('pets', ['pet_id' => 502, 'weight' => 8, 'size' => 'small']);
         $this->assertSame(['size'], json_decode(DB::table('pets')->where('pet_id', 502)->value('clinic_verified_fields'), true));

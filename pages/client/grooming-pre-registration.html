@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Grooming Queue Registration</title>
-    <link rel="stylesheet" href="/css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="/css/output.css?flow=grooming-order-20261016&age=20261016&consent=20261017&services=20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1&pet-profile=20261110-v1" />
     <link rel="stylesheet" href="/css/custom.css?v=site-assets-20261001&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1" />
     <link rel="stylesheet" href="/css/grooming-preferences.css?v=20261009&services=20261026&grooming=actual-20261026">
     <link rel="stylesheet" href="/css/components/confirmation.css?v=20261010&registration-ui=20261027-v3" />
@@ -200,6 +200,52 @@
                   </div>
                 </div>
                 <div>
+                  <label
+                    for="size"
+                    class="mb-1 block text-sm font-medium text-portal-text"
+                  >
+                    Size <span class="text-slate-400 font-normal">(optional)</span>
+                  </label>
+
+                  <div id="sizeCombobox" class="relative">
+                    <div class="relative">
+                      <input
+                        id="size"
+                        name="size"
+                        type="text"
+                        placeholder="Select pet type first"
+                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        role="combobox"
+                        aria-autocomplete="none"
+                        aria-controls="sizeOptions"
+                        aria-expanded="false"
+                        aria-invalid="false"
+                        autocomplete="off"
+                        readonly
+                        disabled
+                      />
+                      <button
+                        id="sizeDropdownButton"
+                        type="button"
+                        class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active disabled:cursor-not-allowed disabled:text-slate-300"
+                        aria-label="Show size options"
+                        aria-controls="sizeOptions"
+                        aria-expanded="false"
+                        disabled
+                      >
+                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
+                      </button>
+                    </div>
+                    <div
+                      id="sizeOptions"
+                      class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
+                      role="listbox"
+                      aria-label="Size options"
+                    ></div>
+                  </div>
+                  <p id="sizeError" class="mt-2 hidden text-sm text-red-600"></p>
+                </div>
+                <div>
                   <label for="gender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span></label>
                   <div id="genderCombobox" class="relative">
                     <div class="relative">
@@ -279,27 +325,6 @@
                 </div>
                 <div>
                   <label
-                    for="weight"
-                    class="mb-1 block text-sm font-medium text-portal-text"
-                  >
-                    Weight <span class="text-slate-400 font-normal">(optional)</span>
-                  </label>
-                  <div class="relative">
-                    <input
-                    id="weight"
-                    name="weight"
-                    type="text"
-                    inputmode="decimal"
-                    placeholder="e.g. 4.25"
-                    aria-invalid="false" aria-describedby="weightError"
-                    class="w-full rounded-xl border border-portal-border bg-white px-4 pr-12 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active"
-                  />
-                    <span class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">kg</span>
-                  </div>
-                  <p id="weightError" role="alert" class="hidden mt-1 text-xs text-red-600"></p>
-                </div>
-                <div>
-                  <label
                     for="furType"
                     class="mb-1 block text-sm font-medium text-portal-text"
                   >
@@ -342,52 +367,6 @@
                     ></div>
                   </div>
                   <p id="furTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
-                </div>
-                <div>
-                  <label
-                    for="size"
-                    class="mb-1 block text-sm font-medium text-portal-text"
-                  >
-                    Size <span class="text-slate-400 font-normal">(optional)</span>
-                  </label>
-
-                  <div id="sizeCombobox" class="relative">
-                    <div class="relative">
-                      <input
-                        id="size"
-                        name="size"
-                        type="text"
-                        placeholder="Select pet type first"
-                        class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                        role="combobox"
-                        aria-autocomplete="none"
-                        aria-controls="sizeOptions"
-                        aria-expanded="false"
-                        aria-invalid="false"
-                        autocomplete="off"
-                        readonly
-                        disabled
-                      />
-                      <button
-                        id="sizeDropdownButton"
-                        type="button"
-                        class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active disabled:cursor-not-allowed disabled:text-slate-300"
-                        aria-label="Show size options"
-                        aria-controls="sizeOptions"
-                        aria-expanded="false"
-                        disabled
-                      >
-                        <svg class="h-5 w-5 fill-current" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
-                      </button>
-                    </div>
-                    <div
-                      id="sizeOptions"
-                      class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
-                      role="listbox"
-                      aria-label="Size options"
-                    ></div>
-                  </div>
-                  <p id="sizeError" class="mt-2 hidden text-sm text-red-600"></p>
                 </div>
                 <div class="md:col-span-2">
                   <label
@@ -680,6 +659,6 @@
     <main id="confirmationRoot" class="confirmation-page"></main>
     </div>
     <script src="/scripts/api.js?auth-reliability=20261107&v=customer-cache-20261005-v1&release=grooming-pricing-20261006&auth=session-scope-20261006&capacity=20261009&groomers=named-20261016&consent=20261016&session=lock-20261018&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&urls=20261103"></script>
-    <script type="module" src="/scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-v1&registration-reference=20261106-v1&owner-name=20261108"></script>
+    <script type="module" src="/scripts/components/grooming-pre-registration.js?v=grooming-actual-20261026&release=grooming-pricing-20261006&pet-weight=pet-weight-size-20261107-v1&copy=grooming-terminology-20261016&flow=grooming-order-20261016&groomers=named-20261016&consent=20261017&age=20261016&catalog=services-20261017-2&phone=20261022&pet-fields=20261030-v1&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&pet-care=20261027-v1&mobile-format=20261029&customer-ux=20261031-v1&service-access=20261031-v1&pet-sessions=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&queue-copy=20261103-v1&registration-reference=20261106-v1&owner-name=20261108&pet-profile=20261110-v1"></script>
   </body>
 </html>

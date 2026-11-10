@@ -45,27 +45,7 @@ export async function loadPetsFromApi(options = {}) {
       throw new Error("Unable to verify pet availability.");
     }
     // Convert backend field names to frontend format
-    const mappedPets = apiPets.map((p) => {
-      const sizeVerified = Array.isArray(p.clinic_verified_fields)
-        && p.clinic_verified_fields.includes("size");
-      return {
-        id: String(p.pet_id),
-        sessionAvailability: p.session_availability,
-        petName: p.pet_name || "",
-        petType: p.species || "",
-        gender: p.gender || "",
-        birthdate: p.birthdate || "",
-        breed: p.breed || "",
-        color: p.color || "",
-        weight: formatSavedWeight(p.weight),
-        furType: p.fur_type || "",
-        size: sizeVerified
-          ? p.size || ""
-          : (getSizeForStoredWeight(p.species, p.weight).toLowerCase().replaceAll(" ", "_") || p.size || ""),
-        sizeVerified,
-        medicalNotes: p.medical_conditions || "",
-      };
-    });
+    const mappedPets = apiPets.map(normalizeApiPet);
 
     // Replace entirely — the API is the source of truth for the logged-in user.
     // Never merge with existing localStorage data because it may contain
@@ -105,6 +85,28 @@ export function getBookingSchedule() {
 
 // ── Pet object helpers ────────────────────────────────────────────────────
 
+export function normalizeApiPet(pet) {
+  const sizeVerified = Array.isArray(pet.clinic_verified_fields) && pet.clinic_verified_fields.includes("size");
+  // Match Pet::groomingSize for historical pets with staff-recorded weights.
+  const estimatedSize = sizeVerified ? "" : getSizeForStoredWeight(pet.species, pet.weight);
+  return {
+    id: String(pet.pet_id),
+    sessionAvailability: pet.session_availability,
+    petName: pet.pet_name || "",
+    petType: pet.species || "",
+    gender: pet.gender || "",
+    birthdate: pet.birthdate || "",
+    breed: pet.breed || "",
+    color: pet.color || "",
+    weight: formatSavedWeight(pet.weight),
+    furType: pet.fur_type || "",
+    size: estimatedSize.toLowerCase().replaceAll(" ", "_") || pet.size || "",
+    sizeVerified,
+    bodyConditionLabel: pet.body_condition_label ?? null,
+    medicalNotes: pet.medical_conditions || "",
+  };
+}
+
 export function createPetObject(formData) {
   return {
     id: crypto.randomUUID(),
@@ -114,7 +116,6 @@ export function createPetObject(formData) {
     birthdate: formData.birthdate || "",
     breed: formData.breed.trim(),
     color: formData.color.trim(),
-    weight: formData.weight.trim(),
     furType: formData.furType,
     size: formData.size,
     sizeVerified: false,

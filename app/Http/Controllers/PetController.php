@@ -25,7 +25,7 @@ class PetController extends Controller
     {
         $archived = (int) $request->query('archived', 0);
 
-        $pets = Pet::where('user_id', $request->user()->user_id)
+        $pets = Pet::withBodyCondition()->where('user_id', $request->user()->user_id)
             ->where('is_archived', $archived)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -46,7 +46,7 @@ class PetController extends Controller
     // GET /api/pets/{id}
     public function show(Request $request, $id)
     {
-        $pet = Pet::where('pet_id', $id)
+        $pet = Pet::withBodyCondition()->where('pet_id', $id)
             ->where('user_id', $request->user()->user_id)
             ->first();
 
@@ -75,7 +75,6 @@ class PetController extends Controller
             'birthdate' => ['nullable', new ValidPetBirthdate],
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
-            'weight' => ['nullable', new ValidPetWeight],
             'color' => ['nullable', 'string', new ValidPetColor],
             'medical_conditions' => 'nullable|string|max:1000',
         ]);
@@ -84,8 +83,6 @@ class PetController extends Controller
             $request->user()->user_id,
             $data['pet_name'],
         );
-        $data = PetWeightSize::withComputedSize($data);
-
         $pet = Pet::create([
             'user_id' => $request->user()->user_id,
             'pet_name' => $data['pet_name'],
@@ -95,7 +92,6 @@ class PetController extends Controller
             'birthdate' => $data['birthdate'] ?? null,
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
-            'weight' => $data['weight'] ?? null,
             'color' => ValidPetColor::validatedColor($data),
             'medical_conditions' => $data['medical_conditions'] ?? null,
             'is_archived' => 0,
@@ -117,7 +113,7 @@ class PetController extends Controller
             return response()->json(['success' => false, 'message' => 'Pet not found.'], 404);
         }
         $attributes = PetInformation::customerAttributes($pet,
-            $request->only(array_keys(PetInformation::CUSTOMER_FIELDS)));
+            $request->only(PetInformation::CUSTOMER_EDITABLE_FIELDS));
         $effective = [...$pet->only(array_keys(PetInformation::FIELDS)), ...$attributes];
         $rules = [
             'pet_name' => 'required|string|max:100',
@@ -127,7 +123,6 @@ class PetController extends Controller
             'birthdate' => ['nullable', new ValidPetBirthdate],
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
-            'weight' => ['nullable', new ValidPetWeight],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
             'medical_conditions' => 'nullable|string|max:1000',
         ];
@@ -146,8 +141,7 @@ class PetController extends Controller
     public function adminUpdate(Request $request, $id)
     {
         $actor = $request->user();
-        if (! in_array($actor?->role, ['admin', 'staff'], true)
-            || ($actor->clinicPermissions()['access'] && ! $actor->clinicPermissions()['clinical'])) {
+        if (! in_array($actor?->role, ['admin', 'staff'], true)) {
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
 

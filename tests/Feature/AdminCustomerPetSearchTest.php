@@ -11,6 +11,8 @@ use Tests\TestCase;
 
 class AdminCustomerPetSearchTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -45,8 +47,11 @@ class AdminCustomerPetSearchTest extends TestCase
             $table->string('pet_name');
             $table->string('species');
             $table->string('breed')->nullable();
+            $table->string('size')->nullable();
             $table->boolean('is_archived')->default(false);
+            $table->timestamp('created_at')->nullable();
         });
+        $this->createPetBodyConditionSchema();
 
         DB::table('users')->insert([
             [
@@ -169,6 +174,19 @@ class AdminCustomerPetSearchTest extends TestCase
             ->assertOk()
             ->assertJsonPath('petTotal', 0)
             ->assertJsonCount(0, 'pets');
+    }
+
+    public function test_staff_customer_pet_summary_returns_size_and_the_friendly_condition_only(): void
+    {
+        DB::table('pets')->where('pet_id', 101)->update(['size' => 'large']);
+        $visitId = DB::table('clinic_appointments')->insertGetId(['pet_id' => 101, 'status' => 'completed', 'appointment_date' => '2026-01-01']);
+        DB::table('clinic_records')->insert(['clinic_appointment_id' => $visitId]);
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $visitId, 'body_condition_score' => 3]);
+
+        $this->getJson('/api/admin/customers/10')->assertOk()
+            ->assertJsonPath('customer.pets.0.size', 'large')
+            ->assertJsonPath('customer.pets.0.bodyConditionLabel', 'Thin')
+            ->assertJsonMissingPath('customer.pets.0.body_condition_score');
     }
 
     public function test_customer_counts_keep_exact_tiers_without_per_customer_queries(): void

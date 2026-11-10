@@ -11,6 +11,7 @@ const bookings = { bookings: [], history: [], history_total: 0 };
 let healthRecordTools;
 let petWeightTools;
 let normalizePetSize;
+let renderBodyConditionChip;
 
 class Storage {
   constructor() { this.values = new Map(); }
@@ -416,7 +417,7 @@ function mountPage(env, page) {
   });
   Object.assign(context, {
     ...healthRecordTools,
-    ...petWeightTools, normalizePetSize, syncWeightSizeFields: petWeightTools?.syncPetWeightAndSize,
+    ...petWeightTools, normalizePetSize, renderBodyConditionChip,
     createColorCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox, createFixedOptionCombobox: combobox,
     breedCoatCatalogueReady: Promise.resolve(), URLSearchParams,
   });
@@ -532,7 +533,7 @@ async function testActualPageLoaders() {
 async function testMyPetsStaticModalsAndWorkflows() {
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const env = environment();
-  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 0.1, size: "small", medical_conditions: "Sensitive skin", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color", "medical_conditions"] };
+  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 0.1, size: "small", body_condition_label: "Thin", medical_conditions: "Sensitive skin", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color", "medical_conditions"] };
   const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
   const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
     ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
@@ -540,6 +541,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   const ui = mountPage(env, "my-pets.html");
   await flush();
   const el = ui.element;
+  assert.match(el("petsGrid").innerHTML, /Small ✓<span class="pet-body-condition">Thin<\/span>/);
   const form = el("petModal"), confirmation = el("petConfirmationModal");
   const open = modal => !modal.classList.contains("hidden");
   const writes = () => env.calls.filter(call => call.method !== "GET");
@@ -559,16 +561,16 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("petFormSubmit").textContent.trim(), "Save Pet");
   assert.equal(el("petSaveWarning").hidden, true);
   el("petName").value = "New pet";
-  el("petSpecies").value = "Dog";
-  el("petWeight").value = "-1";
+  el("petSpecies").value = "Cat";
+  el("petSize").value = "Extra Large";
   await el("petForm").dispatch("submit");
   assert.equal(el("petSaveWarning").hidden, true, "Invalid submissions never request confirmation");
   const validation = el("petFormError").textContent;
-  assert.match(validation, /greater than 0/);
+  assert.match(validation, /Select a size available for this pet type/);
   form.scrollTop = 120;
   await accidentalDismissal(form);
   assert.equal(el("petName").value, "New pet");
-  assert.equal(el("petSpecies").value, "Dog");
+  assert.equal(el("petSpecies").value, "Cat");
   assert.equal(el("petFormError").textContent, validation);
   assert.equal(form.scrollTop, 120);
   assert.equal(el("petsPageShell").inert, true);
@@ -587,7 +589,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   await el("addPetBtn").dispatch("click");
   el("petName").value = "New pet";
   el("petSpecies").value = "Dog";
-  el("petWeight").value = "5";
+  el("petSize").value = "Small";
   el("petBirthdate").value = '1700-01-01';
   await el("petForm").dispatch("submit", { stopImmediatePropagation() {} });
   assert.equal(el("petSaveWarning").hidden, true);
@@ -605,10 +607,16 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("petFormSubmit").textContent, "Save Pet");
   el("petName").value = "New pet";
   el("petSpecies").value = "Dog";
-  el("petWeight").value = "5";
+  el("petSize").value = "Small";
   el("petFormSubmit").focus();
   const pendingSave = deferred();
-  env.respond((endpoint, options) => endpoint === "/pets" && options.method === "POST" ? pendingSave.promise : petResponse(endpoint));
+  env.respond((endpoint, options) => {
+    if (endpoint !== "/pets" || options.method !== "POST") return petResponse(endpoint);
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.size, "small");
+    assert.equal(Object.hasOwn(payload, "weight"), false);
+    return pendingSave.promise;
+  });
   const beforeSave = writes().length;
   await el("petForm").dispatch("submit");
   assert.equal(writes().length, beforeSave, "First valid Save must not write");
@@ -651,7 +659,6 @@ async function testMyPetsStaticModalsAndWorkflows() {
   await el("edit-1").dispatch("click");
   assert.equal(el("petName").disabled, true);
   assert.equal(el("petSpecies").disabled, true);
-  assert.equal(el("petWeight").disabled, true);
   assert.equal(el("petBirthdate").disabled, true);
   assert.equal(el("petBirthdate").value, '1700-01-01', 'Locked historical dates remain visible');
   assert.equal(el("petSize").disabled, true);
@@ -771,6 +778,7 @@ async function main() {
 
   healthRecordTools = await import('../scripts/components/customer-health-records.js');
   petWeightTools = await import('../scripts/components/pet-weight-size.js');
+  ({ renderBodyConditionChip } = await import('../scripts/components/pet-body-condition.js'));
   ({ normalizePetSize } = await import('../scripts/services/booking-draft-service.js'));
   for (const test of [testCrossDocumentFlowAndColdMiss, testRevalidationAndFailure, testDeduplicationAndRaces, testServiceEligibilityCacheAfterMutationsAndExpiry, testInvalidation, testSessionIsolationAndFreshness, testExcludedDataAndStorageFailure, testActualPageLoaders, testMyPetsStaticModalsAndWorkflows]) {
     let timeout;

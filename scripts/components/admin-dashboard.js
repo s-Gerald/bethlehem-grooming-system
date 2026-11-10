@@ -1008,6 +1008,7 @@ function adminDashboard() {
         name: pet.petName ?? pet.pet_name ?? pet.name ?? "Pet",
         weight: pet.weight ?? "—",
         currentSize: normalizePaymentSize(pet.size) || "",
+        bodyConditionLabel: pet.bodyConditionLabel,
         verified: Boolean(pet.sizeVerified),
         species: pet.species ?? pet.petType,
         size: normalizePaymentSizeForPet(pet.size, pet.species ?? pet.petType),
@@ -2142,7 +2143,7 @@ function adminDashboard() {
     },
 
     groomingPetIdentity(pet) {
-      return [pet.species, pet.breed, this.formatPetCardValue(pet.size, ""), pet.weight, pet.furType]
+      return [pet.species, pet.breed, pet.weight, pet.furType]
         .filter((value) => value && value !== "—").join(" · ");
     },
 

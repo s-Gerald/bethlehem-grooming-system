@@ -6,6 +6,7 @@ import * as grooming from "../scripts/services/grooming-service.js?v=managed-ser
 import * as draft from "../scripts/services/booking-draft-service.js";
 import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
 import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261107-v1";
+import { renderBodyConditionChip } from "../scripts/components/pet-body-condition.js";
 import * as petGroomers from "../scripts/components/pet-groomer-selection.js?services=20261026";
 
 import * as serviceSelection from "../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105";
@@ -41,7 +42,7 @@ function createRenderer(file) {
     if (!elements.has(id)) elements.set(id, { classList: classList(), addEventListener() {} });
     return elements.get(id);
   } };
-  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, ...serviceSelection, createGroomingEstimateFlow, document, sessionStorage: { getItem() { return null; }, removeItem() {}, setItem() {} }, window: {} });
+  const context = vm.createContext({ ...grooming, ...draft, ...petGroomers, formatSavedWeight, renderBodyConditionChip, ...serviceSelection, createGroomingEstimateFlow, document, sessionStorage: { getItem() { return null; }, removeItem() {}, setItem() {} }, window: {} });
   const source = fs.readFileSync(new URL(`../scripts/components/${file}.js`, import.meta.url), "utf8")
     .replace(/import[\s\S]*?from\s+"[^"]+";\s*/g, "")
     .replace(/export\s+(?=(?:async\s+)?function)/g, "");

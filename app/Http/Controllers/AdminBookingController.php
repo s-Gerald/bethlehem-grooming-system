@@ -105,6 +105,9 @@ class AdminBookingController extends Controller
         }
 
         $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
+        $summaryRelations = ['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.groomer', 'bookingServices.service',
+            'bookingPets.pet' => fn ($query) => $query->withBodyCondition(),
+            'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)];
 
         // Incoming: dashboard sees only the selected day; appointments can opt in to today + future.
         $incomingQuery = Booking::where('booking_date', '>=', $rangeStart->toDateString())
@@ -112,8 +115,7 @@ class AdminBookingController extends Controller
             ->where('status', 'waiting_to_arrive');
         $incoming = $incomingQuery
             ->withExists('groomingConsent')
-            ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
+            ->with($summaryRelations)
             ->orderBy('created_at')->orderBy('booking_id')
             ->get()
             ->tap(fn ($bookings) => $estimates->forBookings($bookings))
@@ -129,8 +131,7 @@ class AdminBookingController extends Controller
             });
         $queued = $queuedQuery
             ->withExists('groomingConsent')
-            ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
+            ->with($summaryRelations)
             ->orderBy('queue_number', 'asc')
             ->get()
             ->tap(fn ($bookings) => $estimates->forBookings($bookings))
@@ -152,8 +153,7 @@ class AdminBookingController extends Controller
         });
         $inProgress = $inProgressQuery
             ->withExists('groomingConsent')
-            ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
+            ->with($summaryRelations)
             ->orderBy('queue_number', 'asc')
             ->get()
             ->tap(fn ($bookings) => $estimates->forBookings($bookings))
@@ -168,8 +168,7 @@ class AdminBookingController extends Controller
 
         $forPayment = Booking::where('status', 'for_payment')
             ->withExists('groomingConsent')
-            ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
+            ->with($summaryRelations)
             ->orderBy('queue_number', 'asc')
             ->get()
             ->tap(fn ($bookings) => $estimates->forBookings($bookings))
@@ -177,8 +176,7 @@ class AdminBookingController extends Controller
 
         $released = Booking::where('status', 'released')
             ->withExists('groomingConsent')
-            ->with(['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.pet', 'bookingPets.groomer', 'bookingServices.service',
-                'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)])
+            ->with($summaryRelations)
             ->orderBy('queue_number', 'asc')
             ->get()
             ->tap(fn ($bookings) => $estimates->forBookings($bookings))
@@ -1514,6 +1512,7 @@ class AdminBookingController extends Controller
                     'breed' => $pet?->breed ?? '—',
                     'size' => $bp->confirmed_size ?? $pet?->groomingSize() ?? '—',
                     'sizeVerified' => $pet?->hasClinicVerifiedSize() ?? false,
+                    'bodyConditionLabel' => $pet?->body_condition_label,
                     'groomingPreference' => $bp->grooming_preference,
                     'groomingPreferenceLabel' => $bp->grooming_preference_label,
                     'registeredSize' => $bp->registered_size,

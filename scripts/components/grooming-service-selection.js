@@ -1,4 +1,5 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import { renderBodyConditionChip } from "./pet-body-condition.js";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import {
@@ -122,10 +123,10 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
               )} · ${escapeHtml(pet.breed || "Breed not specified")}</p>
             </div>
           </div>
-          <span class="shrink-0 rounded-full bg-[#edf5fc] px-3 py-1 text-xs font-semibold text-[#315b7e]">
-            ${escapeHtml(formatPetSizeLabel(pet.size))} · ${pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}
-          </span>
         </div>
+        <p class="mt-2 text-xs font-semibold text-slate-600">
+          Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}
+        </p>
         ${pet.sizeVerified ? "" : '<p class="mt-2 text-xs text-slate-500">Size may be confirmed by clinic staff at check-in.</p>'}
       </div>
 

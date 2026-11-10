@@ -15,6 +15,7 @@ use Tests\TestCase;
 
 class CustomerNameUpdateTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
     protected function setUp(): void
     {
         parent::setUp();
@@ -64,7 +65,9 @@ class CustomerNameUpdateTest extends TestCase
             $table->id();
             $table->unsignedInteger('user_id');
             $table->unsignedInteger('pet_id');
+            $table->string('status')->nullable();
         });
+        $this->createPetBodyConditionSchema();
     }
 
     private function account(string $role = 'customer', ?string $subrole = null): User

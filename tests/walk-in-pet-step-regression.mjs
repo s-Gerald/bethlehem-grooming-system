@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import * as weightTools from "../scripts/components/pet-weight-size.js";
+import { renderBodyConditionChip } from "../scripts/components/pet-body-condition.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const page = readFileSync(path.join(root, "pages/admin/walk-in-pet-details.html"), "utf8");
@@ -142,6 +143,7 @@ async function runStep(owner, { draft = null, apiPets = null } = {}) {
     "./color-combobox.js": { createColorCombobox: ({ input }) => ({ ...combobox({ input }), getValue: () => input.value.trim().replace(/\s+/g, " ") }) },
     "../services/booking-draft-service.js": { formatPetSizeLabel: (value) => value },
     "./pet-weight-size.js": weightTools,
+    "./pet-body-condition.js": { renderBodyConditionChip },
   };
   const main = new vm.SourceTextModule(source + '\nexport { handleAddPetSubmit, syncWeightAndSize, handleBack, handleNext };', { context, identifier: "walk-in-pet-step.js" });
   await main.link((specifier) => {

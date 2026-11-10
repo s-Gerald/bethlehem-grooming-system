@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\PetWeightSize;
 use App\Support\PetInformation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Pet extends Model
@@ -113,6 +114,32 @@ class Pet extends Model
         'clinic_verified_fields' => 'array',
         'customer_locked_fields' => 'array',
     ];
+
+    public function scopeWithBodyCondition(Builder $query): Builder
+    {
+        // Match finalized medical history, including visits awaiting payment.
+        return $query->addSelect(['body_condition_label' => ClinicAppointment::query()
+            ->select('clinic_vitals.body_condition_score')
+            ->join('clinic_vitals', 'clinic_vitals.clinic_appointment_id', '=', 'clinic_appointments.id')
+            ->whereColumn('clinic_appointments.pet_id', 'pets.pet_id')
+            ->whereIn('clinic_appointments.status', ['for_payment', 'completed'])
+            ->whereHas('record')
+            ->whereNotNull('clinic_vitals.body_condition_score')
+            ->orderByDesc('clinic_appointments.appointment_date')
+            ->orderByDesc('clinic_appointments.id')
+            ->limit(1)]);
+    }
+
+    public function getBodyConditionLabelAttribute(mixed $score): ?string
+    {
+        return match ((int) $score) {
+            1, 2, 3 => 'Thin',
+            4, 5 => 'Ideal',
+            6, 7 => 'Overweight',
+            8, 9 => 'Obese',
+            default => null,
+        };
+    }
 
     public function hasClinicVerifiedSize(): bool
     {

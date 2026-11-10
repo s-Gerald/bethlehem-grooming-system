@@ -50,7 +50,8 @@ class ActivityRecorder
         'staff_type', 'staff_subrole', 'service_name', 'name', 'base_price', 'price', 'min_price', 'max_price',
         'price_small', 'price_medium', 'price_large', 'price_extra_large', 'price_min', 'price_max',
         'total_amount', 'payment_status', 'payment_method', 'selling_price', 'unit_cost', 'pet_name', 'species',
-        'breed', 'gender', 'weight', 'size', 'color', 'unit', 'category', 'reorder_level',
+        'breed', 'gender', 'birthdate', 'fur_type', 'weight', 'size', 'color', 'is_neutered', 'neutered_date',
+        'is_deceased', 'deceased_date', 'unit', 'category', 'reorder_level',
         'quantity', 'unit_price', 'amount', 'price_at_booking', 'price_min_at_booking', 'price_max_at_booking'];
 
     public function available(): bool

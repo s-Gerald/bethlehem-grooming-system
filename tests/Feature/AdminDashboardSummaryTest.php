@@ -21,6 +21,7 @@ use Tests\TestCase;
 
 class AdminDashboardSummaryTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
     use \Tests\Support\CreatesPetGroomers;
 
     public function test_veterinarian_dashboard_counts_and_activity_are_clinic_only(): void
@@ -28,7 +29,6 @@ class AdminDashboardSummaryTest extends TestCase
         \Laravel\Sanctum\Sanctum::actingAs(new User([
             'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
         ]));
-        $this->createClinicAppointments();
         try {
             foreach (['checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled'] as $i => $status) {
                 DB::table('clinic_appointments')->insert([
@@ -148,6 +148,7 @@ class AdminDashboardSummaryTest extends TestCase
         parent::setUp();
         (require base_path('database/migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
         $this->createPetGroomers();
+        $this->createClinicAppointments();
 
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
 
@@ -319,6 +320,7 @@ class AdminDashboardSummaryTest extends TestCase
             $table->dateTime('consultation_finished_at')->nullable(); $table->dateTime('paid_at')->nullable();
             $table->boolean('paid')->default(false); $table->dateTime('archived_at')->nullable(); $table->timestamps();
         });
+        $this->createPetBodyConditionSchema();
     }
 
     public static function completionCases(): array
@@ -399,7 +401,6 @@ class AdminDashboardSummaryTest extends TestCase
 
     public function test_clinic_completion_dates_payment_and_role_breakdowns_are_consistent(): void
     {
-        $this->createClinicAppointments();
         $this->completedGrooming();
         $cases = [
             ['for_payment', false, '2026-06-24 10:00:00', null, null],

@@ -3,6 +3,7 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const { formatSavedWeight } = await import("./pet-weight-size.js?v=pet-weight-size-20261107-v1");
+  const { renderBodyConditionChip } = await import("./pet-body-condition.js");
   const { renderClinicVisitSections, healthDate } = await import("./customer-health-records.js?v=visit-summary");
   if (!API.hasAuthenticatedSession("customer")) {
     API.redirectToSignIn();
@@ -171,7 +172,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ["Breed", displayValue(pet.breed), "breed"],
       ["Gender", titleCase(pet.gender), null],
       ["Birthdate", formatDate(pet.birthdate), null],
-      ["Size", `${titleCase(pet.size)} · ${isClinicVerified(pet, "size") ? "✓ Verified by Bethlehem Animal Clinic" : "Estimated from weight"}`, null],
+      ["Size", titleCase(pet.size), null],
       ["Weight", formatWeight(pet.weight), "weight"],
       ["Fur Type", titleCase(pet.fur_type), "fur_type"],
       ["Color", displayValue(pet.color), null],
@@ -184,7 +185,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           <p class="text-xs font-medium text-portal-muted">${escapeHtml(label)}</p>
           ${verifiedIndicator(isClinicVerified(pet, field))}
         </div>
-        <p class="pet-overview-value ${label === "Pet Name" ? "pet-overview-name-value" : ""} mt-1 break-words text-xs font-semibold text-portal-text">${escapeHtml(value)}</p>
+        <p class="pet-overview-value ${label === "Pet Name" ? "pet-overview-name-value" : ""} mt-1 break-words text-xs font-semibold text-portal-text">${escapeHtml(value)}${label === "Size"
+          ? renderBodyConditionChip(pet.body_condition_label) + (isClinicVerified(pet, "size") ? " · ✓ Verified by Bethlehem Animal Clinic" : "")
+          : ""}</p>
       </div>
     `).join("") + `
       <div class="col-span-full grid grid-cols-1 gap-1 border-t border-portal-border pt-4 sm:grid-cols-2 sm:gap-x-8">

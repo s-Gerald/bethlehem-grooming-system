@@ -21,6 +21,7 @@ use Tests\TestCase;
 
 class GroomingAdministrationAuthorizationTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
     use \Tests\Support\CreatesPetGroomers;
     use \Tests\Support\SubmitsSignedGrooming;
     use \Tests\Support\SeedsGroomingTimeCatalogue;
@@ -306,6 +307,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             $table->text('chief_complaint')->nullable();
             $table->text('notes')->nullable();
         });
+        $this->createPetBodyConditionSchema();
 
         (require database_path('migrations/2026_07_05_100002_create_pos_transactions_table.php'))->up();
         (require database_path('migrations/2026_07_05_100003_create_pos_transaction_items_table.php'))->up();
@@ -590,6 +592,10 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'size' => 'small',
             'clinic_verified_fields' => json_encode(['size'], JSON_THROW_ON_ERROR),
         ]);
+        $visitId = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CL-BCS', 'pet_id' => 3,
+            'appointment_date' => '2026-01-01', 'status' => 'completed']);
+        DB::table('clinic_records')->insert(['clinic_appointment_id' => $visitId]);
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $visitId, 'body_condition_score' => 9]);
         DB::table('services')->insert([
             'service_id' => 3,
             'service_name' => 'Regular Dog Grooming',
@@ -612,21 +618,25 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'services' => ['package' => 'regular_dog_grooming'],
             ]],
         ];
-        foreach (['weight' => 20, 'size' => 'medium', 'species' => 'cat', 'pet_name' => ['invalid']]  as $field => $value) {
+        foreach (['size' => 'medium', 'species' => 'cat', 'pet_name' => ['invalid']]  as $field => $value) {
             $tampered = $payload;
             $tampered['pets'][0][$field] = $value;
             $this->submitSignedGrooming('/api/booking/store', $tampered)->assertUnprocessable()->assertJsonValidationErrors('pets.0.'.$field);
         }
         $payload['pets'][0] = array_intersect_key($payload['pets'][0], array_flip(['pet_id', 'grooming_preference', 'services']));
+        $payload['pets'][0]['weight'] = 20;
         $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
 
         $this->assertDatabaseHas('pets', ['pet_id' => 3, 'size' => 'small', 'weight' => 12]);
         $this->assertDatabaseHas('booking_pets', ['pet_id' => 3, 'registered_size' => 'small']);
         $this->assertDatabaseHas('booking_services', ['service_id' => 3, 'price_at_booking' => 550]);
+
+        $this->authenticateAs('staff');
+        $this->getJson('/api/admin/bookings?view=board')->assertOk()->assertJsonPath('incomingList.0.pets.0.bodyConditionLabel', 'Obese');
     }
 
     #[DataProvider('decimalPetWeights')]
-    public function test_booking_and_walkin_persist_the_shared_decimal_size(string $species, mixed $weight, string $size): void
+    public function test_booking_uses_chosen_size_and_walkin_computes_size_from_weight(string $species, mixed $weight, string $size): void
     {
         DB::table('services')->insert(['service_id' => 900, 'service_name' => 'Nail Clipping', 'slug' => 'nail_clipping', 'base_price' => 75]);
         $this->seedGroomingTimeCatalogue();
@@ -639,7 +649,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'booking_date' => now()->toDateString(), 'window_id' => 1, 'number_of_pets' => 1,
             'pets' => [[...$pet, 'services' => ['ala_carte' => ['nail_clipping']]]],
         ])->assertCreated()->json('booking.booking_id');
-        $this->assertDatabaseHas('pets', ['pet_name' => 'Decimal pet', 'weight' => $weight, 'size' => $size]);
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Decimal pet', 'weight' => null, 'size' => $pet['size']]);
         $this->assertDatabaseHas('booking_services', ['booking_id' => $bookingId, 'service_id' => 900, 'price_at_booking' => 0]);
         $this->authenticateAs('staff');
         $walkinId = $this->submitSignedGrooming('/api/admin/walk-in', [
@@ -695,7 +705,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('pets', ['pet_name' => 'Walkin color', 'color' => 'White and Brown', 'medical_conditions' => 'Shampoo allergy']);
     }
 
-    public function test_invalid_weight_text_is_rejected_by_booking_and_grooming_walkin(): void
+    public function test_invalid_weight_text_is_rejected_by_grooming_walkin(): void
     {
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11 AM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
@@ -703,9 +713,6 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $invalid = [...$cases['invalid_weights'], ...$cases['below_profile_minimum']];
         foreach ($invalid as $weight) {
             $pet = ['pet_name' => 'Invalid decimal', 'species' => 'Dog', 'weight' => $weight];
-            $this->authenticateAs('customer');
-            $this->submitSignedGrooming('/api/booking/store', ['booking_date' => now()->toDateString(), 'window_id' => 1,
-                'number_of_pets' => 1, 'pets' => [$pet]])->assertUnprocessable()->assertJsonValidationErrors('pets.0.weight');
             foreach (['admin', 'staff'] as $role) {
                 $this->authenticateAs($role);
                 $this->submitSignedGrooming('/api/admin/walk-in', ['fname' => 'Maria', 'lname' => 'Santos', 'phone' => '09171234567',
@@ -965,7 +972,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('customer');
         $customerId = $this->submitSignedGrooming('/api/booking/store', [
             'booking_date' => now()->toDateString(), 'window_id' => 1, 'number_of_pets' => 1,
-            'pets' => [['pet_name' => 'Rigby', 'species' => 'dog', 'weight' => $weight,
+            'pets' => [['pet_name' => 'Rigby', 'species' => 'dog', 'size' => $size,
                 'grooming_preference' => 'regular_trim',
                 'services' => ['package' => 'regular_dog_grooming']]],
         ])->assertCreated()->json('booking.booking_id');
@@ -3462,7 +3469,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         return [...$this->groomingConsentFixture(), 'service_day' => now('Asia/Manila')->toDateString(), 'booking_date' => now()->toDateString(), 'window_id' => 1,
-            'number_of_pets' => 1, 'pets' => [[...$pet, 'services' => ['package' => 'partial_grooming']]]];
+            'number_of_pets' => 1, 'pets' => [[...$pet, 'size' => 'small', 'services' => ['package' => 'partial_grooming']]]];
     }
 
     public static function signedConsentFlows(): array
@@ -3690,7 +3697,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('customer');
         $customer = $this->submitSignedGrooming('/api/booking/store', [
             'booking_date' => now()->toDateString(), 'window_id' => 1, 'number_of_pets' => 1,
-            'pets' => [['pet_name' => 'Milo', 'species' => 'dog', 'weight' => 8, 'groomer_id' => 1,
+            'pets' => [['pet_name' => 'Milo', 'species' => 'dog', 'size' => 'small', 'groomer_id' => 1,
                 'services' => ['package' => $package['id'], 'ala_carte' => [$extra['id']]]]],
         ])->assertCreated()->assertJsonPath('booking.pets.0.grooming_preference', null);
         $this->authenticateAs('admin');
@@ -3722,15 +3729,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         unset($payload['booking_date'], $payload['window_id']);
         Schema::table('clinic_appointments', function (Blueprint $table) {
             $table->string('appointment_type')->nullable(); $table->string('case_type')->nullable();
-            $table->date('appointment_date')->nullable(); $table->unsignedInteger('window_id')->nullable();
+            $table->unsignedInteger('window_id')->nullable();
             $table->dateTime('registration_closes_at')->nullable();
             $table->unsignedInteger('queue_number')->nullable(); $table->dateTime('checked_in_at')->nullable();
             $table->json('common_concerns')->nullable(); $table->timestamps();
         });
         Schema::table('customer_notifications', fn (Blueprint $table) => $table->unsignedBigInteger('clinic_appointment_id')->nullable());
-        foreach (['clinic_vitals', 'clinic_records'] as $table) {
-            Schema::create($table, function (Blueprint $columns) { $columns->id(); $columns->unsignedBigInteger('clinic_appointment_id'); });
-        }
         $directory = \Tests\Support\capacityRunDirectory();
         $run = function (array $owners, array $payloads, string|array $action) use ($directory): array {
             $environment = ['DB_CONNECTION' => 'mysql', 'DB_DATABASE' => DB::connection()->getDatabaseName(), 'DB_URL' => '',
@@ -3953,8 +3957,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('customer');
         $this->postJson('/api/admin/grooming/forecast', $payload)->assertForbidden();
         $this->postJson('/api/grooming/forecast', $payload)->assertOk()->assertJsonPath('pets.0.duration.max_minutes', 60);
+        $withWeight = $payload;
+        $withWeight['pets'][0]['weight'] = 55;
+        $this->postJson('/api/grooming/forecast', $withWeight)->assertOk()->assertJsonPath('pets.0.duration.max_minutes', 60);
         $this->authenticateAs('staff', 'clinic_receptionist');
         $this->postJson('/api/admin/grooming/forecast', $payload)->assertOk();
+        $this->postJson('/api/admin/grooming/forecast', $withWeight)->assertOk()->assertJsonPath('pets.0.duration.max_minutes', 105);
         $this->authenticateAs('staff', 'veterinarian');
         $this->postJson('/api/admin/grooming/forecast', $payload)->assertForbidden();
         $this->authenticateAs('staff');

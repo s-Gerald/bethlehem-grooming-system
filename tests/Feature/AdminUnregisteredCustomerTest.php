@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class AdminUnregisteredCustomerTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
     protected function setUp(): void
     {
         parent::setUp();
@@ -65,6 +66,7 @@ class AdminUnregisteredCustomerTest extends TestCase
             $table->boolean('is_archived')->default(false);
             $table->timestamp('created_at')->nullable();
         });
+        $this->createPetBodyConditionSchema();
 
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');

@@ -1,6 +1,7 @@
 import { createPetSaveConfirmation } from "../scripts/components/pet-save-confirmation.js";
 import { createPetBirthdateField } from "../scripts/components/pet-birthdate.js";
 import assert from "node:assert/strict";
+import { renderBodyConditionChip } from "../scripts/components/pet-body-condition.js";
 import fs from "node:fs";
 import vm from "node:vm";
 import * as age from "../scripts/services/grooming-age.js";
@@ -63,7 +64,7 @@ function combobox({ input }) {
 const read = name => fs.readFileSync(new URL(`../scripts/components/${name}.js`, import.meta.url), "utf8")
   .replace(/^import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "").replace(/^export /gm, "");
 const underage = { id: "young", petName: "Puppy", petType: "Dog", birthdate: "2026-06-16" };
-const exact = { id: "six", petName: "Six Months", petType: "Dog", birthdate: "2026-04-16" };
+const exact = { id: "six", petName: "Six Months", petType: "Dog", birthdate: "2026-04-16", size: "Large", bodyConditionLabel: "Overweight" };
 const unknown = { id: "unknown", petName: "Unknown", petType: "Cat" };
 
 function petStep(clinic = false) {
@@ -76,16 +77,16 @@ function petStep(clinic = false) {
   };
   const form = get("addPetForm");
   get("birthdate").form = form;
-  for (const id of ["petType", "petName", "breed", "weight", "furType", "size", "medicalNotes"]) form[id] = get(id);
+  for (const id of ["petType", "petName", "breed", "furType", "size", "medicalNotes"]) form[id] = get(id);
   form.reset = () => { for (const input of Object.values(form)) if (input?.value !== undefined) input.value = ""; };
   const button = element();
   button.dataset.petId = underage.id;
   let navigated;
   const context = vm.createContext({
-    ...petService, ...tabs, ...weight, ...age, createPetSaveConfirmation, createPetBirthdateField, GROOMING_MAX_PETS: 10,
+    ...petService, ...tabs, ...weight, ...age, createPetSaveConfirmation, createPetBirthdateField, renderBodyConditionChip, GROOMING_MAX_PETS: 10,
     getStoredBookingPets: petService.getBookingPets, saveStoredBookingPets: petService.saveBookingPets,
     getGroomingSchedule: petService.getBookingSchedule, addStoredPet: petService.addPetToBooking,
-    removeStoredPet: petService.removePetFromBooking, syncWeightSizeFields: weight.syncPetWeightAndSize,
+    removeStoredPet: petService.removePetFromBooking,
     CLINIC_VISIT_PETS_KEY: "clinicPets", sessionStorage, URLSearchParams, console,
     createColorCombobox: combobox, createFixedOptionCombobox: combobox, createBreedCombobox: combobox, createBreedCoatCombobox: combobox,
     formatBookingSchedule: () => "", formatPetSizeLabel: value => value, normalizePetSize: value => value,
@@ -114,6 +115,13 @@ assert.equal((cards[0].innerHTML.match(/Grooming is for pets 6 months and older\
 assert.doesNotMatch(cards[0].innerHTML + cards[0].className, /red-|error/);
 assert.doesNotMatch(cards[2].innerHTML, /Age:|Under 6|Not eligible|warning/);
 assert.match(cards[2].innerHTML, /Select Pet/);
+assert.match(cards[1].innerHTML, /Size:<\/span>\s*Large\s*<span class="pet-body-condition">Overweight<\/span>/);
+assert.doesNotMatch(cards[2].innerHTML, /pet-body-condition/);
+for (const label of ["Thin", "Ideal", "Overweight", "Obese"]) {
+  const mapped = petService.normalizeApiPet({ pet_id: 12, pet_name: "Mochi", species: "Dog", size: "large", body_condition_label: label });
+  const summary = ui.context.buildPetSummaryHtml(mapped);
+  assert.ok(summary.includes(`<span class="pet-body-condition">${label}</span>`));
+}
 assert.equal(ui.get("selectAllExistingPetsBtn").textContent, "Select All Eligible");
 ui.button.listeners.click(); // Exercise the handler even if a disabled button were bypassed.
 assert.equal(petService.getBookingPets().length, 0);
@@ -121,6 +129,7 @@ assert.equal(ui.get("petStepError").textContent, age.GROOMING_MINIMUM_AGE_MESSAG
 assert.doesNotMatch(ui.get("petStepError").className, /red-/);
 ui.context.handleSelectAllExistingPets();
 assert.deepEqual(petService.getBookingPets().map(pet => pet.id), ["six", "unknown"]);
+assert.match(ui.get("selectedPetCards").children[0].innerHTML, /Size: Large\s*<span class="pet-body-condition">Overweight<\/span>/);
 
 petService.saveSavedPets([underage, ...Array.from({ length: 10 }, (_, i) => ({ id: `eligible-${i}` }))]);
 petService.saveBookingPets([]);
@@ -147,10 +156,13 @@ ui.context.API = { getCustomerToken: () => true, addPet: async payload => { subm
 ui.context.normalizeApiPet = pet => pet;
 ui.get("petType").value = "Dog";
 ui.get("petName").value = "New Pet";
+ui.get("size").value = "Large";
 await ui.context.handleAddPetSubmit({ preventDefault() {} });
 assert.equal(submitted, undefined, "Save only requests acknowledgment");
 await ui.context.handleAddPetSubmit({ preventDefault() {} });
 assert.equal(submitted.birthdate, null);
+assert.equal(submitted.size, "Large");
+assert.equal(Object.hasOwn(submitted, "weight"), false);
 assert.ok(petService.getBookingPets().some(pet => pet.id === "unknown"));
 submitted = undefined;
 ui.get("petType").value = "Dog";

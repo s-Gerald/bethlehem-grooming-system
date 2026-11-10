@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Pets | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="/css/output.css?pet-fields=20261030-v1&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1" />
+    <link rel="stylesheet" href="/css/output.css?pet-fields=20261030-v1&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1&pet-profile=20261110-v1" />
     <link rel="stylesheet" href="/css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1&customer-header=20261106-v2" />
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
@@ -278,6 +278,32 @@
             </div>
           </div>
 
+          <!-- Size -->
+          <div>
+            <label for="petSize" class="mb-1 flex items-center gap-2 text-sm font-medium text-portal-text">
+              <span id="petSizeLabel">Size</span> <span class="text-slate-400 font-normal">(optional)</span>
+              <span id="petSizeVerified"
+                class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
+             <span id="petSizeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
+
+            <div id="petSizeCombobox" class="relative">
+              <div class="relative">
+                <input id="petSize" name="size" type="text" placeholder="Select species first"
+                  class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  role="combobox" aria-autocomplete="none" aria-controls="petSizeOptions"
+                  aria-expanded="false" aria-invalid="false" autocomplete="off" readonly disabled />
+                <button id="petSizeDropdownButton" type="button"
+                  class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active disabled:cursor-not-allowed disabled:text-slate-300"
+                  aria-label="Show size options" aria-controls="petSizeOptions" aria-expanded="false" disabled>
+                  <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
+                </button>
+              </div>
+              <div id="petSizeOptions"
+                class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
+                role="listbox" aria-label="Size options"></div>
+            </div>
+          </div>
+
           <!-- Gender + Birthdate -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -342,72 +368,30 @@
             </div>
           </div>
 
-          <!-- Weight + Fur Type -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label for="petWeight" class="mb-1 flex items-center gap-2 text-sm font-medium text-portal-text">
-                Weight <span class="text-slate-400 font-normal">(optional)</span>
-                <span id="petWeightVerified"
-                  class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-               <span id="petWeightLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
-              <div class="relative">
-                <input type="text" id="petWeight" name="weight" inputmode="decimal" placeholder="e.g. 4.25"
-                aria-invalid="false" aria-describedby="petWeightError"
-                class="w-full rounded-xl border border-portal-border bg-white px-4 pr-12 py-2.5 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active" />
-                <span class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">kg</span>
-              </div>
-              <p id="petWeightError" role="alert" class="hidden mt-1 text-xs text-red-600"></p>
-            </div>
-            <div>
-              <label for="petFurType" class="mb-1 flex items-center gap-2 text-sm font-medium text-portal-text">
-                Fur Type <span data-fur-requirement class="text-slate-400 font-normal">(optional)</span>
-                <span id="petFurTypeVerified"
-                  class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-               <span id="petFurTypeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
-              <div id="petFurTypeCombobox" class="relative">
-                <div class="relative">
-                  <input id="petFurType" name="fur_type" type="text" placeholder="Select breed first"
-                    class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                    role="combobox" aria-autocomplete="none" aria-controls="petFurTypeOptions"
-                    aria-expanded="false" aria-invalid="false" autocomplete="off" readonly disabled />
-                  <button id="petFurTypeDropdownButton" type="button"
-                    class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active disabled:cursor-not-allowed disabled:text-slate-300"
-                    aria-label="Show fur type options" aria-controls="petFurTypeOptions" aria-expanded="false" disabled>
-                    <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
-                  </button>
-                </div>
-                <div id="petFurTypeOptions"
-                  class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
-                  role="listbox" aria-label="Fur type options"></div>
-              </div>
-              <p id="petFurTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
-            </div>
-          </div>
-
-          <!-- Size -->
+          <!-- Fur Type -->
           <div>
-            <label for="petSize" class="mb-1 flex items-center gap-2 text-sm font-medium text-portal-text">
-              <span id="petSizeLabel">Size</span> <span class="text-slate-400 font-normal">(optional)</span>
-              <span id="petSizeVerified"
+            <label for="petFurType" class="mb-1 flex items-center gap-2 text-sm font-medium text-portal-text">
+              Fur Type <span data-fur-requirement class="text-slate-400 font-normal">(optional)</span>
+              <span id="petFurTypeVerified"
                 class="hidden rounded-full bg-portal-active px-2 py-0.5 text-[10px] font-medium leading-none text-portal-primary">Verified</span>
-             <span id="petSizeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
-
-            <div id="petSizeCombobox" class="relative">
+             <span id="petFurTypeLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
+            <div id="petFurTypeCombobox" class="relative">
               <div class="relative">
-                <input id="petSize" name="size" type="text" placeholder="Select species first"
+                <input id="petFurType" name="fur_type" type="text" placeholder="Select breed first"
                   class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                  role="combobox" aria-autocomplete="none" aria-controls="petSizeOptions"
+                  role="combobox" aria-autocomplete="none" aria-controls="petFurTypeOptions"
                   aria-expanded="false" aria-invalid="false" autocomplete="off" readonly disabled />
-                <button id="petSizeDropdownButton" type="button"
+                <button id="petFurTypeDropdownButton" type="button"
                   class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active disabled:cursor-not-allowed disabled:text-slate-300"
-                  aria-label="Show size options" aria-controls="petSizeOptions" aria-expanded="false" disabled>
+                  aria-label="Show fur type options" aria-controls="petFurTypeOptions" aria-expanded="false" disabled>
                   <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
                 </button>
               </div>
-              <div id="petSizeOptions"
+              <div id="petFurTypeOptions"
                 class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
-                role="listbox" aria-label="Size options"></div>
+                role="listbox" aria-label="Fur type options"></div>
             </div>
+            <p id="petFurTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
           </div>
 
           <!-- Allergies and care notes -->
@@ -464,7 +448,7 @@
 
     <script src="/scripts/api.js?name-correction=20261108&auth-reliability=20261107&v=customer-cache-20261005-v1&auth=session-scope-20261006&session=lock-20261018&phone=20261025-sms&auth-races=20261024&security=single-session-20261025&grooming=actual-20261026&availability=20261027&names=20261028-v2&remember=20261029&auth-hardening=20261101&customer-ux=20261031-v1&urls=20261103"></script>
     <script src="/scripts/components/client-notification-ui.js?name-correction=20261108&v=20261030-pet-information&urls=20261103&customer-header=20261106-v2"></script>
-    <script type="module" src="/scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261107-v1&modal=static-20261025&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1&customer-ux=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&customer-header=20261106-v2"></script>
+    <script type="module" src="/scripts/components/my-pets.js?v=customer-cache-20261005-v1&pet-weight=pet-weight-size-20261107-v1&modal=static-20261025&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&pet-care=20261027-v1&customer-ux=20261031-v1&pet-birthdate=20261103-v1&urls=20261103&customer-header=20261106-v2&pet-profile=20261110-v1"></script>
     <script type="module" src="/scripts/components/customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1"></script>
   </body>
 </html>

@@ -378,14 +378,14 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         getSizeForWeight: noop };
       const shared = { ...ui.context, ...weightTools, breedCombobox: ui.breedControl, breedCoatCombobox: ui.coatControl,
         petTypeCombobox, colorCombobox: { setValue: noop }, genderCombobox: { setValue: noop }, sizeCombobox: { setValue: noop },
-        syncWeightAndSize: noop, setStoredSize: noop };
+        syncWeightAndSize: noop, updateSizeOptions: noop, setStoredSize: noop };
       ui.elements.birthdate.form = element();
       shared.birthdateField = createPetBirthdateField({ input: ui.elements.birthdate, errorElement: element() });
       if (integration === "my-pets") {
         const handler = ui.source.slice(ui.source.indexOf("async function openEditModal("), ui.source.indexOf("  function showModal()"));
         const open = vm.runInNewContext(`(${handler.trim()})`, {
           ...shared, syncEditFieldLocks: () => {}, allPets: [{ pet_id: 1, species, breed, fur_type: coat }], editingPet: null,
-          syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: ui.elements.birthdate, petWeight: element(),
+          syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: ui.elements.birthdate,
           normalizeSpecies: value => value, hideFormError: noop, showModal: noop,
         });
         await open(1);
@@ -397,7 +397,8 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
             controls: { birthdate: shared.birthdateField, color: { setValue: noop }, species: petTypeCombobox, gender: shared.genderCombobox, breed: ui.breedControl, furType: ui.coatControl } },
         });
         const owner = { petModal: { pet: { species, breed, furType: coat } }, initializePetFormFields: async () => true,
-          normalizePetSpecies: value => value, syncPetWeightAndSize: noop, setStoredPetSize: noop, refreshIcons: noop };
+          normalizePetSpecies: value => value, syncPetWeightAndSize: noop, petWeightValidation: () => ({}),
+          setStoredPetSize: noop, refreshIcons: noop };
         await edit.call(owner);
         await edit.call(owner);
       } else {

@@ -1,4 +1,3 @@
-import { formatSavedWeight } from "../components/pet-weight-size.js?v=pet-weight-size-20261107-v1";
 export const CLINIC_VISIT_DRAFT_KEY = "clinicVisitDraft";
 export const CLINIC_VISIT_PETS_KEY = "clinicVisitPets";
 export const CLINIC_VISIT_CONFIRMATION_KEY = "clinicVisitConfirmation";
@@ -72,23 +71,6 @@ export function formatClinicVisitDate(dateKey) {
     day: "numeric",
     year: "numeric",
   }).format(date);
-}
-
-export function normalizeApiPet(pet) {
-  return {
-    id: String(pet?.pet_id || pet?.id || ""),
-    petName: pet?.pet_name || pet?.petName || "",
-    petType: pet?.species || pet?.petType || "",
-    gender: pet?.gender || "",
-    birthdate: pet?.birthdate || "",
-    breed: pet?.breed || "",
-    color: pet?.color || "",
-    weight: formatSavedWeight(pet?.weight),
-    furType: pet?.fur_type || pet?.furType || "",
-    size: pet?.size || "",
-    sizeVerified: Array.isArray(pet?.clinic_verified_fields) && pet.clinic_verified_fields.includes("size"),
-    medicalNotes: pet?.medical_conditions || pet?.medicalNotes || "",
-  };
 }
 
 export async function requireCustomerSession(signInPath = "/sign-in") {

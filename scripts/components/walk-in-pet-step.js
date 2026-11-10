@@ -1,11 +1,12 @@
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
-import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108";
+import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1";
 import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108";
 import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924&pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { showPetSelectionSection } from "./pet-selection-tabs.js?v=walk-in-owner-mode-20260924";
 import { formatPetSizeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import { renderBodyConditionChip } from "./pet-body-condition.js";
 import {
   formatSavedWeight,
   getPetWeightSubmissionValidationMessage,
@@ -298,6 +299,7 @@ function normalizeExistingPet(pet) {
       ? pet.size || ""
       : (getSizeForStoredWeight(pet.species, pet.weight).toLowerCase().replaceAll(" ", "_") || pet.size || ""),
     sizeVerified: Boolean(pet.sizeVerified),
+    bodyConditionLabel: pet.bodyConditionLabel ?? null,
     color: pet.color || "",
     medicalNotes: pet.medicalConditions || "",
     isNew: false,
@@ -343,7 +345,7 @@ function renderExistingPets() {
           <div>
             <h4 class="font-semibold text-[#2f4b66]">${escapeHtml(pet.petName)}</h4>
             <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` &middot; ${escapeHtml(pet.breed)}` : ""}</p>
-            <p class="mt-1 text-xs text-slate-400">${escapeHtml(pet.size || "Size not provided")} · ${pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}${pet.weight ? ` &middot; ${escapeHtml(formatSavedWeight(pet.weight))} kg` : ""}</p>
+            <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}${pet.weight ? ` &middot; ${escapeHtml(formatSavedWeight(pet.weight))} kg` : ""}</p>
           </div>
           <button
             type="button"
@@ -436,9 +438,7 @@ function renderSelectedPets() {
           )}</h4>
           ${showEnteredDetails ? `<div class="mt-2 grid gap-1 text-xs text-slate-600">${enteredDetails}</div>` : `
           <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` · ${escapeHtml(pet.breed)}` : ""}</p>
-          <p class="mt-1 text-xs text-slate-500">${pet.size
-            ? `Size: ${escapeHtml(formatPetSizeLabel(pet.size))}`
-            : pet.weight ? `Weight: ${escapeHtml(formatSavedWeight(pet.weight))} kg` : "Size not provided"}</p>`}
+          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}</p>`}
         </div>
 
         <button

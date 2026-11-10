@@ -7,26 +7,25 @@ use Illuminate\Validation\ValidationException;
 
 final class PetInformation
 {
-    public const CUSTOMER_FIELDS = [
+    public const FIELDS = [
         'pet_name' => 'name', 'species' => 'species', 'breed' => 'breed',
         'fur_type' => 'fur type', 'gender' => 'gender', 'birthdate' => 'birthdate',
         'weight' => 'weight', 'size' => 'size', 'color' => 'color',
         'medical_conditions' => 'allergies and special care notes',
-    ];
-
-    public const FIELDS = [
-        ...self::CUSTOMER_FIELDS,
         'is_neutered' => 'neutered status', 'neutered_date' => 'neutered date',
         'is_deceased' => 'deceased status', 'deceased_date' => 'deceased date',
+    ];
+
+    public const CUSTOMER_EDITABLE_FIELDS = [
+        'pet_name', 'species', 'breed', 'fur_type', 'gender', 'birthdate', 'size', 'color', 'medical_conditions',
     ];
 
     public static function lockedFields(Pet $pet): array
     {
         return array_values(array_diff(array_unique([
             ...($pet->customer_locked_fields ?? []),
-            ...array_keys(array_filter(self::CUSTOMER_FIELDS,
-                fn ($label, $field) => self::meaningful($pet->$field), ARRAY_FILTER_USE_BOTH)),
-        ]), ['medical_conditions']));
+            ...array_filter(self::CUSTOMER_EDITABLE_FIELDS, fn ($field) => self::meaningful($pet->$field)),
+        ]), ['medical_conditions', 'weight']));
     }
 
     public static function meaningful(mixed $value): bool
@@ -56,6 +55,7 @@ final class PetInformation
     /** Called with the latest profile locked in the same transaction as save. */
     public static function customerAttributes(Pet $pet, array $attributes, string $prefix = ''): array
     {
+        unset($attributes['weight']);
         $verified = $pet->clinic_verified_fields ?? [];
         $locked = self::lockedFields($pet);
         $measurementsVerified = array_intersect(['weight', 'size'], $verified) !== [];
@@ -63,9 +63,6 @@ final class PetInformation
         foreach (self::FIELDS as $field => $label) {
             if (! array_key_exists($field, $attributes)) continue;
             if (self::matches($field, $pet->$field, $attributes[$field])) {
-                if ($field === 'weight' && ($message = PetWeightSize::weightValidationMessage($attributes[$field], existingWeight: $pet->weight))) {
-                    $errors[$prefix.$field] = $message;
-                }
                 // Keep historical precision, spelling and casing for unchanged fields.
                 $attributes[$field] = $pet->$field;
                 continue;
@@ -73,16 +70,11 @@ final class PetInformation
             if ($field === 'medical_conditions') continue;
             if (in_array($field, ['pet_name', 'species'], true)
                 || in_array($field, $locked, true) || in_array($field, $verified, true)
-                || ($measurementsVerified && in_array($field, ['weight', 'size'], true))) {
+                || ($measurementsVerified && $field === 'size')) {
                 $errors[$prefix.$field] = 'Saved details can only be changed by clinic staff.';
             }
         }
         if ($errors !== []) throw ValidationException::withMessages($errors);
-
-        if (! $measurementsVerified && ! self::meaningful($pet->size)
-            && array_key_exists('weight', $attributes) && self::meaningful($attributes['weight'])) {
-            $attributes = PetWeightSize::withComputedSize([...$attributes, 'species' => $pet->species]);
-        }
 
         return $attributes;
     }

@@ -175,7 +175,7 @@ const snapshot = JSON.stringify(selectedPet);
 assert.equal(JSON.stringify(ui.groomingSelectionLabels(selectedPet)), JSON.stringify(['Summer Cut']));
 assert.equal(JSON.stringify(selectedPet), snapshot);
 assert.equal(ui.groomingSelectionLabels({}).length, 0);
-assert.equal(ui.groomingPetIdentity({ ...pet, size: 'large', weight: '12 kg', furType: '—' }), 'Dog · Dachshund · Large · 12 kg');
+assert.equal(ui.groomingPetIdentity({ ...pet, size: 'large', weight: '12 kg', furType: '—' }), 'Dog · Dachshund · 12 kg');
 
 const record = { ...booking, status: 'queued' };
 for (const control of ['button', 'a', 'input', '[role="menu"]']) {

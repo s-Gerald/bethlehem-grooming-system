@@ -133,7 +133,7 @@ Route::middleware(['auth:sanctum', 'account.usable', 'session.active'])->group(f
     Route::post('/pets/{id}/unarchive', [PetController::class, 'unarchive']);
 
     // Admin — Pet management (update any customer's pet)
-    Route::put('/admin/pets/{id}', [PetController::class, 'adminUpdate']);
+    Route::put('/admin/pets/{id}', [PetController::class, 'adminUpdate'])->middleware('role:admin,staff');
     Route::get('/admin/pets/{petId}/profile', [AdminPetProfileController::class, 'show']);
 
     // Booking

@@ -280,7 +280,6 @@ class PetInformationVerificationInterfaceTest extends TestCase
             'id="petBreedVerified"',
             'id="petSizeVerified"',
             'id="petFurTypeVerified"',
-            'id="petWeightVerified"',
             'text-[10px]',
             'syncEditVerifiedIndicators(pet);',
             'syncEditVerifiedIndicators(null);',

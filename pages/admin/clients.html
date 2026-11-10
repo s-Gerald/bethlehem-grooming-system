@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer Records | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="/css/output.css?clinical-history=20261029&customer-records=20261029&email-entry=20261028&names=20261028-v2&auth-hardening=20261030" />
+    <link rel="stylesheet" href="/css/output.css?clinical-history=20261029&customer-records=20261029&email-entry=20261028&names=20261028-v2&auth-hardening=20261030&pet-profile=20261110-v1" />
     <link rel="stylesheet" href="/css/custom.css?v=customer-records-20261029&release=20261001&intake=20261019&pet-fields=20261030-v1&grooming=actual-20261026&pet-care=20261027-v1" />
     <link rel="stylesheet" href="/css/session-lock.css?v=20261018&session-presentation=walk-in-20261021" />
     <link rel="stylesheet" href="/css/admin-loading.css?v=admin-first-paint-20261019&session-presentation=walk-in-20261021" />
@@ -852,6 +852,13 @@
                               <p class="text-xs font-medium text-slate-500">Color</p>
                               <p class="mt-1 text-sm font-semibold text-slate-700" x-text="formatTextValue(pet.color)"></p>
                             </div>
+                            <div>
+                              <p class="text-xs font-medium text-slate-500">Size</p>
+                              <p class="mt-1 text-sm font-semibold text-slate-700">
+                                <span x-text="formatLabel(pet.size)"></span>
+                                <template x-if="pet.bodyConditionLabel"><span class="pet-body-condition" x-text="pet.bodyConditionLabel"></span></template>
+                              </p>
+                            </div>
                           </div>
                           <p class="px-3 pb-3 text-xs font-medium text-slate-500" x-text="'Registered ' + formatDate(pet.createdAt)"></p>
                         </article>
@@ -1013,7 +1020,11 @@
                       <template x-for="detail in petOverviewDetails()" :key="detail.label">
                         <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
                           <dt class="text-xs font-medium text-slate-500" x-text="detail.label"></dt>
-                          <dd class="mt-1.5 break-words font-semibold text-slate-700" x-text="detail.value"></dd>
+                          <dd class="mt-1.5 break-words font-semibold text-slate-700">
+                            <span x-text="detail.value"></span>
+                            <template x-if="detail.bodyConditionLabel"><span class="pet-body-condition" x-text="detail.bodyConditionLabel"></span></template>
+                            <span x-show="detail.sizeVerified"> · ✓ Clinic verified</span>
+                          </dd>
                         </div>
                       </template>
                     </dl>
@@ -1160,7 +1171,7 @@
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-format-20261029"></script>
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029"></script>
-    <script src="/scripts/components/admin-customers.js?name-correction=20261108&clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108"></script>
+    <script src="/scripts/components/admin-customers.js?name-correction=20261108&clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261029&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

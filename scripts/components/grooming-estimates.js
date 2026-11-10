@@ -59,7 +59,7 @@ export function createGroomingEstimateFlow({ getPets, getSelections, container, 
       const selected = getSelections().find(item => String(item.petId) === String(pet.id)) || {};
       return { pet_id: walkIn ? (pet.petId || null) : (/^[1-9]\d*$/.test(String(pet.id)) ? Number(pet.id) : null),
         species: String(pet.petType).toLowerCase(), size: normalizePetSize(pet.size) || null,
-        ...(pet.weight !== "" && pet.weight != null ? { weight: Number(pet.weight) } : {}),
+        ...(walkIn && pet.weight !== "" && pet.weight != null ? { weight: Number(pet.weight) } : {}),
         groomer_id: selected.groomerId ?? null, grooming_preference: selected.groomingPreference || null,
         haircut_requested: selected.haircutRequested === true,
         services: { package: selected.servicePackage || null, ala_carte: selected.alaCarteServices || [] } };

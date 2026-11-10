@@ -74,7 +74,7 @@ class AdminCustomersCardTypographyInterfaceTest extends TestCase
         $this->assertStringNotContainsString('Account actions', $detailsModal);
         $this->assertStringNotContainsString('Feature coming soon', $page);
         $this->assertStringNotContainsString('openResetPassword', $page);
-        $this->assertStringContainsString('admin-customers.js?clinical-history=20261029', $page);
+        $this->assertMatchesRegularExpression('/admin-customers\.js\?(?:[^"\s]*&)?clinical-history=20261029(?:&|")/', $page);
         $component = file_get_contents(base_path('scripts/components/admin-customers.js'));
         foreach (['Deactivate account', 'Reactivate account', 'Archive customer', 'Restore customer'] as $label) {
             $this->assertStringContainsString($label, $component);

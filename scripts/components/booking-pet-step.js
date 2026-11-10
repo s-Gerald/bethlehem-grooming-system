@@ -12,11 +12,11 @@ import {
   addPetToBooking as addStoredPet,
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
-} from "../services/pet-service.js?v=pet-weight-size-20261107-v1&pet-fields=20261030-v1&pet-sessions=20261031-v1";
+  normalizeApiPet,
+} from "../services/pet-service.js?v=pet-weight-size-20261107-v1&pet-fields=20261030-v1&pet-sessions=20261031-v1&pet-profile=20261110-v1";
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
-  normalizeApiPet,
   readClinicVisitDraft,
   requireCustomerSession,
   updateClinicVisitDraft,
@@ -27,18 +27,8 @@ import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { canSelectAllSavedPets, showPetSelectionSection } from "./pet-selection-tabs.js";
 import { goToGroomingStep, isGroomingSinglePage } from "./grooming-flow-navigation.js";
 import { formatPetAge, isEligibleForGrooming, GROOMING_MINIMUM_AGE_MESSAGE } from "../services/grooming-age.js";
-import {
-  formatSavedWeight,
-  getPetWeightSubmissionValidationMessage,
-  getEnteredWeight,
-  getSizeForWeight,
-  getSizeOptions,
-  getWeightFieldValidationMessage,
-  getWeightValidationMessage,
-  initializeWeightField,
-  syncPetWeightAndSize as syncWeightSizeFields,
-  showWeightValidationInField,
-} from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
+import { formatSavedWeight, getSizeOptions } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
+import { renderBodyConditionChip } from "./pet-body-condition.js";
 
 /**
  * Booking Pet Step Controller
@@ -121,7 +111,6 @@ const elements = {
   birthdate: document.getElementById("birthdate"),
   breed: document.getElementById("breed"),
   color: document.getElementById("color"),
-  weight: document.getElementById("weight"),
   furType: document.getElementById("furType"),
   size: document.getElementById("size"),
   medicalNotes: document.getElementById("medicalNotes"),
@@ -320,8 +309,8 @@ function buildPetSummaryHtml(pet) {
         pet.furType || "Not specified",
       )}</p>
       <p><span class="font-semibold text-slate-700">Size:</span> ${escapeHtml(
-        pet.size || "Not specified",
-      )} · ${pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}</p>
+        pet.size ? formatPetSizeLabel(pet.size) : "Not specified",
+      )} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}</p>
       <p><span class="font-semibold text-slate-700">Allergies &amp; Special Care Notes:</span> ${escapeHtml(
         pet.medicalNotes || "None",
       )}</p>
@@ -513,9 +502,7 @@ function renderSelectedPets() {
             pet.petName,
           )}</h4>
           <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` · ${escapeHtml(pet.breed)}` : ""}</p>
-          <p class="mt-1 text-xs text-slate-500">${pet.size
-            ? `${pet.sizeVerified ? "Size" : "Estimated Size"}: ${escapeHtml(formatPetSizeLabel(pet.size))}`
-            : `Weight: ${escapeHtml(formatWeightLabel(pet.weight))}`}</p>
+          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${savedPetsLoading ? "" : renderBodyConditionChip(pet.bodyConditionLabel)}</p>
         </div>
 
         <button
@@ -572,7 +559,6 @@ function getFormValues(form) {
     birthdate: birthdateField.getValue(),
     breed: form.breed.value,
     color: colorCombobox.getValue(),
-    weight: getEnteredWeight(elements.weight),
     furType: form.furType.value,
     size: sizeCombobox.getValue(),
     medicalNotes: form.medicalNotes.value,
@@ -602,17 +588,11 @@ function restoreAddPetFormDraft() {
   breedCombobox.setValue(values.petType ? values.breed || "" : "");
   colorCombobox.setValue(values.color);
 
-  if (values.weight) {
-    elements.weight.value = values.weight;
-  }
-
   elements.furType.value = values.petType ? values.furType || "" : "";
   breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
 
-  syncWeightAndSize({ clearManualSize: true });
-  if (values.size && !getSizeForWeight(elements.petType.value, elements.weight.value)) {
-    sizeCombobox.setValue(values.size);
-  }
+  updateSizeOptions();
+  sizeCombobox.setValue(values.size || "");
 
   elements.medicalNotes.value = values.medicalNotes || "";
 }
@@ -646,12 +626,6 @@ function validatePetForm(values) {
     return furTypeValidationMessage;
   }
 
-  const weightValidationMessage = getWeightFieldValidationMessage(elements.weight)
-    || getWeightValidationMessage(values.petType, values.weight);
-  if (weightValidationMessage) {
-    return weightValidationMessage;
-  }
-
   const allowedSizes = getSizeOptions(values.petType).map(({ value }) => value);
   if (values.size && !allowedSizes.includes(values.size)) {
     return "Select a size available for this pet type.";
@@ -673,8 +647,7 @@ function resetAddPetForm() {
   breedCoatCombobox.reset();
   colorCombobox.reset();
   sizeCombobox.reset();
-  initializeWeightField(elements.weight);
-  syncWeightAndSize({ clearManualSize: true });
+  updateSizeOptions();
   setFieldError(elements.size, elements.sizeError, "");
   saveStepTwoDraft();
 }
@@ -692,11 +665,6 @@ async function handleAddPetSubmit(event) {
     colorCombobox.showValidation();
     breedCombobox.showValidation();
     breedCoatCombobox.showValidation();
-    const weightMessage = getWeightFieldValidationMessage(elements.weight)
-      || getWeightValidationMessage(formValues.petType, formValues.weight);
-    if (weightMessage) {
-      showWeightValidationInField(elements.weight, weightMessage);
-    }
     if (validationMessage === colorCombobox.getValidationMessage()) {
       clearStepError();
       elements.color.focus();
@@ -726,7 +694,6 @@ async function handleAddPetSubmit(event) {
         birthdate: formValues.birthdate || null,
         breed: formValues.breed.trim() || null,
         color: formValues.color.trim() || null,
-        weight: formValues.weight || null,
         fur_type: formValues.furType || null,
         size: normalizePetSize(formValues.size) || null,
         medical_conditions: formValues.medicalNotes.trim() || null,
@@ -763,7 +730,6 @@ async function handleAddPetSubmit(event) {
       elements.furType.focus();
       return;
     }
-    if (error.errors?.weight?.[0]) showWeightValidationInField(elements.weight, error.errors.weight[0]);
     showStepError(error.message);
   } finally {
     petSaveConfirmation.setSaving(false);
@@ -786,12 +752,6 @@ function handleNext() {
 
   if (!IS_CLINIC_VISIT && bookingPets.some((pet) => !isEligibleForGrooming(pet))) {
     showStepError(GROOMING_MINIMUM_AGE_MESSAGE);
-    return;
-  }
-
-  const weightMessage = bookingPets.map(getPetWeightSubmissionValidationMessage).find(Boolean);
-  if (weightMessage) {
-    showStepError(weightMessage);
     return;
   }
 
@@ -827,17 +787,10 @@ function setFieldError(input, errorElement, message) {
   errorElement.classList.toggle("hidden", !message);
 }
 
-function syncWeightAndSize({ clearManualSize = false } = {}) {
-  syncWeightSizeFields(elements.weight, elements.petType.value, sizeCombobox, { clearManualSize });
-}
-
-function validateWeightOnCommit() {
-  syncWeightAndSize();
-  return !getWeightFieldValidationMessage(elements.weight);
-}
-
-function handleManualSizeChange() {
-  syncWeightAndSize();
+function updateSizeOptions() {
+  const options = getSizeOptions(elements.petType.value);
+  sizeCombobox.setOptions(options, { preserveValue: false });
+  sizeCombobox.setDisabled(options.length === 0);
 }
 
 function bindEvents() {
@@ -856,20 +809,10 @@ function bindEvents() {
   elements.addPetForm.addEventListener("change", saveStepTwoDraft);
   elements.backBtn.addEventListener("click", handleBack);
   elements.nextBtn.addEventListener("click", handleNext);
-
-  elements.petType.addEventListener("change", () => {
-    syncWeightAndSize({ clearManualSize: true });
-    validateWeightOnCommit();
-  });
-  elements.weight.addEventListener("input", () => syncWeightAndSize());
-  elements.weight.addEventListener("change", validateWeightOnCommit);
-  elements.size.addEventListener("change", handleManualSizeChange);
+  elements.petType.addEventListener("change", updateSizeOptions);
 }
 
 async function initStepState() {
-  initializeWeightField(elements.weight);
-  syncWeightAndSize();
-
   if (!Array.isArray(getBookingPets())) {
     saveBookingPets([]);
   }
@@ -893,8 +836,9 @@ async function syncSavedPets() {
   savedPetsLoading = false;
   const savedPetsById = new Map(getSavedPets().map((pet) => [pet.id, pet]));
   const currentPets = getBookingPets();
-  const refreshedPets = currentPets.map((pet) => savedPetsById.get(pet.id) || pet);
-  const eligiblePets = refreshedPets.filter(pet => !petSessionRestriction(pet) && (IS_CLINIC_VISIT || isEligibleForGrooming(pet)));
+  const refreshedPets = currentPets.map((pet) => savedPetsById.get(String(pet.id))
+    ?? (/^[1-9]\d*$/.test(String(pet.id)) ? null : pet));
+  const eligiblePets = refreshedPets.filter(pet => pet && !petSessionRestriction(pet) && (IS_CLINIC_VISIT || isEligibleForGrooming(pet)));
   if (eligiblePets.length !== currentPets.length || eligiblePets.some((pet, index) => pet !== currentPets[index])) {
     saveBookingPets(eligiblePets);
   }

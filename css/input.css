@@ -4,6 +4,19 @@
 @tailwind components;
 @tailwind utilities;
 
+.pet-body-condition {
+  display: inline-block;
+  margin-inline-start: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
 clinic-record-sections .case-detail-section ~ .case-detail-section {
   margin-top: 24px;
   padding-top: 24px;

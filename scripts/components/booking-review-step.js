@@ -1,6 +1,7 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
+import { renderBodyConditionChip } from "./pet-body-condition.js";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1";
 import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
@@ -193,13 +194,13 @@ function renderPetReviewCard(item, index) {
             <p class="text-base font-semibold text-slate-600">${escapeHtml(
               formatPetTypeLabel(item.pet.petType),
             )} · ${escapeHtml(item.pet.breed || "Breed not specified")}</p>
+            <p class="mt-2 text-xs font-semibold text-slate-600">
+              Size: ${escapeHtml(item.pet.size ? formatPetSizeLabel(item.pet.size) : "Not specified")} ${renderBodyConditionChip(item.pet.bodyConditionLabel)}${item.pet.sizeVerified ? " · Clinic verified" : ""}
+            </p>
           </div>
         </div>
 
         <div class="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-          <span class="rounded-full bg-[#edf5fc] px-3 py-1 text-xs font-semibold text-[#315b7e]">
-            ${escapeHtml(formatPetSizeLabel(item.pet.size))} · ${item.pet.sizeVerified ? "Clinic verified" : "Estimated from weight"}
-          </span>
           ${item.pricing.hasSelection ? `<span class="text-xs font-semibold text-slate-500">${price.isEstimate ? "Estimated pet subtotal" : "Pet subtotal"}</span>` : ""}
           <span class="text-lg font-semibold text-[#2f4b66]">${escapeHtml(
             item.pricing.hasSelection ? price.amount : "No price available",

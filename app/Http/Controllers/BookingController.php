@@ -15,12 +15,11 @@ use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
-use App\Rules\ValidPetWeight;
 use App\Services\AvailabilityTimeWindowService;
 use App\Services\CustomerPreRegistrationAccessService;
 use App\Services\GroomingPaymentReadinessService;
 use App\Services\GroomingServicePriceResolver;
-use App\Support\PetWeightSize;
+use App\Support\PetInformation;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -68,7 +67,6 @@ class BookingController extends Controller
             'pets.*.birthdate' => ['nullable', new ValidPetBirthdate],
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
-            'pets.*.weight' => ['nullable', new ValidPetWeight],
             'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
             'pets.*.medical_conditions' => 'nullable|string|max:1000',
             'pets.*.special_instructions' => 'nullable|string',
@@ -84,19 +82,15 @@ class BookingController extends Controller
         // without rejecting unchanged legacy values against today's creation rules.
         foreach ((array) $request->input('pets', []) as $index => $petData) {
             if (is_array($petData) && ! empty($petData['pet_id'])) {
-                foreach (array_keys(\App\Support\PetInformation::FIELDS) as $field) {
-                    $type = in_array($field, ['is_neutered', 'is_deceased'], true) ? 'boolean'
-                        : ($field === 'weight' ? 'numeric' : 'string');
+                foreach (array_keys(PetInformation::FIELDS) as $field) {
+                    if ($field === 'weight') continue;
+                    $type = in_array($field, ['is_neutered', 'is_deceased'], true) ? 'boolean' : 'string';
                     $rules["pets.{$index}.{$field}"] = ['nullable', $type];
                 }
             }
         }
         $validated = $request->validate($rules);
 
-        $validated['pets'] = array_map(
-            fn (array $pet) => empty($pet['pet_id']) ? PetWeightSize::withComputedSize($pet) : $pet,
-            $validated['pets'],
-        );
         $request->merge(['pets' => $validated['pets']]);
 
         return app(\App\Services\DailyPetQueue::class)->runForDate(now('Asia/Manila')->toDateString(), function () use (
@@ -130,10 +124,10 @@ class BookingController extends Controller
                     throw ValidationException::withMessages(["pets.{$index}.pet_id" => 'The selected pet is unavailable.']);
                 }
                 if ($savedPet) {
-                    $profile = array_filter(array_intersect_key($petData, \App\Support\PetInformation::FIELDS),
-                        fn ($value) => \App\Support\PetInformation::meaningful($value));
+                    $profile = array_filter(array_intersect_key($petData, PetInformation::FIELDS),
+                        fn ($value) => PetInformation::meaningful($value));
                     if (isset($profile['pet_name'])) $profile['pet_name'] = Pet::normalizeName($profile['pet_name']);
-                    \App\Support\PetInformation::customerAttributes($savedPet, $profile, "pets.{$index}.");
+                    PetInformation::customerAttributes($savedPet, $profile, "pets.{$index}.");
                     \Illuminate\Support\Facades\Validator::make(['pets' => [$index => $profile]], [
                         "pets.{$index}.birthdate" => ['nullable', new ValidPetBirthdate($savedPet->birthdate)],
                     ])->validate();
@@ -194,10 +188,8 @@ class BookingController extends Controller
                         'species' => $petData['species'],
                         'breed' => $petData['breed'] ?? null,
                         'birthdate' => $petData['birthdate'] ?? null,
-                        'weight' => $petData['weight'] ?? null,
                         'color' => ValidPetColor::validatedColor($petData),
-                        'size' => PetWeightSize::sizeFor($petData['species'], $petData['weight'] ?? null)
-                            ?? $petData['size'] ?? null,
+                        'size' => $petData['size'] ?? null,
                         'fur_type' => ValidBreedCoat::validatedCoat($petData),
                         'medical_conditions' => $petData['medical_conditions'] ?? null,
                     ]);

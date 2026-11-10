@@ -11,7 +11,99 @@ use Tests\TestCase;
 
 class ClientPetProfileTest extends TestCase
 {
+    use \Tests\Support\CreatesPetBodyConditionSchema;
     use \Tests\Support\CreatesRegistrationAvailability;
+
+    public function test_pet_summaries_use_the_latest_finalized_non_null_body_condition(): void
+    {
+        $this->authenticateCustomer(10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'Cat', 'weight' => 4, 'size' => 'small']);
+        DB::table('pets')->insert(['pet_id' => 102, 'user_id' => 10, 'pet_name' => 'Miso', 'species' => 'Cat']);
+        foreach ([
+            [1, 101, 'completed', '2026-01-01', 5],
+            [2, 101, 'completed', '2026-02-01', 4],
+            [3, 101, 'for_payment', '2026-02-01', 7],
+            [4, 101, 'in_consultation', '2026-03-01', 9],
+            [5, 101, 'completed', '2026-04-01', null],
+            [6, 101, 'completed', '2026-05-01', 9], // No medical record.
+            [7, 102, 'in_consultation', '2026-03-01', 9],
+            [8, 101, 'completed', '2025-01-01', 9], // Higher ID, earlier visit.
+        ] as [$id, $petId, $status, $date, $score]) {
+            DB::table('clinic_appointments')->insert(['id' => $id, 'pet_id' => $petId, 'status' => $status, 'appointment_date' => $date]);
+            DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $id, 'body_condition_score' => $score]);
+            if ($id !== 6) DB::table('clinic_records')->insert(['clinic_appointment_id' => $id]);
+        }
+
+        DB::enableQueryLog();
+        $pets = collect($this->getJson('/api/pets')->assertOk()->json('pets'))->keyBy('pet_id');
+        $queries = collect(DB::getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'clinic_vitals'));
+        DB::disableQueryLog();
+        $this->assertCount(1, $queries);
+        $this->assertSame('Overweight', $pets[101]['body_condition_label']);
+        $this->assertNull($pets[102]['body_condition_label']);
+        $this->assertArrayNotHasKey('body_condition_score', $pets[101]);
+
+        foreach ([1 => 'Thin', 'Thin', 'Thin', 'Ideal', 'Ideal', 'Overweight', 'Overweight', 'Obese', 'Obese'] as $score => $label) {
+            DB::table('clinic_vitals')->where('clinic_appointment_id', 3)->update(['body_condition_score' => $score]);
+            $this->getJson('/api/pets/101')->assertOk()->assertJsonPath('pet.body_condition_label', $label);
+        }
+    }
+
+    public function test_customer_weight_injection_is_ignored_on_creation_and_update(): void
+    {
+        $this->authenticateCustomer(10);
+        $id = $this->postJson('/api/pets', ['pet_name' => 'Mochi', 'species' => 'Dog', 'size' => 'large', 'weight' => 8])
+            ->assertCreated()->assertJsonPath('pet.size', 'large')->json('pet.pet_id');
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => null]);
+        $this->putJson("/api/pets/$id", ['weight' => 12])->assertOk()->assertJsonPath('pet.weight', null);
+
+        DB::table('pets')->where('pet_id', $id)->update(['weight' => 28.5]);
+        $this->putJson("/api/pets/$id", ['medical_conditions' => 'Gentle handling'])->assertOk()->assertJsonPath('pet.weight', 28.5);
+        $this->putJson("/api/pets/$id", ['weight' => null, 'medical_conditions' => 'Shampoo allergy'])
+            ->assertOk()->assertJsonPath('pet.weight', 28.5)->assertJsonPath('pet.medical_conditions', 'Shampoo allergy');
+        $this->putJson("/api/pets/$id", ['weight' => 12])->assertOk()->assertJsonPath('pet.weight', 28.5);
+        $this->putJson("/api/admin/pets/$id", ['pet_name' => 'Changed'])->assertForbidden();
+    }
+
+    public function test_staff_corrections_keep_actor_attribution_notifications_and_safe_activity_details(): void
+    {
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        foreach ([
+            ['admin', null, null, 'Admin'],
+            ['staff', 'grooming', 'grooming_receptionist', 'Grooming Receptionist'],
+            ['staff', 'clinic', 'clinic_receptionist', 'Clinic Receptionist'],
+            ['staff', 'clinic', 'veterinarian', 'Veterinarian'],
+            ['staff', null, null, 'Staff'],
+        ] as $index => [$role, $type, $subrole, $roleLabel]) {
+            $id = $index + 101;
+            $actorId = $index + 20;
+            DB::table('pets')->insert(['pet_id' => $id, 'user_id' => $index === 4 ? null : 10,
+                'unregistered_customer_id' => $index === 4 ? 42 : null,
+                'pet_name' => "Pet $id", 'species' => 'Dog', 'birthdate' => '2020-01-01',
+                'medical_conditions' => 'Previous private note']);
+            $this->authenticateUser($actorId, $role, $type, $subrole);
+            if ($role === 'admin') auth()->user()->forceFill(['username' => 'clinic-admin']);
+            $this->putJson("/api/admin/pets/$id", ['pet_name' => "Updated $id", 'birthdate' => '2021-01-01',
+                'is_neutered' => true, 'medical_conditions' => 'New private note'])->assertOk();
+
+            $activity = \App\Models\ActivityLog::where('action', 'pet_updated')->where('pet_id', $id)->sole();
+            $this->assertSame($actorId, $activity->actor_id);
+            $this->assertSame($roleLabel, $activity->actor_role);
+            $this->assertSame($role === 'admin' ? 'clinic-admin' : "Jamie · $roleLabel", $activity->actor_display);
+            $this->assertStringContainsString('Jamie Santos', $activity->actor_identity);
+            $this->assertSame('pet', $activity->subject_type);
+            $this->assertSame((string) $id, $activity->subject_id);
+            $this->assertNotNull($activity->occurred_at);
+            $this->assertSame(['before' => "Pet $id", 'after' => "Updated $id"], $activity->changes['pet_name']);
+            $this->assertSame(['before' => '2020-01-01', 'after' => '2021-01-01'], $activity->changes['birthdate']);
+            $this->assertArrayHasKey('is_neutered', $activity->changes);
+            $this->assertArrayNotHasKey('medical_conditions', $activity->changes);
+            $this->assertSame('Pet information updated', \App\Support\ActivityPresentation::title($activity));
+        }
+        $group = collect(\App\Support\ActivityPresentation::typeGroups())->firstWhere('label', 'Customers & Pets');
+        $this->assertContains(['value' => 'pet_updated', 'label' => 'Pet information updated'], $group['options']);
+        $this->assertDatabaseCount('customer_notifications', 4);
+    }
 
     public function test_birthdate_creation_range_is_consistent_for_customer_and_admin_owners(): void
     {
@@ -219,6 +311,8 @@ class ClientPetProfileTest extends TestCase
 
         (require database_path('migrations/2026_10_11_000002_preserve_pet_weight_precision.php'))->up();
 
+        $this->createPetBodyConditionSchema();
+
         Schema::create('customer_notifications', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('user_id');
@@ -279,6 +373,10 @@ class ClientPetProfileTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('activity_logs');
+        Schema::dropIfExists('clinic_vitals');
+        Schema::dropIfExists('clinic_records');
+        Schema::dropIfExists('clinic_appointments');
         Schema::dropIfExists('booking_services');
         Schema::dropIfExists('services');
         Schema::dropIfExists('booking_pets');
@@ -290,21 +388,21 @@ class ClientPetProfileTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_customer_admin_and_staff_add_and_edit_share_exact_weight_rules(): void
+    public function test_admin_and_staff_add_and_edit_share_exact_weight_rules(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->increments('user_id'); $table->string('role');
         });
         DB::table('users')->insert(['user_id' => 10, 'role' => 'customer']);
         $cases = json_decode(file_get_contents(base_path('tests/Fixtures/weight-rules.json')), true);
-        foreach (['customer', 'admin', 'staff'] as $role) {
-            $this->authenticateUser($role === 'customer' ? 10 : 20, $role);
-            $createUrl = $role === 'customer' ? '/api/pets' : '/api/admin/customer-pets/registered/10';
+        foreach (['admin', 'staff'] as $role) {
+            $this->authenticateUser(20, $role);
+            $createUrl = '/api/admin/customer-pets/registered/10';
             foreach ($cases['pets'] as $index => [$species, $weight, $size]) {
                 $payload = ['pet_name' => $role.' pet '.$index, 'species' => $species,
                     'weight' => $weight, 'size' => $size === 'small' ? 'medium' : 'small'];
                 $id = $this->postJson($createUrl, $payload)->assertCreated()->assertJsonPath('pet.size', $size)->json('pet.pet_id');
-                $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
+                $editUrl = '/api/admin/pets/'.$id;
                 $this->putJson($editUrl, [...$payload, 'size' => $size])->assertOk()->assertJsonPath('pet.size', $size);
                 $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => $weight, 'size' => $size]);
             }
@@ -317,14 +415,13 @@ class ClientPetProfileTest extends TestCase
             }
             $unknown = ['pet_name' => $role.' unknown', 'species' => 'Dog', 'weight' => null, 'size' => 'large'];
             $id = $this->postJson($createUrl, $unknown)->assertCreated()->assertJsonPath('pet.size', 'large')->json('pet.pet_id');
-            $this->putJson(($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id, $unknown)
+            $this->putJson('/api/admin/pets/'.$id, $unknown)
                 ->assertOk()->assertJsonPath('pet.size', 'large');
-            $editUrl = ($role === 'customer' ? '/api/pets/' : '/api/admin/pets/').$id;
+            $editUrl = '/api/admin/pets/'.$id;
             $this->putJson($editUrl, [...$unknown, 'weight' => 4.25])
-                ->assertOk()->assertJsonPath('pet.size', $role === 'customer' ? 'large' : 'small');
+                ->assertOk()->assertJsonPath('pet.size', 'small');
             $clear = $this->putJson($editUrl, $unknown);
-            if ($role === 'customer') $clear->assertUnprocessable()->assertJsonValidationErrors('weight');
-            else $clear->assertOk()->assertJsonPath('pet.weight', null)->assertJsonPath('pet.size', 'large');
+            $clear->assertOk()->assertJsonPath('pet.weight', null)->assertJsonPath('pet.size', 'large');
         }
         Schema::drop('users');
     }
@@ -423,7 +520,7 @@ class ClientPetProfileTest extends TestCase
             'gender' => 'male',
             'birthdate' => '2023-05-12',
             'fur_type' => 'Smooth Short Coat',
-            'weight' => 8.5,
+            'size' => 'small',
         ])
             ->assertCreated()
             ->assertJsonPath('pet.pet_name', 'Bruno')
@@ -515,15 +612,15 @@ class ClientPetProfileTest extends TestCase
             ->assertCreated()->json('pet.pet_id');
         $this->putJson("/api/pets/$id", ['breed' => 'Golden Retriever'])
             ->assertOk()->assertJsonPath('pet.pet_name', 'Andrew')->assertJsonPath('pet.fur_type', null);
-        $this->putJson("/api/pets/$id", ['fur_type' => 'Unknown Fur Type', 'weight' => 12, 'color' => 'White',
+        $this->putJson("/api/pets/$id", ['fur_type' => 'Unknown Fur Type', 'size' => 'medium', 'color' => 'White',
             'gender' => 'male', 'birthdate' => '2020-01-01', 'medical_conditions' => 'Shampoo allergy'])
             ->assertOk()->assertJsonPath('pet.size', 'medium');
         foreach (['pet_name' => 'Andy', 'species' => 'Cat', 'breed' => 'Beagle', 'fur_type' => null,
-            'weight' => 14, 'size' => 'large', 'gender' => 'female', 'birthdate' => null,
+            'size' => 'large', 'gender' => 'female', 'birthdate' => null,
             'color' => null] as $field => $value) {
             $this->putJson("/api/pets/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
         }
-        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'breed' => 'Golden Retriever', 'fur_type' => 'Unknown Fur Type', 'weight' => 12]);
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'breed' => 'Golden Retriever', 'fur_type' => 'Unknown Fur Type', 'size' => 'medium', 'weight' => null]);
         $this->assertDatabaseCount('customer_notifications', 0);
     }
 
@@ -655,16 +752,14 @@ class ClientPetProfileTest extends TestCase
             );
     }
 
-    public function test_either_verified_measurement_protects_both_fields_even_when_blank(): void
+    public function test_either_verified_measurement_protects_size_even_when_blank(): void
     {
         $this->authenticateCustomer(10);
         foreach (['weight', 'size'] as $index => $verified) {
             $id = 101 + $index;
             DB::table('pets')->insert(['pet_id' => $id, 'user_id' => 10, 'pet_name' => "Pet $id", 'species' => 'Dog',
                 'clinic_verified_fields' => json_encode([$verified])]);
-            foreach (['weight' => 12, 'size' => 'medium'] as $field => $value) {
-                $this->putJson("/api/pets/$id", [$field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
-            }
+            $this->putJson("/api/pets/$id", ['size' => 'medium'])->assertUnprocessable()->assertJsonValidationErrors('size');
             $this->assertDatabaseHas('pets', ['pet_id' => $id, 'weight' => null, 'size' => null]);
         }
     }

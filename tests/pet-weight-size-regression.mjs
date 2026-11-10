@@ -85,18 +85,23 @@ showWeightValidationInField(input, 'Enter a valid weight in kilograms.');
 assert.equal(input.value, '');
 assert.equal(input.readOnly, false);
 
-for (const file of ['my-pets', 'booking-pet-step', 'walk-in-pet-step', 'admin-customers']) {
+for (const file of ['walk-in-pet-step', 'admin-customers']) {
   const source = fs.readFileSync(`scripts/components/${file}.js`, 'utf8');
   assert.match(source, file === 'admin-customers' ? /tools\.syncPetWeightAndSize\(/ : /syncWeightSizeFields\(/);
   assert.doesNotMatch(source, /showWeightRangeInField|weightFieldMode|resetWeightFieldForEntry/);
   assert.match(source, /(?:sizeCombobox|controls\.size)\.getValue\(\)/);
 }
-for (const [file, id] of [['pages/client/my-pets.html', 'petWeight'], ['pages/admin/pet-edit-form.html', 'adminPetWeight'], ['pages/client/booking-pet-details.html', 'weight'], ['pages/client/grooming-pre-registration.html', 'weight'], ['pages/admin/walk-in-pet-details.html', 'weight']]) {
+for (const [file, id] of [['pages/admin/pet-edit-form.html', 'adminPetWeight'], ['pages/admin/walk-in-pet-details.html', 'weight']]) {
   const html = fs.readFileSync(file, 'utf8');
   assert.match(html, new RegExp(`for="${id}"`));
   assert.match(html, new RegExp(`aria-describedby="${id}Error"`));
   assert.match(html, /inputmode="decimal"/);
   assert.match(html, /text-slate-500">kg<\/span>/);
+}
+for (const file of ['my-pets', 'booking-pet-details', 'grooming-pre-registration']) {
+  const html = fs.readFileSync(`pages/client/${file}.html`, 'utf8');
+  assert.doesNotMatch(html, /<input\b[^>]*\bname="weight"/);
+  assert.match(html, /<input\b[^>]*\bname="size"/);
 }
 // Entries and changed dependencies need fresh URLs together; mixed cached versions cannot link.
 const release = 'pet-weight-size-20261107-v1';

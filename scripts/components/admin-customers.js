@@ -1363,7 +1363,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         { label: "Breed", value: this.formatTextValue(pet.breed) },
         { label: "Gender", value: this.formatLabel(pet.gender) },
         { label: "Birthdate", value: this.formatDate(pet.birthdate) },
-        { label: "Size", value: `${this.formatLabel(pet.size)} · ${pet.sizeVerified ? "✓ Clinic verified" : "Estimated from weight"}` },
+        { label: "Size", value: this.formatLabel(pet.size), bodyConditionLabel: pet.bodyConditionLabel, sizeVerified: pet.sizeVerified },
         { label: "Weight", value: this.formatWeight(pet.weight) },
         { label: "Fur Type", value: this.formatLabel(pet.furType) },
         { label: "Color", value: this.formatTextValue(pet.color) },

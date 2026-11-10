@@ -267,7 +267,7 @@ class CustomerController extends Controller
     {
         $query = UnregisteredCustomer::query()
             ->availableCustomer()
-            ->with('pets')
+            ->with(['pets' => fn ($query) => $query->withBodyCondition()])
             ->where('is_archived', $archived);
 
         if ($search !== '') {
@@ -336,7 +336,8 @@ class CustomerController extends Controller
     {
         $this->requireAdminOrStaff($request);
 
-        $customer = UnregisteredCustomer::query()->availableCustomer()->with('pets')->find($id);
+        $customer = UnregisteredCustomer::query()->availableCustomer()
+            ->with(['pets' => fn ($query) => $query->withBodyCondition()])->find($id);
 
         if (! $customer) {
             return $this->petSessionResponse(['success' => false, 'message' => 'Customer record not found.'], 404);
@@ -419,6 +420,7 @@ class CustomerController extends Controller
             'color' => $pet->color,
             'size' => $pet->size,
             'sizeVerified' => $pet->hasClinicVerifiedSize(),
+            'bodyConditionLabel' => $pet->body_condition_label,
             'furType' => $pet->fur_type,
             'medicalConditions' => $pet->medical_conditions,
             'isArchived' => (bool) $pet->is_archived,
@@ -514,7 +516,7 @@ class CustomerController extends Controller
         // Empty query → return all active customers with their pets (for the clinic records list)
         if ($search === '') {
             $registered = User::query()
-                ->with(['pets' => fn ($q) => $q->where('is_archived', false)->orderBy('pet_name')])
+                ->with(['pets' => fn ($q) => $q->withBodyCondition()->where('is_archived', false)->orderBy('pet_name')])
                 ->registeredCustomer()
                 ->where('is_active', true)
                 ->where('is_archived', false)
@@ -536,7 +538,7 @@ class CustomerController extends Controller
 
             $unregistered = UnregisteredCustomer::query()
                 ->availableCustomer()
-                ->with(['pets' => fn ($q) => $q->where('is_archived', false)->orderBy('pet_name')])
+                ->with(['pets' => fn ($q) => $q->withBodyCondition()->where('is_archived', false)->orderBy('pet_name')])
                 ->where('is_archived', false)
                 ->orderBy('first_name')
                 ->orderBy('last_name')
@@ -588,7 +590,7 @@ class CustomerController extends Controller
         };
 
         $registeredQuery = User::query()
-            ->with(['pets' => fn ($query) => $query->where('is_archived', false)])
+            ->with(['pets' => fn ($query) => $query->withBodyCondition()->where('is_archived', false)])
             ->registeredCustomer()
             ->where('is_active', true)
             ->where('is_archived', false);
@@ -607,7 +609,7 @@ class CustomerController extends Controller
 
         $unregisteredQuery = UnregisteredCustomer::query()
             ->availableCustomer()
-            ->with(['pets' => fn ($query) => $query->where('is_archived', false)])
+            ->with(['pets' => fn ($query) => $query->withBodyCondition()->where('is_archived', false)])
             ->where('is_archived', false);
         $applySearch($unregisteredQuery);
         $unregistered = $unregisteredQuery->limit(10)->get()->map(fn (UnregisteredCustomer $customer) => [
@@ -622,7 +624,7 @@ class CustomerController extends Controller
             'pets' => $customer->pets->map(fn (Pet $pet) => $this->formatPet($pet))->values(),
         ]);
 
-        $pets = Pet::query()
+        $pets = Pet::withBodyCondition()
             ->with([
                 'user:user_id,first_name,last_name',
                 'unregisteredCustomer:id,first_name,last_name',
@@ -822,30 +824,11 @@ class CustomerController extends Controller
             ->whereNotIn('status', ['cancelled', 'waiting_to_arrive', 'expired', 'no_show'])
             ->count();
 
-        $pets = Pet::where('user_id', $user->user_id)
+        $pets = Pet::withBodyCondition()->where('user_id', $user->user_id)
             ->orderBy('is_archived')
             ->orderBy('created_at', 'desc')
             ->get()
-            ->map(fn (Pet $pet) => [
-                'id' => $pet->pet_id,
-                'petName' => $pet->pet_name,
-                'species' => $pet->species,
-                'breed' => $pet->breed,
-                'gender' => $pet->gender,
-                'birthdate' => $pet->birthdate,
-                'isNeutered' => (bool) $pet->is_neutered,
-                'neuteredDate' => $pet->neutered_date,
-                'isDeceased' => (bool) $pet->is_deceased,
-                'deceasedDate' => $pet->deceased_date,
-                'weight' => $pet->weight,
-                'color' => $pet->color,
-                'size' => $pet->size,
-                'sizeVerified' => $pet->hasClinicVerifiedSize(),
-                'furType' => $pet->fur_type,
-                'medicalConditions' => $pet->medical_conditions,
-                'isArchived' => (bool) $pet->is_archived,
-                'createdAt' => $pet->created_at ?? null,
-            ]);
+            ->map(fn (Pet $pet) => $this->formatPet($pet));
 
         return $this->petSessionResponse([
             'success' => true,

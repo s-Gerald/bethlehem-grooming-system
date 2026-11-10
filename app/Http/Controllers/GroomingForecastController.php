@@ -24,7 +24,8 @@ class GroomingForecastController extends Controller
         $data = $request->validate([
             'durations_only' => 'sometimes|boolean', 'pets' => 'required|array|min:1|max:10',
             'pets.*.pet_id' => 'nullable|integer', 'pets.*.species' => 'required|in:dog,cat',
-            'pets.*.size' => 'nullable|in:small,medium,large,extra_large', 'pets.*.weight' => 'nullable|numeric|min:0',
+            'pets.*.size' => 'nullable|in:small,medium,large,extra_large',
+            ...($walkIn ? ['pets.*.weight' => 'nullable|numeric|min:0'] : []),
             'pets.*.groomer_id' => 'nullable|integer', 'pets.*.grooming_preference' => 'nullable|string|max:32',
             'pets.*.haircut_requested' => 'sometimes|boolean',
             'pets.*.services' => 'sometimes|array', 'pets.*.services.package' => 'nullable|string|max:100',
@@ -38,10 +39,10 @@ class GroomingForecastController extends Controller
                 abort_unless($saved->has($pet['pet_id']), 404);
                 $record = $saved[$pet['pet_id']];
                 $pet['species'] = strtolower($record->species);
-                $pet['size'] = $record->hasClinicVerifiedSize() ? $record->groomingSize()
+                $pet['size'] = ! $walkIn || $record->hasClinicVerifiedSize() ? $record->groomingSize()
                     : (PetWeightSize::withComputedSize(['species' => $record->species,
                         'weight' => $pet['weight'] ?? $record->weight])['size'] ?? $record->groomingSize());
-            } elseif (isset($pet['weight'])) {
+            } elseif ($walkIn && isset($pet['weight'])) {
                 $pet = PetWeightSize::withComputedSize($pet);
             }
         }
