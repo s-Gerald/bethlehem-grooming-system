@@ -201,6 +201,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->string('body_condition')->nullable();
             $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
@@ -592,10 +593,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'size' => 'small',
             'clinic_verified_fields' => json_encode(['size'], JSON_THROW_ON_ERROR),
         ]);
-        $visitId = DB::table('clinic_appointments')->insertGetId(['appointment_reference' => 'CL-BCS', 'pet_id' => 3,
-            'appointment_date' => '2026-01-01', 'status' => 'completed']);
-        DB::table('clinic_records')->insert(['clinic_appointment_id' => $visitId]);
-        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $visitId, 'body_condition_score' => 9]);
+        DB::table('pets')->where('pet_id', 3)->update(['body_condition' => 'obese']);
         DB::table('services')->insert([
             'service_id' => 3,
             'service_name' => 'Regular Dog Grooming',
@@ -632,7 +630,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->assertDatabaseHas('booking_services', ['service_id' => 3, 'price_at_booking' => 550]);
 
         $this->authenticateAs('staff');
-        $this->getJson('/api/admin/bookings?view=board')->assertOk()->assertJsonPath('incomingList.0.pets.0.bodyConditionLabel', 'Obese');
+        $this->getJson('/api/admin/bookings?view=board')->assertOk()->assertJsonPath('incomingList.0.pets.0.bodyCondition', 'obese');
     }
 
     #[DataProvider('decimalPetWeights')]
@@ -643,13 +641,14 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '11:00 AM - 12:00 PM',
             'start_time' => '11:00:00', 'end_time' => '12:00:00', 'max_slots' => 4, 'is_active' => true]);
         $pet = ['pet_name' => 'Decimal pet', 'species' => $species, 'weight' => $weight,
-            'size' => $size === 'small' ? 'medium' : 'small'];
+            'size' => $size === 'small' ? 'medium' : 'small', 'body_condition' => 'overweight'];
         $this->authenticateAs('customer');
         $bookingId = $this->submitSignedGrooming('/api/booking/store', [
             'booking_date' => now()->toDateString(), 'window_id' => 1, 'number_of_pets' => 1,
             'pets' => [[...$pet, 'services' => ['ala_carte' => ['nail_clipping']]]],
         ])->assertCreated()->json('booking.booking_id');
-        $this->assertDatabaseHas('pets', ['pet_name' => 'Decimal pet', 'weight' => null, 'size' => $pet['size']]);
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Decimal pet', 'weight' => null, 'size' => $pet['size'],
+            'body_condition' => 'overweight', 'clinic_verified_fields' => null]);
         $this->assertDatabaseHas('booking_services', ['booking_id' => $bookingId, 'service_id' => 900, 'price_at_booking' => 0]);
         $this->authenticateAs('staff');
         $walkinId = $this->submitSignedGrooming('/api/admin/walk-in', [
@@ -658,6 +657,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'sedation_consent' => false, 'terms_agreed' => true,
         ])->assertCreated()->json('booking_id');
         $this->assertDatabaseHas('pets', ['pet_name' => 'Walkin decimal', 'weight' => $weight, 'size' => $size]);
+        $walkInPet = \App\Models\Pet::where('pet_name', 'Walkin decimal')->sole();
+        $this->assertSame('overweight', $walkInPet->body_condition);
+        $this->assertTrue($walkInPet->hasVerifiedBodyCondition());
         $this->assertDatabaseHas('booking_services', ['booking_id' => $walkinId, 'service_id' => 900, 'price_at_booking' => 0]);
     }
 
@@ -1449,6 +1451,35 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'pet_id' => 120,
             'type' => 'pet_information_updated',
         ]);
+    }
+
+    public function test_grooming_check_in_only_verifies_conditions_explicitly_submitted_for_the_correct_pet(): void
+    {
+        $this->authenticateAs('staff');
+        DB::table('bookings')->insert(['booking_id' => 120, 'booking_reference' => 'BCS-120',
+            'booking_date' => now()->toDateString(), 'number_of_pets' => 3, 'status' => 'waiting_to_arrive']);
+        $selections = [];
+        foreach (range(1, 3) as $id) {
+            DB::table('pets')->insert(['pet_id' => $id, 'pet_name' => "Pet $id", 'species' => 'dog',
+                'size' => 'small', 'body_condition' => 'obese']);
+            DB::table('booking_pets')->insert(['booking_pet_id' => $id, 'booking_id' => 120, 'pet_id' => $id]);
+            $selections[] = ['booking_pet_id' => $id, 'size' => 'small'];
+        }
+        $endpoint = '/api/admin/bookings/120/check-in';
+        $invalid = $selections;
+        $invalid[0]['body_condition'] = 'unknown';
+        $this->postJson($endpoint, ['pet_sizes' => $invalid])->assertUnprocessable()->assertJsonValidationErrors('pet_sizes.0.body_condition');
+        $invalid[0] = ['booking_pet_id' => 99, 'size' => 'small', 'body_condition' => 'thin'];
+        $this->postJson($endpoint, ['pet_sizes' => $invalid])->assertUnprocessable();
+        $this->assertDatabaseHas('bookings', ['booking_id' => 120, 'status' => 'waiting_to_arrive']);
+
+        $selections[1]['body_condition'] = 'obese';
+        $selections[2]['body_condition'] = 'ideal';
+        $this->postJson($endpoint, ['pet_sizes' => $selections])->assertOk();
+        foreach ([1 => ['obese', ['size']], 2 => ['obese', ['size', 'body_condition']], 3 => ['ideal', ['size', 'body_condition']]] as $id => [$condition, $verified]) {
+            $this->assertDatabaseHas('pets', ['pet_id' => $id, 'body_condition' => $condition,
+                'clinic_verified_fields' => json_encode($verified)]);
+        }
     }
 
     public function test_single_pet_legacy_undo_restores_queue_without_deleting_notification_history(): void

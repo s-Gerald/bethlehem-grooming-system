@@ -15,6 +15,66 @@
   font-weight: 600;
   line-height: 1rem;
   white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.pet-condition-field {
+  min-width: 0;
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+.pet-condition-field legend {
+  margin-bottom: 0.375rem;
+  font-weight: 500;
+}
+
+.pet-condition-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.pet-condition-options label {
+  position: relative;
+  cursor: pointer;
+}
+
+.pet-condition-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+}
+
+.pet-condition-options span {
+  display: inline-block;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+.pet-condition-options input:checked + span {
+  border-color: #64748b;
+  background: #e2e8f0;
+  box-shadow: inset 0 0 0 1px #64748b;
+}
+
+.pet-condition-options input:focus-visible + span {
+  outline: 2px solid #475569;
+  outline-offset: 2px;
+}
+
+.pet-condition-field [data-condition-clear] {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  text-decoration: underline;
+}
+
+.pet-condition-field:disabled {
+  opacity: 0.6;
 }
 
 clinic-record-sections .case-detail-section ~ .case-detail-section {

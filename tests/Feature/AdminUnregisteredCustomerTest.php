@@ -45,6 +45,8 @@ class AdminUnregisteredCustomerTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->string('body_condition')->nullable();
+            $table->json('clinic_verified_fields')->nullable();
             $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
@@ -487,14 +489,19 @@ class AdminUnregisteredCustomerTest extends TestCase
             'fur_type' => 'Long Dense Coat',
             'weight' => 4,
             'size' => 'small',
+            'body_condition' => 'ideal',
         ])->assertCreated()
             ->assertJsonPath('pet.unregistered_customer_id', $customerId)
-            ->assertJsonPath('pet.pet_name', 'Mochi');
+            ->assertJsonPath('pet.pet_name', 'Mochi')
+            ->assertJsonPath('pet.body_condition', 'ideal')
+            ->assertJsonPath('pet.clinic_verified_fields', ['body_condition']);
 
         $this->getJson("/api/admin/customers/unregistered/{$customerId}")
             ->assertOk()
             ->assertJsonPath('customer.petCount', 1)
-            ->assertJsonPath('customer.pets.0.petName', 'Mochi');
+            ->assertJsonPath('customer.pets.0.petName', 'Mochi')
+            ->assertJsonPath('customer.pets.0.bodyCondition', 'ideal')
+            ->assertJsonPath('customer.pets.0.bodyConditionVerified', true);
 
         $this->postJson("/api/admin/customers/unregistered/{$customerId}/archive")
             ->assertOk();

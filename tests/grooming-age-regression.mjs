@@ -64,7 +64,7 @@ function combobox({ input }) {
 const read = name => fs.readFileSync(new URL(`../scripts/components/${name}.js`, import.meta.url), "utf8")
   .replace(/^import\s+[\s\S]*?from\s+"[^"]+";\s*/gm, "").replace(/^export /gm, "");
 const underage = { id: "young", petName: "Puppy", petType: "Dog", birthdate: "2026-06-16" };
-const exact = { id: "six", petName: "Six Months", petType: "Dog", birthdate: "2026-04-16", size: "Large", bodyConditionLabel: "Overweight" };
+const exact = { id: "six", petName: "Six Months", petType: "Dog", birthdate: "2026-04-16", size: "Large", bodyCondition: "overweight" };
 const unknown = { id: "unknown", petName: "Unknown", petType: "Cat" };
 
 function petStep(clinic = false) {
@@ -118,7 +118,7 @@ assert.match(cards[2].innerHTML, /Select Pet/);
 assert.match(cards[1].innerHTML, /Size:<\/span>\s*Large\s*<span class="pet-body-condition">Overweight<\/span>/);
 assert.doesNotMatch(cards[2].innerHTML, /pet-body-condition/);
 for (const label of ["Thin", "Ideal", "Overweight", "Obese"]) {
-  const mapped = petService.normalizeApiPet({ pet_id: 12, pet_name: "Mochi", species: "Dog", size: "large", body_condition_label: label });
+  const mapped = petService.normalizeApiPet({ pet_id: 12, pet_name: "Mochi", species: "Dog", size: "large", body_condition: label.toLowerCase() });
   const summary = ui.context.buildPetSummaryHtml(mapped);
   assert.ok(summary.includes(`<span class="pet-body-condition">${label}</span>`));
 }

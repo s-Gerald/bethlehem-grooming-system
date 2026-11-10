@@ -11,6 +11,7 @@ use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
 use App\Rules\ValidPetWeight;
 use App\Support\PetWeightSize;
+use App\Support\PetBodyCondition;
 use App\Support\PetInformation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ class PetController extends Controller
     {
         $archived = (int) $request->query('archived', 0);
 
-        $pets = Pet::withBodyCondition()->where('user_id', $request->user()->user_id)
+        $pets = Pet::where('user_id', $request->user()->user_id)
             ->where('is_archived', $archived)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -46,7 +47,7 @@ class PetController extends Controller
     // GET /api/pets/{id}
     public function show(Request $request, $id)
     {
-        $pet = Pet::withBodyCondition()->where('pet_id', $id)
+        $pet = Pet::where('pet_id', $id)
             ->where('user_id', $request->user()->user_id)
             ->first();
 
@@ -73,6 +74,7 @@ class PetController extends Controller
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
             'birthdate' => ['nullable', new ValidPetBirthdate],
+            'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'color' => ['nullable', 'string', new ValidPetColor],
@@ -90,6 +92,7 @@ class PetController extends Controller
             'breed' => $data['breed'] ?? null,
             'gender' => $data['gender'] ?? null,
             'birthdate' => $data['birthdate'] ?? null,
+            ...array_intersect_key($data, ['body_condition' => true]),
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'color' => ValidPetColor::validatedColor($data),
@@ -121,6 +124,7 @@ class PetController extends Controller
             'breed' => 'nullable|string|max:100',
             'gender' => 'nullable|in:male,female',
             'birthdate' => ['nullable', new ValidPetBirthdate],
+            'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
@@ -162,6 +166,7 @@ class PetController extends Controller
             'neutered_date' => 'nullable|date',
             'is_deceased' => 'nullable|boolean',
             'deceased_date' => 'nullable|date',
+            'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(existingPet: $pet)],
             'weight' => ['nullable', new ValidPetWeight(
@@ -191,6 +196,7 @@ class PetController extends Controller
             'neutered_date' => $data['neutered_date'] ?? null,
             'is_deceased' => $data['is_deceased'] ?? false,
             'deceased_date' => $data['deceased_date'] ?? null,
+            ...array_intersect_key($data, ['body_condition' => true]),
             'size' => array_key_exists('size', $data) ? $data['size'] : $pet->size,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => array_key_exists('weight', $data) ? $data['weight'] : $pet->weight,
@@ -208,8 +214,11 @@ class PetController extends Controller
             $attributes,
             $changedVerifiedFields,
         ) {
+            // Keep equivalent stored flags from producing a write on verification-only saves.
+            foreach (['is_neutered', 'is_deceased'] as $field) {
+                if (PetInformation::matches($field, $pet->$field, $attributes[$field])) unset($attributes[$field]);
+            }
             $pet->fill($attributes);
-            $hasInformationChanges = $pet->isDirty();
 
             if ($changedVerifiedFields !== []) {
                 $pet->clinic_verified_fields = array_values(array_unique([
@@ -218,11 +227,7 @@ class PetController extends Controller
                 ]));
             }
 
-            if (! $hasInformationChanges) {
-                return $pet->fresh();
-            }
-
-            $pet->save();
+            $pet->save(['verify_body_condition' => array_key_exists('body_condition', $attributes)]);
 
             return $pet->fresh();
         });
@@ -266,6 +271,7 @@ class PetController extends Controller
             'neutered_date' => 'nullable|date',
             'is_deceased' => 'nullable|boolean',
             'deceased_date' => 'nullable|date',
+            'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
@@ -293,6 +299,7 @@ class PetController extends Controller
             'neutered_date' => $data['neutered_date'] ?? null,
             'is_deceased' => $data['is_deceased'] ?? false,
             'deceased_date' => $data['deceased_date'] ?? null,
+            ...array_intersect_key($data, ['body_condition' => true]),
             'size' => $data['size'] ?? null,
             'fur_type' => $data['fur_type'] ?? null,
             'weight' => $data['weight'] ?? null,
@@ -396,7 +403,7 @@ class PetController extends Controller
         return array_values(array_filter(
             Pet::CLINIC_VERIFIABLE_FIELDS,
             function (string $field) use ($pet, $attributes) {
-                if (! array_key_exists($field, $attributes)) {
+                if ($field === 'body_condition' || ! array_key_exists($field, $attributes)) {
                     return false;
                 }
 

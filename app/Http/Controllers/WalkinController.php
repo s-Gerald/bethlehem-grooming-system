@@ -411,6 +411,7 @@ class WalkinController extends Controller
             'breed' => $petData['breed'] ?? null,
             'fur_type' => ValidBreedCoat::validatedCoat($petData),
             'weight' => $petData['weight'] ?? null,
+            ...array_intersect_key($petData, ['body_condition' => true]),
             'size' => $petData['size'] ?? null,
             'color' => ValidPetColor::validatedColor($petData),
             'medical_conditions' => $petData['medical_conditions'] ?? null,
@@ -426,10 +427,11 @@ class WalkinController extends Controller
             'breed' => $petData['breed'] ?? $pet->breed,
             'fur_type' => ValidBreedCoat::validatedCoat($petData, $pet),
             'weight' => $petData['weight'] ?? $pet->weight,
+            ...array_intersect_key($petData, ['body_condition' => true]),
             'size' => $petData['size'] ?? $pet->size,
             'color' => ValidPetColor::validatedColor($petData, $pet),
             'medical_conditions' => $petData['medical_conditions'] ?? $pet->medical_conditions,
-        ]);
+        ], ['verify_body_condition' => array_key_exists('body_condition', $petData)]);
 
         return $pet;
     }

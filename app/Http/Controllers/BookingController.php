@@ -21,6 +21,7 @@ use App\Services\GroomingPaymentReadinessService;
 use App\Services\GroomingServicePriceResolver;
 use App\Support\PetInformation;
 use Carbon\Carbon;
+use App\Support\PetBodyCondition;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -65,6 +66,7 @@ class BookingController extends Controller
             'pets.*.species' => ['required_without:pets.*.pet_id', 'string', 'regex:/^(dog|cat)$/i'],
             'pets.*.breed' => 'nullable|string|max:100',
             'pets.*.birthdate' => ['nullable', new ValidPetBirthdate],
+            'pets.*.body_condition' => PetBodyCondition::rules(),
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
@@ -83,7 +85,7 @@ class BookingController extends Controller
         foreach ((array) $request->input('pets', []) as $index => $petData) {
             if (is_array($petData) && ! empty($petData['pet_id'])) {
                 foreach (array_keys(PetInformation::FIELDS) as $field) {
-                    if ($field === 'weight') continue;
+                    if (in_array($field, ['weight', 'body_condition'], true)) continue;
                     $type = in_array($field, ['is_neutered', 'is_deceased'], true) ? 'boolean' : 'string';
                     $rules["pets.{$index}.{$field}"] = ['nullable', $type];
                 }
@@ -189,6 +191,7 @@ class BookingController extends Controller
                         'breed' => $petData['breed'] ?? null,
                         'birthdate' => $petData['birthdate'] ?? null,
                         'color' => ValidPetColor::validatedColor($petData),
+                        ...array_intersect_key($petData, ['body_condition' => true]),
                         'size' => $petData['size'] ?? null,
                         'fur_type' => ValidBreedCoat::validatedCoat($petData),
                         'medical_conditions' => $petData['medical_conditions'] ?? null,
@@ -445,6 +448,8 @@ class BookingController extends Controller
                     'weight' => $bp->pet?->weight,
                     'registered_size' => $bp->registered_size,
                     'confirmed_size' => $bp->confirmed_size,
+                    'body_condition' => $bp->pet?->body_condition,
+                    'body_condition_verified' => $bp->pet?->hasVerifiedBodyCondition() ?? false,
                     'grooming_preference' => $bp->grooming_preference, 'grooming_preference_label' => $bp->grooming_preference_label,
                     'grooming_status' => $groomingStatus,
                     'active_in_grooming' => ! $groomingFinished && $bp->grooming_state !== BookingPet::GROOMING_STATE_CANCELLED,

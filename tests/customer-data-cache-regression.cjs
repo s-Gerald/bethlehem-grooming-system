@@ -533,7 +533,7 @@ async function testActualPageLoaders() {
 async function testMyPetsStaticModalsAndWorkflows() {
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const env = environment();
-  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 0.1, size: "small", body_condition_label: "Thin", medical_conditions: "Sensitive skin", clinic_verified_fields: ["weight", "size"], customer_locked_fields: ["color", "medical_conditions"] };
+  const activePet = { ...pets.pets[0], birthdate: '1700-01-01', breed: "Beagle", fur_type: "Smooth Short Coat", weight: 0.1, size: "small", body_condition: "thin", medical_conditions: "Sensitive skin", clinic_verified_fields: ["weight", "size", "body_condition"], customer_locked_fields: ["color", "medical_conditions"] };
   const archivedPet = { ...activePet, pet_id: 2, pet_name: "Archived pet", is_archived: true };
   const petResponse = endpoint => endpoint === "/me" ? profile : endpoint.startsWith("/pets?")
     ? { pets: endpoint.includes("archived=1") ? [archivedPet] : [activePet] } : { success: true };
@@ -541,7 +541,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   const ui = mountPage(env, "my-pets.html");
   await flush();
   const el = ui.element;
-  assert.match(el("petsGrid").innerHTML, /Small ✓<span class="pet-body-condition">Thin<\/span>/);
+  assert.match(el("petsGrid").innerHTML, /Small ✓[\s\S]*<span class="pet-body-condition">Thin.*Body condition verified/);
   const form = el("petModal"), confirmation = el("petConfirmationModal");
   const open = modal => !modal.classList.contains("hidden");
   const writes = () => env.calls.filter(call => call.method !== "GET");
@@ -665,6 +665,16 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("petMedical").disabled, false);
   assert.equal(el("petColor").disabled, true, "Clinic-cleared saved values remain locked");
   assert.equal(el("petFormSubmit").disabled, true, "Unchanged profiles cannot confirm");
+  const condition = el("petBodyCondition");
+  assert.equal(condition.value, "thin");
+  await el("petForm").dispatch("change");
+  assert.equal(el("petFormSubmit").disabled, true, "Selecting the saved condition keeps Save disabled");
+  condition.value = "ideal";
+  await el("petForm").dispatch("change");
+  assert.equal(el("petFormSubmit").disabled, false, "A changed condition enables Save");
+  condition.value = "thin";
+  await el("petForm").dispatch("change");
+  assert.equal(el("petFormSubmit").disabled, true, "Returning to the original condition disables Save");
   const beforeUnchanged = writes().length;
   await el("petForm").dispatch("submit");
   assert.equal(writes().length, beforeUnchanged);

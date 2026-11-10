@@ -405,6 +405,7 @@ class ClinicWalkinController extends Controller
                 : null,
             'fur_type' => ValidBreedCoat::validatedCoat($data),
             'weight' => $data['weight'] ?? null,
+            ...array_intersect_key($data, ['body_condition' => true]),
             'size' => $data['size'] ?? null,
             'clinic_verified_fields' => ! empty($data['size']) ? ['size'] : null,
             'color' => ValidPetColor::validatedColor($data),
@@ -431,13 +432,14 @@ class ClinicWalkinController extends Controller
                 : $pet->neutered_date,
             'fur_type' => ValidBreedCoat::validatedCoat($data, $pet),
             'weight' => $data['weight'] ?? $pet->weight,
+            ...array_intersect_key($data, ['body_condition' => true]),
             'size' => $data['size'] ?? $pet->size,
             'clinic_verified_fields' => ! empty($data['size'])
                 ? array_values(array_unique([...($pet->clinic_verified_fields ?? []), 'size']))
                 : $pet->clinic_verified_fields,
             'color' => ValidPetColor::validatedColor($data, $pet),
             'medical_conditions' => $data['medical_conditions'] ?? $pet->medical_conditions,
-        ]);
+        ], ['verify_body_condition' => array_key_exists('body_condition', $data)]);
 
         return $pet;
     }

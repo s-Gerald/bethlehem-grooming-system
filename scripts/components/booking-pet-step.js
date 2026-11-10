@@ -13,7 +13,7 @@ import {
   removePetFromBooking as removeStoredPet,
   loadPetsFromApi,
   normalizeApiPet,
-} from "../services/pet-service.js?v=pet-weight-size-20261107-v1&pet-fields=20261030-v1&pet-sessions=20261031-v1&pet-profile=20261110-v1";
+} from "../services/pet-service.js?v=pet-weight-size-20261107-v1&pet-fields=20261030-v1&pet-sessions=20261031-v1&pet-profile=20261110-v1&body-condition=20261110-v2";
 import { formatPetSizeLabel, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import {
   CLINIC_VISIT_PETS_KEY,
@@ -28,7 +28,7 @@ import { canSelectAllSavedPets, showPetSelectionSection } from "./pet-selection-
 import { goToGroomingStep, isGroomingSinglePage } from "./grooming-flow-navigation.js";
 import { formatPetAge, isEligibleForGrooming, GROOMING_MINIMUM_AGE_MESSAGE } from "../services/grooming-age.js";
 import { formatSavedWeight, getSizeOptions } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
-import { renderBodyConditionChip } from "./pet-body-condition.js";
+import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 
 /**
  * Booking Pet Step Controller
@@ -113,6 +113,7 @@ const elements = {
   color: document.getElementById("color"),
   furType: document.getElementById("furType"),
   size: document.getElementById("size"),
+  bodyCondition: document.getElementById("bodyCondition"),
   medicalNotes: document.getElementById("medicalNotes"),
   sizeError: document.getElementById("sizeError"),
   savePetBtn: document.getElementById("savePetBtn"),
@@ -310,7 +311,7 @@ function buildPetSummaryHtml(pet) {
       )}</p>
       <p><span class="font-semibold text-slate-700">Size:</span> ${escapeHtml(
         pet.size ? formatPetSizeLabel(pet.size) : "Not specified",
-      )} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}</p>
+      )}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}</p>
       <p><span class="font-semibold text-slate-700">Allergies &amp; Special Care Notes:</span> ${escapeHtml(
         pet.medicalNotes || "None",
       )}</p>
@@ -502,7 +503,7 @@ function renderSelectedPets() {
             pet.petName,
           )}</h4>
           <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` · ${escapeHtml(pet.breed)}` : ""}</p>
-          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${savedPetsLoading ? "" : renderBodyConditionChip(pet.bodyConditionLabel)}</p>
+          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")}${pet.sizeVerified ? " · Size verified" : ""} ${savedPetsLoading ? "" : renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}</p>
         </div>
 
         <button
@@ -561,6 +562,7 @@ function getFormValues(form) {
     color: colorCombobox.getValue(),
     furType: form.furType.value,
     size: sizeCombobox.getValue(),
+    bodyCondition: elements.bodyCondition.value || null,
     medicalNotes: form.medicalNotes.value,
   };
 }
@@ -593,6 +595,7 @@ function restoreAddPetFormDraft() {
 
   updateSizeOptions();
   sizeCombobox.setValue(values.size || "");
+  elements.bodyCondition.value = values.bodyCondition || "";
 
   elements.medicalNotes.value = values.medicalNotes || "";
 }
@@ -647,6 +650,7 @@ function resetAddPetForm() {
   breedCoatCombobox.reset();
   colorCombobox.reset();
   sizeCombobox.reset();
+  elements.bodyCondition.value = "";
   updateSizeOptions();
   setFieldError(elements.size, elements.sizeError, "");
   saveStepTwoDraft();
@@ -696,6 +700,7 @@ async function handleAddPetSubmit(event) {
         color: formValues.color.trim() || null,
         fur_type: formValues.furType || null,
         size: normalizePetSize(formValues.size) || null,
+        body_condition: formValues.bodyCondition,
         medical_conditions: formValues.medicalNotes.trim() || null,
       });
       newPet = normalizeApiPet(response.pet);

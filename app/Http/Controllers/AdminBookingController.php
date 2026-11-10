@@ -10,6 +10,7 @@ use App\Models\CustomerNotification;
 use App\Models\Notification;
 use App\Models\Payment;
 use App\Support\PetWeightSize;
+use App\Support\PetBodyCondition;
 use App\Services\GroomingCompletionSmsService;
 use App\Services\DailyPetQueue;
 use App\Services\GroomingPaymentReadinessService;
@@ -106,7 +107,7 @@ class AdminBookingController extends Controller
 
         $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
         $summaryRelations = ['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.groomer', 'bookingServices.service',
-            'bookingPets.pet' => fn ($query) => $query->withBodyCondition(),
+            'bookingPets.pet',
             'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)];
 
         // Incoming: dashboard sees only the selected day; appointments can opt in to today + future.
@@ -395,13 +396,15 @@ class AdminBookingController extends Controller
     {
         $data = request()->validate([
             'pet_sizes' => ['nullable', 'array'],
-            'pet_sizes.*.booking_pet_id' => ['required_with:pet_sizes', 'integer'],
+            'pet_sizes.*.booking_pet_id' => ['required_with:pet_sizes', 'integer', 'distinct'],
             'pet_sizes.*.size' => ['required_with:pet_sizes', 'in:small,medium,large,extra_large'],
+            'pet_sizes.*.body_condition' => PetBodyCondition::rules(),
             'internal_staff_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
-        $selectedSizes = collect($data['pet_sizes'] ?? [])->pluck('size', 'booking_pet_id');
+        $selections = collect($data['pet_sizes'] ?? [])->keyBy('booking_pet_id');
+        $selectedSizes = $selections->pluck('size', 'booking_pet_id');
         $queueDate = now()->toDateString();
-        $result = app(DailyPetQueue::class)->runForDate($queueDate, function () use ($id, $queueDate, $selectedSizes, $data) {
+        $result = app(DailyPetQueue::class)->runForDate($queueDate, function () use ($id, $queueDate, $selectedSizes, $selections, $data) {
             $booking = Booking::with(['user', 'timeWindow', 'bookingPets.pet', 'bookingServices.service'])
                 ->whereKey($id)
                 ->lockForUpdate()
@@ -451,7 +454,7 @@ class AdminBookingController extends Controller
                 $size = $selectedSizes->get($bookingPet->booking_pet_id) ?? $pet->groomingSize();
                 $bookingPet->confirmed_size = $size;
                 $bookingPet->save();
-                $pet->confirmClinicSize($size);
+                $pet->confirmClinicSize($size, $selections->get($bookingPet->booking_pet_id, []));
             }
 
             $sequence = app(\App\Services\GroomingIntakeSequence::class)->reserve($queueDate, $booking->bookingPets->count());
@@ -1512,7 +1515,8 @@ class AdminBookingController extends Controller
                     'breed' => $pet?->breed ?? '—',
                     'size' => $bp->confirmed_size ?? $pet?->groomingSize() ?? '—',
                     'sizeVerified' => $pet?->hasClinicVerifiedSize() ?? false,
-                    'bodyConditionLabel' => $pet?->body_condition_label,
+                    'bodyCondition' => $pet?->body_condition,
+                    'bodyConditionVerified' => $pet?->hasVerifiedBodyCondition() ?? false,
                     'groomingPreference' => $bp->grooming_preference,
                     'groomingPreferenceLabel' => $bp->grooming_preference_label,
                     'registeredSize' => $bp->registered_size,

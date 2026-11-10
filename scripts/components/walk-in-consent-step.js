@@ -232,6 +232,7 @@ export function buildWalkInPets(reviewPayload) {
       fur_type:             item.pet.furType  || null,
       ...getPetWeightSubmission(item.pet),
       size:                 normalizeSizeForApi(item.pet.size),
+      ...(!item.pet.petId && item.pet.bodyCondition ? { body_condition: item.pet.bodyCondition } : {}),
       color:                item.pet.color || null,
       medical_conditions:   item.pet.medicalNotes || null,
       special_instructions: item.selection.specialInstructions?.trim() || null,

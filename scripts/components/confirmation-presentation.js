@@ -2,8 +2,8 @@ import { escapeHtml } from "../services/booking-draft-service.js?registration=fc
 import '../utils/philippine-mobile.js?v=mobile-format-20261029';
 
 export function confirmationFields(fields) {
-  return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide]) => `
-    <div${wide ? ' class="confirmation-field--wide"' : ""}><dt>${escapeHtml(label)}</dt><dd${id ? ` id="${escapeHtml(id)}"` : ""}>${escapeHtml(value ?? "Not provided")}</dd></div>
+  return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide, suffix = ""]) => `
+    <div${wide ? ' class="confirmation-field--wide"' : ""}><dt>${escapeHtml(label)}</dt><dd${id ? ` id="${escapeHtml(id)}"` : ""}>${escapeHtml(value ?? "Not provided")}${suffix}</dd></div>
   `).join("")}</dl>`;
 }
 

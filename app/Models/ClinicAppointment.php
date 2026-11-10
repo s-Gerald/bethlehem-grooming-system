@@ -201,6 +201,7 @@ class ClinicAppointment extends Model
             'total_amount' => $total,
             'consultation_finished_at' => now(),
         ]);
+        \App\Support\PetBodyCondition::synchronize($this, $this->vitals()->first()?->body_condition_score);
         Notification::createForClinic($this, Notification::TYPE_CLINIC_PAYMENT_DUE,
             "Clinic visit {$this->appointment_reference} is ready for payment.");
     }

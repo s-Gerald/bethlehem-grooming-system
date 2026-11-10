@@ -1,5 +1,5 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { renderBodyConditionChip } from "./pet-body-condition.js";
+import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103";
 import {
@@ -125,7 +125,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
           </div>
         </div>
         <p class="mt-2 text-xs font-semibold text-slate-600">
-          Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}
+          Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}
         </p>
         ${pet.sizeVerified ? "" : '<p class="mt-2 text-xs text-slate-500">Size may be confirmed by clinic staff at check-in.</p>'}
       </div>

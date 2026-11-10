@@ -14,7 +14,56 @@ class ClientPetProfileTest extends TestCase
     use \Tests\Support\CreatesPetBodyConditionSchema;
     use \Tests\Support\CreatesRegistrationAvailability;
 
-    public function test_pet_summaries_use_the_latest_finalized_non_null_body_condition(): void
+    public function test_customer_can_save_an_optional_body_condition_but_cannot_self_verify_it(): void
+    {
+        $this->authenticateCustomer(10);
+        $profile = ['pet_name' => 'Mochi', 'species' => 'Dog', 'size' => 'medium'];
+        $this->postJson('/api/pets', $profile + ['body_condition' => 'unknown'])
+            ->assertUnprocessable()->assertJsonValidationErrors('body_condition');
+        $id = $this->postJson('/api/pets', $profile + ['body_condition' => 'overweight', 'clinic_verified_fields' => ['body_condition']])
+            ->assertCreated()->assertJsonPath('pet.body_condition', 'overweight')->json('pet.pet_id');
+        $this->assertDatabaseHas('pets', ['pet_id' => $id, 'body_condition' => 'overweight', 'clinic_verified_fields' => null]);
+    }
+
+    public function test_customer_body_condition_changes_only_remove_their_own_verification(): void
+    {
+        $this->authenticateCustomer(10);
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'Dog']);
+        foreach (['thin', null] as $index => $newCondition) {
+            DB::table('pets')->where('pet_id', 101)->update(['body_condition' => 'obese',
+                'clinic_verified_fields' => json_encode(['size', 'body_condition'])]);
+            $events = DB::table('activity_logs')->count();
+            $this->putJson('/api/pets/101', ['body_condition' => 'obese'])->assertOk()
+                ->assertJsonPath('pet.clinic_verified_fields', ['size', 'body_condition']);
+            $this->assertDatabaseCount('activity_logs', $events);
+            $notes = "Shampoo note $index";
+            $this->putJson('/api/pets/101', ['body_condition' => 'obese', 'medical_conditions' => $notes])->assertOk()
+                ->assertJsonPath('pet.medical_conditions', $notes)
+                ->assertJsonPath('pet.clinic_verified_fields', ['size', 'body_condition']);
+            $this->putJson('/api/pets/101', ['body_condition' => $newCondition])->assertOk()
+                ->assertJsonPath('pet.body_condition', $newCondition)->assertJsonPath('pet.clinic_verified_fields', ['size']);
+        }
+    }
+
+    public function test_staff_can_confirm_an_unchanged_customer_condition_and_clear_it(): void
+    {
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        $this->authenticateUser(20, 'staff', 'grooming', 'grooming_receptionist');
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'Dog',
+            'body_condition' => 'obese', 'clinic_verified_fields' => json_encode(['size'])]);
+        $profile = ['pet_name' => 'Mochi', 'body_condition' => 'obese'];
+        $this->putJson('/api/admin/pets/101', $profile)->assertOk()
+            ->assertJsonPath('pet.clinic_verified_fields', ['size', 'body_condition']);
+        $this->putJson('/api/admin/pets/101', $profile)->assertOk();
+        $this->assertDatabaseCount('activity_logs', 1);
+        $this->assertDatabaseCount('customer_notifications', 0);
+        $this->putJson('/api/admin/pets/101', [...$profile, 'body_condition' => null])->assertOk()
+            ->assertJsonPath('pet.body_condition', null)->assertJsonPath('pet.clinic_verified_fields', ['size']);
+        $this->assertDatabaseCount('customer_notifications', 1);
+    }
+
+    public function test_body_condition_migration_backfills_latest_finalized_assessment_and_pet_list_reads_profile(): void
     {
         $this->authenticateCustomer(10);
         DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Mochi', 'species' => 'Cat', 'weight' => 4, 'size' => 'small']);
@@ -34,19 +83,20 @@ class ClientPetProfileTest extends TestCase
             if ($id !== 6) DB::table('clinic_records')->insert(['clinic_appointment_id' => $id]);
         }
 
+        Schema::table('pets', fn (Blueprint $table) => $table->dropColumn('body_condition'));
+        (require database_path('migrations/2026_11_10_000001_add_body_condition_to_pets.php'))->up();
         DB::enableQueryLog();
         $pets = collect($this->getJson('/api/pets')->assertOk()->json('pets'))->keyBy('pet_id');
         $queries = collect(DB::getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'clinic_vitals'));
         DB::disableQueryLog();
-        $this->assertCount(1, $queries);
-        $this->assertSame('Overweight', $pets[101]['body_condition_label']);
-        $this->assertNull($pets[102]['body_condition_label']);
+        $this->assertCount(0, $queries);
+        $this->assertSame('overweight', $pets[101]['body_condition']);
+        $this->assertSame(['body_condition'], $pets[101]['clinic_verified_fields']);
+        $this->assertNull($pets[102]['body_condition']);
         $this->assertArrayNotHasKey('body_condition_score', $pets[101]);
 
-        foreach ([1 => 'Thin', 'Thin', 'Thin', 'Ideal', 'Ideal', 'Overweight', 'Overweight', 'Obese', 'Obese'] as $score => $label) {
-            DB::table('clinic_vitals')->where('clinic_appointment_id', 3)->update(['body_condition_score' => $score]);
-            $this->getJson('/api/pets/101')->assertOk()->assertJsonPath('pet.body_condition_label', $label);
-        }
+        $this->putJson('/api/pets/101', ['body_condition' => 'thin'])->assertOk();
+        $this->getJson('/api/pets/101')->assertOk()->assertJsonPath('pet.body_condition', 'thin');
     }
 
     public function test_customer_weight_injection_is_ignored_on_creation_and_update(): void
@@ -80,11 +130,12 @@ class ClientPetProfileTest extends TestCase
             DB::table('pets')->insert(['pet_id' => $id, 'user_id' => $index === 4 ? null : 10,
                 'unregistered_customer_id' => $index === 4 ? 42 : null,
                 'pet_name' => "Pet $id", 'species' => 'Dog', 'birthdate' => '2020-01-01',
-                'medical_conditions' => 'Previous private note']);
+                'medical_conditions' => 'Previous private note', 'body_condition' => 'obese']);
             $this->authenticateUser($actorId, $role, $type, $subrole);
             if ($role === 'admin') auth()->user()->forceFill(['username' => 'clinic-admin']);
             $this->putJson("/api/admin/pets/$id", ['pet_name' => "Updated $id", 'birthdate' => '2021-01-01',
-                'is_neutered' => true, 'medical_conditions' => 'New private note'])->assertOk();
+                'is_neutered' => true, 'medical_conditions' => 'New private note', 'body_condition' => 'ideal'])->assertOk()
+                ->assertJsonPath('pet.clinic_verified_fields', ['body_condition']);
 
             $activity = \App\Models\ActivityLog::where('action', 'pet_updated')->where('pet_id', $id)->sole();
             $this->assertSame($actorId, $activity->actor_id);
@@ -97,6 +148,7 @@ class ClientPetProfileTest extends TestCase
             $this->assertSame(['before' => "Pet $id", 'after' => "Updated $id"], $activity->changes['pet_name']);
             $this->assertSame(['before' => '2020-01-01', 'after' => '2021-01-01'], $activity->changes['birthdate']);
             $this->assertArrayHasKey('is_neutered', $activity->changes);
+            $this->assertSame(['before' => 'obese', 'after' => 'ideal'], $activity->changes['body_condition']);
             $this->assertArrayNotHasKey('medical_conditions', $activity->changes);
             $this->assertSame('Pet information updated', \App\Support\ActivityPresentation::title($activity));
         }
@@ -287,6 +339,7 @@ class ClientPetProfileTest extends TestCase
         $this->createRegistrationAvailability();
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->string('body_condition')->nullable();
             $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();

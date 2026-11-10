@@ -1,3 +1,4 @@
+import { renderBodyConditionChip } from "./pet-body-condition.js?v=20261110-v2";
 import "../services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { formatBookingDate } from "../services/booking-format-service.js";
@@ -5,7 +6,7 @@ import { getGroomingPricePresentation } from "../services/grooming-service.js?v=
 import {
   clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,
-} from "./confirmation-presentation.js?visit-details=20261029&v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029&urls=20261103&owner-name=20261108";
+} from "./confirmation-presentation.js?visit-details=20261029&v=20261017&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029&urls=20261103&owner-name=20261108&body-condition=20261110-v2";
 
 // The detail endpoint supplies saved selections, price bounds, and signed consent.
 export function groomingVisitPresentation(booking, statusLabel) {
@@ -47,7 +48,8 @@ export function groomingVisitPresentation(booking, statusLabel) {
         ...(item.grooming_preference_label || item.grooming_preference ? [["Grooming preference", item.grooming_preference_label || formatConfirmationLabel(item.grooming_preference)]] : []),
         ...(pet.breed ? [["Breed", pet.breed]] : []),
         ...(pet.species ? [["Species", formatConfirmationLabel(pet.species)]] : []),
-        ...(size ? [["Size", formatConfirmationLabel(size)]] : []),
+        ...(size || pet.body_condition ? [["Size", formatConfirmationLabel(size) || "Not specified", null, false,
+          renderBodyConditionChip(pet.body_condition, pet.clinic_verified_fields?.includes("body_condition"))]] : []),
         ...(pet.weight != null && pet.weight !== "" ? [["Weight", `${pet.weight} kg`]] : []),
         ...(item.grooming_start_time ? [["Started", formatConfirmationTimestamp(item.grooming_start_time)]] : []),
         ...(item.grooming_end_time ? [["Finished", formatConfirmationTimestamp(item.grooming_end_time)]] : []),

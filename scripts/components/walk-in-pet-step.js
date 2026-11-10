@@ -1,12 +1,12 @@
 import { createColorCombobox } from "./color-combobox.js?pet-care=20261027-v1";
-import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1";
-import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108";
+import { renderWalkInServicesStep } from "./walk-in-services-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2";
+import { renderWalkInClinicComplaintStep } from "./walk-in-clinic-complaint-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2";
 import { createBreedCombobox } from "./breed-combobox.js?v=walk-in-owner-mode-20260924&pet-fields=20261030-v1";
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { showPetSelectionSection } from "./pet-selection-tabs.js?v=walk-in-owner-mode-20260924";
 import { formatPetSizeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import { renderBodyConditionChip } from "./pet-body-condition.js";
+import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 import {
   formatSavedWeight,
   getPetWeightSubmissionValidationMessage,
@@ -38,6 +38,7 @@ const elements = {
   weight: document.getElementById("weight"),
   furType: document.getElementById("furType"),
   size: document.getElementById("size"),
+  bodyCondition: document.getElementById("bodyCondition"),
   color: document.getElementById("color"),
   medicalNotes: document.getElementById("medicalNotes"),
   selectedPetCount: document.getElementById("selectedPetCount"),
@@ -169,6 +170,7 @@ function getFormValues(form) {
     weight: getEnteredWeight(elements.weight),
     furType: form.furType.value,
     size: sizeCombobox.getValue(),
+    bodyCondition: elements.bodyCondition.value || null,
     color: colorCombobox.getValue(),
     medicalNotes: form.medicalNotes.value.trim(),
   };
@@ -209,6 +211,7 @@ function restorePetStepDraft() {
   breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
 
   syncWeightAndSize({ clearManualSize: true });
+  elements.bodyCondition.value = values.bodyCondition || "";
   if (values.size && !getSizeForWeight(elements.petType.value, elements.weight.value)) {
     sizeCombobox.setValue(values.size);
   }
@@ -277,6 +280,7 @@ function createPetObject(formData) {
     weight: formData.weight,
     furType: formData.furType,
     size: formData.size,
+    bodyCondition: formData.bodyCondition,
     sizeVerified: true,
     color: formData.color,
     medicalNotes: formData.medicalNotes,
@@ -299,7 +303,8 @@ function normalizeExistingPet(pet) {
       ? pet.size || ""
       : (getSizeForStoredWeight(pet.species, pet.weight).toLowerCase().replaceAll(" ", "_") || pet.size || ""),
     sizeVerified: Boolean(pet.sizeVerified),
-    bodyConditionLabel: pet.bodyConditionLabel ?? null,
+    bodyCondition: pet.bodyCondition ?? null,
+    bodyConditionVerified: Boolean(pet.bodyConditionVerified),
     color: pet.color || "",
     medicalNotes: pet.medicalConditions || "",
     isNew: false,
@@ -345,7 +350,7 @@ function renderExistingPets() {
           <div>
             <h4 class="font-semibold text-[#2f4b66]">${escapeHtml(pet.petName)}</h4>
             <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` &middot; ${escapeHtml(pet.breed)}` : ""}</p>
-            <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}${pet.sizeVerified ? " · Clinic verified" : ""}${pet.weight ? ` &middot; ${escapeHtml(formatSavedWeight(pet.weight))} kg` : ""}</p>
+            <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}${pet.weight ? ` &middot; ${escapeHtml(formatSavedWeight(pet.weight))} kg` : ""}</p>
           </div>
           <button
             type="button"
@@ -393,7 +398,13 @@ async function refreshExistingOwnerPets() {
     showStepError("Unable to verify pet availability. Please try again.");
   } finally {
     state.existingPetsLoading = false;
-    state.pets = state.pets.filter(pet => !pet.petId || !savedPetUnavailable(state.existingPets.find(saved => String(saved.petId) === String(pet.petId))));
+    const savedPets = new Map(state.existingPets.map(pet => [String(pet.petId), pet]));
+    state.pets = state.pets.flatMap(pet => {
+      if (!pet.petId) return [pet];
+      const saved = savedPets.get(String(pet.petId));
+      return savedPetUnavailable(saved) ? [] : [{ ...pet,
+        bodyCondition: saved.bodyCondition, bodyConditionVerified: saved.bodyConditionVerified }];
+    });
     autoSelectClinicPet();
     savePetStepDraft();
     renderSelectedPets();
@@ -438,7 +449,7 @@ function renderSelectedPets() {
           )}</h4>
           ${showEnteredDetails ? `<div class="mt-2 grid gap-1 text-xs text-slate-600">${enteredDetails}</div>` : `
           <p class="mt-1 text-sm text-slate-500">${escapeHtml(pet.petType || "Pet")}${pet.breed ? ` · ${escapeHtml(pet.breed)}` : ""}</p>
-          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")} ${renderBodyConditionChip(pet.bodyConditionLabel)}</p>`}
+          <p class="mt-1 text-xs text-slate-500">Size: ${escapeHtml(pet.size ? formatPetSizeLabel(pet.size) : "Not specified")}${pet.sizeVerified ? " · Size verified" : ""} ${renderBodyConditionChip(pet.bodyCondition, pet.bodyConditionVerified)}</p>`}
         </div>
 
         <button
@@ -531,6 +542,7 @@ function resetAddPetForm() {
   breedCoatCombobox.reset();
   colorCombobox.reset();
   sizeCombobox.reset();
+  elements.bodyCondition.value = "";
   initializeWeightField(elements.weight);
   syncWeightAndSize({ clearManualSize: true });
   savePetStepDraft();

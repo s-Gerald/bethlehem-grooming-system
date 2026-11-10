@@ -102,7 +102,8 @@ export function normalizeApiPet(pet) {
     furType: pet.fur_type || "",
     size: estimatedSize.toLowerCase().replaceAll(" ", "_") || pet.size || "",
     sizeVerified,
-    bodyConditionLabel: pet.body_condition_label ?? null,
+    bodyCondition: pet.body_condition ?? null,
+    bodyConditionVerified: Array.isArray(pet.clinic_verified_fields) && pet.clinic_verified_fields.includes("body_condition"),
     medicalNotes: pet.medical_conditions || "",
   };
 }
@@ -118,6 +119,7 @@ export function createPetObject(formData) {
     color: formData.color.trim(),
     furType: formData.furType,
     size: formData.size,
+    bodyCondition: formData.bodyCondition ?? null,
     sizeVerified: false,
     medicalNotes: formData.medicalNotes.trim(),
   };

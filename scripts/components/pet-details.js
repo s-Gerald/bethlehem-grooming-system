@@ -3,7 +3,7 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const { formatSavedWeight } = await import("./pet-weight-size.js?v=pet-weight-size-20261107-v1");
-  const { renderBodyConditionChip } = await import("./pet-body-condition.js");
+  const { renderBodyConditionChip } = await import("./pet-body-condition.js?body-condition=20261110-v2");
   const { renderClinicVisitSections, healthDate } = await import("./customer-health-records.js?v=visit-summary");
   if (!API.hasAuthenticatedSession("customer")) {
     API.redirectToSignIn();
@@ -186,7 +186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           ${verifiedIndicator(isClinicVerified(pet, field))}
         </div>
         <p class="pet-overview-value ${label === "Pet Name" ? "pet-overview-name-value" : ""} mt-1 break-words text-xs font-semibold text-portal-text">${escapeHtml(value)}${label === "Size"
-          ? renderBodyConditionChip(pet.body_condition_label) + (isClinicVerified(pet, "size") ? " · ✓ Verified by Bethlehem Animal Clinic" : "")
+          ? (isClinicVerified(pet, "size") ? " · ✓ Size verified" : "") + renderBodyConditionChip(pet.body_condition, isClinicVerified(pet, "body_condition"))
           : ""}</p>
       </div>
     `).join("") + `

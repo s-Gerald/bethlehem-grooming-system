@@ -1008,7 +1008,9 @@ function adminDashboard() {
         name: pet.petName ?? pet.pet_name ?? pet.name ?? "Pet",
         weight: pet.weight ?? "—",
         currentSize: normalizePaymentSize(pet.size) || "",
-        bodyConditionLabel: pet.bodyConditionLabel,
+        bodyCondition: pet.bodyCondition ?? null,
+        verifiedBodyCondition: pet.bodyConditionVerified ? pet.bodyCondition : null,
+        confirmBodyCondition: false,
         verified: Boolean(pet.sizeVerified),
         species: pet.species ?? pet.petType,
         size: normalizePaymentSizeForPet(pet.size, pet.species ?? pet.petType),
@@ -1381,7 +1383,11 @@ function adminDashboard() {
     // Starts the Incoming -> Queued transition for a booking.
     async checkInBooking(booking, petSizes = [], internalStaffNote = "") {
       await this.runBookingAction("checkIn", booking, {
-        petSizes: petSizes.map((pet) => ({ booking_pet_id: pet.bookingPetId, size: pet.size })),
+        petSizes: petSizes.map((pet) => ({
+          booking_pet_id: pet.bookingPetId,
+          size: pet.size,
+          ...(pet.confirmBodyCondition ? { body_condition: pet.bodyCondition } : {}),
+        })),
         internalStaffNote,
       });
     },

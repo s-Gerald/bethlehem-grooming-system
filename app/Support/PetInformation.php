@@ -12,12 +12,13 @@ final class PetInformation
         'fur_type' => 'fur type', 'gender' => 'gender', 'birthdate' => 'birthdate',
         'weight' => 'weight', 'size' => 'size', 'color' => 'color',
         'medical_conditions' => 'allergies and special care notes',
+        'body_condition' => 'body condition',
         'is_neutered' => 'neutered status', 'neutered_date' => 'neutered date',
         'is_deceased' => 'deceased status', 'deceased_date' => 'deceased date',
     ];
 
     public const CUSTOMER_EDITABLE_FIELDS = [
-        'pet_name', 'species', 'breed', 'fur_type', 'gender', 'birthdate', 'size', 'color', 'medical_conditions',
+        'pet_name', 'species', 'breed', 'fur_type', 'gender', 'birthdate', 'size', 'color', 'medical_conditions', 'body_condition',
     ];
 
     public static function lockedFields(Pet $pet): array
@@ -25,7 +26,7 @@ final class PetInformation
         return array_values(array_diff(array_unique([
             ...($pet->customer_locked_fields ?? []),
             ...array_filter(self::CUSTOMER_EDITABLE_FIELDS, fn ($field) => self::meaningful($pet->$field)),
-        ]), ['medical_conditions', 'weight']));
+        ]), ['medical_conditions', 'weight', 'body_condition']));
     }
 
     public static function meaningful(mixed $value): bool
@@ -67,7 +68,7 @@ final class PetInformation
                 $attributes[$field] = $pet->$field;
                 continue;
             }
-            if ($field === 'medical_conditions') continue;
+            if (in_array($field, ['medical_conditions', 'body_condition'], true)) continue;
             if (in_array($field, ['pet_name', 'species'], true)
                 || in_array($field, $locked, true) || in_array($field, $verified, true)
                 || ($measurementsVerified && $field === 'size')) {

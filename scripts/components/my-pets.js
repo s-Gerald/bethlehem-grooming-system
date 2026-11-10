@@ -7,7 +7,7 @@ import { breedCoatCatalogueReady } from "./breed-coat-catalogue.js?pet-fields=20
 import { createBreedCoatCombobox } from "./breed-coat-combobox.js?pet-fields=20261030-v1";
 import { createFixedOptionCombobox } from "./fixed-option-combobox.js";
 import { formatSavedWeight, getSizeOptions } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
-import { renderBodyConditionChip } from "./pet-body-condition.js";
+import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 
 // Connected to pages/client/my-pets.html
 // Depends on: api.js and the shared pre-registration pet field components
@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     input: petBirthdate, errorElement: document.getElementById("petBirthdateError"),
     onInvalid: () => petSaveConfirmation.reset(),
   });
+  const bodyCondition = document.getElementById("petBodyCondition");
   const petSize          = document.getElementById("petSize");
   const petFurType       = document.getElementById("petFurType");
   const logoutBtn        = document.getElementById("clientLogoutBtn");
@@ -156,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
     size: petSize, color: document.getElementById("petColor"), medical_conditions: document.getElementById("petMedical"),
   };
   function fieldLocked(field) {
-    if (!editingPet || field === "medical_conditions") return false;
+    if (!editingPet || ["medical_conditions", "body_condition"].includes(field)) return false;
     const saved = editingPet[field];
     return ["pet_name", "species"].includes(field)
       || (saved !== null && saved !== undefined && String(saved).trim() !== "")
@@ -196,6 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
       breed: petBreed.value.trim() || null, gender: genderCombobox.getValue() || null,
       birthdate: birthdateField.getValue() || null, color: colorCombobox.getValue() || null,
       size: normalizePetSize(sizeCombobox.getValue()) || null, fur_type: petFurType.value || null,
+      body_condition: bodyCondition.value || null,
       medical_conditions: profileInputs.medical_conditions.value.trim() || null,
     };
     if (editingPet) Object.keys(payload).forEach(field => {
@@ -556,7 +558,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const rows = [
       ["Breed", pet.breed],
-      ["Size", sizeLabel[pet.size] ? `${sizeLabel[pet.size]}${isClinicVerified(pet, "size") ? " ✓" : ""}` : pet.body_condition_label ? "Not specified" : null],
+      ["Size", sizeLabel[pet.size] ? `${sizeLabel[pet.size]}${isClinicVerified(pet, "size") ? " ✓" : ""}` : pet.body_condition ? "Not specified" : null],
       ["Fur Type", resolvedFurType],
       ["Weight", pet.weight ? `${formatSavedWeight(pet.weight)} kg` : null],
       ["Color", pet.color],
@@ -567,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? rows.map(([label, val]) => `
           <div class="flex items-start justify-between gap-4 text-sm">
             <span class="shrink-0 text-portal-muted">${label}</span>
-            <span class="min-w-0 break-words text-right font-semibold text-portal-text">${escHtml(String(val))}${label === "Size" ? renderBodyConditionChip(pet.body_condition_label) : ""}</span>
+            <span class="min-w-0 break-words text-right font-semibold text-portal-text">${escHtml(String(val))}${label === "Size" ? (isClinicVerified(pet, "size") ? '<span class="sr-only"> Size verified</span>' : "") + renderBodyConditionChip(pet.body_condition, isClinicVerified(pet, "body_condition")) : ""}</span>
           </div>`).join("")
       : `<p class="text-sm text-portal-muted">No additional details.</p>`;
 
@@ -663,6 +665,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     updateSizeOptions();
     setStoredSize(pet.size);
+    bodyCondition.value = pet.body_condition || "";
+    bodyCondition.setAttribute("data-verified-value", isClinicVerified(pet, "body_condition") ? bodyCondition.value : "");
 
     await breedCoatCatalogueReady;
     breedCoatCombobox.update({ preserveValue: true, autoSelect: false });
@@ -760,7 +764,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const changes = id ? permittedChanges(payload) : payload;
     if (id && Object.keys(changes).length === 0) { petSaveConfirmation.reset(); syncConfirmState(); return; }
 
-    const requiresConfirmation = !id || Object.keys(changes).some(field => field !== "medical_conditions");
+    const requiresConfirmation = !id || Object.keys(changes).some(field => !["medical_conditions", "body_condition"].includes(field));
     if (requiresConfirmation && !petSaveConfirmation.confirm(payload)) return;
     petSaveConfirmation.setSaving(true);
     if (document.activeElement === petFormSubmit) {
@@ -929,6 +933,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     petTypeCombobox.setValue("");
     genderCombobox.reset();
+    bodyCondition.value = "";
+    bodyCondition.setAttribute("data-verified-value", "");
     breedCombobox.reset();
     breedCoatCombobox.reset();
     updateSizeOptions();

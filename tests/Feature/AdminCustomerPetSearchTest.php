@@ -41,6 +41,7 @@ class AdminCustomerPetSearchTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->string('body_condition')->nullable();
             $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id');
@@ -179,13 +180,11 @@ class AdminCustomerPetSearchTest extends TestCase
     public function test_staff_customer_pet_summary_returns_size_and_the_friendly_condition_only(): void
     {
         DB::table('pets')->where('pet_id', 101)->update(['size' => 'large']);
-        $visitId = DB::table('clinic_appointments')->insertGetId(['pet_id' => 101, 'status' => 'completed', 'appointment_date' => '2026-01-01']);
-        DB::table('clinic_records')->insert(['clinic_appointment_id' => $visitId]);
-        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $visitId, 'body_condition_score' => 3]);
+        DB::table('pets')->where('pet_id', 101)->update(['body_condition' => 'thin']);
 
         $this->getJson('/api/admin/customers/10')->assertOk()
             ->assertJsonPath('customer.pets.0.size', 'large')
-            ->assertJsonPath('customer.pets.0.bodyConditionLabel', 'Thin')
+            ->assertJsonPath('customer.pets.0.bodyCondition', 'thin')
             ->assertJsonMissingPath('customer.pets.0.body_condition_score');
     }
 

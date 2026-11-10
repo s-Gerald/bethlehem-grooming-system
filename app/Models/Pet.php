@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Support\PetWeightSize;
 use App\Support\PetInformation;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Pet extends Model
@@ -17,13 +16,17 @@ class Pet extends Model
     {
         if (! $this->exists) {
             $this->customer_locked_fields = PetInformation::lockedFields($this);
+            if ($this->body_condition && in_array(auth()->user()?->role, ['admin', 'staff'], true)) {
+                $this->setBodyConditionVerification(true);
+            }
             return $this->saveWithActivity($options);
         }
+        $verifyBodyCondition = $options['verify_body_condition'] ?? false;
         if (array_intersect_key($this->getDirty(), PetInformation::FIELDS) === []
-            && ! $this->isDirty('clinic_verified_fields')) {
+            && ! $this->isDirty('clinic_verified_fields') && ! $verifyBodyCondition) {
             return $this->saveWithActivity($options);
         }
-        $save = function () use ($options) {
+        $save = function () use ($options, $verifyBodyCondition) {
             $actor = auth()->user();
             $changes = $this->getDirty();
             if ($this->exists) {
@@ -41,14 +44,23 @@ class Pet extends Model
                         ]);
                     }
                     $changes = PetInformation::customerAttributes($current, $changes);
+                } elseif ($verifyBodyCondition) {
+                    $changes['body_condition'] = $this->body_condition;
                 }
                 $this->setRawAttributes($current->getAttributes(), true);
                 $this->setRawAttributes([...$current->getAttributes(), ...$changes]);
                 if (array_key_exists('clinic_verified_fields', $changes)) {
                     $this->clinic_verified_fields = array_values(array_unique([
-                        ...($current->clinic_verified_fields ?? []), ...$verified,
+                        ...($current->clinic_verified_fields ?? []), ...array_diff($verified, ['body_condition']),
                     ]));
                 }
+                if ($verifyBodyCondition && $actor?->role !== 'customer') {
+                    $this->setBodyConditionVerification($this->body_condition !== null);
+                } elseif ($this->isDirty('body_condition')) {
+                    $this->setBodyConditionVerification(false);
+                }
+                if (! $this->isDirty()) return true;
+
                 $this->customer_locked_fields = array_values(array_unique([
                     ...PetInformation::lockedFields($current), ...PetInformation::lockedFields($this),
                 ]));
@@ -80,6 +92,7 @@ class Pet extends Model
         'fur_type',
         'weight',
         'size',
+        'body_condition',
     ];
 
     protected $table = 'pets';
@@ -103,6 +116,7 @@ class Pet extends Model
         'weight',
         'color',
         'size',
+        'body_condition',
         'fur_type',
         'clinic_verified_fields',
         'medical_conditions',
@@ -115,30 +129,19 @@ class Pet extends Model
         'customer_locked_fields' => 'array',
     ];
 
-    public function scopeWithBodyCondition(Builder $query): Builder
+    public function hasVerifiedBodyCondition(): bool
     {
-        // Match finalized medical history, including visits awaiting payment.
-        return $query->addSelect(['body_condition_label' => ClinicAppointment::query()
-            ->select('clinic_vitals.body_condition_score')
-            ->join('clinic_vitals', 'clinic_vitals.clinic_appointment_id', '=', 'clinic_appointments.id')
-            ->whereColumn('clinic_appointments.pet_id', 'pets.pet_id')
-            ->whereIn('clinic_appointments.status', ['for_payment', 'completed'])
-            ->whereHas('record')
-            ->whereNotNull('clinic_vitals.body_condition_score')
-            ->orderByDesc('clinic_appointments.appointment_date')
-            ->orderByDesc('clinic_appointments.id')
-            ->limit(1)]);
+        return $this->body_condition !== null && in_array('body_condition', $this->clinic_verified_fields ?? [], true);
     }
 
-    public function getBodyConditionLabelAttribute(mixed $score): ?string
+    private function setBodyConditionVerification(bool $verified): void
     {
-        return match ((int) $score) {
-            1, 2, 3 => 'Thin',
-            4, 5 => 'Ideal',
-            6, 7 => 'Overweight',
-            8, 9 => 'Obese',
-            default => null,
-        };
+        $fields = $this->clinic_verified_fields ?? [];
+        if ($verified === in_array('body_condition', $fields, true)) return;
+
+        $this->clinic_verified_fields = $verified
+            ? [...$fields, 'body_condition']
+            : array_values(array_diff($fields, ['body_condition']));
     }
 
     public function hasClinicVerifiedSize(): bool
@@ -153,13 +156,14 @@ class Pet extends Model
             : (PetWeightSize::sizeFor($this->species, $this->weight) ?? $this->size);
     }
 
-    public function confirmClinicSize(string $size): void
+    public function confirmClinicSize(string $size, array $profile = []): void
     {
         $this->size = $size;
         $this->clinic_verified_fields = array_values(array_unique([
             ...($this->clinic_verified_fields ?? []), 'size',
         ]));
-        $this->save();
+        $this->fill(array_intersect_key($profile, ['body_condition' => true]));
+        $this->save(['verify_body_condition' => array_key_exists('body_condition', $profile)]);
     }
 
     public static function normalizeName(mixed $name): string

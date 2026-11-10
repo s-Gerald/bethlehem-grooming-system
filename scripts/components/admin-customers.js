@@ -9,6 +9,7 @@ function loadAdminCustomerPetFields() {
   import("./color-combobox.js?pet-care=20261027-v1"),
   import("./pet-weight-size.js?v=pet-weight-size-20261107-v1"),
   import("./pet-birthdate.js?v=20261103-v1"),
+  import("./pet-body-condition.js?v=20261110-v2"),
 ]).then(([
   bookingDraft,
   breedCombobox,
@@ -729,6 +730,8 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       controls.breed.reset();
       controls.furType.reset();
       controls.size.reset();
+      elements.bodyCondition.value = "";
+      elements.bodyCondition.setAttribute("data-verified-value", "");
       controls.size.setDisabled(true);
       elements.breed.value = "";
       elements.furType.value = "";
@@ -771,7 +774,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1');
+            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1&body-condition=20261110-v2');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
@@ -789,6 +792,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
           gender: document.getElementById("adminPetGender"),
           birthdate: document.getElementById("adminPetBirthdate"),
           size: document.getElementById("adminPetSize"),
+          bodyCondition: document.getElementById("adminPetBodyCondition"),
           furType: document.getElementById("adminPetFurType"),
           weight: document.getElementById("adminPetWeight"),
           color: document.getElementById("adminPetColor"),
@@ -912,6 +916,10 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       };
       const { tools, elements, controls } = adminCustomerPetFields;
       const species = this.normalizePetSpecies(p.species);
+      if (elements.bodyCondition) {
+        elements.bodyCondition.value = p.bodyCondition || "";
+        elements.bodyCondition.setAttribute("data-verified-value", p.bodyConditionVerified ? p.bodyCondition : "");
+      }
 
       controls.birthdate.setValue(p.birthdate, { originalValue: p.birthdate });
 
@@ -995,6 +1003,8 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
           isDeceased:        Boolean(savedPet.is_deceased),
           deceasedDate:      savedPet.deceased_date,
           size:              savedPet.size,
+          bodyCondition:     savedPet.body_condition ?? null,
+          bodyConditionVerified: savedPet.clinic_verified_fields?.includes("body_condition") ?? false,
           sizeVerified:      Array.isArray(savedPet.clinic_verified_fields) && savedPet.clinic_verified_fields.includes("size"),
           furType:           savedPet.fur_type,
           weight:            savedPet.weight,
@@ -1064,6 +1074,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         is_deceased: isDeceased,
         deceased_date: isDeceased ? (form.deceased_date || null) : null,
         size: tools.normalizePetSize(controls.size.getValue()) || null,
+        ...(elements.bodyCondition?.explicit ? { body_condition: elements.bodyCondition.value || null } : {}),
         fur_type: elements.furType.value || null,
         weight: tools.getEnteredWeight(elements.weight) || null,
         color: controls.color.getValue() || null,
@@ -1363,7 +1374,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         { label: "Breed", value: this.formatTextValue(pet.breed) },
         { label: "Gender", value: this.formatLabel(pet.gender) },
         { label: "Birthdate", value: this.formatDate(pet.birthdate) },
-        { label: "Size", value: this.formatLabel(pet.size), bodyConditionLabel: pet.bodyConditionLabel, sizeVerified: pet.sizeVerified },
+        { label: "Size", value: this.formatLabel(pet.size), bodyCondition: pet.bodyCondition, bodyConditionVerified: pet.bodyConditionVerified, sizeVerified: pet.sizeVerified },
         { label: "Weight", value: this.formatWeight(pet.weight) },
         { label: "Fur Type", value: this.formatLabel(pet.furType) },
         { label: "Color", value: this.formatTextValue(pet.color) },

@@ -386,6 +386,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         const open = vm.runInNewContext(`(${handler.trim()})`, {
           ...shared, syncEditFieldLocks: () => {}, allPets: [{ pet_id: 1, species, breed, fur_type: coat }], editingPet: null,
           syncEditVerifiedIndicators: noop, petModalTitle: element(), petBirthdate: ui.elements.birthdate,
+          bodyCondition: { setAttribute: noop }, isClinicVerified: () => false,
           normalizeSpecies: value => value, hideFormError: noop, showModal: noop,
         });
         await open(1);
@@ -406,7 +407,7 @@ for (const integration of ["my-pets", "admin-customers", "booking-pet-step", "wa
         const handler = ui.source.slice(ui.source.indexOf(`function ${name}()`), ui.source.indexOf("function validatePetForm("));
         const draft = { newPetForm: { petType: species, breed, furType: coat } };
         const restore = vm.runInNewContext(`(${handler.trim()})`, {
-          ...shared, state: {}, readStepTwoDraft: () => draft, readPetStepDraft: () => draft,
+          ...shared, elements: { ...shared.elements, bodyCondition: element() }, state: {}, readStepTwoDraft: () => draft, readPetStepDraft: () => draft,
         });
         restore();
         restore();

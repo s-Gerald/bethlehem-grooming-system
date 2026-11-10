@@ -79,6 +79,13 @@ async function main() {
   assert.equal(pets[0].grooming_preference, "summer_cut");
   assert.equal(pets[0].color, "Brown/White");
   assert.equal(pets[0].medical_conditions, "Sensitive skin");
+  const item = review.payload.items[0];
+  const withCondition = consent.buildWalkInPets({ items: [
+    { ...item, pet: { ...item.pet, petId: null, bodyCondition: "overweight" } },
+    { ...item, pet: { ...item.pet, petId: 17, bodyCondition: "obese" } },
+  ] });
+  assert.equal(withCondition[0].body_condition, "overweight");
+  assert.equal(Object.hasOwn(withCondition[1], "body_condition"), false, "Viewing a saved walk-in pet does not verify its condition");
   assert.equal("estimate_factors" in pets[0], false);
   // Run the actual submission handler: rapid events, lost responses, and recovery.
   const draft = new Map([

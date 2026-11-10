@@ -7,7 +7,7 @@
     <title>Admin Grooming | Bethlehem Animal Clinic</title>
 
     <link rel="stylesheet" href="/css/components/product-search-dropdown.css?v=20261029-v2" />
-    <link rel="stylesheet" href="/css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030&estimate-ui=20261031-v2&overdue-icon=20261031&pet-profile=20261110-v1" />
+    <link rel="stylesheet" href="/css/output.css?v=product-search-stock-20261002&consent=20261017&payments=legacy-off-20261026&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&product-dropdown=20261029-v2&auth-hardening=20261030&estimate-ui=20261031-v2&overdue-icon=20261031&pet-profile=20261110-v1&body-condition=20261110-v2" />
     <link rel="stylesheet" href="/css/admin-notifications.css?v=20261027-2&inventory-selection=20261031" />
     <link rel="stylesheet" href="/css/custom.css?grooming-cancellation=20261016&v=grooming-cancellation-20261016&intake=20261019&grooming=actual-20261026&registration-ui=20261027-v3&references=20261031&queue-copy=20261103-admin-v1" />
     <link
@@ -21,6 +21,7 @@
     <script src="/scripts/components/admin-loading.js?v=universal-20261018&urls=20261103"></script>
     <link rel="preload" as="script" href="/scripts/api.js?auth-reliability=20261107&v=admin-navigation-20261018-3&admin-perf=20261019&notifications=20261020-3&session-presentation=walk-in-20261021&payments=qrph-20261023&qr-workflow=20261023&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&auth-races=20261024&security=single-session-20261025&activity=20261025&grooming=actual-20261026&availability=20261027&notification-navigation=20261027&names=20261028-v2&mobile-format=20261029&product-dropdown=20261029-v2&remember=20261029&auth-hardening=20261101&estimates=20261031&urls=20261103&services-access=20261103-v1" />
     <link rel="preload" as="script" href="/scripts/components/admin-sidebar.js?v=admin-first-paint-20261019&admin-perf=20261019-2&intake=20261019&notifications=20261020&staff-access=20261024&veterinary=20261024&activity=20261025&availability=20261027&notification-navigation=20261027&auth-hardening=20261030&inventory-selection=20261031&urls=20261103&services-access=20261103-v1&account-label=20261106" />
+    <script type="module" src="/scripts/components/pet-body-condition.js?v=20261110-v2"></script>
   </head>
   <body class="bg-[#f5f8fb] text-slate-800">
     <div
@@ -571,10 +572,11 @@
                         <div class="grooming-incoming-pets">
                           <p class="font-semibold text-[#1f3850]" x-text="incomingPetSummary(booking)"></p>
                           <p class="grooming-service" x-text="[formatIncomingPetBreedType(getIncomingPets(booking)[0]), formatIncomingPetServices(getIncomingPets(booking)[0], booking)].filter(Boolean).join(' · ')"></p>
-                          <template x-if="booking.pets?.length === 1 && (booking.pets[0].size || booking.pets[0].bodyConditionLabel)">
+                          <template x-if="booking.pets?.length === 1 && (booking.pets[0].size || booking.pets[0].bodyCondition)">
                             <p class="grooming-service">
                               Size: <span x-text="formatPetCardValue(booking.pets[0].size, 'Not specified')"></span>
-                              <template x-if="booking.pets[0].bodyConditionLabel"><span class="pet-body-condition" x-text="booking.pets[0].bodyConditionLabel"></span></template>
+                              <span x-show="booking.pets[0].sizeVerified"> · ✓ Size verified</span>
+                              <template x-if="booking.pets[0].bodyCondition"><span class="pet-body-condition"><span x-text="booking.pets[0].bodyCondition"></span><span x-show="booking.pets[0].bodyConditionVerified" aria-hidden="true"> ✓</span><span x-show="booking.pets[0].bodyConditionVerified" class="sr-only"> Body condition verified</span></span></template>
                             </p>
                           </template>
                         </div>
@@ -712,8 +714,8 @@
                               <span x-show="petGroomingState(pet) === 'cancelled'" class="grooming-note-flag">Cancelled</span>
                               <p class="admin-queued-pet-basic">
                                 <span x-text="pet.breed || pet.species"></span>
-                                <span x-show="pet.size || pet.bodyConditionLabel"> · Size: <span x-text="formatPetCardValue(pet.size, 'Not specified')"></span>
-                                  <template x-if="pet.bodyConditionLabel"><span class="pet-body-condition" x-text="pet.bodyConditionLabel"></span></template>
+                                <span x-show="pet.size || pet.bodyCondition"> · Size: <span x-text="formatPetCardValue(pet.size, 'Not specified')"></span><span x-show="pet.sizeVerified"> · ✓ Size verified</span>
+                                  <template x-if="pet.bodyCondition"><span class="pet-body-condition"><span x-text="pet.bodyCondition"></span><span x-show="pet.bodyConditionVerified" aria-hidden="true"> ✓</span><span x-show="pet.bodyConditionVerified" class="sr-only"> Body condition verified</span></span></template>
                                 </span>
                               </p>
                               <div class="grooming-pet-service-line">
@@ -1243,8 +1245,7 @@
                         <p class="my-2"><span class="inline-block rounded-full px-2 py-1 text-xs font-semibold" :class="sedationConsentStatusClass(actionConfirmModal.booking)" x-text="sedationConsentStatusLabel(actionConfirmModal.booking)"></span></p>
                         <p class="admin-checkin-pet-summary text-xs text-slate-600">
                           Weight: <span x-text="pet.weight"></span> · Current size: <span x-text="formatPaymentSizeLabel(pet.currentSize)"></span>
-                          <template x-if="pet.bodyConditionLabel"><span class="pet-body-condition" x-text="pet.bodyConditionLabel"></span></template>
-                          <span x-show="pet.verified"> · Clinic verified</span>
+                          <span x-show="pet.verified"> · Size verified</span>
                         </p>
                         <label class="mt-2 block text-xs font-semibold text-slate-700">Clinic size
                           <select x-model="pet.size" :disabled="actionConfirmModal.busy" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -1253,6 +1254,10 @@
                             </template>
                           </select>
                         </label>
+                        <pet-body-condition class="mt-3 block" :data-value="pet.bodyCondition || ''"
+                          :data-verified-value="pet.verifiedBodyCondition || ''"
+                          :data-disabled="actionConfirmModal.busy"
+                          @body-condition-selected="pet.bodyCondition = $event.detail; pet.confirmBodyCondition = true"></pet-body-condition>
                       </div>
                     </template>
                   </div>
@@ -1401,8 +1406,8 @@
                         <dl class="grooming-visit-summary">
                           <div>
                             <dt>Size</dt>
-                            <dd><span x-text="formatPetCardValue(pet.size, 'Not specified')"></span>
-                              <template x-if="pet.bodyConditionLabel"><span class="pet-body-condition" x-text="pet.bodyConditionLabel"></span></template>
+                            <dd><span x-text="formatPetCardValue(pet.size, 'Not specified')"></span><span x-show="pet.sizeVerified"> · ✓ Size verified</span>
+                              <template x-if="pet.bodyCondition"><span class="pet-body-condition"><span x-text="pet.bodyCondition"></span><span x-show="pet.bodyConditionVerified" aria-hidden="true"> ✓</span><span x-show="pet.bodyConditionVerified" class="sr-only"> Body condition verified</span></span></template>
                             </dd>
                           </div>
                           <div><dt>Pet Groomer</dt><dd x-text="pet.petGroomerName || 'Any available groomer'"></dd></div>
@@ -1606,6 +1611,6 @@
     <script src="/scripts/components/online-payment.js?v=20261023-combined"></script>
     <script src="/scripts/components/cash-payment.js?v=shared-cash-20261007"></script>
     <script src="/scripts/services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1"></script>
-    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1"></script>
+    <script src="/scripts/components/admin-dashboard.js?consent=20261017&v=grooming-cancellation-20261016&copy=grooming-terminology-20261016&catalog=services-20261017-2&payments=qr-account-20261023&loading=20261018&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019-2&intake=20261019&notifications=20261020&qr-workflow=20261023-inline-errors&gateway=20261023-combined&staff-access=20261024&veterinary=20261024&activity=20261025&activity-ui=20261025&modals=static-20261025&legacy-qr=off-20261026&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-ui=20261027-v3&availability=20261027&pet-care=20261027-v1&mobile-format=20261029&product-dropdown=20261029-v2&intake-reliability=20261029&invoice-products=20261029&references=20261031&pet-sessions=20261031-v1&cancel-confirm=20261031-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&queue-copy=20261103-admin-v1&pet-profile=20261110-v1&body-condition=20261110-v2"></script>
   </body>
 </html>

@@ -67,6 +67,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('pets', function (Blueprint $table) {
+            $table->string('body_condition')->nullable();
             $table->json('customer_locked_fields')->nullable();
             $table->increments('pet_id');
             $table->unsignedInteger('user_id')->nullable();
@@ -839,6 +840,33 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         ]);
     }
 
+    public function test_only_finalized_current_clinical_scores_synchronize_to_the_profile(): void
+    {
+        $this->authenticateAs('staff');
+        DB::table('pets')->insert(['pet_id' => 50, 'pet_name' => 'Mochi', 'species' => 'Dog', 'body_condition' => 'ideal']);
+        $previous = 'ideal';
+        foreach ([1 => 'thin', 'thin', 'thin', 'ideal', 'ideal', 'overweight', 'overweight', 'obese', 'obese'] as $score => $condition) {
+            $this->insertClinicAppointment('in_consultation', $score);
+            DB::table('clinic_appointments')->where('id', $score)->update(['pet_id' => 50]);
+            $endpoint = "/api/admin/clinic-appointments/$score/record";
+            $record = ['body_condition_score' => $score, 'weight_kg' => 4.5, 'temperature_c' => 38.5,
+                'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20];
+            $this->postJson($endpoint, $record)->assertOk();
+            $this->assertDatabaseHas('pets', ['pet_id' => 50, 'body_condition' => $previous]);
+            $this->postJson($endpoint, [...$record, 'finish_case' => true])->assertOk();
+            $this->assertDatabaseHas('pets', ['pet_id' => 50, 'body_condition' => $condition,
+                'clinic_verified_fields' => json_encode(['body_condition'])]);
+            $previous = $condition;
+        }
+        $this->assertSame(range(1, 9), DB::table('clinic_vitals')->orderBy('clinic_appointment_id')->pluck('body_condition_score')->all());
+
+        $this->authenticateAs('admin', 2);
+        $this->postJson('/api/admin/clinic-appointments/1/record', ['body_condition_score' => 4])->assertOk();
+        $this->assertDatabaseHas('pets', ['pet_id' => 50, 'body_condition' => 'obese']);
+        $this->postJson('/api/admin/clinic-appointments/9/record', ['body_condition_score' => 5])->assertOk();
+        $this->assertDatabaseHas('pets', ['pet_id' => 50, 'body_condition' => 'ideal']);
+    }
+
     public function test_admin_clinic_archive_lists_only_terminal_visits_with_full_existing_record_data(): void
     {
         $this->authenticateAs('admin');
@@ -1143,6 +1171,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'species' => 'dog',
             'weight' => 12,
             'size' => 'medium',
+            'body_condition' => 'ideal',
             'chief_complaint' => 'Routine consultation',
             'terms_agreed' => true,
         ])
@@ -1157,8 +1186,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ['Routine check-up', 'Vaccination'],
             json_decode(DB::table('clinic_appointments')->value('common_concerns'), true),
         );
-        $this->assertDatabaseHas('pets', ['pet_name' => 'Bantay', 'size' => 'medium', 'weight' => 12]);
-        $this->assertSame(['size'], json_decode(DB::table('pets')->value('clinic_verified_fields'), true));
+        $this->assertDatabaseHas('pets', ['pet_name' => 'Bantay', 'size' => 'medium', 'weight' => 12, 'body_condition' => 'ideal']);
+        $this->assertSame(['size', 'body_condition'], json_decode(DB::table('pets')->value('clinic_verified_fields'), true));
     }
 
     #[DataProvider('receptionistRoles')]

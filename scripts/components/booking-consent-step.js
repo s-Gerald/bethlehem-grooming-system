@@ -53,6 +53,7 @@ export function initBookingConsentStep() {
           breed: pet.breed || null,
           birthdate: pet.birthdate || null,
           size: normalizeSizeForApi(pet.size),
+          ...(pet.bodyCondition ? { body_condition: pet.bodyCondition } : {}),
           fur_type: pet.furType?.trim() || null,
           medical_conditions: pet.medicalNotes || null,
         }),

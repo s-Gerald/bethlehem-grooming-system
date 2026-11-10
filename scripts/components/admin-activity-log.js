@@ -106,7 +106,7 @@ function adminActivityLog() {
     changeValue(value, field) {
       if (value === null || value === undefined || value === '') return '—';
       if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-      if (['status', 'grooming_state', 'payment_status'].includes(field) && typeof value === 'string') {
+      if (['status', 'grooming_state', 'payment_status', 'body_condition'].includes(field) && typeof value === 'string') {
         return value.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase());
       }
       return typeof value === 'object' ? JSON.stringify(value) : String(value).replaceAll('_', ' ');

@@ -6,6 +6,7 @@ use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetBirthdate;
 use App\Rules\ValidPetSize;
+use App\Support\PetBodyCondition;
 use App\Rules\ValidPetWeight;
 use App\Support\ClinicConcerns;
 use App\Support\AccountEmail;
@@ -72,6 +73,7 @@ class StoreClinicWalkinRequest extends FormRequest
             'neutered_date' => ['nullable', 'date'],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'weight' => ['nullable', new ValidPetWeight(allowExistingPetSelection: true)],
+            'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
             'medical_conditions' => ['nullable', 'string', 'max:1000'],

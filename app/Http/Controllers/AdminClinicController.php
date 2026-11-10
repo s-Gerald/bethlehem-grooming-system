@@ -704,7 +704,7 @@ class AdminClinicController extends Controller
                 'respiratory_rate_bpm',
                 'body_condition_score',
             ])->contains(fn (string $field) => array_key_exists($field, $data))) {
-                ClinicVital::updateOrCreate(
+                $vitals = ClinicVital::updateOrCreate(
                     ['clinic_appointment_id' => $appt->id],
                     [
                         'weight_kg' => array_key_exists('weight_kg', $data) ? $data['weight_kg'] : $appt->vitals?->weight_kg,
@@ -715,6 +715,9 @@ class AdminClinicController extends Controller
                         ...($newVerifications ? ['verification_history' => [...$verificationHistory, ...$newVerifications]] : []),
                     ]
                 );
+                if ($appt->status === 'for_payment' && ($vitals->wasRecentlyCreated || $vitals->wasChanged('body_condition_score'))) {
+                    \App\Support\PetBodyCondition::synchronize($appt, $vitals->body_condition_score);
+                }
             }
 
             if (! empty($data['finish_case'])) {

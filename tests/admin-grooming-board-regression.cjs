@@ -219,6 +219,16 @@ async function startGroomingConfirmation() {
   await intake.checkInBooking(booking, [{ bookingPetId: 7, size: 'large', estimateFactors: ['thick_coat'] }], 'Keep dry');
   assert.equal(intakePayload.action, 'checkIn');
   assert.deepEqual(JSON.parse(JSON.stringify(intakePayload.payload)), { petSizes: [{ booking_pet_id: 7, size: 'large' }], internalStaffNote: 'Keep dry' });
+  await intake.checkInBooking(booking, [
+    { bookingPetId: 7, size: 'large', bodyCondition: 'obese' },
+    { bookingPetId: 8, size: 'small', bodyCondition: 'ideal', confirmBodyCondition: true },
+    { bookingPetId: 9, size: 'medium', bodyCondition: null, confirmBodyCondition: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(intakePayload.payload.petSizes)), [
+    { booking_pet_id: 7, size: 'large' },
+    { booking_pet_id: 8, size: 'small', body_condition: 'ideal' },
+    { booking_pet_id: 9, size: 'medium', body_condition: null },
+  ]);
 
   const { environment, deferred } = require('./admin-data-cache-regression.cjs');
   const e = environment();

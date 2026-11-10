@@ -182,6 +182,7 @@ async function handleSubmit(event) {
     fur_type:          state.pet?.furType || null,
     ...getPetWeightSubmission(state.pet),
     size:              normalizeSizeForApi(state.pet?.size),
+    ...(!state.pet?.petId && state.pet?.bodyCondition ? { body_condition: state.pet.bodyCondition } : {}),
     color:             state.pet?.color || null,
     medical_conditions: state.pet?.medicalNotes || null,
     chief_complaint:   state.chiefComplaint,

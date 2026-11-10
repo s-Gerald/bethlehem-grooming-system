@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Rules\ValidBreedCoat;
 use App\Rules\ValidPetColor;
 use App\Rules\ValidPetSize;
+use App\Support\PetBodyCondition;
 use App\Rules\ValidPetWeight;
 use App\Support\AccountEmail;
 use Illuminate\Foundation\Http\FormRequest;
@@ -62,6 +63,7 @@ class StoreWalkinRequest extends FormRequest
             'pets.*.breed' => ['nullable', 'string', 'max:100'],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.weight' => ['nullable', new ValidPetWeight(allowExistingPetSelection: true)],
+            'pets.*.body_condition' => PetBodyCondition::rules(),
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
             'pets.*.medical_conditions' => ['nullable', 'string', 'max:1000'],

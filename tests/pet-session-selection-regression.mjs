@@ -6,11 +6,11 @@ const source = fs.readFileSync('scripts/components/booking-pet-step.js', 'utf8')
 const restriction = source.slice(source.indexOf('function petSessionRestriction('), source.indexOf('function getBookingPets('));
 const sync = source.slice(source.indexOf('async function syncSavedPets('), source.indexOf('function configurePageForFlow('));
 for (const clinic of [false, true]) {
-  let selected = [{id:'1'}, {id:2, bodyConditionLabel:'Thin'}, {id:'3', bodyConditionLabel:'Obese'},
-    {id:'4', bodyConditionLabel:'Thin'}], rendered = 0, failure = false;
+  let selected = [{id:'1'}, {id:2, bodyCondition:'thin'}, {id:'3', bodyCondition:'obese'},
+    {id:'4', bodyCondition:'thin'}], rendered = 0, failure = false;
   const service = clinic ? 'clinic' : 'grooming';
   const pets = [{id:'1', sessionAvailability:{[service]:{allowed:false,label:clinic ? 'Grooming Pending' : 'In Clinic'}}},
-    {id:'2', sessionAvailability:[], bodyConditionLabel:'Ideal'}, {id:'3', sessionAvailability:[], bodyConditionLabel:null}];
+    {id:'2', sessionAvailability:[], bodyCondition:'ideal'}, {id:'3', sessionAvailability:[], bodyCondition:null}];
   const context = vm.createContext({ IS_CLINIC_VISIT: clinic, petAvailabilityFailed:false, savedPetsLoading:true,
     loadPetsFromApi: async options => { assert.equal(options.force,true); assert.equal(options.sessionAvailability,true); if (failure) throw Error('offline'); },
     getSavedPets: () => pets, getBookingPets: () => selected, saveBookingPets: pets => {selected = pets;},
@@ -19,7 +19,7 @@ for (const clinic of [false, true]) {
   vm.runInContext(`${restriction}\n${sync}`, context);
   await context.syncSavedPets();
   assert.deepEqual(selected.map(pet => pet.id), ['2', '3'], 'Refresh removes blocked and unavailable saved pets');
-  assert.deepEqual(selected.map(pet => pet.bodyConditionLabel), ['Ideal', null], 'The refreshed API data replaces stale draft labels');
+  assert.deepEqual(selected.map(pet => pet.bodyCondition), ['ideal', null], 'The refreshed API data replaces stale draft labels');
   assert.equal(context.petSessionRestriction(pets[0]),clinic ? 'Grooming Pending' : 'In Clinic');
   assert.equal(context.petSessionRestriction(pets[1]),'');
   assert.equal(rendered,1);
