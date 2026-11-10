@@ -125,9 +125,11 @@ class ActivityLogTest extends TestCase
             $t->date('booking_date')->nullable(); $t->timestamp('dropped_off_at')->nullable();
         });
         Schema::create('booking_pets', function (Blueprint $t) {
+            $t->json('pet_profile_snapshot')->nullable();
             $t->increments('booking_pet_id'); $t->integer('booking_id'); $t->integer('pet_id'); $t->string('grooming_state');
         });
         Schema::create('clinic_appointments', function (Blueprint $t) {
+            $t->json('pet_profile_snapshot')->nullable();
             $t->id(); $t->string('appointment_reference'); $t->string('appointment_type'); $t->string('status');
             $t->boolean('paid')->default(false); $t->dateTime('consultation_finished_at')->nullable(); $t->timestamps();
         });
@@ -152,6 +154,12 @@ class ActivityLogTest extends TestCase
         $clinic->update(['status' => 'completed', 'consultation_finished_at' => now()]);
         $this->assertSame(1, ActivityLog::where('action', 'consultation_started')->count());
         $this->assertSame(1, ActivityLog::where('action', 'consultation_completed')->count());
+        $snapshot = ['version' => 1, 'registration' => ['pet_name' => 'PRIVATE SNAPSHOT']];
+        $eventsBeforeSnapshots = ActivityLog::count();
+        $pet->update(['pet_profile_snapshot' => $snapshot]);
+        $clinic->update(['pet_profile_snapshot' => $snapshot]);
+        $this->assertSame($eventsBeforeSnapshots, ActivityLog::count());
+        $this->assertStringNotContainsString('PRIVATE SNAPSHOT', ActivityLog::all()->toJson());
         $item = \App\Models\InventoryItem::create(['item_name' => 'Shampoo', 'quantity_on_hand' => 20]);
         $item->decrement('quantity_on_hand', 5); $item->save();
         $stock = ActivityLog::where('action', 'inventory_stock_adjusted')->sole();

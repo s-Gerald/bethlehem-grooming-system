@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PetProfileSnapshot;
 use App\Models\ClinicAppointment;
 use App\Models\ClinicAttachment;
 use App\Models\ClinicRecord;
@@ -226,6 +227,7 @@ class AdminClinicController extends Controller
             app(\App\Services\PetServiceSessionPolicy::class)->enforce([$pet->pet_id], 'clinic', true);
             $reserved = $sequence->reserve(now()->toDateString(), true);
             $case = ClinicAppointment::create([
+                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet, intake: true),
                 'appointment_reference' => $reserved['appointment_reference'],
                 'appointment_type' => 'walk_in',
                 'case_type' => $data['case_type'],
@@ -322,11 +324,8 @@ class AdminClinicController extends Controller
                             ->orWhere('email', 'like', $like)
                             ->orWhere('phone', 'like', $like);
                     })
-                    ->orWhereHas('pet', function ($petQuery) use ($like) {
-                        $petQuery
-                            ->where('pet_name', 'like', $like)
-                            ->orWhere('species', 'like', $like)
-                            ->orWhere('breed', 'like', $like);
+                    ->orWhere(function ($petQuery) use ($search) {
+                        PetProfileSnapshot::whereIdentity($petQuery, $search, ['pet_name', 'species', 'breed']);
                     });
             });
         }
@@ -381,6 +380,7 @@ class AdminClinicController extends Controller
                 'status' => 'checked_in',
                 'queue_number' => $queueNumber,
                 'checked_in_at' => now(),
+                'pet_profile_snapshot' => PetProfileSnapshot::intake($appointment->pet_profile_snapshot, $appointment->pet),
             ]);
 
             return $appointment;
@@ -876,6 +876,8 @@ class AdminClinicController extends Controller
         $user = $a->user;
         $walkin = $a->walkin;
         $pet = $a->pet;
+        $historical = in_array($a->status, ClinicAppointment::TERMINAL_STATUSES, true);
+        $profile = $historical ? PetProfileSnapshot::pet($a->pet_profile_snapshot, $a->pet_id) : $pet;
         $vitals = ! $listOnly && $a->relationLoaded('vitals') ? $a->vitals : null;
         $record = ! $listOnly && $a->relationLoaded('record') ? $a->record : null;
         $timeWindow = $a->relationLoaded('timeWindow') ? $a->timeWindow : null;
@@ -947,17 +949,20 @@ class AdminClinicController extends Controller
                 'customer_type' => $walkin ? 'Walk-in customer' : 'Registered customer',
                 'account_deleted' => $ownerAccountDeleted,
             ],
-            'pet' => $pet ? [
-                'id' => $pet->pet_id,
-                'name' => $pet->pet_name,
-                'species' => $pet->species,
-                'breed' => $pet->breed,
-                'gender' => $pet->gender,
-                'birthdate' => $pet->birthdate,
-                'weight' => $pet->weight,
-                'color' => $pet->color,
-                'size' => $pet->size,
-                'medical_conditions' => $pet->medical_conditions,
+            'pet' => $profile ? [
+                'id' => $a->pet_id,
+                'name' => $profile->pet_name,
+                'species' => $profile->species,
+                'breed' => $profile->breed,
+                'gender' => $profile->gender,
+                'birthdate' => $profile->birthdate,
+                'weight' => $profile->weight,
+                'color' => $profile->color,
+                'size' => $profile->size,
+                'fur_type' => $profile->fur_type,
+                'body_condition' => $profile->body_condition,
+                'body_condition_verified' => $profile->hasVerifiedBodyCondition(),
+                'medical_conditions' => $profile->medical_conditions,
                 'known_allergies' => null,
             ] : null,
             'vitals' => $vitals ? [

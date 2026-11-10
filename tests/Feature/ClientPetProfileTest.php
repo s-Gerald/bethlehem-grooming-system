@@ -989,6 +989,7 @@ class ClientPetProfileTest extends TestCase
             ],
         ]);
 
+        (require database_path('migrations/2026_11_10_000002_add_pet_profile_snapshots.php'))->up();
         $this->getJson('/api/booking/history?pet_id=101')
             ->assertOk()
             ->assertJsonCount(0, 'bookings')

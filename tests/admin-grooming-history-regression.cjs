@@ -9,6 +9,9 @@ const context = { Date, Intl, URLSearchParams, window: {}, document: { body: { s
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/recorded-product-pricing.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-archive.js'), 'utf8'), context);
 const ui = context.adminArchive();
+assert.equal(ui.petBodyCondition({ bodyCondition: 'obese', bodyConditionVerified: true }), 'Obese · Clinic verified');
+assert.equal(ui.petBodyCondition({ bodyCondition: 'thin', bodyConditionVerified: false }), 'Thin');
+assert.equal(ui.petBodyCondition({}), '');
 for (const isTest of [true, false]) {
   assert.equal(ui.paymentMethod({payment: {paymentMethod: 'qrph', paymentMethodLabel: 'Online Payment', isTest}}), 'Online Payment');
 }

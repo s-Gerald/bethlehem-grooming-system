@@ -107,6 +107,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->json('pet_profile_snapshot')->nullable();
             $table->id();
             $table->string('appointment_reference')->unique();
             $table->string('appointment_type')->default('walk_in');
@@ -539,6 +540,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertCreated()->assertJsonPath('case.status', 'checked_in')
             ->assertJsonPath('case.queue_number', 1)
             ->assertJsonPath('case.consultation_started_at', null);
+        $snapshot = \App\Models\ClinicAppointment::findOrFail(1)->pet_profile_snapshot;
+        $this->assertSame('Mochi', $snapshot['registration']['pet_name']);
+        $this->assertSame('Mochi', $snapshot['intake']['pet_name']);
         $this->postJson('/api/admin/clinic-cases/1/start')->assertForbidden();
         $this->authenticateAs('staff');
         $this->postJson('/api/admin/clinic-cases/1/start')->assertOk()->assertJsonPath('case.status', 'in_consultation');
@@ -847,7 +851,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $previous = 'ideal';
         foreach ([1 => 'thin', 'thin', 'thin', 'ideal', 'ideal', 'overweight', 'overweight', 'obese', 'obese'] as $score => $condition) {
             $this->insertClinicAppointment('in_consultation', $score);
-            DB::table('clinic_appointments')->where('id', $score)->update(['pet_id' => 50]);
+            $historicalSnapshot = \App\Support\PetProfileSnapshot::registration(\App\Models\Pet::findOrFail(50), intake: true);
+            DB::table('clinic_appointments')->where('id', $score)->update(['pet_id' => 50, 'pet_profile_snapshot' => json_encode($historicalSnapshot)]);
             $endpoint = "/api/admin/clinic-appointments/$score/record";
             $record = ['body_condition_score' => $score, 'weight_kg' => 4.5, 'temperature_c' => 38.5,
                 'heart_rate_bpm' => 80, 'respiratory_rate_bpm' => 20];
@@ -856,6 +861,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             $this->postJson($endpoint, [...$record, 'finish_case' => true])->assertOk();
             $this->assertDatabaseHas('pets', ['pet_id' => 50, 'body_condition' => $condition,
                 'clinic_verified_fields' => json_encode(['body_condition'])]);
+            $this->assertEquals($historicalSnapshot, \App\Models\ClinicAppointment::findOrFail($score)->pet_profile_snapshot);
             $previous = $condition;
         }
         $this->assertSame(range(1, 9), DB::table('clinic_vitals')->orderBy('clinic_appointment_id')->pluck('body_condition_score')->all());
@@ -958,6 +964,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        (require database_path('migrations/2026_11_10_000002_add_pet_profile_snapshots.php'))->up();
         $response = $this->getJson('/api/admin/clinic-appointments/archived')
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -996,6 +1003,68 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('total', 1)
             ->assertJsonPath('archived.0.id', 1);
+    }
+
+    public function test_clinic_archive_and_detail_use_intake_identity_after_profile_edits(): void
+    {
+        $this->authenticateAs('admin');
+        DB::table('pets')->insert(['pet_id' => 101, 'pet_name' => 'Helio', 'species' => 'cat', 'breed' => 'Siamese',
+            'weight' => 7, 'body_condition' => 'obese', 'fur_type' => 'Short Hair', 'medical_conditions' => 'Sensitive to shampoo']);
+        $id = $this->postJson('/api/admin/clinic-cases', ['pet_id' => 101, 'case_type' => 'consultation'])
+            ->assertCreated()->json('case.id');
+        $frozen = \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot;
+        DB::table('clinic_appointments')->where('id', $id)->update(['status' => 'completed', 'consultation_finished_at' => now()]);
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => $id, 'weight_kg' => 20, 'body_condition_score' => 8]);
+        DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Renamed pet', 'species' => 'dog', 'breed' => 'Poodle',
+            'weight' => 24, 'body_condition' => 'thin', 'fur_type' => 'Long Hair', 'medical_conditions' => 'New notes']);
+        foreach (['Helio', 'Siamese', 'cat'] as $search) {
+            $this->getJson('/api/admin/clinic-appointments/archived?search='.$search)->assertOk()
+                ->assertJsonPath('total', 1)->assertJsonPath('archived.0.pet.name', 'Helio')
+                ->assertJsonPath('archived.0.pet.breed', 'Siamese')->assertJsonPath('archived.0.pet.weight', 7)
+                ->assertJsonPath('archived.0.pet.fur_type', 'Short Hair')
+                ->assertJsonPath('archived.0.pet.medical_conditions', 'Sensitive to shampoo')
+                ->assertJsonPath('archived.0.vitals.weight_kg', '20.00')->assertJsonPath('archived.0.vitals.body_condition_score', 8);
+        }
+        $this->getJson('/api/admin/clinic-appointments/archived?search=Renamed')->assertOk()->assertJsonPath('total', 0);
+        $this->getJson('/api/admin/clinic-cases/'.$id)->assertOk()->assertJsonPath('case.pet.name', 'Helio');
+        $this->assertSame($frozen, \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot);
+        DB::table('pets')->where('pet_id', 101)->delete();
+        $this->getJson('/api/admin/clinic-appointments/archived?search=Helio')->assertOk()->assertJsonPath('archived.0.pet.name', 'Helio');
+    }
+
+    public function test_clinic_registration_intake_and_live_profiles_stay_distinct_on_retry_and_cancellation(): void
+    {
+        $this->authenticateAs('customer', 10);
+        DB::table('pets')->insert(['pet_id' => 101, 'user_id' => 10, 'pet_name' => 'Helio', 'species' => 'cat', 'body_condition' => 'obese']);
+        $id = $this->postJson('/api/clinic/pre-register', ['service_day' => now()->toDateString(),
+            'pet_id' => 101, 'common_concerns' => ['Routine check-up']])->assertCreated()->json('appointment.appointment_id');
+        $registered = \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot;
+        $this->assertSame('Helio', $registered['registration']['pet_name']);
+        $this->assertArrayNotHasKey('intake', $registered);
+        DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Arrival name', 'body_condition' => 'thin']);
+        $this->authenticateAs('admin');
+        $this->postJson('/api/admin/clinic-appointments/'.$id.'/check-in')->assertOk();
+        $intake = \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot;
+        $this->assertSame($registered['registration'], $intake['registration']);
+        $this->assertSame('Arrival name', $intake['intake']['pet_name']);
+        $this->assertSame('thin', $intake['intake']['body_condition']);
+        DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Current name', 'body_condition' => 'ideal']);
+        $this->postJson('/api/admin/clinic-appointments/'.$id.'/check-in')->assertOk();
+        $this->getJson('/api/admin/clinic-cases/'.$id)->assertOk()->assertJsonPath('case.pet.name', 'Current name');
+        $this->assertSame($intake, \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot);
+        DB::table('clinic_appointments')->where('id', $id)->update(['status' => 'cancelled']);
+        $this->getJson('/api/admin/clinic-appointments/archived?search=arrival')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('archived.0.pet.name', 'Arrival name');
+
+        $this->authenticateAs('customer', 10);
+        $pending = $this->postJson('/api/clinic/pre-register', ['service_day' => now()->toDateString(),
+            'pet_id' => 101, 'common_concerns' => ['Routine check-up']])->assertCreated()->json('appointment.appointment_id');
+        DB::table('clinic_appointments')->where('id', $pending)->update(['status' => 'no_show']);
+        DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Later name']);
+        $this->getJson('/api/clinic/registrations/'.$pending)->assertOk()->assertJsonPath('visit.pet.pet_name', 'Current name');
+        $this->authenticateAs('admin');
+        $this->getJson('/api/admin/clinic-appointments/archived?search=current')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('archived.0.pet.name', 'Current name');
     }
 
     #[DataProvider('decimalClinicPetWeights')]
@@ -1242,6 +1311,9 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertJsonPath('status', 'checked_in')->assertJsonPath('queue_number', 1);
         $id = $first->json('appointment_id');
         $this->assertNotEmpty($first->json('checked_in_at'));
+        $snapshot = \App\Models\ClinicAppointment::findOrFail($id)->pet_profile_snapshot;
+        $this->assertSame('Mochi', $snapshot['registration']['pet_name']);
+        $this->assertSame('Mochi', $snapshot['intake']['pet_name']);
         $this->assertDatabaseHas('clinic_appointments', ['id' => $id, 'consultation_started_at' => null]);
         $this->postJson('/api/admin/clinic-walk-in', [...$payload, 'pet_name' => 'Bantay'])
             ->assertCreated()->assertJsonPath('queue_number', 2);

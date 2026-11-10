@@ -24,6 +24,7 @@ class ClientPetMedicalRecordsTest extends TestCase
         });
 
         Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->json('pet_profile_snapshot')->nullable();
             $table->id();
             $table->string('appointment_reference');
             $table->string('appointment_type')->default('pre_registered');
@@ -121,6 +122,34 @@ class ClientPetMedicalRecordsTest extends TestCase
     {
         $this->getJson('/api/pets/101/medical-records')->assertUnauthorized();
         $this->getJson('/api/clinic/history')->assertUnauthorized();
+    }
+
+    public function test_later_profile_edits_do_not_rename_clinic_history_or_change_visit_vitals(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Helio');
+        $this->insertAppointment(1, 101, 'completed', 'CL-HELIO', '2026-11-10');
+        DB::table('clinic_vitals')->insert(['clinic_appointment_id' => 1, 'weight_kg' => 20, 'body_condition_score' => 8]);
+        DB::table('pets')->where('pet_id', 101)->update(['pet_name' => 'Renamed pet', 'species' => 'dog']);
+        $this->getJson('/api/clinic/history')->assertOk()
+            ->assertJsonPath('medical_records.0.pet.pet_name', 'Helio')
+            ->assertJsonPath('medical_records.0.pet.species', 'cat')
+            ->assertJsonPath('medical_records.0.vitals.weight_kg', '20.00')
+            ->assertJsonPath('medical_records.0.vitals.body_condition_score', 8);
+        $this->assertDatabaseHas('pets', ['pet_id' => 101, 'pet_name' => 'Renamed pet', 'species' => 'dog']);
+    }
+
+    public function test_snapshot_history_survives_a_missing_pet_only_for_the_visit_owner(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Helio');
+        $this->insertAppointment(1, 101, 'completed', 'CL-HELIO', '2026-11-10');
+        DB::table('clinic_appointments')->where('id', 1)->update(['user_id' => 10]);
+        DB::table('pets')->where('pet_id', 101)->delete();
+        $this->getJson('/api/clinic/history')->assertOk()->assertJsonCount(1, 'medical_records')
+            ->assertJsonPath('medical_records.0.pet.pet_name', 'Helio');
+        $this->authenticateCustomer(20);
+        $this->getJson('/api/clinic/history')->assertOk()->assertJsonCount(0, 'medical_records');
     }
 
     public function test_clinic_history_uses_pet_ownership_and_the_same_completed_clinic_records(): void
@@ -502,6 +531,7 @@ class ClientPetMedicalRecordsTest extends TestCase
             'user_id' => 9999,
             'pet_id' => $petId,
             'chief_complaint' => 'Appointment-level complaint',
+            'pet_profile_snapshot' => json_encode(\App\Support\PetProfileSnapshot::registration(\App\Models\Pet::find($petId))),
             'total_amount' => 1500,
             'paid' => $status === 'completed',
             'notes' => $sensitive['appointment_notes'] ?? null,

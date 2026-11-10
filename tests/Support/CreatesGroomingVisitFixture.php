@@ -48,12 +48,13 @@ trait CreatesGroomingVisitFixture
             $t->string('size')->default('large');
         });
         Schema::create('booking_pets', function (Blueprint $t) {
+            $t->json('pet_profile_snapshot')->nullable();
             $t->increments('booking_pet_id');
             $t->unsignedInteger('booking_id');
             $t->unsignedInteger('pet_id');
             $t->unsignedInteger('groomer_id')->nullable();
             $t->string('registered_size')->default('large');
-            $t->string('confirmed_size')->default('large');
+            $t->string('confirmed_size')->nullable()->default('large');
             $t->string('grooming_state')->default('not_started');
             $t->timestamp('grooming_start_time')->nullable();
             $t->timestamp('grooming_end_time')->nullable();

@@ -87,6 +87,13 @@ assert.match(vaccination, /Rabies|Current|October 1, 2026|October 1, 2027/);
 assert.doesNotMatch(vaccination, /PRIVATE|subcutaneous|BATCH-001|Manufacturer|Route|Dose|Batch/);
 
 const ui = await run();
+const renderGrooming = (pet) => vm.runInContext(`buildHistoryModalContent(${JSON.stringify(booking)}, ${JSON.stringify(pet)})`, ui.context);
+const recordedCondition = renderGrooming({ body_condition: 'obese', body_condition_verified: true, weight: 20 });
+assert.match(recordedCondition, /Pet Size[\s\S]*Body Condition[\s\S]*Obese[\s\S]*Clinic-confirmed[\s\S]*Weight[\s\S]*20 kg/);
+const unverifiedCondition = renderGrooming({ body_condition: 'thin', body_condition_verified: false });
+assert.match(unverifiedCondition, /Body Condition[\s\S]*Thin/);
+assert.doesNotMatch(unverifiedCondition, /Unverified|Clinic-confirmed|text-red|text-amber/);
+assert.doesNotMatch(renderGrooming({}), /Body Condition/);
 const renderVisit = (record) => vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({ type: "clinic", pet: clinic.pet, reference: clinic.appointment_reference, date: clinic.appointment_date, record })})`, ui.context);
 const fullRecord = {
   ...clinic, primary_veterinarian_name: "Dr. Ana Santos", diagnosis_source: "working_diagnosis",

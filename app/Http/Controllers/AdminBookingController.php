@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PetProfileSnapshot;
 use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\ClinicAppointment;
@@ -453,8 +454,9 @@ class AdminBookingController extends Controller
                 $pet = $bookingPet->pet;
                 $size = $selectedSizes->get($bookingPet->booking_pet_id) ?? $pet->groomingSize();
                 $bookingPet->confirmed_size = $size;
-                $bookingPet->save();
                 $pet->confirmClinicSize($size, $selections->get($bookingPet->booking_pet_id, []));
+                $bookingPet->pet_profile_snapshot = PetProfileSnapshot::intake($bookingPet->pet_profile_snapshot, $pet);
+                $bookingPet->save();
             }
 
             $sequence = app(\App\Services\GroomingIntakeSequence::class)->reserve($queueDate, $booking->bookingPets->count());
@@ -580,6 +582,12 @@ class AdminBookingController extends Controller
                     'pet_queue_date' => null,
                     'pet_queue_number' => null,
                 ]);
+            foreach ($bookingPets as $bookingPet) {
+                $bookingPet->update([
+                    'confirmed_size' => null,
+                    'pet_profile_snapshot' => PetProfileSnapshot::withoutIntake($bookingPet->pet_profile_snapshot),
+                ]);
+            }
 
             return ['booking_id' => $booking->booking_id];
         });
@@ -1303,7 +1311,7 @@ class AdminBookingController extends Controller
                 'user',
                 'walkin.unregisteredCustomer',
                 'timeWindow',
-                'bookingPets.pet', 'bookingPets.groomer',
+                'bookingPets.groomer',
                 'bookingPets.cancelledBy',
                 'cancelledBy',
                 'bookingServices.service',
@@ -1324,8 +1332,8 @@ class AdminBookingController extends Controller
                         $q2->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%");
                     })
-                    ->orWhereHas('bookingPets.pet', function ($q2) use ($search) {
-                        $q2->where('pet_name', 'like', "%{$search}%");
+                    ->orWhereHas('bookingPets', function ($q2) use ($search) {
+                        PetProfileSnapshot::whereIdentity($q2, $search, ['pet_name']);
                     });
             });
         }
@@ -1341,10 +1349,11 @@ class AdminBookingController extends Controller
 
     // ── OWNER CARD CONCERN STATE ──────────────────────────
     // ── FORMAT BOOKING FOR FRONTEND ───────────────────────
-    private function bookingCardIdentity(Booking $booking): array
+    private function bookingCardIdentity(Booking $booking, bool $historical = false): array
     {
         $pets = $booking->bookingPets->sortBy('booking_pet_id')->values();
-        $firstPet = $pets->first()?->pet;
+        $firstBp = $pets->first();
+        $firstPet = $historical ? PetProfileSnapshot::pet($firstBp?->pet_profile_snapshot, $firstBp?->pet_id) : $firstBp?->pet;
         $petName = $firstPet?->pet_name ?? '—';
         if ($pets->count() > 1) $petName .= ' +'.($pets->count() - 1).' more';
 
@@ -1355,7 +1364,7 @@ class AdminBookingController extends Controller
         ];
     }
 
-    private function formatBooking(Booking $booking, ?array $paymentSummary = null): array
+    private function formatBooking(Booking $booking, ?array $paymentSummary = null, bool $historical = false): array
     {
         $user = $booking->user;
         $walkin = $booking->walkin;
@@ -1364,15 +1373,15 @@ class AdminBookingController extends Controller
             ->sortBy('booking_pet_id')
             ->values();
         $firstBp = $bpets->first();
-        $firstPet = $firstBp?->pet;
+        $firstPet = $historical ? PetProfileSnapshot::pet($firstBp?->pet_profile_snapshot, $firstBp?->pet_id) : $firstBp?->pet;
         $bpetsById = $bpets->keyBy('booking_pet_id');
 
-        $petType = $this->formatPetTypeSummary($bpets);
+        $petType = $this->formatPetTypeSummary($bpets, $historical);
 
         // Build service label from booked services
         $bookedServices = $booking->bookingServices ?? collect();
         $serviceNames = $bookedServices
-            ->map(fn ($bs) => $bs->service?->service_name)
+            ->map(fn ($bs) => $historical ? ($bs->service_name_snapshot ?? $bs->service?->service_name) : $bs->service?->service_name)
             ->filter()
             ->unique()
             ->values();
@@ -1397,7 +1406,7 @@ class AdminBookingController extends Controller
         ), 2);
         $canUseSavedServicePrices = ! $paidTotal
             || ($bookedServicesTotal > 0 && abs($bookedServicesTotal - $paidServicesTotal) <= 0.01);
-        $paymentSummary ??= $this->paymentReadiness()->summarize($booking);
+        $paymentSummary ??= $this->paymentReadiness()->summarize($booking, historical: $historical);
         $paymentPetsById = collect($paymentSummary['pets'])->keyBy('booking_pet_id');
         $ownerAccountDeleted = $this->ownerAccountDeleted($booking);
 
@@ -1405,7 +1414,7 @@ class AdminBookingController extends Controller
             // Fields the card templates read directly
             'id' => $booking->booking_id,
             'queueNumber' => $booking->queue_number ?? 0,
-            ...$this->bookingCardIdentity($booking),
+            ...$this->bookingCardIdentity($booking, $historical),
             'contactNumber' => $ownerAccountDeleted
                 ? '—'
                 : ($user?->phone ?? $walkin?->phone ?? '—'),
@@ -1432,8 +1441,8 @@ class AdminBookingController extends Controller
                 && ! (bool) $booking->sedation_consent
                 && in_array($booking->status, ['waiting_to_arrive', 'checked_in'], true),
             'petType' => $petType,
-            'petSize' => $firstBp?->confirmed_size ?? $firstPet?->groomingSize(),
-            'size' => $firstBp?->confirmed_size ?? $firstPet?->groomingSize(),
+            'petSize' => $historical && $firstBp ? PetProfileSnapshot::groomingSize($firstBp) : ($firstBp?->confirmed_size ?? $firstPet?->groomingSize()),
+            'size' => $historical && $firstBp ? PetProfileSnapshot::groomingSize($firstBp) : ($firstBp?->confirmed_size ?? $firstPet?->groomingSize()),
             'serviceLabel' => $serviceLabel,
             'appointmentDate' => $booking->booking_date,
             'appointmentTime' => $window?->window_label ?? '—',
@@ -1494,27 +1503,28 @@ class AdminBookingController extends Controller
                 'priceAtSale' => $line->price_at_sale !== null ? (float) $line->price_at_sale : null,
                 'subtotal' => (float) $line->subtotal,
             ])->values(),
-            'pets' => $bpets->values()->map(function ($bp, $petIndex) use ($paymentPetsById) {
-                $pet = $bp->pet;
+            'pets' => $bpets->values()->map(function ($bp, $petIndex) use ($paymentPetsById, $historical) {
+                $pet = $historical ? PetProfileSnapshot::pet($bp->pet_profile_snapshot, $bp->pet_id) : $bp->pet;
+                $size = $historical ? PetProfileSnapshot::groomingSize($bp) : ($bp->confirmed_size ?? $pet?->groomingSize());
                 $groomingState = $this->bookingPetGroomingState($bp);
                 $paymentPet = $paymentPetsById->get($bp->booking_pet_id, []);
                 return [
                     'id' => $bp->booking_pet_id,
                     'bookingPetId' => $bp->booking_pet_id,
                     'booking_pet_id' => $bp->booking_pet_id,
-                    'petId' => $pet?->pet_id,
-                    'pet_id' => $pet?->pet_id,
+                    'petId' => $bp->pet_id,
+                    'pet_id' => $bp->pet_id,
                     'pet_name' => $pet?->pet_name,
                     'name' => $pet?->pet_name,
-                    'petType' => ucfirst($pet?->species ?? 'Dog'),
+                    'petType' => ucfirst($pet?->species ?? ($historical ? '—' : 'Dog')),
                     'pet_type' => $pet?->species,
-                    'petSize' => $bp->confirmed_size ?? $pet?->groomingSize(),
-                    'pet_size' => $bp->confirmed_size ?? $pet?->groomingSize(),
+                    'petSize' => $size,
+                    'pet_size' => $size,
                     'petName' => $pet?->pet_name ?? '—',
                     'species' => ucfirst($pet?->species ?? '—'),
                     'breed' => $pet?->breed ?? '—',
-                    'size' => $bp->confirmed_size ?? $pet?->groomingSize() ?? '—',
-                    'sizeVerified' => $pet?->hasClinicVerifiedSize() ?? false,
+                    'size' => $size ?? '—',
+                    'sizeVerified' => $historical ? $bp->confirmed_size !== null : ($pet?->hasClinicVerifiedSize() ?? false),
                     'bodyCondition' => $pet?->body_condition,
                     'bodyConditionVerified' => $pet?->hasVerifiedBodyCondition() ?? false,
                     'groomingPreference' => $bp->grooming_preference,
@@ -1550,11 +1560,13 @@ class AdminBookingController extends Controller
                     'grooming_state_label' => $this->groomingStateLabel($groomingState),
                 ];
             })->values(),
-            'services' => $bookedServices->map(function ($bs) use ($bpetsById, $paidTotal, $paidServicesTotal, $canUseSavedServicePrices, $billableServices) {
+            'services' => $bookedServices->map(function ($bs) use ($bpetsById, $paidTotal, $paidServicesTotal, $canUseSavedServicePrices, $billableServices, $historical) {
                 $bookingPet = $bpetsById->get($bs->booking_pet_id);
-                $pet = $bookingPet?->pet;
+                $pet = $historical ? PetProfileSnapshot::pet($bookingPet?->pet_profile_snapshot, $bookingPet?->pet_id) : $bookingPet?->pet;
+                $serviceName = $historical ? ($bs->service_name_snapshot ?? $bs->service?->service_name) : $bs->service?->service_name;
+                $serviceKind = $historical ? ($bs->service_kind_snapshot ?? $bs->service?->kind) : $bs->service?->kind;
                 $bs->setRelation('bookingPet', $bookingPet);
-                $paymentPriceRules = $bs->service
+                $paymentPriceRules = ! $historical && $bs->service
                     ? app(\App\Services\GroomingServicePriceResolver::class)->paymentPriceRules(
                         $bs, $bookingPet?->confirmed_size ?? $bookingPet?->registered_size ?? $pet?->groomingSize(),
                     ) : null;
@@ -1578,8 +1590,8 @@ class AdminBookingController extends Controller
                     'booking_service_id' => $bs->booking_service_id,
                     'bookingPetId' => $bs->booking_pet_id,
                     'booking_pet_id' => $bs->booking_pet_id,
-                    'petId' => $pet?->pet_id,
-                    'pet_id' => $pet?->pet_id,
+                    'petId' => $bookingPet?->pet_id,
+                    'pet_id' => $bookingPet?->pet_id,
                     'petName' => $pet?->pet_name ?? '',
                     'pet_name' => $pet?->pet_name ?? '',
                     'serviceId' => $bs->service?->service_id,
@@ -1587,13 +1599,13 @@ class AdminBookingController extends Controller
                     'slug' => $bs->service?->slug,
                     'serviceSlug' => $bs->service?->slug,
                     'service_slug' => $bs->service?->slug,
-                    'serviceName' => $bs->service?->service_name ?? 'Grooming Service',
-                    'service_name' => $bs->service?->service_name ?? 'Grooming Service',
+                    'serviceName' => $serviceName ?? 'Grooming Service',
+                    'service_name' => $serviceName ?? 'Grooming Service',
                     'description' => $bs->service?->description,
-                    'name' => $bs->service?->service_name ?? '—',
+                    'name' => $serviceName ?? '—',
                     'serviceKind' => $bs->addon_id !== null
                         ? 'ala_carte'
-                        : ($bs->service?->kind === 'package'
+                        : ($serviceKind === 'package'
                             ? 'package' : 'ala_carte'),
                     'priceAtBooking' => $bs->price_at_booking,
                     'price_at_booking' => $bs->price_at_booking,
@@ -1616,10 +1628,12 @@ class AdminBookingController extends Controller
     /**
      * Build the schedule-card pet type label from every pet in the booking.
      */
-    private function formatPetTypeSummary($bookingPets): string
+    private function formatPetTypeSummary($bookingPets, bool $historical = false): string
     {
         $typeCounts = collect($bookingPets)
-            ->map(fn ($bookingPet) => strtolower(trim((string) ($bookingPet->pet?->species ?? ''))))
+            ->map(fn ($bookingPet) => strtolower(trim((string) ($historical
+                ? (PetProfileSnapshot::resolve($bookingPet->pet_profile_snapshot)['species'] ?? '')
+                : ($bookingPet->pet?->species ?? '')))))
             ->filter()
             ->countBy();
 
@@ -1656,10 +1670,11 @@ class AdminBookingController extends Controller
     {
         $paymentSummary = $this->canUseSettledArchivePaymentSummary($booking)
             ? $this->settledArchivePaymentSummary($booking)
-            : $this->paymentReadiness()->summarize($booking);
+            : $this->paymentReadiness()->summarize($booking, historical: true);
         $formatted = $this->formatBooking(
             $booking,
             $paymentSummary,
+            historical: true,
         );
         $formatted['archivedAt'] = $booking->archived_at
             ? Carbon::parse($booking->archived_at)->format('M j, Y g:i A')
@@ -1752,7 +1767,7 @@ class AdminBookingController extends Controller
                             : null,
                         'label' => $isAddon
                             ? "Add-on #{$bookingService->addon_id}"
-                            : ($bookingService->service?->service_name
+                            : ($bookingService->service_name_snapshot ?? $bookingService->service?->service_name
                                 ?? "Service #{$bookingService->service_id}"),
                         'price_at_booking' => number_format($savedPrice, 2, '.', ''),
                         'price_source' => $savedPrice > 0 ? 'booking_snapshot' : 'unpriced',
@@ -1765,8 +1780,8 @@ class AdminBookingController extends Controller
             return [
                 'booking_pet_id' => (int) $bookingPet->booking_pet_id,
                 'pet_id' => $bookingPet->pet_id !== null ? (int) $bookingPet->pet_id : null,
-                'pet_name' => $bookingPet->pet?->pet_name ?? 'Pet',
-                'pet_species' => $bookingPet->pet?->species,
+                'pet_name' => PetProfileSnapshot::resolve($bookingPet->pet_profile_snapshot)['pet_name'] ?? 'Pet',
+                'pet_species' => PetProfileSnapshot::resolve($bookingPet->pet_profile_snapshot)['species'] ?? null,
                 'grooming_state' => $groomingState,
                 'grooming_state_label' => $this->groomingStateLabel($groomingState),
                 'grooming_finish_time' => $bookingPet->grooming_end_time?->toIso8601String(),

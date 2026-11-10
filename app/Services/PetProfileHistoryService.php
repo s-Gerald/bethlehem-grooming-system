@@ -61,7 +61,7 @@ class PetProfileHistoryService
 
                 $services = $booking->bookingServices
                     ->where('booking_pet_id', $bookingPet->booking_pet_id)
-                    ->map(fn ($bookingService) => $bookingService->service?->service_name)
+                    ->map(fn ($bookingService) => $bookingService->service_name_snapshot ?? $bookingService->service?->service_name)
                     ->filter()
                     ->values();
 

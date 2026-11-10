@@ -632,6 +632,7 @@
                             <div x-show="groomingText(pet.species)"><dt>Species</dt><dd x-text="pet.species"></dd></div>
                             <div x-show="groomingText(pet.breed)"><dt>Breed</dt><dd x-text="pet.breed"></dd></div>
                             <div x-show="[pet.confirmedSize, pet.registeredSize, pet.size].some(value => groomingText(value))"><dt>Size</dt><dd x-text="petSize(pet)"></dd></div>
+                            <div x-show="petBodyCondition(pet)"><dt>Body Condition</dt><dd x-text="petBodyCondition(pet)"></dd></div>
                             <div x-show="groomingText(pet.weight)"><dt>Weight</dt><dd x-text="pet.weight"></dd></div>
                             <div x-show="groomingText(pet.furType)"><dt>Fur Type</dt><dd x-text="pet.furType"></dd></div>
                           </dl>
@@ -817,7 +818,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261029&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261029&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

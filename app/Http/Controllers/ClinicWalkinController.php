@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PetProfileSnapshot;
 use App\Support\AccountEmail;
 
 use App\Http\Requests\StoreClinicPreRegistrationRequest;
@@ -48,7 +49,9 @@ class ClinicWalkinController extends Controller
             'queue_number' => $visit->queue_number,
             'common_concerns' => $visit->common_concerns,
             'chief_complaint' => $visit->chief_complaint,
-            'pet' => $visit->pet,
+            'pet' => in_array($visit->status, ClinicAppointment::TERMINAL_STATUSES, true)
+                ? PetProfileSnapshot::pet($visit->pet_profile_snapshot, $visit->pet_id)?->only(['pet_id', 'pet_name', 'species', 'breed'])
+                : $visit->pet,
             'can_cancel' => $visit->canCustomerCancel(),
         ]]);
     }
@@ -143,6 +146,7 @@ class ClinicWalkinController extends Controller
             $appointment = ClinicAppointment::create([
                 'appointment_reference' => $reference,
                 'appointment_type' => 'pre_registered',
+                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet),
                 'case_type' => 'online_request',
                 'status' => 'waiting_to_arrive',
                 'queue_number' => null,
@@ -240,6 +244,7 @@ class ClinicWalkinController extends Controller
             $appointment = ClinicAppointment::create([
                 'appointment_reference' => $reference,
                 'appointment_type' => 'walk_in',
+                'pet_profile_snapshot' => PetProfileSnapshot::registration($pet, intake: true),
                 'case_type' => 'consultation',
                 'status' => 'checked_in',
                 'queue_number' => $sequence['queue_number'],

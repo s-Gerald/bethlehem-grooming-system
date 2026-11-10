@@ -393,6 +393,12 @@ function adminArchive() {
       return label + (confirmed ? " · Clinic verified" : registered ? "" : " · Profile size (session size not recorded)");
     },
 
+    petBodyCondition(pet) {
+      const value = this.groomingText(pet.bodyCondition);
+      if (!value) return "";
+      return value.charAt(0).toUpperCase() + value.slice(1) + (pet.bodyConditionVerified ? " · Clinic verified" : "");
+    },
+
     productAddonsTotal(booking = this.detailsBooking) {
       return (booking?.productAddons || []).reduce((sum, line) => sum + Number(line.subtotal || 0), 0);
     },

@@ -20,6 +20,7 @@ use App\Services\CustomerPreRegistrationAccessService;
 use App\Services\GroomingPaymentReadinessService;
 use App\Services\GroomingServicePriceResolver;
 use App\Support\PetInformation;
+use App\Support\PetProfileSnapshot;
 use Carbon\Carbon;
 use App\Support\PetBodyCondition;
 use Illuminate\Http\Request;
@@ -202,6 +203,7 @@ class BookingController extends Controller
                 $bookingPetAttributes = [
                     'booking_id' => $booking->booking_id,
                     'pet_id' => $pet->pet_id,
+                    'pet_profile_snapshot' => PetProfileSnapshot::registration($pet),
                     'special_instructions' => $petData['special_instructions'] ?? null,
                     'haircut_requested' => (bool) ($petData['haircut_requested'] ?? false),
                     'groomer_id' => $petData['groomer_id'],
@@ -382,7 +384,7 @@ class BookingController extends Controller
         $historyTotal = (clone $historyQuery)->count();
 
         $historyQuery
-            ->with($relations)
+            ->with(array_filter($relations, fn ($relation) => $relation !== 'bookingPets.pet'))
             ->orderBy('booking_date', 'desc')
             ->orderBy('booking_id', 'desc');
 
@@ -397,10 +399,11 @@ class BookingController extends Controller
         app(\App\Services\GroomingQueueForecast::class)->forBookings($active);
 
         $format = function ($b) use ($petId) {
+            $historical = in_array($b->status, ['archived', 'cancelled', 'expired', 'no_show'], true);
             $bookingPets = $b->bookingPets ?? collect();
             $showGroomingTracker = true;
             $paymentSummary = (bool) $b->paid
-                ? app(GroomingPaymentReadinessService::class)->summarize($b)
+                ? app(GroomingPaymentReadinessService::class)->summarize($b, historical: $historical)
                 : null;
 
             if ($petId !== null) {
@@ -409,13 +412,15 @@ class BookingController extends Controller
 
             $pets = $bookingPets->map(function ($bp) use (
                 $b,
+                $historical,
             ) {
+                $pet = $historical ? PetProfileSnapshot::pet($bp->pet_profile_snapshot, $bp->pet_id) : $bp->pet;
                 $services = ($b->bookingServices ?? collect())
                     ->where('booking_pet_id', $bp->booking_pet_id)
                     ->map(fn ($bookingService) => [
                         'booking_service_id' => $bookingService->booking_service_id,
                         'service_id' => $bookingService->service_id,
-                        'service_name' => $bookingService->service?->service_name,
+                        'service_name' => $bookingService->service_name_snapshot ?? $bookingService->service?->service_name,
                         'price_at_booking' => $bookingService->price_at_booking,
                         'price_min_at_booking' => $bookingService->price_min_at_booking,
                         'price_max_at_booking' => $bookingService->price_max_at_booking,
@@ -441,15 +446,17 @@ class BookingController extends Controller
                     'groomer_id' => $bp->groomer_id,
                     'pet_groomer' => $bp->groomer,
                     'haircut_requested' => (bool) $bp->haircut_requested,
-                    'pet_name' => $bp->pet?->pet_name ?? '—',
-                    'breed' => $bp->pet?->breed ?? '—',
-                    'species' => $bp->pet?->species,
-                    'size' => $bp->confirmed_size ?? $bp->registered_size ?? $bp->pet?->groomingSize(),
-                    'weight' => $bp->pet?->weight,
+                    'pet_name' => $pet?->pet_name ?? '—',
+                    'breed' => $pet?->breed ?? '—',
+                    'species' => $pet?->species,
+                    'size' => $historical ? PetProfileSnapshot::groomingSize($bp) : ($bp->confirmed_size ?? $bp->registered_size ?? $pet?->groomingSize()),
+                    'weight' => $pet?->weight,
+                    'fur_type' => $pet?->fur_type,
+                    'medical_conditions' => $pet?->medical_conditions,
                     'registered_size' => $bp->registered_size,
                     'confirmed_size' => $bp->confirmed_size,
-                    'body_condition' => $bp->pet?->body_condition,
-                    'body_condition_verified' => $bp->pet?->hasVerifiedBodyCondition() ?? false,
+                    'body_condition' => $pet?->body_condition,
+                    'body_condition_verified' => $pet?->hasVerifiedBodyCondition() ?? false,
                     'grooming_preference' => $bp->grooming_preference, 'grooming_preference_label' => $bp->grooming_preference_label,
                     'grooming_status' => $groomingStatus,
                     'active_in_grooming' => ! $groomingFinished && $bp->grooming_state !== BookingPet::GROOMING_STATE_CANCELLED,
@@ -630,6 +637,17 @@ class BookingController extends Controller
         }
 
         app(\App\Services\GroomingQueueForecast::class)->forBookings(collect([$booking]));
+        if (in_array($booking->status, ['archived', 'cancelled', 'expired', 'no_show'], true)) {
+            $booking->bookingPets->each(fn ($bp) => $bp->setRelation('pet', PetProfileSnapshot::pet($bp->pet_profile_snapshot, $bp->pet_id)));
+            $booking->bookingServices->each(function ($line) {
+                if ($line->service_name_snapshot !== null || $line->service_kind_snapshot !== null) {
+                    $service = $line->service ? clone $line->service : new Service;
+                    if ($line->service_name_snapshot !== null) $service->service_name = $line->service_name_snapshot;
+                    if ($line->service_kind_snapshot !== null) $service->kind = $line->service_kind_snapshot;
+                    $line->setRelation('service', $service);
+                }
+            });
+        }
         $booking->setRelation('timeWindow', $booking->preferredArrivalWindow());
         $booking->bookingServices->each(function ($item) {
             if ($item->service) {

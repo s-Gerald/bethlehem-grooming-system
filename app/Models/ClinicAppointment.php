@@ -21,6 +21,7 @@ class ClinicAppointment extends Model
     public const COMPLETION_VITAL_FIELDS = ['weight_kg', 'temperature_c', 'heart_rate_bpm', 'respiratory_rate_bpm'];
 
     protected $table = 'clinic_appointments';
+    protected $hidden = ['pet_profile_snapshot'];
 
     protected $fillable = [
         'appointment_reference',
@@ -34,6 +35,7 @@ class ClinicAppointment extends Model
         'user_id',
         'walkin_id',
         'pet_id',
+        'pet_profile_snapshot',
         'chief_complaint',
         'common_concerns',
         'total_amount',
@@ -51,6 +53,7 @@ class ClinicAppointment extends Model
     ];
 
     protected $casts = [
+        'pet_profile_snapshot' => 'array',
         'common_concerns'         => 'array',
         'paid'                    => 'boolean',
         'paid_at'                 => 'datetime',

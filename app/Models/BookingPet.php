@@ -32,6 +32,7 @@ class BookingPet extends Model
     protected $fillable = [
         'booking_id',
         'pet_id',
+        'pet_profile_snapshot',
         'registered_size',
         'confirmed_size',
         'pet_queue_date',
@@ -50,6 +51,7 @@ class BookingPet extends Model
     ];
 
     protected $casts = [
+        'pet_profile_snapshot' => 'array',
         'haircut_requested' => 'boolean',
         'cancelled_at' => 'datetime',
         'pet_queue_date' => 'date',
@@ -59,6 +61,7 @@ class BookingPet extends Model
     ];
 
     protected $appends = ['grooming_preference_label'];
+    protected $hidden = ['pet_profile_snapshot'];
 
     public function getGroomingPreferenceLabelAttribute(): ?string
     {

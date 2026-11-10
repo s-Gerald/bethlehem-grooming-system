@@ -207,6 +207,7 @@ class AdminDashboardSummaryTest extends TestCase
         });
 
         Schema::create('booking_pets', function (Blueprint $table) {
+            $table->json('pet_profile_snapshot')->nullable();
             $table->increments('booking_pet_id');
             $table->unsignedInteger('booking_id');
             $table->unsignedInteger('pet_id')->nullable();

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\BookingService;
+use App\Support\PetProfileSnapshot;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -16,11 +17,11 @@ class GroomingPaymentReadinessService
     ) {}
 
     /** Build the normal per-pet payment total for completed grooming. */
-    public function summarize(Booking $booking, bool $lockForUpdate = false): array
+    public function summarize(Booking $booking, bool $lockForUpdate = false, bool $historical = false): array
     {
         $petQuery = BookingPet::query()
             ->where('booking_id', $booking->booking_id)
-            ->with('pet')
+            ->when(! $historical, fn ($query) => $query->with('pet'))
             ->orderBy('booking_pet_id');
         $serviceQuery = BookingService::query()
             ->where('booking_id', $booking->booking_id)
@@ -36,7 +37,7 @@ class GroomingPaymentReadinessService
             ? $booking->bookingPets->sortBy('booking_pet_id')->values() : $petQuery->get();
         $serviceRows = ! $lockForUpdate && $booking->relationLoaded('bookingServices')
             ? $booking->bookingServices->sortBy('booking_service_id')->values() : $serviceQuery->get();
-        (new EloquentCollection($bookingPets->all()))->loadMissing('pet');
+        if (! $historical) (new EloquentCollection($bookingPets->all()))->loadMissing('pet');
         (new EloquentCollection($serviceRows->all()))->loadMissing('service');
         $serviceNames = $serviceRows->mapWithKeys(fn ($line) => [$line->service_id => $line->service?->service_name])->filter()->all();
         $addonNames = $this->lookupLabels(
@@ -53,17 +54,24 @@ class GroomingPaymentReadinessService
             $servicesByPet,
             $serviceNames,
             $addonNames,
+            $historical,
             &$bookingTotalCents,
             &$firstBlockedReason,
         ) {
+            $pet = $historical ? PetProfileSnapshot::pet($bookingPet->pet_profile_snapshot, $bookingPet->pet_id) : $bookingPet->pet;
+            $petLabel = $pet?->pet_name ?? "Pet #{$bookingPet->booking_pet_id}";
             $lines = collect($servicesByPet->get($bookingPet->booking_pet_id, collect()))
                 ->map(function (BookingService $line) use (
                     $serviceNames,
                     $addonNames,
                     $bookingPet,
+                    $historical,
                 ) {
                     $isAddon = $line->addon_id !== null;
-                    $resolvedPrice = $this->servicePrices->bookingServicePrice(
+                    $resolvedPrice = $historical ? [
+                        'amount' => $this->centsToMoney($this->moneyToCents($line->price_at_booking)),
+                        'source' => $line->price_at_booking !== null ? 'booking_snapshot' : 'unpriced',
+                    ] : $this->servicePrices->bookingServicePrice(
                         $line,
                         $bookingPet->confirmed_size ?? $bookingPet->registered_size ?? $bookingPet->pet?->groomingSize(),
                     );
@@ -73,13 +81,13 @@ class GroomingPaymentReadinessService
                         'line_type' => $isAddon ? 'add_on' : 'service',
                         'service_kind' => $isAddon
                             ? 'ala_carte'
-                            : ($line->service?->kind
+                            : (($historical ? ($line->service_kind_snapshot ?? $line->service?->kind) : $line->service?->kind)
                                 === 'package' ? 'package' : 'ala_carte'),
                         'service_id' => $line->service_id !== null ? (int) $line->service_id : null,
                         'addon_id' => $line->addon_id !== null ? (int) $line->addon_id : null,
                         'label' => $isAddon
                             ? ($addonNames[(int) $line->addon_id] ?? "Add-on #{$line->addon_id}")
-                            : ($serviceNames[(int) $line->service_id] ?? "Service #{$line->service_id}"),
+                            : ($line->service_name_snapshot ?? $serviceNames[(int) $line->service_id] ?? "Service #{$line->service_id}"),
                         'price_at_booking' => $resolvedPrice['amount'],
                         'price_source' => $resolvedPrice['source'],
                     ];
@@ -95,7 +103,7 @@ class GroomingPaymentReadinessService
                 && $bookingPet->grooming_end_time !== null);
             $blockedReason = $paymentReady
                 ? null
-                : $this->petLabel($bookingPet).' is '.$this->groomingStateLabel($state).'.';
+                : $petLabel.' is '.$this->groomingStateLabel($state).'.';
 
             if ($paymentReady) {
                 $bookingTotalCents += $cancelled ? 0 : $subtotalCents;
@@ -106,8 +114,8 @@ class GroomingPaymentReadinessService
             return [
                 'booking_pet_id' => (int) $bookingPet->booking_pet_id,
                 'pet_id' => $bookingPet->pet_id !== null ? (int) $bookingPet->pet_id : null,
-                'pet_name' => $bookingPet->pet?->pet_name ?? 'Pet',
-                'pet_species' => $bookingPet->pet?->species,
+                'pet_name' => $petLabel,
+                'pet_species' => $pet?->species,
                 'grooming_state' => $state,
                 'grooming_state_label' => $this->groomingStateLabel($state),
                 'grooming_finish_time' => $bookingPet->grooming_end_time?->toIso8601String(),
@@ -156,11 +164,6 @@ class GroomingPaymentReadinessService
         $absolute = abs($cents);
 
         return sprintf('%s%d.%02d', $prefix, intdiv($absolute, 100), $absolute % 100);
-    }
-
-    private function petLabel(BookingPet $bookingPet): string
-    {
-        return $bookingPet->pet?->pet_name ?? "Pet #{$bookingPet->booking_pet_id}";
     }
 
     private function groomingStateLabel(string $state): string

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PetProfileSnapshot;
 use App\Http\Requests\StoreWalkinRequest;
 use App\Models\Booking;
 use App\Models\BookingPet;
@@ -110,6 +111,7 @@ class WalkinController extends Controller
                     $bookingPet = BookingPet::create([
                         'booking_id' => $booking->booking_id,
                         'pet_id' => $pet->pet_id,
+                        'pet_profile_snapshot' => PetProfileSnapshot::registration($pet, intake: true),
                         'registered_size' => $item['petData']['size'] ?? null,
                         'confirmed_size' => $item['size'],
                         'special_instructions' => trim($item['petData']['special_instructions'] ?? '') ?: null,

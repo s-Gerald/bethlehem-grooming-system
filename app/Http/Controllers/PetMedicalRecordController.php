@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PetProfileSnapshot;
 use App\Models\ClinicAppointment;
 use App\Models\Pet;
 use App\Models\VaccinationRecord;
@@ -39,12 +40,18 @@ class PetMedicalRecordController extends Controller
     public function history(Request $request)
     {
         $records = $this->completedRecords()
-            ->whereHas('pet', fn (Builder $query) => $query->where('user_id', $request->user()->user_id))
-            ->with('pet:pet_id,pet_name,species')
+            ->where(fn (Builder $query) => $query
+                ->whereHas('pet', fn (Builder $pet) => $pet->where('user_id', $request->user()->user_id))
+                ->orWhere(fn (Builder $missingPet) => $missingPet->whereDoesntHave('pet')
+                    ->where('user_id', $request->user()->user_id)))
             ->get()
             ->map(fn (ClinicAppointment $appointment) => [
                 ...$this->formatMedicalRecord($appointment),
-                'pet' => $appointment->pet->only(['pet_id', 'pet_name', 'species']),
+                'pet' => [
+                    'pet_id' => $appointment->pet_id,
+                    'pet_name' => PetProfileSnapshot::resolve($appointment->pet_profile_snapshot)['pet_name'] ?? null,
+                    'species' => PetProfileSnapshot::resolve($appointment->pet_profile_snapshot)['species'] ?? null,
+                ],
             ])
             ->values();
 
@@ -60,6 +67,7 @@ class PetMedicalRecordController extends Controller
                 'appointment_date',
                 'status',
                 'pet_id',
+                'pet_profile_snapshot',
                 'chief_complaint',
             ])
             ->where('status', 'completed')

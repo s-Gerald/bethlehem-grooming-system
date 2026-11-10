@@ -221,6 +221,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('booking_pets', function (Blueprint $table) {
+            $table->json('pet_profile_snapshot')->nullable();
             $table->string('grooming_preference')->nullable();
             $table->increments('booking_pet_id');
             $table->unsignedInteger('booking_id');
@@ -293,6 +294,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         });
 
         Schema::create('clinic_appointments', function (Blueprint $table) {
+            $table->json('pet_profile_snapshot')->nullable();
             $table->id();
             $table->string('appointment_reference');
             $table->unsignedInteger('user_id')->nullable();
@@ -1476,6 +1478,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $selections[1]['body_condition'] = 'obese';
         $selections[2]['body_condition'] = 'ideal';
         $this->postJson($endpoint, ['pet_sizes' => $selections])->assertOk();
+        $this->assertSame('obese', BookingPet::findOrFail(2)->pet_profile_snapshot['intake']['body_condition']);
+        $this->assertContains('body_condition', BookingPet::findOrFail(2)->pet_profile_snapshot['intake']['verified_fields']);
+        $this->assertSame('ideal', BookingPet::findOrFail(3)->pet_profile_snapshot['intake']['body_condition']);
         foreach ([1 => ['obese', ['size']], 2 => ['obese', ['size', 'body_condition']], 3 => ['ideal', ['size', 'body_condition']]] as $id => [$condition, $verified]) {
             $this->assertDatabaseHas('pets', ['pet_id' => $id, 'body_condition' => $condition,
                 'clinic_verified_fields' => json_encode($verified)]);
@@ -1690,6 +1695,7 @@ class GroomingAdministrationAuthorizationTest extends TestCase
                 'medical_conditions' => 'None',
             ];
             $bookingPets[] = [
+                'pet_profile_snapshot' => json_encode(['version' => 1, 'registration' => \App\Support\PetProfileSnapshot::capture($pets[$id - 1])]),
                 'booking_pet_id' => $id,
                 'booking_id' => $id,
                 'pet_id' => $id,
@@ -3529,6 +3535,9 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             DB::table('bookings')->where('booking_id', $id)->value('booking_reference'));
         $this->assertDatabaseHas('booking_services', ['booking_id' => $id,
             'service_name_snapshot' => $service->service_name, 'service_kind_snapshot' => $service->kind]);
+        $snapshot = BookingPet::where('booking_id', $id)->firstOrFail()->pet_profile_snapshot;
+        $this->assertNotEmpty($snapshot['registration']['pet_name']);
+        $this->assertSame($walkIn, isset($snapshot['intake']));
     }
 
     #[DataProvider('signedConsentFlows')]

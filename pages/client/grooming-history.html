@@ -588,6 +588,7 @@
         const mainServiceIndex = services.some((line) => line.service_kind)
           ? services.findIndex((line) => line.service_kind === "package") : 0;
         const preference = pet?.grooming_preference_label;
+        const bodyCondition = pet?.body_condition ? String(pet.body_condition).replace(/^./, letter => letter.toUpperCase()) : "";
         const arrivalWindow = escapeHistoryHtml(booking.time_window?.window_label || "Not recorded");
 
         return `
@@ -637,6 +638,10 @@
                     ` : ""}
                   </dd>
                 </div>
+                ${bodyCondition ? `<div class="grid grid-cols-[85px_minmax(0,1fr)] gap-3 text-xs">
+                  <dt class="font-medium text-portal-muted">Body Condition</dt>
+                  <dd class="font-medium text-portal-text"><span class="pet-body-condition">${escapeHistoryHtml(bodyCondition)}${pet.body_condition_verified ? ' <span aria-hidden="true">✓</span><span class="sr-only"> Body condition verified</span>' : ""}</span>${pet.body_condition_verified ? '<span class="mt-1 block text-xs text-portal-muted">Clinic-confirmed</span>' : ""}</dd>
+                </div>` : ""}
                 <div class="grid grid-cols-[85px_minmax(0,1fr)] gap-3 text-xs"><dt class="font-medium text-portal-muted">Weight</dt><dd class="font-medium text-portal-text">${escapeHistoryHtml(weight)}</dd></div>
               </dl>
             </section>
