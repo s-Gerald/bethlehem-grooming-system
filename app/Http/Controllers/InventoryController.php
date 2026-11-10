@@ -7,6 +7,7 @@ use App\Models\GatewayPayment;
 use App\Models\InventoryTransaction;
 use App\Models\PosTransaction;
 use App\Services\InventoryBatchBalanceService;
+use App\Services\InventoryExpiryNotificationService;
 use App\Services\InventoryStockMovementService;
 use App\Support\InventoryQuantityPolicy;
 use Carbon\CarbonImmutable;
@@ -127,8 +128,9 @@ class InventoryController extends Controller
         if ($this->alertSnapshot !== null && $this->alertRequest === request()) return $this->alertSnapshot;
         $this->alertRequest = request();
         $this->alertSnapshot = collect();
-        $this->itemsQuery()->where('is_active', 1)->where(function ($query) {
-            $query->where('reorder_level', '>', 0)->orWhereHas('batches', fn ($batch) => $batch->where('expiry_date', '<=', now()->addDays(30)->toDateString()));
+        $cutoff = $this->batchBalances->expiryAlertCutoff(now());
+        $this->itemsQuery()->where('is_active', 1)->where(function ($query) use ($cutoff) {
+            $query->where('reorder_level', '>', 0)->orWhereHas('batches', fn ($batch) => $batch->where('expiry_date', '<=', $cutoff));
         })->chunkById(200, function ($items) {
             $this->alertSnapshot = $this->alertSnapshot->concat($this->formatItems($items));
         }, 'item_id');
@@ -144,13 +146,10 @@ class InventoryController extends Controller
     private function currentExpiryAlerts(): Collection
     {
         $today = now()->startOfDay();
-        $cutoff = $today->copy()->addDays(30)->toDateString();
+        $cutoff = $this->batchBalances->expiryAlertCutoff($today);
         return $this->alertItems()->filter(fn ($item) => (float) $item['quantity_on_hand'] > 0 && $item['tracks_expiry'])
             ->map(function (array $item) use ($today, $cutoff) {
-            $expiringBatches = collect($item['current_batches'])
-                ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0
-                    && $batch['expiry_date'] !== null
-                    && $batch['expiry_date'] <= $cutoff)
+            $expiringBatches = $this->batchBalances->expiryAlertBatches($item['current_batches'], $cutoff)
                 ->sortBy(fn (array $batch) => [
                     $batch['expiry_date'],
                     $batch['transaction_id'],
@@ -312,8 +311,8 @@ class InventoryController extends Controller
         $reserved = (float) (GatewayPayment::reservedQuantities([$itemId])[$itemId] ?? 0);
         $receiptReservations = GatewayPayment::reservedReceiptQuantities([$itemId])[$itemId] ?? [];
         $balance = $this->batchBalances->withReceiptAvailability($balance, $receiptReservations);
-        $tracksExpiry = ! in_array($item->category, ['pet_shop', 'miscellaneous'], true);
-        $cutoff = now()->startOfDay()->addDays(30)->toDateString();
+        $tracksExpiry = $this->batchBalances->tracksExpiry($item);
+        $cutoff = $this->batchBalances->expiryAlertCutoff(now());
         $batches = collect($balance['batches'])
             ->filter(fn (array $batch) => $batch['remaining_quantity'] > 0)
             ->sortBy(fn (array $batch) => [$batch['expiry_date'] ?? '9999-12-31', $batch['transaction_id']])
@@ -586,10 +585,20 @@ class InventoryController extends Controller
             }
         }
 
-        $results = DB::transaction(fn () => $this->stockMovements->receive(
-            $user,
-            $validated['items'],
-        ));
+        $results = DB::transaction(function () use ($user, $validated) {
+            $results = $this->stockMovements->receive($user, $validated['items']);
+            $receiptIds = array_column($results, 'transaction_id');
+
+            DB::afterCommit(function () use ($receiptIds): void {
+                try {
+                    app(InventoryExpiryNotificationService::class)->reconcile($receiptIds);
+                } catch (\Throwable $error) {
+                    report($error);
+                }
+            });
+
+            return $results;
+        });
 
         return response()->json(['data' => $results], 201);
     }

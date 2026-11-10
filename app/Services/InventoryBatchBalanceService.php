@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 class InventoryBatchBalanceService
 {
@@ -206,6 +207,18 @@ class InventoryBatchBalanceService
     public function tracksExpiry(InventoryItem $item): bool
     {
         return ! in_array($item->category, ['pet_shop', 'miscellaneous'], true);
+    }
+
+    public function expiryAlertCutoff(CarbonInterface $today): string
+    {
+        return $today->copy()->addDays(30)->toDateString();
+    }
+
+    public function expiryAlertBatches(array $batches, string $cutoff): Collection
+    {
+        return collect($batches)->filter(fn (array $batch) => $batch['remaining_quantity'] > 0
+            && $batch['expiry_date'] !== null
+            && $batch['expiry_date'] <= $cutoff);
     }
 
     public function withReceiptAvailability(array $balance, array $reserved): array

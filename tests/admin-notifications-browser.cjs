@@ -6,6 +6,7 @@ const evidence = process.env.LOCAL_REVIEW_SCREENSHOTS;
 const activities = [
   ['pre_registrations', 'Online Queue Registrations'], ['schedule_changes', 'Schedule changes'],
   ['payments', 'Payments'], ['cancellations', 'Cancellations'], ['expired', 'No show'],
+  ['inventory_expiry', 'Expiry alerts'],
 ].map(([value, label]) => ({value, label}));
 const types = ['booked', 'payment_due', 'cancelled', 'clinic_booked', 'clinic_payment_due', 'clinic_cancelled'];
 const records = () => Array.from({length: 24}, (_, i) => {
@@ -15,6 +16,11 @@ const records = () => Array.from({length: 24}, (_, i) => {
     message_parts: [{text: `${service} ${activity} notification ${i + 1}`, emphasized: true}], context_parts: [],
     is_read: i % 4 === 0, created_at: new Date(Date.now() - i * 60000).toISOString()};
 });
+const inventoryExpiry = (id, type = 'inventory_expiring_soon') => ({
+  notification_id: id, type, service: 'inventory', activity: 'inventory_expiry', icon: 'cube',
+  message_parts: [{text: (type === 'inventory_expired' ? 'Expired' : 'Expiring soon') + ' — Amoxicillin · Batch AMX-102', emphasized: false}],
+  context_parts: [{text: '12 capsules remaining', emphasized: false}], is_read: false, created_at: new Date().toISOString(),
+});
 const deferred = () => {let resolve; const promise = new Promise(r => resolve = r); return {promise, resolve};};
 let alpine;
 async function fixture(browser, role = 'admin') {
@@ -22,7 +28,9 @@ async function fixture(browser, role = 'admin') {
   const state = {rows: records(), requests: [], errors: [], locked: false, expired: false, hold: null};
   const user = {user_id: 7, role: role === 'admin' ? 'admin' : 'staff', first_name: 'Local', last_name: 'Review',
     staff_type: role === 'grooming' ? 'grooming' : 'clinic', staff_subrole: role === 'grooming' ? 'grooming_receptionist' : 'veterinarian',
-    clinic_permissions: role === 'grooming' ? {} : {access: true, services_view: true, clinical: true}};
+    clinic_permissions: role === 'grooming' ? {} : {access: true, services_view: true, clinical: true},
+    staff_permissions: {clinic_workspace: role === 'clinic', grooming: role === 'grooming'}};
+  const visibleRows = () => state.rows.filter(n => role !== 'clinic' || n.service === 'clinic');
   await context.addInitScript(({origin, role}) => {
     if (location.origin !== origin || sessionStorage.getItem('notification-fixture')) return;
     localStorage.setItem('admin_token', '17|local-notification-fixture');
@@ -46,20 +54,27 @@ async function fixture(browser, role = 'admin') {
     }
     if (path === '/api/admin/notifications') {
       if (params.get('service') === 'grooming') await state.hold?.promise;
-      const unread_count = state.rows.filter(n => !n.is_read).length;
-      const rows = state.rows.filter(n => (params.get('status') !== 'unread' || !n.is_read)
+      const unread_count = visibleRows().filter(n => !n.is_read).length;
+      const rows = visibleRows().filter(n => (params.get('status') !== 'unread' || !n.is_read)
         && (!params.get('service') || params.get('service') === 'all' || n.service === params.get('service'))
         && (!params.get('activity') || params.get('activity') === 'all' || n.activity === params.get('activity')));
       const page = Number(params.get('page') || 1), perPage = Number(params.get('per_page') || 30);
       data = params.get('mode') === 'count' ? {unread_count} : {unread_count, notifications: rows.slice((page - 1) * perPage, page * perPage),
-        activity_options: activities, pagination: {has_more: page * perPage < rows.length}};
-      if (params.has('selected_id')) data.selected_notification = state.rows.find(n => n.notification_id === Number(params.get('selected_id'))) || null;
+        activity_options: activities.filter(a => role !== 'clinic' || a.value !== 'inventory_expiry'),
+        pagination: {has_more: page * perPage < rows.length}};
+      if (params.has('selected_id')) data.selected_notification = visibleRows().find(n => n.notification_id === Number(params.get('selected_id'))) || null;
     }
     if (path.startsWith('/api/admin/notifications/')) {
       const id = path.split('/')[4];
-      state.rows = state.rows.map(n => id === 'read-all' || n.notification_id === Number(id) ? {...n, is_read: true} : n);
-      data = {success: true, unread_count: state.rows.filter(n => !n.is_read).length};
+      const matches = visibleRows().filter(n => id === 'read-all' || n.notification_id === Number(id));
+      matches.forEach(n => { n.is_read = true; });
+      data = {success: true, unread_count: visibleRows().filter(n => !n.is_read).length};
     }
+    if (path === '/api/inventory/stock-in' && route.request().method() === 'POST') {
+      state.rows.unshift(inventoryExpiry(100));
+      data = {data: [{transaction_id: 100}]};
+    }
+    if (path === '/api/logout' && route.request().method() === 'POST') data = {success: true};
     if (path === '/api/admin/dashboard/summary') data = {summary: {}, stats: {}};
     if (path === '/api/admin/bookings') data = {bookings: []};
     if (path === '/api/admin/clinic-cases') data = {cases: []};
@@ -112,7 +127,8 @@ async function bellsAndNavigation(browser) {
         await f.page.screenshot({path: `${evidence}/notifications-clinic-preview.png`});
       }
       await preview(f.page).getByRole('link', {name: 'See all notifications'}).click();
-      assert.equal(new URL(f.page.url()).searchParams.get('return_to'), `/admin/${file}`); await ready(f.page);
+      assert.equal(new URL(f.page.url()).searchParams.get('return_to'), file === 'clinic' ? '/admin/clinic#cases' : `/admin/${file}`);
+      await ready(f.page);
       await f.page.locator('main .admin-notification-row').first().waitFor();
       const active = f.page.locator('aside nav a.bg-\\[\\#315b7e\\]');
       assert.equal((await active.innerText()).trim(), label);
@@ -141,9 +157,10 @@ async function filtersAndMutations(browser) {
     await f.page.locator('main .admin-notification-row').first().waitFor();
     await f.page.getByRole('button', {name: 'Load More', exact: true}).click();
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 20);
-    const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
+    const service = f.page.getByRole('combobox', {name: 'Area', exact: true});
     const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
-    assert.deepEqual(await activity.locator('option').allTextContents(), ['All Activities', 'Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show']);
+    assert.deepEqual(await service.locator('option').allTextContents(), ['All Areas', 'Grooming', 'Clinic', 'Inventory']);
+    assert.deepEqual(await activity.locator('option').allTextContents(), ['All Activities', 'Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show', 'Expiry alerts']);
     for (const control of [service, activity]) {
       await control.click(); await f.page.keyboard.press('Escape');
       assert.equal(await control.evaluate(el => getComputedStyle(el).outlineStyle), 'none', 'Pointer focus has no filter outline');
@@ -264,7 +281,7 @@ async function crossTabAndHiddenPolling(browser) {
       Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'visible'});
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await f.page.waitForFunction(() => document.querySelector('.admin-notification-badge').textContent === '17');
+    await f.page.getByRole('button', {name: 'Unread (17)', exact: true}).waitFor();
     assert.deepEqual(f.state.errors, []);
     console.log('Cross-tab read/count synchronization and hidden-tab request pause passed');
   } finally {await f.context.close();}
@@ -279,7 +296,7 @@ async function noShowFiltersAndServerRefresh(browser) {
     await f.page.clock.install();
     f.state.rows = [noShow(100, 'grooming'), noShow(101, 'clinic', true)];
     await visit(f.page, 'notifications'); await ready(f.page);
-    const service = f.page.getByRole('combobox', {name: 'Service', exact: true});
+    const service = f.page.getByRole('combobox', {name: 'Area', exact: true});
     const activity = f.page.getByRole('combobox', {name: 'Notification activity', exact: true});
     await activity.selectOption('expired');
     await f.page.waitForFunction(() => document.querySelectorAll('main .admin-notification-row').length === 2);
@@ -301,10 +318,54 @@ async function noShowFiltersAndServerRefresh(browser) {
     console.log('No show service/unread filters and server-generated event visibility passed');
   } finally {await f.context.close();}
 }
+async function inventoryExpiryPreviewAndRefresh(browser) {
+  const f = await fixture(browser);
+  try {
+    f.state.rows = [];
+    await f.page.clock.install();
+    await visit(f.page, 'dashboard'); await ready(f.page);
+    const bell = f.page.getByRole('button', {name: /^Notifications/});
+    await bell.click();
+    const panel = preview(f.page);
+    await panel.getByText('No notifications yet.').waitFor();
+    assert.deepEqual(await panel.getByRole('group', {name: 'Read status'}).getByRole('button').allTextContents(), ['All', 'Unread']);
+    await f.page.evaluate(() => API.adminRequest('POST', '/inventory/stock-in', {items: []}));
+    const row = panel.getByRole('button', {name: /Expiring soon — Amoxicillin/});
+    await row.waitFor();
+    assert.match(await row.locator('use').getAttribute('href'), /phosphor\.svg\?[^#]+#cube$/);
+    assert.equal(await bell.getAttribute('aria-label'), 'Notifications, 1 unread');
+    await row.click();
+    await f.page.waitForURL('**/notifications?*selected_id=100*');
+    await ready(f.page);
+    await f.page.locator('main .admin-notification-row.is-selected').getByText('12 capsules remaining').waitFor();
+    await f.page.getByRole('combobox', {name: 'Area', exact: true}).selectOption('inventory');
+    await f.page.getByRole('combobox', {name: 'Notification activity', exact: true}).selectOption('inventory_expiry');
+    await f.page.locator('main .admin-notification-row').getByText(/Expiring soon — Amoxicillin/).waitFor();
+    f.state.rows.unshift(inventoryExpiry(101, 'inventory_expired'));
+    await f.page.clock.fastForward(31000);
+    await f.page.locator('main .admin-notification-row').getByText(/Expired — Amoxicillin/).waitFor();
+    assert.deepEqual(f.state.errors, []);
+  } finally {await f.context.close();}
+
+  const vet = await fixture(browser, 'clinic');
+  try {
+    vet.state.rows.unshift(inventoryExpiry(101, 'inventory_expired'));
+    await visit(vet.page, 'notifications'); await ready(vet.page);
+    await vet.page.locator('main .admin-notification-row').first().waitFor();
+    assert.equal(await vet.page.getByRole('combobox', {name: 'Area', exact: true}).count(), 0);
+    assert.equal(await vet.page.getByRole('combobox', {name: 'Notification activity'}).locator('option[value="inventory_expiry"]').count(), 0);
+    assert.equal(await vet.page.locator('main .admin-notification-row').getByText(/Expired — Amoxicillin/).count(), 0);
+    const query = new URLSearchParams(notificationRequests(vet.state).find(r => r.query.includes('mode=full')).query);
+    assert.equal(query.get('service'), 'clinic');
+    assert.equal(vet.state.requests.filter(r => r.path === '/api/me').length, 1, 'The history and sidebar share the staff identity request');
+    assert.deepEqual(vet.state.errors, []);
+  } finally {await vet.context.close();}
+  console.log('Inventory preview, selected row, role-specific filters and stock-in/scheduled refresh passed');
+}
 (async () => {
   const browser = await chromium.launch({headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {})});
   try {
-    for (const test of [bellsAndNavigation, filtersAndMutations, permissionsAndLifecycle, preAlpineOrigins, crossTabAndHiddenPolling, noShowFiltersAndServerRefresh]) {
+    for (const test of [bellsAndNavigation, filtersAndMutations, permissionsAndLifecycle, preAlpineOrigins, crossTabAndHiddenPolling, noShowFiltersAndServerRefresh, inventoryExpiryPreviewAndRefresh]) {
       if (!process.env.LOCAL_REVIEW_CASES || process.env.LOCAL_REVIEW_CASES.split(',').includes(test.name)) await test(browser);
     }
   } finally {await browser.close();}

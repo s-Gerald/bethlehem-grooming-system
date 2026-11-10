@@ -4,7 +4,8 @@ const adminNotificationIcons = typeof document !== 'undefined' && document.curre
 
 function getAdminNotificationIcon(name) {
   return ({ 'calendar-days': 'calendar-dots', 'circle-check': 'check-circle', 'credit-card': 'credit-card',
-    'circle-x': 'x-circle', history: 'clock-counter-clockwise', stethoscope: 'stethoscope' })[name] || 'bell';
+    'circle-x': 'x-circle', history: 'clock-counter-clockwise', stethoscope: 'stethoscope',
+    'clipboard-text': 'clipboard-text', cube: 'cube' })[name] || 'bell';
 }
 
 // Small custom elements share static markup; Alpine remains the only UI controller.
@@ -80,16 +81,22 @@ function adminNotifications(mode = 'full') {
     selectedId: '', highlightedId: '', notice: '', _targetHandled: false, _highlightTimer: null,
     historyHref: '',
 
-    init() {
-      if (this.clinicOnly) this.serviceFilter = 'clinic';
+    async init() {
       if (this.mode === 'full') {
         const selected = new URLSearchParams(window.location.search).get('selected_id');
         if (selected && /^[1-9]\d{0,9}$/.test(selected) && Number(selected) <= 2147483647) this.selectedId = selected;
         else if (selected !== null) this.notice = 'Notification unavailable.';
+        if (this.sidebarReady === false && API.getUserRole() === 'staff') {
+          // Share the sidebar's in-flight identity request before choosing the area.
+          const identity = await API.getStaffIdentity().catch(() => null);
+          if (this._destroyed) return;
+          if (identity?.user?.staff_permissions?.clinic_workspace) this.serviceFilter = 'clinic';
+        }
       } else {
         this.historyHref = getAdminNotificationsHref();
         this.placeBell();
       }
+      if (this.clinicOnly) this.serviceFilter = 'clinic';
       this._unsubscribe = AdminNotificationService.subscribe(event => this.onNotificationChange(event), {loadCount: this.mode !== 'full'});
       if (this.mode === 'full') {
         return this.loadNotifications(true);

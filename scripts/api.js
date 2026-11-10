@@ -262,7 +262,8 @@ var API = (() => {
   function invalidateAdminMutation(endpoint) {
     const path = endpoint.split("?")[0];
     let groups = [];
-    if (/^\/inventory\/(?:items|stock-in|stock-out)(?:\/|$)/.test(path) || path === '/pos/transactions'
+    if (/^\/inventory\/stock-in(?:\/|$)/.test(path)) groups = ['inventory', 'notifications'];
+    else if (/^\/inventory\/(?:items|stock-out)(?:\/|$)/.test(path) || path === '/pos/transactions'
       || /^\/pos\/online-payment(?:\/|$)/.test(path)) groups = ['inventory'];
     else if (/^\/admin\/clinic-services(?:\/|$)/.test(path)) groups = ['services-clinic'];
     else if (/^\/admin\/notifications\//.test(path)) groups = ["notifications"];

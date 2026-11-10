@@ -60,15 +60,60 @@ class AdminNotificationCenterTest extends TestCase
             'role' => 'staff', 'staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'is_active' => true,
         ]));
         $grooming = $this->insertNotification('payment_confirmed', false, bookingId: 1);
+        $inventory = $this->insertNotification('inventory_expired', false);
         $this->insertNotification('clinic_booked', false, clinicAppointmentId: 1);
-        $this->getJson('/api/admin/notifications?mode=full')->assertOk()
-            ->assertJsonPath('unread_count', 1)->assertJsonPath('pagination.total', 1)
-            ->assertJsonPath('notifications.0.service', 'clinic');
-        $this->getJson('/api/admin/notifications?mode=count')->assertOk()->assertJsonPath('unread_count', 1);
+        $summary = $this->insertNotification('clinic_daily_summary', false);
+        $response = $this->getJson('/api/admin/notifications?mode=full&selected_id='.$inventory)->assertOk()
+            ->assertJsonPath('unread_count', 2)->assertJsonPath('pagination.total', 2)
+            ->assertJsonPath('selected_notification', null)
+            ->assertJsonPath('notifications.0.notification_id', $summary)
+            ->assertJsonPath('notifications.0.service', 'clinic')->assertJsonPath('notifications.1.service', 'clinic');
+        $this->assertNotContains('inventory_expiry', array_column($response->json('activity_options'), 'value'));
+        $this->getJson('/api/admin/notifications?mode=count')->assertOk()->assertJsonPath('unread_count', 2);
+        $this->getJson('/api/admin/notifications?service=clinic&activity=daily_summaries')->assertOk()
+            ->assertJsonCount(1, 'notifications')->assertJsonPath('notifications.0.notification_id', $summary);
         $this->getJson('/api/admin/notifications?service=grooming')->assertOk()->assertJsonCount(0, 'notifications');
+        $this->getJson('/api/admin/notifications?service=inventory&activity=inventory_expiry')->assertOk()->assertJsonCount(0, 'notifications');
         $this->patchJson('/api/admin/notifications/'.$grooming.'/read')->assertNotFound();
+        $this->patchJson('/api/admin/notifications/'.$inventory.'/read')->assertNotFound();
         $this->patchJson('/api/admin/notifications/read-all')->assertOk()->assertJsonPath('unread_count', 0);
         $this->assertDatabaseHas('notifications', ['notification_id' => $grooming, 'is_read' => false]);
+        $this->assertDatabaseHas('notifications', ['notification_id' => $inventory, 'is_read' => false]);
+    }
+
+    public function test_inventory_notifications_are_visible_and_shared_by_admin_and_receptionists(): void
+    {
+        $this->insertNotification('no_show', false);
+        $soon = $this->insertNotification('inventory_expiring_soon', false);
+        $expired = $this->insertNotification('inventory_expired', false);
+        foreach (['admin', 'clinic_receptionist', 'grooming_receptionist'] as $role) {
+            \Laravel\Sanctum\Sanctum::actingAs(new User([
+                'role' => $role === 'admin' ? 'admin' : 'staff',
+                'staff_type' => $role === 'grooming_receptionist' ? 'grooming' : 'clinic',
+                'staff_subrole' => $role === 'admin' ? null : $role,
+                'is_active' => true,
+            ]));
+            $this->getJson('/api/admin/notifications?mode=count')->assertOk()->assertJsonPath('unread_count', 3);
+            $this->getJson('/api/admin/notifications?mode=full&service=inventory&selected_id='.$soon)->assertOk()
+                ->assertJsonCount(2, 'notifications')->assertJsonPath('selected_notification.notification_id', $soon)
+                ->assertJsonPath('notifications.0.notification_id', $expired)
+                ->assertJsonPath('notifications.0.service', 'inventory')
+                ->assertJsonPath('notifications.0.category', 'inventory')
+                ->assertJsonPath('notifications.0.activity', 'inventory_expiry')
+                ->assertJsonPath('notifications.0.icon', 'cube')
+                ->assertJsonFragment(['value' => 'inventory_expiry', 'label' => 'Expiry alerts']);
+            $this->getJson('/api/admin/notifications?category=inventory&activity=inventory_expiry')->assertOk()
+                ->assertJsonCount(2, 'notifications');
+            $this->getJson('/api/admin/notifications?service=grooming&activity=inventory_expiry')->assertOk()
+                ->assertJsonCount(0, 'notifications');
+            $this->getJson('/api/admin/notifications?activity=expired')->assertOk()
+                ->assertJsonCount(1, 'notifications')->assertJsonPath('notifications.0.type', 'no_show');
+        }
+        $this->patchJson('/api/admin/notifications/'.$soon.'/read')->assertOk()->assertJsonPath('unread_count', 2);
+        $this->patchJson('/api/admin/notifications/read-all')->assertOk()->assertJsonPath('unread_count', 0);
+        \Laravel\Sanctum\Sanctum::actingAs(new User(['role' => 'admin', 'is_active' => true]));
+        $this->getJson('/api/admin/notifications?mode=full&service=inventory')->assertOk()
+            ->assertJsonPath('notifications.0.is_read', true)->assertJsonPath('notifications.1.is_read', true);
     }
 
     public function test_cancellation_wording_uses_origin_and_keeps_customer_text_concise(): void
@@ -423,6 +468,33 @@ class AdminNotificationCenterTest extends TestCase
         $this->assertSame('payments', $unread['filters']['activity']);
     }
 
+    public function test_daily_clinic_summary_uses_the_stored_message_and_existing_service_and_activity_filters(): void
+    {
+        $message = '8 clinic visits completed as of 5:00 PM.';
+        $id = $this->insertNotification('clinic_daily_summary', false, message: $message);
+        $this->insertNotification('clinic_booked', false, clinicAppointmentId: 1);
+        $this->insertNotification('booked', false, bookingId: 1);
+
+        $dropdown = $this->notificationPayload(['mode' => 'dropdown', 'status' => 'unread']);
+        $this->assertContains($id, array_column($dropdown['notifications'], 'notification_id'));
+
+        $clinic = $this->notificationPayload(['mode' => 'full', 'service' => 'clinic']);
+        $this->assertSame(['clinic_booked', 'clinic_daily_summary'], array_column($clinic['notifications'], 'type'));
+        $this->assertContains(['value' => 'daily_summaries', 'label' => 'Daily summaries'], $clinic['activity_options']);
+        foreach (['all', 'clinic'] as $service) {
+            $filtered = $this->notificationPayload(['mode' => 'full', 'service' => $service, 'activity' => 'daily_summaries']);
+            $this->assertCount(1, $filtered['notifications']);
+            $this->assertSame([
+                'notification_id' => $id, 'type' => 'clinic_daily_summary', 'category' => 'clinic', 'service' => 'clinic',
+                'activity' => 'daily_summaries', 'icon' => 'clipboard-text', 'title' => 'Daily clinic summary',
+                'message' => $message, 'context' => null, 'is_read' => false,
+            ], array_intersect_key($filtered['notifications'][0], array_flip([
+                'notification_id', 'type', 'category', 'service', 'activity', 'icon', 'title', 'message', 'context', 'is_read',
+            ])));
+        }
+        $this->assertSame([], $this->notificationPayload(['service' => 'grooming', 'activity' => 'daily_summaries'])['notifications']);
+    }
+
     public function test_count_mode_uses_one_count_query_without_loading_records(): void
     {
         $this->insertNotification('booked', false, bookingId: 1);
@@ -449,7 +521,7 @@ class AdminNotificationCenterTest extends TestCase
 
         $payload = $this->notificationPayload(['mode' => 'full', 'activity' => 'expired']);
         $this->assertCount(2, $payload['notifications']);
-        $this->assertSame(['Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show'], array_column($payload['activity_options'], 'label'));
+        $this->assertSame(['Online Queue Registrations', 'Schedule changes', 'Payments', 'Cancellations', 'No show', 'Daily summaries', 'Expiry alerts'], array_column($payload['activity_options'], 'label'));
         foreach (['grooming' => 'no_show', 'clinic' => 'clinic_no_show'] as $service => $type) {
             $filtered = $this->notificationPayload(['mode' => 'full', 'service' => $service, 'activity' => 'expired']);
             $this->assertSame([$type], array_column($filtered['notifications'], 'type'));

@@ -167,9 +167,9 @@
                 @pointerdown="if ($event.target.matches('select')) $event.target.dataset.pointerFocus = 'true'"
                 @keydown="if ($event.key !== 'Escape') delete $event.target.dataset.pointerFocus"
                 @focusout="delete $event.target.dataset.pointerFocus">
-                <label x-cloak x-show="!clinicOnly" class="admin-notification-filter"><span class="sr-only">Service</span>
-                  <select aria-label="Service" :value="serviceFilter" @change="setService($event.target.value)">
-                    <option value="all">All Services</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option>
+                <label x-cloak x-show="sidebarReady && !clinicOnly" class="admin-notification-filter"><span class="sr-only">Area</span>
+                  <select aria-label="Area" :value="serviceFilter" @change="setService($event.target.value)">
+                    <option value="all">All Areas</option><option value="grooming">Grooming</option><option value="clinic">Clinic</option><option value="inventory">Inventory</option>
                   </select>
                 </label>
                 <label class="admin-notification-filter"><span class="sr-only">Notification activity</span>
@@ -223,7 +223,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
-    <script src="/scripts/components/admin-notifications.js?v=20261027-3&urls=20261103"></script>
+    <script src="/scripts/components/admin-notifications.js?v=20261111&urls=20261103&inventory-expiry=20261111"></script>
 
   </body>
 </html>

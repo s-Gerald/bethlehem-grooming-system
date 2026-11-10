@@ -36,7 +36,7 @@ class AdminNotificationInterfaceTest extends TestCase
     public function test_history_uses_native_independent_filters_and_shared_rows(): void
     {
         $html = file_get_contents(base_path('pages/admin/notifications.html'));
-        foreach (['x-data="adminSidebar()"', 'x-data="adminNotifications()"', 'aria-label="Service"', 'aria-label="Notification activity"', 'All Services', 'All Activities', 'Mark all as read', 'Load More', '<admin-notification-row>', 'group in notificationGroups()'] as $contract) {
+        foreach (['x-data="adminSidebar()"', 'x-data="adminNotifications()"', 'aria-label="Area"', 'aria-label="Notification activity"', 'All Areas', 'All Activities', 'Mark all as read', 'Load More', '<admin-notification-row>', 'group in notificationGroups()'] as $contract) {
             $this->assertStringContainsString($contract, $html);
         }
         $this->assertStringNotContainsString('admin-custom-select', $html);

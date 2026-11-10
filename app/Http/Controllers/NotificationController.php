@@ -24,6 +24,7 @@ class NotificationController extends Controller
         'all',
         Notification::CATEGORY_GROOMING,
         Notification::CATEGORY_CLINIC,
+        Notification::CATEGORY_INVENTORY,
         Notification::CATEGORY_PAYMENTS,
         Notification::CATEGORY_CANCELLATIONS,
     ];
@@ -99,6 +100,7 @@ class NotificationController extends Controller
             'success' => true,
             'unread_count' => $this->unreadCount(),
             'activity_options' => collect(Notification::activities())
+                ->when($request->user()?->isVeterinarian(), fn ($activities) => $activities->except('inventory_expiry'))
                 ->filter(fn (array $definition) => $definition['selectable'] ?? true)->map(
                 fn (array $definition, string $value) => ['value' => $value, 'label' => $definition['label']],
             )->values(),
@@ -168,7 +170,7 @@ class NotificationController extends Controller
             'notification_id' => $notification->notification_id,
             'type' => $notification->type,
             'category' => Notification::categoryForType($notification->type),
-            'service' => str_starts_with((string) $notification->type, 'clinic_') ? 'clinic' : 'grooming',
+            'service' => Notification::serviceForType($notification->type),
             'activity' => Notification::activityForType($notification->type),
             'icon' => $this->iconForType($notification->type),
             'title' => $content['title'],
@@ -230,6 +232,13 @@ class NotificationController extends Controller
             Notification::TYPE_CLINIC_CANCELLED => $this->clinicCancelledContent(
                 $clinicAppointment,
                 $storedMessage,
+            ),
+            Notification::TYPE_CLINIC_DAILY_SUMMARY => $this->content('Daily clinic summary', $storedMessage, null, []),
+            Notification::TYPE_INVENTORY_EXPIRING_SOON => $this->content(
+                'Expiring soon', $storedMessage, $notification->context, ['Expiring soon —'],
+            ),
+            Notification::TYPE_INVENTORY_EXPIRED => $this->content(
+                'Expired', $storedMessage, $notification->context, ['Expired —'],
             ),
             default => $this->content(
                 Str::headline((string) $notification->type),
@@ -494,6 +503,8 @@ class NotificationController extends Controller
             Notification::TYPE_CLINIC_BOOKED,
             Notification::TYPE_CLINIC_WALK_IN => 'stethoscope',
             Notification::TYPE_CLINIC_PAYMENT_DUE => 'circle-check',
+            Notification::TYPE_CLINIC_DAILY_SUMMARY => 'clipboard-text',
+            Notification::TYPE_INVENTORY_EXPIRING_SOON, Notification::TYPE_INVENTORY_EXPIRED => 'cube',
             default => 'bell',
         };
     }

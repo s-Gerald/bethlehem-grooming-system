@@ -253,7 +253,7 @@ async function scopedMutationInvalidation() {
   for (const [mutation, affected, method = 'POST'] of [
     ['/admin/grooming/services/1/status', [0,9]], ['/admin/clinic-services/1/status', [1]],
     ['/inventory/items', [2,3,4]], ['/inventory/items/1', [2,3,4], 'PUT'],
-    ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/items/1/reactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
+    ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/items/1/reactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4,7,8]],
     ['/inventory/stock-out', [2,3,4]], ['/pos/transactions', [2,3,4]],
     ['/admin/bookings/1/mark-done', [5,7,8]], ['/admin/clinic-appointments/1/finish', [2,3,4,6,7,8]],
     ['/admin/bookings/1/pets/2/mark-done', [5,7,8]],

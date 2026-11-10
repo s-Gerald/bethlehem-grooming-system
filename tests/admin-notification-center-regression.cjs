@@ -28,6 +28,13 @@ function controller(e) {
   vm.runInContext(read('scripts/components/admin-notifications.js'), e.c);
   return e.c.adminNotifications();
 }
+
+function dailySummaryUsesClipboardIcon() {
+  const e = environment();
+  controller(e);
+  assert.equal(e.c.getAdminNotificationIcon('clipboard-text'), 'clipboard-text');
+}
+
 async function originsNeverClaimCurrentPage() {
   for (const file of ['dashboard', 'activity-log', 'availability', 'settings']) {
     const e = environment(), attributes = {};
@@ -286,7 +293,7 @@ async function changedServerCountInvalidatesCachedHistory() {
   assert.equal(data.notifications[0]?.type, 'clinic_no_show', 'An authoritative changed count invalidates cached record pages');
 }
 (async () => {
-  for (const test of [filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, targetedNavigationAndReadState, selectedReadFailuresAndFocus, responsiveBellKeepsOneController, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges, serverNoShowRefreshesVisibleHistory, changedServerCountInvalidatesCachedHistory]) {
+  for (const test of [dailySummaryUsesClipboardIcon, filtersCacheAndCountReuse, filterRaceAndPagination, mutationRacesAndUserIsolation, sidebarOrigin, targetedNavigationAndReadState, selectedReadFailuresAndFocus, responsiveBellKeepsOneController, sharedPollingAndLifecycle, concurrentReadMutations, fullHistoryAvoidsCountRequest, visiblePreviewFollowsCountChanges, serverNoShowRefreshesVisibleHistory, changedServerCountInvalidatesCachedHistory]) {
     await test(); console.log(`${test.name} passed`);
   }
   await originsNeverClaimCurrentPage(); console.log('originsNeverClaimCurrentPage passed');

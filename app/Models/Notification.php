@@ -12,6 +12,8 @@ class Notification extends Model
 
     public const CATEGORY_CLINIC = 'clinic';
 
+    public const CATEGORY_INVENTORY = 'inventory';
+
     public const CATEGORY_PAYMENTS = 'payments';
 
     public const CATEGORY_CANCELLATIONS = 'cancellations';
@@ -30,6 +32,14 @@ class Notification extends Model
 
     public const TYPE_CLINIC_NO_SHOW = 'clinic_no_show';
 
+    public const TYPE_CLINIC_DAILY_SUMMARY = 'clinic_daily_summary';
+
+    public const TYPE_INVENTORY_EXPIRING_SOON = 'inventory_expiring_soon';
+
+    public const TYPE_INVENTORY_EXPIRED = 'inventory_expired';
+
+    private const INVENTORY_TYPES = [self::TYPE_INVENTORY_EXPIRING_SOON, self::TYPE_INVENTORY_EXPIRED];
+
     protected $table = 'notifications';
 
     protected $primaryKey = 'notification_id';
@@ -40,7 +50,9 @@ class Notification extends Model
         'type',
         'booking_id',
         'clinic_appointment_id',
+        'inventory_transaction_id',
         'message',
+        'context',
         'is_read',
         'created_at',
     ];
@@ -53,6 +65,11 @@ class Notification extends Model
     public function clinicAppointment()
     {
         return $this->belongsTo(ClinicAppointment::class, 'clinic_appointment_id');
+    }
+
+    public function inventoryTransaction()
+    {
+        return $this->belongsTo(InventoryTransaction::class, 'inventory_transaction_id', 'transaction_id');
     }
 
     /**
@@ -74,7 +91,9 @@ class Notification extends Model
                 self::TYPE_CLINIC_BOOKED,
                 self::TYPE_CLINIC_WALK_IN,
                 self::TYPE_CLINIC_NO_SHOW,
+                self::TYPE_CLINIC_DAILY_SUMMARY,
             ],
+            self::CATEGORY_INVENTORY => self::INVENTORY_TYPES,
             self::CATEGORY_PAYMENTS => [
                 'payment_due',
                 'payment_confirmed',
@@ -104,10 +123,21 @@ class Notification extends Model
     {
         $types = array_merge(...array_values(self::categoryTypes()));
 
-        return [
-            'grooming' => array_values(array_filter($types, fn ($type) => ! str_starts_with($type, 'clinic_'))),
-            'clinic' => array_values(array_filter($types, fn ($type) => str_starts_with($type, 'clinic_'))),
-        ];
+        $services = [];
+        foreach ($types as $type) {
+            $services[self::serviceForType($type)][] = $type;
+        }
+
+        return $services;
+    }
+
+    public static function serviceForType(?string $type): string
+    {
+        return match (true) {
+            in_array($type, self::INVENTORY_TYPES, true) => self::CATEGORY_INVENTORY,
+            str_starts_with((string) $type, 'clinic_') => self::CATEGORY_CLINIC,
+            default => self::CATEGORY_GROOMING,
+        };
     }
 
     public static function activities(): array
@@ -120,6 +150,8 @@ class Notification extends Model
             'payments' => ['label' => 'Payments', 'types' => self::categoryTypes()[self::CATEGORY_PAYMENTS]],
             'cancellations' => ['label' => 'Cancellations', 'types' => self::categoryTypes()[self::CATEGORY_CANCELLATIONS]],
             'expired' => ['label' => 'No show', 'types' => [self::TYPE_NO_SHOW, self::TYPE_CLINIC_NO_SHOW]],
+            'daily_summaries' => ['label' => 'Daily summaries', 'types' => [self::TYPE_CLINIC_DAILY_SUMMARY]],
+            'inventory_expiry' => ['label' => 'Expiry alerts', 'types' => self::INVENTORY_TYPES],
         ];
     }
 

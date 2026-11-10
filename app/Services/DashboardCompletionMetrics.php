@@ -14,7 +14,7 @@ class DashboardCompletionMetrics
         $day = CarbonImmutable::today('Asia/Manila');
         $start = $day->toDateTimeString();
         $until = $day->addDay()->toDateTimeString();
-        $clinic = $this->clinic($start, $until);
+        $clinic = $this->clinicCompletions($start, $until);
         if ($clinicOnly) return ['clinic' => $clinic];
 
         $grooming = $this->grooming($start, $until);
@@ -47,14 +47,16 @@ class DashboardCompletionMetrics
             ->sum('pets');
     }
 
-    private function clinic(string $start, string $until): int
+    public function clinicCompletions(string $start, string $until, bool $includeEnd = false): int
     {
         if (! Schema::hasTable('clinic_appointments')) return 0;
 
         // Settlement is authoritative for paid_at; service finish is independent.
-        // Both must exist and their later timestamp must fall within today's range.
+        // Both must exist and their later timestamp must fall within the range.
+        $endOperator = $includeEnd ? '<=' : '<';
+
         return ClinicAppointment::whereIn('status', ['completed', 'archived'])->where('paid', true)
-            ->where('consultation_finished_at', '<', $until)->where('paid_at', '<', $until)
+            ->where('consultation_finished_at', $endOperator, $until)->where('paid_at', $endOperator, $until)
             ->where(fn ($q) => $q->where('consultation_finished_at', '>=', $start)->orWhere('paid_at', '>=', $start))
             ->count();
     }

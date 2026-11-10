@@ -4,7 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Models\InventoryTransaction;
+use App\Models\Notification;
+use App\Services\InventoryExpiryNotificationService;
 use App\Services\InventoryStockMovementService;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\DB;
@@ -81,6 +85,17 @@ class InventorySecurityRegressionTest extends TestCase
 
         (require database_path('migrations/2026_10_23_000001_add_inventory_receipt_references.php'))->up();
 
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->increments('notification_id');
+            $table->string('type', 50);
+            $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedBigInteger('clinic_appointment_id')->nullable();
+            $table->text('message');
+            $table->boolean('is_read')->default(false);
+            $table->dateTime('created_at')->nullable();
+        });
+        (require database_path('migrations/2026_11_11_000001_link_inventory_expiry_notifications.php'))->up();
+
         Schema::create('pos_transactions', function (Blueprint $table) {
             $table->unsignedInteger('pos_id')->autoIncrement();
             $table->unsignedInteger('cashier_id');
@@ -109,6 +124,7 @@ class InventorySecurityRegressionTest extends TestCase
         Schema::dropIfExists('pos_sale_sequences');
         Schema::dropIfExists('pos_transaction_items');
         Schema::dropIfExists('pos_transactions');
+        Schema::dropIfExists('notifications');
         Schema::dropIfExists('inventory_transactions');
         Schema::dropIfExists('inventory_item_weight_prices');
         Schema::dropIfExists('inventory_items');
@@ -1451,6 +1467,180 @@ class InventorySecurityRegressionTest extends TestCase
             ->assertJsonPath('data.quantity_on_hand', '15.00')
             ->assertJsonPath('data.saleable_quantity', 12)
             ->assertJsonPath('data.current_batches.1.remaining_quantity', 6);
+    }
+
+    public function test_expiry_notifications_reconcile_once_per_receipt_and_state(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 18)->setTime(23, 59));
+        $item = $this->createInventoryItem('Amoxicillin 500 mg', 26, 150);
+        DB::table('inventory_items')->where('item_id', $item)->update(['unit' => 'capsule']);
+        $first = $this->recordInventoryTransaction($item, 'stock_in', 12, [
+            'expiry_date' => '2026-11-18', 'batch_number' => 'AMX-102',
+        ]);
+        $consumed = $this->recordInventoryTransaction($item, 'stock_in', 12, [
+            'expiry_date' => '2026-11-18', 'batch_number' => 'AMX-102',
+        ]);
+        $alreadyExpired = $this->recordInventoryTransaction($item, 'stock_in', 2, [
+            'expiry_date' => '2026-10-17', 'stock_in_reference' => 'AMX-RECEIPT',
+        ]);
+
+        $service = app(InventoryExpiryNotificationService::class);
+        $service->reconcile();
+        $this->assertSame([$alreadyExpired], Notification::pluck('inventory_transaction_id')->all());
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'inventory_expired', 'inventory_transaction_id' => $alreadyExpired,
+            'message' => 'Expired — Amoxicillin 500 mg · Receipt AMX-RECEIPT expired Oct 17.',
+        ]);
+
+        $this->travelTo(now()->addDay()->startOfDay());
+        $service->reconcile();
+        $service->reconcile();
+        $this->assertEqualsCanonicalizing([$first, $consumed], Notification::where('type', 'inventory_expiring_soon')
+            ->pluck('inventory_transaction_id')->all());
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'inventory_expiring_soon', 'inventory_transaction_id' => $first,
+            'message' => 'Expiring soon — Amoxicillin 500 mg · Batch AMX-102 expires Nov 18 (30 days).',
+            'context' => '12 capsules remaining',
+        ]);
+        Notification::where('inventory_transaction_id', $first)->update(['is_read' => true]);
+        DB::table('inventory_items')->where('item_id', $item)->update(['item_name' => 'Renamed product']);
+        $service->reconcile();
+        $this->assertDatabaseHas('notifications', [
+            'inventory_transaction_id' => $first, 'is_read' => true,
+            'message' => 'Expiring soon — Amoxicillin 500 mg · Batch AMX-102 expires Nov 18 (30 days).',
+        ]);
+        $this->recordInventoryTransaction($item, 'stock_out', 12, [
+            'stock_out_allocations' => json_encode([['receipt_id' => $consumed, 'quantity' => 12]]),
+        ]);
+        DB::table('inventory_items')->where('item_id', $item)->update(['quantity_on_hand' => 14]);
+
+        $this->travelTo(now()->setDate(2026, 11, 18)->endOfDay());
+        $service->reconcile();
+        $this->assertDatabaseCount('notifications', 3);
+        $this->travelTo(now()->addDay()->startOfDay());
+        $service->reconcile();
+        $service->reconcile();
+        $this->assertDatabaseCount('notifications', 4);
+        $this->assertEqualsCanonicalizing([$alreadyExpired, $first], Notification::where('type', 'inventory_expired')
+            ->pluck('inventory_transaction_id')->all());
+    }
+
+    public function test_expiry_reconciliation_excludes_ineligible_inventory_and_batches(): void
+    {
+        foreach ([
+            ['medicine', true, null],
+            ['medicine', false, today()->toDateString()],
+            ['pet_shop', true, today()->toDateString()],
+            ['miscellaneous', true, today()->toDateString()],
+        ] as [$category, $active, $expiry]) {
+            $item = $this->createInventoryItem('Excluded product', 10, 150);
+            DB::table('inventory_items')->where('item_id', $item)->update(['category' => $category, 'is_active' => $active]);
+            $this->recordInventoryTransaction($item, 'stock_in', 10, ['expiry_date' => $expiry]);
+        }
+        $item = $this->createInventoryItem('Remaining stock from a later receipt', 8, 150);
+        $this->recordInventoryTransaction($item, 'stock_in', 10, ['expiry_date' => today()->toDateString()]);
+        $this->recordInventoryTransaction($item, 'stock_out', 10);
+        $this->recordInventoryTransaction($item, 'stock_in', 8, ['expiry_date' => today()->addYear()->toDateString()]);
+
+        app(InventoryExpiryNotificationService::class)->reconcile();
+        $this->assertDatabaseCount('notifications', 0);
+    }
+
+    public function test_scheduled_expiry_notifications_use_bulk_balances_and_keep_the_snapshot_after_receipt_deletion(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 11)->setTime(0, 5));
+        for ($index = 0; $index < 12; $index++) {
+            $item = $this->createInventoryItem("Amoxicillin {$index}", 12, 150);
+            $receipt = $this->recordInventoryTransaction($item, 'stock_in', 12, [
+                'expiry_date' => '2026-11-10', 'batch_number' => 'AMX-102',
+            ]);
+        }
+        $event = collect(app(Schedule::class)->events())->firstWhere('description', 'inventory-expiry:reconcile');
+        $this->assertNotNull($event);
+        $this->assertSame('5 0 * * *', $event->expression);
+        $this->assertSame('Asia/Manila', $event->timezone);
+        $this->assertTrue($event->withoutOverlapping);
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $event->run(app());
+            $ledgerReads = collect(DB::getQueryLog())->filter(fn ($query) => str_starts_with($query['query'], 'select * from "inventory_transactions"'));
+        } finally {
+            DB::disableQueryLog();
+        }
+        $this->assertCount(1, $ledgerReads);
+        $this->assertDatabaseCount('notifications', 12);
+        $notification = Notification::where('inventory_transaction_id', $receipt)->sole();
+        $this->assertSame($receipt, $notification->inventoryTransaction->transaction_id);
+        try {
+            $notification->replicate()->save();
+            $this->fail('A duplicate expiry state must violate the database constraint.');
+        } catch (UniqueConstraintViolationException) {
+            $this->assertDatabaseCount('notifications', 12);
+        }
+
+        InventoryTransaction::findOrFail($receipt)->delete();
+        DB::table('inventory_items')->where('item_id', $item)->update(['item_name' => 'Renamed product']);
+        $this->assertNull($notification->fresh()->inventory_transaction_id);
+        Sanctum::actingAs($this->createUser('admin', '09170000031'));
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        try {
+            $this->getJson('/api/admin/notifications?mode=full&service=inventory&selected_id='.$notification->notification_id)
+                ->assertOk()
+                ->assertJsonPath('selected_notification.message', 'Expired — Amoxicillin 11 · Batch AMX-102 expired Nov 10.')
+                ->assertJsonPath('selected_notification.context', '12 pieces remaining')
+                ->assertJsonPath('selected_notification.context_parts.0.text', '12 pieces remaining');
+            $this->assertFalse(collect(DB::getQueryLog())->contains(fn ($query) => str_contains($query['query'], 'inventory_')));
+        } finally {
+            DB::disableQueryLog();
+        }
+    }
+
+    public function test_stock_in_immediately_notifies_only_for_new_eligible_receipts(): void
+    {
+        $this->travelTo(now()->setDate(2026, 11, 11)->setTime(12, 30));
+        Sanctum::actingAs($this->createUser('admin', '09170000031'));
+        $item = $this->createInventoryItem('Amoxicillin 500 mg', 1, 150);
+        $this->recordInventoryTransaction($item, 'stock_in', 1, ['expiry_date' => '2026-11-10']);
+        DB::table('inventory_items')->where('item_id', $item)->update(['unit' => 'capsule']);
+
+        $entry = ['item_id' => $item, 'quantity' => 1, 'reason' => 'purchase'];
+        [$today, $tomorrow] = $this->postJson('/api/inventory/stock-in', ['items' => [
+            [...$entry, 'expiry_date' => '2026-11-11', 'batch_unavailable_reason' => 'Lot unavailable'],
+            [...$entry, 'expiry_date' => '2026-11-12', 'batch_number' => 'AMX-102'],
+            [...$entry, 'expiry_date' => '2027-11-12', 'batch_number' => 'AMX-103'],
+        ]])->assertCreated()->json('data');
+        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'inventory_expiring_soon', 'inventory_transaction_id' => $today['transaction_id'],
+            'message' => "Expiring soon — Amoxicillin 500 mg · Receipt {$today['stock_in_reference']} expires today.",
+            'context' => '1 capsule remaining',
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'inventory_transaction_id' => $tomorrow['transaction_id'],
+            'message' => 'Expiring soon — Amoxicillin 500 mg · Batch AMX-102 expires Nov 12 (1 day).',
+        ]);
+        $this->getJson('/api/admin/notifications?mode=count')->assertOk()->assertJsonPath('unread_count', 2);
+    }
+
+    public function test_stock_in_remains_successful_when_expiry_notification_fails_and_reconciliation_can_recover(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000031'));
+        $item = $this->createInventoryItem('Amoxicillin 500 mg', 0, 150);
+        $service = app(InventoryExpiryNotificationService::class);
+        $this->mock(InventoryExpiryNotificationService::class, function ($mock) {
+            $mock->shouldReceive('reconcile')->once()->andThrow(new \RuntimeException('Notification write failed'));
+        });
+        $id = $this->postJson('/api/inventory/stock-in', ['items' => [[
+            'item_id' => $item, 'quantity' => 1, 'reason' => 'purchase',
+            'expiry_date' => today()->toDateString(), 'batch_number' => 'AMX-102',
+        ]]])->assertCreated()->json('data.0.transaction_id');
+        $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $id, 'quantity' => 1]);
+        $this->assertDatabaseHas('inventory_items', ['item_id' => $item, 'quantity_on_hand' => 1]);
+        $this->assertDatabaseCount('notifications', 0);
+        $service->reconcile();
+        $this->assertDatabaseHas('notifications', ['type' => 'inventory_expiring_soon', 'inventory_transaction_id' => $id]);
     }
 
     public function test_stock_in_references_are_automatic_and_independent_of_optional_batch_numbers(): void

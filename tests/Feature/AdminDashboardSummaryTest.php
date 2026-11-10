@@ -10,7 +10,10 @@ use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\Pet;
 use App\Models\User;
+use App\Services\ClinicDailySummaryNotificationService;
+use App\Services\DashboardCompletionMetrics;
 use Carbon\Carbon;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -268,7 +271,8 @@ class AdminDashboardSummaryTest extends TestCase
         Schema::create('notifications', function (Blueprint $table) {
             $table->increments('notification_id');
             $table->string('type');
-            $table->unsignedInteger('booking_id');
+            $table->unsignedInteger('booking_id')->nullable();
+            $table->unsignedBigInteger('clinic_appointment_id')->nullable();
             $table->text('message');
             $table->boolean('is_read')->default(false);
             $table->dateTime('created_at')->nullable();
@@ -435,6 +439,95 @@ class AdminDashboardSummaryTest extends TestCase
             DB::disableQueryLog();
         }
         Schema::dropIfExists('clinic_appointments');
+    }
+
+    public function test_clinic_daily_summary_waits_for_configured_closing_even_when_intake_stops_early(): void
+    {
+        DB::table('clinic_settings')->update(['clinic_close_time' => '18:15:00']);
+        DB::table('clinic_closures')->insert([
+            'service' => 'clinic', 'type' => 'stop_today', 'start_date' => '2026-06-24', 'end_date' => '2026-06-24',
+        ]);
+        $this->travelTo(Carbon::parse('2026-06-24 17:20:00', 'Asia/Manila'));
+
+        app(ClinicDailySummaryNotificationService::class)->generateIfDue();
+
+        $this->assertDatabaseMissing('notifications', ['type' => 'clinic_daily_summary']);
+    }
+
+    public function test_clinic_daily_summary_scheduler_includes_a_visit_completed_exactly_at_closing(): void
+    {
+        DB::table('clinic_settings')->update(['clinic_close_time' => '16:30:00']);
+        DB::table('clinic_appointments')->insert([
+            'appointment_reference' => 'AT-CLOSE', 'appointment_date' => '2026-06-24', 'status' => 'completed',
+            'paid' => true, 'consultation_finished_at' => '2026-06-24 16:00:00', 'paid_at' => '2026-06-24 16:30:00',
+        ]);
+        $this->travelTo(Carbon::parse('2026-06-24 16:30:00', 'Asia/Manila'));
+
+        $event = collect(app(Schedule::class)->events())->firstWhere('description', 'clinic-daily-summary:generate');
+        $this->assertNotNull($event);
+        $this->assertTrue($event->isDue($this->app));
+        $event->run($this->app);
+
+        $this->assertDatabaseCount('notifications', 1);
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'clinic_daily_summary', 'booking_id' => null, 'clinic_appointment_id' => null,
+            'message' => '1 clinic visit completed as of 4:30 PM.', 'is_read' => false,
+        ]);
+    }
+
+    public function test_late_clinic_daily_summary_freezes_the_closing_count_and_only_creates_one_per_manila_date(): void
+    {
+        DB::table('clinic_settings')->update(['clinic_close_time' => '16:30:00']);
+        $visits = [
+            ['completed', true, '2026-06-24 14:00:00', '2026-06-24 15:00:00'],
+            ['archived', true, '2026-06-24 15:00:00', '2026-06-24 15:30:00'],
+            ['completed', true, '2026-06-24 16:40:00', '2026-06-24 16:00:00'],
+            ['completed', true, '2026-06-24 16:00:00', '2026-06-24 16:40:00'],
+            ['completed', false, '2026-06-24 15:00:00', '2026-06-24 15:00:00'],
+            ['completed', true, null, '2026-06-24 15:00:00'],
+            ['completed', true, '2026-06-24 15:00:00', null],
+            ['cancelled', true, '2026-06-24 15:00:00', '2026-06-24 15:00:00'],
+            ['completed', true, '2026-06-23 15:00:00', '2026-06-23 15:00:00'],
+        ];
+        foreach ($visits as $i => [$status, $paid, $finishedAt, $paidAt]) {
+            DB::table('clinic_appointments')->insert([
+                'appointment_reference' => 'CLOSING-'.$i, 'appointment_date' => '2026-06-24', 'user_id' => 1,
+                'status' => $status, 'paid' => $paid, 'consultation_finished_at' => $finishedAt, 'paid_at' => $paidAt,
+            ]);
+        }
+        $this->travelTo(Carbon::parse('2026-06-24 16:50:00', 'Asia/Manila'));
+        $generator = app(ClinicDailySummaryNotificationService::class);
+        $generator->generateIfDue();
+        $this->assertDatabaseCount('notifications', 1);
+        $summary = [
+            'type' => 'clinic_daily_summary', 'created_at' => '2026-06-24 16:50:00',
+            'message' => '2 clinic visits completed as of 4:30 PM.',
+        ];
+        $this->assertDatabaseHas('notifications', $summary);
+        $metrics = app(DashboardCompletionMetrics::class);
+        $this->assertSame(['clinic' => 4], $metrics->today(clinicOnly: true));
+
+        $this->travelTo(Carbon::parse('2026-06-24 17:05:00', 'Asia/Manila'));
+        DB::table('clinic_appointments')->insert([
+            'appointment_reference' => 'AFTER-SUMMARY', 'appointment_date' => '2026-06-24', 'status' => 'completed',
+            'paid' => true, 'consultation_finished_at' => '2026-06-24 17:00:00', 'paid_at' => '2026-06-24 17:01:00',
+        ]);
+        $generator->generateIfDue();
+        $this->assertDatabaseCount('notifications', 1);
+        $this->assertDatabaseHas('notifications', $summary);
+        $this->assertSame(['clinic' => 5], $metrics->today(clinicOnly: true));
+
+        // June 25 in Manila is still June 24 in UTC at this configured close.
+        $this->travelTo(Carbon::parse('2026-06-24 23:30:00', 'UTC'));
+        DB::table('clinic_settings')->update(['clinic_open_time' => '06:00:00', 'clinic_close_time' => '07:30:00']);
+        $generator->generateIfDue();
+        $generator->generateIfDue();
+        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseHas('notifications', $summary);
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'clinic_daily_summary', 'created_at' => '2026-06-25 07:30:00',
+            'message' => '0 clinic visits completed as of 7:30 AM.',
+        ]);
     }
 
     public function test_management_counts_pets_in_today_and_week_summaries(): void
