@@ -3586,6 +3586,10 @@ var API = (() => {
     return request("POST", `/admin/clinic-cases/${id}/confinement`, payload, getAdminToken());
   }
 
+  function clinicUndoConfinementAdmission(id, payload) {
+    return request("POST", `/admin/clinic-cases/${id}/confinement/undo-admission`, payload, getAdminToken());
+  }
+
   function getClinicConfinementObservations(id, page = 1) {
     return request("GET", `/admin/clinic-cases/${id}/confinement/observations?page=${page}`, null, getAdminToken());
   }
@@ -3967,6 +3971,7 @@ var API = (() => {
     getClinicConfinement,
     clinicConfinementOptions,
     clinicAdmitConfinement,
+    clinicUndoConfinementAdmission,
     getClinicConfinementObservations,
     clinicRecordConfinementObservation,
     clinicConfinementDischargePreview,

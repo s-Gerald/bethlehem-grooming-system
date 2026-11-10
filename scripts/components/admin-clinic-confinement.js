@@ -37,14 +37,16 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
     ],
     observations: [], observationPage: 0, observationLastPage: 1, observationsLoading: false,
     dischargeForm: null, dischargePending: null, dischargePreview: null, priceError: '', dischargeMedicalErrors: {},
+    undoAllowed: false, undoPending: null,
     _generation: 0, _pricingRequest: 0, _visible: false,
     get clinicalConfinement() {
       const appt = this.confinementCase;
       return !!this.$store.clinicAccess.permissions.clinical && appt?.status === 'in_consultation' && !appt.paid && !appt.archived_at;
     },
-    get canAdmitConfinement() { return this.clinicalConfinement && !this.episode && !this.confinementCase?.confinement && !this.loading; },
+    get canAdmitConfinement() { return this.clinicalConfinement && !this.episode && !this.confinementCase?.confinement && !this.loading && !this.undoPending; },
     get activeConfinement() { return !!this.episode && !this.episode.discharged_at; },
-    get canCareForConfinement() { return this.clinicalConfinement && this.activeConfinement; },
+    get canCareForConfinement() { return this.clinicalConfinement && this.activeConfinement && !this.undoPending; },
+    get canUndoConfinement() { return this.clinicalConfinement && !this.loading && (this.undoPending || (this.activeConfinement && this.undoAllowed)); },
     get confinementService() { return this.episode?.case_service?.service_snapshot || this.episode?.case_service?.clinic_service; },
     get confinementStoragePrefix() { return `clinic-confinement:${this.$store.clinicAccess.user?.user_id}:${this.confinementCaseId}:`; },
     formatConfinementTime(value) { return value ? new Date(value).toLocaleString('en-PH', {dateStyle: 'medium', timeStyle: 'short'}) : '—'; },
@@ -64,6 +66,7 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
         this.selectedService = null; this.pricing = null; this.observations = [];
         this.admissionErrors = {}; this.confirming = false;
         this.extraForm = null; this.extraPending = null; this.extraPricing = null; this.episodePricing = null;
+        this.undoAllowed = false; this.undoPending = null;
       }
       this.admissionErrors = {};
       this.dischargeMedicalErrors = {};
@@ -86,9 +89,9 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
       this.busy = saving;
       window.dispatchEvent(new CustomEvent('clinic-workspace-busy', {detail: {id, saving}}));
     },
-    updateConfinementCase(status = 'in_consultation') {
-      this.confinementCase = {...this.confinementCase, status, confinement: this.episode};
-      window.dispatchEvent(new CustomEvent('clinic-case-patch', {detail: {id: this.confinementCaseId, status, confinement: this.episode}}));
+    updateConfinementCase(status = 'in_consultation', changes = {}) {
+      this.confinementCase = {...this.confinementCase, ...changes, status, confinement: this.episode};
+      window.dispatchEvent(new CustomEvent('clinic-case-patch', {detail: {...changes, id: this.confinementCaseId, status, confinement: this.episode}}));
       window.dispatchEvent(new CustomEvent('clinic-case-updated'));
     },
     async loadConfinement() {
@@ -98,6 +101,11 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
         const response = await API.getClinicConfinement(this.confinementCaseId);
         if (generation !== this._generation) return;
         this.episode = response.data; this.episodePricing = response.pricing;
+        this.undoAllowed = response.can_undo_admission === true;
+        this.undoPending = this.restore('undo');
+        if (this.undoPending && this.episode && this.undoPending.confinement_id !== this.episode.id) {
+          this.undoPending = null; this.clearRetained('undo');
+        }
         if (this.episode) {
           this.admissionForm = null; this.admissionPending = null; this.clearRetained('admission');
           await this.loadObservations();
@@ -114,7 +122,7 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
             const discharge = this.restore('discharge');
             if (discharge) { this.dischargeForm = discharge.form; this.dischargePending = discharge.pending; await this.loadDischargePreview(); }
           }
-        } else if (this.clinicalConfinement) {
+        } else if (this.clinicalConfinement && !this.undoPending) {
           const admission = this.restore('admission');
           if (admission) {
             this.admissionForm = admission.form; this.admissionPending = admission.pending;
@@ -317,6 +325,7 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
         const response = await API.getClinicConfinementObservations(this.confinementCaseId, page);
         if (generation !== this._generation) return;
         this.observations = page === 1 ? response.data : [...this.observations, ...response.data];
+        if (response.data.length) this.undoAllowed = false;
         this.observationPage = response.current_page; this.observationLastPage = response.last_page;
       } catch (error) { if (generation === this._generation) this.error = error.message || 'Could not load monitoring history.'; }
       finally { if (generation === this._generation) this.observationsLoading = false; }
@@ -427,6 +436,45 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
           ]));
           this.refreshMonitoringSummary(); this.focusMonitoringInvalidField();
         } else this.error = error.message || 'Monitoring could not be confirmed. Retry this same request safely.';
+      } finally { this.setConfinementBusy(false, id); }
+    },
+    async undoConfinementAdmission() {
+      if (!this.canUndoConfinement || this.busy) return;
+      const id = this.confinementCaseId, generation = this._generation, prefix = this.confinementStoragePrefix;
+      this.setConfinementBusy(true, id); this.error = '';
+      try {
+        let payload = this.undoPending;
+        if (!payload) {
+          const admissionId = this.episode.id;
+          const confirmation = await this.$store.clinicFeedback.confirm({title: 'Undo confinement admission?',
+            message: 'Use this only if the patient was admitted to confinement by mistake. Confinement-generated charges will be reversed and the patient will return to the active consultation.',
+            cancelLabel: 'Keep Confinement', confirmLabel: 'Undo Admission', danger: true, requireReason: true});
+          if (!confirmation || generation !== this._generation || !this.canUndoConfinement) return;
+          payload = {confinement_id: admissionId, reason: confirmation.reason};
+          if (!this.retain('undo', payload)) return;
+          this.undoPending = payload;
+        }
+        const response = await API.clinicUndoConfinementAdmission(id, payload);
+        for (const kind of ['admission', 'monitoring', 'extra', 'discharge', 'undo']) sessionStorage.removeItem(prefix + kind);
+        if (generation !== this._generation) return;
+        ++this._generation; ++this._pricingRequest;
+        this.episode = null; this.episodePricing = null; this.undoPending = null; this.undoAllowed = false;
+        this.admissionForm = null; this.admissionPending = null; this.selectedService = null; this.pricing = null;
+        this.monitoringForm = null; this.monitoringPending = null; this.monitoringOpen = false;
+        this.monitoringErrors = {}; this.monitoringError = ''; this.monitoringAttempted = false;
+        this.observations = []; this.observationPage = 0; this.observationLastPage = 1; this.observationsLoading = false;
+        this.extraForm = null; this.extraPending = null; this.extraPricing = null;
+        this.dischargeForm = null; this.dischargePending = null; this.dischargePreview = null; this.dischargeMedicalErrors = {};
+        this.updateConfinementCase(response.case.status, response.case);
+        this.$store.clinicFeedback.notify('Confinement admission undone. Patient returned to Active Cases.', 'success');
+        this.$nextTick?.(() => this.$refs.admitConfinement?.focus());
+      } catch (error) {
+        if (generation !== this._generation) return;
+        if (error.errors || error.status === 422 || error.status === 403) {
+          this.undoPending = null; this.undoAllowed = false; this.clearRetained('undo');
+        }
+        this.error = error.errors ? Object.values(error.errors).flat().join(' ')
+          : error.message || 'The correction could not be confirmed. Retry Undo Admission safely.';
       } finally { this.setConfinementBusy(false, id); }
     },
     async loadDischargePreview() {

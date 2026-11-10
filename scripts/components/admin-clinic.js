@@ -157,7 +157,7 @@ function adminClinicModal() {
       window.addEventListener("clinic-cases-loaded", (event) => {
         if (!this.open) return;
         const current = event.detail?.find((item) => item.id === this.apptId);
-        if (current) this.currentAppt = current;
+        if (current) this.currentAppt = {...this.currentAppt, ...current};
         else if (!this.currentAppt?.confinement) this.open = false;
       });
       window.addEventListener('clinic-case-patch', (event) => {

@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 
 class ClinicConfinementController extends Controller
 {
-    public function show(int $id)
+    public function show(Request $request, int $id, ClinicConfinementService $service)
     {
         $case = ClinicAppointment::findOrFail($id);
         $episode = $case->confinement()->with(ClinicConfinementService::RELATIONS)->first();
@@ -20,7 +20,15 @@ class ClinicConfinementController extends Controller
                 $extra->setAttribute('pricing', app(\App\Services\ClinicServicePriceResolver::class)->preview($extra->caseService->clinicService, $case));
             }
         }
-        return response()->json(['data' => $episode, 'pricing' => $pricing]);
+        return response()->json(['data' => $episode, 'pricing' => $pricing,
+            'can_undo_admission' => $episode && $service->undoAdmissionError($case, $episode, $request->user()) === null]);
+    }
+
+    public function undoAdmission(Request $request, int $id, ClinicConfinementService $service)
+    {
+        $case = $service->undoAdmission($id, $request->all(), $request->user());
+        return response()->json(['data' => null, 'case' => ['id' => $case->id, 'status' => $case->status,
+            'total_amount' => $case->total_amount, 'confinement' => null]]);
     }
 
     public function options(Request $request)

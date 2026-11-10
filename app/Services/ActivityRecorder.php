@@ -30,6 +30,7 @@ class ActivityRecorder
         'queue_status_changed' => 'Queue status changed', 'grooming_started' => 'Grooming started',
         'grooming_completed' => 'Grooming completed', 'grooming_corrected' => 'Grooming status corrected',
         'consultation_started' => 'Consultation started', 'consultation_completed' => 'Consultation completed',
+        'confinement_admission_undone' => 'Confinement admission undone',
         'clinical_record_updated' => 'Clinical record updated', 'treatment_updated' => 'Treatment record updated',
         'clinic_charge_updated' => 'Clinic charges updated', 'grooming_service_updated' => 'Grooming service information updated',
         'payment_recorded' => 'Payment recorded', 'payment_status_updated' => 'Payment status updated',

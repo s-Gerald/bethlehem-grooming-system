@@ -19,6 +19,7 @@ use Illuminate\Validation\ValidationException;
 class ClinicConfinementService
 {
     public const CATEGORY = 'Confinement';
+    public const UNDO_REASON_MAX = 200;
     public const RELATIONS = ['caseService.clinicService.category', 'caseService.charge',
         'confinementCharges.caseService.clinicService.category', 'confinementCharges.caseService.charge'];
 
@@ -48,6 +49,63 @@ class ClinicConfinementService
     {
         $service = $this->baseService();
         return ['data' => $service, 'pricing' => app(ClinicServicePriceResolver::class)->preview($service, $case)];
+    }
+
+    public function undoAdmissionError(ClinicAppointment $case, ClinicConfinement $episode, User $actor): ?string
+    {
+        if (! $actor->clinicPermissions()['clinical'] || $case->status !== 'in_consultation' || $case->paid || $case->archived_at
+            || $case->paid_at || $case->paid_by_user_id || $case->payment_method || $case->cash_received !== null || $case->consultation_finished_at
+            || $episode->discharged_at || ! $case->clinicalContentEditableFor($actor)
+            || (\Illuminate\Support\Facades\Schema::hasTable('gateway_payments')
+                && \App\Models\GatewayPayment::forPayable($case, 'clinic')->where('status', 'paid')->exists())
+            || $episode->caseService->status !== 'ordered' || $episode->caseService->charge !== null) {
+            return 'This confinement can no longer be undone at this case stage. Use the current confinement or billing workflow.';
+        }
+        if ($episode->observations()->exists()
+            || $episode->confinementCharges()->where('charge_behavior', 'additional_charge')->exists()) {
+            return 'This confinement can no longer be undone. Monitoring or confinement care has already been recorded. Discharge the patient when the confinement ends.';
+        }
+        return null;
+    }
+
+    public function undoAdmission(int $appointmentId, array $data, User $actor): ClinicAppointment
+    {
+        $this->assertClinical($actor);
+        $data = Validator::make($data, ['confinement_id' => 'required|integer|min:1',
+            'reason' => 'required|string|max:'.self::UNDO_REASON_MAX])->validate();
+        return DB::transaction(function () use ($appointmentId, $data, $actor) {
+            $case = ClinicAppointment::whereKey($appointmentId)->lockForUpdate()->firstOrFail();
+            $episode = $case->confinement()->with('caseService.charge')->lockForUpdate()->first();
+            $recorder = app(ActivityRecorder::class);
+            if (! $recorder->available()) {
+                throw ValidationException::withMessages(['confinement' => 'The correction audit is unavailable. Keep this confinement and contact an administrator.']);
+            }
+            $eventKey = 'confinement_admission_undone:'.$data['confinement_id'];
+            if (! $episode && \App\Models\ActivityLog::where('event_key', hash('sha256', $eventKey))
+                ->where('subject_type', 'clinic_visit')->where('subject_id', (string) $case->id)->exists()) {
+                return $case; // A lost response must not cancel another service or create another audit event.
+            }
+            if (! $episode || $episode->id !== (int) $data['confinement_id']) {
+                throw ValidationException::withMessages(['confinement' => 'This confinement admission has changed. Reopen the Confinement tab before making a correction.']);
+            }
+            if ($error = $this->undoAdmissionError($case, $episode, $actor)) {
+                throw ValidationException::withMessages(['confinement' => $error]);
+            }
+            $serviceIds = $episode->confinementCharges()->pluck('clinic_case_service_id')->push($episode->clinic_case_service_id);
+            $entries = $case->caseServices()->whereIn('id', $serviceIds)->lockForUpdate()->get();
+            $case->charges()->whereIn('clinic_case_service_id', $serviceIds)->delete();
+            foreach ($entries as $entry) {
+                $entry->forceFill(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by_user_id' => $actor->user_id])->save();
+            }
+            app(ClinicBillingService::class)->updateTotal($case);
+            // Context is displayed by Activity Log and bounded to 255 characters. SAFE_CHANGES stays unchanged.
+            $event = $recorder->record('confinement_admission_undone', 'clinic', 'clinic_visit', (string) $case->id,
+                'Reason for correction: '.trim($data['reason']), [], false, $actor, $eventKey, $case->pet_id);
+            if (! $event) throw new \RuntimeException('The confinement correction could not be audited.');
+            $episode->confinementCharges()->delete();
+            $episode->delete();
+            return $case->refresh();
+        });
     }
 
     public function admit(int $appointmentId, array $data, User $actor): ClinicConfinement

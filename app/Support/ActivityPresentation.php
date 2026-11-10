@@ -29,7 +29,7 @@ class ActivityPresentation
         'Queue & Check-in' => ['pre_registration_submitted', 'pre_registration_updated', 'pre_registration_cancelled',
             'pre_registration_expired', 'pre_registration_no_show', 'walk_in_registered', 'checked_in', 'check_in_reversed', 'queue_entry_cancelled', 'queue_status_changed'],
         'Grooming' => ['grooming_started', 'grooming_completed', 'grooming_cancelled', 'grooming_start_reversed', 'grooming_corrected', 'grooming_service_updated'],
-        'Clinic' => ['consultation_started', 'consultation_completed', 'clinical_record_updated', 'treatment_updated'],
+        'Clinic' => ['consultation_started', 'consultation_completed', 'confinement_admission_undone', 'clinical_record_updated', 'treatment_updated'],
         'Customers & Pets' => ['customer_registered', 'customer_updated', 'customer_archived', 'customer_restored',
             'pet_registered', 'pet_updated', 'pet_archived', 'pet_restored'],
         'Payments' => ['payment_recorded', 'payment_status_updated', 'clinic_charge_updated'],

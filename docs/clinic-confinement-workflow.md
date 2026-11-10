@@ -20,6 +20,20 @@ Care continues to use the existing Treatment, Medical Record and Billing paths. 
 
 `clinic_confinement_charges` links each automatic/ad hoc charge to its existing `ClinicCaseService`, retaining behavior and start/stop timestamps. Removal cancels the source, removes its generated bill line, and retains a tombstone so a retried creation cannot recreate it. Admission charges and confinement sources cannot be changed through ordinary Services Performed. Monitoring remains optional.
 
+## Undo an accidental admission
+
+`Undo Confinement Admission` is a secondary destructive action beside the existing green Discharge action. Its existing Bethlehem confirmation requires a nonblank correction reason (maximum 200 characters), with Keep Confinement / Undo Admission choices. It does not save the Medical Record, discharge the patient or prepare a payment.
+
+The confinement GET returns `can_undo_admission`. The backend rechecks clinical permission, ongoing/unpaid/unarchived/editable case state, payment holds/settlement, active episode and an unfinalized base service inside an appointment-then-episode locked transaction. Any observation or `additional_charge` link blocks Undo, including removed/tombstoned manual charges. Automatically created admission charges do not block it. Activity checks use existence queries rather than loading histories.
+
+`POST /api/admin/clinic-cases/{id}/confinement/undo-admission` accepts the exact `confinement_id` and `reason`. It cancels the related base/automatic admission case services with existing cancellation attribution, removes only their generated charges, calls `ClinicBillingService::updateTotal`, records the correction, deletes the now-unneeded charge links, then deletes the episode. All steps roll back together on failure. The appointment stays in consultation with its start time, Medical Record/vitals, treatments, attachments and unrelated services/billing unchanged. A new admission can then use a fresh request key on the same case.
+
+The immutable `confinement_admission_undone` activity event uses the case as its surviving subject, with pet ID, current actor/role, server timestamp and successful result. `context` preserves `Reason for correction: ` plus the entire reason within its existing 255-character limit. The global `SAFE_CHANGES` allowlist is unchanged; the reason is visible in the current Activity Log presentation and Clinic filter group. No schema migration is needed.
+
+Requests bind to an episode ID. A completed Undo retry with no current episode returns the current case without duplicating reversal/audit effects; an old request cannot undo a subsequent admission. Monitoring, charge and discharge operations use the same appointment-first locking order. The frontend retains the exact target/reason for uncertain-response retry and blocks new local confinement actions until the correction is confirmed. Success clears only that case's confinement drafts, patches the open modal and refreshes active/confined lists using existing events, without a page reload. Sparse list refreshes merge into loaded modal details, preserving Medical Record information and unsaved form edits.
+
+Deploy the updated Laravel source/routes, static clinic page and scripts through the existing Hostinger release process. The affected clinic script URLs use `undo-admission=20261110-v1`; rebuild assets normally and refresh Laravel route caches as required by the existing deployment. Existing confinement/Monitoring/activity-log migrations remain prerequisites. No new environment values, polling or localhost dependency is introduced.
+
 ## Discharge
 
 Discharge locks the case and episode, checks eligibility and existing completion requirements, calculates the server discharge timestamp and final quantity, automatically stops all running daily extras at that same timestamp, then performs all pending confinement services through `ClinicCaseServiceRecorder` and `ClinicServicePriceResolver`.

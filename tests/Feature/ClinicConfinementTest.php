@@ -136,6 +136,288 @@ class ClinicConfinementTest extends TestCase
         return $payload;
     }
 
+    private function enableUndoAudit(): void
+    {
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        $this->app->forgetInstance(\App\Services\ActivityRecorder::class);
+    }
+
+    private function undoPayload(string $reason = 'Admitted the wrong patient by mistake'): array
+    {
+        return ['confinement_id' => ClinicConfinement::sole()->id, 'reason' => $reason];
+    }
+
+    public function test_undo_admission_reverses_only_owned_billing_preserves_consultation_and_allows_readmission(): void
+    {
+        $this->enableUndoAudit();
+        Schema::table('clinic_appointments', fn (Blueprint $table) => $table->timestamp('consultation_started_at')->nullable());
+        Schema::table('clinic_records', function (Blueprint $table) {
+            $table->json('prescriptions')->nullable(); $table->text('working_diagnosis')->nullable();
+        });
+        DB::table('clinic_appointments')->update(['consultation_started_at' => now()->subHour()]);
+        DB::table('clinic_records')->update(['prescriptions' => '[{"medicine":"Existing prescription"}]', 'working_diagnosis' => 'Existing diagnosis']);
+        DB::table('clinic_attachments')->insert(['clinic_record_id' => 1]);
+        $consultation = $this->service(['name' => 'Consultation', 'category_id' => ClinicServiceCategory::where('name', 'Laboratory')->value('id'),
+            'charge_behavior' => null, 'pricing_method' => 'fixed', 'price' => 500, 'billing_unit' => 'service']);
+        $unrelated = $this->postJson('/api/admin/clinic-cases/1/services', ['clinic_service_id' => $consultation->id,
+            'request_key' => (string) Str::uuid()])->assertCreated()->json('data.id');
+        $lab = ClinicAppointment::findOrFail(1)->charges()->create(['kind' => 'service', 'description' => 'Laboratory',
+            'quantity' => 1, 'unit_price' => 700, 'amount' => 700]);
+        $this->service(['name' => 'Professional Fee', 'charge_behavior' => 'admission_charge', 'pricing_method' => 'fixed', 'price' => 450, 'billing_unit' => 'service']);
+        $this->service(['name' => 'Variable automatic charge', 'charge_behavior' => 'admission_charge', 'pricing_method' => 'starting_at', 'min_price' => 50, 'billing_unit' => 'service']);
+        $this->admit();
+        $payload = $this->undoPayload(str_repeat('é', 200));
+        $owned = ClinicCaseService::where('id', '!=', $unrelated)->pluck('id');
+        $before = [DB::table('clinic_records')->get()->toJson(), DB::table('clinic_vitals')->get()->toJson(), DB::table('clinic_attachments')->get()->toJson()];
+        $started = ClinicAppointment::find(1)->consultation_started_at->toIso8601String();
+        $this->assertDatabaseCount('clinic_charges', 3);
+        $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk()->assertJsonPath('can_undo_admission', true);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertOk()
+            ->assertJsonPath('data', null)->assertJsonPath('case.status', 'in_consultation')->assertJsonPath('case.total_amount', 1200);
+        $this->assertDatabaseCount('clinic_confinements', 0);
+        $this->assertDatabaseCount('clinic_confinement_charges', 0);
+        $this->assertDatabaseCount('clinic_charges', 2);
+        $this->assertDatabaseHas('clinic_charges', ['id' => $lab->id, 'amount' => 700]);
+        $this->assertDatabaseHas('clinic_case_services', ['id' => $unrelated, 'status' => 'performed']);
+        foreach ($owned as $id) {
+            $entry = ClinicCaseService::findOrFail($id);
+            $this->assertSame('cancelled', $entry->status);
+            $this->assertNotNull($entry->cancelled_at);
+            $this->assertSame(1, $entry->cancelled_by_user_id);
+            $this->assertNull($entry->charge);
+        }
+        $case = ClinicAppointment::findOrFail(1);
+        $this->assertSame($started, $case->consultation_started_at->toIso8601String());
+        $this->assertNull($case->consultation_finished_at);
+        $this->assertFalse($case->paid); $this->assertNull($case->paid_at);
+        $this->assertSame($before, [DB::table('clinic_records')->get()->toJson(), DB::table('clinic_vitals')->get()->toJson(), DB::table('clinic_attachments')->get()->toJson()]);
+        $this->assertDatabaseCount('notifications', 0);
+        $event = \App\Models\ActivityLog::where('action', 'confinement_admission_undone')->sole();
+        $this->assertSame('Reason for correction: '.$payload['reason'], $event->context);
+        $this->assertSame('clinic_visit', $event->subject_type); $this->assertSame('1', $event->subject_id);
+        $this->assertSame(1, $event->pet_id); $this->assertSame(1, $event->actor_id);
+        $this->assertSame('Veterinarian', $event->actor_role); $this->assertSame('success', $event->result);
+        $this->assertTrue($event->occurred_at->equalTo(now()));
+        $this->assertArrayNotHasKey('reason', $event->changes ?? []);
+        $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonPath('confined_count', 0)->assertJsonPath('cases.0.id', 1);
+        $this->getJson('/api/admin/clinic-confinements')->assertOk()->assertJsonPath('total', 0);
+        $this->signIn('admin');
+        $this->getJson('/api/admin/activity-log/'.$event->id)->assertOk()->assertJsonPath('title', 'Confinement admission undone')
+            ->assertJsonPath('context', 'Mochi · Reason for correction: '.$payload['reason']);
+        $this->getJson('/api/admin/activity-log?type=confinement_admission_undone')->assertOk()->assertJsonPath('total', 1);
+        $this->admit(ClinicService::where('charge_behavior', 'base_confinement')->sole());
+        $this->assertDatabaseCount('clinic_confinements', 1);
+    }
+
+    public function test_undo_admission_requires_reason_target_and_clinical_permission(): void
+    {
+        $this->enableUndoAudit(); $this->admit();
+        $url = '/api/admin/clinic-cases/1/confinement/undo-admission';
+        foreach ([null, '', '  ', str_repeat('x', 201), [], true] as $reason) {
+            $this->postJson($url, array_replace($this->undoPayload(), ['reason' => $reason]))
+                ->assertUnprocessable()->assertJsonValidationErrors('reason');
+        }
+        $this->postJson($url, ['reason' => 'Wrong admission'])->assertUnprocessable()->assertJsonValidationErrors('confinement_id');
+        foreach (['clinic_receptionist', 'grooming_receptionist'] as $role) {
+            $this->signIn($role); $this->postJson($url, $this->undoPayload())->assertForbidden();
+            try {
+                app(\App\Services\ClinicConfinementService::class)->undoAdmission(1, $this->undoPayload(), auth()->user());
+                $this->fail('Service must enforce clinical permission independently.');
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403, $error->getStatusCode()); }
+        }
+        $this->assertDatabaseCount('clinic_confinements', 1);
+        $this->assertSame(0, \App\Models\ActivityLog::where('action', 'confinement_admission_undone')->count());
+    }
+
+    public function test_monitoring_and_removed_manual_confinement_activity_permanently_block_undo(): void
+    {
+        $this->enableUndoAudit();
+        $additional = $this->service(['name' => 'Optional care', 'charge_behavior' => 'additional_charge', 'pricing_method' => 'fixed', 'price' => 300, 'billing_unit' => 'service']);
+        $this->admit(); $payload = $this->undoPayload();
+        $chargeId = $this->postJson('/api/admin/clinic-cases/1/confinement/charges', ['clinic_service_id' => $additional->id,
+            'request_key' => (string) Str::uuid()])->assertCreated()->json('data.id');
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable()->assertJsonValidationErrors('confinement');
+        $this->deleteJson('/api/admin/clinic-cases/1/confinement/charges/'.$chargeId)->assertOk();
+        $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk()->assertJsonPath('can_undo_admission', false);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable()->assertJsonValidationErrors('confinement');
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload())->assertCreated();
+        $before = DB::table('clinic_confinement_observations')->get()->toJson();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable();
+        $this->assertSame($before, DB::table('clinic_confinement_observations')->get()->toJson());
+        $this->assertDatabaseCount('clinic_confinements', 1);
+        $this->assertDatabaseHas('clinic_appointments', ['total_amount' => 0, 'status' => 'in_consultation']);
+    }
+
+    public function test_monitoring_alone_blocks_undo_without_changing_billing_or_vitals(): void
+    {
+        $this->enableUndoAudit(); $this->admit();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload())->assertCreated();
+        $before = DB::table('clinic_vitals')->first();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $this->undoPayload())->assertUnprocessable()
+            ->assertJsonValidationErrors('confinement');
+        $this->getJson('/api/admin/clinic-cases/1/confinement')->assertOk()->assertJsonPath('can_undo_admission', false);
+        $this->assertDatabaseCount('clinic_confinements', 1); $this->assertDatabaseCount('clinic_confinement_observations', 1);
+        $this->assertEquals($before, DB::table('clinic_vitals')->first());
+        $this->assertDatabaseCount('clinic_charges', 0);
+    }
+
+    public function test_financial_terminal_and_discharged_cases_reject_undo(): void
+    {
+        $this->enableUndoAudit(); $this->admit(); $payload = $this->undoPayload();
+        foreach ([['status' => 'for_payment'], ['status' => 'completed'], ['paid' => true], ['archived_at' => now()],
+            ['paid_at' => now()], ['consultation_finished_at' => now()]] as $change) {
+            DB::table('clinic_appointments')->where('id', 1)->update($change);
+            $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable();
+            DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'in_consultation', 'paid' => false,
+                'archived_at' => null, 'paid_at' => null, 'consultation_finished_at' => null]);
+        }
+        Schema::create('gateway_payments', function (Blueprint $table) {
+            $table->id(); $table->string('context'); $table->string('payable_type'); $table->unsignedBigInteger('payable_id');
+            $table->string('status'); $table->string('reconciliation_reason')->nullable();
+        });
+        $attemptId = DB::table('gateway_payments')->insertGetId(['context' => 'clinic', 'payable_type' => (new ClinicAppointment)->getMorphClass(),
+            'payable_id' => 1, 'status' => 'pending']);
+        foreach (['pending', 'paid'] as $status) {
+            DB::table('gateway_payments')->where('id', $attemptId)->update(['status' => $status]);
+            $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable();
+        }
+        DB::table('gateway_payments')->delete();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $before = DB::table('clinic_charges')->get()->toJson();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $payload)->assertUnprocessable();
+        $this->assertNotNull(ClinicConfinement::sole()->discharged_at);
+        $this->assertSame($before, DB::table('clinic_charges')->get()->toJson());
+    }
+
+    public function test_duplicate_and_stale_undo_requests_cannot_affect_a_later_readmission(): void
+    {
+        $this->enableUndoAudit(); $this->admit(); $payload = $this->undoPayload();
+        $url = '/api/admin/clinic-cases/1/confinement/undo-admission';
+        $this->postJson($url, $payload)->assertOk();
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('data', null);
+        $this->assertSame(1, \App\Models\ActivityLog::where('action', 'confinement_admission_undone')->count());
+        $this->admit(ClinicService::where('charge_behavior', 'base_confinement')->sole());
+        $newId = ClinicConfinement::sole()->id;
+        $this->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('confinement');
+        $this->assertSame($newId, ClinicConfinement::sole()->id);
+        $this->assertSame('ordered', ClinicConfinement::sole()->caseService->status);
+    }
+
+    public function test_failure_after_undo_mutations_rolls_back_charges_services_total_and_audit(): void
+    {
+        $this->enableUndoAudit();
+        $this->service(['name' => 'Automatic fee', 'charge_behavior' => 'admission_charge', 'pricing_method' => 'fixed', 'price' => 450, 'billing_unit' => 'service']);
+        $this->admit();
+        $before = [DB::table('clinic_case_services')->get()->toJson(), DB::table('clinic_charges')->get()->toJson(),
+            DB::table('clinic_confinement_charges')->get()->toJson(), DB::table('clinic_appointments')->get()->toJson(), DB::table('activity_logs')->count()];
+        DB::statement("CREATE TRIGGER reject_confinement_delete BEFORE DELETE ON clinic_confinements BEGIN SELECT RAISE(ABORT, 'forced undo failure'); END");
+        $this->postJson('/api/admin/clinic-cases/1/confinement/undo-admission', $this->undoPayload())->assertStatus(500);
+        $this->assertDatabaseCount('clinic_confinements', 1);
+        $this->assertSame($before, [DB::table('clinic_case_services')->get()->toJson(), DB::table('clinic_charges')->get()->toJson(),
+            DB::table('clinic_confinement_charges')->get()->toJson(), DB::table('clinic_appointments')->get()->toJson(), DB::table('activity_logs')->count()]);
+        $this->assertSame(0, \App\Models\ActivityLog::where('action', 'confinement_admission_undone')->count());
+    }
+
+    public static function undoAdmissionRaces(): array
+    {
+        return [['monitor', 'undo'], ['charge', 'undo'], ['discharge', 'undo'], ['undo', 'monitor'], ['undo', 'charge'], ['undo', 'undo']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('undoAdmissionRaces')]
+    public function test_concurrent_care_discharge_and_undo_serialize_without_erasing_activity(string $firstAction, string $secondAction): void
+    {
+        $this->enableUndoAudit();
+        $additional = $this->service(['name' => 'Optional care', 'charge_behavior' => 'additional_charge', 'pricing_method' => 'fixed', 'price' => 300, 'billing_unit' => 'service']);
+        $this->admit(); $episodeId = ClinicConfinement::sole()->id;
+        $directory = sys_get_temp_dir().'/bethlehem-undo-'.bin2hex(random_bytes(6));
+        mkdir($directory);
+        $database = $directory.'/undo.sqlite';
+        $worker = <<<'PHP'
+            require 'tests/bootstrap.php';
+            $database = $argv[1]; $directory = realpath(dirname($database));
+            if (!$directory || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+                || !preg_match('/\Abethlehem-undo-[a-f0-9]{12}\z/', basename($directory))
+                || basename($database) !== 'undo.sqlite' || !is_file($database)) throw new RuntimeException('An owned disposable Undo database is required.');
+            $app = require 'bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => $database,
+                'database.connections.sqlite.url' => null, 'database.connections.sqlite.busy_timeout' => 10000,
+                'database.connections.sqlite.transaction_mode' => 'IMMEDIATE']);
+            Illuminate\Support\Facades\DB::purge('sqlite');
+            $connection = Illuminate\Support\Facades\DB::connection();
+            if (realpath($connection->selectOne('PRAGMA database_list')->file) !== realpath($database)) throw new RuntimeException('Unexpected Undo database.');
+            $role = $argv[2]; $action = $argv[3]; $contended = false;
+            $wait = function ($file) {
+                $deadline = microtime(true) + 5;
+                while (!is_file($file) && microtime(true) < $deadline) { clearstatcache(); usleep(1000); }
+                if (!is_file($file)) throw new RuntimeException('Undo concurrency barrier timed out.');
+            };
+            $connection->beforeStartingTransaction(function () use ($directory, $database, $role, $wait, &$contended) {
+                if ($role !== 'second') return;
+                $wait($directory.'/locked');
+                $probe = new PDO('sqlite:'.$database); $probe->exec('PRAGMA busy_timeout=0');
+                try {
+                    $probe->exec('BEGIN IMMEDIATE'); $probe->exec('ROLLBACK');
+                    throw new RuntimeException('The first operation must still own the writer lock.');
+                } catch (PDOException $error) {
+                    if (($error->errorInfo[1] ?? null) !== 5) throw $error;
+                    $contended = true;
+                }
+                file_put_contents($directory.'/attempted', '1');
+            });
+            $connection->listen(function ($query) use ($connection, $directory, $role, $wait) {
+                if ($role === 'first' && $connection->transactionLevel() && str_contains($query->sql, 'from "clinic_appointments"')) {
+                    file_put_contents($directory.'/locked', '1'); $wait($directory.'/attempted');
+                }
+            });
+            $actor = App\Models\User::findOrFail(1); auth()->setUser($actor);
+            $service = app(App\Services\ClinicConfinementService::class);
+            try {
+                match ($action) {
+                    'undo' => $service->undoAdmission(1, ['confinement_id' => (int) $argv[4], 'reason' => 'Accidental admission'], $actor),
+                    'monitor' => $service->recordObservation(1, ['request_key' => (string) Illuminate\Support\Str::uuid(),
+                        'temperature_c' => '38.5', 'heart_rate_bpm' => '90', 'respiratory_rate_bpm' => '20'], $actor),
+                    'charge' => $service->addCharge(1, ['request_key' => (string) Illuminate\Support\Str::uuid(), 'clinic_service_id' => (int) $argv[5]], $actor),
+                    'discharge' => $service->discharge(1, [], $actor),
+                };
+                $status = 200;
+            } catch (Illuminate\Validation\ValidationException) { $status = 422;
+            } catch (Illuminate\Database\Eloquent\ModelNotFoundException) { $status = 404; }
+            echo json_encode(['status' => $status, 'contended' => $contended]);
+            PHP;
+        $processes = [];
+        try {
+            DB::statement('VACUUM INTO '.DB::getPdo()->quote($database));
+            foreach (['first' => $firstAction, 'second' => $secondAction] as $role => $action) {
+                $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $worker, $database, $role, $action, (string) $episodeId, (string) $additional->id], base_path(), [
+                    'APP_ENV' => 'testing', 'APP_CONFIG_CACHE' => storage_path('framework/testing-config-unused.php'),
+                    'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '', 'CACHE_STORE' => 'array',
+                    'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+                ]);
+                $process->setTimeout(15); $process->start(); $processes[] = $process;
+            }
+            $results = [];
+            foreach ($processes as $process) {
+                $process->wait(); $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
+                $results[] = json_decode($process->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+            }
+            $this->assertTrue($results[1]['contended'], 'The competing operation must encounter an overlapping writer lock.');
+            $this->assertSame(200, $results[0]['status']);
+            $this->assertSame($firstAction === 'undo' ? ($secondAction === 'undo' ? 200 : 404) : 422, $results[1]['status']);
+            $pdo = new \PDO('sqlite:'.$database);
+            $this->assertEquals($firstAction === 'undo' ? 0 : 1, $pdo->query('SELECT COUNT(*) FROM clinic_confinements')->fetchColumn());
+            $this->assertEquals($firstAction === 'monitor' ? 1 : 0, $pdo->query('SELECT COUNT(*) FROM clinic_confinement_observations')->fetchColumn());
+            $this->assertEquals($firstAction === 'undo' ? 1 : 0, $pdo->query("SELECT COUNT(*) FROM activity_logs WHERE action = 'confinement_admission_undone'")->fetchColumn());
+            if ($firstAction === 'charge') $this->assertEquals(1, $pdo->query('SELECT COUNT(*) FROM clinic_confinement_charges')->fetchColumn());
+            if ($firstAction === 'discharge') $this->assertNotNull($pdo->query('SELECT discharged_at FROM clinic_confinements')->fetchColumn());
+            $pdo = null;
+        } finally {
+            foreach ($processes as $process) if ($process->isRunning()) $process->stop();
+            foreach (glob($directory.'/*') ?: [] as $file) unlink($file);
+            rmdir($directory);
+        }
+    }
+
     public function test_carry_over_confined_case_is_discoverable_without_appearing_in_active_cases(): void
     {
         $this->admit();
