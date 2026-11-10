@@ -161,6 +161,7 @@ async function scopedListsReuseRetainedData() {
     page.c.ProductForm={empty:()=>({})};
     const ui=load(page,file,factory); const before=e.calls.length; await ui.load();
     assert.ok(ui.loaded); assert.equal(e.calls.length,before+1,'Section needs exactly its own list');
+    if (factory === 'adminInventoryItems') assert.equal(e.calls.at(-1).endpoint, '/inventory/items?page=1&sort=newest');
     const next=e.page(); vm.runInContext(read('scripts/services/inventory-service.js'),next.c); next.c.ProductForm={empty:()=>({})};
     const reused=load(next,file,factory); await reused.load(); assert.ok(reused.loaded);
     assert.equal(e.calls.length,before+1,'Inventory list survives HTML navigation');

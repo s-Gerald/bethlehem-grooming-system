@@ -160,7 +160,8 @@ var API = (() => {
     const params = new URLSearchParams(query);
     const presentation = (group, fresh, retain) => {
       const persist = [...params].every(([key, value]) => (key === 'page' && value === '1')
-        || (key === 'status' && value === 'active') || (key === 'view' && value === 'overview'));
+        || (key === 'status' && value === 'active') || (key === 'view' && value === 'overview')
+        || (path === '/inventory/items' && key === 'sort' && value === 'newest'));
       return { group, persist, fresh: persist ? fresh : Math.min(fresh, 5000), retain: persist ? retain : Math.min(retain, 15000) };
     };
     if (path === '/admin/grooming/services' || path === '/admin/grooming/services/catalogue') return { group: 'services-grooming', fresh: 60000, retain: 300000 };

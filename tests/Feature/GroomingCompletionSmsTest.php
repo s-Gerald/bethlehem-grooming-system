@@ -60,7 +60,7 @@ class GroomingCompletionSmsTest extends TestCase
         $this->deliver();
         $this->assertSame(422, $controller->markPetDone(1, 2)->getStatusCode());
         Http::assertSentCount(1);
-        Http::assertSent(fn ($r) => $r['message'] === "Bethlehem Animal Clinic\nYour pets' grooming is complete.\nPlease visit the clinic for pickup.");
+        Http::assertSent(fn ($r) => $r['message'] === "Your pets' grooming is complete.\nPlease visit the clinic for pickup.");
         $this->assertSame('accepted', DB::table('grooming_completion_sms')->value('status'));
         $this->assertSame('iSms-fixture', DB::table('grooming_completion_sms')->value('provider_message_id'));
         $this->assertSame(1, DB::table('customer_notifications')->where('type', 'ready_for_pickup')->count());
@@ -75,7 +75,9 @@ class GroomingCompletionSmsTest extends TestCase
         app(GroomingCompletionSmsService::class)->record(Booking::find(1));
         $this->assertSame(1, DB::table('grooming_completion_sms')->count());
         $this->deliver();
-        Http::assertSent(fn ($r) => $r['phone_number'] === '09171234567' && $r['message'] === "Bethlehem Animal Clinic\nJoseph's grooming is complete.\nPlease visit the clinic for pickup.");
+        $this->deliver();
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => $r['phone_number'] === '09171234567' && $r['message'] === "Joseph's grooming is complete.\nPlease visit the clinic for pickup.");
         Notification::assertNothingSent();
     }
 

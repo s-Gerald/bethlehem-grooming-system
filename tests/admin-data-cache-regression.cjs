@@ -206,7 +206,7 @@ async function scopedPresentationPolicies() {
   for (const [key, freshness] of [
     ['/admin/grooming/services', 61000], ['/admin/grooming/services/catalogue', 61000], ['/admin/clinic-services?page=1&status=active', 61000],
     ['/admin/clinic-services/options', 61000], ['/inventory/summary?page=1&view=overview', 6000],
-    ['/inventory/items?page=1', 6000], ['/inventory/transactions?page=1', 6000],
+    ['/inventory/items?page=1', 6000], ['/inventory/items?page=1&sort=newest', 6000], ['/inventory/transactions?page=1', 6000],
   ]) {
     const e = environment(); await e.API.adminRequest('GET', key);
     const next = e.page().API;
@@ -221,22 +221,39 @@ async function scopedPresentationPolicies() {
     e.API.setUserRole('staff'); assert.equal(e.API.readAdminCache(key), null);
     e.API.setAdminToken('2|other'); assert.equal(e.API.readAdminCache(key), null);
   }
-  const e = environment();
-  for (const key of ['/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/clinic-services?page=1&q=private-search', '/inventory/items?page=1&q=private-search', '/inventory/transactions?page=1&type=stock_in']) {
+  for (const key of [
+    '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/clinic-services?page=1&q=private-search',
+    '/admin/clinic-services?page=1&sort=newest', '/inventory/summary?page=1&sort=newest',
+    '/inventory/items?page=1&sort=oldest', '/inventory/items?page=2&sort=newest',
+    '/inventory/items?page=1&sort=newest&q=private-search', '/inventory/items?page=1&sort=newest&category=medicine',
+    '/inventory/items?page=1&sort=newest&inactive_only=1', '/inventory/items?page=1&sort=newest&include_inactive=1',
+    '/inventory/items?page=1&sort=newest&low_stock=1', '/inventory/items?page=1&sort=newest&filter=expiry',
+    '/inventory/items?page=1&sort=random', '/inventory/transactions?page=1&type=stock_in',
+  ]) {
+    const e = environment();
     await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
     assert.equal(e.calls.filter(c => c.endpoint === key).length, 1, key + ' memory reuse');
-    assert.ok(!e.sessionStorage.getItem('bethlehem.admin.presentation.v3')?.includes(key), key + ' must not persist');
+    const stored = JSON.parse(e.sessionStorage.getItem('bethlehem.admin.presentation.v3'));
+    assert.equal(stored.entries[key], undefined, key + ' must not persist');
+    const next = e.page().API;
+    assert.equal(next.readAdminCache(key), null, key + ' must not survive HTML navigation');
+    await next.adminRequest('GET', key);
+    assert.equal(e.calls.filter(c => c.endpoint === key).length, 2, key + ' loads its own current result after navigation');
+    e.advance(15000);
+    assert.equal(e.API.readAdminCache(key), null, key + ' keeps its short in-memory retention');
   }
+  const e = environment();
   for (const key of ['/inventory/search?q=retail&sale_context=pos', '/inventory/items/1', '/admin/bookings/1/signed-consent', '/admin/clinic-cases/1']) {
     await e.API.adminRequest('GET', key); await e.API.adminRequest('GET', key);
     assert.equal(e.calls.filter(c => c.endpoint === key).length, 2, key + ' operational reads stay current');
   }
 }
 async function scopedMutationInvalidation() {
-  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count', '/admin/notifications?mode=full&service=clinic&activity=payments', '/admin/grooming/services/catalogue'];
-  for (const [mutation, affected] of [
+  const keys = ['/admin/grooming/services', '/admin/clinic-services/options', '/inventory/items?page=1&sort=newest', '/inventory/summary?page=1&view=overview', '/inventory/transactions?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count', '/admin/notifications?mode=full&service=clinic&activity=payments', '/admin/grooming/services/catalogue'];
+  for (const [mutation, affected, method = 'POST'] of [
     ['/admin/grooming/services/1/status', [0,9]], ['/admin/clinic-services/1/status', [1]],
-    ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
+    ['/inventory/items', [2,3,4]], ['/inventory/items/1', [2,3,4], 'PUT'],
+    ['/inventory/items/1/deactivate', [2,3,4]], ['/inventory/items/1/reactivate', [2,3,4]], ['/inventory/stock-in', [2,3,4]],
     ['/inventory/stock-out', [2,3,4]], ['/pos/transactions', [2,3,4]],
     ['/admin/bookings/1/mark-done', [5,7,8]], ['/admin/clinic-appointments/1/finish', [2,3,4,6,7,8]],
     ['/admin/bookings/1/pay', [2,3,4,5,7,8]], ['/admin/clinic-appointments/1/pay', [2,3,4,6,7,8]],
@@ -246,19 +263,31 @@ async function scopedMutationInvalidation() {
   ]) {
     const e = environment();
     for (const key of keys) await e.API.adminRequest('GET', key);
+    const revision = e.API.getAdminDataRevision('inventory');
     e.respond(() => response({message: 'Rejected'}, 422));
-    await assert.rejects(e.API.adminRequest('POST', mutation, {}));
+    await assert.rejects(e.API.adminRequest(method, mutation, {}));
     for (const key of keys) assert.ok(e.API.readAdminCache(key), 'Failed mutation retains ' + key);
-    e.respond(() => ({})); const other = e.page();
+    assert.equal(e.API.getAdminDataRevision('inventory'), revision, 'Failed mutation preserves the inventory revision');
+    e.respond(() => ({}));
+    await e.API.adminRequest(method, mutation, {});
+    keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), mutation + ' invalidates local ' + key));
+    assert.equal(e.API.getAdminDataRevision('inventory') !== revision, affected.includes(2));
+    for (const key of keys) await e.API.adminRequest('GET', key);
+    const other = e.page();
     // Memory-only History entries are seeded in the current document above.
-    await other.API.adminRequest('POST', mutation, {});
+    await other.API.adminRequest(method, mutation, {});
     const signal = e.localStorage.getItem('bethlehem.admin.data_changed');
     if (signal) e.events.get('storage')({storageArea: e.localStorage, key: 'bethlehem.admin.data_changed', newValue: signal});
     keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), mutation + ' invalidates precisely ' + key));
+    if (affected.includes(2)) {
+      const before = e.calls.length;
+      await e.page().API.adminRequest('GET', keys[2]);
+      assert.equal(e.calls.length, before + 1, mutation + ' refreshes default Products after navigation');
+    }
   }
 }
 async function onlineSettlementInvalidation() {
-  const keys = ['/inventory/items?page=1', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count'];
+  const keys = ['/inventory/items?page=1&sort=newest', '/admin/bookings/archived', '/admin/clinic-appointments/archived', '/admin/notifications?mode=count'];
   for (const [endpoint, affected, receipt] of [
     ['/admin/bookings/1/online-payment', [0, 1, 3], {payment: {product_addons: [{itemName: 'Treats'}]}}],
     ['/admin/clinic-appointments/1/online-payment', [0, 2, 3], {appointment: {paid: true}}],
@@ -275,20 +304,20 @@ async function onlineSettlementInvalidation() {
     keys.forEach((key, index) => assert.equal(!!e.API.readAdminCache(key), !affected.includes(index), 'Settlement invalidates precisely ' + key));
   }
   for (const endpoint of ['/admin/bookings/1/online-payment', '/pos/online-payment/1']) {
-    const e = environment(), inventory = '/inventory/items?page=1';
+    const e = environment(), inventory = '/inventory/items?page=1&sort=newest';
     await e.API.adminRequest('GET', inventory);
     e.respond(() => ({online_payment: {id: 1, status: 'expired'}}));
     await e.API.adminRequest('GET', endpoint);
     assert.equal(e.API.readAdminCache(inventory), null, 'Confirmed expiry refreshes released stock availability');
   }
-  const e = environment(), inventory = '/inventory/items?page=1';
+  const e = environment(), inventory = '/inventory/items?page=1&sort=newest';
   await e.API.adminRequest('GET', inventory);
   e.respond(() => response({online_payment: {id: 1, status: 'pending'}}, 502));
   await assert.rejects(e.API.adminRequest('POST', '/pos/online-payment', {}));
   assert.equal(e.API.readAdminCache(inventory), null, 'An uncertain creation response can still own a stock hold');
 }
 async function inventoryReadMutationRace() {
-  const e=environment(), old=deferred(), key='/inventory/items?page=1';
+  const e=environment(), old=deferred(), key='/inventory/items?page=1&sort=newest';
   e.respond(()=>old.promise); const a=e.API.adminRequest('GET',key), b=e.API.adminRequest('GET',key);
   assert.equal(e.calls.length,1);
   e.respond(()=>({})); await e.API.adminRequest('POST','/inventory/stock-out',{});

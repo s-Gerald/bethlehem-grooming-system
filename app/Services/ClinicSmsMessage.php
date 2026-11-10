@@ -19,12 +19,12 @@ class ClinicSmsMessage
         $name = trim((string) ($petNames[0] ?? ''));
         if (count($petNames) === 1 && $name !== '' && ! preg_match('/[\x00-\x1f\x7f]/', $name)
             && ! str_contains($name, self::HEADER)) {
-            $candidate = self::HEADER."\n{$name}'s grooming is complete.\n".self::PICKUP;
+            $candidate = "{$name}'s grooming is complete.\n".self::PICKUP;
             $units = self::units($candidate);
             if ($units !== null && $units <= 160) return $candidate;
         }
 
-        return self::HEADER."\n{$body}\n".self::PICKUP;
+        return "{$body}\n".self::PICKUP;
     }
 
     public static function units(string $message): ?int

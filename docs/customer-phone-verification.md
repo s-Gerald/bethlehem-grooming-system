@@ -138,7 +138,7 @@ Implemented locally on `gerald-frontend`, October 25, 2026. No branch, commit, p
 - Settings retains its existing Account card, avatar and read-only fields. Phone actions are Add, Verify, Change, or Continue verification / Cancel change. A pending replacement leaves the old verified number visible and authoritative.
 - The existing lazy modal and six-cell OTP input serve Settings and Grooming/Clinic entry. Opening only reads safe challenge metadata. It never sends SMS. Explicit Send Code / Resend Code actions are required. Closing preserves an active challenge; reopening or refreshing can recover it without another paid send. Settings confirmation stays on Settings; pre-registration continues to the selected destination. Existing ongoing-registration restrictions have priority.
 - Replacing a verified number requires the current password, checked server-side with an account-scoped five-failure/hour budget. Initial Add/Verify does not require this password step. Resending an authorized replacement requires the original phone ownership to remain unchanged. Provider verification, uniqueness checks, account locking, HMAC binding and atomic proof consumption remain in place. A replacement queues a brief security email through the existing database mail infrastructure; email/queue failure cannot undo committed phone ownership.
-- Both fixed SMS types use the existing iProgSMS HTTP boundary. The formatter counts GSM-7 units, including two-unit extensions, and preserves the full header/footer. Single-pet SMS uses the booking's actual registered pet name. Missing, incompatible, injected/control-character or overlong names use the fixed generic fallback. Multiple active pets use the plural message, never a list of names.
+- Both fixed SMS types use the existing iProgSMS HTTP boundary. The formatter counts GSM-7 units, including two-unit extensions, and preserves the per-type text: OTP retains its clinic header and security footer; grooming completion omits the clinic-name line and retains the pickup instruction. Single-pet SMS uses the booking's actual registered pet name. Missing, incompatible, injected/control-character or overlong names use the fixed generic fallback. Multiple active pets use the plural message, never a list of names.
 - Grooming SMS is recorded at the common whole-visit completion transition, including bulk completion, individually finished pets and cancellation of the last unstarted pet after others finish. Partial completion retains its existing in-app notice and sends no external SMS. Canceled pets are excluded from the completion subject. Portal association comes only from `bookings.user_id`; matching contact information never establishes a link.
 - Grooming-completion email delivery and its unused notification/templates were removed. Existing in-app, recovery, authentication and other emails remain.
 
@@ -148,14 +148,14 @@ Checked against the [official API documentation](https://www.iprogsms.com/api/v1
 
 - OTP creation uses `POST /api/v1/otp/send_otp`, custom `message` with `:otp`, and five-minute expiry. Verification still uses `POST /api/v1/otp/verify_otp`. Codes are provider-generated and provider-verified.
 - Ordinary completion SMS uses `POST /api/v1/sms_messages`. A successful response must have HTTP success, numeric `status: 200` and a valid `message_id`. This records **accepted**, never confirmed handset delivery.
-- Separate message-header/footer request parameters and automatic approved-template behavior are not documented. The application therefore composes the full message in `message`, with one clinic header and the correct per-type footer. No dashboard template API or dashboard setting was changed.
-- Keep the global footer blank. No dashboard change is prescribed from an assumption. Before enabling paid completion SMS, send controlled OTP and completion acceptance messages to an owner-controlled handset. Confirm exactly one clinic header, the separate correct footers, no provider-added text causing segmentation, and actual provider credit usage. If the approved dashboard header is automatically appended, resolve that behavior with iProgSMS/support before activation; do not blindly delete an approved KYC header.
+- Separate message-header/footer request parameters and automatic approved-template behavior are not documented. The application composes the text in `message`: OTP retains its clinic header; grooming-completion bodies omit the clinic name to avoid duplicating the separately presented sender/header. No dashboard template API or dashboard setting was changed.
+- Keep the global footer blank. No dashboard change is prescribed from an assumption. Before enabling paid completion SMS, send controlled OTP and completion acceptance messages to an owner-controlled handset. Confirm exactly one clinic header, the separate correct footers, no provider-added text causing segmentation, and actual provider credit usage. The November 10 grooming-body change does not alter sender-name, approved KYC header, global footer or provider configuration.
 - The [official network announcement](https://www.iprogsms.com/announcements) distinguishes normal `IPROGOTP` support for Smart/TNT from regular shared-sender restrictions and fallback routing. Customer OTP now follows the account-specific eligibility policy above. Regular grooming SMS remains independent of that policy; no paid network-detection calls were added.
 - A documented message-status endpoint accepts a known provider message ID. Inspect accepted IDs through the provider dashboard/status API when investigating; do not resubmit. A timeout without an ID cannot safely prove rejection. No real-phone delivery was verified by this implementation.
 
 ## Final SMS text and computed GSM-7 lengths
 
-These are composed application messages, including two LF separators. Actual provider additions/charging require the handset check above. Joseph is an example of runtime pet data, not a production constant.
+These are composed application messages: OTP contains two LF separators, while grooming completion contains one. Actual provider additions/charging require the handset check above. Joseph is an example of runtime pet data, not a production constant.
 
 OTP: **92 units** after six-digit substitution:
 
@@ -165,31 +165,28 @@ Your verification code is 482913. Valid for 5 minutes.
 Do not share.
 ```
 
-Single pet, example actual booking name Joseph: **90 units**:
+Single pet, example actual booking name Joseph: **66 units**:
 
 ```text
-Bethlehem Animal Clinic
 Joseph's grooming is complete.
 Please visit the clinic for pickup.
 ```
 
-Multiple active pets: **92 units**:
+Multiple active pets: **68 units**:
 
 ```text
-Bethlehem Animal Clinic
 Your pets' grooming is complete.
 Please visit the clinic for pickup.
 ```
 
-Missing/unsafe/overlong single-pet name: **92 units**:
+Missing/unsafe/overlong single-pet name: **68 units**:
 
 ```text
-Bethlehem Animal Clinic
 Your pet's grooming is complete.
 Please visit the clinic for pickup.
 ```
 
-A single ordinary GSM-7 pet name can occupy up to 76 units in this format (160 total); extension characters consume two units. Unicode is not silently transliterated or truncated.
+A single ordinary GSM-7 pet name can occupy up to 100 units in this format (160 total); extension characters consume two units. Unicode is not silently transliterated or truncated.
 
 ## Authenticated lifecycle and budgets
 
@@ -364,3 +361,25 @@ Documentation: `docs/customer-phone-verification.md` (this file).
 - Final production build, changed PHP/JavaScript syntax checks, History inline-module parsing and `git diff --check` passed. The build retains the existing non-blocking Browserslist-data notice. Unrelated generated CSS removals were not retained.
 
 Logs: `storage/logs/09-history-focused-php.log`, `storage/logs/09-history-full-php.log`, `storage/logs/09-history-full-node.log`, `storage/logs/09-history-build.log`, and `storage/logs/09-history-baseline-navigation.log`. Provider responses were faked; no real SMS delivery, live browser acceptance, migration, credential/environment change, commit, push or deployment was performed. Deploy the backend, raw pages/scripts and normal build artifacts together and refresh Laravel configuration with the existing Hostinger release process.
+
+## Inventory default cache and grooming SMS body - November 10, 2026
+
+The original `tests/admin-navigation-performance-regression.cjs` failure was `scopedListsReuseRetainedData` at line 166: `Inventory list survives HTML navigation`, with 6 requests instead of 5. Products correctly requested `/inventory/items?page=1&sort=newest`, but `adminCachePolicy()` rejected the new default `sort` parameter for session-stored presentation. The cache allowlist now accepts only `sort=newest` on `/inventory/items`. Request format, visible Inventory behavior, five-second freshness, thirty-second default retention, inventory-group revisions, successful mutation invalidation and owner/session isolation are unchanged. Oldest, search, category, inactive and other custom queries remain nonpersistent; product detail reads remain operational. Existing tests now exercise default navigation reuse, local/cross-tab mutation invalidation, mounted-section refresh, failed mutations, completed online-payment effects and non-default-query exclusion.
+
+The grooming formatter previously prepended `Bethlehem Animal Clinic\n` to both named and generic completion bodies. It now returns only the completion line and `Please visit the clinic for pickup.`, separated by one LF. Joseph's body is 66 GSM units; plural and generic single-pet bodies are 68. The existing GSM calculation naturally permits up to 100 ordinary units of safe pet-name text within 160 total units; extension characters still cost two units. OTP text is unchanged, including its clinic header and 92-unit substituted body. No completion delivery service, queue, budget, provider, eligibility or deduplication code changed.
+
+Changed files:
+
+- `scripts/api.js`
+- `pages/admin/inventory/inventory.html` (API preload/script cache revision only)
+- `app/Services/ClinicSmsMessage.php`
+- `tests/admin-navigation-performance-regression.cjs`
+- `tests/frontend-inventory-navigation-regression.cjs`
+- `tests/admin-data-cache-regression.cjs`
+- `tests/Unit/ClinicSmsMessageTest.php`
+- `tests/Feature/GroomingCompletionSmsTest.php`
+- `docs/customer-phone-verification.md`
+
+Verification: all three focused Inventory cache/navigation scripts passed; focused `ClinicSmsMessageTest|GroomingCompletionSmsTest` passed **16 tests / 86 assertions**; full JavaScript passed **96/96 scripts**; full PHP 8.4.26 passed **2,393 tests / 33,919 assertions** with 10 existing environment-dependent skips. The production build, changed PHP/JavaScript syntax checks and `git diff --check` passed. The build retains the existing non-blocking Browserslist-data notice; unrelated generated CSS cleanup was not retained. No regression was deleted, skipped or relaxed to obtain these results.
+
+Logs: `storage/logs/inventory-grooming-focused-php.log`, `storage/logs/inventory-grooming-full-php.log`, `storage/logs/inventory-grooming-full-node.log` and `storage/logs/inventory-grooming-build.log`. No test failure remains. No new dependency, migration, SMS provider/configuration change, real SMS delivery, live deployment, commit or push was introduced or performed. Deploy the changed backend helper and Inventory API/entry asset through the existing Hostinger release process.

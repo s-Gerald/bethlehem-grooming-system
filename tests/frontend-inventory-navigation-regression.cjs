@@ -336,15 +336,26 @@ async function testCentralRevisionReuseAndCrossTabMutation() {
   const e=require('./admin-data-cache-regression.cjs').environment(), app=setup();
   e.respond(()=>({data:[app.stockItem],page:1,last_page:1,total:1}));
   app.context.API=e.API;
+  const key='/inventory/items?page=1&sort=newest';
+  const initialRevision=e.API.getAdminDataRevision('inventory');
   await app.visit('#products');
+  assert.ok(e.API.readAdminCache(key)?.fresh);
+  await e.page().API.adminRequest('GET',key);
+  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint===key).length,1,'Default Products survives ordinary HTML navigation');
   await app.visit('#history'); e.advance(6000);
   const before=e.calls.length;
   await app.visit('#products');
   assert.equal(e.calls.length,before,'Unchanged mounted sections must not revalidate just because cache aged');
-  const other=e.page(); await other.API.adminRequest('POST','/inventory/stock-in',{});
+  const other=e.page();
+  const revision=e.API.getAdminDataRevision('inventory');
+  e.events.get('storage')({storageArea:e.localStorage,key:'bethlehem.admin.data_changed',newValue:JSON.stringify({owner:'another-account',groups:['inventory']})});
+  assert.equal(e.API.getAdminDataRevision('inventory'),revision,'Another account cannot invalidate this inventory session');
+  await other.API.adminRequest('POST','/inventory/stock-in',{});
   e.events.get('storage')({storageArea:e.localStorage,key:'bethlehem.admin.data_changed',newValue:e.localStorage.getItem('bethlehem.admin.data_changed')});
+  assert.notEqual(e.API.getAdminDataRevision('inventory'),initialRevision);
+  assert.equal(e.API.readAdminCache(key),null);
   await app.visit('#history'); await app.visit('#products');
-  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint==='/inventory/items?page=1&sort=newest').length,2,'Cross-tab mutation refreshes mounted Products on return');
+  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint===key).length,2,'Cross-tab mutation refreshes mounted Products on return');
 }
 async function testScannerLibraryIsSharedAndLoadedOnceOnUse() {
   const app=setup(); await app.visit('#products');
