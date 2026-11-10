@@ -18,8 +18,8 @@ var InventoryAPI = (() => {
 
   // ── Items ─────────────────────────────────────────────────────────────────
 
-  function getItems({ q = "", category = "", low_stock = false, include_inactive = false, inactive_only = false, page = 1 } = {}, render) {
-    const p = new URLSearchParams({ page });
+  function getItems({ q = "", category = "", low_stock = false, include_inactive = false, inactive_only = false, sort = "newest", page = 1 } = {}, render) {
+    const p = new URLSearchParams({ page, sort });
     if (q)                p.set("q", q);
     if (category)         p.set("category", category);
     if (low_stock)        p.set("low_stock", "1");

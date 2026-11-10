@@ -11,6 +11,7 @@ function adminInventoryItems() {
     // Filters + pagination
     q: "",
     category: "",
+    sort: "newest",
     showInactive: false,
     alertFilter: "",
     expiryItems: [],
@@ -45,7 +46,7 @@ function adminInventoryItems() {
     // ── List ────────────────────────────────────────────────────────────────
 
     async load(page = 1) {
-      const query = JSON.stringify([this.q, this.category, this.showInactive, this.alertFilter, page]), request = ++this._listRequest;
+      const query = JSON.stringify([this.q, this.category, this.showInactive, this.alertFilter, this.sort, page]), request = ++this._listRequest;
       this.loaded = this.loaded && query === this._loadedQuery;
       this.loading = true;
       this.error = "";
@@ -63,7 +64,7 @@ function adminInventoryItems() {
         };
         const res = this.alertFilter === "expiry"
           ? await InventoryAPI.getExpiryAlerts({ page }, render)
-          : await InventoryAPI.getItems({ q: this.q, category: this.category, low_stock: this.alertFilter === "low-stock", inactive_only: this.showInactive, page }, render);
+          : await InventoryAPI.getItems({ q: this.q, category: this.category, low_stock: this.alertFilter === "low-stock", inactive_only: this.showInactive, sort: this.sort, page }, render);
         if (request !== this._listRequest) return;
         if (res.data.length === 0 && page > res.last_page) {
           await this.load(this.lastPage);
@@ -180,6 +181,16 @@ function adminInventoryItems() {
     fmtExpiry(value) {
       if (!value) return "—";
       return new Date(value + "T00:00:00").toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+    },
+
+    fmtDeactivated(value, withTime = false) {
+      if (!value) return "Date unavailable";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "Date unavailable";
+      const options = { month: "short", day: "numeric", year: "numeric" };
+      return withTime
+        ? date.toLocaleString("en-PH", { ...options, hour: "numeric", minute: "2-digit" })
+        : date.toLocaleDateString("en-PH", options);
     },
 
     batchStatusStyle(status) {

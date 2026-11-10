@@ -94,6 +94,7 @@ class InventoryController extends Controller
             'tracks_expiry' => $this->batchBalances->tracksExpiry($item),
             'current_batches' => collect($balance['batches'])->filter(fn ($batch) => $batch['remaining_quantity'] > 0)->values()->all(),
             'is_active'        => $item->is_active,
+            'deactivated_at'   => $item->deactivated_at,
             'created_at'       => $item->created_at,
             'updated_at'       => $item->updated_at,
         ];
@@ -250,6 +251,7 @@ class InventoryController extends Controller
         $lowStock       = $request->boolean('low_stock');
         $includeInactive = $request->boolean('include_inactive');
         $inactiveOnly   = $request->boolean('inactive_only');
+        $direction      = $request->query('sort') === 'oldest' ? 'asc' : 'desc';
         $page           = max(1, (int) $request->query('page', 1));
 
         $query = $inactiveOnly
@@ -271,7 +273,11 @@ class InventoryController extends Controller
             $query->whereIn('item_id', $this->lowStockItems()->pluck('item_id'));
         }
 
-        $paginator = $query->orderBy('item_name')->paginate(10, ['*'], 'page', $page);
+        if ($inactiveOnly) {
+            $query->orderByRaw('CASE WHEN deactivated_at IS NULL THEN 1 ELSE 0 END');
+        }
+        $paginator = $query->orderBy($inactiveOnly ? 'deactivated_at' : 'created_at', $direction)
+            ->orderBy('item_id', $direction)->paginate(10, ['*'], 'page', $page);
 
         return response()->json([
             'data'      => $this->formatItems($paginator->items()),
@@ -461,7 +467,11 @@ class InventoryController extends Controller
             abort(422, "Cannot deactivate \"{$item->item_name}\" — it still has {$item->quantity_on_hand} {$item->unit} in stock. Record a stock-out first.");
         }
 
-        $item->update(['is_active' => 0]);
+        if ($item->is_active) {
+            $item->is_active = false;
+            $item->deactivated_at = now();
+            $item->save();
+        }
 
         return response()->json(['message' => 'Item deactivated.']);
     }
@@ -471,7 +481,9 @@ class InventoryController extends Controller
         $this->requireAuth();
 
         $item = $this->itemsQuery()->findOrFail($itemId);
-        $item->update(['is_active' => 1]);
+        $item->is_active = true;
+        $item->deactivated_at = null;
+        $item->save();
 
         return response()->json(['data' => $this->formatItem($item->fresh())]);
     }

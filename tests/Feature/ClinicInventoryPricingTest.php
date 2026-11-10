@@ -32,7 +32,8 @@ class ClinicInventoryPricingTest extends TestCase
             '2026_07_04_211409_create_clinic_records_table', '2026_07_04_211409_create_clinic_vitals_table',
             '2026_07_04_211410_create_clinic_attachments_table', '2026_10_10_000001_create_clinic_charges_table',
             '2026_10_10_000002_add_clinic_inventory_pricing', '2026_10_11_000001_add_inventory_weight_pricing_mode',
-            '2026_10_12_000002_extend_clinic_consultation_records'] as $file) {
+            '2026_10_12_000002_extend_clinic_consultation_records',
+            '2026_11_10_000003_add_inventory_deactivation_timestamp'] as $file) {
             (require database_path("migrations/{$file}.php"))->up();
         }
         Schema::create('inventory_transactions', function (Blueprint $table) {

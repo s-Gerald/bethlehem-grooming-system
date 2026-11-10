@@ -69,6 +69,88 @@ function testProductListShowsServerUsableStock() {
   assert.equal(page.stockLabel(item), 'In Stock');
 }
 
+async function testSortComposesWithFiltersAndChangesRequestIdentity() {
+  const calls = [], pending = [];
+  const page = createPage({ getItems: async params => {
+    calls.push({ ...params });
+    return new Promise(resolve => pending.push(resolve));
+  } });
+  assert.equal(page.sort, 'newest');
+  page.q = 'anti'; page.category = 'medicine'; page.showInactive = true;
+  const first = page.load(2);
+  pending.shift()({ data: [{ item_id: 2 }], page: 2, last_page: 2, total: 11 });
+  await first;
+  const previousIdentity = page._loadedQuery;
+  page.sort = 'oldest';
+  const markup = fs.readFileSync(path.join(projectRoot, 'pages/admin/inventory/sections/products.html'), 'utf8');
+  const select = markup.match(/<select\b[^>]*x-model="sort"[^>]*>/)[0];
+  const handler = select.match(/@change="([^"]+)"/)[1];
+  const next = vm.runInNewContext(handler, { load: n => page.load(n) });
+  assert.equal(page.loaded, false, 'A different sort cannot retain the prior query presentation');
+  pending.shift()({ data: [{ item_id: 1 }], page: 1, last_page: 2, total: 11 });
+  await next;
+  assert.notEqual(page._loadedQuery, previousIdentity);
+  assert.deepEqual(calls, [
+    { q: 'anti', category: 'medicine', low_stock: false, inactive_only: true, sort: 'newest', page: 2 },
+    { q: 'anti', category: 'medicine', low_stock: false, inactive_only: true, sort: 'oldest', page: 1 },
+  ]);
+  const oldestIdentity = page._loadedQuery;
+  page.sort = 'newest';
+  const samePage = page.load(1);
+  assert.equal(page.loaded, false, 'Changing only sort invalidates the same-page presentation');
+  pending.shift()({ data: [{ item_id: 2 }], page: 1, last_page: 2, total: 11 }); await samePage;
+  assert.notEqual(page._loadedQuery, oldestIdentity);
+  page.sort = 'oldest';
+  const more = page.load(2);
+  pending.shift()({ data: [{ item_id: 3 }], page: 2, last_page: 2, total: 11 }); await more;
+  assert.equal(calls.at(-1).sort, 'oldest');
+  assert.equal(calls.at(-1).inactive_only, true);
+}
+
+async function testLowStockUsesProductSortAndExpiryKeepsItsExistingRequest() {
+  const requests = [];
+  const page = createPage({
+    getItems: async params => { requests.push(['products', { ...params }]); return { data: [], page: 1, last_page: 1, total: 0 }; },
+    getExpiryAlerts: async params => { requests.push(['expiry', { ...params }]); return { data: [{ item_id: 8 }], page: 1, last_page: 1, total: 1 }; },
+  });
+  page.alertFilter = 'low-stock'; page.sort = 'oldest'; await page.load();
+  assert.equal(requests[0][1].low_stock, true); assert.equal(requests[0][1].sort, 'oldest');
+  page.alertFilter = 'expiry'; await page.load();
+  assert.deepEqual(requests[1], ['expiry', { page: 1 }]);
+  assert.equal(page.expiryItems[0].item_id, 8);
+}
+
+async function testInventoryServiceIncludesSortInTheCachedEndpoint() {
+  const endpoints = [], keys = [];
+  const context = { URLSearchParams, window: {}, API: {
+    adminRequest: async (_method, endpoint) => { endpoints.push(endpoint); return { data: [] }; },
+    loadAdminData: async (key, load, render) => { keys.push(key); const result = await load(); render(result); return result; },
+  } };
+  vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'scripts/services/inventory-service.js'), 'utf8'), context);
+  for (const sort of [undefined, 'newest', 'oldest']) {
+    await context.InventoryAPI.getItems({ q: 'anti', category: 'medicine', inactive_only: true, sort, page: 2 }, () => {});
+    const params = new URL(endpoints.at(-1), 'https://example.test').searchParams;
+    assert.equal(params.get('sort'), sort || 'newest');
+    assert.equal(params.get('category'), 'medicine'); assert.equal(params.get('inactive_only'), '1');
+    assert.equal(params.get('q'), 'anti'); assert.equal(params.get('page'), '2');
+  }
+  assert.notEqual(keys[1], keys[2]);
+  await context.InventoryAPI.getExpiryAlerts({ sort: 'oldest', page: 2 });
+  assert.equal(endpoints.at(-1), '/inventory/alerts/expiry?page=2');
+}
+
+function testDeactivationDatePresentationUsesLocalEnPhDatesAndUnknownFallback() {
+  const page = createPage();
+  const timestamp = '2026-11-10T06:45:00.000000Z';
+  const date = new Date(timestamp);
+  assert.equal(page.fmtDeactivated(timestamp), date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }));
+  assert.equal(page.fmtDeactivated(timestamp, true), date.toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
+  for (const unknown of [null, undefined, '', 'invalid']) {
+    assert.equal(page.fmtDeactivated(unknown), 'Date unavailable');
+    assert.equal(page.fmtDeactivated(unknown, true), 'Date unavailable');
+  }
+}
+
 async function testClientRejectsInvalidProductFormValuesWithoutSubmitting() {
   const invalidForms = [
     [validForm({ barcode: "01234567890123" }), /Barcode must contain 1 to 13 digits/],
@@ -301,6 +383,10 @@ async function testReactivateRefreshesDetailsAndKeepsFocusInsideTheModal() {
 }
 
 (async () => {
+  await testSortComposesWithFiltersAndChangesRequestIdentity();
+  await testLowStockUsesProductSortAndExpiryKeepsItsExistingRequest();
+  await testInventoryServiceIncludesSortInTheCachedEndpoint();
+  testDeactivationDatePresentationUsesLocalEnPhDatesAndUnknownFallback();
   testProductListShowsServerUsableStock();
   assert.equal(createPage().stockLabel({stock_status: 'unavailable', quantity_on_hand: 5, usable_quantity: 0}), 'No Usable Stock');
   for (const legacy of ['0.00', '1.00', '2000.00']) {

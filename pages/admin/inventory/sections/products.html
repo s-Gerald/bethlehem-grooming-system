@@ -7,9 +7,9 @@
   </select>
 </div>
 <!-- Filters -->
-<div x-show="alertFilter !== 'expiry'" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-  <div class="flex flex-1 gap-2">
-    <div class="relative flex-1">
+<div x-show="alertFilter !== 'expiry'" class="inventory-product-filters mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+  <div class="inventory-product-search flex flex-1 gap-2">
+    <div class="relative min-w-0 flex-1">
 
       <input x-model="q" @input="onSearchInput()" @keyup.enter="onSearchEnter()" type="text"
         placeholder="Search name or scan barcode…"
@@ -24,6 +24,11 @@
     class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30">
     <option value="" x-text="clinicOnly ? 'All Clinical Products' : 'All Categories'">All Categories</option>
     <template x-for="option in categoryOptions" :key="option.value"><option :value="option.value" x-text="option.label"></option></template>
+  </select>
+  <select x-model="sort" @change="load(1)" aria-label="Sort products"
+    class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#315b7e]/30">
+    <option value="newest">Newest</option>
+    <option value="oldest">Oldest</option>
   </select>
   <label class="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50">
     <input type="checkbox" x-model="showInactive" @change="load(1)" class="h-4 w-4 rounded" style="accent-color:#315b7e" />
@@ -72,8 +77,11 @@
               <span class="text-xs text-slate-400 ml-0.5" x-text="item.unit"></span>
             </td>
             <td class="inventory-product-status px-4 py-3">
-              <span x-show="item.is_active" class="inventory-stock-badge rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="stockStyle(item)" x-text="stockLabel(item)"></span>
+              <template x-if="item.is_active">
+                <span class="inventory-stock-badge rounded-full px-2.5 py-0.5 text-xs font-semibold" :style="stockStyle(item)" x-text="stockLabel(item)"></span>
+              </template>
               <span x-show="!item.is_active" style="display:none;background-color:#f1f5f9;color:#64748b" class="inventory-stock-badge rounded-full px-2.5 py-0.5 text-xs font-semibold">Deactivated</span>
+              <span x-show="!item.is_active" style="display:none" class="inventory-deactivation-date" x-text="fmtDeactivated(item.deactivated_at)"></span>
             </td>
             <td x-show="!clinicOnly" class="inventory-product-actions px-2 py-3">
               <div class="flex items-center justify-end gap-1">
@@ -174,6 +182,7 @@
             <dl class="grid grid-cols-2 gap-4 text-sm">
               <div><dt class="text-xs text-slate-500">Barcode</dt><dd class="mt-1 break-words font-mono text-slate-800" x-text="details.item.barcode || '—'"></dd></div>
               <div><dt class="text-xs text-slate-500">Inventory Unit</dt><dd class="mt-1 break-words text-slate-800" x-text="details.item.unit || '—'"></dd></div>
+              <div x-show="!details.item.is_active"><dt class="text-xs text-slate-500">Deactivated on</dt><dd class="mt-1 text-slate-800" x-text="fmtDeactivated(details.item.deactivated_at, true)"></dd></div>
               <div x-show="details.item.category === 'medicine' && details.item.medicine_type"><dt class="text-xs text-slate-500">Medicine Type</dt><dd class="mt-1 text-slate-800" x-text="ProductForm.medicineTypeOptions.find(option => option.value === details.item.medicine_type)?.label || '—'"></dd></div>
               <div x-show="details.item.category === 'medicine' && details.item.strength_concentration" class="col-span-2"><dt class="text-xs text-slate-500">Product Strength</dt><dd class="mt-1 text-slate-800" x-text="details.item.strength_concentration"></dd></div>
               <div class="col-span-2"><dt class="text-xs text-slate-500">Description</dt><dd class="mt-1 whitespace-pre-wrap break-words text-slate-700" x-text="details.item.description || '—'"></dd></div>

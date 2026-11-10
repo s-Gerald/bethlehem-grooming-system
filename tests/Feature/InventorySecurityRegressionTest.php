@@ -51,6 +51,7 @@ class InventorySecurityRegressionTest extends TestCase
             $table->decimal('quantity_on_hand', 10, 2)->default(0);
             $table->decimal('reorder_level', 10, 2)->default(0);
             $table->boolean('is_active')->default(true);
+            $table->dateTime('deactivated_at')->nullable();
             $table->timestamps();
         });
 
@@ -114,6 +115,123 @@ class InventorySecurityRegressionTest extends TestCase
         Schema::dropIfExists('users');
 
         parent::tearDown();
+    }
+
+    public function test_product_deactivation_date_is_server_controlled_and_preserved_until_reactivation(): void
+    {
+        (require database_path('migrations/2026_10_25_000004_create_activity_logs_table.php'))->up();
+        Sanctum::actingAs($this->createUser('admin', '09170000991'));
+        $id = $this->createInventoryItem('Lifecycle product', 0, 10);
+        $this->travelTo(now()->setDate(2026, 11, 10)->setTime(6, 45));
+        $firstDate = now()->toISOString();
+        $this->postJson("/api/inventory/items/{$id}/deactivate")->assertOk();
+        $this->getJson("/api/inventory/items/{$id}")->assertOk()
+            ->assertJsonPath('data.is_active', false)->assertJsonPath('data.deactivated_at', $firstDate);
+        $this->getJson('/api/inventory/items?inactive_only=1')->assertOk()->assertJsonPath('data.0.deactivated_at', $firstDate);
+        $this->travel(1)->days();
+        $this->postJson("/api/inventory/items/{$id}/deactivate")->assertOk();
+        $this->putJson("/api/inventory/items/{$id}", [
+            'description' => 'Updated description', 'unit_cost' => 50, 'selling_price' => 10,
+            'deactivated_at' => '2000-01-01 00:00:00', 'is_active' => true,
+        ])->assertOk()->assertJsonPath('data.deactivated_at', $firstDate)->assertJsonPath('data.is_active', false);
+        $this->postJson("/api/inventory/items/{$id}/reactivate")->assertOk()
+            ->assertJsonPath('data.is_active', true)->assertJsonPath('data.deactivated_at', null);
+        $this->getJson('/api/inventory/items')->assertOk()->assertJsonPath('data.0.item_id', $id)
+            ->assertJsonPath('data.0.deactivated_at', null);
+        $secondDate = now()->toISOString();
+        $this->postJson("/api/inventory/items/{$id}/deactivate")->assertOk();
+        $this->getJson("/api/inventory/items/{$id}")->assertOk()->assertJsonPath('data.deactivated_at', $secondDate);
+        $this->assertSame(['inventory_archived', 'inventory_updated', 'inventory_restored', 'inventory_archived'],
+            DB::table('activity_logs')->where('subject_type', 'inventory')->where('subject_id', (string) $id)
+                ->orderBy('id')->pluck('action')->all());
+        $stocked = $this->createInventoryItem('Stock prevents deactivation', 5, 10);
+        $this->postJson("/api/inventory/items/{$stocked}/deactivate")->assertUnprocessable();
+        $this->assertNull(DB::table('inventory_items')->where('item_id', $stocked)->value('deactivated_at'));
+        $this->postJson('/api/inventory/items', [
+            'item_name' => 'New active product', 'category' => 'pet_shop', 'unit' => 'piece',
+            'unit_cost' => 5, 'selling_price' => 10, 'reorder_level' => 2,
+            'deactivated_at' => '2000-01-01 00:00:00', 'is_active' => false,
+        ])->assertCreated()->assertJsonPath('data.is_active', true)->assertJsonPath('data.deactivated_at', null);
+        Schema::drop('activity_logs');
+    }
+
+    public function test_active_product_sorting_defaults_to_newest_and_uses_creation_date_and_id(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000992'));
+        $old = $this->createInventoryItem('Z oldest', 0, 10);
+        $new = $this->createInventoryItem('A newest', 0, 10);
+        $tie = $this->createInventoryItem('M same creation date', 0, 10);
+        DB::table('inventory_items')->where('item_id', $old)->update(['created_at' => '2020-01-01', 'updated_at' => '2026-11-10']);
+        DB::table('inventory_items')->whereIn('item_id', [$new, $tie])->update(['created_at' => '2026-01-01']);
+        foreach (['', '&sort=newest', '&sort=invalid', '&sort[]=oldest'] as $sort) {
+            $response = $this->getJson('/api/inventory/items?page=1'.$sort)->assertOk();
+            $this->assertSame([$tie, $new, $old], array_column($response->json('data'), 'item_id'));
+        }
+        $response = $this->getJson('/api/inventory/items?sort=oldest')->assertOk();
+        $this->assertSame([$old, $new, $tie], array_column($response->json('data'), 'item_id'));
+        $this->putJson("/api/inventory/items/{$old}", ['description' => 'Recently edited', 'unit_cost' => 50, 'selling_price' => 10])->assertOk();
+        $this->postJson("/api/inventory/items/{$old}/deactivate")->assertOk();
+        $this->postJson("/api/inventory/items/{$old}/reactivate")->assertOk();
+        $response = $this->getJson('/api/inventory/items')->assertOk();
+        $this->assertSame([$tie, $new, $old], array_column($response->json('data'), 'item_id'));
+    }
+
+    public function test_product_sorting_composes_with_search_category_and_low_stock_before_pagination(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000993'));
+        $ids = [];
+        foreach (range(1, 12) as $day) {
+            $id = $ids[] = $this->createInventoryItem('Anti medicine '.$day, 0, 10);
+            DB::table('inventory_items')->where('item_id', $id)->update(['created_at' => sprintf('2026-01-%02d 00:00:00', $day), 'reorder_level' => 2]);
+        }
+        $food = $this->createInventoryItem('Anti food', 0, 10);
+        DB::table('inventory_items')->where('item_id', $food)->update(['category' => 'food']);
+        $this->createInventoryItem('Other medicine', 0, 10);
+        $inactive = $this->createInventoryItem('Anti inactive medicine', 0, 10);
+        DB::table('inventory_items')->where('item_id', $inactive)->update(['is_active' => false]);
+        $adequate = $this->createInventoryItem('Anti adequate medicine', 5, 10);
+        $this->recordInventoryTransaction($adequate, 'stock_in', 5, ['expiry_date' => now()->addYear()->toDateString()]);
+        foreach (['newest' => array_reverse($ids), 'oldest' => $ids] as $sort => $expected) {
+            // Category ordering without low-stock/search includes the other active medicines only.
+            $category = $this->getJson('/api/inventory/items?category=medicine&sort='.$sort)->assertOk()->assertJsonPath('total', 14);
+            $this->assertSame($sort === 'newest' ? $adequate : $ids[0], $category->json('data.0.item_id'));
+            foreach ([false, true] as $lowStock) {
+                $ordered = $lowStock ? $expected : ($sort === 'newest' ? [$adequate, ...$expected] : [...$expected, $adequate]);
+                foreach ([1, 2] as $page) {
+                    $response = $this->getJson("/api/inventory/items?q=anti&category=medicine&low_stock=".(int) $lowStock."&sort={$sort}&page={$page}")
+                        ->assertOk()->assertJsonPath('total', $lowStock ? 12 : 13)->assertJsonPath('last_page', 2);
+                    $this->assertSame(array_slice($ordered, ($page - 1) * 10, 10), array_column($response->json('data'), 'item_id'));
+                }
+            }
+        }
+    }
+
+    public function test_inactive_product_sorting_uses_deactivation_dates_with_unknown_dates_last(): void
+    {
+        Sanctum::actingAs($this->createUser('admin', '09170000994'));
+        $ids = [];
+        foreach ([null, '2026-11-01 12:00:00', '2026-11-10 12:00:00', '2026-11-10 12:00:00', null] as $index => $date) {
+            $id = $ids[] = $this->createInventoryItem('Anti inactive '.$index, 0, 10);
+            DB::table('inventory_items')->where('item_id', $id)->update([
+                'is_active' => false, 'deactivated_at' => $date, 'created_at' => sprintf('2026-01-%02d', 20 - $index),
+            ]);
+        }
+        $this->createInventoryItem('Anti active medicine', 0, 10);
+        $other = $this->createInventoryItem('Anti inactive food', 0, 10);
+        DB::table('inventory_items')->where('item_id', $other)->update(['category' => 'food', 'is_active' => false]);
+        $older = [];
+        foreach (range(1, 8) as $day) {
+            $id = $older[] = $this->createInventoryItem('Anti earlier archive '.$day, 0, 10);
+            DB::table('inventory_items')->where('item_id', $id)->update(['is_active' => false, 'deactivated_at' => sprintf('2026-10-%02d 00:00:00', $day)]);
+        }
+        foreach (['newest' => [$ids[3], $ids[2], $ids[1], ...array_reverse($older), $ids[4], $ids[0]],
+            'oldest' => [...$older, $ids[1], $ids[2], $ids[3], $ids[0], $ids[4]]] as $sort => $expected) {
+            foreach ([1, 2] as $page) {
+                $response = $this->getJson("/api/inventory/items?inactive_only=1&category=medicine&q=anti&sort={$sort}&page={$page}")
+                    ->assertOk()->assertJsonPath('total', 13)->assertJsonPath('last_page', 2);
+                $this->assertSame(array_slice($expected, ($page - 1) * 10, 10), array_column($response->json('data'), 'item_id'));
+            }
+        }
     }
 
     public function test_every_inventory_and_pos_route_requires_staff_or_admin_role(): void

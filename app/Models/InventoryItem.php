@@ -50,6 +50,7 @@ class InventoryItem extends Model
         'quantity_on_hand' => 'decimal:2',
         'reorder_level'    => 'decimal:2',
         'is_active'        => 'boolean',
+        'deactivated_at'   => 'datetime',
     ];
 
     // ── Relationships ──────────────────────────────────────────────────────────

@@ -102,7 +102,10 @@ async function testLazyNavigationAndMutationRefresh() {
   assert.equal(app.shell.inventoryRevision,1);
   assert.equal(stockIn.pending.length,0);
   await app.visit('#products');
-  assert.match(app.calls.at(-1)[1], /page=2&q=Medicine/);
+  const refreshedParams = new URL(app.calls.at(-1)[1], 'https://example.test').searchParams;
+  assert.equal(refreshedParams.get('page'), '2');
+  assert.equal(refreshedParams.get('q'), 'Medicine');
+  assert.equal(refreshedParams.get('sort'), 'newest');
   const refreshedCount=app.calls.length;
   await app.visit('#history');
   assert.equal(app.calls.length,refreshedCount+1);
@@ -341,7 +344,7 @@ async function testCentralRevisionReuseAndCrossTabMutation() {
   const other=e.page(); await other.API.adminRequest('POST','/inventory/stock-in',{});
   e.events.get('storage')({storageArea:e.localStorage,key:'bethlehem.admin.data_changed',newValue:e.localStorage.getItem('bethlehem.admin.data_changed')});
   await app.visit('#history'); await app.visit('#products');
-  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint==='/inventory/items?page=1').length,2,'Cross-tab mutation refreshes mounted Products on return');
+  assert.equal(e.calls.filter(c=>c.method==='GET'&&c.endpoint==='/inventory/items?page=1&sort=newest').length,2,'Cross-tab mutation refreshes mounted Products on return');
 }
 async function testScannerLibraryIsSharedAndLoadedOnceOnUse() {
   const app=setup(); await app.visit('#products');
