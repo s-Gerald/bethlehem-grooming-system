@@ -14,6 +14,41 @@ function clinicValidNumber(value, precision, min, max) {
   return pattern.test(text) && Number.isFinite(Number(text)) && Number(text) >= min && Number(text) <= max;
 }
 
+function clinicIsVeterinarian(user) {
+  return user?.staff_subrole === 'veterinarian' && user?.role === 'staff';
+}
+
+function clinicVitalEntryValid(field, value, exceptional = false) {
+  const rule = CLINIC_CLINICAL_RULES.vitals[field];
+  return clinicValidNumber(value, rule.precision, exceptional ? 0 : rule.min, exceptional ? rule.storageMax : rule.max);
+}
+
+function clinicVitalNeedsVerification(field, value) {
+  return String(value ?? '').trim() !== '' && !clinicVitalEntryValid(field, value) && clinicVitalEntryValid(field, value, true);
+}
+
+function clinicVitalFieldMessage(field, rawValue, {required = false, veterinarian = false, verification, savedVerification = false} = {}) {
+  const value = String(rawValue ?? '').trim();
+  if (!value) return required ? 'Required' : '';
+  if (clinicVitalEntryValid(field, value)) return '';
+  const exceptional = clinicVitalEntryValid(field, value, true);
+  const notes = globalThis.ShortNotes;
+  const reasonTooLong = notes ? notes.tooLong(verification?.reason) : Array.from(String(verification?.reason ?? '')).length > 500;
+  if (exceptional && (savedVerification
+    || (veterinarian && verification?.value === value && String(verification.reason ?? '').trim().length >= 5 && !reasonTooLong))) return '';
+  if (verification?.value === value && veterinarian) return reasonTooLong ? (notes?.limitMessage || 'Use up to 500 characters.') : 'Enter a clinical reason (at least 5 characters).';
+  if (exceptional) return 'This reading requires veterinarian verification.';
+  const rule = CLINIC_CLINICAL_RULES.vitals[field];
+  return field === 'temperature_c' ? `Use ${rule.min}–${rule.max} °C, up to ${rule.precision} decimal.`
+    : `Use a whole number from ${rule.min} to ${rule.max}.`;
+}
+
+function clinicVitalWarning(field, value, species) {
+  const range = CLINIC_CLINICAL_RULES.normalRanges[String(species ?? '').trim().toLowerCase()]?.[field];
+  if (!range || !clinicVitalEntryValid(field, value, true)) return '';
+  return Number(value) < range[0] || Number(value) > range[1] ? 'Unusual reading. Please confirm.' : '';
+}
+
 function clinicDoseErrors(amount, unit, required = false) {
   const errors = {}, catalog = CLINIC_CLINICAL_RULES;
   const hasAmount = amount != null && String(amount).trim() !== '', hasUnit = Boolean(unit);
@@ -149,7 +184,7 @@ function adminClinicModal() {
 
     get canFinish() { return this.canEditClinical && this.currentAppt?.status === "in_consultation"
       && !(this.currentAppt?.confinement && !this.currentAppt.confinement.discharged_at); },
-    get isVeterinarian() { return this.$store.clinicAccess.user?.staff_subrole === "veterinarian" && this.$store.clinicAccess.user?.role === "staff"; },
+    get isVeterinarian() { return clinicIsVeterinarian(this.$store.clinicAccess.user); },
     get selectedVeterinarianIds() {
       return [...new Set([this.form.primary_veterinarian_id, ...this.form.additional_veterinarian_ids].filter(Boolean).map(String))];
     },
@@ -223,8 +258,7 @@ function adminClinicModal() {
     },
     hasFieldError(field) { return Boolean(this.errorForField(field)); },
     vitalEntryValid(field, value, exceptional = false) {
-      const rule = CLINIC_CLINICAL_RULES.vitals[field];
-      return clinicValidNumber(value, rule.precision, exceptional ? 0 : rule.min, exceptional ? rule.storageMax : rule.max);
+      return clinicVitalEntryValid(field, value, exceptional);
     },
     hasSavedVitalVerification(field) {
       const saved = this.currentAppt?.vitals;
@@ -233,8 +267,7 @@ function adminClinicModal() {
       return verification && Number(verification.value) === Number(this.form[field]);
     },
     vitalNeedsVerification(field) {
-      const value = this.form[field];
-      return String(value ?? '').trim() !== '' && !this.vitalEntryValid(field, value) && this.vitalEntryValid(field, value, true);
+      return clinicVitalNeedsVerification(field, this.form[field]);
     },
     startVitalVerification(field) {
       if (!this.canEditClinical || !this.isVeterinarian || !this.vitalNeedsVerification(field)) return;
@@ -245,17 +278,8 @@ function adminClinicModal() {
       if (!value) return this.completionAttempted && field !== 'body_condition_score' ? 'Required' : '';
       if (field === 'weight_kg') return this.weightTools?.getWeightValueValidationMessage(value, { clinical: true }) || '';
       if (field === 'body_condition_score') return clinicValidNumber(value, 0, 1, 9) ? '' : 'Select a score from 1 to 9.';
-      if (this.vitalEntryValid(field, value)) return '';
-      const verification = this.vitalExceptions[field];
-      const exceptional = this.vitalEntryValid(field, value, true);
-      const notes = globalThis.ShortNotes;
-      const reasonTooLong = notes?.tooLong(verification?.reason);
-      if (exceptional && (this.hasSavedVitalVerification(field)
-        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && !reasonTooLong))) return '';
-      if (verification?.value === value) return reasonTooLong ? notes.limitMessage : 'Enter a clinical reason (at least 5 characters).';
-      if (exceptional) return 'This reading requires veterinarian verification.';
-      return field === 'temperature_c' ? 'Use 25–45 °C, up to 1 decimal.'
-        : `Use a whole number from 1 to ${CLINIC_CLINICAL_RULES.vitals[field].max}.`;
+      return clinicVitalFieldMessage(field, value, {veterinarian: this.isVeterinarian,
+        verification: this.vitalExceptions[field], savedVerification: this.hasSavedVitalVerification(field)});
     },
     validateVitalField(field, interaction = 'blur') {
       if (this.vitalExceptions[field] && (this.vitalExceptions[field].value !== String(this.form[field]).trim()
@@ -274,10 +298,7 @@ function adminClinicModal() {
         ? 'Complete the required fields marked *.' : 'Check the highlighted fields.';
     },
     vitalWarning(field) {
-      const species = String(this.currentAppt?.pet?.species ?? '').trim().toLowerCase();
-      const range = CLINIC_CLINICAL_RULES.normalRanges[species]?.[field];
-      if (!range || !this.vitalEntryValid(field, this.form[field], true)) return '';
-      return Number(this.form[field]) < range[0] || Number(this.form[field]) > range[1] ? 'Unusual reading. Please confirm.' : '';
+      return clinicVitalWarning(field, this.form[field], this.currentAppt?.pet?.species);
     },
     isMissingFieldError(message) {
       return /\bis required\b|^required$/i.test(message);

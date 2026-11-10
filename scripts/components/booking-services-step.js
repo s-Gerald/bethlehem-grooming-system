@@ -1,5 +1,5 @@
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110";
-import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110&size-availability=20261110";
+import { normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
   formatPetTypeLabel,
@@ -7,16 +7,16 @@ import {
   readSessionJson,
 } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
-import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&short-notes=500-20261110";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&short-notes=500-20261110&size-availability=20261110";
 import {
   buildStepThreeDraftPayload,
   hasCompletedRequiredServiceSelection,
   updatePetServiceSelection,
-  loadGroomingCatalogue,
+  canSelectGroomingPackage,
   selectedPricingSignature,
   createEmptyPetServiceSelection,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
 
 const elements = {
   form: document.getElementById("bookingServicesForm"),
@@ -44,7 +44,7 @@ const estimateFlow = createGroomingEstimateFlow({
   onContinue: () => { saveCurrentStepDraft(); goToGroomingStep("review"); },
 });
 
-export async function refreshBookingServicesStep() {
+export function refreshBookingServicesStep(availability) {
   estimateFlow.reset();
   state.bookingDraft = getBookingDraft();
 
@@ -56,37 +56,28 @@ export async function refreshBookingServicesStep() {
     return;
   }
 
+  if (availability?.error) {
+    state.catalogueReady = false;
+    updateServiceNotice();
+    elements.petServiceSelections.innerHTML = `<div class="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
+      ${availability.error} <button type="button" data-retry-pricing class="font-semibold underline">Retry</button>
+    </div>`;
+    return;
+  }
   state.petSelections = normalizeStepThreeDraft(
     readSessionJson(BOOKING_STEP_THREE_KEY),
     state.bookingDraft,
+    { keepUnavailablePackages: true },
   );
-
-  await loadServicePricing();
+  normalizePetGroomerSelections(state.petSelections);
+  state.catalogueReady = true;
+  renderPetServiceSelections();
+  updateServiceNotice();
 }
 
-export function initBookingServicesStep() {
-  refreshBookingServicesStep();
+export function initBookingServicesStep(availability) {
+  refreshBookingServicesStep(availability);
   bindEvents();
-}
-
-async function loadServicePricing() {
-  state.catalogueReady = false;
-  syncNextButtonState(false);
-  elements.petServiceSelections.innerHTML = '<p class="py-6 text-sm text-slate-500" role="status">Loading grooming pricing...</p>';
-  try {
-    await Promise.all([loadGroomingCatalogue(), loadPetGroomers()]);
-    state.petSelections = normalizeStepThreeDraft({petSelections: state.petSelections}, state.bookingDraft);
-    normalizePetGroomerSelections(state.petSelections);
-    state.catalogueReady = true;
-    renderPetServiceSelections();
-    updateServiceNotice();
-  } catch (error) {
-    state.catalogueReady = false;
-    elements.petServiceSelections.innerHTML = `<div class="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
-      Unable to load grooming services and Pet Groomer availability. <button type="button" data-retry-pricing class="font-semibold underline">Retry</button>
-    </div>`;
-    syncNextButtonState(false);
-  }
 }
 
 function bindEvents() {
@@ -181,7 +172,7 @@ function syncNextButtonState(isEnabled) {
 }
 
 function handleSelectionClick(event) {
-  if (event.target.closest("[data-retry-pricing]")) { loadServicePricing(); return; }
+  if (event.target.closest("[data-retry-pricing]")) { goToGroomingStep("services"); return; }
   if (!state.catalogueReady) return;
   const target = event.target;
 
@@ -211,6 +202,7 @@ function handleSelectionClick(event) {
 }
 
 function handleSelectionChange(event) {
+  if (!state.catalogueReady) return;
   const target = event.target;
   const petId = target.dataset.petId;
 
@@ -227,6 +219,14 @@ function handleSelectionChange(event) {
     return;
   }
 
+  if (target.dataset.role === "service-package") {
+    const pet = state.bookingDraft.pets.find(item => item.id === petId);
+    if (!canSelectGroomingPackage(pet, target)) {
+      renderServiceSelections(elements.petServiceSelections, state.bookingDraft.pets, state.petSelections, false, petId);
+      return;
+    }
+    delete selection.unavailablePackage;
+  }
   if (target.dataset.role === "pet-groomer") selection.groomerId = target.value ? Number(target.value) : null;
   const guideToInstructions = updatePetServiceSelection(selection, target);
   if (["grooming-preference", "pet-groomer"].includes(target.dataset.role)) {
@@ -299,6 +299,6 @@ function saveCurrentStepDraft() {
   sessionStorage.removeItem("groomingReviewedPricing");
   sessionStorage.setItem(
     BOOKING_STEP_THREE_KEY,
-    JSON.stringify(buildStepThreeDraftPayload(state.petSelections)),
+    JSON.stringify(buildStepThreeDraftPayload(state.petSelections, { keepUnavailablePackages: true })),
   );
 }

@@ -588,11 +588,7 @@ class AdminClinicController extends Controller
                 $verification = $request->input('vital_exceptions.'.$field);
                 if ($rules::validVital($field, $value, true)
                     && ($rules::hasVerification($appointment->vitals, $field, $value)
-                        || ($actor->isVeterinarian() && is_array($verification)
-                            && is_scalar($verification['value'] ?? null)
-                            && trim((string) $verification['value']) === trim((string) $value)
-                            && is_string($verification['reason'] ?? null)
-                            && mb_strlen(trim($verification['reason'])) >= 5 && mb_strlen($verification['reason']) <= 500))) return;
+                        || $rules::validVitalVerification($value, $verification, $actor))) return;
                 $fail($field === 'temperature_c' ? 'Invalid temperature. Enter 25–45 °C with up to 1 decimal, or obtain veterinarian verification.'
                     : 'Invalid value. Enter a positive whole number within the entry limit, or obtain veterinarian verification.');
             };
@@ -670,11 +666,7 @@ class AdminClinicController extends Controller
                     || trim($verification['value']) !== trim((string) $data[$field])) {
                     throw \Illuminate\Validation\ValidationException::withMessages([$field => 'Veterinarian verification required for this reading.']);
                 }
-                $newVerifications[] = [
-                    'field' => $field, 'value' => trim((string) $data[$field]), 'reason' => trim($verification['reason']),
-                    'verified_by_user_id' => (int) $actor->user_id,
-                    'verified_by_name' => trim($actor->first_name.' '.$actor->last_name), 'verified_at' => now()->toIso8601String(),
-                ];
+                $newVerifications[] = \App\Support\ClinicClinicalRules::vitalVerificationEntry($field, $data[$field], $verification['reason'], $actor);
             }
 
             $existing = $appt->record;

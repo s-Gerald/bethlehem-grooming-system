@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110';
 import {renderHaircutPreference, renderPackageCard} from '../scripts/components/grooming-service-selection.js';
 import {groomingDurationValue} from '../scripts/components/grooming-estimates.js';
 
@@ -64,6 +64,7 @@ for (const walkIn of [false,true]) {
   const flow = {selectionChanged(){requests++;}};
   const context = vm.createContext({console,CSS:{escape:String},document:{getElementById:()=>node,querySelector:()=>node,addEventListener(){}},
     window:{},sessionStorage:{setItem(){},removeItem(){}},createGroomingEstimateFlow:()=>flow,updatePetServiceSelection:grooming.updatePetServiceSelection,
+    canSelectGroomingPackage:grooming.canSelectGroomingPackage,
     renderServiceSelections:(_container,_pets,selections)=>{markup=renderHaircutPreference(pet,selections[0]);},
     updateSpecialInstructions(){},focusSpecialInstructions(){},hasCompletedRequiredServiceSelection:()=>true,hasPetGroomerSelection:()=>true,
     createEmptyPetServiceSelection:grooming.createEmptyPetServiceSelection,buildStepThreeDraftPayload:value=>value,selectedPricingSignature:()=>'',BOOKING_STEP_THREE_KEY:'draft'});
@@ -78,5 +79,14 @@ for (const walkIn of [false,true]) {
   assert.equal(markup,'');
   assert.equal(vm.runInContext('state.petSelections[0].groomingPreference',context),'');
   assert.equal(requests,2);
+  if (!walkIn) {
+    vm.runInContext(`state.bookingDraft.pets[0].size='extra_large';
+      handleSelectionChange({target:{dataset:{role:'service-package',petId:'cat'},value:'cat_full_grooming',checked:true,disabled:false}});`, context);
+    assert.equal(vm.runInContext('state.petSelections[0].servicePackage', context), 'cat_full_grooming', 'Invalid changes leave the previous state untouched');
+    vm.runInContext(`state.petSelections[0].servicePackage='';
+      handleSelectionChange({target:{dataset:{role:'service-package',petId:'cat'},value:'cat_full_grooming',checked:true,disabled:false}});`, context);
+    assert.equal(vm.runInContext('state.petSelections[0].servicePackage', context), '', 'Synthetic changes cannot select an incompatible package');
+    assert.equal(requests, 2);
+  }
 }
 console.log('Customer and walk-in checkbox handlers immediately redraw cat haircuts.');

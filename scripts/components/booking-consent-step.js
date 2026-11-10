@@ -1,6 +1,9 @@
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
-import { loadGroomingCatalogue, selectedPricingSignature, normalizeStepThreeDraft } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
-import { getBookingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
+import {
+  GROOMING_AVAILABILITY_ERROR, hasCompletedRequiredServiceSelection, loadGroomingCatalogue,
+  selectedPricingSignature, normalizeStepThreeDraft, petGroomingSizeError,
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
+import { getBookingDraft, normalizePetSize } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import { isEligibleForGrooming } from "../services/grooming-age.js";
 import { readReviewedServiceDay, registrationDayNotice } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
@@ -52,7 +55,7 @@ export function initBookingConsentStep() {
           species: pet.petType,
           breed: pet.breed || null,
           birthdate: pet.birthdate || null,
-          size: normalizeSizeForApi(pet.size),
+          size: normalizePetSize(pet.size) || null,
           ...(pet.bodyCondition ? { body_condition: pet.bodyCondition } : {}),
           fur_type: pet.furType?.trim() || null,
           medical_conditions: pet.medicalNotes || null,
@@ -73,14 +76,21 @@ export function initBookingConsentStep() {
     submitBookingButton.disabled = true;
     submitBookingButton.textContent = "Submitting...";
 
+    let catalogueVerified = false;
     try {
       await loadGroomingCatalogue();
+      catalogueVerified = true;
       const draft = getBookingDraft();
-      const selections = normalizeStepThreeDraft(getStoredData("bookingStep3"), draft);
-      if (sessionStorage.getItem("groomingReviewedPricing") !== selectedPricingSignature(draft, selections)) {
+      const pets = draft?.pets || [];
+      const selections = normalizeStepThreeDraft(getStoredData("bookingStep3"), draft, { keepUnavailablePackages: true });
+      let correctionStep;
+      if (!pets.length || pets.some(petGroomingSizeError)) correctionStep = "pets";
+      else if (pets.some((pet, index) => !hasCompletedRequiredServiceSelection(pet, selections[index]))) correctionStep = "services";
+      else if (sessionStorage.getItem("groomingReviewedPricing") !== selectedPricingSignature(draft, selections)) correctionStep = "review";
+      if (correctionStep) {
         consent.setBusy(false);
         submitBookingButton.textContent = "Submit Queue Registration";
-        goToGroomingStep("review");
+        goToGroomingStep(correctionStep);
         return;
       }
       const response = await API.storeBooking({
@@ -112,12 +122,16 @@ export function initBookingConsentStep() {
       consent.setBusy(false);
       submitBookingButton.textContent = "Submit Queue Registration";
 
+      if (!catalogueVerified) {
+        showSubmitError(GROOMING_AVAILABILITY_ERROR);
+        return;
+      }
       if (registrationDayNotice(error, "grooming")) {
         goToGroomingStep("review");
         return;
       }
 
-      if (Object.keys(error.errors || {}).some((key) => key.endsWith('.groomer_id'))) {
+      if (Object.keys(error.errors || {}).some((key) => /\.(groomer_id|services|size)$/.test(key))) {
         goToGroomingStep("services");
         return;
       }
@@ -128,12 +142,6 @@ export function initBookingConsentStep() {
       showSubmitError(error.message || "Queue registration submission failed. Please try again.");
     }
   });
-
-  // "Small" → "small", "Extra Large" → "extra_large"
-  function normalizeSizeForApi(size) {
-    if (!size) return null;
-    return size.toLowerCase().replace(/\s+/g, "_");
-  }
 
   function validateConsentForm(valid = false) {
     submitBookingButton.disabled = !valid;

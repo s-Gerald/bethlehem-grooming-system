@@ -27,6 +27,24 @@ final class ClinicClinicalRules
         return self::validNumber($value, $rule['precision'], $exception ? 0 : $rule['min'], $exception ? $rule['storageMax'] : $rule['max']);
     }
 
+    public static function validVitalVerification(mixed $value, mixed $verification, \App\Models\User $actor): bool
+    {
+        return $actor->isVeterinarian() && is_array($verification)
+            && is_scalar($verification['value'] ?? null)
+            && trim((string) $verification['value']) === trim((string) $value)
+            && is_string($verification['reason'] ?? null)
+            && mb_strlen(trim($verification['reason'])) >= 5 && mb_strlen($verification['reason']) <= 500;
+    }
+
+    public static function vitalVerificationEntry(string $field, mixed $value, string $reason, \App\Models\User $actor): array
+    {
+        return [
+            'field' => $field, 'value' => trim((string) $value), 'reason' => trim($reason),
+            'verified_by_user_id' => (int) $actor->user_id,
+            'verified_by_name' => trim($actor->first_name.' '.$actor->last_name), 'verified_at' => now()->toIso8601String(),
+        ];
+    }
+
     public static function hasVerification(?\App\Models\ClinicVital $vitals, string $field, mixed $value): bool
     {
         if ($value === null || $vitals?->{$field} === null || (float) $vitals->{$field} !== (float) $value) return false;

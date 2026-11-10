@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { renderPackageCard, renderAlaCarteCard, focusSpecialInstructions } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110';
 
 const catalogue = [
   {serviceId: 31, id: 'coat_care', name: 'Coat Care Grooming', kind: 'package', petType: 'dog',
@@ -42,9 +42,60 @@ grooming.applyGroomingCatalogue(changed.filter(s => s.id !== 'nail_care'));
 assert.equal(grooming.getPackageById('coat_care').name, 'Coat and Skin Care');
 assert.equal(grooming.getPackageById('coat_care').priceOptions[0].minAmount, 650);
 assert.equal(grooming.getAlaCarteServiceById('nail_care'), null);
+
+// A package ID can survive an admin edit even when the pet's price row does not.
+const buddy = { id: 'buddy', petType: 'Dog', size: 'XL', petName: 'Buddy' };
+const buddySelection = { petId: buddy.id, servicePackage: 'coat_care', alaCarteServices: ['nail_care'] };
+const limited = { ...catalogue[0], priceOptions: catalogue[0].priceOptions.slice(0, 3) };
+const alternate = { ...catalogue[0], id: 'other_coat_care', name: 'Other Coat Care' };
+const catOnly = { ...alternate, id: 'cat_coat_care', petType: 'cat' };
+grooming.applyGroomingCatalogue([limited, { ...alternate, isActive: false }, catOnly, catalogue[2]]);
+assert.equal(grooming.hasCompletedRequiredServiceSelection(buddy, buddySelection), false);
+assert.equal(grooming.petGroomingSizeError(buddy), 'Grooming is currently unavailable for Extra Large pets.');
+assert.equal(grooming.petGroomingSizeError({ ...buddy, size: '' }), '');
+for (const size of ['small', 'medium', 'large']) {
+  grooming.applyGroomingCatalogue([{ ...limited, priceOptions: limited.priceOptions.filter(option => option.sizeKey !== size) }]);
+  assert.match(grooming.petGroomingSizeError({ ...buddy, size }), new RegExp(`unavailable for ${size} pets`, 'i'));
+}
+grooming.applyGroomingCatalogue([limited, alternate, catOnly, catalogue[2]]);
+assert.equal(grooming.petGroomingSizeError(buddy), '');
+const blockedCard = renderPackageCard(buddy, buddySelection, grooming.getPackageById('coat_care'));
+assert.match(blockedCard, /disabled aria-describedby=/);
+assert.doesNotMatch(blockedCard, /\schecked\s/);
+assert.match(blockedCard, /Not available for Extra Large pets/);
+assert.match(blockedCard, /Size &amp; Price/);
+assert.match(renderPackageCard(buddy, buddySelection, grooming.getPackageById(alternate.id)), /1,100\+/);
+assert.equal(grooming.hasCompletedRequiredServiceSelection(buddy, { ...buddySelection, servicePackage: alternate.id }), true);
+assert.equal(grooming.hasCompletedRequiredServiceSelection(buddy, { ...buddySelection, servicePackage: '' }), true);
+const [unavailable] = grooming.normalizeStepThreeDraft({ petSelections: [buddySelection] }, { pets: [buddy] }, { keepUnavailablePackages: true });
+assert.equal(unavailable.servicePackage, '');
+assert.deepEqual(unavailable.alaCarteServices, ['nail_care']);
+assert.match(grooming.unavailablePackageMessage(buddy, unavailable), /Coat Care Grooming is no longer available for Extra Large pets.*Buddy/);
+assert.equal(grooming.hasCompletedRequiredServiceSelection(buddy, unavailable), false);
+const savedUnavailable = grooming.buildStepThreeDraftPayload([unavailable], { keepUnavailablePackages: true });
+assert.equal(savedUnavailable.petSelections[0].servicePackage, 'coat_care');
+grooming.applyGroomingCatalogue([alternate, catalogue[2]]);
+const [inactive] = grooming.normalizeStepThreeDraft(savedUnavailable, { pets: [buddy] }, { keepUnavailablePackages: true });
+assert.match(grooming.unavailablePackageMessage(buddy, inactive), /Coat Care Grooming.*Buddy/);
+
 grooming.applyGroomingCatalogue([]);
 assert.equal(grooming.getPackageById('coat_care'), null);
 assert.equal(grooming.getAlaCarteServicesByPetType('dog').length, 0);
+
+let catalogueRequests = 0;
+let releaseCatalogue;
+globalThis.API = { getGroomingCatalogue: () => {
+  catalogueRequests++;
+  return new Promise(resolve => { releaseCatalogue = resolve; });
+} };
+const pending = [grooming.loadGroomingCatalogue(), grooming.loadGroomingCatalogue()];
+assert.equal(catalogueRequests, 1);
+releaseCatalogue({ data: catalogue });
+await Promise.all(pending);
+const fresh = grooming.loadGroomingCatalogue();
+assert.equal(catalogueRequests, 2);
+releaseCatalogue({ data: [] });
+await fresh;
 console.log('Managed catalog and both grooming card renderers passed.');
 
 const fixture = JSON.parse(fs.readFileSync(new URL('./grooming-catalogue-fixture.json', import.meta.url), 'utf8'));

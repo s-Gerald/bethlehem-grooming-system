@@ -2,6 +2,7 @@ import { limitMessage, tooLong } from "../utils/short-notes.js?v=500-20261110";
 
 import {
   BOOKING_STEP_THREE_KEY,
+  formatPetSizeLabel,
   normalizePetSize,
   normalizePetType,
 } from "./booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
@@ -14,6 +15,9 @@ const PACKAGE_MAP = new Map();
 const ALA_CARTE_MAP = new Map();
 let catalogueLoaded = false;
 let groomingPreferences = {};
+let activeCatalogueRequest;
+
+export const GROOMING_AVAILABILITY_ERROR = "Unable to check current grooming availability. Please try again.";
 
 export function applyGroomingCatalogue(catalogue, preferences = null) {
   if (!Array.isArray(catalogue) || catalogue.some((service) =>
@@ -42,10 +46,14 @@ export function applyGroomingCatalogue(catalogue, preferences = null) {
 }
 
 export async function loadGroomingCatalogue({includeInactive = false} = {}) {
-  const response = includeInactive
-    ? await API.adminRequest('GET', '/grooming/services?include_inactive=1', null, {force: true, cache: 'no-store'})
-    : await API.getGroomingCatalogue();
-  return applyGroomingCatalogue(response.data, response.groomingPreferences);
+  if (includeInactive) {
+    const response = await API.adminRequest('GET', '/grooming/services?include_inactive=1', null, {force: true, cache: 'no-store'});
+    return applyGroomingCatalogue(response.data, response.groomingPreferences);
+  }
+  activeCatalogueRequest ??= API.getGroomingCatalogue()
+    .then(response => applyGroomingCatalogue(response.data, response.groomingPreferences))
+    .finally(() => { activeCatalogueRequest = null; });
+  return activeCatalogueRequest;
 }
 
 export function selectedPricingSignature(draft, selections) {
@@ -108,6 +116,31 @@ export function getAlaCarteServicesByPetType(petType) {
 
 export function getPackageById(serviceId) {
   return PACKAGE_MAP.get(serviceId) || null;
+}
+
+function priceOptionForSize(service, size) {
+  return service.priceOptions?.find(option => option.sizeKey === size);
+}
+
+export function packageSupportsPet(service, pet) {
+  const species = normalizePetType(pet?.petType);
+  const size = normalizePetSize(pet?.size);
+  return Boolean(service && service.isActive !== false
+    && (service.petType === species || service.petType === "all")
+    && (size ? priceOptionForSize(service, size) : service.priceOptions?.length));
+}
+
+export function petGroomingSizeError(pet) {
+  return normalizePetSize(pet.size) && !GROOMING_PACKAGES.some(service => packageSupportsPet(service, pet))
+    ? `Grooming is currently unavailable for ${formatPetSizeLabel(pet.size)} pets.`
+    : "";
+}
+
+export function unavailablePackageMessage(pet, selection) {
+  if (!selection?.unavailablePackage) return "";
+  const name = selection.unavailablePackage.name || "The selected grooming package";
+  const who = normalizePetSize(pet.size) ? `${formatPetSizeLabel(pet.size)} pets` : "this pet";
+  return `${name} is no longer available for ${who}. Choose another available package for ${pet.petName || "this pet"}.`;
 }
 
 export function getPackageAlaCarteRules(packageId) {
@@ -199,75 +232,25 @@ export function sanitizePetServiceSelection(selection) {
   return nextSelection;
 }
 
-export function normalizeStepThreeDraft(rawDraft, bookingDraft) {
+export function normalizeStepThreeDraft(rawDraft, bookingDraft, { keepUnavailablePackages = false } = {}) {
   const pets = Array.isArray(bookingDraft?.pets) ? bookingDraft.pets : [];
-  const defaultSelectionMap = new Map(
-    pets.map((pet) => [pet.id, createEmptyPetServiceSelection(pet)]),
-  );
-
-  if (rawDraft && Array.isArray(rawDraft.petSelections)) {
-    rawDraft.petSelections.forEach((selection) => {
-      if (!selection?.petId || !defaultSelectionMap.has(selection.petId)) {
-        return;
-      }
-
-      defaultSelectionMap.set(
-        selection.petId,
-        sanitizePetServiceSelection({
-          ...selection,
-          petId: selection.petId,
-          servicePackage: String(selection.servicePackage || ""),
-          alaCarteServices: Array.from(
-            new Set(
-              Array.isArray(selection.alaCarteServices)
-                ? selection.alaCarteServices.filter(Boolean)
-                : [],
-            ),
-          ),
-          addOns: Array.from(
-            new Set(
-              Array.isArray(selection.addOns) ? selection.addOns.filter(Boolean) : [],
-            ),
-          ),
-          specialInstructions:
-            typeof selection.specialInstructions === "string"
-              ? selection.specialInstructions
-              : "",
-        }),
-      );
+  const byPet = new Map((Array.isArray(rawDraft?.petSelections) ? rawDraft.petSelections : [])
+    .filter(selection => selection?.petId).map(selection => [String(selection.petId), selection]));
+  return pets.map((pet, index) => {
+    const raw = byPet.get(String(pet.id)) || (!Array.isArray(rawDraft?.petSelections) && index === 0 ? {
+      servicePackage: rawDraft?.servicePackage,
+      alaCarteServices: rawDraft?.alaCarteServices,
+      specialInstructions: rawDraft?.specialInstructions,
+    } : null);
+    if (!raw) return createEmptyPetServiceSelection(pet);
+    const service = getPackageById(raw.servicePackage);
+    const unavailable = keepUnavailablePackages && catalogueLoaded && raw.servicePackage && !packageSupportsPet(service, pet);
+    const selection = sanitizePetServiceSelection({
+      ...raw, petId: pet.id, servicePackage: unavailable ? "" : raw.servicePackage,
     });
-  } else if (rawDraft) {
-    const firstPet = pets[0];
-
-    if (firstPet) {
-      defaultSelectionMap.set(
-        firstPet.id,
-        sanitizePetServiceSelection({
-          petId: firstPet.id,
-          servicePackage: String(rawDraft.servicePackage || ""),
-          alaCarteServices: Array.from(
-            new Set(
-              Array.isArray(rawDraft.alaCarteServices)
-                ? rawDraft.alaCarteServices.filter(Boolean)
-                : [],
-            ),
-          ),
-          addOns: Array.from(
-            new Set(
-              Array.isArray(rawDraft.addOns) ? rawDraft.addOns.filter(Boolean) : [],
-            ),
-          ),
-          specialInstructions:
-            typeof rawDraft.specialInstructions === "string"
-              ? rawDraft.specialInstructions
-              : "",
-        }),
-      );
+    if (unavailable) {
+      selection.unavailablePackage = { id: raw.servicePackage, name: service?.name || raw.servicePackageName };
     }
-  }
-
-  return pets.map((pet) => {
-    const selection = defaultSelectionMap.get(pet.id) || createEmptyPetServiceSelection(pet);
     if (catalogueLoaded) {
       if (!getPackagesByPetType(pet.petType).some((service) => service.id === selection.servicePackage)) {
         selection.servicePackage = "";
@@ -281,15 +264,20 @@ export function normalizeStepThreeDraft(rawDraft, bookingDraft) {
   });
 }
 
-export function buildStepThreeDraftPayload(petSelections) {
+export function buildStepThreeDraftPayload(petSelections, { keepUnavailablePackages = false } = {}) {
   return {
     version: 2,
     petSelections: petSelections.map((selection) => {
       const sanitizedSelection = sanitizePetServiceSelection(selection);
+      const unavailable = keepUnavailablePackages ? selection.unavailablePackage : null;
+      const packageName = keepUnavailablePackages
+        ? unavailable?.name || getPackageById(sanitizedSelection.servicePackage)?.name
+        : "";
 
       return {
         petId: sanitizedSelection.petId,
-        servicePackage: sanitizedSelection.servicePackage,
+        servicePackage: unavailable?.id || sanitizedSelection.servicePackage,
+        ...(packageName ? { servicePackageName: packageName } : {}),
         groomingPreference: sanitizedSelection.groomingPreference,
         groomerId: sanitizedSelection.groomerId,
         haircutRequested: sanitizedSelection.haircutRequested,
@@ -360,9 +348,7 @@ export function evaluateServicePricing(service, petSize) {
 
   if (service.kind === "package") {
     const normalizedSize = normalizePetSize(petSize);
-    const selectedPriceOption = availablePriceOptions.find(
-      (priceOption) => priceOption.sizeKey === normalizedSize,
-    );
+    const selectedPriceOption = priceOptionForSize(service, normalizedSize);
 
     if (selectedPriceOption) {
       const isEstimate = selectedPriceOption.pricingType !== "fixed";
@@ -381,11 +367,11 @@ export function evaluateServicePricing(service, petSize) {
       };
     }
 
-    const aggregatePricing = summarizePriceOptions(availablePriceOptions);
+    const aggregatePricing = summarizePriceOptions(normalizedSize ? [] : availablePriceOptions);
 
     return {
       ...aggregatePricing,
-      displayPrice: formatAmountRange(aggregatePricing),
+      displayPrice: normalizedSize ? "" : formatAmountRange(aggregatePricing),
       selectedPriceOption: null,
       availablePriceOptions,
       missingSize: !normalizedSize,
@@ -460,7 +446,7 @@ export function calculatePetSelectionPricing(selection, pet) {
   if (selection?.servicePackage) {
     const selectedPackage = getPackageById(selection.servicePackage);
 
-    if (selectedPackage) {
+    if (packageSupportsPet(selectedPackage, pet)) {
       lineItems.push({
         serviceId: selectedPackage.id,
         serviceName: selectedPackage.name,
@@ -560,9 +546,14 @@ export function hasRequiredGroomingPreference(selection) {
 }
 
 export function hasCompletedRequiredServiceSelection(pet, selection) {
-  if (!pet || !hasRequiredGroomingPreference(selection)) return false;
-  if (!getAlaCarteServicesByPetType(pet.petType).length) return Boolean(selection?.servicePackage);
-  return calculatePetSelectionPricing(selection, pet).hasSelection;
+  if (!pet || !selection || selection.unavailablePackage || !hasRequiredGroomingPreference(selection)) return false;
+  if (selection.servicePackage) return packageSupportsPet(getPackageById(selection.servicePackage), pet);
+  const alaCarte = getAlaCarteServicesByPetType(pet.petType);
+  return alaCarte.some(service => selection.alaCarteServices?.includes(service.id));
+}
+
+export function canSelectGroomingPackage(pet, target) {
+  return !target.disabled && packageSupportsPet(getPackageById(target.value), pet);
 }
 
 export function requiresSpecialInstructions(selection) {

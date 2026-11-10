@@ -1,12 +1,13 @@
-import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
+import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel, normalizePetSize } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
-import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=500-20261110";
+import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=500-20261110&size-availability=20261110";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
   getPackagesByPetType, getGroomingPreferences, requiresSpecialInstructions, specialInstructionsError,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
+  packageSupportsPet, unavailablePackageMessage,
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
 
 export function renderHaircutPreference(pet, selection) {
   const choices = selection.servicePackage === "cat_full_grooming" && !selection.haircutRequested ? [] : getGroomingPreferences(selection.servicePackage);
@@ -105,6 +106,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
     .map((service) => renderPackageCard(pet, selection, service))
     .join("");
   const alaCarteServices = getAlaCarteServicesByPetType(pet.petType);
+  const packageIssue = unavailablePackageMessage(pet, selection);
 
   return `
     <article
@@ -138,6 +140,7 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
         <h4 class="mb-4 text-base font-semibold text-[#2f4b66]">Select Services <span class="text-red-500">*</span></h4>
         <fieldset class="min-w-0">
           <legend class="mb-3 text-sm font-semibold text-[#2f4b66]">Package Options</legend>
+        ${packageIssue ? `<p class="mb-3 text-sm text-red-700" role="alert">${escapeHtml(packageIssue)}</p>` : ""}
         <div class="grid gap-4 md:grid-cols-2">
           ${packageCards}
         </div>
@@ -199,13 +202,16 @@ export function renderPetServiceCard(pet, selection, index, walkIn = false) {
 }
 
 export function renderPackageCard(pet, selection, service) {
-  const isChecked = selection.servicePackage === service.id;
+  const isAvailable = packageSupportsPet(service, pet);
+  const isChecked = isAvailable && selection.servicePackage === service.id;
+  const selectedSize = normalizePetSize(pet.size);
   const selectedSizeLabel = formatPetSizeLabel(pet.size);
+  const availabilityId = escapeHtml(`package_${pet.id}_${service.id}_availability`);
 
   return `
     <div class="flex h-full flex-col gap-3">
       <label
-        class="service-card ${isChecked ? "service-card--selected" : ""} flex h-full cursor-pointer items-start gap-3 rounded-2xl border border-[#91aeca] bg-white p-4 transition hover:border-[#315b7e] hover:shadow-sm"
+        class="service-card ${isChecked ? "service-card--selected" : ""} flex h-full items-start gap-3 rounded-2xl border p-4 ${isAvailable ? "cursor-pointer border-[#91aeca] bg-white transition hover:border-[#315b7e] hover:shadow-sm" : "cursor-not-allowed border-slate-200 bg-slate-50"}"
       >
         <input
           type="radio"
@@ -214,10 +220,12 @@ export function renderPackageCard(pet, selection, service) {
           data-role="service-package"
           data-pet-id="${escapeHtml(pet.id)}"
           class="mt-1 h-4 w-4 shrink-0 accent-[#315b7e]"
+          ${isAvailable ? "" : `disabled aria-describedby="${availabilityId}"`}
           ${isChecked ? "checked" : ""}
         />
         <div class="service-card__content">
           <h4 class="font-semibold text-[#2f4b66]">${escapeHtml(service.name)}</h4>
+          ${isAvailable ? "" : `<p id="${availabilityId}" class="mt-1 text-sm font-medium text-red-700">Not available for ${escapeHtml(selectedSizeLabel)} pets</p>`}
           <ul class="mt-2 space-y-1 text-sm text-slate-600">
             ${service.descriptionItems
               .filter((item) => service.id !== "cat_full_grooming" || !/^haircut\s*\(if requested\)$/i.test(item.trim()))
@@ -228,7 +236,7 @@ export function renderPackageCard(pet, selection, service) {
             <span class="service-card__pricing-label">Size &amp; Price</span>
             <div class="service-card__price-grid">
               ${service.priceOptions
-                .map((priceOption) => renderPricePill(priceOption, selectedSizeLabel))
+                .map((priceOption) => renderPricePill(priceOption, selectedSize))
                 .join("")}
             </div>
           </div>
@@ -239,8 +247,8 @@ export function renderPackageCard(pet, selection, service) {
   `;
 }
 
-function renderPricePill(priceOption, selectedSizeLabel) {
-  const shouldHighlight = priceOption.label === selectedSizeLabel;
+function renderPricePill(priceOption, selectedSize) {
+  const shouldHighlight = priceOption.sizeKey === selectedSize;
 
   return `
     <div class="service-card__price-pill ${shouldHighlight ? "service-card__price-pill--active" : ""}">

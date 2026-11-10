@@ -636,6 +636,39 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/bookings?view=board')->assertOk()->assertJsonPath('incomingList.0.pets.0.bodyCondition', 'obese');
     }
 
+    public function test_queue_submission_revalidates_the_saved_pet_against_current_managed_package_pricing(): void
+    {
+        $this->authenticateAs('customer');
+        DB::table('pets')->insert([
+            'pet_id' => 3, 'user_id' => 3, 'pet_name' => 'Buddy', 'species' => 'dog', 'size' => 'extra_large',
+        ]);
+        (require database_path('migrations/2026_10_17_000001_add_grooming_catalog_management.php'))->up();
+        DB::table('services')->insert([
+            'service_id' => 3, 'service_name' => 'Coat Care', 'slug' => 'coat_care',
+            'kind' => 'package', 'pet_type' => 'dog', 'price_small' => 500, 'price_extra_large' => 900,
+            'starting_price_sizes' => '[]', 'is_active' => true,
+        ]);
+        $package = DB::table('services')->where('service_id', 3);
+        $payload = ['number_of_pets' => 1, 'pets' => [['pet_id' => 3, 'services' => ['package' => 'coat_care']]]];
+
+        $package->update(['price_extra_large' => null]);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertUnprocessable()->assertJsonValidationErrors('pets.0.size');
+        // Laravel's HTTP test client shares a container across simulated requests.
+        $this->app->forgetInstance(\App\Services\GroomingServiceSelection::class);
+        $package->update(['price_extra_large' => 900, 'is_active' => false]);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertUnprocessable()->assertJsonValidationErrors('pets.0.services');
+        $this->app->forgetInstance(\App\Services\GroomingServiceSelection::class);
+        $package->update(['is_active' => true, 'pet_type' => 'cat']);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertUnprocessable()->assertJsonValidationErrors('pets.0.services');
+        $this->assertDatabaseCount('bookings', 0);
+        $this->assertDatabaseHas('pets', ['pet_id' => 3, 'size' => 'extra_large']);
+
+        $this->app->forgetInstance(\App\Services\GroomingServiceSelection::class);
+        $package->update(['pet_type' => 'dog']);
+        $this->submitSignedGrooming('/api/booking/store', $payload)->assertCreated();
+        $this->assertDatabaseHas('booking_services', ['service_id' => 3, 'price_at_booking' => 900]);
+    }
+
     #[DataProvider('decimalPetWeights')]
     public function test_booking_uses_chosen_size_and_walkin_computes_size_from_weight(string $species, mixed $weight, string $size): void
     {

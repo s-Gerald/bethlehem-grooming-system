@@ -244,7 +244,7 @@ async function verifyInvoiceLayouts() {
 }
 
 (async () => {
-  const {applyGroomingCatalogue} = await import('../scripts/services/grooming-service.js?grooming=cms-20261105&registration=fcfs-20261027-v1');
+  const {applyGroomingCatalogue} = await import('../scripts/services/grooming-service.js?grooming=cms-20261105&registration=fcfs-20261027-v1&size-availability=20261110');
   context.applyPaymentCatalogue(applyGroomingCatalogue(JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8').replace(/^\uFEFF/, '')).data));
   ui.$nextTick = () => {};
   ui.loadAdminBookings = async () => {};

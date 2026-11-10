@@ -29,6 +29,9 @@ import { goToGroomingStep, isGroomingSinglePage } from "./grooming-flow-navigati
 import { formatPetAge, isEligibleForGrooming, GROOMING_MINIMUM_AGE_MESSAGE } from "../services/grooming-age.js";
 import { formatSavedWeight, getSizeOptions } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
+import {
+  GROOMING_AVAILABILITY_ERROR, loadGroomingCatalogue, petGroomingSizeError,
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
 
 /**
  * Booking Pet Step Controller
@@ -58,6 +61,8 @@ const SELECTED_PETS_STORAGE_KEY = IS_CLINIC_VISIT
 const MAX_PETS_PER_BOOKING = IS_CLINIC_VISIT ? 1 : GROOMING_MAX_PETS;
 let savedPetsLoading = false;
 let petAvailabilityFailed = false;
+let groomingCatalogueStatus = "loading";
+let stepError = "";
 function petSessionRestriction(pet) {
   if (petAvailabilityFailed) return "Availability unavailable";
   return pet.sessionAvailability?.[IS_CLINIC_VISIT ? 'clinic' : 'grooming']?.label || '';
@@ -96,6 +101,8 @@ const elements = {
   showExistingPetBtn: document.getElementById("showExistingPetBtn"),
   showAddPetBtn: document.getElementById("showAddPetBtn"),
   petStepError: document.getElementById("petStepError"),
+  retryGroomingAvailability: document.getElementById("retryGroomingAvailability"),
+  groomingAvailabilityStatus: document.getElementById("groomingAvailabilityStatus"),
 
   existingPetSection: document.getElementById("existingPetSection"),
   existingPetEmptyState: document.getElementById("existingPetEmptyState"),
@@ -211,16 +218,34 @@ function escapeHtml(value) {
 }
 
 function showStepError(message) {
-  elements.petStepError.textContent = message;
+  stepError = message;
+  renderStepError();
+}
+
+function renderStepError() {
+  const sizeError = !IS_CLINIC_VISIT && groomingCatalogueStatus === "ready" && getBookingPets().some(petGroomingSizeError);
+  const catalogueError = !IS_CLINIC_VISIT && groomingCatalogueStatus === "failed";
+  const groomingError = catalogueError ? GROOMING_AVAILABILITY_ERROR
+    : sizeError ? "One or more selected pets are currently ineligible for grooming. Check the highlighted pets below." : "";
+  const message = [stepError, groomingError].filter(Boolean).join(" ");
+  if (elements.petStepError.textContent !== message) elements.petStepError.textContent = message;
   elements.petStepError.className = message === GROOMING_MINIMUM_AGE_MESSAGE
     ? "mb-6 text-sm text-slate-600"
     : "mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700";
-  elements.petStepError.classList.remove("hidden");
+  elements.petStepError.classList.toggle("hidden", !message);
+  if (elements.retryGroomingAvailability) {
+    const newPetSizeError = activePetSection === "add" && elements.sizeError.textContent;
+    elements.retryGroomingAvailability.hidden = !catalogueError && !sizeError && !newPetSizeError;
+  }
+  if (elements.groomingAvailabilityStatus) {
+    const loading = groomingCatalogueStatus === "loading";
+    elements.groomingAvailabilityStatus.hidden = !loading;
+    elements.groomingAvailabilityStatus.textContent = loading ? "Checking current grooming availability…" : "";
+  }
 }
 
 function clearStepError() {
-  elements.petStepError.textContent = "";
-  elements.petStepError.classList.add("hidden");
+  showStepError("");
 }
 
 function buildStepTwoDraft() {
@@ -267,6 +292,7 @@ function showExistingPetSection() {
     addSection: elements.addPetSection,
   }, "existing");
   renderExistingPets();
+  renderStepError();
   saveStepTwoDraft();
 }
 
@@ -279,6 +305,7 @@ function showAddPetSection() {
     existingSection: elements.existingPetSection,
     addSection: elements.addPetSection,
   }, "add");
+  renderStepError();
   saveStepTwoDraft();
 }
 
@@ -468,6 +495,9 @@ function handleSelectAllExistingPets() {
 
 function renderSelectedPets() {
   const bookingPets = getBookingPets();
+  const canCheckSize = !IS_CLINIC_VISIT && groomingCatalogueStatus === "ready";
+  const groomingErrors = bookingPets.map(pet => canCheckSize ? petGroomingSizeError(pet) : "");
+  renderStepError();
 
   elements.selectedPetCards.innerHTML = "";
   elements.selectedPetCount.textContent = `${bookingPets.length} / ${MAX_PETS_PER_BOOKING} selected`;
@@ -486,15 +516,18 @@ function renderSelectedPets() {
   }
 
   elements.selectedPetsEmptyState.classList.add("hidden");
-  const blocked = petAvailabilityFailed || savedPetsLoading || bookingPets.some(pet => petSessionRestriction(pet)) || (!IS_CLINIC_VISIT && bookingPets.some((pet) => !isEligibleForGrooming(pet)));
+  const blocked = petAvailabilityFailed || savedPetsLoading || bookingPets.some(pet => petSessionRestriction(pet))
+    || (!IS_CLINIC_VISIT && (!canCheckSize || groomingErrors.some(Boolean) || bookingPets.some(pet => !isEligibleForGrooming(pet))));
   elements.nextBtn.disabled = blocked;
   elements.nextBtn.classList.toggle("opacity-50", blocked);
   elements.nextBtn.classList.toggle("cursor-not-allowed", blocked);
 
-  bookingPets.forEach((pet) => {
+  bookingPets.forEach((pet, index) => {
     const card = document.createElement("article");
-    card.className =
-      "rounded-2xl border border-[#c6dbef] bg-[#f8fbfe] p-3";
+    const error = groomingErrors[index];
+    const errorId = `selectedPetSizeError_${index}`;
+    card.className = error ? "rounded-2xl border border-red-200 bg-red-50 p-3"
+      : "rounded-2xl border border-[#c6dbef] bg-[#f8fbfe] p-3";
 
     card.innerHTML = `
       <div class="flex items-start justify-between gap-3">
@@ -509,12 +542,16 @@ function renderSelectedPets() {
         <button
           type="button"
           data-remove-pet-id="${escapeHtml(pet.id)}"
+          ${error ? `aria-describedby="${errorId}"` : ""}
           class="remove-selected-pet-btn rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100"
         >
           Remove
         </button>
       </div>
-
+      ${error ? `<p id="${errorId}" class="mt-2 flex items-start gap-2 text-sm text-red-700">
+        <svg class="ph-icon mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#warning-circle"></use></svg>
+        <span>${escapeHtml(`${error} Remove ${pet.petName || "this pet"} to continue, or update the pet's size if it is incorrect.`)}</span>
+      </p>` : ""}
     `;
 
     elements.selectedPetCards.appendChild(card);
@@ -684,11 +721,32 @@ async function handleAddPetSubmit(event) {
     return;
   }
 
+  if (!IS_CLINIC_VISIT) {
+    if (groomingCatalogueStatus !== "ready") {
+      petSaveConfirmation.reset();
+      return;
+    }
+    if (validateGroomingFormSize(formValues)) {
+      petSaveConfirmation.reset();
+      elements.size.focus();
+      return;
+    }
+  }
   if (!petSaveConfirmation.confirm(formValues)) { clearStepError(); return; }
   let newPet = null;
 
   try {
     petSaveConfirmation.setSaving(true);
+
+    if (!IS_CLINIC_VISIT) {
+      await refreshGroomingAvailability();
+      if (groomingCatalogueStatus !== "ready"
+        || JSON.stringify(getFormValues(elements.addPetForm)) !== JSON.stringify(formValues)) return;
+      if (validateGroomingFormSize(formValues)) {
+        elements.size.focus();
+        return;
+      }
+    }
 
     if (IS_CLINIC_VISIT || API.getCustomerToken?.()) {
       const response = await API.addPet({
@@ -772,6 +830,7 @@ function handleNext() {
     return;
   }
 
+  if (!IS_CLINIC_VISIT && (groomingCatalogueStatus !== "ready" || bookingPets.some(petGroomingSizeError))) return;
   clearStepError();
   saveStepTwoDraft();
   if (!IS_CLINIC_VISIT && isGroomingSinglePage()) {
@@ -790,7 +849,7 @@ function setFieldError(input, errorElement, message) {
 
   input.setAttribute("aria-invalid", String(Boolean(message)));
   input.classList.toggle("border-red-400", Boolean(message));
-  errorElement.textContent = message;
+  if (errorElement.textContent !== message) errorElement.textContent = message;
   errorElement.classList.toggle("hidden", !message);
 }
 
@@ -798,6 +857,35 @@ function updateSizeOptions() {
   const options = getSizeOptions(elements.petType.value);
   sizeCombobox.setOptions(options, { preserveValue: false });
   sizeCombobox.setDisabled(options.length === 0);
+  validateGroomingFormSize();
+}
+
+function validateGroomingFormSize(pet = { petType: elements.petType.value, size: sizeCombobox.getValue() }) {
+  if (IS_CLINIC_VISIT) return "";
+  const message = groomingCatalogueStatus === "ready" ? petGroomingSizeError(pet) : "";
+  setFieldError(elements.size, elements.sizeError, message);
+  renderStepError();
+  return message;
+}
+
+function applyGroomingAvailability(ready) {
+  groomingCatalogueStatus = ready ? "ready" : "failed";
+  validateGroomingFormSize();
+  renderSelectedPets();
+}
+
+async function refreshGroomingAvailability() {
+  if (IS_CLINIC_VISIT) return;
+  groomingCatalogueStatus = "loading";
+  renderSelectedPets();
+  let ready = false;
+  try {
+    await loadGroomingCatalogue();
+    ready = true;
+  } catch {
+    // Keep the draft so the customer can retry.
+  }
+  applyGroomingAvailability(ready);
 }
 
 function bindEvents() {
@@ -817,9 +905,13 @@ function bindEvents() {
   elements.backBtn.addEventListener("click", handleBack);
   elements.nextBtn.addEventListener("click", handleNext);
   elements.petType.addEventListener("change", updateSizeOptions);
+  if (!IS_CLINIC_VISIT) {
+    elements.size.addEventListener("change", () => validateGroomingFormSize());
+    elements.retryGroomingAvailability?.addEventListener("click", refreshGroomingAvailability);
+  }
 }
 
-async function initStepState() {
+async function initStepState(availability) {
   if (!Array.isArray(getBookingPets())) {
     saveBookingPets([]);
   }
@@ -830,7 +922,7 @@ async function initStepState() {
   showExistingPetSection();
 
   // Sync pets from the backend into localStorage before rendering the list
-  await syncSavedPets();
+  await Promise.all([syncSavedPets(), syncGroomingAvailability(availability)]);
 
   if (getSavedPets().length === 0) showAddPetSection();
   else showExistingPetSection();
@@ -869,7 +961,7 @@ function configurePageForFlow() {
   elements.selectedPetsTitle.textContent = "Selected Pet";
 }
 
-export async function initBookingPetStep() {
+export async function initBookingPetStep(availability) {
   if (IS_CLINIC_VISIT && await initBookingFormAccessGuard({ service: "clinic", dashboardPath: "/account" })) return;
   if (IS_CLINIC_VISIT && !await requireCustomerSession("/sign-in")) {
     return;
@@ -877,22 +969,31 @@ export async function initBookingPetStep() {
 
   configurePageForFlow();
   bindEvents();
-  await initStepState();
+  await initStepState(availability);
 }
 
-export async function refreshBookingPetStep() {
+function syncGroomingAvailability(availability) {
+  if (IS_CLINIC_VISIT) return;
+  if (availability) applyGroomingAvailability(availability.catalogueReady);
+  else return refreshGroomingAvailability();
+}
+
+export async function refreshBookingPetStep(availability) {
+  if (availability && availability.refreshPets === false) {
+    syncGroomingAvailability(availability);
+    return;
+  }
   savedPetsLoading = true;
   renderSelectedPets();
   renderExistingPets();
-  await syncSavedPets();
+  await Promise.all([syncSavedPets(), syncGroomingAvailability(availability)]);
 }
 
 if (!isGroomingSinglePage()) {
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initBookingPetStep, { once: true });
+    document.addEventListener("DOMContentLoaded", () => initBookingPetStep(), { once: true });
   } else {
     initBookingPetStep();
   }
+  window.addEventListener('pageshow', event => { if (event.persisted) void refreshBookingPetStep(); });
 }
-
-window.addEventListener('pageshow', event => { if (event.persisted) void refreshBookingPetStep(); });

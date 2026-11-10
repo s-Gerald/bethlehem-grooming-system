@@ -90,7 +90,8 @@ class ClinicConfinementTest extends TestCase
         Schema::create('clinic_attachments', function (Blueprint $table) { $table->id(); $table->unsignedBigInteger('clinic_record_id'); });
         foreach (['2026_10_10_000001_create_clinic_charges_table.php', '2026_10_13_000001_create_clinic_services_table.php',
             '2026_10_13_000002_create_clinic_case_services_table.php', '2026_10_13_000004_create_clinic_confinements.php',
-            '2026_10_14_000001_remove_clinic_service_type.php', '2026_10_14_000002_configure_confinement_charges.php'] as $migration) {
+            '2026_10_14_000001_remove_clinic_service_type.php', '2026_10_14_000002_configure_confinement_charges.php',
+            '2026_11_10_120002_add_verification_history_to_confinement_observations.php'] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
         $this->signIn();
@@ -218,16 +219,158 @@ class ClinicConfinementTest extends TestCase
     {
         $this->admit(); $before = DB::table('clinic_vitals')->first();
         $notes = str_repeat('x', 500);
-        $payload = ['request_key' => (string) Str::uuid(), 'temperature_c' => 39.1, 'notes' => $notes];
+        $payload = $this->monitoringPayload(['temperature_c' => '39.1', 'notes' => $notes]);
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', [...$payload, 'notes' => $notes.'x'])
             ->assertUnprocessable()->assertJsonValidationErrors('notes');
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertCreated();
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertOk();
         Carbon::setTestNow(now()->addHour());
-        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid(), 'heart_rate_bpm' => 95])->assertCreated();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload(['heart_rate_bpm' => '95']))->assertCreated();
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid()])->assertUnprocessable();
         $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.notes', $notes)->assertJsonPath('data.1.heart_rate_bpm', 95);
         $this->assertEquals($before, DB::table('clinic_vitals')->first()); $this->assertDatabaseCount('clinic_charges', 0);
+    }
+
+    private function monitoringPayload(array $changes = []): array
+    {
+        return array_replace(['request_key' => (string) Str::uuid(), 'temperature_c' => '38.5',
+            'heart_rate_bpm' => '90', 'respiratory_rate_bpm' => '20'], $changes);
+    }
+
+    public function test_monitoring_requires_each_vital_and_notes_alone_cannot_create_an_observation(): void
+    {
+        $this->admit();
+        foreach (['temperature_c', 'heart_rate_bpm', 'respiratory_rate_bpm'] as $field) {
+            foreach ([null, '', '   '] as $missing) {
+                $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload([$field => $missing]))
+                    ->assertUnprocessable()->assertJsonValidationErrors($field);
+            }
+        }
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid(), 'notes' => 'Alert'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['temperature_c', 'heart_rate_bpm', 'respiratory_rate_bpm']);
+        $this->assertDatabaseCount('clinic_confinement_observations', 0);
+    }
+
+    public function test_monitoring_rejects_invalid_format_precision_and_unverified_exceptional_values(): void
+    {
+        $this->admit();
+        foreach (['temperature_c' => ['38.55', '3.85e1', '-1', '1000', '24.9', '45.1', 'abc', true, []],
+            'heart_rate_bpm' => ['80.5', '8e1', '-1', '65536', '0', '401', 'abc'],
+            'respiratory_rate_bpm' => ['20.5', '2e1', '-1', '65536', '0', '201', 'abc']] as $field => $values) {
+            foreach ($values as $value) {
+                $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload([$field => $value]))
+                    ->assertUnprocessable()->assertJsonValidationErrors($field);
+            }
+        }
+        $this->assertDatabaseCount('clinic_confinement_observations', 0);
+    }
+
+    public function test_monitoring_accepts_standard_boundaries_and_species_unusual_readings_without_verification(): void
+    {
+        $this->admit();
+        foreach ([['25', '1', '1'], ['45', '400', '200'], ['40.5', '180', '45']] as [$temperature, $heart, $respiratory]) {
+            $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload([
+                'temperature_c' => $temperature, 'heart_rate_bpm' => $heart, 'respiratory_rate_bpm' => $respiratory,
+            ]))->assertCreated();
+        }
+        DB::table('pets')->update(['species' => 'cat']);
+        $this->signIn('admin');
+        $payload = $this->monitoringPayload(['temperature_c' => '37.5', 'heart_rate_bpm' => '100', 'respiratory_rate_bpm' => '20']);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertCreated();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertOk();
+        $this->assertDatabaseCount('clinic_confinement_observations', 4);
+    }
+
+    public function test_monitoring_exception_requires_a_veterinarian_and_current_value_with_a_valid_reason(): void
+    {
+        $this->admit();
+        $payload = $this->monitoringPayload(['heart_rate_bpm' => '401',
+            'vital_exceptions' => ['heart_rate_bpm' => ['value' => '401', 'reason' => 'Confirmed by auscultation']]]);
+        $this->signIn('admin');
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        $this->signIn();
+        foreach ([null, ['value' => '401'], ['value' => '401', 'reason' => ''],
+            ['value' => '401', 'reason' => 'abcd'], ['value' => '401', 'reason' => '    a    '],
+            ['value' => '401', 'reason' => str_repeat('x', 501)],
+            ['value' => '402', 'reason' => 'Confirmed by auscultation']] as $evidence) {
+            $this->postJson('/api/admin/clinic-cases/1/confinement/observations', array_replace($payload,
+                ['vital_exceptions' => ['heart_rate_bpm' => $evidence]]))
+                ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        }
+        $this->assertDatabaseCount('clinic_confinement_observations', 0);
+    }
+
+    public function test_monitoring_evidence_is_observation_specific_server_generated_and_idempotent(): void
+    {
+        $this->admit();
+        $payload = $this->monitoringPayload(['temperature_c' => '46', 'heart_rate_bpm' => '0', 'respiratory_rate_bpm' => '201',
+            'vital_exceptions' => ['temperature_c' => ['value' => '46', 'reason' => 'Confirmed temperature'],
+                'heart_rate_bpm' => ['value' => '0', 'reason' => str_repeat('x', 500)],
+                'respiratory_rate_bpm' => ['value' => '201', 'reason' => 'Confirmed respiratory rate']]]);
+        $first = $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertCreated()->json('data');
+        $history = $first['verification_history'];
+        $this->assertCount(3, $history);
+        foreach ($history as $entry) {
+            $this->assertSame($payload[$entry['field']], $entry['value']);
+            $this->assertSame($payload['vital_exceptions'][$entry['field']]['reason'], $entry['reason']);
+            $this->assertSame(1, $entry['verified_by_user_id']);
+            $this->assertSame('Attending Vet', $entry['verified_by_name']);
+            $this->assertSame(now()->toIso8601String(), $entry['verified_at']);
+        }
+        $this->assertSame($history, \App\Models\ClinicConfinementObservation::first()->verification_history);
+        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.verification_history', $history);
+        Carbon::setTestNow(now()->addHour());
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertOk()
+            ->assertJsonPath('data.id', $first['id'])->assertJsonPath('data.verification_history', $history);
+        $this->assertDatabaseCount('clinic_confinement_observations', 1);
+
+        (require database_path('migrations/2026_10_27_000001_add_clinic_vital_verification_history.php'))->up();
+        DB::table('clinic_vitals')->update(['temperature_c' => 46, 'verification_history' => json_encode($history)]);
+        $unverified = $payload;
+        unset($unverified['vital_exceptions']);
+        $unverified['request_key'] = (string) Str::uuid();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $unverified)->assertUnprocessable()
+            ->assertJsonValidationErrors(['temperature_c', 'heart_rate_bpm', 'respiratory_rate_bpm']);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertOk()->assertJsonPath('data.verification_history', $history);
+        $this->assertDatabaseCount('clinic_confinement_observations', 1);
+    }
+
+    public function test_monitoring_rejects_client_supplied_audit_identity_and_history(): void
+    {
+        $this->admit();
+        foreach (['verification_history' => [['field' => 'heart_rate_bpm', 'value' => '401']],
+            'recorded_by_user_id' => 999, 'recorded_at' => '2000-01-01'] as $field => $value) {
+            $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload([$field => $value]))
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload([
+            'heart_rate_bpm' => '401', 'vital_exceptions' => ['heart_rate_bpm' => ['value' => '401',
+                'reason' => 'Confirmed by auscultation', 'verified_by_user_id' => 999, 'verified_at' => '2000-01-01']]]))
+            ->assertUnprocessable()->assertJsonValidationErrors('vital_exceptions.heart_rate_bpm');
+        $this->assertDatabaseCount('clinic_confinement_observations', 0);
+    }
+
+    public function test_monitoring_verification_migration_preserves_legacy_partial_history_and_pagination(): void
+    {
+        $this->admit();
+        $migration = require database_path('migrations/2026_11_10_120002_add_verification_history_to_confinement_observations.php');
+        $migration->down();
+        $legacy = [];
+        for ($i = 0; $i < 21; $i++) {
+            $legacy[] = ['clinic_confinement_id' => 1, 'request_key' => (string) Str::uuid(), 'recorded_at' => now()->addMinutes($i),
+                'temperature_c' => $i === 0 ? 12.3 : null, 'notes' => 'Legacy observation '.$i, 'recorded_by_user_id' => 1];
+        }
+        DB::table('clinic_confinement_observations')->insert($legacy);
+        $migration->up();
+        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('total', 21)
+            ->assertJsonPath('last_page', 2)->assertJsonCount(20, 'data')->assertJsonPath('data.0.temperature_c', '12.3')
+            ->assertJsonPath('data.0.heart_rate_bpm', null)->assertJsonPath('data.0.verification_history', null)
+            ->assertJsonPath('data.0.notes', 'Legacy observation 0')->assertJsonPath('data.19.notes', 'Legacy observation 19');
+        $this->getJson('/api/admin/clinic-cases/1/confinement/observations?page=2')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.notes', 'Legacy observation 20');
+        $this->assertDatabaseCount('clinic_confinement_observations', 21);
     }
 
     public function test_receptionist_can_view_but_cannot_admit_monitor_or_discharge_and_confined_cases_cannot_be_paid(): void
@@ -285,7 +428,8 @@ class ClinicConfinementTest extends TestCase
         $this->assertDatabaseCount('clinic_charges', 1); $this->assertDatabaseCount('notifications', 1);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'total_amount' => 500]);
         $this->assertNotNull(ClinicConfinement::first()->discharged_at);
-        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid(), 'notes' => 'Late'])->assertUnprocessable();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload(['notes' => 'Late']))
+            ->assertUnprocessable()->assertJsonValidationErrors('status');
     }
 
     public function test_exact_elapsed_duration_rules(): void
@@ -664,7 +808,7 @@ class ClinicConfinementTest extends TestCase
         $this->service(['category_id' => ClinicServiceCategory::where('name', 'Laboratory')->value('id')]);
         $this->getJson('/api/admin/clinic-confinement-service-options')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $eligible->id);
         $this->signIn('admin'); $this->admit();
-        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid(), 'notes' => 'Admin monitoring'])->assertCreated();
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $this->monitoringPayload(['notes' => 'Admin monitoring']))->assertCreated();
         $this->postJson('/api/admin/clinic-appointments/1/cancel')->assertUnprocessable()->assertJsonValidationErrors('status');
     }
 }

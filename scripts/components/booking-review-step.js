@@ -1,29 +1,28 @@
 import { renderRegistrationQueueInformation } from "./registration-queue-information.js?v=fcfs-20261026&registration=fcfs-20261027-v1&registration-ui=20261027-v3&registration-rollover=20261027-v3&urls=20261103";
 import { formatSavedWeight } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
-import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110";
-import { loadPetGroomers, hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
+import { renderGroomingPreference } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110&size-availability=20261110";
+import { hasPetGroomerSelection, petGroomerLabel } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   BOOKING_STEP_THREE_KEY,
   escapeHtml,
   formatPetSizeLabel,
   formatPetTypeLabel,
   getBookingDraft,
-  normalizePetSize,
   readSessionJson,
 } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
 import { goToGroomingStep } from "./grooming-flow-navigation.js";
 import {
-  hasRequiredGroomingPreference,
+  hasCompletedRequiredServiceSelection,
   specialInstructionsError,
-  loadGroomingCatalogue,
+  petGroomingSizeError,
+  unavailablePackageMessage,
   selectedPricingSignature,
   buildBookingReviewPayload,
   getGroomingPricePresentation,
   formatPriceOption,
-  getPackageById,
   normalizeStepThreeDraft,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110&size-availability=20261110";
 
 /**
  * Booking Review Step Controller
@@ -54,51 +53,62 @@ const state = {
   bookingDraft: null,
   petSelections: [],
   reviewPayload: null,
+  revision: 0,
 };
 
-export async function refreshBookingReviewStep() {
+export async function refreshBookingReviewStep(availability) {
+  const revision = ++state.revision;
+  state.reviewPayload = null;
+  elements.confirmBookingBtn.disabled = true;
   state.bookingDraft = getBookingDraft();
 
   if (!Array.isArray(state.bookingDraft?.pets) || state.bookingDraft.pets.length === 0) {
-    state.reviewPayload = null;
     renderEmptyState(
       "Please complete Pet Information and Grooming Services before reviewing.",
     );
     return;
   }
 
-  state.petSelections = normalizeStepThreeDraft(
-    readSessionJson(BOOKING_STEP_THREE_KEY),
-    state.bookingDraft,
-  );
-  const previousSignature = sessionStorage.getItem("groomingReviewedPricing") || sessionStorage.getItem("groomingSelectedPricing");
-  state.reviewPayload = null;
-  elements.confirmBookingBtn.disabled = true;
-  elements.reviewSelections.innerHTML = '<p class="py-6 text-sm text-slate-500" role="status">Loading current grooming pricing...</p>';
-  try {
-    await Promise.all([loadGroomingCatalogue(), loadPetGroomers()]);
-    if (state.petSelections.some((selection) => !hasPetGroomerSelection(selection))) {
-      renderEmptyState("Pet Groomer availability changed. Return to Grooming Services to choose again.");
-      return;
-    }
-  } catch (error) {
-    renderEmptyState("Unable to load grooming services and Pet Groomer availability. Please retry.");
+  if (availability?.error) {
+    renderEmptyState(availability.error);
     const retry = document.createElement("button");
     retry.type = "button";
     retry.textContent = "Retry";
     retry.className = "mt-3 font-semibold text-[#315b7e] underline";
-    retry.addEventListener("click", refreshBookingReviewStep);
+    retry.addEventListener("click", () => goToGroomingStep("review"));
     elements.reviewSelections.append(retry);
     return;
   }
+  state.petSelections = normalizeStepThreeDraft(
+    readSessionJson(BOOKING_STEP_THREE_KEY),
+    state.bookingDraft,
+    { keepUnavailablePackages: true },
+  );
+  for (const [index, pet] of state.bookingDraft.pets.entries()) {
+    const selection = state.petSelections[index];
+    if (petGroomingSizeError(pet)) {
+      renderEmptyState(`${petGroomingSizeError(pet)} Return to Pet Information to update your selection.`);
+      return;
+    }
+    if (!hasCompletedRequiredServiceSelection(pet, selection) || !hasPetGroomerSelection(selection) || specialInstructionsError(pet, selection)) {
+      renderEmptyState(unavailablePackageMessage(pet, selection)
+        || "Return to Grooming Services to check the selections for each pet.");
+      return;
+    }
+  }
+  const previousSignature = sessionStorage.getItem("groomingReviewedPricing") || sessionStorage.getItem("groomingSelectedPricing");
   const latestSignature = selectedPricingSignature(state.bookingDraft, state.petSelections);
+  elements.reviewNotice.classList.add("hidden");
+  elements.reviewSelections.innerHTML = '<p class="py-6 text-sm text-slate-500" role="status">Preparing your registration summary…</p>';
+  const registration = await renderRegistrationQueueInformation(document.getElementById("groomingQueueInformation"), "grooming");
+  if (revision !== state.revision || elements.reviewSelections.closest("[data-grooming-step]")?.hidden) return;
+
   sessionStorage.setItem("groomingReviewedPricing", latestSignature);
   state.reviewPayload = buildBookingReviewPayload(
     state.bookingDraft,
     state.petSelections,
   );
 
-  const availability = await renderRegistrationQueueInformation(document.getElementById("groomingQueueInformation"), "grooming");
   renderReviewNotice();
   if (previousSignature && previousSignature !== latestSignature) {
     elements.reviewNotice.classList.remove("hidden");
@@ -107,13 +117,13 @@ export async function refreshBookingReviewStep() {
   renderReviewSelections();
   renderTotalPricing();
   saveReviewDraft();
-  elements.confirmBookingBtn.disabled = !availability?.registration_available || state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection));
+  elements.confirmBookingBtn.disabled = !registration?.registration_available;
   elements.confirmBookingBtn.classList.remove("opacity-50", "cursor-not-allowed");
 }
 
-export function initBookingReviewStep() {
-  refreshBookingReviewStep();
+export function initBookingReviewStep(availability) {
   bindEvents();
+  return refreshBookingReviewStep(availability);
 }
 
 function bindEvents() {
@@ -121,16 +131,15 @@ function bindEvents() {
 }
 
 function renderEmptyState(message) {
-  elements.reviewNotice.className =
-    "mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700";
-  elements.reviewNotice.textContent = message;
+  elements.reviewNotice.classList.add("hidden");
   elements.reviewSelections.innerHTML = `
-    <div class="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+    <div class="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700" role="alert">
       ${escapeHtml(message)}
     </div>
   `;
   elements.totalPriceHeading.textContent = "Total Price";
-  elements.totalPriceText.textContent = "₱0";
+  elements.totalPriceText.textContent = "Unavailable";
+  elements.totalPriceSubtext.classList.remove("hidden");
   elements.totalPriceSubtext.textContent =
     "Review data is unavailable until the earlier queue registration steps are completed.";
   elements.confirmBookingBtn.disabled = true;
@@ -159,27 +168,17 @@ function renderReviewSelections() {
 
 function renderPetReviewCard(item, index) {
   const price = getGroomingPricePresentation(item.pricing.total);
-  const packageId = item.selection.servicePackage;
-  const selectedPackage = packageId ? getPackageById(packageId) : null;
+  const packageLineItem = item.pricing.lineItems.find(lineItem => lineItem.kind === "package");
   const alaCarteLineItems = item.pricing.lineItems.filter(
     (lineItem) => lineItem.kind === "ala_carte",
   );
-  const packageCard = selectedPackage
-    ? renderPackageReview(selectedPackage, item)
+  const packageCard = packageLineItem
+    ? renderPackageReview(packageLineItem)
     : "";
   const alaCarteCard =
     alaCarteLineItems.length > 0
       ? renderAlaCarteReview(alaCarteLineItems)
       : "";
-  const missingSelectionNotice =
-    !selectedPackage && item.pricing.lineItems.length === 0
-      ? `
-        <div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          No service is attached to this pet yet. Return to Grooming Services to finish the selection.
-        </div>
-      `
-      : "";
-
   return `
     <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -215,7 +214,6 @@ function renderPetReviewCard(item, index) {
         ${renderGroomingPreference(item.selection)}
         ${item.selection.haircutRequested ? '<p class="text-sm font-semibold text-[#2f4b66]">Haircut requested</p>' : ""}
         ${alaCarteCard}
-        ${missingSelectionNotice}
 
         ${
           item.selection.specialInstructions.trim()
@@ -236,20 +234,9 @@ function renderPetReviewCard(item, index) {
   `;
 }
 
-function renderPackageReview(selectedPackage, item) {
-  const packageLineItem = item.pricing.lineItems.find(
-    (lineItem) =>
-      lineItem.kind === "package" && lineItem.serviceId === selectedPackage.id,
-  );
-
-  if (!packageLineItem) {
-    return "";
-  }
-
-  const visiblePriceOptions = getVisiblePackagePriceOptions(
-    selectedPackage,
-    item.pet.size,
-  );
+function renderPackageReview(packageLineItem) {
+  const { selectedPriceOption, availablePriceOptions } = packageLineItem.pricing;
+  const visiblePriceOptions = selectedPriceOption ? [selectedPriceOption] : availablePriceOptions;
 
   return `
     <div class="rounded-2xl border border-slate-200 bg-white p-4">
@@ -257,32 +244,20 @@ function renderPackageReview(selectedPackage, item) {
         Selected Package
       </p>
       <h4 class="mt-2 text-lg font-semibold text-[#2f4b66]">${escapeHtml(
-        selectedPackage.name,
+        packageLineItem.serviceName,
       )}</h4>
       <div class="service-card__pricing">
         <span class="service-card__pricing-label">Size &amp; Price</span>
         <div class="service-card__price-grid">
           ${visiblePriceOptions
             .map((priceOption) =>
-              renderReviewPricePill(priceOption, packageLineItem.pricing.selectedPriceOption),
+              renderReviewPricePill(priceOption, selectedPriceOption),
             )
             .join("")}
         </div>
       </div>
     </div>
   `;
-}
-
-function getVisiblePackagePriceOptions(selectedPackage, petSize) {
-  const normalizedSize = normalizePetSize(petSize);
-
-  if (!normalizedSize) {
-    return selectedPackage.priceOptions;
-  }
-
-  return selectedPackage.priceOptions.filter(
-    (priceOption) => priceOption.sizeKey === normalizedSize,
-  );
 }
 
 function renderReviewPricePill(priceOption, selectedPriceOption) {
@@ -377,11 +352,7 @@ function saveReviewDraft() {
   sessionStorage.setItem(LEGACY_REVIEW_STORAGE_KEY, serializedReviewDraft);
 }
 
-async function handleConfirmClick() {
-  if (!state.reviewPayload || state.reviewPayload.items.some((item) => !hasRequiredGroomingPreference(item.selection) || specialInstructionsError(item.pet, item.selection))) {
-    return;
-  }
-
-  saveReviewDraft();
+function handleConfirmClick() {
+  if (!state.reviewPayload || elements.confirmBookingBtn.disabled) return;
   goToGroomingStep("consent");
 }

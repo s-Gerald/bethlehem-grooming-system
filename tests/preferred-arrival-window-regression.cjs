@@ -80,7 +80,9 @@ async function main() {
   const grooming = harness('booking-consent-step.js', { ...weightTools, ...ageTools,
     initGroomingConsent: () => ({ valid: true, prefill() {}, validate() {}, setBusy() {}, confirmSubmission: async () => true,
       payload: () => ({ terms_agreed: true, sedation_consent: false, signer_name: 'Customer', signature_strokes: [[[10, 10], [30, 30]]] }) }),
-    loadGroomingCatalogue: async () => {}, getBookingDraft: () => ({}), normalizeStepThreeDraft: () => [], selectedPricingSignature: () => 'reviewed',
+    loadGroomingCatalogue: async () => {}, getBookingDraft: () => ({ pets: [{ id: 101, petType: 'cat' }] }),
+    petGroomingSizeError: () => '', hasCompletedRequiredServiceSelection: () => true,
+    normalizeStepThreeDraft: () => [], selectedPricingSignature: () => 'reviewed',
     goToGroomingStep: value => { step = value; },
     API: { getMe: async () => ({ user: {} }), storeBooking: async payload => { groomingPayload = payload; return { booking: { booking_id: 1, booking_reference: 'BAC-1', booking_date: '2026-10-26', created_at: '2026-10-26T09:00:00+08:00', status: 'waiting_to_arrive', number_of_pets: 1 } }; } },
   });

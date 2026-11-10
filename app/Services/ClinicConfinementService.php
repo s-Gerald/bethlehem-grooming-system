@@ -9,9 +9,11 @@ use App\Models\ClinicConfinementCharge;
 use App\Models\ClinicConfinementObservation;
 use App\Models\ClinicService;
 use App\Models\User;
+use App\Support\ClinicClinicalRules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ClinicConfinementService
@@ -100,14 +102,27 @@ class ClinicConfinementService
     public function recordObservation(int $appointmentId, array $data, User $actor): ClinicConfinementObservation
     {
         $this->assertClinical($actor);
-        $data = Validator::make($data, [
-            'request_key' => 'required|uuid', 'temperature_c' => 'nullable|numeric|decimal:0,1|min:0|max:999.9',
-            'heart_rate_bpm' => 'nullable|integer|min:0|max:65535', 'respiratory_rate_bpm' => 'nullable|integer|min:0|max:65535',
-            'notes' => 'nullable|string|max:500', 'recorded_at' => 'prohibited',
-        ])->validate();
-        if (collect($data)->except('request_key')->filter(fn ($value) => $value !== null && trim((string) $value) !== '')->isEmpty()) {
-            throw ValidationException::withMessages(['observation' => 'Record at least one clinical value or observation.']);
+        $rules = [
+            'request_key' => 'required|uuid', 'notes' => 'nullable|string|max:500',
+            'recorded_at' => 'prohibited', 'recorded_by_user_id' => 'prohibited', 'verification_history' => 'prohibited',
+            'vital_exceptions' => [Rule::prohibitedIf(! $actor->isVeterinarian()), 'sometimes', 'array:temperature_c,heart_rate_bpm,respiratory_rate_bpm'],
+            'vital_exceptions.*' => ['required', 'array:value,reason'],
+            'vital_exceptions.*.value' => ['required', 'string', 'max:20'],
+            'vital_exceptions.*.reason' => ['required', 'string', 'min:5', 'max:500'],
+        ];
+        foreach (ClinicClinicalRules::catalog()['vitals'] as $field => $definition) {
+            $rules[$field] = ['required', function ($attribute, $value, $fail) use ($field, $definition, $data, $actor) {
+                if (ClinicClinicalRules::validVital($field, $value)) return;
+                if (ClinicClinicalRules::validVital($field, $value, true)) {
+                    if (ClinicClinicalRules::validVitalVerification($value, $data['vital_exceptions'][$field] ?? null, $actor)) return;
+                    $fail('This reading requires veterinarian verification.');
+                    return;
+                }
+                $fail($field === 'temperature_c' ? "Use {$definition['min']}–{$definition['max']} °C, up to {$definition['precision']} decimal."
+                    : "Use a whole number from {$definition['min']} to {$definition['max']}.");
+            }];
         }
+        $data = Validator::make($data, $rules)->validate();
         return DB::transaction(function () use ($appointmentId, $data, $actor) {
             $case = ClinicAppointment::whereKey($appointmentId)->lockForUpdate()->firstOrFail();
             $episode = $case->confinement()->lockForUpdate()->firstOrFail();
@@ -120,7 +135,15 @@ class ClinicConfinementService
             }
             $this->assertOngoing($case);
             if ($episode->discharged_at) throw ValidationException::withMessages(['confinement' => 'This confinement has already been discharged.']);
-            return $episode->observations()->create([...$data, 'recorded_at' => now(), 'recorded_by_user_id' => $actor->user_id]);
+            $verificationHistory = [];
+            foreach (array_keys(ClinicClinicalRules::catalog()['vitals']) as $field) {
+                if (! ClinicClinicalRules::validVital($field, $data[$field])) {
+                    $verificationHistory[] = ClinicClinicalRules::vitalVerificationEntry($field, $data[$field], $data['vital_exceptions'][$field]['reason'], $actor);
+                }
+            }
+            unset($data['vital_exceptions']);
+            return $episode->observations()->create([...$data, 'recorded_at' => now(), 'recorded_by_user_id' => $actor->user_id,
+                'verification_history' => $verificationHistory ?: null]);
         });
     }
 

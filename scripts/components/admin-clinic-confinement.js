@@ -29,6 +29,12 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
     admissionForm: null, admissionPending: null, selectedService: null, pricing: null, pricingLoading: false,
     medicalForm: null, admissionErrors: {}, confirming: false,
     monitoringOpen: false, monitoringForm: null, monitoringPending: null,
+    monitoringErrors: {}, monitoringError: '', monitoringAttempted: false,
+    monitoringVitals: [
+      {field: 'temperature_c', id: 'monitoring-temperature', label: 'Temperature (°C)', inputmode: 'decimal', placeholder: 'e.g. 38.5'},
+      {field: 'heart_rate_bpm', id: 'monitoring-heart', label: 'Heart Rate (bpm)', inputmode: 'numeric', placeholder: 'e.g. 80'},
+      {field: 'respiratory_rate_bpm', id: 'monitoring-respiratory', label: 'Respiratory Rate (breaths/min)', inputmode: 'numeric', placeholder: 'e.g. 20'},
+    ],
     observations: [], observationPage: 0, observationLastPage: 1, observationsLoading: false,
     dischargeForm: null, dischargePending: null, dischargePreview: null, priceError: '', dischargeMedicalErrors: {},
     _generation: 0, _pricingRequest: 0, _visible: false,
@@ -54,6 +60,7 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
         this.confinementCaseId = appt.id; this.episode = null; this.error = '';
         this.admissionForm = null; this.admissionPending = null; this.monitoringForm = null; this.monitoringPending = null;
         this.monitoringOpen = false; this.dischargeForm = null; this.dischargePending = null;
+        this.monitoringErrors = {}; this.monitoringError = ''; this.monitoringAttempted = false;
         this.selectedService = null; this.pricing = null; this.observations = [];
         this.admissionErrors = {}; this.confirming = false;
         this.extraForm = null; this.extraPending = null; this.extraPricing = null; this.episodePricing = null;
@@ -100,7 +107,10 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
             if (extra) { this.extraForm = extra.form; this.extraPending = extra.pending; this.extraPricing = extra.pricing; }
             await this.loadConfinementOptions();
             const monitor = this.restore('monitoring');
-            if (monitor) { this.monitoringForm = monitor.form; this.monitoringPending = monitor.pending; this.monitoringOpen = true; }
+            if (monitor) {
+              this.monitoringForm = monitor.form; this.monitoringForm.vital_exceptions ||= {};
+              this.monitoringPending = monitor.pending; this.monitoringOpen = true;
+            }
             const discharge = this.restore('discharge');
             if (discharge) { this.dischargeForm = discharge.form; this.dischargePending = discharge.pending; await this.loadDischargePreview(); }
           }
@@ -313,20 +323,94 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
     },
     openMonitoring() {
       if (!this.canCareForConfinement || this.busy) return;
-      this.monitoringForm ||= {request_key: crypto.randomUUID(), temperature_c: '', heart_rate_bpm: '', respiratory_rate_bpm: '', notes: ''};
+      this.monitoringForm ||= {request_key: crypto.randomUUID(), temperature_c: '', heart_rate_bpm: '', respiratory_rate_bpm: '', notes: '', vital_exceptions: {}};
+      this.monitoringErrors = {}; this.monitoringError = ''; this.monitoringAttempted = false;
       this.monitoringOpen = true; this.error = ''; this.persistMonitoring();
     },
+    get monitoringVeterinarian() { return clinicIsVeterinarian(this.$store.clinicAccess.user); },
+    monitoringNeedsVerification(field) { return clinicVitalNeedsVerification(field, this.monitoringForm?.[field]); },
+    startMonitoringVerification(field) {
+      if (!this.canCareForConfinement || this.busy || this.monitoringPending || !this.monitoringVeterinarian || !this.monitoringNeedsVerification(field)) return;
+      this.monitoringForm.vital_exceptions[field] = {value: String(this.monitoringForm[field]).trim(), reason: ''};
+      this.persistMonitoring();
+    },
+    monitoringFieldMessage(field, form = this.monitoringForm) {
+      return clinicVitalFieldMessage(field, form?.[field], {required: this.monitoringAttempted,
+        veterinarian: this.monitoringVeterinarian, verification: form?.vital_exceptions?.[field]});
+    },
+    monitoringWarning(field) { return clinicVitalWarning(field, this.monitoringForm?.[field], this.confinementCase?.pet?.species); },
+    monitoringFieldError(field) {
+      const message = this.monitoringErrors[field]?.[0] || '';
+      return /^required$|\bis required\b/i.test(message) ? '' : message;
+    },
+    refreshMonitoringSummary() {
+      const errors = Object.values(this.monitoringErrors);
+      this.monitoringError = !errors.length ? '' : errors.every(items => /^required$|\bis required\b/i.test(items[0]))
+        ? 'Complete the required fields marked *.' : 'Check the highlighted fields.';
+    },
+    validateMonitoringField(field, interaction = 'blur') {
+      const form = this.monitoringForm;
+      if (!form) return;
+      form.vital_exceptions ||= {};
+      const verification = form.vital_exceptions[field];
+      if (verification && (verification.value !== String(form[field] ?? '').trim() || clinicVitalEntryValid(field, form[field]))) {
+        delete form.vital_exceptions[field];
+      }
+      const message = this.monitoringFieldMessage(field);
+      if (interaction !== 'input' || (this.monitoringErrors[field] && !message)) {
+        if (message) this.monitoringErrors[field] = [message];
+        else delete this.monitoringErrors[field];
+        this.refreshMonitoringSummary();
+      }
+      if (interaction !== 'save') this.persistMonitoring();
+    },
+    validateMonitoringNotes() {
+      if (this.monitoringErrors.notes && !this.monitoringNotesMessage(this.monitoringForm?.notes)) {
+        delete this.monitoringErrors.notes; this.refreshMonitoringSummary();
+      }
+      this.persistMonitoring();
+    },
+    monitoringNotesMessage(value) {
+      return (globalThis.ShortNotes ? ShortNotes.tooLong(value) : Array.from(String(value ?? '')).length > 500) ? 'Use up to 500 characters.' : '';
+    },
+    monitoringValidationErrors(form) {
+      const errors = {};
+      for (const field of Object.keys(CLINIC_CLINICAL_RULES.vitals)) {
+        const message = this.monitoringFieldMessage(field, form);
+        if (message) errors[field] = [message];
+      }
+      const notesMessage = this.monitoringNotesMessage(form?.notes);
+      if (notesMessage) errors.notes = [notesMessage];
+      return errors;
+    },
+    focusMonitoringInvalidField() {
+      this.$nextTick?.(() => {
+        const field = this.$el.querySelector('#confinement-monitoring-form [aria-invalid="true"]');
+        field?.focus(); field?.scrollIntoView?.({block: 'nearest'});
+      });
+    },
+    monitoringVerification(entry, field) { return entry.verification_history?.find(item => item.field === field); },
     async submitMonitoring() {
       if (!this.canCareForConfinement || this.busy || !this.monitoringForm) return;
       const form = this.monitoringForm;
-      if (![form.temperature_c, form.heart_rate_bpm, form.respiratory_rate_bpm, form.notes.trim()].some(value => value !== '' && value != null)) {
-        this.error = 'Record at least one clinical value or observation.'; return;
+      this.monitoringAttempted = true;
+      for (const field of Object.keys(CLINIC_CLINICAL_RULES.vitals)) this.validateMonitoringField(field, 'save');
+      this.monitoringErrors = this.monitoringValidationErrors(form);
+      if (!Object.keys(this.monitoringErrors).length && this.monitoringPending) {
+        this.monitoringErrors = this.monitoringValidationErrors(this.monitoringPending);
       }
-      const payload = this.monitoringPending || Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value === '' ? null : value]));
+      if (Object.keys(this.monitoringErrors).length) {
+        this.monitoringPending = null; this.persistMonitoring();
+        this.refreshMonitoringSummary(); this.focusMonitoringInvalidField(); return;
+      }
+      const payload = this.monitoringPending || {request_key: form.request_key, temperature_c: form.temperature_c,
+        heart_rate_bpm: form.heart_rate_bpm, respiratory_rate_bpm: form.respiratory_rate_bpm, notes: form.notes || null,
+        ...(this.monitoringVeterinarian && Object.keys(form.vital_exceptions).length
+          ? {vital_exceptions: Object.fromEntries(Object.entries(form.vital_exceptions).map(([field, evidence]) => [field, {...evidence}]))} : {})};
       this.monitoringPending = payload;
       if (!this.retain('monitoring', {form, pending: payload})) { this.monitoringPending = null; return; }
       const id = this.confinementCaseId, generation = this._generation;
-      this.setConfinementBusy(true, id); this.error = '';
+      this.setConfinementBusy(true, id); this.error = ''; this.monitoringError = '';
       try {
         await API.clinicRecordConfinementObservation(id, payload);
         if (generation !== this._generation) return;
@@ -337,7 +421,12 @@ function clinicConfinementWorkspace(saveDischargeMedicalRecord, showDischargeMed
       } catch (error) {
         if (generation !== this._generation) return;
         if (error.errors || error.status === 422) { this.monitoringPending = null; this.persistMonitoring(); }
-        this.error = error.message || 'Monitoring could not be confirmed. Retry this same request safely.';
+        if (error.errors) {
+          this.monitoringErrors = Object.fromEntries(Object.entries(error.errors).map(([field, messages]) => [
+            field.startsWith('vital_exceptions.') ? field.split('.')[1] : field, messages,
+          ]));
+          this.refreshMonitoringSummary(); this.focusMonitoringInvalidField();
+        } else this.error = error.message || 'Monitoring could not be confirmed. Retry this same request safely.';
       } finally { this.setConfinementBusy(false, id); }
     },
     async loadDischargePreview() {

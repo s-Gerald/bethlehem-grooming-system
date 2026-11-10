@@ -141,7 +141,9 @@ function component(permission = true, id = 1) {
   assert.ok(events.some(e => e.type === 'clinic-case-patch' && e.detail.confinement));
 
   reload.openMonitoring(); const count = requests.length; await reload.submitMonitoring(); assert.equal(requests.length, count, 'Empty monitoring is blocked');
-  reload.monitoringForm.notes = 'Alert'; timeout = true; await reload.submitMonitoring();
+  reload.monitoringForm.notes = 'Alert'; await reload.submitMonitoring(); assert.equal(requests.length, count, 'Notes-only monitoring is blocked');
+  Object.assign(reload.monitoringForm, {temperature_c: '38.5', heart_rate_bpm: '90', respiratory_rate_bpm: '20'});
+  timeout = true; await reload.submitMonitoring();
   const monitoring = JSON.stringify(requests.at(-1).payload); timeout = false; await reload.submitMonitoring();
   assert.equal(JSON.stringify(requests.at(-1).payload), monitoring); assert.equal(reload.monitoringOpen, false);
   assert.equal('recorded_at' in requests.at(-1).payload, false, 'Monitoring time is server-owned');

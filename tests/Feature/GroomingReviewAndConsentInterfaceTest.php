@@ -43,22 +43,16 @@ class GroomingReviewAndConsentInterfaceTest extends TestCase
         }
     }
 
-    public function test_review_pages_only_show_the_matching_package_size_when_available(): void
+    public function test_walk_in_review_only_shows_the_matching_package_size_when_available(): void
     {
-        $customerReview = file_get_contents(base_path('scripts/components/booking-review-step.js'));
         $walkInReview = file_get_contents(base_path('scripts/components/walk-in-review-step.js'));
 
-        foreach ([$customerReview, $walkInReview] as $review) {
-            $this->assertStringContainsString('function getVisiblePackagePriceOptions(selectedPackage, petSize)', $review);
-            $this->assertStringContainsString('const normalizedSize = normalizePetSize(petSize);', $review);
-            $this->assertStringContainsString('return selectedPackage.priceOptions;', $review);
-            $this->assertStringContainsString(
-                '(priceOption) => priceOption.sizeKey === normalizedSize',
-                $review,
-            );
-            $this->assertStringContainsString('${visiblePriceOptions', $review);
-            $this->assertStringNotContainsString('getPackagePricingNote', $review);
-        }
+        $this->assertStringContainsString('function getVisiblePackagePriceOptions(selectedPackage, petSize)', $walkInReview);
+        $this->assertStringContainsString('const normalizedSize = normalizePetSize(petSize);', $walkInReview);
+        $this->assertStringContainsString('return selectedPackage.priceOptions;', $walkInReview);
+        $this->assertStringContainsString('(priceOption) => priceOption.sizeKey === normalizedSize', $walkInReview);
+        $this->assertStringContainsString('${visiblePriceOptions', $walkInReview);
+        $this->assertStringNotContainsString('getPackagePricingNote', $walkInReview);
     }
 
     public function test_review_summary_removes_the_duplicate_pet_summary_card(): void
