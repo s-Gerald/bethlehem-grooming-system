@@ -6,7 +6,8 @@ const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const admin = read('pages/admin/archive.html');
-const adminModal = admin.slice(admin.indexOf('<!-- View Details Modal -->'), admin.indexOf('<!-- Read-only historical encounter -->'));
+const adminStart = admin.indexOf('<main', admin.indexOf('<!-- Archive Body -->'));
+const adminContent = admin.slice(adminStart, admin.indexOf('</main>', adminStart) + '</main>'.length);
 const styles = [...admin.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>|<style>[\s\S]*?<\/style>/g)].map(match => match[0]).join('\n');
 const session = {
   id: 91, ownerName: 'Recorded Owner', bookingReference: 'WI-91', status: 'released',
@@ -30,13 +31,20 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    let releaseAlpine, alpineHold;
+    let alpineSource;
+    await page.route('**/alpinejs@*/**', async route => {
+      alpineSource ||= route.fetch().then(response => response.body());
+      const source = await alpineSource;
+      if (alpineHold) await alpineHold;
+      await route.fulfill({contentType: 'text/javascript', body: source});
+    });
     await page.route('https://history.test/**', async route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/admin/history') {
         return route.fulfill({contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">${styles}</head>
-          <body><main x-data="adminArchive()">
-          <template x-for="booking in filteredList" :key="booking.id"><button :data-history-booking="booking.id" @click="viewDetails(booking, $event.currentTarget)">View Details</button></template>
-          <p role="status" x-text="historyNotice"></p>${adminModal}</main>
+          <body>${adminContent}
+          <script src="/scripts/components/admin-loading.js"></script>
           <script src="/scripts/components/recorded-product-pricing.js"></script><script src="/scripts/components/admin-archive.js"></script>
           <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script></body></html>`});
       }
@@ -51,10 +59,26 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     });
     await page.addInitScript(({session, grooming, clinic}) => {
       window.historyCalls = 0; window.consentCalls = 0; window.customerCalls = 0;
+      const scenario = new URL(location.href).searchParams.get('scenario');
+      window.holdHistory = Boolean(scenario);
+      const loadHistory = async type => {
+        window.historyCalls++;
+        if (window.holdHistory) await new Promise(resolve => { window.releaseHistory = resolve; });
+        if (window.failHistory) throw new Error('History service is temporarily unavailable.');
+        return {archived: window.emptyHistory ? [] : type === 'grooming' ? [session] : [{
+          id: 81, appointment_reference: 'CL-81', appointment_date: '2024-02-10', status: 'completed',
+          pet: {name: 'Clinic pet'}, ownerName: 'Recorded Owner',
+        }]};
+      };
       window.API = {
-        getStaffIdentity: async () => ({user: {role: 'admin'}}),
-        getArchivedBookings: async () => { window.historyCalls++; return {archived: [session]}; },
-        loadAdminData: async (endpoint, load, render) => { render(await load()); },
+        getStaffIdentity: async () => ({user: scenario === 'clinic-only'
+          ? {role: 'staff', staff_type: 'clinic', staff_permissions: {clinic_workspace: true}} : {role: 'admin'}}),
+        getArchivedBookings: () => loadHistory('grooming'),
+        getArchivedClinicAppointments: () => loadHistory('clinic'),
+        loadAdminData: async (endpoint, load, render) => {
+          if (scenario === 'cached') render({archived: [session]});
+          render(await load());
+        },
         getGroomingSignedConsent: () => { window.consentCalls++; return new Promise(() => {}); },
         getBookingHistory: async () => ({history: [grooming]}),
         getCustomerClinicHistory: async () => ({medical_records: [clinic]}),
@@ -62,6 +86,77 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
         getMe: async () => ({user: {first_name: 'Owner', last_name: 'Test'}}),
       };
     }, {session, grooming, clinic});
+
+    const startup = {
+      error: page.locator('main > section[x-show="!loading && errorMessage"]'),
+      empty: page.locator('main > section[x-show="historyLoaded && !errorMessage && filteredCount === 0"]'),
+      records: page.locator('.history-groups'),
+      clear: page.locator('button[x-show="hasActiveFilters"]'),
+      month: page.locator('div[x-show="selectedYear && availableMonths.length > 1"]'),
+      year: page.locator('div[x-show="availableYears.length > 0"]'),
+      yearIndicator: page.locator('div[x-show="selectedYear"]'),
+    };
+    const loader = page.locator('main > admin-loader[page]');
+    for (const target of ['?scenario=startup', 'reload', '?scenario=startup&type=grooming&booking_id=91&booking_pet_id=12']) {
+      alpineHold = new Promise(resolve => { releaseAlpine = resolve; });
+      if (target === 'reload') await page.reload({waitUntil: 'commit'});
+      else await page.goto('https://history.test/admin/history' + target, {waitUntil: 'commit'});
+      await page.getByRole('heading', {name: 'History', exact: true}).waitFor();
+      await page.waitForFunction(() => Boolean(document.querySelector('link[href^="/css/custom.css"]').sheet));
+      assert.equal(await page.evaluate(() => typeof window.Alpine), 'undefined');
+      assert.equal(await page.getByRole('textbox', {name: 'Search history'}).isVisible(), true, 'Stable search shell stays visible');
+      assert.equal(await page.locator('main').getAttribute('x-cloak'), null, 'The whole page must not be cloaked');
+      for (const [name, surface] of Object.entries(startup)) {
+        assert.equal(await surface.evaluate(el => getComputedStyle(el).display), 'none', `${name} must not paint before Alpine`);
+        assert.equal(await surface.getAttribute('x-cloak'), '', `${name} uses the existing cloak mechanism`);
+      }
+      assert.equal(await page.getByRole('button', {name: 'Try again'}).count(), 0, 'False retry is absent from the accessibility tree');
+      releaseAlpine(); alpineHold = null;
+      await page.waitForFunction(() => window.historyCalls === 1);
+      assert.equal(await loader.isVisible(), true, 'The intended loader appears while the request is pending');
+      for (const name of ['error', 'empty', 'records', 'clear']) assert.equal(await startup[name].isVisible(), false);
+      await page.evaluate(() => { window.holdHistory = false; window.releaseHistory(); });
+      await startup.records.waitFor({state: 'visible'});
+      assert.equal(await loader.isVisible(), false);
+      assert.equal(await startup.error.isVisible(), false); assert.equal(await startup.empty.isVisible(), false);
+      assert.equal(await page.evaluate(() => window.historyCalls), 1);
+      if (target.includes('booking_id')) {
+        await page.getByRole('dialog').filter({has: page.locator('#grooming-record-title')}).waitFor({state: 'visible'});
+        assert.equal(await page.evaluate(() => window.consentCalls), 1, 'Pending consent never blocks deep-link opening');
+      }
+    }
+
+    await page.goto('https://history.test/admin/history?scenario=retry');
+    await page.waitForFunction(() => typeof window.releaseHistory === 'function');
+    await page.evaluate(() => { window.failHistory = true; window.holdHistory = false; window.releaseHistory(); });
+    await startup.error.waitFor({state: 'visible'});
+    assert.match(await startup.error.innerText(), /History service is temporarily unavailable/);
+    for (const surface of [loader, startup.empty, startup.records]) assert.equal(await surface.isVisible(), false);
+    await page.evaluate(() => { window.failHistory = false; window.holdHistory = true; });
+    await startup.error.getByRole('button', {name: 'Try again'}).click();
+    await loader.waitFor({state: 'visible'});
+    assert.equal(await startup.error.isVisible(), false);
+    await page.evaluate(() => { window.holdHistory = false; window.releaseHistory(); });
+    await startup.records.waitFor({state: 'visible'});
+    assert.equal(await page.evaluate(() => window.historyCalls), 2, 'Retry uses exactly one additional request');
+
+    await page.getByRole('button', {name: 'Clinic', exact: true}).click();
+    await page.locator('.clinic-row').waitFor();
+    assert.equal(await startup.error.isVisible(), false);
+    await page.goto('https://history.test/admin/history?scenario=clinic-only');
+    await page.waitForFunction(() => typeof window.releaseHistory === 'function');
+    await page.evaluate(() => { window.emptyHistory = true; window.holdHistory = false; window.releaseHistory(); });
+    await startup.empty.waitFor({state: 'visible'});
+    assert.match(await startup.empty.innerText(), /clinic history/i);
+    for (const surface of [loader, startup.error, startup.records, page.getByRole('group', {name: 'History type'})]) assert.equal(await surface.isVisible(), false);
+
+    await page.goto('https://history.test/admin/history?scenario=cached');
+    await startup.records.waitFor({state: 'visible'});
+    await page.waitForFunction(() => window.historyCalls === 1);
+    assert.equal(await loader.isVisible(), false, 'Valid cached records remain visible during revalidation');
+    assert.equal(await startup.error.isVisible(), false); assert.equal(await startup.empty.isVisible(), false);
+    await page.evaluate(() => { window.holdHistory = false; window.releaseHistory(); });
+
     await page.goto('https://history.test/admin/history?type=grooming&booking_id=91&booking_pet_id=12');
     const adminDialog = page.getByRole('dialog');
     await adminDialog.waitFor({state: 'visible'});
@@ -79,7 +174,7 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     await adminDialog.waitFor({state: 'hidden'});
     assert.equal(new URL(page.url()).search, '?type=grooming');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.historyBooking), '91');
-    await page.getByRole('button', {name: 'View Details', exact: true}).click();
+    await page.locator('[data-history-booking="91"]').click();
     await adminDialog.waitFor({state: 'visible'});
     assert.equal(await body.evaluate(el => el.scrollTop), 0, 'Ordinary row opening starts normally');
     await page.keyboard.press('Escape');
@@ -115,6 +210,6 @@ const clinic = {appointment_reference: 'CL-91', appointment_date: '2026-11-10', 
     }
     assert.equal(await page.evaluate(() => window.customerCalls), 2, 'Opening details makes no payment request');
     assert.deepEqual(errors, []);
-    console.log('History browser checks passed: deep links, pet scrolling, focus, close, stale targets and responsive customer payments.');
+    console.log('History browser checks passed: pre-Alpine paint/reload, loading, error/retry, empty/Clinic/cache states, deep links, focus and responsive customer payments.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
