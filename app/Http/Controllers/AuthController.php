@@ -63,7 +63,7 @@ class AuthController extends Controller
 
         if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
             $field = 'email';
-        } elseif (preg_match('/^(0[89]|\+63[89])[0-9]{9}$/D', $identifier)) {
+        } elseif (preg_match('/^(09|\+639)[0-9]{9}$/D', $identifier)) {
             $field = 'phone';
         } else {
             $field = 'username';

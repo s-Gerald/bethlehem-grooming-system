@@ -122,6 +122,34 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
+  const mobilePage = page();
+  const mobile = mobilePage.context.PhilippineMobile;
+  const policy = JSON.parse(fs.readFileSync(path.join(root, 'resources/data/philippine-mobile-policy.json'), 'utf8'));
+  for (let prefix = 800; prefix <= 999; prefix++) {
+    const phone = `0${prefix}1234567`;
+    assert.equal(mobile.validate(phone) === '', policy.prefixes.includes(`0${prefix}`), `Browser policy parity: ${phone}`);
+  }
+  for (const phone of ['09171234567', '09761234567', '09911234567', '09071234567', '09181234567', '09991234567']) {
+    assert.equal(mobile.validate(phone), '');
+    assert.equal(mobile.format(phone), `${phone.slice(0, 4)} ${phone.slice(4, 7)} ${phone.slice(7)}`);
+  }
+  for (const phone of ['08131234567', '08171234567', '08951234567', '08961234567', '08971234567', '08981234567', '07171234567']) {
+    assert.equal(mobile.validate(phone), 'Enter a valid 11-digit mobile number starting with 09.');
+    assert.equal(mobile.format(phone), phone);
+    const invalid = page({ phone });
+    await invalid.dispatch('signupForm', 'submit');
+    assert.equal(invalid.calls.some(call => call[0] === 'register'), false);
+  }
+  assert.equal(mobile.normalize('+63 976-123-4567'), '09761234567');
+  assert.equal(mobile.normalize('9761234567'), '09761234567');
+  assert.equal(mobile.normalize('+63 895-123-4567'), '+638951234567');
+  assert.equal(mobile.normalize('8951234567'), '8951234567');
+  assert.equal(mobile.searchQuery('+63 976-123'), '0976123');
+  assert.equal(mobile.searchQuery('+63 895-123'), '+63 895-123');
+  assert.equal(mobile.searchQuery('0895 123'), '0895 123');
+  assert.equal(mobile.validate('0917123456'), 'Enter an 11-digit mobile number.');
+  assert.equal(mobile.validate('0917x123456'), 'Enter an 11-digit mobile number.');
+
   const clockChanged = page();
   await clockChanged.dispatch('signupForm', 'submit');
   clockChanged.API.registrationStatus = async () => ({state: 'approved'});

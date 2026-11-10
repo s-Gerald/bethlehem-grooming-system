@@ -1,5 +1,5 @@
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
-import '../utils/philippine-mobile.js?v=mobile-format-20261029';
+import '../utils/philippine-mobile.js?v=mobile-policy-20261110';
 
 export function confirmationFields(fields) {
   return `<dl class="confirmation-fields">${fields.map(([label, value, id, wide, suffix = ""]) => `

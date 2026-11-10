@@ -31,7 +31,8 @@ ui.removePaymentProduct(1);
 assert.deepEqual(selectedOrder(), [1, 2]);
 ui.paymentModal.products = [];
 assert.equal(ui.formatMobileNumber('09171234567'), '0917 123 4567');
-assert.equal(ui.formatMobileNumber('08971234567'), '0897 123 4567');
+assert.equal(ui.formatMobileNumber('09761234567'), '0976 123 4567');
+assert.equal(ui.formatMobileNumber('08971234567'), '08971234567', 'Historical non-09 contacts remain literal.');
 assert.equal(ui.formatMobileNumber('09031234567'), '09031234567', 'Legacy contacts outside the policy are not rewritten.');
 assert.equal(ui.formatMobileNumber(null), '—');
 
@@ -98,7 +99,7 @@ const clinicHtml = fs.readFileSync(path.join(__dirname, '../pages/admin/clinic.h
 for (const template of [invoice, context.window.PaymentInvoice.clinicTemplate]) {
   const expression = template.match(/<p x-show="receiptModal.contactNumber" x-text="([^"]+)"/)[1];
   assert.equal(new Function('window', 'receiptModal', `return ${expression}`)(context.window, {contactNumber:'09171234567'}), '0917 123 4567');
-  assert.equal(new Function('window', 'receiptModal', `return ${expression}`)(context.window, {contactNumber:'08971234567'}), '0897 123 4567');
+  assert.equal(new Function('window', 'receiptModal', `return ${expression}`)(context.window, {contactNumber:'09761234567'}), '0976 123 4567');
 }
 for (const [source, variable] of [['row.owner?.phone', 'row'], ['profile.owner?.phone', 'profile']]) {
   const expression = [...clinicHtml.matchAll(/x-text="([^"]+)"/g)].map(match => match[1]).find(value => value.includes(source));

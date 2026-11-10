@@ -139,7 +139,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
       assert.equal(phoneError.textContent, '', 'Incomplete mobile input stays quiet.');
     }
     phoneInput.value = '56775675767'; phoneInput.events.input();
-    assert.equal(phoneError.textContent, 'Enter a valid Philippine mobile number.');
+    assert.equal(phoneError.textContent, 'Enter a valid 11-digit mobile number starting with 09.');
     phoneInput.value = '5677567576'; phoneInput.events.input();
     assert.equal(phoneError.textContent, '');
     phoneInput.events.blur();
@@ -147,11 +147,11 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     phoneInput.value = ''; phoneInput.events.input();
     assert.equal(phoneError.textContent, '');
     phoneInput.events.blur(); assert.equal(phoneError.textContent, 'Enter a mobile number.');
-    for (const value of ['09181234567', '08971234567', '09221234567', '09561234567']) {
+    for (const value of ['09181234567', '09761234567', '09221234567', '09561234567']) {
       phoneInput.value = value; phoneInput.events.input(); assert.equal(phoneError.textContent, '');
     }
-    phoneInput.value = '0897abc12345678'; phoneInput.selectionStart = 7; phoneInput.selectionEnd = 7;
-    phoneInput.events.input(); assert.equal(phoneInput.value, '0897 123 4567'); assert.equal(phoneInput.selectionStart, 4);
+    phoneInput.value = '0976abc12345678'; phoneInput.selectionStart = 7; phoneInput.selectionEnd = 7;
+    phoneInput.events.input(); assert.equal(phoneInput.value, '0976 123 4567'); assert.equal(phoneInput.selectionStart, 4);
     assert.equal(flow.get("walkInPageTitle").textContent, type === "clinic" ? "Clinic walk-in" : "Grooming walk-in");
     assert.equal(flow.get("walkInOwnerBackLink").getAttribute("href"), type === "clinic" ? "/admin/clinic" : "/admin/grooming");
     assert.equal(JSON.parse(flow.storage.get("walkInOwnerStep")).appointmentType, type);
@@ -261,9 +261,9 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(payload, undefined, 'Server-side national normalization must not bypass the 11-digit local input requirement.');
     assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter an 11-digit mobile number.');
   }
-  for (const value of ['56775675767', '09031234567']) {
+  for (const value of ['56775675767', '09031234567', '08971234567', '08131234567', '08171234567']) {
     phoneInput.value = value; phoneInput.events.input();
-    assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter a valid Philippine mobile number.');
+    assert.equal(customers.addCustomerModal.errors.phone[0], value.startsWith('09') ? 'Enter a valid Philippine mobile number.' : 'Enter a valid 11-digit mobile number starting with 09.');
     await customers.submitUnregisteredCustomer(); assert.equal(payload, undefined);
   }
   phoneInput.value = '0903123456'; phoneInput.events.input();
@@ -271,7 +271,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
   phoneInput.value = ''; phoneInput.events.input();
   assert.equal(customers.addCustomerModal.errors.phone, undefined);
   phoneInput.events.blur(); assert.equal(customers.addCustomerModal.errors.phone[0], 'Enter a mobile number.');
-  for (const value of ['09181234567', '08971234567', '09221234567']) {
+  for (const value of ['09181234567', '09761234567', '09221234567']) {
     phoneInput.value = value; phoneInput.events.input();
     assert.equal(customers.addCustomerModal.form.phone, value.slice(0, 4) + ' ' + value.slice(4, 7) + ' ' + value.slice(7));
     assert.equal(customers.addCustomerModal.errors.phone, undefined);

@@ -757,15 +757,20 @@ async function testCustomerPasswordStepDoesNotCreateBrowserSession() {
   );
 }
 
-async function testDitoPhoneIdentifiersKeepExistingSignInNormalization() {
-  for (const identifier of ['08951234567', '+63 895-123-4567', '638951234567', '8951234567']) {
+async function testMobileIdentifiersUse09OnlySignInNormalization() {
+  for (const [identifier, expected] of [
+    ['09761234567', '09761234567'], ['+63 976-123-4567', '09761234567'],
+    ['639761234567', '09761234567'], ['9761234567', '09761234567'],
+    ['08951234567', '08951234567'], ['+63 895-123-4567', '+63 895-123-4567'],
+    ['638951234567', '638951234567'], ['8951234567', '8951234567'],
+  ]) {
     let body;
     const browser = createBrowser({ fetchImpl: async (_url, options) => {
       body = JSON.parse(options.body);
       return jsonResponse(202, {requires_login_confirmation: true, login_poll_token: 'pending-dito-login'});
     }});
     await browser.API.signIn(identifier, 'password');
-    assert.equal(body.identifier, '08951234567');
+    assert.equal(body.identifier, expected);
     assert.equal(browser.API.getCustomerToken(), null, 'Phone sign-in still requires email confirmation.');
   }
 }
@@ -3017,7 +3022,7 @@ async function testAllSameProfileRememberCombinationsUseOneCurrentAccount() {
   await testProfileNameLivesAndDiesWithTheSession();
   testProfileNameIsAppliedWithoutWaitingForDomContentLoaded();
   await testCustomerPasswordStepDoesNotCreateBrowserSession();
-  await testDitoPhoneIdentifiersKeepExistingSignInNormalization();
+  await testMobileIdentifiersUse09OnlySignInNormalization();
   await testTemporaryServerFailureDoesNotRedirect();
   await testReal401ClearsAndUsesNestedSafePath();
   await testAdminRequestUsesTheCurrentAdminSession();

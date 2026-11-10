@@ -1,5 +1,5 @@
 import "../auth/verification-code.js?v=auth-feedback-20261028";
-import "../utils/philippine-mobile.js?v=mobile-format-20261029";
+import "../utils/philippine-mobile.js?v=mobile-policy-20261110";
 
 let dialog, trigger, codeControl, phoneControl, timer;
 let busy = false, challenge = null, resendAt = 0, expiresAt = 0, session = 0;

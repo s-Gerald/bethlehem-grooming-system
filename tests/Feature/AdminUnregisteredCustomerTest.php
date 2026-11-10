@@ -285,7 +285,7 @@ class AdminUnregisteredCustomerTest extends TestCase
 
     public static function invalidMobileInputs(): array
     {
-        return [['56775675767'], ['08123456789'], ['09031234567'], ['0917123456'], ['0917abc1234567'], [['09171234567']]];
+        return [['56775675767'], ['08123456789'], ['08131234567'], ['08171234567'], ['08951234567'], ['08961234567'], ['08971234567'], ['08981234567'], ['+63 897-123-4567'], ['8951234567'], ['09031234567'], ['0917123456'], ['0917abc1234567'], [['09171234567']]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('recognizedMobileInputs')]
@@ -301,21 +301,29 @@ class AdminUnregisteredCustomerTest extends TestCase
 
     public static function recognizedMobileInputs(): array
     {
-        return [['09181234567', '09181234567'], ['+63 897-123-4567', '08971234567'], ['8951234567', '08951234567'],
-            ['09221234567', '09221234567'], ['08131234567', '08131234567'], ['08171234567', '08171234567'],
+        return [['09181234567', '09181234567'], ['+63 976-123-4567', '09761234567'], ['9911234567', '09911234567'],
+            ['09221234567', '09221234567'],
             ['09271234567', '09271234567'], ['09561234567', '09561234567'], ['09661234567', '09661234567'], ['09771234567', '09771234567']];
     }
 
     public function test_all_new_owner_request_rules_reject_unrecognized_mobile_prefixes(): void
     {
+        foreach (config('philippine_mobile.prefixes') as $prefix) {
+            $this->assertStringStartsWith('09', $prefix);
+            $this->assertNull(\App\Support\PhilippineMobile::entryError($prefix.'1234567'));
+        }
+        foreach (['+63 976-123-4567' => '09761234567', '9761234567' => '09761234567',
+            '+63 895-123-4567' => '+638951234567', '8951234567' => '8951234567'] as $input => $expected) {
+            $this->assertSame($expected, \App\Support\PhilippineMobile::normalize((string) $input));
+        }
         foreach ([\App\Http\Requests\StoreUnregisteredCustomerRequest::class, \App\Http\Requests\StoreWalkinRequest::class,
             \App\Http\Requests\StoreClinicWalkinRequest::class] as $requestClass) {
             $request = new $requestClass;
             $rules = ['phone' => $request->rules()['phone']];
-            foreach (['56775675767', '08123456789', '09031234567', '0917123456', '0917x1234567', null] as $phone) {
+            foreach (['56775675767', '08123456789', '08131234567', '08171234567', '08951234567', '08961234567', '08971234567', '08981234567', '09031234567', '0917123456', '0917x1234567', null] as $phone) {
                 $this->assertTrue(\Illuminate\Support\Facades\Validator::make(['phone' => $phone], $rules)->fails(), $requestClass);
             }
-            foreach (['09171234567', '09181234567', '08971234567', '09221234567', '08131234567', '09561234567'] as $phone) {
+            foreach (['09171234567', '09181234567', '09761234567', '09221234567', '09911234567', '09561234567'] as $phone) {
                 $this->assertFalse(\Illuminate\Support\Facades\Validator::make(['phone' => $phone], $rules)->fails(), $requestClass.' '.$phone);
             }
             if ($requestClass !== \App\Http\Requests\StoreUnregisteredCustomerRequest::class) {

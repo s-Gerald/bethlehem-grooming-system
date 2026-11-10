@@ -1,14 +1,14 @@
 // BEGIN GENERATED MOBILE POLICY
 // Source: resources/data/philippine-mobile-policy.json; run npm run build:mobile.
-const MOBILE_PREFIXES = ["0813","0817","0895","0896","0897","0898","0905","0906","0907","0908","0909","0910","0911","0912","0914","0915","0916","0917","0918","0919","0920","0921","0922","0923","0924","0925","0926","0927","0928","0929","0930","0931","0932","0933","0934","0935","0936","0937","0938","0939","0942","0943","0944","0945","0946","0947","0948","0949","0950","0951","0952","0953","0954","0955","0956","0957","0958","0959","0960","0961","0962","0963","0964","0965","0966","0967","0968","0969","0970","0971","0972","0973","0974","0975","0976","0977","0978","0979","0981","0983","0985","0986","0987","0988","0989","0991","0992","0993","0994","0995","0996","0997","0998","0999"];
+const MOBILE_PREFIXES = ["0905","0906","0907","0908","0909","0910","0911","0912","0914","0915","0916","0917","0918","0919","0920","0921","0922","0923","0924","0925","0926","0927","0928","0929","0930","0931","0932","0933","0934","0935","0936","0937","0938","0939","0942","0943","0944","0945","0946","0947","0948","0949","0950","0951","0952","0953","0954","0955","0956","0957","0958","0959","0960","0961","0962","0963","0964","0965","0966","0967","0968","0969","0970","0971","0972","0973","0974","0975","0976","0977","0978","0979","0981","0983","0985","0986","0987","0988","0989","0991","0992","0993","0994","0995","0996","0997","0998","0999"];
 // END GENERATED MOBILE POLICY
 
 var PhilippineMobile = (() => {
   const bindings = new WeakMap();
   function normalize(value) {
     const phone = String(value ?? '').trim().replace(/[\s()-]+/g, '');
-    if (/^\+?63[89][0-9]{9}$/.test(phone)) return `0${phone.replace(/^\+?63/, '')}`;
-    if (/^[89][0-9]{9}$/.test(phone)) return `0${phone}`;
+    if (/^\+?639[0-9]{9}$/.test(phone)) return `0${phone.replace(/^\+?63/, '')}`;
+    if (/^9[0-9]{9}$/.test(phone)) return `0${phone}`;
     return phone;
   }
   const unformat = value => String(value ?? '').replace(/ /g, '');
@@ -21,13 +21,13 @@ var PhilippineMobile = (() => {
   }
   function searchQuery(value) {
     const text = String(value ?? '').trim(), phone = text.replace(/[\s()-]+/g, '');
-    return /^(?:0[89]|\+?63[89])[0-9]*$/.test(phone) ? phone.replace(/^\+?63/, '0') : text;
+    return /^(?:09|\+?639)[0-9]*$/.test(phone) ? phone.replace(/^\+?63/, '0') : text;
   }
   function formatError(value, { required = true } = {}) {
     const phone = unformat(value);
     if (!phone) return required ? 'Enter a mobile number.' : '';
     if (phone.length !== 11 || /[^0-9]/.test(phone)) return 'Enter an 11-digit mobile number.';
-    return /^0[89]/.test(phone) ? '' : 'Enter a valid Philippine mobile number.';
+    return /^09/.test(phone) ? '' : 'Enter a valid 11-digit mobile number starting with 09.';
   }
   function validate(value, options = {}) {
     const error = formatError(value, options);

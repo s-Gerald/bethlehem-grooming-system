@@ -2200,12 +2200,12 @@ class GroomingAdministrationAuthorizationTest extends TestCase
             'terms_agreed' => true, 'sedation_consent' => false,
         ];
         $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertUnprocessable()->assertJsonValidationErrors('phone');
-        foreach (['56775675767', '09031234567'] as $phone) {
+        foreach (['56775675767', '09031234567', '08979998888', '08131234567', '08171234567'] as $phone) {
             $this->submitSignedGrooming('/api/admin/walk-in', [...$payload, 'phone' => $phone])->assertUnprocessable()->assertJsonValidationErrors('phone');
         }
-        $payload['phone'] = '+63 897-999-8888';
+        $payload['phone'] = '+63 976-999-8888';
         $this->submitSignedGrooming('/api/admin/walk-in', $payload)->assertCreated();
-        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '08979998888']);
+        $this->assertDatabaseHas('walkins', ['user_id' => 50, 'phone' => '09769998888']);
         $this->assertDatabaseHas('users', ['user_id' => 50, 'phone' => null]);
         $this->assertDatabaseHas('pets', ['pet_name' => 'Buddy', 'user_id' => 50]);
     }

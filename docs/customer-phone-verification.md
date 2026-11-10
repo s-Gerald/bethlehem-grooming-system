@@ -18,7 +18,7 @@ Deploy the changed raw pages/scripts and complete normal build artifacts togethe
 
 ## Shared Philippine mobile input policy — October 28, 2026 follow-up
 
-General mobile validation now uses `resources/data/philippine-mobile-policy.json`, containing 94 recognized four-digit mobile prefixes. The snapshot includes the supplied reference and additional mobile ranges checked against the PH `<mobile>` section of [Google libphonenumber's maintained metadata](https://github.com/google/libphonenumber/blob/master/resources/PhoneNumberMetadata.xml), reviewed October 28, 2026. This is a maintained application policy, not a claim that a number is allocated to a particular person, currently active or reachable on its originally assigned carrier.
+General mobile validation now uses `resources/data/philippine-mobile-policy.json`, containing 88 recognized `09` four-digit mobile prefixes. The snapshot retains the existing `09` ranges and excludes all `08` ranges under the November 10 policy. The original mobile ranges were checked against the PH `<mobile>` section of [Google libphonenumber's maintained metadata](https://github.com/google/libphonenumber/blob/master/resources/PhoneNumberMetadata.xml), reviewed October 28, 2026. This is a maintained application policy, not a claim that a number is allocated to a particular person, currently active or reachable on its originally assigned carrier.
 
 `config/philippine_mobile.php`, `App\Support\PhilippineMobile` and `ValidPhilippineMobile` provide authoritative validation. `scripts/utils/philippine-mobile.js` provides the matching local browser checks and one accessible input binding. Its prefix data is generated from that same JSON by `npm run build:mobile`, which is part of the normal production build. No runtime dependency, new endpoint, carrier lookup or per-keystroke request was added. Tests exercise the generated browser policy against the shared source as well as independent valid/invalid examples.
 
@@ -30,29 +30,29 @@ Audited entry points:
 - Grooming/clinic walk-in owner entry and backend submissions: required general mobile validation for newly entered contacts, including a visit contact supplied for a selected registered customer with no saved phone. This visit contact does not update or verify the account phone. Already saved selected-owner identities/contacts retain their existing compatibility rules and are not rewritten by the new policy.
 - Customer Settings' displayed phone and Customer Details are read-only. The current Admin/Staff Customers screen has no Edit Customer phone form or update endpoint; no editing workflow was invented. The generic, unbound clinic contact placeholder in Admin Settings is not an established mobile-only persistence flow. It, phone searches, landline/international formats outside these mobile entry points and read-only historical contacts are unchanged.
 
-General input messages are `Enter a valid Philippine mobile number.` for an unrecognized complete number, `Enter an 11-digit mobile number.` for incomplete/nonnumeric values, and `Enter a mobile number.` for a required empty value. Optional empty inputs remain accepted. Completed invalid input gets contextual inline feedback; incomplete typing/deletion clears stale errors, with validation on blur/submit. The shared binder preserves selection/caret and unselected digits on paste, limits local input to 11 numeric digits, and maintains error descriptions, red borders and polite announcements. Backend normalization accepts the existing presentation characters and `+63`/national forms where previously supported, without silently stripping letters or extensions into an accepted number.
+General input messages are `Enter a valid 11-digit mobile number starting with 09.` for a complete non-`09` number, `Enter a valid Philippine mobile number.` for an unrecognized `09` prefix, `Enter an 11-digit mobile number.` for incomplete/nonnumeric values, and `Enter a mobile number.` for a required empty value. Optional empty inputs remain accepted. Completed invalid input gets contextual inline feedback; incomplete typing/deletion clears stale errors, with validation on blur/submit. The shared binder preserves selection/caret and unselected digits on paste, limits local input to 11 numeric digits, and maintains error descriptions, red borders and polite announcements. Backend normalization accepts the existing presentation characters and `+639`/bare `9` national forms where previously supported, without silently stripping letters or extensions into an accepted number.
 
 Deploy the shared JSON, config/support/rule, generated utility, affected controllers/requests, raw pages/scripts and normal build assets together. Changed entry assets use refreshed versions. Run the existing production build and normal `php artisan config:cache`; no migration or secret/environment change is required. To review general prefixes later, update the shared JSON and rebuild. Changing general contact acceptance never expands the separately configured OTP destinations automatically.
 
 Follow-up validation: complete PHP suite **1,960 tests / 25,445 assertions**, with eight existing environment-dependent skips and no failures. Focused registration/customer/OTP suites passed **298 tests / 2,956 assertions**, with one optional MySQL skip; actual grooming/clinic walk-in checks passed **4 tests / 50 assertions**. Final focused optional-phone/historical-contact checks passed **31 tests / 225 assertions**. Final `npm test`: **85/85 scripts passed**; production build and whitespace checks passed. The existing JavaScript regression locations now cover general-prefix parity, invalid complete input, 10-digit submission rejection, required/optional error clearing, caret/selection and full-field `+63` paste behavior, Admin/Staff form state and historical selected-owner contacts. Logs use the `storage/logs/mobile-input-` prefix. No real SMS delivery or live production/browser acceptance is claimed.
 
-## Customer OTP eligibility — October 28, 2026
+## Customer OTP eligibility — updated November 10, 2026
 
-Registration and authenticated phone verification have separate policies. Registration accepts an optional, unique 11-digit local number with a recognized Philippine mobile prefix, including networks ineligible for OTP. Pending registration edits and email verification retain the same workflow; registration never sends a phone OTP. Accepted `08` numbers also work as phone sign-in identifiers through the existing email confirmation flow.
+Registration and authenticated phone verification have separate policies. Registration accepts an optional, unique 11-digit local number with a recognized Philippine mobile prefix, including networks ineligible for OTP. Pending registration edits and email verification retain the same workflow; registration never sends a phone OTP. Canonical local numbers must be exactly 11 digits beginning with `09`; `08` numbers, `+638` numbers and bare `8` numbers are rejected. Valid `09` phone sign-in identifiers retain the existing email confirmation flow.
 
-`config/services.php` → `sms_verification.allowed_prefixes` is the authoritative OTP allowlist: the 13 requested Globe/TM/GOMO prefixes and eight DITO prefixes, including `0895`–`0898`. Any other prefix is unsupported. Edit this array and refresh Laravel configuration through the normal deployment process when policy changes. Prefixes indicate original allocations; mobile-number portability means this is an SMS eligibility policy, not live carrier detection.
+`config/services.php` → `sms_verification.allowed_prefixes` is the authoritative OTP allowlist: 33 `09` prefixes: Globe/TM `0905`, `0906`, `0915`, `0916`, `0917`, `0926`, `0927`, `0935`, `0936`, `0937`, `0945`, `0953`–`0959`, `0965`–`0967`, `0975`, `0977`–`0979`, `0995`–`0997`; GOMO `0976`; and DITO `0991`–`0994`. Smart/TNT and other recognized general contact prefixes remain SMS-unsupported. `0895`–`0898` fail the `09` format rule before eligibility is checked. Edit this array and refresh Laravel configuration through the normal deployment process when policy changes. Prefixes indicate original allocations; mobile-number portability means this is an SMS eligibility policy, not live carrier detection.
 
-`CustomerPhoneVerificationService::send` checks strict local format and eligibility before locks, paid-send budget reservation, challenge creation/replacement, cooldown/attempt changes or IPROGSMS HTTP. Resends use the same guard, including historical challenges and policy changes. Malformed numbers receive HTTP 422 / `phone_format_invalid`; unsupported destinations receive HTTP 422 / `sms_destination_unsupported`, with the generic message `SMS verification isn't supported for this number.` and `errors.phone`. Controller normalization retains the existing `+63`, whitespace, hyphen and parentheses support. Previously verified numbers and verification timestamps are unchanged by eligibility policy; pre-registration access does not use the allowlist.
+`CustomerPhoneVerificationService::send` checks strict local format and eligibility before locks, paid-send budget reservation, challenge creation/replacement, cooldown/attempt changes or IPROGSMS HTTP. Resends use the same guard, including historical challenges and policy changes. Malformed numbers receive HTTP 422 / `phone_format_invalid`; unsupported destinations receive HTTP 422 / `sms_destination_unsupported`, with the generic message `SMS verification isn't supported for this number.` and `errors.phone`. Controller normalization retains the existing `+63`, whitespace, hyphen and parentheses support. Stored numbers and verification timestamps are not rewritten. Already verified `09` numbers retain access even when SMS-unsupported; pre-registration access does not use the allowlist, but does require the `09` local format.
 
 Dashboard, Settings and pre-registration retain one lazy modal. Its existing explicit-open state request returns only the public `allowed_prefixes` alongside safe challenge metadata. There are no additional policy requests, per-keystroke requests, provider lookups or new dependencies. The permanent network helper is removed. A polite, accessible inline error appears beneath the input for completed invalid numbers, on nonempty blur, or on submission. Editing incomplete/empty values clears stale errors immediately. Input keeps the numeric keyboard, caps at 11 digits, strips nonnumeric characters and preserves selection when sanitizing/pasting. Invalid destinations cannot submit; loading, duplicate-send protection, cooldowns, password-gated replacement and OTP recovery remain intact.
 
 Deploy changed backend/configuration, raw customer pages/scripts and verification CSS together with the normal frontend build artifacts. Existing entry-point asset versions are refreshed. Run `php artisan config:cache` through the normal Hostinger release process. No new migration, credential, provider change, environment variable or worker setup is required for this policy change. Keep the current persistent shared cache and existing SMS flags/budgets.
 
-The [official OTP documentation](https://www.iprogsms.com/api/v1/documentation), checked October 28, still documents the existing local-number JSON request format. The integration is unchanged; automated `08` tests use fake provider responses. Actual `08` handset delivery/provider acceptance remains an owner-controlled acceptance check, not a tested claim.
+The [official OTP documentation](https://www.iprogsms.com/api/v1/documentation), checked October 28, still documents the existing local-number JSON request format. The integration is unchanged; automated send-and-verify tests cover all 33 eligible prefixes, including GOMO `09761234567`, with fake provider responses. Real handset delivery/provider acceptance remains an owner-controlled acceptance check, not a tested claim.
 
 Local validation: the complete PHP 8.4 suite passed **1,933 tests / 25,223 assertions**, with eight existing environment-dependent skips. The focused phone/email registration run passed **262 tests / 2,653 assertions**, with one optional MySQL skip. Existing provider failure/recovery, password, ownership, uniqueness, locking and multi-process concurrency regressions remain. The full run exposed an existing real-clock race in `PasswordResetTest::test_password_resend_cannot_bypass_the_cooldown_by_changing_ip` (59 versus 60 seconds); freezing time fixes its setup without relaxing any assertion or changing production password-reset behavior.
 
-The existing JavaScript regressions cover numeric/length sanitization, caret and selected-paste preservation, correction/deletion/empty feedback, unsupported submissions, approved `08` sends, legacy resend rejection, Settings confirmation, pre-registration gating, duplicate sends and recovery. No new parallel test file or validation implementation was introduced.
+The existing JavaScript regressions cover numeric/length sanitization, caret and selected-paste preservation, correction/deletion/empty feedback, unsupported submissions, approved `09` sends (including GOMO), rejected `08` submissions, legacy resend rejection, Settings confirmation, pre-registration gating, duplicate sends and recovery. No new parallel test file or validation implementation was introduced.
 
 Final `npm test`: **85/85 regression scripts passed**. Final `npm run build` and `git diff --check`: passed. The build retains its existing non-blocking Browserslist-data notice. Logs: `storage/logs/phone-eligibility-full-php.log`, `storage/logs/phone-eligibility-full-node.log`, and `storage/logs/phone-eligibility-build.log`.
 
@@ -286,3 +286,81 @@ Executed with PHP 8.4.26, fake HTTP providers, isolated SQLite and explicit non-
 - ChatGPT browser visual review: existing customer Settings card and the shared Change Phone Number modal inspected. No other role/tab, real data entry, OTP submission, password reset or real SMS functional test was performed.
 
 Remaining owner acceptance: real provider template/header/footer and network behavior, actual handset receipt/credits, manual add/verify/change/cancel/resume flows, mobile/keyboard interaction, and deployed Hostinger queue/scheduler/configuration. No live delivery or Core Web Vitals result is claimed.
+
+## 09-only mobile policy and cancelled Customer History - November 10, 2026
+
+The mobile defect came from shared `08`/`09` format and normalization rules plus an OTP allowlist that omitted GOMO and the other agreed ranges. General validation now retains all 88 existing `09` prefixes independently of the 33-prefix SMS policy described above. Invalid format and SMS-unsupported errors remain distinct, and both reject before paid budgets, challenge replacement, cooldown changes or provider requests. The existing OTP security and recovery workflow is unchanged.
+
+Customer History previously handled only Expired and No Show explicitly, so cancelled grooming registrations fell through to Completed. Its shared card/modal outcome map now explicitly labels archived as Completed, cancelled as Cancelled using `bg-portal-danger-soft text-portal-danger`, expired as Expired, and no_show as No Show. Existing pet outcomes take precedence over booking outcomes; missing pet outcomes use the booking status. The subtitle is now `Review your pets' visit and grooming history.` Clinic History still requires a completed clinical appointment with an actual medical record. Cancellation APIs, notifications and stored statuses are unchanged.
+
+Changed files are listed below. No new source file, migration, provider integration or dependency was introduced.
+
+### Implementation and policy
+
+- `app/Support/PhilippineMobile.php`
+- `app/Services/CustomerPhoneVerificationService.php`
+- `app/Http/Controllers/AuthController.php`
+- `config/services.php`
+- `resources/data/philippine-mobile-policy.json`
+- `scripts/utils/philippine-mobile.js`
+- `scripts/api.js`
+- `pages/client/grooming-history.html`
+
+### Existing regression tests
+
+- `tests/Feature/AdminUnregisteredCustomerTest.php`
+- `tests/Feature/ClinicAdministrationAuthorizationTest.php`
+- `tests/Feature/GroomingAdministrationAuthorizationTest.php`
+- `tests/Feature/PhoneVerificationTest.php`
+- `tests/Feature/VerifyFirstRegistrationTest.php`
+- `tests/admin-data-cache-regression.cjs`
+- `tests/admin-grooming-invoice-print-regression.cjs`
+- `tests/customer-dashboard-history-regression.cjs`
+- `tests/customer-signup-verification-regression.cjs`
+- `tests/frontend-auth-session-regression.cjs`
+- `tests/walk-in-entry-context-regression.cjs`
+
+### Cache references only
+
+- `pages/admin/appointments.html`
+- `pages/admin/archive.html`
+- `pages/admin/clients.html`
+- `pages/admin/clinic.html`
+- `pages/admin/dashboard.html`
+- `pages/admin/transactions.html`
+- `pages/admin/walk-in-booking-confirmed.html`
+- `pages/admin/walk-in-booking.html`
+- `pages/admin/walk-in-clinic-confirmed.html`
+- `pages/client/clinic-visit-confirmed.html`
+- `pages/client/dashboard.html`
+- `pages/client/grooming-pre-registration.html`
+- `pages/client/my-pets.html`
+- `pages/client/notifications.html`
+- `pages/client/pet-details.html`
+- `pages/client/pre-register.html`
+- `pages/client/settings.html`
+- `pages/client/sign-in.html`
+- `pages/client/signup.html`
+- `scripts/components/admin-clinic.js`
+- `scripts/components/booking-confirmed-step.js`
+- `scripts/components/client-dashboard.js`
+- `scripts/components/client-settings.js`
+- `scripts/components/clinic-visit-confirmed.js`
+- `scripts/components/confirmation-presentation.js`
+- `scripts/components/customer-phone-verification.js`
+- `scripts/components/customer-pre-registration-button.js`
+- `scripts/components/grooming-pre-registration.js`
+- `scripts/components/grooming-visit-summary.js`
+- `scripts/components/pre-registration-options.js`
+
+Documentation: `docs/customer-phone-verification.md` (this file).
+
+### Verification and deployment limits
+
+- Focused PHP 8.4.26: **275 tests / 3,087 assertions**, one optional MySQL skip, no failures. This includes all 33 OTP prefixes through send and verify, GOMO, malformed/unsupported early rejection, policy-change resends, verified-number access and actual grooming/clinic visit-contact submissions.
+- Full PHP 8.4.26: **2,393 tests / 33,910 assertions**, 10 existing environment-dependent skips, no failures. The first full run exposed two obsolete `08` visit-contact fixtures; both now use valid `0976` input and explicitly reject the removed ranges.
+- Focused JavaScript signup, phone modal/dashboard/History, health-history, sign-in, search-cache, invoice and walk-in regressions passed. Backend and generated browser policy preserve all 88 original `09` prefixes; browser validation is checked against the shared JSON.
+- Full JavaScript: **95/96 scripts passed**. The remaining failure is `tests/admin-navigation-performance-regression.cjs` / `scopedListsReuseRetainedData`, line 166: `Inventory list survives HTML navigation` expects 5 requests but receives 6. The same failure was reproduced with the original HEAD versions of `scripts/api.js` and `scripts/utils/philippine-mobile.js`; unrelated inventory behavior and its assertion were left unchanged.
+- Final production build, changed PHP/JavaScript syntax checks, History inline-module parsing and `git diff --check` passed. The build retains the existing non-blocking Browserslist-data notice. Unrelated generated CSS removals were not retained.
+
+Logs: `storage/logs/09-history-focused-php.log`, `storage/logs/09-history-full-php.log`, `storage/logs/09-history-full-node.log`, `storage/logs/09-history-build.log`, and `storage/logs/09-history-baseline-navigation.log`. Provider responses were faked; no real SMS delivery, live browser acceptance, migration, credential/environment change, commit, push or deployment was performed. Deploy the backend, raw pages/scripts and normal build artifacts together and refresh Laravel configuration with the existing Hostinger release process.

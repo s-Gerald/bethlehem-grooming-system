@@ -49,11 +49,13 @@ async function navigationAndRetention() {
 async function formattedPhoneSearchPreservesCanonicalCacheKeys() {
   const e = environment();
   for (const [method, parameter] of [['getCustomers', 'search'], ['getArchivedBookings', 'search'], ['getArchivedClinicAppointments', 'search']]) {
-    await e.API[method]({ search:'0897 123 4567' });
+    await e.API[method]({ search:'0976 123 4567' });
     const count = e.calls.length;
-    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get(parameter), '08971234567');
-    await e.API[method]({ search:'08971234567' });
+    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get(parameter), '09761234567');
+    await e.API[method]({ search:'09761234567' });
     assert.equal(e.calls.length, count, 'Formatting variants reuse the same existing API cache entry.');
+    await e.API[method]({ search:'0897 123 4567' });
+    assert.equal(new URL(e.calls.at(-1).endpoint, 'http://clinic.test').searchParams.get(parameter), '0897 123 4567');
   }
   for (const method of ['searchWalkInCustomers', 'searchAdminDashboard']) {
     await e.API[method]('0917 123 4567');

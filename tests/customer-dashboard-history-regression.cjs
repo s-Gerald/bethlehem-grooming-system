@@ -333,21 +333,29 @@ async function testInitialAndReturningSessionGreetings() {
   assert.equal(await greeting(initialCookie, 8), "Welcome back, Gerald", "The marker belongs only to the registered customer.");
 }
 
-async function testExpiredRegistrationsHaveNeutralHistoryLabels() {
+async function testTerminalRegistrationsShowTheirHistoryOutcome() {
   const historySource = fs.readFileSync(path.resolve(__dirname, '../pages/client/grooming-history.html'), 'utf8');
   const helpers = historySource.slice(historySource.indexOf('function escapeHistoryHtml'), historySource.indexOf('function closeHistoryModal'));
   const { healthDate } = await import("../scripts/components/customer-health-records.js");
   const context = vm.createContext({ Intl, Date, healthDate, document: { getElementById: () => null } });
   vm.runInContext(helpers, context);
-  for (const status of ['expired', 'no_show']) {
+  for (const [status, label] of [['archived', 'Completed'], ['cancelled', 'Cancelled'], ['expired', 'Expired'], ['no_show', 'No Show']]) {
     const booking = { status, number_of_pets: 1, pets: [] };
-    const label = status === 'no_show' ? 'No Show' : 'Expired';
     assert.equal(context.groomingOutcome(status)[0], label);
-    assert.ok(context.buildHistoryCard({ type: "grooming", booking, pet: null }).includes(`>${label}</span>`));
-    assert.ok(context.buildHistoryModalContent(booking, null).includes(`>${label}</span>`));
-    assert.doesNotMatch(context.groomingOutcome(status)[1], /amber|red|rose/);
+    for (const pet of [null, {}, { grooming_status: status }]) {
+      const card = context.buildHistoryCard({ type: "grooming", booking: pet?.grooming_status ? { ...booking, status: 'archived' } : booking, pet });
+      const modal = context.buildHistoryModalContent(pet?.grooming_status ? { ...booking, status: 'archived' } : booking, pet);
+      for (const html of [card, modal]) {
+        assert.ok(html.includes(`>${label}</span>`));
+        if (status === 'cancelled') {
+          assert.match(html, /bg-portal-danger-soft text-portal-danger[^\"]*\">Cancelled<\/span>/);
+          assert.doesNotMatch(html, />Completed<\/span>/);
+        }
+      }
+    }
+    if (status === 'expired' || status === 'no_show') assert.doesNotMatch(context.groomingOutcome(status)[1], /amber|red|rose/);
   }
-  assert.equal(context.groomingOutcome('archived')[0], 'Completed');
+  assert.match(historySource, /Review your pets' visit and grooming history\./);
 }
 
 async function testTrackerOverallStateAndIndividualCards() {
@@ -547,14 +555,14 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     dispatchEvent() {},
   };
   global.API = {
-    async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery, allowed_prefixes: ['0917', '0895', '0896', '0897', '0898', '0991'] }; },
+    async getPhoneVerificationState() { stateCalls++; if (pendingState) await pendingState; return { challenge: recovery, allowed_prefixes: ['0917', '0976', '0991', '0992', '0993', '0994'] }; },
     readCustomerCache: () => ({ fresh: true, data: registrationAccess() }),
     async getPreRegistrationAccess() { calls.access++; return registrationAccess(); },
     async getMe() { calls.profiles++; return { user: { ...user, phone_verification_status: 'verified' } }; },
     async sendPhoneVerification(phone, password) {
       calls.sends++;
       calls.sendArgs.push([phone, password]);
-      assert.match(phone, /^0[89]\d{9}$/);
+      assert.match(phone, /^09\d{9}$/);
       if (pendingSend) await pendingSend;
       if (sendError) throw sendError;
       return { success: true, challenge_id: 'generation-one', expires_in: 300, resend_after: 60 };
@@ -611,8 +619,8 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     phoneField.value = ''; await phoneField.dispatch('input'); await phoneField.dispatch('blur');
     assert.equal(phoneError.textContent, '');
     phoneField.value = '07123456789'; await phoneField.dispatch('input');
-    assert.equal(phoneError.textContent, 'Enter a valid Philippine mobile number.');
-    for (const value of ['08951234567', '08961234567', '08971234567', '08981234567', '09911234567']) {
+    assert.equal(phoneError.textContent, 'Enter a valid 11-digit mobile number starting with 09.');
+    for (const value of ['09761234567', '09911234567', '09921234567', '09931234567', '09941234567']) {
       phoneField.value = value; await phoneField.dispatch('input');
       assert.equal(phoneError.textContent, '');
       assert.equal(element('phoneVerificationNext').disabled, false);
@@ -625,14 +633,14 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await phoneField.dispatch('paste', { clipboardData: { getData: () => ' 123-45678' } });
     assert.equal(phoneField.value, '0917 123 4567');
     phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
-    await phoneField.dispatch('paste', { clipboardData: { getData: () => '0895' } });
-    assert.equal(phoneField.value, '0895 123 4567', 'Pasting replaces the selected prefix.');
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '0991' } });
+    assert.equal(phoneField.value, '0991 123 4567', 'Pasting replaces the selected prefix.');
     phoneField.selectionStart = 0; phoneField.selectionEnd = 4;
-    await phoneField.dispatch('paste', { clipboardData: { getData: () => '089612345' } });
-    assert.equal(phoneField.value, '0896 123 4567', 'An oversized paste preserves unselected trailing digits.');
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '099212345' } });
+    assert.equal(phoneField.value, '0992 123 4567', 'An oversized paste preserves unselected trailing digits.');
     phoneField.selectionStart = 0; phoneField.selectionEnd = 13;
-    await phoneField.dispatch('paste', { clipboardData: { getData: () => '+63 897-123-4567' } });
-    assert.equal(phoneField.value, '0897 123 4567', 'A full-field international paste is displayed in the required local format.');
+    await phoneField.dispatch('paste', { clipboardData: { getData: () => '+63 976-123-4567' } });
+    assert.equal(phoneField.value, '0976 123 4567', 'A full-field international paste is displayed in the required local format.');
     phoneField.value = '09171234567'; await phoneField.dispatch('input');
     await trigger.dispatch('click'); assert.equal(calls.dialogs, 1);
     await dialog.dispatch('click'); assert.equal(dialog.open, true);
@@ -736,7 +744,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationChange').dispatch('click');
     assert.equal(element('phoneVerificationBack').hidden, true, 'An expired challenge cannot return to code entry.');
     await element('phoneVerificationClose').dispatch('click');
-    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-format-20261029&urls=20261103');
+    const { openPhoneVerification } = await import(pathToFileURL(path.join(__dirname, '../scripts/components/customer-phone-verification.js')).href + '?v=mobile-policy-20261110&urls=20261103');
     recovery = { success: true, challenge_id: 'generation-two', masked_destination: '0917 •••• 567', expires_in: 120, resend_after: 30, status: 'active', can_verify: true, replacement: true };
     const sendsBeforeRecovery = calls.sends;
     await openPhoneVerification(trigger, { ...user, phone_verification_status: 'verified' }, { navigate: false });
@@ -830,7 +838,7 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     await element('phoneVerificationResend').dispatch('click');
     assert.equal(element('phoneVerificationEntry').hidden, false, 'A rejected legacy resend returns to the editable phone field.');
     assert.equal(phoneError.textContent, "SMS verification isn't supported for this number.");
-    phoneField.value = '08951234567'; await phoneField.dispatch('input');
+    phoneField.value = '09761234567'; await phoneField.dispatch('input');
     assert.equal(phoneError.textContent, '');
     sendError = null;
     await element('phoneVerificationClose').dispatch('click');
@@ -861,12 +869,22 @@ async function testPhoneVerificationUsesServerProofAndPreservesAccess() {
     assert.equal(phoneError.textContent, "SMS verification isn't supported for this number.", 'A saved completed number explains why sending is disabled.');
     assert.equal(element('phoneVerificationNext').disabled, true);
     await element('phoneVerificationClose').dispatch('click');
-    for (const phone of ['08951234567', '08961234567', '08971234567', '08981234567']) {
+    for (const phone of ['09761234567', '09911234567', '09921234567', '09931234567', '09941234567']) {
       await openPhoneVerification(trigger, { phone: null, phone_verification_status: 'not_added' }, { navigate: false });
       phoneField.value = phone; await phoneField.dispatch('input');
       await element('phoneVerificationForm').dispatch('submit');
       assert.equal(calls.sendArgs.at(-1)[0], phone);
-      assert.equal(element('phoneVerificationOtp').hidden, false, 'Approved 08 numbers reach the existing code screen.');
+      assert.equal(element('phoneVerificationOtp').hidden, false, 'Approved 09 numbers reach the existing code screen.');
+      await element('phoneVerificationClose').dispatch('click');
+    }
+    for (const phone of ['08951234567', '08961234567', '08971234567', '08981234567', '08131234567', '08171234567']) {
+      await openPhoneVerification(trigger, { phone: null, phone_verification_status: 'not_added' }, { navigate: false });
+      const before = calls.sends;
+      phoneField.value = phone; await phoneField.dispatch('input');
+      assert.equal(phoneError.textContent, 'Enter a valid 11-digit mobile number starting with 09.');
+      assert.equal(element('phoneVerificationNext').disabled, true);
+      await element('phoneVerificationForm').dispatch('submit');
+      assert.equal(calls.sends, before);
       await element('phoneVerificationClose').dispatch('click');
     }
     trigger.customerProfileReady = Promise.resolve(user);
@@ -1279,7 +1297,7 @@ async function testCancellationDialogsInBrowser() {
   await testVisitSummaryFollowsVisitState();
   await testTrackerOverallStateAndIndividualCards();
   await testTrackerDisclosureAndPrioritySurviveRefresh();
-  await testExpiredRegistrationsHaveNeutralHistoryLabels();
+  await testTerminalRegistrationsShowTheirHistoryOutcome();
   await testInitialAndReturningSessionGreetings();
   await testStateHierarchyAndLiveTransitions();
   await testMultiPetProgressAndPickupReadiness();

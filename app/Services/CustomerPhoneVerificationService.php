@@ -35,7 +35,7 @@ class CustomerPhoneVerificationService
     public static function required(User $user): bool
     {
         return $user->role === 'customer'
-            && (! preg_match('/^0[89][0-9]{9}$/D', (string) $user->phone) || ! $user->phone_verified_at);
+            && (! preg_match('/^09[0-9]{9}$/D', (string) $user->phone) || ! $user->phone_verified_at);
     }
 
     public function state(User $user): array

@@ -2,7 +2,7 @@ import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-
 import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1&urls=20261103&queue-copy=20261103-v1";
 import { loadRegistrationAvailability } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";
-import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=mobile-format-20261029&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1";
+import { bindPreRegistrationButton, setPhoneVerificationAccess } from "./customer-pre-registration-button.js?v=mobile-policy-20261110&registration-ui=20261027-v3&auth-feedback=20261028-v3&urls=20261103&queue-copy=20261103-v1";
 
 const services = {
   grooming: {

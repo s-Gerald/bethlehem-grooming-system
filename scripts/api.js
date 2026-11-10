@@ -3728,9 +3728,9 @@ var API = (() => {
     const digits = String(value || "").replace(/\D/g, "");
 
     if (!digits) return null;
-    if (/^0[89]\d{9}$/.test(digits)) return digits;
-    if (/^63[89]\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
-    if (/^[89]\d{9}$/.test(digits)) return `0${digits}`;
+    if (/^09\d{9}$/.test(digits)) return digits;
+    if (/^639\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
+    if (/^9\d{9}$/.test(digits)) return `0${digits}`;
 
     return null;
   }

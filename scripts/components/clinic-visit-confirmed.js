@@ -5,7 +5,7 @@ import {
   clinicReasonConfirmation, confirmationFields, confirmationSection, formatConfirmationLabel,
   formatConfirmationTimestamp, ownerConfirmationFields, readConfirmationData,
   renderConfirmation,
-} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261029&urls=20261103&owner-name=20261108";
+} from "./confirmation-presentation.js?visit-details=20261029&registration=fcfs-20261027-v1&registration-ui=20261027-v3&mobile-format=20261110&urls=20261103&owner-name=20261108";
 
 export async function initClinicVisitConfirmation() {
   const walkIn = document.body.dataset.confirmationContext === "walk-in";

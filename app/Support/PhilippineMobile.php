@@ -9,8 +9,8 @@ final class PhilippineMobile
         if (! is_string($value)) return $value;
         // Preserve supported presentation characters, but never discard letters or extensions.
         $phone = preg_replace('/[\s()-]+/', '', trim($value));
-        if (preg_match('/^\+?63([89][0-9]{9})$/D', $phone, $matches)) return '0'.$matches[1];
-        if (preg_match('/^[89][0-9]{9}$/D', $phone)) return '0'.$phone;
+        if (preg_match('/^\+?63(9[0-9]{9})$/D', $phone, $matches)) return '0'.$matches[1];
+        if (preg_match('/^9[0-9]{9}$/D', $phone)) return '0'.$phone;
 
         return $phone;
     }
@@ -24,7 +24,7 @@ final class PhilippineMobile
     {
         if ($value === null || $value === '') return $required ? 'Enter a mobile number.' : null;
         if (! is_string($value) || ! preg_match('/^[0-9]{11}$/D', $value)) return 'Enter an 11-digit mobile number.';
-        if (! preg_match('/^0[89]/', $value)) return 'Enter a valid Philippine mobile number.';
+        if (! str_starts_with($value, '09')) return 'Enter a valid 11-digit mobile number starting with 09.';
 
         return null;
     }
