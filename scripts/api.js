@@ -172,6 +172,7 @@ var API = (() => {
     if (path === '/admin/clinic-appointments/archived') return { group: 'history-clinic', fresh: 5000, retain: 15000, persist: false };
     if (path === "/admin/bookings") return { group: "grooming", fresh: 5000, retain: 60000 };
     if (/^\/admin\/dashboard\/(summary|activity)$/.test(path)) return { group: "dashboard", fresh: 15000, retain: 120000 };
+    if (path === "/admin/clinic/activity") return { group: "clinic-active", fresh: 15000, retain: 60000 };
     if (path === "/admin/grooming/activity") return { group: "grooming", fresh: 15000, retain: 60000 };
     if (path === "/admin/notifications") return { group: "notifications", fresh: params.get('mode') === 'count' ? 30000 : 10000, retain: 60000 };
     if (path === "/admin/clinic/settings/availability") return { group: "availability", fresh: 0, retain: 0, persist: false };
@@ -2849,6 +2850,10 @@ var API = (() => {
     return request('GET', '/admin/activity-log/options', null, getAdminToken());
   }
 
+  function getAdminClinicActivity({ force = false } = {}) {
+    return request("GET", "/admin/clinic/activity", null, getAdminToken(), { force });
+  }
+
   function getAdminGroomingActivity({ force = false } = {}) {
     return request("GET", "/admin/grooming/activity", null, getAdminToken(), { force });
   }
@@ -3843,6 +3848,7 @@ var API = (() => {
     getAdminActivityDetails,
     getAdminActivityOptions,
     getAdminGroomingActivity,
+    getAdminClinicActivity,
     adminCheckIn,
     adminUpdateInternalStaffNote,
     adminUpdateGroomingVisitNotes,

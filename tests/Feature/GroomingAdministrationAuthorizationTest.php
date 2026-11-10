@@ -2784,6 +2784,21 @@ class GroomingAdministrationAuthorizationTest extends TestCase
         $this->patchJson('/api/admin/clinic/settings/groomers-on-duty', ['groomers_on_duty' => 5])->assertUnprocessable();
     }
 
+    public function test_groomer_names_follow_first_name_limit_and_preserve_unchanged_history(): void
+    {
+        $this->authenticateAs('admin');
+        $this->postJson('/api/admin/pet-groomers', ['first_name' => str_repeat('A', 41)])
+            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+        $endpoint = '/api/admin/pet-groomers/1';
+        $legacy = str_repeat('B', 45);
+        DB::table('pet_groomers')->where('id', 1)->update(['first_name' => $legacy]);
+        $this->patchJson($endpoint, ['first_name' => $legacy, 'on_duty' => false])->assertOk();
+        $this->assertDatabaseHas('pet_groomers', ['id' => 1, 'first_name' => $legacy, 'on_duty' => false]);
+        $this->patchJson($endpoint, ['first_name' => str_repeat('A', 41)])
+            ->assertUnprocessable()->assertJsonValidationErrors('first_name');
+        $this->patchJson($endpoint, ['first_name' => str_repeat('A', 40)])->assertOk();
+    }
+
     public function test_veterinarians_have_dashboard_read_access_without_grooming_operations(): void
     {
         foreach (['veterinarian'] as $subrole) {

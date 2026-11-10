@@ -19,6 +19,39 @@ use Tests\TestCase;
 
 class ClinicConfinementTest extends TestCase
 {
+    public function test_clinic_activity_counts_distinct_current_patients_and_excludes_terminal_cases(): void
+    {
+        $response = $this->getJson('/api/admin/clinic/activity')->assertOk()->assertExactJson(['activeClinicCount' => 1]);
+        $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        foreach (['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment', 'completed', 'cancelled', 'no_show', 'expired', 'archived'] as $status) {
+            DB::table('clinic_appointments')->where('id', 1)->update(['status' => $status, 'appointment_date' => now()->toDateString()]);
+            $expected = in_array($status, ['waiting_to_arrive', 'checked_in', 'in_consultation', 'for_payment']) ? 1 : 0;
+            $this->getJson('/api/admin/clinic/activity')->assertOk()->assertExactJson(['activeClinicCount' => $expected]);
+        }
+        DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'waiting_to_arrive', 'appointment_date' => now()->addDay()->toDateString()]);
+        $this->getJson('/api/admin/clinic/activity')->assertJsonPath('activeClinicCount', 0);
+        DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'in_consultation', 'appointment_date' => now()->subDay()->toDateString()]);
+        $service = $this->service();
+        $this->postJson('/api/admin/clinic-cases/1/confinement', ['base_service_id' => $service->id, 'request_key' => (string) Str::uuid(), 'reason' => 'Observation'])->assertSuccessful();
+        DB::table('clinic_confinements')->where('clinic_appointment_id', 1)->update(['admitted_at' => now()->subDay()]);
+        $this->getJson('/api/admin/clinic/activity')->assertOk()->assertExactJson(['activeClinicCount' => 1]);
+        DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'waiting_to_arrive']);
+        $this->getJson('/api/admin/clinic/activity')->assertJsonPath('activeClinicCount', 1);
+        DB::table('clinic_confinements')->where('clinic_appointment_id', 1)->update(['discharged_at' => now()]);
+        $this->getJson('/api/admin/clinic/activity')->assertJsonPath('activeClinicCount', 0);
+        DB::table('clinic_confinements')->where('clinic_appointment_id', 1)->update(['discharged_at' => null]);
+        DB::table('clinic_appointments')->where('id', 1)->update(['status' => 'completed']);
+        $this->getJson('/api/admin/clinic/activity')->assertJsonPath('activeClinicCount', 0);
+        $this->signIn('grooming_receptionist');
+        $this->getJson('/api/admin/clinic/activity')->assertOk(); // Existing receptionists have Clinic access.
+        $this->app['auth']->forgetGuards();
+        $user = User::findOrFail(1);
+        $user->forceFill(['staff_type' => 'grooming', 'staff_subrole' => null]);
+        DB::table('users')->where('user_id', 1)->update(['staff_type' => 'grooming', 'staff_subrole' => null]);
+        Sanctum::actingAs($user);
+        $this->getJson('/api/admin/clinic/activity')->assertForbidden();
+    }
     protected function setUp(): void
     {
         parent::setUp();

@@ -107,6 +107,8 @@ async function main() {
     getPetWeightSubmission: pet => ({ weight: pet.weight }), getPetWeightSubmissionValidationMessage: () => '',
     API: { submitWalkIn(payload) { sent.push(payload); return new Promise((_, reject) => { rejectRequest = reject; }); } },
   });
+  vm.runInContext(read('scripts/utils/human-name.js'), submission);
+  vm.runInContext(read('scripts/utils/walk-in-owner-validation.js').replace(/^import .*;$/gm, '').replace(/^export /gm, ''), submission);
   vm.runInContext(read('scripts/components/walk-in-consent-step.js').replace(/import[\s\S]*?from\s+"[^"]+";/g, '').replace(/export /g, ''), submission);
   submission.signature = signature; submission.button = button; submission.message = message;
   vm.runInContext('consent = signature; elements = { submitBookingButton: button, consentStatusMessage: message };', submission);
@@ -130,6 +132,18 @@ async function main() {
   assert.equal(sent[1].submission_key, sent[0].submission_key, 'A lost response retry keeps its identity');
   rejectRequest(new Error('Still offline'));
   await retry;
-  console.log("Walk-in review proceeds without a forecast request.");
+  draft.set('walkInOwnerStep', JSON.stringify({ firstName: 'Ana', lastName: 'Cruz', appointmentType: 'grooming' }));
+  const nameFailure = submission.handleSubmit(event);
+  confirmations.shift()(true); await flush();
+  rejectRequest({ errors: { fname: ['Enter a valid first name.'] } });
+  await nameFailure;
+  assert.equal(submission.window.location.href, '/admin/walk-in/customer?flow=grooming');
+  assert.equal(JSON.parse(draft.get('walkInOwnerStep')).nameErrors.firstName.message, 'Enter a valid first name.');
+  assert.equal(draft.get('walkInConsentStep'), originalDraft);
+  draft.set('walkInOwnerStep', JSON.stringify({ firstName: 'A'.repeat(41), lastName: 'Cruz', appointmentType: 'grooming' }));
+  const invalidDraft = submission.handleSubmit(event);
+  confirmations.shift()(true); await invalidDraft;
+  assert.equal(sent.length, 3, 'Final name validation prevents stale invalid drafts from being sent.');
+  console.log("Walk-in review, final name validation and late backend recovery passed.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

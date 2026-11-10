@@ -605,6 +605,24 @@ class AdminCredentialChangeTest extends TestCase
         $this->assertSame(0, PrivilegedCredentialChange::count());
     }
 
+    public function test_unchanged_historical_names_allow_username_changes_but_changed_names_use_new_limits(): void
+    {
+        Notification::fake();
+        $staff = $this->createUser('staff', 'legacy.profile@gmail.com', '09171111010', 'LegacyProfile');
+        $staff->update(['first_name' => str_repeat('É', 55), 'last_name' => str_repeat('É', 95)]);
+        Sanctum::actingAs($staff);
+        $profile = ['first_name' => $staff->first_name, 'last_name' => $staff->last_name, 'username' => 'UpdatedProfile', 'current_password' => 'CurrentAdmin!234'];
+        $this->patchJson('/api/settings/security/profile', $profile)->assertOk();
+        $this->assertSame($profile['first_name'], $staff->fresh()->first_name);
+        $this->assertSame($profile['last_name'], $staff->fresh()->last_name);
+        foreach (['first_name' => 41, 'last_name' => 81] as $field => $length) {
+            $this->patchJson('/api/settings/security/profile', [...$profile, $field => str_repeat('A', $length)])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->patchJson('/api/settings/security/profile', [...$profile, 'first_name' => str_repeat('A', 40), 'last_name' => str_repeat('B', 80)])->assertOk();
+        Notification::assertNothingSent();
+    }
+
     public function test_staff_username_preflight_does_not_save_and_confirmation_is_atomic(): void
     {
         Notification::fake();

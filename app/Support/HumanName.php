@@ -23,19 +23,21 @@ final class HumanName
         }, $name);
     }
 
-    public static function rules(bool $required = true): array
+    public static function rules(string $type = 'first_name', bool $required = true, ?string $unchanged = null): array
     {
-        return [new \App\Rules\ValidHumanName($required)];
+        return [new \App\Rules\ValidHumanName($type, $required, $unchanged)];
     }
 
-    public static function error(mixed $value, bool $required = true): ?string
+    public static function error(mixed $value, string $type = 'first_name', bool $required = true): ?string
     {
-        if ($value === null || $value === '') return $required ? 'Enter a name.' : null;
-        if (! is_string($value)) return 'Enter a valid name.';
+        $label = $type === 'last_name' ? 'last name' : 'first name';
+        $limit = config('human_names.'.$type.'_max_length');
+        if ($value === null || (is_string($value) && trim(preg_replace('/\p{Zs}+/u', ' ', $value) ?? '') === '')) return $required ? 'Enter your '.$label.'.' : null;
+        if (! is_string($value)) return 'Enter a valid '.$label.'.';
         if (preg_match('/\p{N}/u', $value)) return "Numbers aren't allowed.";
         if (preg_match('/[^\p{L}\p{M}\p{Zs}\x{0027}\x{2019}\x{02BC}\x{002D}\x{2010}\x{2011}]/u', $value)
-            || ! preg_match('/\p{L}/u', str_replace('ʼ', '', $value))) return 'Enter a valid name.';
-        if (mb_strlen(self::normalize($value), 'UTF-8') > config('human_names.max_length')) return 'Use 100 characters or fewer.';
+            || ! preg_match('/\p{L}/u', str_replace('ʼ', '', $value))) return 'Enter a valid '.$label.'.';
+        if (mb_strlen(self::normalize($value), 'UTF-8') > $limit) return ucfirst($label).' must be '.$limit.' characters or fewer.';
 
         return null;
     }

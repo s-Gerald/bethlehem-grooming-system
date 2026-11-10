@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const classes = new Set();
-const element = () => ({ isConnected: true, focus(options) { this.focusOptions = options; document.activeElement = this; }, querySelectorAll: () => [] });
-const document = { activeElement: element(), addEventListener() {}, documentElement: { classList: { toggle(name, on) { on ? classes.add(name) : classes.delete(name); } } }, body: { classList: { toggle() {} } } };
+const fieldListeners = new Map();
+const element = () => ({ selectionStart: null, selectionEnd: null, value: '', defaultValue: '', id: 'name', matches: selector => selector === 'input[data-human-name]', setAttribute() {}, getAttribute() { return ''; }, classList: { toggle() {} }, isConnected: true, focus(options) { this.focusOptions = options; document.activeElement = this; }, querySelectorAll: () => [] });
+const document = { getElementById: () => null, activeElement: element(), addEventListener(name, listener) { fieldListeners.set(name, listener); }, documentElement: { classList: { toggle(name, on) { on ? classes.add(name) : classes.delete(name); } } }, body: { classList: { toggle() {} } } };
 let role = 'admin', calls = 0, resolveRequest;
 const context = vm.createContext({ document, window: {}, console, API: {
   getUserRole: () => role,
@@ -17,6 +18,12 @@ const ui = context.adminCustomers();
 ui.$nextTick = callback => callback();
 ui.$refs = Object.fromEntries(['confirmDialog', 'confirmCancel', 'ownerDialog', 'petDialog', 'ownerActionsButton', 'ownerActionsMenu', 'petKeepEditing', 'petClose', 'nameFirst', 'nameLast'].map(name => [name, element()]));
 ui.loadCustomers = async () => {};
+function changeName(field, value) {
+  const input = ui.$refs[field === 'first_name' ? 'nameFirst' : 'nameLast'];
+  input.value = value;
+  fieldListeners.get('input')({ target: input });
+  ui.updateNameField(field, input.value);
+}
 const portal = { id: 1, fullName: 'Owner', isActive: true, recordType: 'registered' };
 const manual = { ...portal, recordType: 'unregistered' };
 
@@ -162,10 +169,12 @@ const manual = { ...portal, recordType: 'unregistered' };
   ui.openNameEditor(edit);
   assert.equal(document.activeElement, ui.$refs.nameFirst);
   assert.equal(ui.canSaveCustomerName, false);
-  ui.updateNameField('first_name', 'Jhon2');
-  await ui.saveCustomerName();
+  changeName('first_name', 'Jhon2');
   assert.match(ui.nameModal.errors.first_name, /Numbers/);
-  ui.updateNameField('first_name', ' john ');
+  changeName('first_name', '---');
+  await ui.saveCustomerName();
+  assert.ok(ui.nameModal.errors.first_name);
+  changeName('first_name', ' john ');
   assert.equal(ui.nameModal.errors.first_name, '');
   let finish;
   context.API.correctCustomerName = (type, id, payload) => {
@@ -185,7 +194,7 @@ const manual = { ...portal, recordType: 'unregistered' };
   assert.equal(document.activeElement, edit);
 
   ui.openNameEditor(edit);
-  ui.updateNameField('last_name', 'Santos');
+  changeName('last_name', 'Santos');
   context.API.correctCustomerName = async () => { throw { status: 409, message: 'Name changed.', data: {
     customer: { ...online, firstName: 'Juan', fullName: 'Juan Peña', nameVersion: 'latest' },
   } }; };

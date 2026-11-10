@@ -129,8 +129,8 @@ class CustomerRegistrationService
             'phone' => is_string($phone) && trim($phone) === '' ? null : \App\Support\PhilippineMobile::normalize($phone),
         ]);
         $data = $request->validate([
-            'first_name' => \App\Support\HumanName::rules(),
-            'last_name' => \App\Support\HumanName::rules(),
+            'first_name' => \App\Support\HumanName::rules('first_name'),
+            'last_name' => \App\Support\HumanName::rules('last_name'),
             'username' => \App\Support\AccountUsername::rules('nullable'),
             'phone' => ['nullable', ...\App\Support\PhilippineMobile::rules(required: false)],
             'email' => AccountEmail::rules(),

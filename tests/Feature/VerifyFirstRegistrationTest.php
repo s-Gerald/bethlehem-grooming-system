@@ -57,6 +57,17 @@ class VerifyFirstRegistrationTest extends \Tests\TestCase
         return $this->postJson('/api/register', $this->details($changes));
     }
 
+    public function test_over_limit_names_cannot_issue_registration_verification(): void
+    {
+        foreach (['first_name' => 41, 'last_name' => 81] as $field => $length) {
+            $this->start([$field => str_repeat('É', $length)])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->assertDatabaseCount('pending_customer_registrations', 0);
+        Notification::assertNothingSent();
+        $this->start(['first_name' => str_repeat('É', 40), 'last_name' => str_repeat('É', 80)])->assertSuccessful();
+    }
+
     private function link(?PendingCustomerRegistration $pending = null): string
     {
         return Notification::sent($pending ?? PendingCustomerRegistration::sole(), VerifyEmailNotification::class)->last()->token;

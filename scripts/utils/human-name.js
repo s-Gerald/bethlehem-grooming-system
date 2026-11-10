@@ -1,6 +1,6 @@
 // BEGIN GENERATED NAME POLICY
 // Source: resources/data/human-name-policy.json; run npm run build:names.
-const HUMAN_NAME_POLICY = {"max_length":100,"mc_names":["mcdonald","mcdonnell","mcdowell","mcgregor","mcguire","mckay","mckenzie","mclaughlin","mclean","mcleod","mcmillan","mcmahon","mcnamara"]};
+const HUMAN_NAME_POLICY = {"first_name_max_length":40,"last_name_max_length":80,"mc_names":["mcdonald","mcdonnell","mcdowell","mcgregor","mcguire","mckay","mckenzie","mclaughlin","mclean","mcleod","mcmillan","mcmahon","mcnamara"]};
 // END GENERATED NAME POLICY
 
 var HumanName = (() => {
@@ -16,20 +16,32 @@ var HumanName = (() => {
         : [...word][0].toUpperCase() + word.slice([...word][0].length);
     });
   }
-  function validate(value, { required = true } = {}) {
+  function validate(value, { required = true, type = 'first_name' } = {}) {
     const raw = String(value ?? '');
-    if (!whitespace(raw)) return required ? 'Enter a name.' : '';
+    const label = type === 'last_name' ? 'last name' : 'first name';
+    const limit = HUMAN_NAME_POLICY[`${type}_max_length`];
+    if (value != null && typeof value !== 'string') return `Enter a valid ${label}.`;
+    if (!whitespace(raw)) return required ? `Enter your ${label}.` : '';
     if (/\p{N}/u.test(raw)) return "Numbers aren't allowed.";
-    if (/[^\p{L}\p{M}\p{Zs}'’ʼ\-‐‑]/u.test(raw) || !/\p{L}/u.test(raw.replace(/ʼ/g, ''))) return 'Enter a valid name.';
-    return [...normalize(raw)].length > HUMAN_NAME_POLICY.max_length ? 'Use 100 characters or fewer.' : '';
+    if (/[^\p{L}\p{M}\p{Zs}'’ʼ\-‐‑]/u.test(raw) || !/\p{L}/u.test(raw.replace(/ʼ/g, ''))) return `Enter a valid ${label}.`;
+    return [...normalize(raw)].length > limit ? `${label[0].toUpperCase() + label.slice(1)} must be ${limit} characters or fewer.` : '';
+  }
+  function unchanged(input, current = state(input)) {
+    return Boolean(input.value && current.isUnchanged?.(input.value));
+  }
+  function fieldError(input) {
+    if (unchanged(input)) return '';
+    return validate(input.value, { type: input.getAttribute('data-human-name') || 'first_name' });
   }
   function state(input) {
     if (!states.has(input)) states.set(input, { original: input.defaultValue || '', dirty: false, composing: false, numeric: false });
     return states.get(input);
   }
-  function showError(input, message) {
+  function showError(input, message, { server = false } = {}) {
     if (!input) return;
     const current = state(input);
+    current.error = message;
+    current.rejectedValue = server && message ? input.value : undefined;
     input.classList.toggle('!border-red-400', Boolean(message));
     if (current.onError) {
       input.setAttribute('aria-invalid', String(Boolean(message)));
@@ -52,7 +64,7 @@ var HumanName = (() => {
   function cleanInput(input) {
     const current = state(input);
     const raw = input.value;
-    const numeric = /\p{N}/u.test(raw);
+    const numeric = !unchanged(input, current) && /\p{N}/u.test(raw);
     if (numeric) {
       const start = input.selectionStart, end = input.selectionEnd;
       input.value = raw.replace(/\p{N}/gu, '');
@@ -61,11 +73,18 @@ var HumanName = (() => {
       }
     }
     current.dirty = true; current.numeric = numeric;
-    showError(input, numeric ? "Numbers aren't allowed." : '');
+    if (!numeric && current.rejectedValue === input.value) return;
+    showError(input, numeric ? "Numbers aren't allowed." : (current.error ? fieldError(input) : ''));
   }
   function finish(input) {
     const current = state(input);
     if (current.composing) return false;
+    if (current.rejectedValue === input.value) return false;
+    if (unchanged(input, current)) {
+      current.numeric = false;
+      showError(input, '');
+      return true;
+    }
     // Autofill can change a field without an input event.
     if (/\p{N}/u.test(input.value)) cleanInput(input);
     if ((current.dirty || input.value !== current.original) && input.value !== current.original) {
@@ -77,17 +96,17 @@ var HumanName = (() => {
         current.formatting = false;
       }
     }
-    const message = validate(input.value);
+    const message = fieldError(input);
     showError(input, message || (current.numeric ? "Numbers aren't allowed." : ''));
     return !message;
   }
   function reset(input) {
-    const onError = states.get(input)?.onError;
-    states.delete(input); Object.assign(state(input), { original: input.value, onError }); showError(input, '');
+    const { onError, isUnchanged } = states.get(input) || {};
+    states.delete(input); Object.assign(state(input), { original: input.value, onError, isUnchanged }); showError(input, '');
   }
-  function bind(input, onError) {
+  function bind(input, onError, { isUnchanged } = {}) {
     if (!input) return;
-    state(input).onError = onError; reset(input);
+    Object.assign(state(input), { onError, isUnchanged }); reset(input);
     for (const id of (input.getAttribute('aria-describedby') || '').split(' ')) document.getElementById(id)?.setAttribute('aria-live', 'polite');
   }
   function target(event) {
@@ -96,7 +115,7 @@ var HumanName = (() => {
   }
   document.addEventListener('focusin', event => { const input = target(event); if (input && !states.has(input)) state(input).original = input.value; }, true);
   document.addEventListener('invalid', event => {
-    const input = target(event); if (input) { event.preventDefault(); showError(input, validate(input.value)); }
+    const input = target(event); if (input) { event.preventDefault(); showError(input, fieldError(input)); }
   }, true);
   document.addEventListener('compositionstart', event => { const input = target(event); if (input) state(input).composing = true; }, true);
   document.addEventListener('compositionend', event => {

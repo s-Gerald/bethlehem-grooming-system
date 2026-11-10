@@ -30,6 +30,26 @@ class AdminClinicController extends Controller
 
     // ── Queue index ──────────────────────────────────────────────────────────
 
+    public function activityIndicator()
+    {
+        app(\App\Services\PreRegistrationExpiry::class)->expire();
+
+        return response()->json(['activeClinicCount' => $this->activeClinicCount()])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function activeClinicCount(): int
+    {
+        return ClinicAppointment::query()->blocking()
+            ->where(function ($query) {
+                $query->where(fn ($expected) => $expected->expected())
+                    ->orWhere(fn ($operational) => $operational->operational());
+                if (Schema::hasTable('clinic_confinements')) {
+                    $query->orWhere(fn ($confined) => $confined->confined());
+                }
+            })->count();
+    }
+
     public function index()
     {
         app(\App\Services\PreRegistrationExpiry::class)->expire();
@@ -153,7 +173,8 @@ class AdminClinicController extends Controller
             ->values();
 
         return response()->json(['success' => true, 'arrivals' => $arrivals, 'cases' => $cases, 'today' => now()->toDateString(),
-            'confined_count' => $this->hasConfinements ? ClinicAppointment::confined()->count() : 0]);
+            'confined_count' => $this->hasConfinements ? ClinicAppointment::confined()->count() : 0,
+            'activeClinicCount' => $this->activeClinicCount()]);
     }
 
     public function showCase(int $id)

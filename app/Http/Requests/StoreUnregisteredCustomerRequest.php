@@ -28,8 +28,8 @@ class StoreUnregisteredCustomerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'first_name' => \App\Support\HumanName::rules(),
-            'last_name' => \App\Support\HumanName::rules(),
+            'first_name' => \App\Support\HumanName::rules('first_name'),
+            'last_name' => \App\Support\HumanName::rules('last_name'),
             'phone' => \App\Support\PhilippineMobile::rules(),
             'email' => AccountEmail::rules(required: false, maxLength: $this->is('api/admin/walk-in/customers/validate-new-owner') ? 255 : 150),
             'confirm_similar_name' => ['sometimes', 'boolean'],

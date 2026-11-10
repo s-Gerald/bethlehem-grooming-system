@@ -94,6 +94,22 @@ class CustomerNameUpdateTest extends TestCase
         $this->assertSame('Jhon', $customer->fresh()->first_name);
     }
 
+    public function test_correction_enforces_changed_name_limits_and_preserves_unchanged_history(): void
+    {
+        $customer = $this->account();
+        $customer->update(['first_name' => str_repeat('É', 50), 'last_name' => str_repeat('É', 90)]);
+        Sanctum::actingAs($this->account('admin'));
+        $record = '/api/admin/customers/'.$customer->getKey();
+        $version = $this->version($record);
+        foreach (['first_name' => 41, 'last_name' => 81] as $field => $length) {
+            $this->patchJson($record.'/name', ['name_version' => $version, $field => str_repeat('A', $length)])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        $this->patchJson($record.'/name', ['name_version' => $version, 'first_name' => $customer->first_name, 'last_name' => str_repeat('B', 80)])->assertOk();
+        $this->assertSame(str_repeat('É', 50), $customer->fresh()->first_name);
+        $this->assertSame('B'.str_repeat('b', 79), $customer->fresh()->last_name);
+    }
+
     public function test_admin_and_both_receptionists_can_correct_only_the_selected_customer_type(): void
     {
         $customer = $this->account();

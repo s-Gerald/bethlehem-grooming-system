@@ -1,3 +1,4 @@
+import { WalkInOwnerValidation } from "../utils/walk-in-owner-validation.js?v=names-20261110";
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 const state = {
@@ -159,6 +160,7 @@ async function handleSubmit(event) {
     return;
   }
 
+  let submittedOwner;
   state.submitting = true;
   validateConsentForm(consent.valid);
   try {
@@ -171,6 +173,7 @@ async function handleSubmit(event) {
     elements.submitBookingButton.setAttribute("aria-busy", "true");
     elements.submitBookingButton.textContent = "Submitting…";
     const owner        = getStoredData(WALK_IN_OWNER_STORAGE_KEY);
+    submittedOwner = owner;
     const reviewPayload = state.reviewPayload || getStoredData(WALK_IN_REVIEW_STORAGE_KEY);
 
     if (!owner || !Array.isArray(reviewPayload?.items) || reviewPayload.items.length === 0) {
@@ -185,6 +188,7 @@ async function handleSubmit(event) {
       resetSubmitButton();
       return;
     }
+    if (!WalkInOwnerValidation.validate(owner)) { resetSubmitButton(); return; }
     const payload  = buildApiPayload(owner, reviewPayload, consentPayload);
     let submissionKey = sessionStorage.getItem(WALK_IN_SUBMISSION_STORAGE_KEY);
     if (!submissionKey) {
@@ -201,6 +205,7 @@ async function handleSubmit(event) {
     );
     window.location.href = "/admin/walk-in/grooming/confirmed";
   } catch (error) {
+    if (WalkInOwnerValidation.serverErrors(submittedOwner, error.errors)) { resetSubmitButton(); return; }
     showSubmitError(error.message || "Failed to register walk-in. Please try again.");
     resetSubmitButton();
   }

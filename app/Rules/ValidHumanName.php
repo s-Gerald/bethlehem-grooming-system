@@ -10,10 +10,11 @@ final class ValidHumanName implements ValidationRule
 {
     public bool $implicit = true;
 
-    public function __construct(private bool $required = true) {}
+    public function __construct(private string $type = 'first_name', private bool $required = true, private ?string $unchanged = null) {}
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if ($error = HumanName::error($value, $this->required)) $fail($error);
+        if (is_string($value) && $value !== '' && $value === $this->unchanged) return;
+        if ($error = HumanName::error($value, $this->type, $this->required)) $fail($error);
     }
 }

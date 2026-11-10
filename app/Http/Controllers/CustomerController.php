@@ -24,17 +24,16 @@ class CustomerController extends Controller
         if ($unexpected) {
             throw ValidationException::withMessages(array_fill_keys($unexpected, 'This field cannot be changed.'));
         }
-        $data = $request->validate([
-            'first_name' => ['sometimes', ...HumanName::rules()],
-            'last_name' => ['sometimes', ...HumanName::rules()],
-            'name_version' => ['required', 'string', 'size:64'],
-        ]);
-
-        return DB::transaction(function () use ($id, $recordType, $data) {
+        return DB::transaction(function () use ($id, $recordType, $request) {
             $query = $recordType === 'unregistered'
                 ? UnregisteredCustomer::query()->availableCustomer()
                 : User::registeredCustomer();
             $customer = $query->lockForUpdate()->findOrFail($id);
+            $data = $request->validate([
+                'first_name' => ['sometimes', ...HumanName::rules('first_name', unchanged: $customer->first_name)],
+                'last_name' => ['sometimes', ...HumanName::rules('last_name', unchanged: $customer->last_name)],
+                'name_version' => ['required', 'string', 'size:64'],
+            ]);
             if ($customer->is_archived) {
                 return response()->json([
                     'message' => 'Restore the customer before editing their name.',

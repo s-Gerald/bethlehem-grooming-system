@@ -453,7 +453,8 @@ function adminSettings() {
     staffProfileValidation() {
       const values = this.staffProfileValues(), errors = {};
       for (const [field, label] of [['first_name', 'first name'], ['last_name', 'last name']]) {
-        const nameError = HumanName.validate(values[field]);
+        const original = field === 'first_name' ? this.staffAccount.firstName : this.staffAccount.lastName;
+        const nameError = values[field] === original && original ? '' : HumanName.validate(values[field], { type: field });
         if (!values[field]) errors[field] = `Enter your ${label}.`;
         else if (nameError) errors[field] = nameError;
       }
@@ -469,10 +470,11 @@ function adminSettings() {
         currentPassword: "", showPassword: false, errors: {}, error: "" };
       this.$nextTick(() => {
         for (const [id, field] of [['staffProfileFirstName', 'first_name'], ['staffProfileLastName', 'last_name']]) {
+          document.getElementById(id)?.setAttribute('data-human-name', field);
           HumanName.bind(document.getElementById(id), message => {
             if (message) this.staffProfile.errors[field] = message;
             else delete this.staffProfile.errors[field];
-          });
+          }, { isUnchanged: value => value === (field === 'first_name' ? this.staffAccount.firstName : this.staffAccount.lastName) });
         }
         document.getElementById('staffProfileFirstName')?.focus();
       });
@@ -510,12 +512,19 @@ function adminSettings() {
     async submitStaffProfile() {
       if (!this.isStaff || !this.staffProfile.editing || this.staffProfile.submitting || this.staffProfile.confirming) return;
       this.staffProfile.errors = this.staffProfileValidation();
-      if (!this.staffProfileValid || !this.staffProfileChanged) return;
+      if (!this.staffProfileValid) {
+        const ids = { first_name: 'staffProfileFirstName', last_name: 'staffProfileLastName', username: 'staffProfileUsername' };
+        for (const field of ['first_name', 'last_name']) HumanName.showError(document.getElementById(ids[field]), this.staffProfile.errors[field] || '');
+        document.getElementById(ids[Object.keys(this.staffProfile.errors)[0]])?.focus();
+        return;
+      }
+      if (!this.staffProfileChanged) return;
       if (this.staffProfileValues().username === this.staffAccount.username) return this.saveStaffProfile();
       this.staffProfile.submitting = true;
       this.staffProfile.error = "";
       try {
-        await API.validateStaffProfile(this.staffProfileValues());
+        this._submittedStaffProfile = this.staffProfileValues();
+        await API.validateStaffProfile(this._submittedStaffProfile);
         this.staffProfile.confirming = true;
         this.$nextTick(() => document.getElementById('staffProfileCurrentPassword')?.focus());
       } catch (error) {
@@ -535,14 +544,18 @@ function adminSettings() {
     },
 
     staffProfileApiError(error) {
-      const errors = error.errors || {};
+      const errors = { ...(error.errors || {}) };
+      const current = this.staffProfileValues();
+      for (const field of ['first_name', 'last_name', 'username']) {
+        if (this._submittedStaffProfile && current[field] !== this._submittedStaffProfile[field]) delete errors[field];
+      }
       this.staffProfile.errors = Object.fromEntries(Object.entries(errors).map(([field, messages]) => [field, Array.isArray(messages) ? messages[0] : messages]));
-      this.staffProfile.error = Object.keys(errors).length ? "" : (error.message || 'Could not save your profile. Try again.');
+      this.staffProfile.error = error.errors ? "" : (error.message || 'Could not save your profile. Try again.');
       if (['first_name', 'last_name', 'username'].some(field => errors[field])) this.staffProfile.confirming = false;
       this.$nextTick(() => {
         const ids = { first_name: 'staffProfileFirstName', last_name: 'staffProfileLastName', username: 'staffProfileUsername', current_password: 'staffProfileCurrentPassword' };
         for (const field of ['first_name', 'last_name']) {
-          if (errors[field]) HumanName.showError(document.getElementById(ids[field]), [].concat(errors[field])[0]);
+          if (errors[field]) HumanName.showError(document.getElementById(ids[field]), [].concat(errors[field])[0], { server: true });
         }
         document.getElementById(ids[Object.keys(errors)[0]])?.focus();
       });
@@ -553,6 +566,7 @@ function adminSettings() {
       this.staffProfile.error = "";
       this.staffProfile.errors = {};
       const payload = this.staffProfileValues();
+      this._submittedStaffProfile = { ...payload };
       if (confirming) payload.current_password = this.staffProfile.currentPassword;
       this.staffProfile.currentPassword = "";
       try {
@@ -825,13 +839,13 @@ function adminSettings() {
       const firstName = HumanName.normalize(this.addStaffModal.firstName);
       const lastName = HumanName.normalize(this.addStaffModal.lastName);
       this.addStaffModal.firstName = firstName; this.addStaffModal.lastName = lastName;
-      let invalidName = false;
-      for (const [id, value] of [['newStaffFirstName', firstName], ['newStaffLastName', lastName]]) {
-        const error = HumanName.validate(value);
+      let invalidName;
+      for (const [id, value, type] of [['newStaffFirstName', firstName, 'first_name'], ['newStaffLastName', lastName, 'last_name']]) {
+        const error = HumanName.validate(value, { type });
         HumanName.showError(document.getElementById(id), error);
-        if (error) invalidName = true;
+        if (error) invalidName ||= id;
       }
-      if (invalidName) return;
+      if (invalidName) { document.getElementById(invalidName)?.focus(); return; }
 
       const staffSubrole = this.addStaffModal.staffSubrole;
       if (this.addStaffModal.staffType === "clinic"
@@ -863,8 +877,14 @@ function adminSettings() {
       } catch (error) {
         if (error.errors?.first_name || error.errors?.last_name) {
           for (const [field, id] of [['first_name', 'newStaffFirstName'], ['last_name', 'newStaffLastName']]) {
-            if (error.errors[field]) HumanName.showError(document.getElementById(id), [].concat(error.errors[field])[0]);
+            const current = field === 'first_name' ? this.addStaffModal.firstName : this.addStaffModal.lastName;
+            const submitted = field === 'first_name' ? firstName : lastName;
+            if (error.errors[field] && current === submitted) {
+              HumanName.showError(document.getElementById(id), [].concat(error.errors[field])[0], { server: true });
+              invalidName ||= id;
+            }
           }
+          if (invalidName) document.getElementById(invalidName)?.focus();
           return;
         }
         if (error.errors?.email) {

@@ -18,7 +18,7 @@ function element() {
   const attributes = new Map();
   return {
     value: "", textContent: "", innerHTML: "", disabled: false,
-    events: {}, addEventListener(name, callback) { this.events[name] = callback; }, focus() {},
+    events: {}, addEventListener(name, callback) { this.events[name] = callback; }, focus() { this.focused = true; },
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
     append() {}, insertAdjacentElement() {},
     setAttribute(key, value) { attributes.set(key, value); },
@@ -164,12 +164,13 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(vm.runInContext("getAppointmentType()", flow.context), type);
     await vm.runInContext("handleSubmit({ preventDefault() {} })", flow.context);
     assert.equal(flow.window.location.href, "", "Invalid new owner stays on the owner page");
-    assert.equal(flow.get("ownerFirstNameError").textContent, "First name is required.");
+    assert.equal(flow.get("ownerFirstNameError").textContent, "Enter your first name.");
 
     const values = { firstName: "Test", lastName: "Owner", phone: "09171234567", email: "" };
     for (const [id, value] of Object.entries({ ownerFirstName: values.firstName, ownerLastName: values.lastName, ownerPhoneNumber: values.phone })) flow.get(id).value = value;
     phoneInput.value = '9171234567'; phoneInput.events.input();
-    assert.equal(flow.get('walkInOwnerNextBtn').disabled, true, 'New local input needs all 11 digits before continuing.');
+    await vm.runInContext('handleSubmit({ preventDefault() {} })', flow.context);
+    assert.equal(flow.window.location.href, '', 'Invalid contact cannot advance.');
     phoneInput.value = values.phone; phoneInput.events.input();
     flow.context.API.validateWalkInNewOwner = async () => { throw { code: "similar_customer_name", data: { similarCustomers: [{ fullName: "Test Owner" }] } }; };
     await vm.runInContext("handleSubmit({ preventDefault() {} })", flow.context);
@@ -204,6 +205,19 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     assert.equal(JSON.parse(resume.storage.get("walkInOwnerStep")).firstName, "Saved");
     assert.equal(resume.storage.get("walkInPetStep"), "stale", "Returning from pet step preserves draft");
 
+    const recovery = ownerFlow(type, { fresh: false, draft: { appointmentType: type, ...values, firstName: '---', recoveringName: true,
+      nameErrors: { firstName: { value: '---', message: 'Enter a valid first name.' } } } });
+    await recovery.initialization;
+    assert.equal(recovery.get('ownerFirstNameError').textContent, 'Enter a valid first name.');
+    assert.equal(recovery.get('ownerFirstName').focused, true);
+    assert.equal(recovery.get('ownerEmailAddress').value, values.email);
+    assert.equal(JSON.parse(recovery.storage.get('walkInOwnerStep')).nameErrors, undefined, 'Recovery errors are consumed once.');
+    recovery.get('ownerFirstName').value = 'Ana';
+    await vm.runInContext('handleSubmit({ preventDefault() {} })', recovery.context);
+    assert.equal(recovery.window.location.href, '/admin/walk-in/pets');
+    assert.equal(recovery.storage.get('walkInPetStep'), 'stale', 'Name correction retains pet draft.');
+    assert.equal(recovery.storage.get('walkInConsentStep'), 'stale', 'Name correction retains consent draft.');
+
     const missing = ownerFlow(type);
     await missing.initialization;
     missing.context.customer = { ...values, id: 17, recordType: 'registered', phone: null, pets: [{ petId: 14 }] };
@@ -211,7 +225,7 @@ async function checkStepNavigation(file, markupFunction, topId, bottomId, previo
     vm.runInContext('selectExistingCustomer(customer)', missing.context);
     assert.equal(missing.window.location.href, '', 'Collect a missing contact in the existing form');
     assert.equal(missing.get('ownerFirstName').value, 'Test');
-    assert.equal(missing.get('walkInOwnerNextBtn').disabled, true);
+    assert.equal(missing.get('walkInOwnerNextBtn').disabled, false, 'Attempted progression explains invalid fields.');
     missing.get('ownerPhoneNumber').value = '0917 999 8888';
     await vm.runInContext('handleSubmit({ preventDefault() {} })', missing.context);
     const completed = JSON.parse(missing.storage.get('walkInOwnerStep'));

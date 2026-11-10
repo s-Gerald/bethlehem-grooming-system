@@ -1684,8 +1684,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->getJson('/api/admin/clinic-cases')->assertOk()->assertJsonCount(3, 'cases')
             ->assertJsonCount(1, 'arrivals')->assertJsonPath('arrivals.0.id', 4);
 
+        $this->getJson('/api/admin/clinic/activity')->assertOk()->assertJsonPath('activeClinicCount', 4);
         Carbon::setTestNow('2026-10-16 17:00:00');
-        $this->assertSame(1, app(\App\Services\PreRegistrationExpiry::class)->expire());
+        $this->getJson('/api/admin/clinic/activity')->assertOk()->assertJsonPath('activeClinicCount', 3);
+        $this->assertSame(0, app(\App\Services\PreRegistrationExpiry::class)->expire());
         $this->assertDatabaseHas('clinic_appointments', ['id' => 4, 'status' => 'no_show']);
         Carbon::setTestNow('2026-10-17 00:00:01');
         $this->getJson('/api/admin/pets/80/clinic-case')->assertOk()->assertJsonPath('case', null);
@@ -3259,6 +3261,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
     public function test_every_clinic_administration_route_has_the_expected_role_middleware(): void
     {
         $expected = [
+            ['GET', 'api/admin/clinic/activity', 'role:admin,staff'],
             ['PUT', 'api/admin/clinic/pets/{id}', 'role:admin,staff'],
             ['GET', 'api/admin/pets/{petId}/clinic-case', 'role:admin,staff'],
             ['POST', 'api/admin/clinic-walk-in', 'role:admin,staff'],
@@ -3341,9 +3344,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             fn (RoutingRoute $route) => str_starts_with($route->getActionName(), AdminClinicController::class.'@'),
         );
 
-        $this->assertCount(20, $adminClinicRoutes);
+        $this->assertCount(21, $adminClinicRoutes);
         $adminClinicRoutes->each(function (RoutingRoute $route): void {
             $this->assertContains('role:admin,staff', $route->gatherMiddleware());
+            $this->assertContains('clinic:access', $route->gatherMiddleware());
         });
     }
 

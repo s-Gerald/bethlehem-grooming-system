@@ -199,6 +199,10 @@ for (const walkIn of [false, true]) {
       selectedPricingSignature: () => null, goToGroomingStep: step => { navigated = step; },
       isEligibleForGrooming,
     });
+    if (walkIn) {
+      vm.runInContext(fs.readFileSync(new URL('../scripts/utils/human-name.js', import.meta.url), 'utf8'), context);
+      vm.runInContext(fs.readFileSync(new URL('../scripts/utils/walk-in-owner-validation.js', import.meta.url), 'utf8').replace(/^import .*;$/gm, '').replace(/^export /gm, ''), context);
+    }
     vm.runInContext(source(walkIn ? 'walk-in-consent-step' : 'booking-consent-step'), context);
     if (walkIn) await ready(); else context.initBookingConsentStep();
     await new Promise(resolve => setImmediate(resolve));

@@ -1,4 +1,4 @@
-import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2";
+import { renderWalkInClinicConsentStep } from "./walk-in-clinic-consent-step.js?pet-weight=pet-weight-size-20261107-v1&session=walk-in-20261021&clinic-roles=20261024&nav=walk-in-home-20261025&registration=fcfs-20261027-v1&pet-care=20261027-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110";
 import { mountClinicVisitReasonFields } from "./clinic-visit-reason-fields.js?registration=fcfs-20261027-v1&urls=20261103";
 
 const WALK_IN_CLINIC_COMPLAINT_KEY = "walkInClinicComplaint";
@@ -56,8 +56,12 @@ function handleSubmit(event) {
 
   const commonConcerns = state.fields.concerns();
   const chiefComplaint = state.fields.details.value.trim();
+  const draft = restoreDraft();
+  const termsAgreed = draft.termsAgreed === true && draft.chiefComplaint === chiefComplaint
+    && JSON.stringify(draft.commonConcerns) === JSON.stringify(commonConcerns)
+    && JSON.stringify(draft.pet) === JSON.stringify(state.pet);
   sessionStorage.setItem(WALK_IN_CLINIC_COMPLAINT_KEY,
-    JSON.stringify({ commonConcerns, chiefComplaint, pet: state.pet }));
+    JSON.stringify({ commonConcerns, chiefComplaint, pet: state.pet, termsAgreed }));
 
   window.history.pushState(null, "", "/admin/walk-in/pets?step=clinic-consent");
   renderWalkInClinicConsentStep({

@@ -67,12 +67,13 @@ async function fixture(browser, staffSubrole) {
     }
     if (endpoint.pathname === '/api/admin/clinic-cases') {
       status = state.casesStatus;
-      data = { today: '2026-10-19', confined_count: 0, arrivals: [], cases: Array.from({ length: 16 }, (_, i) => ({
+      data = { today: '2026-10-19', activeClinicCount: 16, confined_count: 0, arrivals: [], cases: Array.from({ length: 16 }, (_, i) => ({
         id: i + 1, status: 'in_consultation', case_type: 'consultation', appointment_reference: `CL-TEST-${i + 1}`,
         appointment_date: '2026-10-19', pet: { id: i + 1, name: `Local patient ${i + 1}`, species: 'Dog' },
         owner: { first_name: 'Local', last_name: 'Owner' },
       })) };
     }
+    if (endpoint.pathname === '/api/admin/clinic/activity') data = { activeClinicCount: 16 };
     if (endpoint.pathname === '/api/admin/clinic-records') data = { records: [], current_page: 1, last_page: 1 };
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
   });
@@ -126,11 +127,15 @@ async function startupAndRefresh(browser) {
   try {
     await f.page.goto(url, { waitUntil: 'domcontentloaded' });
     await ready(f.page);
+    if (!process.env.CLINIC_BASELINE) {
+      await f.page.locator('aside [data-clinic-activity]').waitFor({ state: 'visible' });
+      assert.equal(await f.page.locator('aside a[href="/admin/clinic"]').getAttribute('aria-description'), 'Clinic has active or incoming patients');
+    }
     console.log('cold startup Network:', JSON.stringify(counts(f.state.requests)));
     console.log('startup request chain (ms):', JSON.stringify(f.network.map(request => ({
       path: request.path, start: Math.round((request.time - f.network[0].time) * 1000),
     }))));
-    assert.deepEqual(counts(f.state.requests), { '/api/admin/clinic-cases': 1, '/api/admin/grooming/activity': 1, '/api/admin/notifications?mode=count': 1, '/api/me': 1, '/api/session': 1 });
+    assert.deepEqual(counts(f.state.requests), { '/api/admin/clinic-cases': 1, '/api/admin/grooming/activity': 1, '/api/admin/clinic/activity': 1, '/api/admin/notifications?mode=count': 1, '/api/me': 1, '/api/session': 1 });
     if (!process.env.CLINIC_BASELINE) await noErrorUI(f.page);
     // Real link navigation reuses verified identity and the Cases presentation cache.
     await Promise.all([
@@ -170,13 +175,23 @@ async function startupAndRefresh(browser) {
       await f.page.evaluate(() => window.scrollTo(0, 0));
       await f.page.screenshot({ path: process.env.LOCAL_REVIEW_SCREENSHOTS + '/clinic-first-render.png' });
     }
+    if (!process.env.CLINIC_BASELINE) {
+      await f.page.setViewportSize({ width: 375, height: 844 });
+      await f.page.locator('header').first().getByRole('button', { name: 'Open navigation', exact: true }).click();
+      await f.page.waitForFunction(() => document.querySelector('aside').getBoundingClientRect().left >= 0);
+      const dot = f.page.locator('aside [data-clinic-activity]');
+      await dot.waitFor({ state: 'visible' });
+      const { width, height } = await dot.boundingBox();
+      assert.deepEqual([width, height], [10, 10]);
+      assert.equal(await f.page.locator('aside a[href="/admin/clinic"]').getAttribute('aria-description'), 'Clinic has active or incoming patients');
+    }
     console.log('navigation, cache-bypassed reload, shared identity, lazy records and on-demand secondary data passed');
   } finally { f.state.sessionHold?.resolve(); await f.context.close(); }
 }
 
 async function failures(browser) {
   for (const kind of ['denied', 'identity', 'cases']) {
-    const f = await fixture(browser);
+    const f = await fixture(browser, kind === 'denied' ? 'veterinarian' : undefined);
     try {
       f.state.identityHold = deferred();
       if (kind === 'denied') f.state.access = false;
@@ -193,7 +208,7 @@ async function failures(browser) {
       } else {
         await f.page.locator(alert).waitFor({ state: 'visible' });
         assert.ok((await f.page.locator(alert).innerText()).trim());
-        assert.equal(f.state.requests.some(p => p.includes('/admin/clinic-')), false, 'Denied access cannot load Clinic data');
+        assert.equal(f.state.requests.some(p => p.includes('/admin/clinic-') || p === '/api/admin/clinic/activity'), false, 'Denied access cannot load Clinic data');
       }
       assert.deepEqual(f.errors, []);
       console.log(kind + ': no pending alert; real failure uses its accessible error state');

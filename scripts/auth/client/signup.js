@@ -260,7 +260,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const nameInputs = ['firstName', 'lastName'].map(id => document.getElementById(id));
-    const validNames = nameInputs.map(input => HumanName.finish(input));
+    const validNames = nameInputs.map((input, index) => {
+      input.setAttribute('data-human-name', index === 0 ? 'first_name' : 'last_name');
+      return HumanName.finish(input);
+    });
     if (validNames.includes(false)) { nameInputs[validNames.indexOf(false)].focus(); return; }
 
     const firstName      = document.getElementById("firstName").value.trim();
@@ -331,7 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastSubmittedRevisions = new Map(), lastSubmittedEmail = "", lastSubmittedPhone = "";
   function showFieldError(input, message) {
     const id = input.id;
-    if (id === "firstName" || id === "lastName") HumanName.showError(input, message);
+    if (id === "firstName" || id === "lastName") HumanName.showError(input, message, { server: true });
     else if (id === "email") emailField.setError(message, lastSubmittedEmail);
     else if (id === "phone") phoneField.setError(message);
     else if (credentialBindings[id]) credentialBindings[id].setError(message);

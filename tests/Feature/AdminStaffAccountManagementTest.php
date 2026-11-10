@@ -328,6 +328,19 @@ class AdminStaffAccountManagementTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_staff_creation_enforces_first_and_last_boundaries_before_invitation(): void
+    {
+        Notification::fake();
+        Sanctum::actingAs($this->createUser('admin', 'name.limits.admin@gmail.com', 'Admin'));
+        $data = ['staff_type' => 'clinic', 'staff_subrole' => 'veterinarian', 'first_name' => 'Ana', 'last_name' => 'Cruz', 'email' => 'limits.staff@gmail.com'];
+        foreach (['first_name' => 41, 'last_name' => 81] as $field => $length) {
+            $this->postJson('/api/admin/security/staff-accounts', [...$data, $field => str_repeat('É', $length)])
+                ->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
+        Notification::assertNothingSent();
+        $this->postJson('/api/admin/security/staff-accounts', [...$data, 'first_name' => str_repeat('É', 40), 'last_name' => str_repeat('É', 80)])->assertCreated();
+    }
+
     public function test_username_is_generated_from_normalized_staff_names_only_at_setup_completion(): void
     {
         Notification::fake();
@@ -482,7 +495,7 @@ class AdminStaffAccountManagementTest extends TestCase
 
     public function test_generated_username_reserves_room_for_suffix_within_thirty_characters(): void
     {
-        $firstName = str_repeat('a', 60);
+        $firstName = str_repeat('a', 40);
         $base = ucfirst(str_repeat('a', 30));
         [$staff, $token] = $this->inviteStaff($firstName, 'Smith');
         $this->createUser('staff', 'existing@gmail.com', $base);

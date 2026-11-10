@@ -122,6 +122,25 @@ function page({ deliveryFailed = false, noStorage = false, deliveryStatus = null
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
+  for (const [field, length] of [['firstName', 41], ['lastName', 81]]) {
+    const invalid = page();
+    invalid.element(field).value = 'É'.repeat(length);
+    await invalid.dispatch('signupForm', 'submit');
+    assert.equal(invalid.calls.some(call => call[0] === 'register'), false, 'Name errors prevent email verification.');
+    assert.equal(invalid.element(field).getAttribute('aria-invalid'), 'true');
+  }
+  const rejectedName = page();
+  let rejectNames;
+  rejectedName.API.register = () => new Promise((_, reject) => { rejectNames = reject; });
+  const pendingNames = rejectedName.dispatch('signupForm', 'submit');
+  rejectedName.element('firstName').value = 'Ana';
+  rejectedName.dispatch('firstName', 'input');
+  rejectNames({ errors: { first_name: ['Old first name error'], last_name: ['Enter a valid last name.'] } });
+  await pendingNames;
+  assert.notEqual(rejectedName.element('firstName').getAttribute('aria-invalid'), 'true');
+  assert.equal(rejectedName.element('lastName').getAttribute('aria-invalid'), 'true');
+  assert.equal(rejectedName.activeElement(), rejectedName.element('lastName'));
+  assert.equal(rejectedName.element('email').value, 'customer@gmail.com');
   const mobilePage = page();
   const mobile = mobilePage.context.PhilippineMobile;
   const policy = JSON.parse(fs.readFileSync(path.join(root, 'resources/data/philippine-mobile-policy.json'), 'utf8'));

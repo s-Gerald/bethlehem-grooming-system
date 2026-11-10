@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ClinicSetting;
 use App\Models\PetGroomer;
+use App\Support\HumanName;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,17 +19,15 @@ class PetGroomerController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate(['first_name' => \App\Support\HumanName::rules()]);
-        return $this->save($data);
+        return $this->save($request->validate(['first_name' => HumanName::rules('first_name')]));
     }
 
     public function update(Request $request, int $id)
     {
         $data = $request->validate([
-            'first_name' => ['sometimes', ...\App\Support\HumanName::rules()],
             'on_duty' => ['sometimes', 'required', 'boolean'],
         ]);
-        return $this->save($data, $id);
+        return $this->save($data + $request->only('first_name'), $id);
     }
 
     private function save(array $data, ?int $id = null)
@@ -36,8 +35,11 @@ class PetGroomerController extends Controller
         return DB::transaction(function () use ($data, $id) {
             ClinicSetting::current(lockForUpdate: true);
             $groomer = $id === null ? new PetGroomer(['on_duty' => false]) : PetGroomer::findOrFail($id);
-            if (isset($data['first_name'])) {
-                $data['first_name'] = $data['first_name'] === $groomer->first_name ? $data['first_name'] : \App\Support\HumanName::normalize($data['first_name']);
+            if (array_key_exists('first_name', $data)) {
+                if ($id !== null) {
+                    validator($data, ['first_name' => HumanName::rules('first_name', unchanged: $groomer->first_name)])->validate();
+                }
+                $data['first_name'] = $data['first_name'] === $groomer->first_name ? $data['first_name'] : HumanName::normalize($data['first_name']);
             }
             if (($data['on_duty'] ?? false) && ! $groomer->on_duty
                 && PetGroomer::where('on_duty', true)->count() >= ClinicSetting::MAX_GROOMERS_ON_DUTY) {

@@ -224,6 +224,7 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
           },
         }).clear();
         for (const [id, field] of [['addCustomerFirstName', 'first_name'], ['addCustomerLastName', 'last_name']]) {
+          document.getElementById(id)?.setAttribute('data-human-name', field);
           HumanName.bind(document.getElementById(id), message => {
             if (message) this.addCustomerModal.errors[field] = [message];
             else delete this.addCustomerModal.errors[field];
@@ -257,8 +258,9 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
 
       for (const field of ['first_name', 'last_name']) {
         form[field] = HumanName.normalize(form[field]);
-        const error = HumanName.validate(form[field]);
+        const error = HumanName.validate(form[field], { type: field });
         if (error) errors[field] = [error];
+        HumanName.showError(document.getElementById(field === 'first_name' ? 'addCustomerFirstName' : 'addCustomerLastName'), error);
       }
       const phoneError = PhilippineMobile.validate(phone);
       if (phoneError) errors.phone = [phoneError];
@@ -309,6 +311,10 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
           return;
         }
         const errors = { ...(err.errors || {}) };
+        for (const field of ['first_name', 'last_name']) {
+          if (form[field] !== payload[field]) delete errors[field];
+          else if (errors[field]) HumanName.showError(document.getElementById(field === 'first_name' ? 'addCustomerFirstName' : 'addCustomerLastName'), [].concat(errors[field])[0], { server: true });
+        }
         if (AccountEmail.normalize(form.email) !== (payload.email || '')) delete errors.email;
         if (this.normalizeCustomerPhone(form.phone) !== payload.phone) delete errors.phone;
         this.addCustomerModal.errors = errors;
@@ -1220,7 +1226,14 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         original, form: { ...original },
       };
       this._nameReturnFocus = trigger;
-      this.$nextTick(() => this.$refs.nameFirst.focus());
+      this.$nextTick(() => {
+        for (const [field, ref] of [['first_name', 'nameFirst'], ['last_name', 'nameLast']]) {
+          this.$refs[ref]?.setAttribute('data-human-name', field);
+          HumanName.bind(this.$refs[ref], message => { this.nameModal.errors[field] = message; },
+            { isUnchanged: value => value === this.nameModal.original[field] });
+        }
+        this.$refs.nameFirst.focus();
+      });
     },
 
     closeNameEditor() {
@@ -1250,7 +1263,6 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
 
     updateNameField(field, value) {
       this.nameModal.form[field] = value;
-      if (this.nameModal.errors[field]) this.nameModal.errors[field] = HumanName.validate(value);
     },
 
     applyCustomerName(customer) {
@@ -1273,10 +1285,11 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       const focusField = (field) => this.$nextTick(() => this.$refs[field === "first_name" ? "nameFirst" : "nameLast"].focus());
       modal.error = "";
       modal.errors = Object.fromEntries(fields.map(field => [field,
-        modal.form[field] === modal.original[field] && modal.original[field].trim() ? "" : HumanName.validate(modal.form[field])]));
+        modal.form[field] === modal.original[field] && modal.original[field].trim() ? "" : HumanName.validate(modal.form[field], { type: field })]));
       const invalid = fields.find(field => modal.errors[field]);
       if (invalid) { focusField(invalid); return; }
       modal.saving = true;
+      const submittedNames = { ...modal.form };
       try {
         const { id, recordType, version } = modal.target;
         const { customer } = await API.correctCustomerName(recordType, id, {
@@ -1288,10 +1301,10 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         this.closeNameEditor();
       } catch (error) {
         modal.saving = false;
-        const invalid = fields.filter(field => error.errors?.[field]?.length);
-        for (const field of invalid) modal.errors[field] = error.errors[field][0];
+        const invalid = fields.filter(field => error.errors?.[field]?.length && modal.form[field] === submittedNames[field]);
+        for (const field of invalid) HumanName.showError(this.$refs[field === 'first_name' ? 'nameFirst' : 'nameLast'], error.errors[field][0], { server: true });
         if (invalid.length) focusField(invalid[0]);
-        else modal.error = error.message || "Unable to save the customer’s name.";
+        else if (!error.errors) modal.error = error.message || "Unable to save the customer’s name.";
         if (error.status === 409) {
           modal.conflict = true;
           if (error.data?.customer) this.applyCustomerName(error.data.customer);

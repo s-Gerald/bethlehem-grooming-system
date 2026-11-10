@@ -34,7 +34,8 @@ const WALK_IN_FLOW_STORAGE_KEYS = [
   "clinicPreselectedPetId",
 ];
 const flowParams = new URLSearchParams(window.location.search);
-const appointmentType = (flowParams.get("flow") || flowParams.get("source")) === "clinic"
+const requestedType = flowParams.get("flow") || flowParams.get("source") || readOwnerDraft().appointmentType;
+const appointmentType = requestedType === "clinic"
   ? "clinic"
   : "grooming";
 let customerSearchTimer = null;
@@ -43,6 +44,7 @@ let customerSearchResults = [];
 let ownerValidationInProgress = false;
 let pendingSimilarOwnerValues = null;
 let selectedCustomer = null;
+let preserveContinuation = false;
 
 /*
   BACKEND TEAMMATE + CLAUDE CODE:
@@ -50,6 +52,11 @@ let selectedCustomer = null;
   Replace this with a persisted customer / walk-in draft record when the
   backend flow is ready.
 */
+
+function readOwnerDraft() {
+  try { return JSON.parse(sessionStorage.getItem(WALK_IN_OWNER_STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
 
 function normalizeText(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
@@ -65,6 +72,15 @@ function initializeWalkInFlow() {
     sessionStorage.setItem(WALK_IN_OWNER_STORAGE_KEY, JSON.stringify({ appointmentType }));
     flowParams.delete("new");
     window.history.replaceState(null, "", `/admin/walk-in/customer?${flowParams}`);
+  }
+  const draft = readOwnerDraft();
+  if (draft.appointmentType !== appointmentType) return;
+  for (const field of ['firstName', 'lastName', 'phone', 'email']) elements[field].value = draft[field] || '';
+  preserveContinuation = Boolean(draft.recoveringName);
+  if (draft.ownerRecordType && draft.ownerRecordType !== 'new') {
+    selectedCustomer = { firstName: draft.firstName, lastName: draft.lastName, phone: draft.phone, email: draft.email,
+      recordType: draft.ownerRecordType, id: draft.customerUserId || draft.unregisteredCustomerId, pets: draft.existingPets };
+    elements.firstName.readOnly = elements.lastName.readOnly = true;
   }
 }
 
@@ -196,6 +212,7 @@ function selectExistingCustomer(customer) {
     elements.lastName.value = values.lastName;
     elements.phone.value = "";
     elements.email.value = values.email;
+    elements.firstName.readOnly = elements.lastName.readOnly = true;
     hideSimilarOwnerWarning();
     hideMessage();
     syncNextButtonState();
@@ -208,18 +225,10 @@ function selectExistingCustomer(customer) {
 function validateOwner(values) {
   const errors = {};
 
-  if (!values.firstName) {
-    errors.firstName = "First name is required.";
-  }
-
-  if (!values.lastName) {
-    errors.lastName = "Last name is required.";
-  }
-
   if (!selectedCustomer) {
-    for (const field of ['firstName', 'lastName']) {
-      const error = HumanName.validate(values[field]);
-      if (error && values[field]) errors[field] = error;
+    for (const [field, type] of [['firstName', 'first_name'], ['lastName', 'last_name']]) {
+      const error = HumanName.validate(values[field], { type });
+      if (error) errors[field] = error;
     }
   }
 
@@ -252,7 +261,7 @@ function hideMessage() {
   elements.message.className = "hidden rounded-2xl border px-4 py-3 text-sm";
 }
 
-function setFieldError(fieldName, message) {
+function setFieldError(fieldName, message, options) {
   const errorElement = elements.fieldErrors[fieldName];
 
   if (!errorElement) {
@@ -260,8 +269,8 @@ function setFieldError(fieldName, message) {
   }
 
   if (['firstName', 'lastName'].includes(fieldName)) {
-    elements[fieldName].setAttribute('aria-invalid', String(Boolean(message)));
-    elements[fieldName].classList.toggle('!border-red-400', Boolean(message));
+    HumanName.showError(elements[fieldName], message, options);
+    return;
   }
 
   if (fieldName === 'email') {
@@ -322,9 +331,7 @@ function setOwnerValidationInProgress(inProgress) {
 }
 
 function syncNextButtonState() {
-  const values = getFormValues();
-  const errors = validateOwner(values);
-  const isReady = Object.keys(errors).length === 0 && !ownerValidationInProgress;
+  const isReady = !ownerValidationInProgress;
 
   elements.nextButton.disabled = !isReady;
   elements.nextButton.setAttribute("aria-disabled", String(!isReady));
@@ -336,7 +343,10 @@ function syncNextButtonState() {
 
 function handleInput(event) {
   hideSimilarOwnerWarning();
-  if (event.target !== elements.phone) selectedCustomer = null;
+  if ([elements.firstName, elements.lastName].includes(event.target)) {
+    selectedCustomer = null;
+    elements.firstName.readOnly = elements.lastName.readOnly = false;
+  }
   if (event.target === elements.email) {
     setFieldError('email', '');
   }
@@ -350,7 +360,7 @@ function continueToPetStep(values, confirmSimilarName = false) {
   elements.phone.value = PhilippineMobile.format(values.phone);
   elements.email.value = values.email;
 
-  clearWalkInContinuationDraft();
+  if (!preserveContinuation) clearWalkInContinuationDraft();
   saveOwnerDraft({
     ...values,
     confirmSimilarName: Boolean(confirmSimilarName),
@@ -389,7 +399,7 @@ async function validateNewOwnerAndContinue(values, confirmSimilarName = false) {
     };
     Object.entries(error.errors || {}).forEach(([field, messages]) => {
       const fieldName = fieldMap[field];
-      if (fieldName) setFieldError(fieldName, messages?.[0] || "Check this field.");
+      if (fieldName) setFieldError(fieldName, [].concat(messages)[0] || "Check this field.", { server: true });
     });
     const first = Object.keys(error.errors || {}).find(field => fieldMap[field]);
     if (first) elements[fieldMap[first]]?.focus();
@@ -429,10 +439,15 @@ async function handleSubmit(event) {
 
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
-  for (const field of ['firstName', 'lastName']) HumanName.bind(elements[field], message => {
-    setFieldError(field, message);
-    elements[field].classList.toggle('border-red-400', Boolean(message));
-  });
+  for (const [field, type] of [['firstName', 'first_name'], ['lastName', 'last_name']]) {
+    elements[field].setAttribute('data-human-name', type);
+    HumanName.bind(elements[field], message => {
+      const error = elements.fieldErrors[field];
+      error.textContent = message;
+      error.className = `mt-2 ${message ? '' : 'hidden '}text-sm text-red-600`;
+      elements[field].classList.toggle('border-red-400', Boolean(message));
+    });
+  }
   AccountEmail.bind(elements.email, { required: false, maxLength: 255, errorId: 'ownerEmailAddressError',
     isUnchanged: () => selectedCustomer && AccountEmail.normalize(elements.email.value) === AccountEmail.normalize(selectedCustomer.email),
   });
@@ -485,6 +500,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   initializeWalkInFlow();
   bindEvents();
+  const draft = readOwnerDraft();
+  let firstInvalid;
+  for (const field of ['firstName', 'lastName']) {
+    const saved = draft.nameErrors?.[field];
+    if (saved && saved.value === elements[field].value) {
+      setFieldError(field, saved.message, { server: true });
+      firstInvalid ||= elements[field];
+    }
+  }
+  if (draft.nameErrors) {
+    delete draft.nameErrors;
+    sessionStorage.setItem(WALK_IN_OWNER_STORAGE_KEY, JSON.stringify(draft));
+  }
+  firstInvalid?.focus();
   hideMessage();
   syncNextButtonState();
 });

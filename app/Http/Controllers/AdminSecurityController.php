@@ -166,8 +166,8 @@ class AdminSecurityController extends Controller
         }
 
         return $request->validate([
-            'first_name' => \App\Support\HumanName::rules(),
-            'last_name' => \App\Support\HumanName::rules(),
+            'first_name' => \App\Support\HumanName::rules('first_name', unchanged: $request->user()->first_name),
+            'last_name' => \App\Support\HumanName::rules('last_name', unchanged: $request->user()->last_name),
             'username' => AccountUsername::rules(unchanged: $request->user()->username),
             'current_password' => ['nullable', 'string'],
         ], [
@@ -233,8 +233,8 @@ class AdminSecurityController extends Controller
                 'string',
                 Rule::in(StaffRole::subrolesForType((string) $request->input('staff_type'))),
             ],
-            'first_name' => \App\Support\HumanName::rules(),
-            'last_name' => \App\Support\HumanName::rules(),
+            'first_name' => \App\Support\HumanName::rules('first_name'),
+            'last_name' => \App\Support\HumanName::rules('last_name'),
             'email' => PendingStaffAccountService::emailRules(),
         ]);
 

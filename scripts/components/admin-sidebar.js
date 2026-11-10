@@ -153,6 +153,19 @@ function installAdminServicesNavigation() {
   clinic.after(services);
 }
 
+function installAdminClinicActivityIndicator() {
+  const clinic = document.querySelector('.admin-sidebar-menu a[href="/admin/clinic"]');
+  if (!clinic || clinic.querySelector('[data-clinic-activity]')) return;
+  const dot = document.createElement('span');
+  dot.setAttribute('data-clinic-activity', '');
+  dot.setAttribute('x-show', 'hasClinicActivity');
+  dot.setAttribute('aria-hidden', 'true');
+  clinic.setAttribute(':aria-description', "hasClinicActivity ? 'Clinic has active or incoming patients' : null");
+  dot.className = 'ml-auto h-2.5 w-2.5 rounded-full bg-red-500';
+  dot.style.display = 'none';
+  clinic.append(dot);
+}
+
 function installAdminActivityNavigation() {
   const settings = document.querySelector('.admin-sidebar-menu a[href="/admin/settings"]');
   if (!settings) return;
@@ -265,6 +278,7 @@ if (typeof document !== "undefined" && document.querySelector) {
   installAdminServicesNavigation();
   installAdminActivityNavigation();
   installAdminAvailabilityNavigation();
+  installAdminClinicActivityIndicator();
   document.querySelectorAll('.admin-sidebar-menu nav a').forEach(link => {
     link.setAttribute('@click', 'sidebarOpen = false');
     if (link.closest('.admin-inventory-submenu')) return;
@@ -286,6 +300,10 @@ function adminSidebar() {
     inventorySection: getAdminInventorySection(),
     _inventoryNavigationListener: null,
     incomingAppointmentCount: 0,
+    clinicActivityCount: 0,
+    _clinicActivityRevision: 0,
+    _clinicActivityRequestedAt: 0,
+    _clinicActivityRequest: null,
     _incomingAppointmentRevision: 0,
     _incomingAppointmentInterval: null,
     _incomingAppointmentListener: null,
@@ -295,6 +313,8 @@ function adminSidebar() {
     _identityRevision: 0,
     _destroyed: false,
     ...getAdminSidebarIdentityState(window.API?.getCachedStaffIdentity?.()?.user),
+    get canAccessClinic() { return this.isAdmin || !!this.clinicPermissions.access; },
+    get hasClinicActivity() { return this.canAccessClinic && this.clinicActivityCount > 0; },
     get hasIncomingAppointments() {
       // Keep the shared sidebar binding; the dot represents all active grooming customers today.
       return this.incomingAppointmentCount > 0;
@@ -312,13 +332,27 @@ function adminSidebar() {
       if (API.enforceAdminPageAccess && !API.enforceAdminPageAccess()) return;
 
       this.registerIncomingAppointmentListener();
+      this._clinicActivityListener = event => {
+        const { activeClinicCount, requestedAt } = event.detail || {};
+        if (this._destroyed || !this.canAccessClinic || API.isSessionLocked?.()
+          || !Number.isFinite(activeClinicCount) || !Number.isFinite(requestedAt)
+          || requestedAt < this._clinicActivityRequestedAt) return;
+        this._clinicActivityRevision++;
+        this._clinicActivityRequestedAt = requestedAt;
+        this.clinicActivityCount = activeClinicCount;
+      };
+      window.addEventListener('admin-clinic:activity-applied', this._clinicActivityListener);
       this._navigationInvalidationListener = (event) => {
         this._identityRevision++;
         this._incomingAppointmentRevision++;
+        this._clinicActivityRevision++;
+        this._clinicActivityRequestedAt = Date.now();
+        this._clinicActivityRequest = null;
         Object.assign(this, getAdminSidebarIdentityState(null));
         document.documentElement?.removeAttribute('data-admin-role');
         this.sidebarError = '';
         this.incomingAppointmentCount = 0;
+        this.clinicActivityCount = 0;
         renderCachedAdminSidebar();
         this.$root?.removeAttribute('data-admin-ready');
         this.$root?.querySelector('.admin-sidebar-menu')?.removeAttribute('data-admin-navigation-ready');
@@ -329,6 +363,12 @@ function adminSidebar() {
         if (this._destroyed || !event.detail?.user) return;
         this._identityRevision++;
         Object.assign(this, getAdminSidebarIdentityState(event.detail.user));
+        this._clinicActivityRevision++;
+        if (!this.canAccessClinic) {
+          this._clinicActivityRequestedAt = Date.now();
+          this.clinicActivityCount = 0;
+          this._clinicActivityRequest = null;
+        }
         document.documentElement?.setAttribute('data-admin-role', this.isAdmin ? 'admin' : 'staff');
         this.sidebarError = '';
         renderCachedAdminSidebar();
@@ -338,19 +378,21 @@ function adminSidebar() {
       // Notification origins are presentation context, never ownership of workspace data.
       const ownsGroomingData = window.location.pathname.endsWith('/notifications')
         || ['dashboard', 'appointments'].includes(this.activePage);
-      await this.loadLoggedInIdentity();
-      if (!ownsGroomingData && this.canAccessGrooming) await this.loadIncomingAppointmentCount();
-      if (this._destroyed) return;
       const refresh = () => {
         if (document.visibilityState === 'hidden' || API.isSessionLocked?.() || this._destroyed) return;
-        if (!ownsGroomingData && this.canAccessGrooming) void this.loadIncomingAppointmentCount();
+        return Promise.allSettled([
+          !ownsGroomingData && this.canAccessGrooming ? this.loadIncomingAppointmentCount() : null,
+          this.canAccessClinic ? this.loadClinicActivity() : null,
+        ]);
       };
+      await this.loadLoggedInIdentity();
+      await refresh();
+      if (this._destroyed) return;
       this._incomingAppointmentInterval = setInterval(refresh, 30000);
       this._visibilityListener = () => { if (document.visibilityState !== 'hidden') refresh(); };
       document.addEventListener('visibilitychange', this._visibilityListener);
       this._sidebarSessionListener = () => {
-        void this.loadLoggedInIdentity();
-        Promise.allSettled([this._incomingCountRequest]).then(refresh);
+        Promise.allSettled([this.loadLoggedInIdentity(), this._incomingCountRequest, this._clinicActivityRequest]).then(refresh);
       };
       window.addEventListener('admin-session:unlocked', this._sidebarSessionListener);
     },
@@ -358,6 +400,8 @@ function adminSidebar() {
     destroy() {
       this._destroyed = true;
       this._incomingAppointmentRevision++;
+      this._clinicActivityRevision++;
+      window.removeEventListener('admin-clinic:activity-applied', this._clinicActivityListener);
       document.removeEventListener?.('visibilitychange', this._visibilityListener);
       window.removeEventListener('admin-session:unlocked', this._sidebarSessionListener);
       window.removeEventListener("hashchange", this._inventoryNavigationListener);
@@ -468,6 +512,27 @@ function adminSidebar() {
         // Non-fatal: the sidebar should stay usable even if the count cannot load.
       } finally {
         this._incomingCountRequest = null;
+      }
+    },
+
+    async loadClinicActivity() {
+      if (this._clinicActivityRequest) return this._clinicActivityRequest;
+      if (!this.canAccessClinic || this._destroyed || API.isSessionLocked?.()
+        || document.visibilityState === 'hidden' || !API.getAdminToken?.() || !API.getAdminClinicActivity) return;
+      const revision = ++this._clinicActivityRevision;
+      this._clinicActivityRequestedAt = Date.now();
+      const today = this.todayDate();
+      const request = API.getAdminClinicActivity();
+      this._clinicActivityRequest = request;
+      try {
+        const data = await request;
+        if (!this._destroyed && this.canAccessClinic && !API.isSessionLocked?.()
+          && revision === this._clinicActivityRevision && today === this.todayDate()
+          && Number.isFinite(data?.activeClinicCount)) this.clinicActivityCount = data.activeClinicCount;
+      } catch {
+        // Activity refresh must not interrupt navigation.
+      } finally {
+        if (this._clinicActivityRequest === request) this._clinicActivityRequest = null;
       }
     },
 

@@ -43,9 +43,9 @@ class StoreClinicWalkinRequest extends FormRequest
             // Owner
             // Selected owners use persisted identity; these submitted names are not editable or saved.
             'fname' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
+                ? \App\Support\HumanName::rules('first_name') : ['required', 'string'],
             'lname' => ($this->input('owner_record_type') ?? 'new') === 'new'
-                ? \App\Support\HumanName::rules() : ['required', 'string', 'max:100'],
+                ? \App\Support\HumanName::rules('last_name') : ['required', 'string'],
             'email' => ($this->input('owner_record_type') ?? 'new') === 'new'
                 ? AccountEmail::rules(required: false, maxLength: 255)
                 : ['nullable', 'string', 'max:255'],

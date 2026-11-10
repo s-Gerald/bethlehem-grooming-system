@@ -1,3 +1,4 @@
+import { WalkInOwnerValidation } from "../utils/walk-in-owner-validation.js?v=names-20261110";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
 import { getClinicVisitSummaryMarkup } from "./clinic-visit-summary-card.js?registration=fcfs-20261027-v1&pet-care=20261027-v1";
 import { formatClinicVisitReason } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103";
@@ -115,6 +116,7 @@ function refreshElements() {
     statusMsg: document.getElementById("clinicConsentStatus"),
     backButton: document.getElementById("clinicConsentBackBtn"),
   };
+  elements.checkbox.checked = Boolean(JSON.parse(sessionStorage.getItem("walkInClinicComplaint") || "{}").termsAgreed);
 }
 
 function syncSubmitButton() {
@@ -140,6 +142,11 @@ function getStoredOwner() {
   }
 }
 
+function storeTermsAgreement() {
+  const complaint = JSON.parse(sessionStorage.getItem('walkInClinicComplaint') || '{}');
+  sessionStorage.setItem('walkInClinicComplaint', JSON.stringify({ ...complaint, termsAgreed: elements.checkbox.checked }));
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
 
@@ -152,6 +159,9 @@ async function handleSubmit(event) {
   elements.submitBtn.textContent = "Submitting…";
 
   const owner = getStoredOwner();
+  storeTermsAgreement();
+
+  if (!WalkInOwnerValidation.validate(owner, 'clinic')) { resetSubmitButton(); return; }
 
   if (!owner.firstName) {
     showError("Walk-in data is incomplete. Please restart from Step 1.");
@@ -218,6 +228,7 @@ async function handleSubmit(event) {
 
     window.location.href = "/admin/walk-in/clinic/confirmed";
   } catch (error) {
+    if (WalkInOwnerValidation.serverErrors(owner, error.errors, 'clinic')) { resetSubmitButton(); return; }
     showError(error.message || "Failed to submit clinic walk-in. Please try again.");
     resetSubmitButton();
   }
@@ -249,7 +260,10 @@ function handleBackClick() {
 
 function bindEvents() {
   elements.form.addEventListener("submit", handleSubmit);
-  elements.checkbox.addEventListener("change", syncSubmitButton);
+  elements.checkbox.addEventListener("change", () => {
+    storeTermsAgreement();
+    syncSubmitButton();
+  });
   elements.backButton.addEventListener("click", handleBackClick);
 }
 
