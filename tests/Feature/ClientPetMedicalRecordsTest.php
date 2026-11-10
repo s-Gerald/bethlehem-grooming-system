@@ -35,6 +35,9 @@ class ClientPetMedicalRecordsTest extends TestCase
             $table->text('chief_complaint')->nullable();
             $table->decimal('total_amount', 10, 2)->nullable();
             $table->boolean('paid')->default(false);
+            $table->string('payment_method')->nullable();
+            $table->dateTime('paid_at')->nullable();
+            $table->decimal('cash_received', 10, 2)->nullable();
             $table->text('notes')->nullable();
             $table->dateTime('consultation_finished_at')->nullable();
         });
@@ -116,6 +119,47 @@ class ClientPetMedicalRecordsTest extends TestCase
         Schema::dropIfExists('pets');
 
         parent::tearDown();
+    }
+
+    public function test_history_payment_is_recorded_total_safe_and_owner_scoped(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Mochi');
+        $this->insertPet(202, 20, 'Other customer');
+        foreach ([1 => 101, 2 => 101, 3 => 202] as $id => $petId) {
+            $this->insertAppointment($id, $petId, 'completed', 'CL-'.$id, '2026-11-10');
+            DB::table('clinic_appointments')->where('id', $id)->update([
+                'paid' => true, 'total_amount' => 3100, 'cash_received' => 5000,
+                'payment_method' => $id === 2 ? 'online' : 'cash', 'paid_at' => '2026-11-10 12:41:00',
+            ]);
+        }
+        $records = collect($this->getJson('/api/clinic/history')->assertOk()->assertJsonCount(2, 'medical_records')
+            ->json('medical_records'))->keyBy('appointment_reference');
+        $this->assertSame(['status', 'total_paid', 'payment_method', 'payment_method_label', 'paid_at'], array_keys($records['CL-1']['payment']));
+        $this->assertSame(3100, $records['CL-1']['payment']['total_paid']);
+        $this->assertSame('Cash', $records['CL-1']['payment']['payment_method_label']);
+        $this->assertSame('2026-11-10T12:41:00+08:00', $records['CL-1']['payment']['paid_at']);
+        $this->assertSame('Online Payment', $records['CL-2']['payment']['payment_method_label']);
+        $this->assertArrayNotHasKey('cash_received', $records['CL-1']);
+        $this->getJson('/api/pets/202/medical-records')->assertNotFound();
+        $this->authenticateCustomer(20);
+        $this->getJson('/api/clinic/history')->assertOk()->assertJsonCount(1, 'medical_records')
+            ->assertJsonPath('medical_records.0.appointment_reference', 'CL-3');
+    }
+
+    public function test_completed_unpaid_or_malformed_visits_do_not_fabricate_payment(): void
+    {
+        $this->authenticateCustomer(10);
+        $this->insertPet(101, 10, 'Mochi');
+        foreach ([1 => ['paid' => false], 2 => ['total_amount' => null],
+            3 => ['total_amount' => -1], 4 => ['paid_at' => null], 5 => ['payment_method' => null]] as $id => $payment) {
+            $this->insertAppointment($id, 101, 'completed', 'CL-'.$id, '2026-11-10');
+            DB::table('clinic_appointments')->where('id', $id)->update([
+                'paid' => true, 'total_amount' => 3100, 'paid_at' => '2026-11-10 12:41:00', 'payment_method' => 'cash', ...$payment,
+            ]);
+        }
+        $records = $this->getJson('/api/clinic/history')->assertOk()->assertJsonCount(5, 'medical_records')->json('medical_records');
+        foreach ($records as $record) $this->assertNull($record['payment']);
     }
 
     public function test_medical_records_require_authentication(): void
@@ -431,6 +475,7 @@ class ClientPetMedicalRecordsTest extends TestCase
             'appointment_reference',
             'appointment_date',
             'status',
+            'payment',
             'chief_complaint',
             'diagnosis',
             'diagnosis_source',

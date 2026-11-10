@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const modalBody = { scrollTop: 0 };
 const dialog = { querySelector: (selector) => selector.includes('Close') ? { focus() {} } : modalBody };
-const context = { Date, Intl, URLSearchParams, window: {}, document: { body: { style: { overflow: '' } }, querySelector: () => dialog } };
+const context = { Date, Intl, URLSearchParams, window: {}, document: { body: { style: { overflow: '' } }, querySelector: selector => selector.includes('data-history-booking=') ? null : dialog } };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/recorded-product-pricing.js'), 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../scripts/components/admin-archive.js'), 'utf8'), context);
 const ui = context.adminArchive();
@@ -253,6 +253,100 @@ assert.equal(prevented, 2, 'Tab can reach the transaction link normally');
   restored._restoreOnPageShow({ persisted: true });
   assert.equal(restored.detailsModalOpen, true);
   assert.equal(restored.$refs.groomingRecordBody.scrollTop, 300);
+  // URL navigation reuses the normal load and resolves beyond the visible year/month.
+  const old = { ...session, id: 91, historyDate: '2024-02-10', historyAtIso: '2024-02-10T10:00:00+08:00' };
+  let historyLoads = 0, consentLoads = 0, replaceCount = 0;
+  const targetPet = { getBoundingClientRect: () => ({top: 460}) };
+  const deepBody = { scrollTop: 0, getBoundingClientRect: () => ({top: 100}),
+    querySelector: selector => selector === '[data-history-booking-pet="12"]' ? targetPet : null };
+  const deepDialog = { querySelector: selector => selector.includes('Close') ? close : deepBody };
+  context.document.querySelector = selector => selector.includes('data-history-booking=') ? {focus: () => focused++} : deepDialog;
+  context.window.location = {search: '?type=grooming&booking_id=91&booking_pet_id=12&keep=1', pathname: '/admin/history', hash: ''};
+  context.window.history = {state: {otherState: 'kept'}, replaceState(state, title, url) {
+    replaceCount++; this.state = state;
+    if (url) context.window.location.search = url.slice(url.indexOf('?'));
+  }};
+  context.API = {
+    getStaffIdentity: async () => ({user: {role: 'admin'}}),
+    loadAdminData: async (endpoint, load, render) => {
+      assert.equal(endpoint, '/admin/bookings/archived');
+      render({archived: [session]}); // An older cache may lack the target.
+      render(await load());
+    },
+    getArchivedBookings: async (query, options) => {
+      historyLoads++; assert.equal(options.force, false); assert.equal(query.search, '');
+      return {archived: [session, old]};
+    },
+    getGroomingSignedConsent: () => { consentLoads++; return new Promise(() => {}); },
+  };
+  const deep = context.adminArchive(); deep.$nextTick = fn => fn(); deep.$refs = {};
+  deep.selectedMonth = '2026-11';
+  await deep.init();
+  assert.equal(deep.detailsModalOpen, true, 'Consent must not delay the modal');
+  assert.equal(deep.detailsBooking.id, 91);
+  assert.equal(deep.detailsBooking.pets.length, 3, 'Sibling pets stay visible');
+  assert.equal(deep.selectedYear, '2024'); assert.equal(deep.selectedMonth, '');
+  assert.equal(deep.filteredList[0].id, 91);
+  assert.equal(deepBody.scrollTop, 360, 'Only the internal modal body moves to the second pet');
+  assert.equal(historyLoads, 1); assert.equal(consentLoads, 1);
+  assert.match(context.window.location.search, /booking_id=91/);
+  deep.closeDetails();
+  assert.equal(context.window.location.search, '?type=grooming&keep=1');
+  assert.equal(context.window.history.state.otherState, 'kept');
+  assert.equal(replaceCount, 1); assert.equal(historyLoads, 1);
+
+  for (const [bookingId, petId, expected] of [['999', '12', null], ['bad', '12', null], ['91', '999', 91], ['91', 'invalid', 91]]) {
+    context.window.location.search = `?type=grooming&booking_id=${bookingId}&booking_pet_id=${petId}`;
+    const target = context.adminArchive(); target.$nextTick = fn => fn(); target.$refs = {};
+    deepBody.scrollTop = 0;
+    await target.init();
+    assert.equal(target.detailsBooking?.id ?? null, expected);
+    assert.equal(deepBody.scrollTop, 0, 'A stale pet must never select a sibling');
+    if (!expected) {
+      assert.match(target.historyNotice, /no longer available/);
+      assert.doesNotMatch(context.window.location.search, /booking_id|booking_pet_id/);
+      assert.equal(target.filteredCount > 0, true);
+    } else target.closeDetails();
+  }
+  const singleTarget = {...old, pets: [old.pets[0]]};
+  context.API.getArchivedBookings = async () => ({archived: [singleTarget]});
+  context.window.location.search = '?type=grooming&booking_id=91&booking_pet_id=11';
+  const singleDeep = context.adminArchive(); singleDeep.$nextTick = fn => fn(); singleDeep.$refs = {};
+  await singleDeep.init();
+  assert.equal(singleDeep.detailsModalOpen, true); assert.equal(deepBody.scrollTop, 0);
+  singleDeep.closeDetails();
+
+  // URL targeting must not overwrite the separate transaction-return context.
+  context.window.location.search = '?type=grooming&booking_id=91&booking_pet_id=12';
+  context.window.history.state = {otherState: 'kept', groomingHistory: {
+    searchQuery: '', sortOrder: 'oldest', selectedYear: '2024', selectedMonth: '2024-02',
+    bookingId: 91, scrollY: 420, modalScroll: 125,
+  }};
+  const returned = context.adminArchive(); returned.$nextTick = fn => fn(); returned.$refs = {};
+  await returned.init();
+  assert.equal(returned.detailsBooking.id, 91);
+  assert.equal(returned.sortOrder, 'oldest'); assert.equal(returned.selectedMonth, '2024-02');
+  assert.equal(deepBody.scrollTop, 125, 'Transaction return restores scroll instead of targeting the pet again');
+  returned.closeDetails();
+  assert.doesNotMatch(context.window.location.search, /booking_id|booking_pet_id/);
+
+  context.window.location.search = '?type=grooming&booking_id=91';
+  const cachedTarget = context.adminArchive(); cachedTarget.$nextTick = fn => fn(); cachedTarget.$refs = {};
+  context.API.loadAdminData = async (endpoint, load, render) => {
+    render({archived: [old]});
+    assert.equal(cachedTarget.detailsBooking.id, 91, 'Cached target opens before revalidation completes');
+    render(await load());
+  };
+  await cachedTarget.init();
+  cachedTarget.closeDetails();
+
+  context.API.getStaffIdentity = async () => ({user: {role: 'staff', staff_type: 'clinic', staff_permissions: {clinic_workspace: true}}});
+  context.API.loadAdminData = async (endpoint, load, render) => { assert.equal(endpoint, '/admin/clinic-appointments/archived'); render(await load()); };
+  context.API.getArchivedClinicAppointments = async () => ({archived: []});
+  context.window.location.search = '?type=grooming&booking_id=91';
+  const restricted = context.adminArchive(); restricted.$nextTick = fn => fn();
+  await restricted.init();
+  assert.equal(restricted.archiveType, 'clinic'); assert.equal(restricted.detailsModalOpen, false);
   console.log('Grooming history regression tests passed.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
 

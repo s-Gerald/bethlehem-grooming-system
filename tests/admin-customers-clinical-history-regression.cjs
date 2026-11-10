@@ -5,7 +5,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const calls = [], focus = [];
 let now = Date.now();
 const ClockDate = class extends Date { static now() { return now; } };
-const context = vm.createContext({console, Date: ClockDate, URL, setTimeout, clearTimeout,
+const context = vm.createContext({console, Date: ClockDate, URL, URLSearchParams, setTimeout, clearTimeout,
   document: {activeElement: null}, window: {}, API: {
     getAdminPetProfile: async (...args) => { calls.push(['profile', ...args]); return {grooming_records: []}; },
     adminGetPetProfile: async (...args) => { calls.push(['history', ...args]); return {data: [{appointment_id: 9, appointment_reference: 'CL-9'}], current_page: 1, last_page: 2}; },
@@ -17,6 +17,17 @@ for (const name of ['clinic-record-presentation.js', 'admin-customers.js']) {
   if (fs.existsSync(file)) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
 }
 const ui = context.adminCustomers();
+assert.equal(ui.groomingHistoryUrl({booking_id: 301, booking_pet_id: 401, history_eligible: true}),
+  '/admin/history?type=grooming&booking_id=301&booking_pet_id=401');
+assert.equal(ui.groomingHistoryUrl({booking_id: 301, booking_pet_id: 401, history_eligible: false}), null);
+assert.equal(ui.groomingHistoryUrl({history_eligible: true}), null);
+for (const [status, label] of Object.entries({
+  waiting_to_arrive: 'Registered', checked_in: 'Checked In', in_progress: 'In Progress',
+  for_payment: 'For Payment', for_pickup: 'Ready for Pickup', released: 'Ready for Pickup',
+  archived: 'Completed', cancelled: 'Cancelled', no_show: 'No Show', expired: 'Expired',
+})) {
+  assert.equal(ui.groomingStatusLabel(status), label, `Pet-profile lifecycle label for ${status}`);
+}
 ui.resetPetHistory();
 ui.$nextTick = fn => fn(); ui.$refs = {petBody: {scrollTop: 250}, petHistoryBack: {focus: () => focus.push('back')}};
 ui.petModal.open = true; ui.petModal.pet = {id: 7};

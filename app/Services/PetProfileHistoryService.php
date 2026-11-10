@@ -42,10 +42,13 @@ class PetProfileHistoryService
 
     public function groomingRecords(Pet $pet): Collection
     {
+        $history = Booking::query()->select('booking_id')->groomingHistory();
+
         return Booking::query()
+            ->select('bookings.*')
+            ->selectRaw('bookings.booking_id IN ('.$history->toSql().') AS history_eligible', $history->getBindings())
             ->whereHas('bookingPets', fn ($query) => $query->where('pet_id', $pet->pet_id))
             ->with([
-                'timeWindow',
                 'bookingPets' => fn ($query) => $query->where('pet_id', $pet->pet_id),
                 'bookingServices.service',
             ])
@@ -66,9 +69,11 @@ class PetProfileHistoryService
                     ->values();
 
                 return [
+                    'booking_id' => $booking->booking_id,
+                    'booking_pet_id' => $bookingPet->booking_pet_id,
+                    'history_eligible' => (bool) $booking->history_eligible,
                     'booking_reference' => $booking->booking_reference,
                     'booking_date' => $booking->booking_date,
-                    'arrival_window' => $booking->preferredArrivalWindow()?->window_label,
                     'status' => $this->groomingStatus($booking, $bookingPet),
                     'grooming_started_at' => $bookingPet->grooming_start_time?->format('g:i A'),
                     'grooming_finished_at' => $bookingPet->grooming_end_time?->format('g:i A'),
@@ -124,16 +129,18 @@ class PetProfileHistoryService
 
     private function groomingStatus(Booking $booking, BookingPet $bookingPet): string
     {
-        if (in_array($booking->status, ['cancelled', 'no_show', 'expired'], true)) {
-            return $booking->status;
+        if ($bookingPet->grooming_state === BookingPet::GROOMING_STATE_CANCELLED) {
+            return 'cancelled';
         }
 
-        return match (true) {
-            $bookingPet->grooming_state === BookingPet::GROOMING_STATE_CANCELLED => 'cancelled',
-            $bookingPet->grooming_end_time !== null => 'grooming_finished',
-            $bookingPet->grooming_start_time !== null => 'in_progress',
-            default => $booking->status,
-        };
+        if ($booking->status === 'checked_in' && (
+            $booking->grooming_started_at || $booking->grooming_finished_at
+            || $bookingPet->grooming_start_time || $bookingPet->grooming_end_time
+        )) {
+            return 'in_progress';
+        }
+
+        return $booking->status;
     }
 
     public function formatMedicalRecord(ClinicAppointment $appointment): array

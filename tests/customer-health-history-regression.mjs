@@ -87,6 +87,21 @@ assert.match(vaccination, /Rabies|Current|October 1, 2026|October 1, 2027/);
 assert.doesNotMatch(vaccination, /PRIVATE|subcutaneous|BATCH-001|Manufacturer|Route|Dose|Batch/);
 
 const ui = await run();
+const paidSummary = {status: 'paid', final_booking_total: 1000, payment_method_label: 'Cash', paid_at: '2026-11-10T16:38:00Z'};
+const paidModal = (summary, count = 1, status = 'released') => vm.runInContext(`buildHistoryModalContent(${JSON.stringify({
+  ...booking, status, number_of_pets: count, payment_summary: summary,
+})}, ${JSON.stringify(booking.pets[0])})`, ui.context);
+assert.match(paidModal(paidSummary), /Payment[\s\S]*Total paid[\s\S]*₱1,000\.00[\s\S]*Payment method[\s\S]*Cash[\s\S]*Paid on[\s\S]*Nov 11, 2026[\s\S]*12:38 AM/);
+assert.match(paidModal(paidSummary, 2), /Visit total paid/);
+assert.doesNotMatch(paidModal(paidSummary, 2), />Total paid</);
+for (const payment of [null, {status: 'unpaid'}, {...paidSummary, final_booking_total: null}, {...paidSummary, final_booking_total: -1}, {...paidSummary, final_booking_total: ''}]) {
+  assert.doesNotMatch(paidModal(payment, 1, 'cancelled'), />Payment<|Total paid|Visit total paid|Paid on/);
+}
+const clinicPaid = {...clinic, payment: {status: 'paid', total_paid: 3100, payment_method_label: 'Online Payment', paid_at: '2026-11-10T12:41:00+08:00', cash_received: 5000, provider_id: 'PRIVATE'}};
+const clinicDetails = vm.runInContext(`buildClinicHistoryDetails(${JSON.stringify({type: 'clinic', record: clinicPaid, pet: clinic.pet, date: clinic.appointment_date})})`, ui.context);
+assert.match(clinicDetails, /Care provided[\s\S]*Payment[\s\S]*Total paid[\s\S]*₱3,100\.00[\s\S]*Online Payment[\s\S]*Nov 10, 2026[\s\S]*12:41 PM/);
+assert.doesNotMatch(clinicDetails, /5,000|PRIVATE|provider_id|cash_received/);
+assert.doesNotMatch(ui.element('historyList').innerHTML, /Total paid|Visit total paid|Paid on/);
 const renderGrooming = (pet) => vm.runInContext(`buildHistoryModalContent(${JSON.stringify(booking)}, ${JSON.stringify(pet)})`, ui.context);
 const recordedCondition = renderGrooming({ body_condition: 'obese', body_condition_verified: true, weight: 20 });
 assert.match(recordedCondition, /Pet Size[\s\S]*Body Condition[\s\S]*Obese[\s\S]*Clinic-confirmed[\s\S]*Weight[\s\S]*20 kg/);

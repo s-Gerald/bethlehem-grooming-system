@@ -1413,15 +1413,21 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       ];
     },
 
+    groomingHistoryUrl(record) {
+      if (!record.history_eligible || !record.booking_id || !record.booking_pet_id) return null;
+      return '/admin/history?' + new URLSearchParams({
+        type: 'grooming', booking_id: record.booking_id, booking_pet_id: record.booking_pet_id,
+      });
+    },
+
     groomingStatusLabel(status) {
       return ({
-        waiting_to_arrive: "Scheduled",
+        waiting_to_arrive: "Registered",
         checked_in: "Checked In",
-        in_progress: "Being Groomed",
-        grooming_finished: "Grooming Finished",
+        in_progress: "In Progress",
         for_payment: "For Payment",
         for_pickup: "Ready for Pickup",
-        released: "Released",
+        released: "Ready for Pickup",
         archived: "Completed",
         cancelled: "Cancelled",
         no_show: "No Show",
@@ -1434,10 +1440,9 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
         waiting_to_arrive: "bg-blue-50 text-blue-700",
         checked_in: "bg-amber-50 text-amber-700",
         in_progress: "bg-violet-50 text-violet-700",
-        grooming_finished: "bg-emerald-50 text-emerald-700",
         for_payment: "bg-orange-50 text-orange-700",
         for_pickup: "bg-cyan-50 text-cyan-700",
-        released: "bg-emerald-50 text-emerald-700",
+        released: "bg-cyan-50 text-cyan-700",
         archived: "bg-slate-100 text-slate-700",
         cancelled: "bg-red-50 text-red-700",
         no_show: "bg-slate-100 text-slate-600",

@@ -84,6 +84,8 @@ class AdminPetProfileTest extends TestCase
             $table->date('booking_date');
             $table->string('status');
             $table->boolean('paid')->default(false);
+            $table->dateTime('grooming_started_at')->nullable();
+            $table->dateTime('grooming_finished_at')->nullable();
             $table->unsignedTinyInteger('cancel_count')->default(0);
             $table->text('cancellation_reason')->nullable();
         });
@@ -94,6 +96,11 @@ class AdminPetProfileTest extends TestCase
             $table->string('grooming_state')->nullable();
             $table->dateTime('grooming_start_time')->nullable();
             $table->dateTime('grooming_end_time')->nullable();
+        });
+        Schema::create('payments', function (Blueprint $table) {
+            $table->increments('payment_id');
+            $table->unsignedInteger('booking_id');
+            $table->string('payment_status');
         });
         Schema::create('services', function (Blueprint $table) {
             $table->increments('service_id');
@@ -187,6 +194,7 @@ class AdminPetProfileTest extends TestCase
             'clinic_records',
             'clinic_appointments',
             'booking_services',
+            'payments',
             'services',
             'booking_pets',
             'bookings',
@@ -207,6 +215,121 @@ class AdminPetProfileTest extends TestCase
         $this->getJson('/api/admin/pets/101/profile')
             ->assertForbidden()
             ->assertJsonPath('message', 'Unauthorized. Admin or staff access required.');
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('groomingLifecycleCases')]
+    public function test_grooming_profile_uses_visit_lifecycle_and_preserves_pet_timestamps(
+        string $status, bool $paid, string $petState, ?string $start, ?string $end,
+        ?string $visitStart, ?string $visitEnd, string $expected,
+    ): void {
+        $this->insertPet(101, 'Mochi');
+        $this->insertPet(202, 'Sibling');
+        $this->authenticate(20, 'staff');
+        DB::table('bookings')->insert([
+            'booking_id' => 301, 'booking_reference' => 'WI-301', 'booking_date' => '2026-08-01',
+            'status' => $status, 'paid' => $paid,
+            'grooming_started_at' => $visitStart, 'grooming_finished_at' => $visitEnd,
+        ]);
+        DB::table('booking_pets')->insert([
+            ['booking_pet_id' => 401, 'booking_id' => 301, 'pet_id' => 101,
+                'grooming_state' => $petState, 'grooming_start_time' => $start, 'grooming_end_time' => $end],
+            ['booking_pet_id' => 402, 'booking_id' => 301, 'pet_id' => 202,
+                'grooming_state' => 'in_progress', 'grooming_start_time' => '2026-08-01 09:00:00', 'grooming_end_time' => null],
+        ]);
+
+        $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk()
+            ->assertJsonCount(1, 'grooming_records')
+            ->assertJsonPath('grooming_records.0.booking_reference', 'WI-301')
+            ->assertJsonPath('grooming_records.0.status', $expected)
+            ->assertJsonPath('grooming_records.0.paid', $paid)
+            ->assertJsonPath('grooming_records.0.grooming_started_at', $start ? '8:30 AM' : null)
+            ->assertJsonPath('grooming_records.0.grooming_finished_at', $end ? '9:30 AM' : null);
+    }
+
+    public static function groomingLifecycleCases(): array
+    {
+        $start = '2026-08-01 08:30:00';
+        $end = '2026-08-01 09:30:00';
+
+        return [
+            'finished unpaid' => ['for_payment', false, 'finished', $start, $end, $start, $end, 'for_payment'],
+            'paid awaiting pickup' => ['released', true, 'finished', $start, $end, $start, $end, 'released'],
+            'legacy awaiting pickup' => ['for_pickup', true, 'finished', $start, $end, $start, $end, 'for_pickup'],
+            'picked up' => ['archived', true, 'finished', $start, $end, $start, $end, 'archived'],
+            'legacy completed without timestamps' => ['archived', true, 'not_started', null, null, null, null, 'archived'],
+            'active grooming' => ['in_progress', false, 'in_progress', $start, null, $start, null, 'in_progress'],
+            'finished pet with active sibling' => ['in_progress', false, 'finished', $start, $end, $start, null, 'in_progress'],
+            'partial visit before this pet starts' => ['checked_in', false, 'not_started', null, null, $start, null, 'in_progress'],
+            'partial visit after this pet finishes' => ['checked_in', false, 'finished', $start, $end, $start, null, 'in_progress'],
+            'legacy booking finish activity' => ['checked_in', false, 'not_started', null, null, null, $end, 'in_progress'],
+            'legacy pet start activity' => ['checked_in', false, 'in_progress', $start, null, null, null, 'in_progress'],
+            'checked in without activity' => ['checked_in', false, 'not_started', null, null, null, null, 'checked_in'],
+            'registered' => ['waiting_to_arrive', false, 'not_started', null, null, null, null, 'waiting_to_arrive'],
+            'cancelled pet in completed visit' => ['archived', true, 'cancelled', null, null, $start, $end, 'cancelled'],
+            'cancelled visit' => ['cancelled', false, 'not_started', null, null, null, null, 'cancelled'],
+            'no show' => ['no_show', false, 'not_started', null, null, null, null, 'no_show'],
+            'expired' => ['expired', false, 'not_started', null, null, null, null, 'expired'],
+        ];
+    }
+
+    public function test_grooming_links_use_history_eligibility_for_the_entire_visit_without_per_record_queries(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->insertPet(202, 'Sibling');
+        $this->authenticate(20, 'staff');
+        foreach ([301 => ['released', true], 302 => ['in_progress', true], 303 => ['cancelled', false],
+            304 => ['no_show', false], 305 => ['released', false], 306 => ['archived', false],
+            307 => ['for_payment', false], 308 => ['released', true]] as $id => [$status, $paid]) {
+            DB::table('bookings')->insert(['booking_id' => $id, 'booking_reference' => 'WI-'.$id,
+                'booking_date' => '2026-08-01', 'status' => $status, 'paid' => $paid]);
+            DB::table('booking_pets')->insert(['booking_pet_id' => $id + 100, 'booking_id' => $id,
+                'pet_id' => 101, 'grooming_state' => 'finished', 'grooming_end_time' => '2026-08-01 09:30:00']);
+        }
+        DB::table('booking_pets')->insert([
+            ['booking_id' => 302, 'pet_id' => 202, 'grooming_state' => 'in_progress'],
+            ['booking_id' => 308, 'pet_id' => 202, 'grooming_state' => 'cancelled'],
+        ]);
+        DB::table('payments')->insert(['booking_id' => 305, 'payment_status' => 'paid']);
+        DB::enableQueryLog();
+        try {
+            $response = $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk()
+                ->assertJsonCount(8, 'grooming_records');
+            $records = collect($response->json('grooming_records'))->keyBy('booking_id');
+            foreach ([301 => true, 302 => false, 303 => true, 304 => false, 305 => true,
+                306 => true, 307 => false, 308 => true] as $id => $eligible) {
+                $this->assertSame($id + 100, $records[$id]['booking_pet_id']);
+                $this->assertSame($eligible, $records[$id]['history_eligible']);
+                $this->assertSame('WI-'.$id, $records[$id]['booking_reference']);
+            }
+            $manyCount = count(DB::getQueryLog());
+            DB::table('bookings')->where('booking_id', '!=', 301)->delete();
+            DB::flushQueryLog();
+            $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk();
+            $this->assertSame($manyCount, count(DB::getQueryLog()), 'Query count must not grow with records');
+        } finally {
+            DB::disableQueryLog();
+        }
+    }
+
+    public function test_grooming_profile_does_not_return_or_fetch_arrival_windows(): void
+    {
+        $this->insertPet(101, 'Mochi');
+        $this->authenticate(20, 'staff');
+        DB::table('time_windows')->insert(['window_id' => 1, 'window_label' => '8:00 AM - 10:00 AM']);
+        DB::table('bookings')->insert([
+            'booking_id' => 301, 'booking_reference' => 'BAC-301', 'booking_date' => '2026-08-01',
+            'status' => 'archived', 'window_id' => 1,
+        ]);
+        DB::table('booking_pets')->insert(['booking_id' => 301, 'pet_id' => 101]);
+        DB::enableQueryLog();
+        try {
+            $this->getJson('/api/admin/pets/101/profile?history=grooming')->assertOk()
+                ->assertJsonPath('grooming_records.0.booking_reference', 'BAC-301')
+                ->assertJsonMissingPath('grooming_records.0.arrival_window');
+            $this->assertEmpty(array_filter(DB::getQueryLog(), fn ($query) => str_contains($query['query'], 'time_windows')));
+        } finally {
+            DB::disableQueryLog();
+        }
     }
 
     public function test_staff_can_retrieve_pet_scoped_grooming_medical_and_vaccination_records(): void

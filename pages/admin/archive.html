@@ -472,6 +472,7 @@
           <admin-loader x-cloak x-show="loading &amp;&amp; !historyLoaded" page></admin-loader>
 
           <!-- Error state -->
+          <p x-cloak x-show="historyNotice" x-text="historyNotice" role="status" class="mt-4 text-sm text-slate-600"></p>
           <section x-show="!loading && errorMessage" class="mt-8">
             <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
               <p class="font-semibold">Failed to load history</p>
@@ -624,7 +625,7 @@
                   <h5 id="history-pets-title">Pets &amp; Grooming</h5>
                   <div>
                     <template x-for="pet in (detailsBooking?.pets ?? [])" :key="pet.bookingPetId">
-                      <article class="history-pet-record">
+                      <article class="history-pet-record" :data-history-booking-pet="pet.bookingPetId">
                         <div class="history-pet-heading"><h6 x-text="pet.petName"></h6><span x-show="groomingText(pet.groomingStateLabel)" class="history-label" x-text="pet.groomingStateLabel"></span></div>
                         <div class="history-pet-body">
                           <dl class="history-pet-profile">
@@ -818,7 +819,7 @@
 
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/recorded-product-pricing.js?v=20261029"></script>
-    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111"></script>
+    <script src="/scripts/components/admin-archive.js?v=grooming-record-20261016&copy=grooming-terminology-20261016&consent=20261016&loading-ui=universal-20261018&icons=20261018&fetching=20261019&qr-methods=20261023&veterinary=20261024&registration-ui=20261027-v3&mobile-format=20261110&invoice-products=20261029&urls=20261103&queue-copy=20261103-admin-v1&pet-history=20261110&service-history=20261111&history-link=20261111"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

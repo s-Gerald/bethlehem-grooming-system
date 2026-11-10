@@ -261,6 +261,27 @@ class GroomingHistoryEligibilityTest extends TestCase
         $this->assertSame([2, 1], array_column($this->history()['archived'], 'id'), 'Equal timestamps use booking ID');
     }
 
+    public function test_customer_released_history_payment_keeps_recorded_totals_after_catalogue_edits(): void
+    {
+        DB::table('bookings')->update(['status' => 'released', 'paid' => true, 'grooming_finished_at' => now()]);
+        DB::table('booking_pets')->update(['grooming_state' => 'finished', 'grooming_end_time' => now()]);
+        DB::table('payments')->insert(['booking_id' => 1, 'total_amount' => 1500, 'amount_tendered' => 2000,
+            'change_amount' => 500, 'paid_at' => now(), 'notes' => 'Internal payment note']);
+        config(['grooming_services.services.regular_dog_grooming.prices' => ['small' => 9999, 'medium' => 9999, 'large' => 9999]]);
+        DB::table('services')->update(['service_name' => 'Changed catalogue name']);
+        $visit = app(BookingController::class)->history($this->request())->getData(true)['history'][0];
+        $this->assertSame('released', $visit['status']);
+        $this->assertSame(2, $visit['number_of_pets']);
+        $this->assertSame('paid', $visit['payment_summary']['status']);
+        $this->assertSame('1500.00', $visit['payment_summary']['final_booking_total']);
+        $this->assertSame('Cash', $visit['payment_summary']['payment_method_label']);
+        $this->assertSame('2026-11-11T16:30:00+08:00', $visit['payment_summary']['paid_at']);
+        $this->assertSame('850.00', $visit['payment_summary']['pets'][0]['final_pet_charge']);
+        $this->assertSame('Recorded grooming', $visit['payment_summary']['pets'][0]['service_breakdown'][0]['label']);
+        $this->assertArrayNotHasKey('notes', $visit['payment_summary']);
+        $this->assertArrayNotHasKey('processed_by', $visit['payment_summary']);
+    }
+
     public function test_released_history_preserves_snapshots_and_batches_owner_reads(): void
     {
         DB::table('walkins')->insert(['id' => 1, 'fname' => 'John', 'lname' => 'Lennon']);

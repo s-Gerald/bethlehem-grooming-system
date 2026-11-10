@@ -19,6 +19,9 @@ function adminArchive() {
     _historyRequest: 0,
     _archiveIdentityLoaded: false,
     errorMessage: "",
+    historyNotice: "",
+    _pendingGroomingTarget: null,
+    _deepLinkedBookingId: null,
     detailsModalOpen: false,
     detailsBooking: null,
     signedConsent: null,
@@ -42,6 +45,16 @@ function adminArchive() {
       };
       window.addEventListener("pageshow", this._restoreOnPageShow);
       const context = window.history.state?.groomingHistory;
+      const params = new URLSearchParams(window.location?.search || '');
+      if (params.get('type') === 'grooming' && params.has('booking_id')) {
+        this._deepLinkedBookingId = params.get('booking_id');
+        if (!context) this._pendingGroomingTarget = {
+          bookingId: params.get('booking_id'), bookingPetId: params.get('booking_pet_id'),
+        };
+      }
+      if (!context && ['grooming', 'clinic'].includes(params.get('type')) && !this.clinicOnly) {
+        this.archiveType = params.get('type');
+      }
       if (context) this.searchQuery = context.searchQuery;
       await this.loadArchive();
       this.restoreHistoryContext(context);
@@ -117,7 +130,11 @@ function adminArchive() {
           this._historyKey = key;
           this.historyLoaded = true;
           this.selectAvailableYear();
+          this.resolveGroomingTarget();
         }, {force});
+        if (request === this._historyRequest && type === this.archiveType && search === this.searchQuery.trim()) {
+          this.resolveGroomingTarget({ final: true });
+        }
       } catch (error) {
         if (request === this._historyRequest) this.errorMessage = error.message || "Failed to load history. Please try again.";
       } finally {
@@ -127,6 +144,42 @@ function adminArchive() {
 
     onSearchChange() {
       this.loadArchive();
+    },
+
+    clearGroomingTargetUrl() {
+      const params = new URLSearchParams(window.location?.search || '');
+      params.delete('booking_id');
+      params.delete('booking_pet_id');
+      const search = params.toString();
+      window.history.replaceState(window.history.state, '', window.location.pathname
+        + (search ? '?' + search : '') + (window.location.hash || ''));
+      this._deepLinkedBookingId = null;
+    },
+
+    resolveGroomingTarget({ final = false } = {}) {
+      const target = this._pendingGroomingTarget;
+      if (!target) return;
+      if (this.archiveType !== 'grooming') {
+        this._pendingGroomingTarget = null;
+        this.clearGroomingTargetUrl();
+        return;
+      }
+      const validId = /^\d+$/.test(target.bookingId) && Number.isSafeInteger(Number(target.bookingId)) && Number(target.bookingId) > 0;
+      const booking = validId && this.archivedList.find(record => Number(record.id) === Number(target.bookingId));
+      if (!booking) {
+        if (final) {
+          this._pendingGroomingTarget = null;
+          this.historyNotice = 'This grooming record is no longer available in History.';
+          this.clearGroomingTargetUrl();
+        }
+        return;
+      }
+      this._pendingGroomingTarget = null;
+      this.historyNotice = '';
+      const date = this.recordDate(booking);
+      if (date) this.selectedYear = date.slice(0, 4);
+      if (!date?.startsWith(this.selectedMonth)) this.selectedMonth = '';
+      this.viewDetails(booking, null, 0, target.bookingPetId);
     },
 
     onYearChange() {
@@ -257,7 +310,7 @@ function adminArchive() {
         : "Completed and cancelled grooming visits will appear here.";
     },
 
-    viewDetails(booking, trigger = null, scrollTop = 0) {
+    viewDetails(booking, trigger = null, scrollTop = 0, bookingPetId = null) {
       if (!this.detailsModalOpen) {
         this._detailsBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = "hidden";
@@ -270,7 +323,15 @@ function adminArchive() {
         // Resolve the rendered dialog after startup/Back, as well as a row click.
         const dialog = document.querySelector('[aria-labelledby="grooming-record-title"]');
         dialog.querySelector('[aria-label="Close grooming record"]').focus({ preventScroll: true });
-        dialog.querySelector('[aria-label="Grooming record details"]').scrollTop = scrollTop;
+        const body = dialog.querySelector('[aria-label="Grooming record details"]');
+        body.scrollTop = scrollTop;
+        this._detailsTrigger = trigger || document.querySelector(`[data-history-booking="${booking.id}"]`);
+        const pet = /^\d+$/.test(bookingPetId || '') && booking.pets?.length > 1
+          ? booking.pets.find(pet => String(pet.bookingPetId) === String(bookingPetId)) : null;
+        if (pet) {
+          const record = body.querySelector(`[data-history-booking-pet="${pet.bookingPetId}"]`);
+          if (record) body.scrollTop += record.getBoundingClientRect().top - body.getBoundingClientRect().top;
+        }
       });
     },
 
@@ -283,6 +344,7 @@ function adminArchive() {
       document.body.style.overflow = this._detailsBodyOverflow;
       this._detailsTrigger?.focus();
       this._detailsTrigger = null;
+      if (this._deepLinkedBookingId !== null) this.clearGroomingTargetUrl();
     },
 
     trapDetailsFocus(event) {

@@ -1056,24 +1056,28 @@
                       <p class="mt-1 text-sm text-slate-500">This pet does not have grooming activity yet.</p>
                     </div>
                     <div x-show="petModal.groomingRecords.length > 0" class="space-y-3">
-                      <template x-for="record in petModal.groomingRecords" :key="record.booking_reference">
-                        <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <template x-for="record in petModal.groomingRecords" :key="record.booking_id">
+                        <a :href="groomingHistoryUrl(record)" class="block rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                          :class="groomingHistoryUrl(record) ? 'cursor-pointer transition hover:border-[#315b7e] hover:bg-[#f0f7fd] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315b7e]' : ''">
                           <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                              <p class="text-xs font-medium text-slate-500">Booking Reference</p>
-                              <h4 class="mt-1 text-lg font-bold text-[#2f4b66]" x-text="formatTextValue(record.booking_reference)"></h4>
+                            <div class="min-w-0">
+                              <p class="text-xs font-medium text-slate-500">Visit Reference</p>
+                              <h4 class="mt-1 break-words text-lg font-bold text-[#2f4b66]" x-text="formatTextValue(record.booking_reference)"></h4>
                             </div>
-                            <span class="w-fit rounded-full px-3 py-1 text-xs font-bold" :class="groomingStatusClasses(record.status)" x-text="groomingStatusLabel(record.status)"></span>
+                            <span class="w-fit shrink-0 rounded-full px-3 py-1 text-xs font-bold" :class="groomingStatusClasses(record.status)" x-text="groomingStatusLabel(record.status)"></span>
                           </div>
-                          <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div><dt class="text-xs font-medium text-slate-500">Grooming Date</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatDate(record.booking_date)"></dd></div>
-                            <div><dt class="text-xs font-medium text-slate-500">Arrival Window</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatTextValue(record.arrival_window)"></dd></div>
-                            <div><dt class="text-xs font-medium text-slate-500">Grooming Started</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatTextValue(record.grooming_started_at)"></dd></div>
-                            <div><dt class="text-xs font-medium text-slate-500">Grooming Finished</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="formatTextValue(record.grooming_finished_at)"></dd></div>
-                            <div><dt class="text-xs font-medium text-slate-500">Selected Services</dt><dd class="mt-1 break-words text-sm font-medium text-slate-700" x-text="record.services?.length ? record.services.join(', ') : 'Not provided'"></dd></div>
-                            <div><dt class="text-xs font-medium text-slate-500">Payment Status</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.paid ? 'Paid' : 'Unpaid'"></dd></div>
+                            <div><dt class="text-xs font-medium text-slate-500">Payment</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.paid ? 'Paid' : 'Unpaid'"></dd></div>
+                            <div class="min-w-0 sm:col-span-2"><dt class="text-xs font-medium text-slate-500">Services</dt><dd class="mt-1 text-sm font-medium text-slate-700 [overflow-wrap:anywhere]" x-text="record.services?.length ? record.services.join(', ') : 'Not recorded'"></dd></div>
+                            <template x-if="record.grooming_started_at">
+                              <div><dt class="text-xs font-medium text-slate-500">Started</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.grooming_started_at"></dd></div>
+                            </template>
+                            <template x-if="record.grooming_finished_at">
+                              <div><dt class="text-xs font-medium text-slate-500">Finished</dt><dd class="mt-1 text-sm font-medium text-slate-700" x-text="record.grooming_finished_at"></dd></div>
+                            </template>
                           </dl>
-                        </article>
+                        </a>
                       </template>
                     </div>
                   </div>
@@ -1172,7 +1176,7 @@
     <script src="/scripts/utils/philippine-mobile.js?v=mobile-policy-20261110"></script>
     <script src="/scripts/components/clinic-attachments.js?v=20261015"></script>
     <script src="/scripts/components/clinic-record-presentation.js?v=20261029&short-notes=20261110"></script>
-    <script src="/scripts/components/admin-customers.js?name-correction=20261108&clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261110&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&pet-edit-layout=v1&name-policy=20261110&short-notes=20261110"></script>
+    <script src="/scripts/components/admin-customers.js?name-correction=20261108&clinical-history=20261029&v=customer-records-20261029-online-account&pet-weight=pet-weight-size-20261107-v1&shared-editor=20261014&loading-ui=universal-20261018&icons=20261018&admin-perf=20261019&pet-format=20261019&pet-fields=20261030-v1&registration=fcfs-20261027-v1&registration=fcfs-20261026-v1&registration-rollover=20261027-v3&pet-care=20261027-v1&email-entry=20261028&names=20261028-v2&mobile-input=20261028-v2&mobile-format=20261110&pet-birthdate=20261103-v1&urls=20261103&owner-name=20261108&pet-profile=20261110-v1&body-condition=20261110-v2&pet-edit-layout=v1&name-policy=20261110&short-notes=20261110&grooming-history=20261111&history-link=20261111"></script>
     <script src="/scripts/services/admin-notification-service.js?v=20261027"></script>
     <script src="/scripts/components/admin-notifications.js?v=20261027-2&urls=20261103"></script>
   </body>

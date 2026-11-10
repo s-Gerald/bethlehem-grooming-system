@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\PetProfileSnapshot;
 use App\Models\ClinicAppointment;
+use App\Models\GatewayPayment;
 use App\Models\Pet;
 use App\Models\VaccinationRecord;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,6 +70,10 @@ class PetMedicalRecordController extends Controller
                 'pet_id',
                 'pet_profile_snapshot',
                 'chief_complaint',
+                'paid',
+                'total_amount',
+                'payment_method',
+                'paid_at',
             ])
             ->where('status', 'completed')
             ->whereHas('record')
@@ -99,6 +104,16 @@ class PetMedicalRecordController extends Controller
             'appointment_reference' => $appointment->appointment_reference,
             'appointment_date' => $appointment->appointment_date?->toDateString(),
             'status' => $appointment->status,
+            'payment' => $appointment->paid && $appointment->total_amount !== null
+                && is_numeric($appointment->total_amount) && (float) $appointment->total_amount >= 0
+                && filled($appointment->payment_method) && $appointment->paid_at
+                ? [
+                    'status' => 'paid',
+                    'total_paid' => (float) $appointment->total_amount,
+                    'payment_method' => $appointment->payment_method,
+                    'payment_method_label' => GatewayPayment::labelFor($appointment->payment_method),
+                    'paid_at' => $appointment->paid_at->toIso8601String(),
+                ] : null,
             'chief_complaint' => $record->chief_complaint ?? $appointment->chief_complaint,
             'diagnosis' => $diagnosis,
             'diagnosis_source' => filled($diagnosis) ? ($record->working_diagnosis !== null ? 'working_diagnosis' : 'diagnosis') : null,
