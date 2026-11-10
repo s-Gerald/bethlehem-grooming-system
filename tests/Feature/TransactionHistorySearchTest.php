@@ -42,7 +42,8 @@ class TransactionHistorySearchTest extends TestCase
         });
         Schema::create('bookings', function (Blueprint $table) {
             $table->increments('booking_id');
-            $table->unsignedInteger('user_id');
+            $table->unsignedInteger('user_id')->nullable();
+            $table->unsignedInteger('walkin_id')->nullable();
             $table->string('booking_reference');
         });
         Schema::create('pets', function (Blueprint $table) {
@@ -53,6 +54,8 @@ class TransactionHistorySearchTest extends TestCase
         });
         Schema::create('walkins', function (Blueprint $table) {
             $table->id();
+            $table->unsignedInteger('user_id')->nullable();
+            $table->unsignedInteger('unregistered_customer_id')->nullable();
             $table->string('fname');
             $table->string('lname');
         });

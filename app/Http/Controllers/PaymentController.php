@@ -633,22 +633,9 @@ class PaymentController extends Controller
 
         if ($search !== '') {
             $search = mb_strtolower($search);
-            $nameTerms = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY);
-            $query->where(function ($query) use ($search, $nameTerms, $hasQrPayments, $gatewaySearch) {
-                $query->whereHas('booking.user', function ($userQuery) use ($search, $nameTerms) {
-                    $userQuery->where(function ($nameQuery) use ($search, $nameTerms) {
-                        $nameQuery->whereRaw('LOWER(first_name) LIKE ?', ["%{$search}%"])
-                            ->orWhereRaw('LOWER(last_name) LIKE ?', ["%{$search}%"])
-                            ->orWhere(function ($fullNameQuery) use ($nameTerms) {
-                                foreach ($nameTerms as $term) {
-                                    $fullNameQuery->where(function ($termQuery) use ($term) {
-                                        $termQuery->whereRaw('LOWER(first_name) LIKE ?', ["%{$term}%"])
-                                            ->orWhereRaw('LOWER(last_name) LIKE ?', ["%{$term}%"]);
-                                    });
-                                }
-                            });
-                    });
-                })->orWhereHas('booking.bookingPets.pet', fn ($petQuery) => $petQuery->whereRaw('LOWER(pet_name) LIKE ?', ["%{$search}%"])
+            $query->where(function ($query) use ($search, $hasQrPayments, $gatewaySearch) {
+                $query->whereHas('booking', fn ($booking) => $booking->whereGroomingOwnerMatches($search))
+                ->orWhereHas('booking.bookingPets.pet', fn ($petQuery) => $petQuery->whereRaw('LOWER(pet_name) LIKE ?', ["%{$search}%"])
                 )->orWhereHas('booking', fn ($bookingQuery) => $bookingQuery->whereRaw(
                     'LOWER(booking_reference) LIKE ?', ["%{$search}%"],
                 ))->orWhereHas('products', fn ($products) => $products->whereRaw('LOWER(item_name) LIKE ?', ["%{$search}%"]));
@@ -722,7 +709,8 @@ class PaymentController extends Controller
         $dateTotals = (clone $combined)->whereIn(DB::raw($dateGroup), $rows->pluck('paid_at')->map(fn ($at) => $at ? substr($at, 0, 10) : 'unknown')->unique())
             ->selectRaw("{$dateGroup} as date_key, SUM(CASE WHEN is_test = 0 THEN total_amount ELSE 0 END) as total")
             ->groupByRaw($dateGroup)->pluck('total', 'date_key');
-        $paymentRelations = ['booking.user', 'products', 'processedBy', 'gatewayPayment'];
+        $paymentRelations = ['booking.user', 'booking.walkin.user', 'booking.walkin.unregisteredCustomer',
+            'products', 'processedBy', 'gatewayPayment'];
         if ($hasQrPayments) $paymentRelations[] = 'qrPayment';
         $payments = Payment::with($paymentRelations)
             ->whereKey($rows->where('transaction_type', 'grooming_payment')->pluck('transaction_id'))->get()->keyBy($paymentKey);
@@ -824,7 +812,7 @@ class PaymentController extends Controller
                 ? trim($payment->processedBy->first_name.' '.$payment->processedBy->last_name) : null,
             'bookingId' => $booking?->booking_id,
             'reference' => $booking?->booking_reference ?? '—',
-            'ownerName' => trim(($booking?->user?->first_name ?? '').' '.($booking?->user?->last_name ?? '')),
+            'ownerName' => $booking?->groomingOwnerName() ?: '—',
             'petName' => $petName,
             'serviceLabel' => $serviceLabel,
             'finalPrice' => (float) $payment->total_amount,

@@ -1091,7 +1091,7 @@ function scheduleCustomerDashboardAfterPaint(task) {
       <div class="portal-icon-tile h-10 w-10 rounded-[13px] bg-portal-surface"><svg class="ph-icon h-6 w-6" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#scissors"></use></svg></div>
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold text-portal-text">${escapeDashboardHtml(getPetNamesLabel(booking))} · ${escapeDashboardHtml(serviceLabel(booking))}</p>
-        <p class="mt-1 text-xs text-portal-muted">${formatDate(booking.booking_date)}</p>
+        <p class="mt-1 text-xs text-portal-muted">${formatDate(booking.history_date || booking.booking_date)}</p>
       </div>
       <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.classes}">${escapeDashboardHtml(badge.label)}</span>
     </article>`;

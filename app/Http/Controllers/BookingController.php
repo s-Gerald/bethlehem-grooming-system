@@ -375,7 +375,7 @@ class BookingController extends Controller
             ->get();
 
         $historyQuery = Booking::where('user_id', $userId)
-            ->whereIn('status', ['archived', 'cancelled', 'expired', 'no_show']);
+            ->groomingHistory(['archived', 'cancelled', 'expired', 'no_show']);
 
         if ($petId !== null) {
             $historyQuery->whereHas('bookingPets', fn ($query) => $query->where('pet_id', $petId));
@@ -384,8 +384,9 @@ class BookingController extends Controller
         $historyTotal = (clone $historyQuery)->count();
 
         $historyQuery
+            ->withGroomingHistoryTimestamp()
             ->with(array_filter($relations, fn ($relation) => $relation !== 'bookingPets.pet'))
-            ->orderBy('booking_date', 'desc')
+            ->orderBy('history_at', 'desc')
             ->orderBy('booking_id', 'desc');
 
         if ($historyLimit !== null) {
@@ -398,8 +399,8 @@ class BookingController extends Controller
 
         app(\App\Services\GroomingQueueForecast::class)->forBookings($active);
 
-        $format = function ($b) use ($petId) {
-            $historical = in_array($b->status, ['archived', 'cancelled', 'expired', 'no_show'], true);
+        $format = function ($b, bool $historical = false) use ($petId) {
+            $historical = $historical || in_array($b->status, ['archived', 'cancelled', 'expired', 'no_show'], true);
             $bookingPets = $b->bookingPets ?? collect();
             $showGroomingTracker = true;
             $paymentSummary = (bool) $b->paid
@@ -506,11 +507,15 @@ class BookingController extends Controller
                 ];
             }
 
+            $historyAt = $b->history_at ? Carbon::parse($b->history_at) : null;
+
             return [
                 'booking_id' => $b->booking_id,
                 'booking_reference' => $b->booking_reference,
                 'booking_type' => $b->booking_type,
                 'booking_date' => $b->booking_date,
+                'history_at' => $historyAt?->toIso8601String(),
+                'history_date' => $historyAt?->toDateString(),
                 'arrival_time_passed' => $b->status === 'waiting_to_arrive' && ! $b->dropped_off_at
                     && $b->booking_date === now()->toDateString() && $b->timeWindow
                     && ($b->arrival_end_time
@@ -559,8 +564,8 @@ class BookingController extends Controller
 
         return response()->json([
             'success' => true,
-            'bookings' => $active->map($format)->values(),
-            'history' => $history->map($format)->values(),
+            'bookings' => $active->map(fn ($booking) => $format($booking))->values(),
+            'history' => $history->map(fn ($booking) => $format($booking, true))->values(),
             'history_total' => $historyTotal,
             'clinic_visits' => Schema::hasTable('clinic_appointments') ? \App\Models\ClinicAppointment::query()
                 ->where('user_id', $userId)->where('status', 'waiting_to_arrive')->whereNull('checked_in_at')

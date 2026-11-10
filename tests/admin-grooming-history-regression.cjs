@@ -97,6 +97,28 @@ ui.sortOrder = 'newest';
 assert.equal(ui.filteredList[0].id, 2);
 assert.equal(JSON.stringify([session, repeat]), original, 'Displaying history must never mutate stored records');
 
+// Service completion controls grouping, filtering and full-timestamp ordering, regardless of pickup/payment dates.
+const chronology = context.adminArchive();
+chronology.archivedList = [
+  {id: 1, ownerName: 'Zoe', appointmentDate: '2025-12-31', historyDate: '2026-11-11', historyAtIso: '2026-11-11T16:30:00+08:00', archivedAt: '2026-11-11T20:00:00+08:00'},
+  {id: 2, ownerName: 'Amy', appointmentDate: '2026-11-10', historyDate: '2026-11-11', historyAtIso: '2026-11-11T17:20:00+08:00', archivedAt: '2026-11-11T17:45:00+08:00'},
+  {id: 3, ownerName: 'Ben', appointmentDate: '2026-11-12', historyDate: '2026-11-11', historyAtIso: '2026-11-11T17:20:00+08:00'},
+  {id: 4, ownerName: 'John', status: 'cancelled', appointmentDate: '2026-10-30', historyDate: '2026-11-10', historyAtIso: '2026-11-10T12:00:00+08:00'},
+];
+assert.equal(chronology.availableYears.join(','), '2026');
+chronology.selectedYear = '2026';
+assert.equal(chronology.availableMonths.map(m => m.value).join(','), '2026-11');
+chronology.selectedMonth = '2026-11';
+assert.equal(chronology.filteredList.map(r => r.id).join(','), '3,2,1,4');
+assert.equal(chronology.groupedByDate.map(g => g.date).join(','), '2026-11-11,2026-11-10');
+assert.equal(chronology.groupedByDate[0].bookings.map(r => r.id).join(','), '3,2,1');
+chronology.sortOrder = 'oldest';
+assert.equal(chronology.filteredList.map(r => r.id).join(','), '4,1,2,3');
+chronology.sortOrder = 'az';
+assert.equal(chronology.filteredList.map(r => r.ownerName).join(','), 'Amy,Ben,John,Zoe');
+chronology.sortOrder = 'za';
+assert.equal(chronology.filteredList.map(r => r.ownerName).join(','), 'Zoe,John,Ben,Amy');
+
 // Sparse historical records omit absent details without discarding real content or zero values.
 for (const value of [null, undefined, '', '  ', '-', '—', 'Not recorded', 'None provided', 'No staff note added.']) {
   assert.equal(ui.groomingText(value), '');

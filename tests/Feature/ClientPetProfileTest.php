@@ -394,11 +394,20 @@ class ClientPetProfileTest extends TestCase
             $table->boolean('paid')->default(false);
             $table->unsignedTinyInteger('reschedule_count')->default(0);
             $table->unsignedTinyInteger('cancel_count')->default(0);
+            $table->text('cancellation_reason')->nullable();
+            $table->dateTime('cancelled_at')->nullable();
             $table->text('special_notes')->nullable();
             $table->dateTime('dropped_off_at')->nullable();
             $table->dateTime('grooming_started_at')->nullable();
             $table->dateTime('grooming_finished_at')->nullable();
             $table->dateTime('created_at')->nullable();
+        });
+
+        Schema::create('payments', function (Blueprint $table) {
+            $table->increments('payment_id');
+            $table->unsignedInteger('booking_id');
+            $table->string('payment_status');
+            $table->dateTime('paid_at')->nullable();
         });
 
         Schema::create('booking_pets', function (Blueprint $table) {

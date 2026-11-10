@@ -151,6 +151,73 @@ class Booking extends Model
             : $this->payments()->where('payment_status', 'paid')->exists());
     }
 
+    /** SQL equivalent of hasSuccessfulPayment(), including legacy paid flags. */
+    public function scopeWithSuccessfulPayment(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $paid) => $paid->where('paid', true)
+            ->orWhereHas('payments', fn (Builder $payment) => $payment->where('payment_status', 'paid')));
+    }
+
+    public function scopeFullyGroomed(Builder $query): Builder
+    {
+        return $query->whereHas('bookingPets', fn (Builder $pet) => $pet
+            ->where('grooming_state', BookingPet::GROOMING_STATE_FINISHED)->whereNotNull('grooming_end_time'))
+            ->whereDoesntHave('bookingPets', fn (Builder $pet) => $pet
+                ->where(function (Builder $unfinished) {
+                    $unfinished->whereNull('grooming_state')
+                        ->orWhereNotIn('grooming_state', [BookingPet::GROOMING_STATE_FINISHED, BookingPet::GROOMING_STATE_CANCELLED])
+                        ->orWhere(fn (Builder $finished) => $finished->where('grooming_state', BookingPet::GROOMING_STATE_FINISHED)
+                            ->whereNull('grooming_end_time'));
+                }));
+    }
+
+    /** Preserve terminal legacy outcomes; service completion does not require pickup. */
+    public function scopeGroomingHistory(Builder $query, array $terminalStatuses = ['archived', 'cancelled']): Builder
+    {
+        return $query->where(fn (Builder $history) => $history->whereIn('status', $terminalStatuses)
+            ->orWhere(fn (Builder $completed) => $completed->withSuccessfulPayment()->fullyGroomed()));
+    }
+
+    public function scopeWithGroomingHistoryTimestamp(Builder $query, ?string $date = null): Builder
+    {
+        $timestamp = "CASE
+            WHEN status IN ('cancelled', 'expired', 'no_show') OR cancel_count > 0 OR TRIM(COALESCE(cancellation_reason, '')) <> ''
+                THEN COALESCE(cancelled_at, booking_date)
+            ELSE COALESCE(grooming_finished_at, booking_date)
+            END";
+
+        return $query->select('bookings.*')->selectRaw("{$timestamp} AS history_at")
+            ->when($date, fn (Builder $history) => $history->whereRaw("DATE({$timestamp}) = ?", [$date]));
+    }
+
+    public function groomingOwnerName(): string
+    {
+        $owner = $this->user ?? $this->walkin?->user ?? $this->walkin?->unregisteredCustomer;
+
+        return $owner ? trim(($owner->first_name ?? '').' '.($owner->last_name ?? ''))
+            : trim(($this->walkin?->fname ?? '').' '.($this->walkin?->lname ?? ''));
+    }
+
+    /** Match the same owner precedence used for display, including full names. */
+    public function scopeWhereGroomingOwnerMatches(Builder $query, string $search): Builder
+    {
+        $terms = preg_split('/\s+/', mb_strtolower(trim($search)), -1, PREG_SPLIT_NO_EMPTY);
+        $match = function (Builder $owner, array $columns = ['first_name', 'last_name']) use ($terms) {
+            foreach ($terms as $term) {
+                $owner->where(fn (Builder $name) => $name->whereRaw("LOWER({$columns[0]}) LIKE ?", ["%{$term}%"])
+                    ->orWhereRaw("LOWER({$columns[1]}) LIKE ?", ["%{$term}%"]));
+            }
+        };
+
+        return $query->where(fn (Builder $booking) => $booking->whereHas('user', $match)
+            ->orWhere(fn (Builder $walkinBooking) => $walkinBooking->whereDoesntHave('user')
+                ->whereHas('walkin', fn (Builder $walkin) => $walkin->whereHas('user', $match)
+                    ->orWhere(fn (Builder $unregistered) => $unregistered->whereDoesntHave('user')
+                        ->where(fn (Builder $identity) => $identity->whereHas('unregisteredCustomer', $match)
+                            ->orWhere(fn (Builder $legacy) => $legacy->whereDoesntHave('unregisteredCustomer')
+                                ->where(fn (Builder $name) => $match($name, ['fname', 'lname']))))))));
+    }
+
     public function hasCancellableState(): bool
     {
         if ($this->status !== 'waiting_to_arrive' || $this->grooming_started_at || $this->grooming_finished_at

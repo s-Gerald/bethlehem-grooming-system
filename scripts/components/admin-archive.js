@@ -156,7 +156,7 @@ function adminArchive() {
     recordDate(record) {
       return this.archiveType === "clinic"
         ? record?.appointment_date
-        : record?.appointmentDate;
+        : (record?.historyDate || record?.appointmentDate);
     },
 
     get availableYears() {
@@ -197,13 +197,16 @@ function adminArchive() {
       }
 
       return [...list].sort((a, b) => {
-        const aDate = this.recordDate(a) || "";
-        const bDate = this.recordDate(b) || "";
+        const aDate = (this.archiveType === "grooming" && a.historyAtIso) || this.recordDate(a) || "";
+        const bDate = (this.archiveType === "grooming" && b.historyAtIso) || this.recordDate(b) || "";
+        const dateOrder = this.archiveType === "grooming"
+          ? (Date.parse(aDate) || 0) - (Date.parse(bDate) || 0) || Number(a.id) - Number(b.id)
+          : aDate.localeCompare(bDate);
         switch (this.sortOrder) {
           case "az": return (a.ownerName || "").localeCompare(b.ownerName || "");
           case "za": return (b.ownerName || "").localeCompare(a.ownerName || "");
-          case "oldest": return aDate.localeCompare(bDate);
-          default: return bDate.localeCompare(aDate);
+          case "oldest": return dateOrder;
+          default: return -dateOrder;
         }
       });
     },

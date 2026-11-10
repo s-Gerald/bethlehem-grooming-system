@@ -107,7 +107,7 @@ class AdminBookingController extends Controller
         }
 
         $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
-        $summaryRelations = ['user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.groomer', 'bookingServices.service',
+        $summaryRelations = ['user', 'walkin.user', 'walkin.unregisteredCustomer', 'timeWindow', 'bookingPets.groomer', 'bookingServices.service',
             'bookingPets.pet',
             'payments' => fn ($query) => $query->where('payment_status', 'paid')->with($paymentRelations)];
 
@@ -234,7 +234,7 @@ class AdminBookingController extends Controller
         $queue = Booking::whereDate('booking_date', $today)
             ->whereIn('status', ['checked_in', 'in_progress'])
             ->withExists(['bookingPets as has_started_pet' => fn ($query) => $query->whereNotNull('grooming_start_time')])
-            ->with(['user:user_id,first_name,last_name', 'walkin', 'bookingPets.pet'])
+            ->with(['user:user_id,first_name,last_name', 'walkin.user', 'walkin.unregisteredCustomer', 'bookingPets.pet'])
             ->orderByRaw("(status = 'in_progress' OR has_started_pet) DESC")
             ->orderBy('queue_number')->limit(5)->get()
             ->map(fn (Booking $booking) => [
@@ -1305,11 +1305,12 @@ class AdminBookingController extends Controller
         $date = $request->query('date', '');
 
         $paymentRelations = config('qr_payments.enabled', false) && Schema::hasTable('qr_payments') ? ['products', 'qrPayment'] : ['products'];
-        $query = Booking::whereIn('status', ['archived', 'cancelled'])
+        $query = Booking::groomingHistory()->withGroomingHistoryTimestamp($date ?: null)
             ->withExists('groomingConsent')
             ->with([
                 'user',
                 'walkin.unregisteredCustomer',
+                'walkin.user',
                 'timeWindow',
                 'bookingPets.groomer',
                 'bookingPets.cancelledBy',
@@ -1319,19 +1320,12 @@ class AdminBookingController extends Controller
                     ->where('payment_status', 'paid')
                     ->orderBy('paid_at', 'desc'),
             ])
-            ->orderBy('archived_at', 'desc');
-
-        if ($date) {
-            $query->where('booking_date', $date);
-        }
+            ->orderByDesc('history_at')->orderByDesc('booking_id');
 
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('booking_reference', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($q2) use ($search) {
-                        $q2->where('first_name', 'like', "%{$search}%")
-                            ->orWhere('last_name', 'like', "%{$search}%");
-                    })
+                    ->orWhere(fn ($owner) => $owner->whereGroomingOwnerMatches($search))
                     ->orWhereHas('bookingPets', function ($q2) use ($search) {
                         PetProfileSnapshot::whereIdentity($q2, $search, ['pet_name']);
                     });
@@ -1360,7 +1354,7 @@ class AdminBookingController extends Controller
         return [
             'petName' => $petName,
             'breed' => $firstPet?->breed ?? '—',
-            'ownerName' => $booking->user || $booking->walkin ? $this->ownerName($booking) : '—',
+            'ownerName' => $booking->groomingOwnerName() ?: '—',
         ];
     }
 
@@ -1685,6 +1679,9 @@ class AdminBookingController extends Controller
             ? Carbon::parse($booking->grooming_started_at)->toIso8601String() : null;
         $formatted['completedAtIso'] = $booking->grooming_finished_at
             ? Carbon::parse($booking->grooming_finished_at)->toIso8601String() : null;
+        $historyAt = $booking->history_at ? Carbon::parse($booking->history_at) : null;
+        $formatted['historyAtIso'] = $historyAt?->toIso8601String();
+        $formatted['historyDate'] = $historyAt?->toDateString();
         $paidPayment = $this->paidPaymentForBooking($booking);
         if ($paidPayment) {
             $formatted['payment']['notes'] = $paidPayment->notes;
@@ -1817,19 +1814,6 @@ class AdminBookingController extends Controller
             ->where('payment_status', 'paid')
             ->orderByDesc('paid_at')
             ->first();
-    }
-
-    private function ownerName(?Booking $booking): string
-    {
-        if ($booking?->user) {
-            return trim(($booking->user->first_name ?? '').' '.($booking->user->last_name ?? ''));
-        }
-
-        if ($booking?->walkin) {
-            return trim("{$booking->walkin->fname} {$booking->walkin->lname}");
-        }
-
-        return '';
     }
 
     private function petNames(Booking $booking): string

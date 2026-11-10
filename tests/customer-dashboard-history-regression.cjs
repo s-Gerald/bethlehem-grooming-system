@@ -126,6 +126,7 @@ async function testCompletedHistoryDoesNotBreakEmptySchedule() {
       booking_id: 90,
       booking_reference: "BAC-20260803-0003",
       booking_date: "2026-08-03",
+      history_date: "2026-08-04",
       paid: true,
       pets: [{ pet_name: "Peter" }],
     }],
@@ -138,6 +139,7 @@ async function testCompletedHistoryDoesNotBreakEmptySchedule() {
   assert.equal(element("upcomingSection").classList.contains("hidden"), true);
   assert.doesNotMatch(schedule, /Failed to load schedule/);
   assert.match(history, /Peter/);
+  assert.match(history, /August 4, 2026/, 'Dashboard history displays the service event date');
   assert.equal(consoleErrors.length, 0, "Rendering emitted an unexpected error.");
 }
 
@@ -335,6 +337,16 @@ async function testInitialAndReturningSessionGreetings() {
 
 async function testTerminalRegistrationsShowTheirHistoryOutcome() {
   const historySource = fs.readFileSync(path.resolve(__dirname, '../pages/client/grooming-history.html'), 'utf8');
+  const chronology = vm.createContext({
+    groomingHistory: [
+      {booking_id: 1, booking_date: '2026-11-12', history_date: '2026-11-11', history_at: '2026-11-11T16:30:00+08:00', pets: [{}]},
+      {booking_id: 2, booking_date: '2026-11-10', history_date: '2026-11-11', history_at: '2026-11-11T17:20:00+08:00', pets: [{}]},
+    ], clinicHistory: [], allHistory: [], applyFilters() {}, Date,
+  });
+  vm.runInContext(historySource.slice(historySource.indexOf('function updateHistory()'), historySource.indexOf('function loadHistory()')), chronology);
+  chronology.updateHistory();
+  assert.equal(chronology.allHistory.map(event => event.booking.booking_id).join(','), '2,1');
+  assert.equal(chronology.allHistory.map(event => event.date).join(','), '2026-11-11,2026-11-11');
   const helpers = historySource.slice(historySource.indexOf('function escapeHistoryHtml'), historySource.indexOf('function closeHistoryModal'));
   const { healthDate } = await import("../scripts/components/customer-health-records.js");
   const context = vm.createContext({ Intl, Date, healthDate, document: { getElementById: () => null } });

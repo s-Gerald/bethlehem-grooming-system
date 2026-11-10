@@ -367,7 +367,8 @@
           ...groomingHistory.flatMap((booking) => {
             const pets = Array.isArray(booking.pets) ? booking.pets : [];
             return (pets.length ? pets : [null]).map((pet) => ({
-              type: "grooming", date: booking.booking_date, reference: booking.booking_reference,
+              type: "grooming", date: booking.history_date || booking.booking_date, reference: booking.booking_reference,
+              timestamp: booking.history_at || booking.booking_date,
               pet, booking,
             }));
           }),
@@ -375,7 +376,8 @@
             type: "clinic", date: record.appointment_date, reference: record.appointment_reference,
             pet: record.pet, record,
           })),
-        ].sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+        ].sort((left, right) => (Date.parse(right.timestamp || right.date) || 0) - (Date.parse(left.timestamp || left.date) || 0)
+          || Number(right.booking?.booking_id || 0) - Number(left.booking?.booking_id || 0));
         applyFilters();
       }
 

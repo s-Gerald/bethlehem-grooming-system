@@ -24,6 +24,19 @@ class PetProfileSnapshotsTest extends TestCase
         parent::setUp();
         $this->createGroomingVisitFixture();
         $this->createRegistrationAvailability();
+        Schema::table('bookings', fn (Blueprint $t) => $t->unsignedInteger('walkin_id')->nullable());
+        Schema::create('walkins', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedInteger('user_id')->nullable();
+            $t->unsignedInteger('unregistered_customer_id')->nullable();
+            $t->string('fname')->nullable();
+            $t->string('lname')->nullable();
+        });
+        Schema::create('unregistered_customers', function (Blueprint $t) {
+            $t->id();
+            $t->string('first_name');
+            $t->string('last_name');
+        });
         Schema::table('pets', function (Blueprint $t) {
             $t->integer('user_id')->nullable();
             foreach (['breed', 'fur_type', 'body_condition', 'medical_conditions'] as $field) $t->string($field)->nullable();
