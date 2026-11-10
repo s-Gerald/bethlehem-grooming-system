@@ -55,6 +55,16 @@ class PetInformationVerificationInterfaceTest extends TestCase
         $this->assertStringNotContainsString('petMedicalLock', $this->myPetsPage);
     }
 
+    public function test_my_pets_form_orders_physical_fields_before_appearance_and_demographics(): void
+    {
+        $form = $this->sourceBetween($this->myPetsPage, '<form id="petForm"', '</form>');
+        preg_match_all('/(?:<label\s+for="([^"]+)"|<pet-body-condition id="([^"]+)"|<button type="submit" id="([^"]+)")/', $form, $controls, PREG_SET_ORDER);
+        $this->assertSame([
+            'petName', 'petSpecies', 'petSize', 'petBodyCondition', 'petBreed', 'petColor',
+            'petFurType', 'petGender', 'petBirthdate', 'petMedical', 'petFormSubmit',
+        ], array_map(fn ($control) => $control[1] ?: ($control[2] ?: $control[3]), $controls));
+    }
+
     public function test_pet_archive_and_restore_use_the_customer_custom_modal(): void
     {
         foreach ([

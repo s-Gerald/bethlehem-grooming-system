@@ -3846,6 +3846,11 @@ video {
   text-transform: capitalize;
 }
 
+#petBodyCondition [data-condition-verified][hidden],
+.customer-records-pet-condition [data-condition-verified][hidden] {
+  display: none;
+}
+
 .pet-condition-field {
   min-width: 0;
   color: #334155;

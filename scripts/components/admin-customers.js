@@ -774,10 +774,22 @@ function adminCustomers({ clinicalPetEditor = false } = {}) {
       try {
         if (!this.$refs.petEditForm.firstElementChild) {
           await (this._petEditMarkupReady ??= (async () => {
-            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1&body-condition=20261110-v2');
+            const response = await fetch('/pages/admin/pet-edit-form.html?urls=20261103&v=20261014&icons=20261018&pet-fields=20261030-v1&pet-care=20261027-v1&pet-birthdate=20261103-v1&body-condition=20261110-v2&pet-edit-layout=v1');
             if (!response.ok) throw new Error('Pet editing form could not be loaded.');
             const form = document.createElement('div');
             form.innerHTML = await response.text();
+            if (!clinicalPetEditor) {
+              const demographics = form.querySelector('[data-pet-edit-row="demographics"]');
+              const appearance = form.querySelector('[data-pet-edit-row="appearance"]');
+              const physical = form.querySelector('[data-pet-edit-row="physical"]');
+              const weight = form.querySelector('[data-pet-edit-row="weight"]');
+              const [size, bodyCondition, furType] = physical.children;
+
+              physical.replaceChildren(size, weight);
+              appearance.before(physical, bodyCondition);
+              appearance.after(furType, demographics);
+              bodyCondition.classList.add('block', 'customer-records-pet-condition');
+            }
             Alpine.mutateDom(() => {
               this.$refs.petEditForm.appendChild(form);
               Alpine.initTree(form);

@@ -29,7 +29,7 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-pet-edit-row="demographics">
                   <div>
                     <label for="adminPetGender" class="mb-1 block text-sm font-medium text-slate-700">Gender <span class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetGenderCombobox" class="relative">
@@ -57,7 +57,7 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-pet-edit-row="appearance">
                   <div>
                     <label for="adminPetBreed" class="mb-1 block text-sm font-medium text-slate-700">Breed <span data-breed-requirement class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetBreedCombobox" class="relative">
@@ -87,7 +87,7 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-pet-edit-row="physical">
                   <div>
                     <label for="adminPetSize" class="mb-1 block text-sm font-medium text-slate-700">Size <span class="text-slate-400 font-normal">(optional)</span></label>
                     <div id="adminPetSizeCombobox" class="relative">
@@ -130,7 +130,7 @@
                   </div>
                 </div>
 
-                <div>
+                <div data-pet-edit-row="weight">
                   <label for="adminPetWeight" class="mb-1 block text-sm font-medium text-slate-700">Weight <span class="text-slate-400 font-normal">(optional)</span></label>
                   <div class="relative">
                     <input id="adminPetWeight" name="weight" type="text" inputmode="decimal" placeholder="e.g. 4.25"

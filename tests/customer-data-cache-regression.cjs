@@ -667,6 +667,7 @@ async function testMyPetsStaticModalsAndWorkflows() {
   assert.equal(el("petFormSubmit").disabled, true, "Unchanged profiles cannot confirm");
   const condition = el("petBodyCondition");
   assert.equal(condition.value, "thin");
+  assert.equal(condition.getAttribute("data-verified-value"), "thin");
   await el("petForm").dispatch("change");
   assert.equal(el("petFormSubmit").disabled, true, "Selecting the saved condition keeps Save disabled");
   condition.value = "ideal";
@@ -710,6 +711,11 @@ async function testMyPetsStaticModalsAndWorkflows() {
   await el("petForm").dispatch("submit");
   assert.equal(open(form), false, "Confirm completes permitted new information");
   assert.equal(writes().at(-1).endpoint, "/pets/1");
+
+  await el("addPetBtn").dispatch("click");
+  assert.equal(condition.value, "", "Add Pet clears the previously edited condition");
+  assert.equal(condition.getAttribute("data-verified-value"), "", "Add Pet clears the previous verification");
+  await el("closePetModal").dispatch("click");
 
   for (const [button, endpoint] of [["archive-1", "/pets/1/archive"], ["unarchive-2", "/pets/2/unarchive"]]) {
     if (button === "unarchive-2") { await el("filterArchivedBtn").dispatch("click"); await flush(); }

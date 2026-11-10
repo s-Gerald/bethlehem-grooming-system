@@ -130,6 +130,30 @@ const manual = { ...portal, recordType: 'unregistered' };
   ui.closeCustomerDetails();
   assert.equal(classes.has('customer-detail-modal-open'), false);
 
+  const condition = {
+    value: '',
+    attributes: new Map(),
+    setAttribute(name, value) { this.attributes.set(name, value); },
+  };
+  const control = { close() {}, setValue() {}, reset() {}, setDisabled() {}, update() {}, getValue() { return ''; } };
+  context.petFields = {
+    elements: { bodyCondition: condition, breed: { value: '' }, furType: { value: '' }, weight: { value: '' } },
+    controls: Object.fromEntries(['birthdate', 'species', 'gender', 'color', 'breed', 'furType', 'size'].map(key => [key, control])),
+    tools: { initializeWeightField() {}, formatSavedWeight() { return ''; }, getSizeForWeight() { return ''; } },
+  };
+  vm.runInContext('adminCustomerPetFields = petFields;', context);
+  ui.$refs.petBody = element();
+  ui.syncPetWeightAndSize = () => {};
+  ui.setStoredPetSize = () => {};
+  ui.petModal.pet = { petName: 'Mochi', bodyCondition: 'obese', bodyConditionVerified: true };
+  await ui.startEditPet();
+  assert.equal(condition.value, 'obese');
+  assert.equal(condition.attributes.get('data-verified-value'), 'obese');
+  await ui.openAddPetForCustomer(manual);
+  assert.equal(condition.value, '', 'Staff Add Pet clears the previous Body Condition');
+  assert.equal(condition.attributes.get('data-verified-value'), '', 'Staff Add Pet clears the previous verification');
+  ui.closePetDetails(true);
+
   const edit = element();
   const online = { ...portal, firstName: 'Jhon', lastName: 'Peña', nameVersion: 'old' };
   ui.customers = [online, manual];

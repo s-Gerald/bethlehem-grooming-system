@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/assets/images/clinic/Bethlehem_Logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Pets | Bethlehem Animal Clinic</title>
-    <link rel="stylesheet" href="/css/output.css?pet-fields=20261030-v1&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1&pet-profile=20261110-v1&body-condition=20261110-v2" />
+    <link rel="stylesheet" href="/css/output.css?pet-fields=20261030-v1&v=20260915-control-height&notif=20260915-client-notifications&registration-ui=20261027-v3&availability=20261027&auth-hardening=20261030&customer-ux=20261031-v1&pet-profile=20261110-v1&body-condition=20261110-v2&pet-edit-layout=v1" />
     <link rel="stylesheet" href="/css/custom.css?ui=20260915-my-pets-toggle&notif=20260915-client-notifications&release=20261001&pet-fields=20261030-v1&grooming=actual-20261026&registration-ui=20261027-v3&pet-care=20261027-v1&customer-header=20261106-v2" />
     <link rel="stylesheet" href="/css/session-lock.css?remember=20261029&customer-ux=20261031-v1" />
   </head>
@@ -236,7 +236,7 @@
     <!-- Pet Modal (Add / Edit) -->
     <div id="petModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4"
       role="dialog" aria-modal="true" aria-labelledby="petModalTitle">
-      <div class="w-full max-w-lg rounded-portal border border-portal-border bg-white shadow-2xl overflow-y-auto max-h-[90vh]">
+      <div class="w-full max-w-2xl rounded-portal border border-portal-border bg-white shadow-2xl overflow-y-auto max-h-[90vh]">
         <div class="flex items-center justify-between px-6 pt-6 pb-4 border-b border-portal-border">
           <h3 id="petModalTitle" class="text-xl font-bold text-portal-text">Add Pet</h3>
           <button type="button" id="closePetModal" aria-label="Close pet form" class="inline-flex h-8 w-8 items-center justify-center rounded-full text-portal-muted hover:bg-portal-surface-soft">
@@ -307,35 +307,6 @@
             <pet-body-condition id="petBodyCondition"></pet-body-condition>
           </div>
 
-          <!-- Gender + Birthdate -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label for="petGender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span> <span id="petGenderLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
-              <div id="petGenderCombobox" class="relative">
-                <div class="relative">
-                  <input id="petGender" name="gender" type="text" placeholder="Select gender"
-                    class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer"
-                    role="combobox" aria-autocomplete="none" aria-controls="petGenderOptions"
-                    aria-expanded="false" aria-invalid="false" autocomplete="off" readonly />
-                  <button id="petGenderDropdownButton" type="button"
-                    class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active"
-                    aria-label="Show gender options" aria-controls="petGenderOptions" aria-expanded="false">
-                    <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
-                  </button>
-                </div>
-                <div id="petGenderOptions"
-                  class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
-                  role="listbox" aria-label="Gender options"></div>
-              </div>
-            </div>
-            <div>
-              <label for="petBirthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate <span class="text-slate-400 font-normal">(optional)</span> <span id="petBirthdateLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
-              <input type="date" id="petBirthdate"
-                class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active" />
-              <p id="petBirthdateError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
-            </div>
-          </div>
-
           <!-- Breed + Color -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -395,6 +366,35 @@
                 role="listbox" aria-label="Fur type options"></div>
             </div>
             <p id="petFurTypeError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
+          </div>
+
+          <!-- Gender + Birthdate -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="petGender" class="block text-sm font-medium text-portal-text mb-1">Gender <span class="text-slate-400 font-normal">(optional)</span> <span id="petGenderLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
+              <div id="petGenderCombobox" class="relative">
+                <div class="relative">
+                  <input id="petGender" name="gender" type="text" placeholder="Select gender"
+                    class="w-full rounded-xl border border-portal-border bg-white px-4 py-2.5 pr-12 text-sm outline-none transition focus:border-portal-accent focus:ring-2 focus:ring-portal-active read-only:cursor-pointer"
+                    role="combobox" aria-autocomplete="none" aria-controls="petGenderOptions"
+                    aria-expanded="false" aria-invalid="false" autocomplete="off" readonly />
+                  <button id="petGenderDropdownButton" type="button"
+                    class="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-portal-muted transition hover:text-portal-primary focus:outline-none focus:ring-2 focus:ring-inset focus:ring-portal-active"
+                    aria-label="Show gender options" aria-controls="petGenderOptions" aria-expanded="false">
+                    <svg class="ph-icon h-5 w-5" viewBox="0 0 256 256" aria-hidden="true" focusable="false"><use href="/assets/icons/phosphor.svg#caret-down"></use></svg>
+                  </button>
+                </div>
+                <div id="petGenderOptions"
+                  class="portal-option-list absolute z-30 mt-1 hidden max-h-64 w-full overflow-y-auto rounded-xl border border-portal-border bg-white py-1 shadow-lg"
+                  role="listbox" aria-label="Gender options"></div>
+              </div>
+            </div>
+            <div>
+              <label for="petBirthdate" class="block text-sm font-medium text-portal-text mb-1">Birthdate <span class="text-slate-400 font-normal">(optional)</span> <span id="petBirthdateLock" class="hidden text-portal-muted" title="Clinic staff can change this detail"><svg class="ph-icon inline h-3 w-3" viewBox="0 0 256 256" aria-hidden="true"><use href="/assets/icons/phosphor.svg#lock-key"></use></svg><span class="sr-only">Locked</span></span></label>
+              <input type="date" id="petBirthdate"
+                class="w-full rounded-xl border border-portal-border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-portal-active" />
+              <p id="petBirthdateError" role="alert" class="mt-2 hidden text-sm text-red-600"></p>
+            </div>
           </div>
 
           <!-- Allergies and care notes -->
