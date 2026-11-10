@@ -2,7 +2,7 @@ import { renderBodyConditionChip } from "./pet-body-condition.js?v=20261110-v2";
 import "../services/grooming-forecast-presentation.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1";
 import { escapeHtml } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { formatBookingDate } from "../services/booking-format-service.js";
-import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
+import { getGroomingPricePresentation } from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
 import {
   clinicReasonConfirmation, confirmationDocument, confirmationFields, confirmationSection,
   formatConfirmationLabel, formatConfirmationTimestamp, ownerConfirmationFields, printConfirmation,

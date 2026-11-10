@@ -1,12 +1,12 @@
 import { escapeHtml, formatPetSizeLabel, formatPetTypeLabel } from "../services/booking-draft-service.js?registration=fcfs-20261027-v1";
 import { renderBodyConditionChip } from "./pet-body-condition.js?body-condition=20261110-v2";
 import { renderPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
-import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=20261110";
+import { groomingDurationValue } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=500-20261110";
 import {
   calculatePetSelectionPricing, getGroomingPricePresentation, formatPriceOption,
   getAlaCarteServiceById, getAlaCarteServicesByPetType, getPackageById, getPackageAlaCarteRules,
   getPackagesByPetType, getGroomingPreferences, requiresSpecialInstructions, specialInstructionsError,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
 
 export function renderHaircutPreference(pet, selection) {
   const choices = selection.servicePackage === "cat_full_grooming" && !selection.haircutRequested ? [] : getGroomingPreferences(selection.servicePackage);

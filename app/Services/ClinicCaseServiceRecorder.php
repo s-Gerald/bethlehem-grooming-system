@@ -22,7 +22,7 @@ class ClinicCaseServiceRecorder
             'status' => ['required', Rule::in(['ordered', 'performed'])],
             'quantity' => 'sometimes|numeric|decimal:0,2|min:0.01|max:99999999.99',
             'applied_price' => 'nullable|numeric|decimal:0,2|min:0|max:'.ClinicService::MAX_PRICE,
-            'notes' => 'nullable|string|max:300',
+            'notes' => 'nullable|string|max:500',
         ])->validate();
 
         return DB::transaction(function () use ($appointmentId, $data, $actor, $caseServiceId, $finalizingConfinement, $useAdmissionRate) {

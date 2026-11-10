@@ -1499,9 +1499,9 @@ class InventorySecurityRegressionTest extends TestCase
                 ->assertUnprocessable()->assertJsonValidationErrors('items.0.stock_in_reference');
             $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_number' => 'LOT-REAL', 'batch_unavailable_reason' => 'Not supplied']]])
                 ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_unavailable_reason');
-            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => str_repeat('x', 301)]]])
+            $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => str_repeat('x', 501)]]])
                 ->assertUnprocessable()->assertJsonValidationErrors('items.0.batch_unavailable_reason');
-            $reason = str_repeat('x', 300);
+            $reason = str_repeat('x', 500);
             $receipt = $this->postJson('/api/inventory/stock-in', ['items' => [[...$entry, 'batch_unavailable_reason' => $reason]]])
                 ->assertCreated()->json('data.0');
             $this->assertDatabaseHas('inventory_transactions', ['transaction_id' => $receipt['transaction_id'], 'batch_number' => null, 'batch_unavailable_reason' => $reason]);

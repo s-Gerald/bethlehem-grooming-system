@@ -1,5 +1,5 @@
-import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=20261110";
-import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=20261110";
+import { createGroomingEstimateFlow } from "./grooming-estimates.js?v=grooming-time-20261105&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&short-notes=500-20261110";
+import { renderServiceSelections, updateSpecialInstructions, validateSpecialInstructions, focusSpecialInstructions } from "./grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&urls=20261103&pet-profile=20261110-v1&body-condition=20261110-v2&short-notes=500-20261110";
 import { loadPetGroomers, normalizePetGroomerSelections, hasPetGroomerSelection } from "./pet-groomer-selection.js?services=20261026&registration=fcfs-20261027-v1";
 import {
   hasCompletedRequiredServiceSelection,
@@ -7,8 +7,8 @@ import {
   loadGroomingCatalogue,
   normalizeStepThreeDraft,
   createEmptyPetServiceSelection,
-} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
-import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=20261110";
+} from "../services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
+import { renderWalkInReviewStep } from "./walk-in-review-step.js?v=grooming-pricing-20261006&capacity=20261010&pet-weight=pet-weight-size-20261107-v1&groomers=named-20261016&consent=20261017&catalog=services-20261017-2&session=walk-in-20261021&nav=walk-in-home-20261025&services=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&pet-care=20261027-v1&intake-reliability=20261029&estimates=20261031&estimate-ui=20261031-v2&overdue=20261031-v1&registration-actions=20261101-v1&urls=20261103&owner-name=20261108&body-condition=20261110-v2&name-policy=20261110&short-notes=500-20261110";
 
 const state = {
   pets: [],

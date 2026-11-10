@@ -38,7 +38,7 @@ class PaymentController extends Controller
             'final_price' => $online ? 'exclude' : 'required|numeric|decimal:0,2|min:0',
             'amount_paid' => $online ? 'exclude' : 'nullable|numeric|decimal:0,2|min:0',
             'payment_method' => $online ? 'nullable|in:online' : ($legacyQrEnabled ? 'nullable|in:cash,qrph' : 'nullable|in:cash'),
-            'notes' => 'nullable|string|max:300',
+            'notes' => 'nullable|string|max:500',
             'service_prices' => 'nullable|array',
             'service_prices.*.booking_service_id' => 'required_with:service_prices|integer',
             'service_prices.*.amount' => ['required_with:service_prices', 'numeric', 'decimal:0,2', 'min:0.01', 'regex:/^\d+(?:\.\d{1,2})?$/D'],

@@ -78,7 +78,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'color' => ['nullable', 'string', new ValidPetColor],
-            'medical_conditions' => 'nullable|string|max:300',
+            'medical_conditions' => 'nullable|string|max:500',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
         $this->ensureOwnerPetNameIsUnique(
@@ -128,7 +128,7 @@ class PetController extends Controller
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
-            'medical_conditions' => 'nullable|string|max:300',
+            'medical_conditions' => 'nullable|string|max:500',
         ];
         // Historical saved values are immutable, not new entries needing catalogue validation.
         foreach ($rules as $field => $rule) {
@@ -173,7 +173,7 @@ class PetController extends Controller
                 clinical: $request->routeIs('clinic.pets.update'), existingWeight: $pet->weight,
             )],
             'color' => ['nullable', 'string', new ValidPetColor($pet->color)],
-            'medical_conditions' => 'nullable|string|max:300',
+            'medical_conditions' => 'nullable|string|max:500',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
         if ($pet->user_id || $pet->unregistered_customer_id) {
@@ -276,7 +276,7 @@ class PetController extends Controller
             'fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat],
             'weight' => ['nullable', new ValidPetWeight],
             'color' => ['nullable', 'string', new ValidPetColor],
-            'medical_conditions' => 'nullable|string|max:300',
+            'medical_conditions' => 'nullable|string|max:500',
         ]);
         $data['pet_name'] = $this->normalizePetName($data['pet_name']);
         $this->ensureOwnerPetNameIsUnique(

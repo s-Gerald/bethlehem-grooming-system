@@ -76,7 +76,7 @@ class OnlinePaymentController extends Controller
             'items.*.receipt_id' => 'nullable|integer|min:1',
             'items.*.expected_price' => 'sometimes|numeric|decimal:0,2|min:0|max:999999.99',
             'items.*.expected_stock' => 'sometimes|numeric|decimal:0,2|min:0|max:99999999.99',
-            'notes' => 'nullable|string|max:300',
+            'notes' => 'nullable|string|max:500',
         ]);
         $attempt = DB::transaction(function () use ($request, $data) {
             $actor = User::whereKey($request->user()->user_id)->lockForUpdate()->firstOrFail();

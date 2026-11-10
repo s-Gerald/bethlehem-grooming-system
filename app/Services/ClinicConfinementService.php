@@ -52,7 +52,7 @@ class ClinicConfinementService
     {
         $this->assertClinical($actor);
         $data = Validator::make($data, [
-            'request_key' => 'required|uuid', 'reason' => 'required|string|max:300', 'notes' => 'nullable|string|max:300',
+            'request_key' => 'required|uuid', 'reason' => 'required|string|max:500', 'notes' => 'nullable|string|max:500',
             'clinic_service_id' => 'prohibited', 'quantity' => 'prohibited', 'applied_price' => 'prohibited',
             'admitted_at' => 'prohibited', 'attending_veterinarian_id' => 'prohibited', 'pet_size' => 'prohibited',
         ])->validate();
@@ -103,7 +103,7 @@ class ClinicConfinementService
         $data = Validator::make($data, [
             'request_key' => 'required|uuid', 'temperature_c' => 'nullable|numeric|decimal:0,1|min:0|max:999.9',
             'heart_rate_bpm' => 'nullable|integer|min:0|max:65535', 'respiratory_rate_bpm' => 'nullable|integer|min:0|max:65535',
-            'notes' => 'nullable|string|max:300', 'recorded_at' => 'prohibited',
+            'notes' => 'nullable|string|max:500', 'recorded_at' => 'prohibited',
         ])->validate();
         if (collect($data)->except('request_key')->filter(fn ($value) => $value !== null && trim((string) $value) !== '')->isEmpty()) {
             throw ValidationException::withMessages(['observation' => 'Record at least one clinical value or observation.']);
@@ -236,7 +236,7 @@ class ClinicConfinementService
         $data = Validator::make($data, [
             'applied_price' => 'nullable|numeric|decimal:0,2|min:0|max:'.ClinicService::MAX_PRICE,
             'charge_prices' => 'sometimes|array', 'charge_prices.*' => 'nullable|numeric|decimal:0,2|min:0|max:'.ClinicService::MAX_PRICE,
-            'discharge_note' => 'nullable|string|max:300', 'quantity' => 'prohibited',
+            'discharge_note' => 'nullable|string|max:500', 'quantity' => 'prohibited',
             'billable_days' => 'prohibited', 'discharged_at' => 'prohibited',
         ])->validate();
         return DB::transaction(function () use ($appointmentId, $data, $actor) {

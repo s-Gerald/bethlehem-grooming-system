@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createGroomingEstimateFlow, confirmClosingWarning, groomingDurationValue } from '../scripts/components/grooming-estimates.js';
-import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110';
+import * as grooming from '../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110';
 import { renderPetServiceCard } from '../scripts/components/grooming-service-selection.js?v=20261026&grooming=cms-20261105&registration=fcfs-20261027-v1';
 
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };

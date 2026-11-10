@@ -59,7 +59,7 @@ class BookingController extends Controller
         $rules = [
             'service_day' => 'nullable|date_format:Y-m-d',
             'number_of_pets' => 'required|integer|min:1|max:'.self::MAX_PETS_PER_BOOKING,
-            'special_notes' => 'nullable|string|max:300',
+            'special_notes' => 'nullable|string|max:500',
             ...\App\Services\GroomingConsentCapture::rules(),
             'pets' => 'required|array|min:1|max:'.self::MAX_PETS_PER_BOOKING,
             'pets.*.pet_id' => 'nullable|integer|exists:pets,pet_id',
@@ -71,8 +71,8 @@ class BookingController extends Controller
             'pets.*.size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'pets.*.fur_type' => ['nullable', 'string', 'max:100', new ValidBreedCoat(allowExistingPetSelection: true)],
             'pets.*.color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
-            'pets.*.medical_conditions' => 'nullable|string|max:300',
-            'pets.*.special_instructions' => 'nullable|string|max:300',
+            'pets.*.medical_conditions' => 'nullable|string|max:500',
+            'pets.*.special_instructions' => 'nullable|string|max:500',
             'pets.*.haircut_requested' => 'sometimes|boolean',
             'pets.*.groomer_id' => 'nullable|integer',
             'pets.*.services' => 'nullable|array',
@@ -674,7 +674,7 @@ class BookingController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|exists:bookings,booking_id',
-            'reason' => 'nullable|string|max:300',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $user = $request->user();

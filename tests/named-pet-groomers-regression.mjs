@@ -1,3 +1,4 @@
+import { tooLong } from "../scripts/utils/short-notes.js";
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -63,7 +64,7 @@ for (const walkIn of [false, true]) {
 // The walk-in request carries each pet's ID, independently of display names.
 const source = fs.readFileSync(new URL('../scripts/components/walk-in-consent-step.js', import.meta.url), 'utf8')
   .replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm, '').replace(/^export /gm, '');
-const context = vm.createContext({ document: { addEventListener() {} }, getPetWeightSubmission: () => ({}) });
+const context = vm.createContext({ tooLong, document: { addEventListener() {} }, getPetWeightSubmission: () => ({}) });
 vm.runInContext(source, context);
 const payload = context.buildWalkInPets({ items: pets.map((pet, index) => ({ pet,
   selection: { groomerId: people[index].id }, pricing: { lineItems: [] } })) });

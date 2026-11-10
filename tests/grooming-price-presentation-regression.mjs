@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import { createGroomingEstimateFlow } from "../scripts/components/grooming-estimates.js?v=grooming-time-20261105";
-import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110";
+import * as grooming from "../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110";
 import * as draft from "../scripts/services/booking-draft-service.js";
 import { initBookingConfirmedStep } from "../scripts/components/booking-confirmed-step.js?grooming=cms-20261105";
 import { formatSavedWeight } from "../scripts/components/pet-weight-size.js?v=pet-weight-size-20261107-v1";

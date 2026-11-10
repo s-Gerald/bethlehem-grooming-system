@@ -2,9 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
+const { tooLong } = require("../scripts/utils/short-notes.js");
 
 const read = (file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
-const consent = vm.createContext({ getPetWeightSubmission: (pet) => ({ weight: pet.weight }), document: { addEventListener() {} } });
+const consent = vm.createContext({ tooLong, getPetWeightSubmission: (pet) => ({ weight: pet.weight }), document: { addEventListener() {} } });
 vm.runInContext(read("scripts/components/walk-in-consent-step.js").replace(/import[\s\S]*?from\s+"[^"]+";/g, "").replace(/export /g, ""), consent);
 const reviewSource = read("scripts/components/walk-in-review-step.js")
   .replace(/import[\s\S]*?from\s+"[^"]+";/g, "").replace(/export /g, "");
@@ -80,6 +81,13 @@ async function main() {
   assert.equal(pets[0].color, "Brown/White");
   assert.equal(pets[0].medical_conditions, "Sensitive skin");
   const item = review.payload.items[0];
+  const note = 'x'.repeat(500);
+  const withNotes = consent.buildWalkInPets({ items: [
+    { ...item, pet: { ...item.pet, medicalNotes: note } },
+    { ...item, pet: { ...item.pet, medicalNotes: note + 'x' } },
+  ] });
+  assert.equal(withNotes[0].medical_conditions, note);
+  assert.equal(Object.hasOwn(withNotes[1], "medical_conditions"), false, "An unrelated visit cannot overwrite a saved legacy note");
   const withCondition = consent.buildWalkInPets({ items: [
     { ...item, pet: { ...item.pet, petId: null, bodyCondition: "overweight" } },
     { ...item, pet: { ...item.pet, petId: 17, bodyCondition: "obese" } },
@@ -102,6 +110,7 @@ async function main() {
     confirmSubmission: () => new Promise(resolve => { confirmations.push(resolve); }),
     setBusy(value) { this.valid = !value; } };
   const submission = vm.createContext({
+    tooLong,
     document: { addEventListener() {} }, window: { location: {} }, crypto: require('node:crypto').webcrypto,
     sessionStorage: { getItem: key => draft.get(key), setItem: (key, value) => draft.set(key, value), removeItem: key => draft.delete(key) },
     getPetWeightSubmission: pet => ({ weight: pet.weight }), getPetWeightSubmissionValidationMessage: () => '',

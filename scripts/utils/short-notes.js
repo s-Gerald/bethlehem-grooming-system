@@ -1,14 +1,18 @@
+export const maxLength = 500;
+export const limitMessage = `Maximum ${maxLength} characters allowed.`;
+
+// Laravel's string max counts Unicode code points, not UTF-16 code units.
+const length = value => Array.from(value).length;
+export const tooLong = value => typeof value === 'string' && value.length > maxLength && length(value) > maxLength;
+
 (() => {
-  const maxLength = 300;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
   const fieldSelector = '[data-short-note]';
-  const limitMessage = 'Maximum 300 characters allowed.';
-  const shortenMessage = 'This note exceeds the 300-character limit. Shorten it before saving.';
+  const shortenMessage = `This note exceeds the ${maxLength}-character limit. Shorten it before saving.`;
   const states = new WeakMap();
   let nextErrorId = 0;
 
-  // Laravel's string max counts Unicode code points, not UTF-16 code units.
-  const length = value => Array.from(value).length;
-  const tooLong = value => typeof value === 'string' && value.length > maxLength && length(value) > maxLength;
   const unchangedLegacy = (value, original) => tooLong(original)
     && String(value).replace(/\r\n?/g, '\n') === String(original).replace(/\r\n?/g, '\n');
   const editable = field => !field.readOnly && !field.matches(':disabled');
@@ -158,5 +162,5 @@
     }
   }, true);
 
-  globalThis.ShortNotes = { tooLong, unchangedLegacy, shortenMessage, validate, reset };
+  globalThis.ShortNotes = { maxLength, limitMessage, tooLong, unchangedLegacy, shortenMessage, validate, reset };
 })();

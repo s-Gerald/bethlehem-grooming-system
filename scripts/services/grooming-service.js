@@ -1,3 +1,5 @@
+import { limitMessage, tooLong } from "../utils/short-notes.js?v=500-20261110";
+
 import {
   BOOKING_STEP_THREE_KEY,
   normalizePetSize,
@@ -569,7 +571,7 @@ export function requiresSpecialInstructions(selection) {
 }
 
 export function specialInstructionsError(pet, selection) {
-  if (Array.from(selection?.specialInstructions || "").length > 300) return "Maximum 300 characters allowed.";
+  if (tooLong(selection?.specialInstructions)) return limitMessage;
   if (!requiresSpecialInstructions(selection) || selection.specialInstructions?.trim()) return "";
   return selection.haircutRequested
     ? `Describe the requested haircut for ${pet.petName || "this pet"}.`

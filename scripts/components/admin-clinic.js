@@ -248,9 +248,11 @@ function adminClinicModal() {
       if (this.vitalEntryValid(field, value)) return '';
       const verification = this.vitalExceptions[field];
       const exceptional = this.vitalEntryValid(field, value, true);
+      const notes = globalThis.ShortNotes;
+      const reasonTooLong = notes?.tooLong(verification?.reason);
       if (exceptional && (this.hasSavedVitalVerification(field)
-        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && Array.from(verification.reason).length <= 300))) return '';
-      if (verification?.value === value) return 'Enter a clinical reason (5–200 characters).';
+        || (this.isVeterinarian && verification?.value === value && verification.reason.trim().length >= 5 && !reasonTooLong))) return '';
+      if (verification?.value === value) return reasonTooLong ? notes.limitMessage : 'Enter a clinical reason (at least 5 characters).';
       if (exceptional) return 'This reading requires veterinarian verification.';
       return field === 'temperature_c' ? 'Use 25–45 °C, up to 1 decimal.'
         : `Use a whole number from 1 to ${CLINIC_CLINICAL_RULES.vitals[field].max}.`;

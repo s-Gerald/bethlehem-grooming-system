@@ -1,3 +1,5 @@
+import { limitMessage, tooLong } from "../utils/short-notes.js?v=500-20261110";
+
 export const CLINIC_VISIT_DRAFT_KEY = "clinicVisitDraft";
 export const CLINIC_VISIT_PETS_KEY = "clinicVisitPets";
 export const CLINIC_VISIT_CONFIRMATION_KEY = "clinicVisitConfirmation";
@@ -44,9 +46,7 @@ export function validateClinicVisitReason(concerns, details = "") {
       new Set(concerns).size !== concerns.length) {
     return "Select valid common concerns.";
   }
-  if (Array.from(String(details)).length > 300) {
-    return "Maximum 300 characters allowed.";
-  }
+  if (tooLong(String(details))) return limitMessage;
   return "";
 }
 

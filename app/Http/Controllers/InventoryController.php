@@ -556,10 +556,10 @@ class InventoryController extends Controller
             'items.*.reason'       => 'required|in:purchase,return,adjustment',
             'items.*.unit_cost'    => 'nullable|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,
             'items.*.batch_number' => 'nullable|string|max:100',
-            'items.*.batch_unavailable_reason' => 'nullable|string|max:300',
+            'items.*.batch_unavailable_reason' => 'nullable|string|max:500',
             'items.*.stock_in_reference' => 'prohibited',
             'items.*.expiry_date'  => 'nullable',
-            'items.*.notes'        => 'nullable|string|max:300',
+            'items.*.notes'        => 'nullable|string|max:500',
         ]);
 
         $categories = $this->itemsQuery()
@@ -605,7 +605,7 @@ class InventoryController extends Controller
             'items.*.receipt_id'     => 'nullable|integer|min:1',
             'items.*.reason'         => 'required|in:used,sold,expired,damaged,adjustment',
             'items.*.selling_price'  => 'nullable|numeric|decimal:0,2|min:0|max:'.self::MAX_MONEY,
-            'items.*.notes'          => 'nullable|string|max:300',
+            'items.*.notes'          => 'nullable|string|max:500',
             'items.*.reference_type' => 'nullable|in:manual,appointment,pos',
             'items.*.reference_id'   => 'nullable|integer',
         ]);

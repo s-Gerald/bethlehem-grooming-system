@@ -1,4 +1,4 @@
-import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=20261110";
+import { requireCustomerSession } from "../services/clinic-visit-service.js?pet-weight=pet-weight-size-20261107-v1&registration=fcfs-20261027-v1&remember=20261029&urls=20261103&short-notes=500-20261110";
 import { getPreRegistrationAccess, setPreRegistrationLinkAccess } from "../services/booking-form-access-guard.js?v=phone-20261022&registration=rolling-20261027-v1&registration-rollover=20261027-v3&service-access=20261031-v1&urls=20261103&queue-copy=20261103-v1";
 import { loadRegistrationAvailability } from "../services/registration-service-day.js?v=rolling-20261027-v1&registration-rollover=20261027-v3";
 import { clearGroomingDraft } from "../services/booking-draft-service.js?flow=grooming-order-20261016&registration=fcfs-20261027-v1";

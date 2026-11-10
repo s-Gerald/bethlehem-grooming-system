@@ -53,6 +53,7 @@ async function checkClinicConsent() {
   const { owner, stored, window, context } = setup('clinic');
   let submissions = 0;
   Object.assign(context, {
+    tooLong: require('../scripts/utils/short-notes.js').tooLong,
     API: { submitClinicWalkIn: async () => { submissions++; throw { errors: { lname: ['Enter a valid last name.'] } }; } },
     getPetWeightSubmissionValidationMessage: () => '', getPetWeightSubmission: () => ({}),
   });

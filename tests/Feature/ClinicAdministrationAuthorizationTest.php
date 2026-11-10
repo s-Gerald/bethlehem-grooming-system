@@ -1090,7 +1090,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'pet_name' => 'Coat color', 'species' => 'Dog', 'terms_agreed' => true];
         foreach (['admin', 'staff'] as $role) {
             $this->authenticateAs($role);
-            foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 301)]] as [$field, $value]) {
+            foreach ([['color', 'Brown123'], ['color', '456White'], ['color', '12.5'], ['color', '---'], ['medical_conditions', str_repeat('x', 501)]] as [$field, $value]) {
                 $this->postJson('/api/admin/clinic-walk-in', [...$payload, $field => $value])->assertUnprocessable()->assertJsonValidationErrors($field);
             }
         }
@@ -2287,7 +2287,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('common_concerns.0');
         $this->postJson('/api/clinic/pre-register', $payload + [
-            'common_concerns' => ['Routine check-up'], 'chief_complaint' => str_repeat('x', 301),
+            'common_concerns' => ['Routine check-up'], 'chief_complaint' => str_repeat('x', 501),
         ])->assertUnprocessable()->assertJsonValidationErrors('chief_complaint');
         $this->postJson('/api/clinic/pre-register', $payload + [
             'common_concerns' => ['Routine check-up', 'Vaccination'],
@@ -2694,8 +2694,8 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $endDate = now()->addDays(2)->toDateString();
 
         $dates = ['start_date' => $startDate, 'end_date' => $endDate];
-        $reason = str_repeat('x', 300);
-        $this->postJson('/api/admin/clinic/blocked-dates', $dates + ['reason' => str_repeat('x', 301)])
+        $reason = str_repeat('x', 500);
+        $this->postJson('/api/admin/clinic/blocked-dates', $dates + ['reason' => str_repeat('x', 501)])
             ->assertUnprocessable()->assertJsonValidationErrors('reason');
         $this->postJson('/api/admin/clinic/blocked-dates', $dates + ['reason' => $reason])
             ->assertCreated()
@@ -3605,15 +3605,15 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('staff');
         $this->insertClinicAppointment('in_consultation');
         DB::table('clinic_appointments')->where('id', 1)->update(['appointment_type' => 'walk_in']);
-        $legacy = str_repeat('x', 500);
+        $legacy = str_repeat('x', 600);
         DB::table('clinic_records')->insert(['clinic_appointment_id' => 1, 'vet_notes' => $legacy]);
         $fields = ['chief_complaint', 'relevant_history', 'reported_signs', 'physical_exam_findings',
             'differential_diagnoses', 'working_diagnosis', 'diagnosis', 'findings', 'treatment_given', 'follow_up_notes', 'vet_notes'];
         $url = '/api/admin/clinic-appointments/1/record';
-        $this->postJson($url, array_fill_keys($fields, str_repeat('x', 301)))
+        $this->postJson($url, array_fill_keys($fields, str_repeat('x', 501)))
             ->assertUnprocessable()->assertJsonValidationErrors($fields);
-        $this->postJson($url, array_fill_keys(array_diff($fields, ['vet_notes']), str_repeat('x', 300)))
-            ->assertOk()->assertJsonPath('record.relevant_history', str_repeat('x', 300))
+        $this->postJson($url, array_fill_keys(array_diff($fields, ['vet_notes']), str_repeat('x', 500)))
+            ->assertOk()->assertJsonPath('record.relevant_history', str_repeat('x', 500))
             ->assertJsonPath('record.vet_notes', $legacy);
     }
 
@@ -3625,11 +3625,11 @@ class ClinicAdministrationAuthorizationTest extends TestCase
             'dose' => '250 mg', 'route' => 'oral', 'frequency' => 'Every 12 hours', 'duration' => '7 days',
             'quantity' => '14 tablets', 'instructions' => 'Give after food'];
         $this->postJson('/api/admin/clinic-appointments/1/record', [
-            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 301)]],
+            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 501)]],
         ])->assertUnprocessable()->assertJsonValidationErrors('prescriptions.0.instructions');
         $this->postJson('/api/admin/clinic-appointments/1/record', [
-            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 300)]],
-        ])->assertOk()->assertJsonPath('record.prescriptions.0.instructions', str_repeat('x', 300));
+            'prescriptions' => [[...$prescription, 'instructions' => str_repeat('x', 500)]],
+        ])->assertOk()->assertJsonPath('record.prescriptions.0.instructions', str_repeat('x', 500));
         $this->getJson('/api/admin/clinic-appointments')->assertOk()
             ->assertJsonPath('in_consultation.0.record.prescriptions.0.medicine', 'Amoxicillin-clavulanate')
             ->assertJsonPath('in_consultation.0.record.prescriptions.0.quantity', '14 tablets');
@@ -3679,7 +3679,7 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $this->authenticateAs('admin');
         $this->insertClinicAppointment('in_consultation');
         $payload = ['heart_rate_bpm' => '0', 'vital_exceptions' => ['heart_rate_bpm' => [
-            'value' => '0', 'reason' => 'Confirmed absent pulse during resuscitation',
+            'value' => '0', 'reason' => str_repeat('x', 500),
         ]]];
         $this->postJson('/api/admin/clinic-appointments/1/record', $payload)->assertUnprocessable();
         $this->authenticateAs('staff', 4, 'clinic_receptionist');
@@ -3691,6 +3691,10 @@ class ClinicAdministrationAuthorizationTest extends TestCase
         $invalid['vital_exceptions']['heart_rate_bpm']['value'] = '401';
         $this->postJson('/api/admin/clinic-appointments/1/record', $invalid)
             ->assertUnprocessable()->assertJsonValidationErrors('heart_rate_bpm');
+        $invalid = $payload;
+        $invalid['vital_exceptions']['heart_rate_bpm']['reason'] .= 'x';
+        $this->postJson('/api/admin/clinic-appointments/1/record', $invalid)
+            ->assertUnprocessable()->assertJsonValidationErrors('vital_exceptions.heart_rate_bpm.reason');
         $this->postJson('/api/admin/clinic-appointments/1/record', $payload)->assertOk();
         $history = json_decode(DB::table('clinic_vitals')->value('verification_history'), true);
         $this->assertSame('0', $history[0]['value']);

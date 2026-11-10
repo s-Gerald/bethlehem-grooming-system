@@ -400,7 +400,7 @@ class AdminBookingController extends Controller
             'pet_sizes.*.booking_pet_id' => ['required_with:pet_sizes', 'integer', 'distinct'],
             'pet_sizes.*.size' => ['required_with:pet_sizes', 'in:small,medium,large,extra_large'],
             'pet_sizes.*.body_condition' => PetBodyCondition::rules(),
-            'internal_staff_note' => ['sometimes', 'nullable', 'string', 'max:300'],
+            'internal_staff_note' => ['sometimes', 'nullable', 'string', 'max:500'],
         ]);
         $selections = collect($data['pet_sizes'] ?? [])->keyBy('booking_pet_id');
         $selectedSizes = $selections->pluck('size', 'booking_pet_id');
@@ -493,7 +493,7 @@ class AdminBookingController extends Controller
 
     public function updateInternalStaffNote($id)
     {
-        $data = request()->validate(['internal_staff_note' => ['present', 'nullable', 'string', 'max:300']]);
+        $data = request()->validate(['internal_staff_note' => ['present', 'nullable', 'string', 'max:500']]);
         return DB::transaction(function () use ($id, $data) {
             $booking = Booking::whereKey($id)->lockForUpdate()->firstOrFail();
 
@@ -509,7 +509,7 @@ class AdminBookingController extends Controller
 
     public function updateGroomingVisitNotes($id, $bookingPetId)
     {
-        $data = request()->validate(['grooming_visit_notes' => ['present', 'nullable', 'string', 'max:300']]);
+        $data = request()->validate(['grooming_visit_notes' => ['present', 'nullable', 'string', 'max:500']]);
         return DB::transaction(function () use ($id, $bookingPetId, $data) {
             $booking = Booking::whereKey($id)->lockForUpdate()->firstOrFail();
 
@@ -1233,7 +1233,7 @@ class AdminBookingController extends Controller
 
     private function cancellationReason(Request $request): string
     {
-        $data = $request->validate(['cancellation_reason' => ['required', 'string', 'max:300']]);
+        $data = $request->validate(['cancellation_reason' => ['required', 'string', 'max:500']]);
         $reason = trim($data['cancellation_reason']);
         if ($reason === '') {
             throw ValidationException::withMessages(['cancellation_reason' => 'Enter a cancellation reason.']);

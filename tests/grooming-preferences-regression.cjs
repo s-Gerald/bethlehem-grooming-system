@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 async function main() {
-  const grooming = await import('../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=20261110');
+  const grooming = await import('../scripts/services/grooming-service.js?v=managed-services-20261026&grooming=cms-20261105&registration=fcfs-20261027-v1&short-notes=500-20261110');
   const component = await import('../scripts/components/grooming-service-selection.js?v=20261026');
   const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'grooming-catalogue-fixture.json'), 'utf8'));
   grooming.applyGroomingCatalogue(fixture.data, fixture.groomingPreferences);
@@ -11,6 +11,8 @@ async function main() {
   assert.equal(grooming.hasRequiredGroomingPreference({servicePackage:'regular_dog_grooming'}), false);
   const pet = {id:'coco', petType:'dog', size:'small'};
   const selection = {petId:'coco',servicePackage:'regular_dog_grooming',groomingPreference:'regular_trim',alaCarteServices:[]};
+  assert.equal(grooming.specialInstructionsError(pet, { ...selection, specialInstructions: '🐾'.repeat(500) }), '');
+  assert.equal(grooming.specialInstructionsError(pet, { ...selection, specialInstructions: 'x'.repeat(501) }), 'Maximum 500 characters allowed.');
   const review = grooming.buildBookingReviewPayload({pets:[pet]}, [selection]);
   assert.equal(review.items[0].pricing.hasSelection, true);
   assert.equal(review.items[0].selection.groomingPreference, 'regular_trim');

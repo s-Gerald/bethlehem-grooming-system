@@ -76,12 +76,12 @@ class StoreClinicWalkinRequest extends FormRequest
             'body_condition' => PetBodyCondition::rules(),
             'size' => ['nullable', 'in:small,medium,large,extra_large', new ValidPetSize],
             'color' => ['nullable', 'string', new ValidPetColor(allowExistingPetSelection: true)],
-            'medical_conditions' => ['nullable', 'string', 'max:300'],
+            'medical_conditions' => ['nullable', 'string', 'max:500'],
 
             // Clinic
             'common_concerns' => ['required', 'array', 'min:1', 'max:11'],
             'common_concerns.*' => ['required', 'string', 'distinct', Rule::in(ClinicConcerns::OPTIONS)],
-            'chief_complaint' => ['nullable', 'string', 'max:300'],
+            'chief_complaint' => ['nullable', 'string', 'max:500'],
             'clinic_quick_entry' => ['sometimes', 'boolean'],
 
             // Consent

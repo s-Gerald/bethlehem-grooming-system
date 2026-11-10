@@ -606,11 +606,11 @@ class AdminVaccinationApiTest extends TestCase
             'recorded_by_user_id' => 2,
         ]);
 
-        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 301)])
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 501)])
             ->assertUnprocessable()->assertJsonValidationErrors('notes');
-        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 300)])
+        $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", ['notes' => str_repeat('x', 500)])
             ->assertOk()
-            ->assertJsonPath('vaccination.notes', str_repeat('x', 300))
+            ->assertJsonPath('vaccination.notes', str_repeat('x', 500))
             ->assertJsonPath('vaccination.state', 'draft');
 
         $this->patchJson("/api/admin/pets/101/vaccinations/{$draftId}", [
@@ -646,7 +646,7 @@ class AdminVaccinationApiTest extends TestCase
         $this->assertDatabaseHas('vaccination_records', [
             'id' => $draftId,
             'pet_id' => 101,
-            'notes' => str_repeat('x', 300),
+            'notes' => str_repeat('x', 500),
         ]);
     }
 
@@ -834,7 +834,7 @@ class AdminVaccinationApiTest extends TestCase
         ]);
         $draftId = $this->insertVaccination(101, 'FVRCP', '2026-07-23');
 
-        $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", ['void_reason' => str_repeat('x', 301)])
+        $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", ['void_reason' => str_repeat('x', 501)])
             ->assertUnprocessable()->assertJsonValidationErrors('void_reason');
         $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", [
             'void_reason' => '',
@@ -857,20 +857,20 @@ class AdminVaccinationApiTest extends TestCase
             ->assertJsonValidationErrors(['voided_at', 'voided_by_user_id']);
 
         $this->postJson("/api/admin/pets/101/vaccinations/{$publishedId}/void", [
-            'void_reason' => 'Wrong product was recorded.',
+            'void_reason' => str_repeat('x', 500),
         ])
             ->assertOk()
             ->assertJsonPath('vaccination.state', 'voided')
             ->assertJsonPath('vaccination.voided_by_user_id', 2)
             ->assertJsonPath('vaccination.voided_at', '2026-07-23T15:30:00+08:00')
-            ->assertJsonPath('vaccination.void_reason', 'Wrong product was recorded.');
+            ->assertJsonPath('vaccination.void_reason', str_repeat('x', 500));
 
         $this->assertDatabaseCount('vaccination_records', 2);
         $this->assertDatabaseHas('vaccination_records', [
             'id' => $publishedId,
             'voided_by_user_id' => 2,
             'voided_at' => '2026-07-23 15:30:00',
-            'void_reason' => 'Wrong product was recorded.',
+            'void_reason' => str_repeat('x', 500),
         ]);
     }
 

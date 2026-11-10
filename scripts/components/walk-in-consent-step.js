@@ -1,3 +1,4 @@
+import { tooLong } from "../utils/short-notes.js?v=500-20261110";
 import { WalkInOwnerValidation } from "../utils/walk-in-owner-validation.js?v=names-20261110";
 import { initGroomingConsent } from "./grooming-consent.js?v=20261017";
 import { getPetWeightSubmission, getPetWeightSubmissionValidationMessage } from "./pet-weight-size.js?v=pet-weight-size-20261107-v1";
@@ -239,7 +240,7 @@ export function buildWalkInPets(reviewPayload) {
       size:                 normalizeSizeForApi(item.pet.size),
       ...(!item.pet.petId && item.pet.bodyCondition ? { body_condition: item.pet.bodyCondition } : {}),
       color:                item.pet.color || null,
-      ...(item.pet.petId && Array.from(item.pet.medicalNotes || "").length > 300
+      ...(item.pet.petId && tooLong(item.pet.medicalNotes)
         ? {} : {medical_conditions: item.pet.medicalNotes || null}),
       special_instructions: item.selection.specialInstructions?.trim() || null,
       grooming_preference: item.selection.groomingPreference || null,

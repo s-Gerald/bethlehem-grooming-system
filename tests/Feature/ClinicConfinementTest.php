@@ -217,13 +217,16 @@ class ClinicConfinementTest extends TestCase
     public function test_monitoring_is_append_only_chronological_idempotent_and_does_not_overwrite_vitals(): void
     {
         $this->admit(); $before = DB::table('clinic_vitals')->first();
-        $payload = ['request_key' => (string) Str::uuid(), 'temperature_c' => 39.1, 'notes' => 'Alert'];
+        $notes = str_repeat('x', 500);
+        $payload = ['request_key' => (string) Str::uuid(), 'temperature_c' => 39.1, 'notes' => $notes];
+        $this->postJson('/api/admin/clinic-cases/1/confinement/observations', [...$payload, 'notes' => $notes.'x'])
+            ->assertUnprocessable()->assertJsonValidationErrors('notes');
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertCreated();
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', $payload)->assertOk();
         Carbon::setTestNow(now()->addHour());
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid(), 'heart_rate_bpm' => 95])->assertCreated();
         $this->postJson('/api/admin/clinic-cases/1/confinement/observations', ['request_key' => (string) Str::uuid()])->assertUnprocessable();
-        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.notes', 'Alert')->assertJsonPath('data.1.heart_rate_bpm', 95);
+        $this->getJson('/api/admin/clinic-cases/1/confinement/observations')->assertOk()->assertJsonPath('data.0.notes', $notes)->assertJsonPath('data.1.heart_rate_bpm', 95);
         $this->assertEquals($before, DB::table('clinic_vitals')->first()); $this->assertDatabaseCount('clinic_charges', 0);
     }
 
@@ -272,11 +275,13 @@ class ClinicConfinementTest extends TestCase
     public function test_discharge_finalizes_one_service_one_charge_and_one_payment_due_transition(): void
     {
         $this->admit(); Carbon::setTestNow(now()->addHours(6));
-        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['discharge_note' => str_repeat('x', 301)])
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['discharge_note' => str_repeat('x', 501)])
             ->assertUnprocessable()->assertJsonValidationErrors('discharge_note');
-        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['applied_price' => 1, 'discharge_note' => str_repeat('x', 300)])->assertOk()
-            ->assertJsonPath('data.case_service.applied_price', '500.00')->assertJsonPath('data.case_service.quantity', '1.00');
-        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk();
+        $note = str_repeat('x', 500);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge', ['applied_price' => 1, 'discharge_note' => $note])->assertOk()
+            ->assertJsonPath('data.case_service.applied_price', '500.00')->assertJsonPath('data.case_service.quantity', '1.00')
+            ->assertJsonPath('data.discharge_note', $note);
+        $this->postJson('/api/admin/clinic-cases/1/confinement/discharge')->assertOk()->assertJsonPath('data.discharge_note', $note);
         $this->assertDatabaseCount('clinic_charges', 1); $this->assertDatabaseCount('notifications', 1);
         $this->assertDatabaseHas('clinic_appointments', ['id' => 1, 'status' => 'for_payment', 'total_amount' => 500]);
         $this->assertNotNull(ClinicConfinement::first()->discharged_at);
