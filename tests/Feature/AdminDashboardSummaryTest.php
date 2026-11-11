@@ -10,7 +10,7 @@ use App\Models\Booking;
 use App\Models\BookingPet;
 use App\Models\Pet;
 use App\Models\User;
-use App\Services\ClinicDailySummaryNotificationService;
+use App\Services\DailyCompletionSummaryNotificationService;
 use App\Services\DashboardCompletionMetrics;
 use Carbon\Carbon;
 use Illuminate\Console\Scheduling\Schedule;
@@ -449,29 +449,36 @@ class AdminDashboardSummaryTest extends TestCase
         ]);
         $this->travelTo(Carbon::parse('2026-06-24 17:20:00', 'Asia/Manila'));
 
-        app(ClinicDailySummaryNotificationService::class)->generateIfDue();
+        app(DailyCompletionSummaryNotificationService::class)->generateIfDue();
 
         $this->assertDatabaseMissing('notifications', ['type' => 'clinic_daily_summary']);
     }
 
     public function test_clinic_daily_summary_scheduler_includes_a_visit_completed_exactly_at_closing(): void
     {
-        DB::table('clinic_settings')->update(['clinic_close_time' => '16:30:00']);
+        DB::table('clinic_settings')->update([
+            'clinic_close_time' => '16:30:00', 'grooming_close_time' => '16:30:00',
+        ]);
         DB::table('clinic_appointments')->insert([
             'appointment_reference' => 'AT-CLOSE', 'appointment_date' => '2026-06-24', 'status' => 'completed',
             'paid' => true, 'consultation_finished_at' => '2026-06-24 16:00:00', 'paid_at' => '2026-06-24 16:30:00',
         ]);
         $this->travelTo(Carbon::parse('2026-06-24 16:30:00', 'Asia/Manila'));
 
-        $event = collect(app(Schedule::class)->events())->firstWhere('description', 'clinic-daily-summary:generate');
+        $event = collect(app(Schedule::class)->events())->firstWhere('description', 'daily-completion-summary:generate');
         $this->assertNotNull($event);
+        $this->assertSame('* * * * *', $event->expression);
         $this->assertTrue($event->isDue($this->app));
         $event->run($this->app);
 
-        $this->assertDatabaseCount('notifications', 1);
+        $this->assertDatabaseCount('notifications', 2);
         $this->assertDatabaseHas('notifications', [
             'type' => 'clinic_daily_summary', 'booking_id' => null, 'clinic_appointment_id' => null,
-            'message' => '1 clinic visit completed as of 4:30 PM.', 'is_read' => false,
+            'message' => '1 clinic visit completed today.', 'is_read' => false,
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'daily_completion_summary', 'booking_id' => null, 'clinic_appointment_id' => null,
+            'message' => '1 session completed today — 0 grooming, 1 clinic.', 'is_read' => false,
         ]);
     }
 
@@ -496,12 +503,12 @@ class AdminDashboardSummaryTest extends TestCase
             ]);
         }
         $this->travelTo(Carbon::parse('2026-06-24 16:50:00', 'Asia/Manila'));
-        $generator = app(ClinicDailySummaryNotificationService::class);
+        $generator = app(DailyCompletionSummaryNotificationService::class);
         $generator->generateIfDue();
         $this->assertDatabaseCount('notifications', 1);
         $summary = [
             'type' => 'clinic_daily_summary', 'created_at' => '2026-06-24 16:50:00',
-            'message' => '2 clinic visits completed as of 4:30 PM.',
+            'message' => '2 clinic visits completed today.',
         ];
         $this->assertDatabaseHas('notifications', $summary);
         $metrics = app(DashboardCompletionMetrics::class);
@@ -513,21 +520,77 @@ class AdminDashboardSummaryTest extends TestCase
             'paid' => true, 'consultation_finished_at' => '2026-06-24 17:00:00', 'paid_at' => '2026-06-24 17:01:00',
         ]);
         $generator->generateIfDue();
-        $this->assertDatabaseCount('notifications', 1);
+        $this->assertDatabaseCount('notifications', 2);
         $this->assertDatabaseHas('notifications', $summary);
         $this->assertSame(['clinic' => 5], $metrics->today(clinicOnly: true));
 
         // June 25 in Manila is still June 24 in UTC at this configured close.
         $this->travelTo(Carbon::parse('2026-06-24 23:30:00', 'UTC'));
-        DB::table('clinic_settings')->update(['clinic_open_time' => '06:00:00', 'clinic_close_time' => '07:30:00']);
+        DB::table('clinic_settings')->update([
+            'clinic_open_time' => '06:00:00', 'clinic_close_time' => '07:30:00',
+            'grooming_open_time' => '06:00:00', 'grooming_close_time' => '07:30:00',
+        ]);
         $generator->generateIfDue();
         $generator->generateIfDue();
-        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseCount('notifications', 4);
         $this->assertDatabaseHas('notifications', $summary);
         $this->assertDatabaseHas('notifications', [
             'type' => 'clinic_daily_summary', 'created_at' => '2026-06-25 07:30:00',
-            'message' => '0 clinic visits completed as of 7:30 AM.',
+            'message' => '0 clinic visits completed today.',
         ]);
+        $this->assertDatabaseHas('notifications', [
+            'type' => 'daily_completion_summary', 'created_at' => '2026-06-25 07:30:00',
+            'message' => '0 sessions completed today — 0 grooming, 0 clinic.',
+        ]);
+    }
+
+    public static function serviceClosingOrders(): array
+    {
+        return [
+            'Clinic closes first' => ['12:00:00', '17:00:00', true, '3 sessions completed today — 2 grooming, 1 clinic.'],
+            'Grooming closes first' => ['17:00:00', '12:00:00', false, '3 sessions completed today — 1 grooming, 2 clinic.'],
+        ];
+    }
+
+    #[DataProvider('serviceClosingOrders')]
+    public function test_combined_summary_waits_for_both_services_and_freezes_each_at_its_own_close(
+        string $clinicClose,
+        string $groomingClose,
+        bool $clinicSummaryDueAtNoon,
+        string $message,
+    ): void {
+        DB::table('clinic_settings')->update([
+            'clinic_close_time' => $clinicClose, 'grooming_close_time' => $groomingClose,
+        ]);
+        foreach (['12:00:00', '17:00:00', '17:01:00'] as $i => $time) {
+            DB::table('clinic_appointments')->insert([
+                'appointment_reference' => 'COMBINED-'.$i, 'appointment_date' => '2026-06-24', 'status' => 'completed',
+                'paid' => true, 'consultation_finished_at' => '2026-06-24 '.$time, 'paid_at' => '2026-06-24 11:00:00',
+            ]);
+        }
+        $this->completedGrooming(payment: ['paid_at' => '2026-06-24 12:00:00']);
+        $this->completedGrooming(
+            booking: ['grooming_finished_at' => null],
+            pet: ['grooming_end_time' => '2026-06-24 17:00:00'],
+        );
+        $this->completedGrooming(booking: ['grooming_finished_at' => '2026-06-24 17:01:00']);
+        $this->completedGrooming(payment: ['paid_at' => '2026-06-24 17:01:00']);
+
+        $generator = app(DailyCompletionSummaryNotificationService::class);
+        $this->travelTo(Carbon::parse('2026-06-24 12:00:00', 'Asia/Manila'));
+        $generator->generateIfDue();
+        $this->assertDatabaseCount('notifications', $clinicSummaryDueAtNoon ? 1 : 0);
+        $this->assertDatabaseMissing('notifications', ['type' => 'daily_completion_summary']);
+
+        $this->travelTo(Carbon::parse('2026-06-24 16:59:00', 'Asia/Manila'));
+        $generator->generateIfDue();
+        $this->assertDatabaseMissing('notifications', ['type' => 'daily_completion_summary']);
+
+        $this->travelTo(Carbon::parse('2026-06-24 17:20:00', 'Asia/Manila'));
+        $generator->generateIfDue();
+        $generator->generateIfDue();
+        $this->assertDatabaseCount('notifications', 2);
+        $this->assertDatabaseHas('notifications', ['type' => 'daily_completion_summary', 'message' => $message]);
     }
 
     public function test_management_counts_pets_in_today_and_week_summaries(): void

@@ -14,26 +14,24 @@ class NotificationController extends Controller
 {
     private function visibleNotifications(): \Illuminate\Database\Eloquent\Builder
     {
-        return Notification::query()->when(request()->user()?->isVeterinarian(),
-            fn ($query) => $query->whereIn('type', Notification::serviceTypes()['clinic']));
+        $user = request()->user();
+        $query = Notification::query();
+        if ($user?->isVeterinarian()) {
+            return $query->whereIn('type', Notification::serviceTypes()[Notification::CATEGORY_CLINIC]);
+        }
+
+        return $query->where('type', '!=', Notification::TYPE_CLINIC_DAILY_SUMMARY)
+            ->when($user?->role !== 'admin' && ! $user?->isReceptionist(),
+                fn ($query) => $query->where('type', '!=', Notification::TYPE_DAILY_COMPLETION_SUMMARY));
     }
 
     private const STATUSES = ['all', 'unread'];
-
-    private const CATEGORIES = [
-        'all',
-        Notification::CATEGORY_GROOMING,
-        Notification::CATEGORY_CLINIC,
-        Notification::CATEGORY_INVENTORY,
-        Notification::CATEGORY_PAYMENTS,
-        Notification::CATEGORY_CANCELLATIONS,
-    ];
 
     public function index(Request $request)
     {
         $filters = $request->validate([
             'status' => ['sometimes', Rule::in(self::STATUSES)],
-            'category' => ['sometimes', Rule::in(self::CATEGORIES)],
+            'category' => ['sometimes', Rule::in(['all', ...array_keys(Notification::categoryTypes())])],
             'service' => ['sometimes', Rule::in(['all', ...array_keys(Notification::serviceTypes())])],
             'activity' => ['sometimes', Rule::in(['all', ...array_keys(Notification::activities())])],
             'mode' => ['sometimes', Rule::in(['count', 'dropdown', 'full'])],
@@ -234,6 +232,7 @@ class NotificationController extends Controller
                 $storedMessage,
             ),
             Notification::TYPE_CLINIC_DAILY_SUMMARY => $this->content('Daily clinic summary', $storedMessage, null, []),
+            Notification::TYPE_DAILY_COMPLETION_SUMMARY => $this->content('Daily completion summary', $storedMessage, null, []),
             Notification::TYPE_INVENTORY_EXPIRING_SOON => $this->content(
                 'Expiring soon', $storedMessage, $notification->context, ['Expiring soon —'],
             ),
@@ -503,7 +502,7 @@ class NotificationController extends Controller
             Notification::TYPE_CLINIC_BOOKED,
             Notification::TYPE_CLINIC_WALK_IN => 'stethoscope',
             Notification::TYPE_CLINIC_PAYMENT_DUE => 'circle-check',
-            Notification::TYPE_CLINIC_DAILY_SUMMARY => 'clipboard-text',
+            Notification::TYPE_CLINIC_DAILY_SUMMARY, Notification::TYPE_DAILY_COMPLETION_SUMMARY => 'clipboard-text',
             Notification::TYPE_INVENTORY_EXPIRING_SOON, Notification::TYPE_INVENTORY_EXPIRED => 'cube',
             default => 'bell',
         };

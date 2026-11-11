@@ -18,6 +18,8 @@ class Notification extends Model
 
     public const CATEGORY_CANCELLATIONS = 'cancellations';
 
+    public const CATEGORY_CROSS_SERVICE = 'cross_service';
+
     public const TYPE_CLINIC_BOOKED = 'clinic_booked';
 
     public const TYPE_CLINIC_WALK_IN = 'clinic_walk_in';
@@ -33,6 +35,8 @@ class Notification extends Model
     public const TYPE_CLINIC_NO_SHOW = 'clinic_no_show';
 
     public const TYPE_CLINIC_DAILY_SUMMARY = 'clinic_daily_summary';
+
+    public const TYPE_DAILY_COMPLETION_SUMMARY = 'daily_completion_summary';
 
     public const TYPE_INVENTORY_EXPIRING_SOON = 'inventory_expiring_soon';
 
@@ -104,6 +108,7 @@ class Notification extends Model
                 'cancelled',
                 self::TYPE_CLINIC_CANCELLED,
             ],
+            self::CATEGORY_CROSS_SERVICE => [self::TYPE_DAILY_COMPLETION_SUMMARY],
         ];
     }
 
@@ -134,6 +139,7 @@ class Notification extends Model
     public static function serviceForType(?string $type): string
     {
         return match (true) {
+            $type === self::TYPE_DAILY_COMPLETION_SUMMARY => self::CATEGORY_CROSS_SERVICE,
             in_array($type, self::INVENTORY_TYPES, true) => self::CATEGORY_INVENTORY,
             str_starts_with((string) $type, 'clinic_') => self::CATEGORY_CLINIC,
             default => self::CATEGORY_GROOMING,
@@ -150,7 +156,9 @@ class Notification extends Model
             'payments' => ['label' => 'Payments', 'types' => self::categoryTypes()[self::CATEGORY_PAYMENTS]],
             'cancellations' => ['label' => 'Cancellations', 'types' => self::categoryTypes()[self::CATEGORY_CANCELLATIONS]],
             'expired' => ['label' => 'No show', 'types' => [self::TYPE_NO_SHOW, self::TYPE_CLINIC_NO_SHOW]],
-            'daily_summaries' => ['label' => 'Daily summaries', 'types' => [self::TYPE_CLINIC_DAILY_SUMMARY]],
+            'daily_summaries' => ['label' => 'Daily summaries', 'types' => [
+                self::TYPE_CLINIC_DAILY_SUMMARY, self::TYPE_DAILY_COMPLETION_SUMMARY,
+            ]],
             'inventory_expiry' => ['label' => 'Expiry alerts', 'types' => self::INVENTORY_TYPES],
         ];
     }

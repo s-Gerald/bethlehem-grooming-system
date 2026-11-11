@@ -17,13 +17,15 @@ class DashboardCompletionMetrics
         $clinic = $this->clinicCompletions($start, $until);
         if ($clinicOnly) return ['clinic' => $clinic];
 
-        $grooming = $this->grooming($start, $until);
+        $grooming = $this->groomingCompletions($start, $until);
         return ['grooming' => $grooming, 'clinic' => $clinic,
             ...($includeTotal ? ['total' => $grooming + $clinic] : [])];
     }
 
-    private function grooming(string $start, string $until): int
+    public function groomingCompletions(string $start, string $until, bool $includeEnd = false): int
     {
+        $endOperator = $includeEnd ? '<=' : '<';
+
         // Each paid row represents full settlement. Keep the first confirmation
         // so duplicate audit rows cannot multiply pets or move completion dates.
         $payments = DB::table('payments')->where('payment_status', 'paid')->whereNotNull('paid_at')
@@ -34,7 +36,7 @@ class DashboardCompletionMetrics
             ->whereNull('bp.cancelled_at')->where(function ($q) {
                 $q->whereNull('bp.grooming_state')->orWhere('bp.grooming_state', '!=', 'cancelled');
             })
-            ->where('payment.paid_at', '<', $until)
+            ->where('payment.paid_at', $endOperator, $until)
             ->groupBy('b.booking_id', 'b.grooming_finished_at', 'payment.paid_at')
             ->havingRaw("SUM(CASE WHEN bp.grooming_state = 'finished' AND bp.grooming_end_time IS NOT NULL THEN 0 ELSE 1 END) = 0")
             ->selectRaw('COUNT(*) as pets, payment.paid_at,
@@ -42,7 +44,7 @@ class DashboardCompletionMetrics
                     THEN b.grooming_finished_at ELSE MAX(bp.grooming_end_time) END as finished_at');
 
         return (int) DB::query()->fromSub($visits, 'finished_visits')
-            ->where('finished_at', '<', $until)
+            ->where('finished_at', $endOperator, $until)
             ->where(fn ($q) => $q->where('finished_at', '>=', $start)->orWhere('paid_at', '>=', $start))
             ->sum('pets');
     }

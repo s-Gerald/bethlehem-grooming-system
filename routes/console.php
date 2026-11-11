@@ -2,7 +2,7 @@
 
 use App\Models\LoginEmailChallenge;
 use App\Models\PendingCustomerRegistration;
-use App\Services\ClinicDailySummaryNotificationService;
+use App\Services\DailyCompletionSummaryNotificationService;
 use App\Services\InventoryExpiryNotificationService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -15,8 +15,8 @@ Artisan::command('inspire', function () {
 // Eligibility uses the assigned visit day's closing time, independently of page visits.
 Schedule::command('pre-registrations:expire')->everyMinute()->timezone('Asia/Manila')->withoutOverlapping();
 
-Schedule::call(fn () => app(ClinicDailySummaryNotificationService::class)->generateIfDue())
-    ->name('clinic-daily-summary:generate')->everyMinute()->timezone('Asia/Manila')->withoutOverlapping(1);
+Schedule::call(fn () => app(DailyCompletionSummaryNotificationService::class)->generateIfDue())
+    ->name('daily-completion-summary:generate')->everyMinute()->timezone('Asia/Manila')->withoutOverlapping(1);
 
 Schedule::call(fn () => app(InventoryExpiryNotificationService::class)->reconcile())
     ->name('inventory-expiry:reconcile')->dailyAt('00:05')->timezone('Asia/Manila')->withoutOverlapping();
